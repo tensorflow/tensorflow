@@ -40,6 +40,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables as variables_lib
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
@@ -58,25 +59,46 @@ local_response_normalization = gen_nn_ops.lrn
 
 # pylint: disable=protected-access
 
+# Acceptable channels last formats (robust to H, W, D order).
+_CHANNELS_LAST_FORMATS = frozenset({
+    "NWC", "NHC", "NHWC", "NWHC", "NDHWC", "NDWHC", "NHDWC", "NHWDC", "NWDHC",
+    "NWHDC"
+})
+
 
 def _get_sequence(value, n, channel_index, name):
   """Formats a value input for gen_nn_ops."""
+  # Performance is fast-pathed for common cases:
+  # `None`, `list`, `tuple` and `int`.
   if value is None:
-    value = [1]
+    return [1] * (n + 2)
+
+  # Always convert `value` to a `list`.
+  if isinstance(value, list):
+    pass
+  elif isinstance(value, tuple):
+    value = list(value)
+  elif isinstance(value, int):
+    value = [value]
   elif not isinstance(value, collections_abc.Sized):
     value = [value]
-
-  current_n = len(value)
-  if current_n == n + 2:
-    return value
-  elif current_n == 1:
-    value = list((value[0],) * n)
-  elif current_n == n:
-    value = list(value)
   else:
-    raise ValueError("{} should be of length 1, {} or {} but was {}".format(
-        name, n, n + 2, current_n))
+    value = list(value)  # Try casting to a list.
 
+  len_value = len(value)
+
+  # Fully specified, including batch and channel dims.
+  if len_value == n + 2:
+    return value
+
+  # Apply value to spatial dims only.
+  if len_value == 1:
+    value = value * n  # Broadcast to spatial dimensions.
+  elif len_value != n:
+    raise ValueError("{} should be of length 1, {} or {} but was {}".format(
+        name, n, n + 2, len_value))
+
+  # Add batch and channel dims (always 1).
   if channel_index == 1:
     return [1, 1] + value
   else:
@@ -228,7 +250,7 @@ class _NonAtrousConvolution(object):
                          % data_format)
       self.strides = strides
       self.data_format = data_format
-      self.conv_op = gen_nn_ops.conv3d
+      self.conv_op = _conv3d_expanded_batch
 
   # Note that we need this adapter since argument names for conv1d don't match
   # those for gen_nn_ops.conv2d and gen_nn_ops.conv3d.
@@ -241,7 +263,6 @@ class _NonAtrousConvolution(object):
         padding=padding,
         data_format=data_format,
         name=name)
-
   # pylint: enable=redefined-builtin
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
@@ -254,7 +275,7 @@ class _NonAtrousConvolution(object):
         name=self.name)
 
 
-def _squeeze_batch_dims(inp, op, inner_rank, name):
+def squeeze_batch_dims(inp, op, inner_rank, name=None):
   """Returns `unsqueeze_batch(op(squeeze_batch(inp)))`.
 
   Where `squeeze_batch` reshapes `inp` to shape
@@ -272,7 +293,7 @@ def _squeeze_batch_dims(inp, op, inner_rank, name):
   Returns:
     `unsqueeze_batch_op(squeeze_batch(inp))`.
   """
-  with ops.name_scope(name, "Convolution", [inp]):
+  with ops.name_scope(name, "squeeze_batch_dims", [inp]):
     inp = ops.convert_to_tensor(inp, name="input")
     shape = inp.shape
 
@@ -728,10 +749,7 @@ def _with_space_to_batch_base_paddings(filter_shape, num_spatial_dims,
   # Spatial dimensions of the filters and the upsampled filters in which we
   # introduce (rate - 1) zeros between consecutive filter values.
   filter_spatial_shape = filter_shape[:num_spatial_dims]
-  dilated_filter_spatial_shape = (
-      filter_spatial_shape + (filter_spatial_shape - 1) *
-      (rate_or_const_rate - 1))
-  pad_extra_shape = dilated_filter_spatial_shape - 1
+  pad_extra_shape = (filter_spatial_shape - 1) * rate_or_const_rate
 
   # When full_padding_shape is odd, we pad more at end, following the same
   # convention as conv2d.
@@ -1046,71 +1064,80 @@ def convolution_internal(
       `num_spatial_dims` is provided and incompatible with the value
       estimated from `filters.shape`.
   """
-  n = None
-  if getattr(filters, 'shape', None) is None:
-    with ops.name_scope(name, 'convolution_internal', [filters, input]):
+  if (not isinstance(filters, variables_lib.Variable) and
+      not tensor_util.is_tensor(filters)):
+    with ops.name_scope("convolution_internal", None, [filters, input]):
       filters = ops.convert_to_tensor(filters, name='filters')
-  if (isinstance(filters.shape, tensor_shape.TensorShape)
-      and filters.shape.rank is not None):
-    n = len(filters.shape) - 2
-  elif (not isinstance(filters.shape, tensor_shape.TensorShape)
-        and filters.shape is not None):
-    n = len(filters.shape) - 2
+  if (not isinstance(input, ops.Tensor) and not tensor_util.is_tensor(input)):
+    with ops.name_scope("convolution_internal", None, [filters, input]):
+      input = ops.convert_to_tensor(input, name="input")
 
-  if (isinstance(input.shape, tensor_shape.TensorShape)
-      and input.shape.rank is not None):
-    if n is None:
-      n = (num_spatial_dims if num_spatial_dims is not None
-           else len(input.shape) - 2)
-    num_batch_dims = len(input.shape) - n - 1
-  elif (not isinstance(input.shape, tensor_shape.TensorShape)
-        and input.shape is not None):
-    if n is None:
-      n = (num_spatial_dims if num_spatial_dims is not None
-           else len(input.shape) - 2)
-    num_batch_dims = len(input.shape) - n - 1
-  else:
-    num_batch_dims = 1  # Default behavior if it cannot be estimated.
-
-  if n is None:
-    raise ValueError("rank of input or filter must be known")
-
-  if num_spatial_dims is not None and n != num_spatial_dims:
+  filters_rank = filters.shape.rank
+  inputs_rank = input.shape.rank
+  if num_spatial_dims is None:
+    if filters_rank:
+      num_spatial_dims = filters_rank - 2
+    elif inputs_rank:
+      num_spatial_dims = inputs_rank - 2
+    else:
+      raise ValueError("rank of input or filter must be known")
+  elif filters_rank and filters_rank - 2 != num_spatial_dims:
     raise ValueError(
         "inconsistent estimate of spatial dims ({}) vs. actual passed "
         "num_spatial_dims ({}).  n was estimated as len(filters.shape) - 2, "
-        "but filters shape is: {}".format(n, num_spatial_dims, filters.shape))
+        "but filters shape is: {}".format(filters_rank, num_spatial_dims,
+                                          filters.shape))
 
-  if not 1 <= n <= 3:
+  if inputs_rank:
+    num_batch_dims = inputs_rank - num_spatial_dims - 1  # Channel dimension.
+  else:
+    num_batch_dims = 1  # By default, assume single batch dimension.
+
+  if num_spatial_dims not in {1, 2, 3}:
     raise ValueError(
         "num_spatial_dims (input.shape.ndims - num_batch_dims - 1) must be one "
-        "of 1, 2 or 3 but saw {}.  num_batch_dims: {}."
-        .format(n, num_batch_dims))
+        "of 1, 2 or 3 but saw {}.  num_batch_dims: {}.".format(
+            num_spatial_dims, num_batch_dims))
 
-  if data_format is None:
-    channel_index = num_batch_dims + n
+  if data_format is None or data_format in _CHANNELS_LAST_FORMATS:
+    channel_index = num_batch_dims + num_spatial_dims
   else:
-    channel_index = (
-        num_batch_dims if data_format.startswith("NC") else n + num_batch_dims)
+    channel_index = num_batch_dims
 
-  strides = _get_sequence(strides, n, channel_index, "strides")
-  dilations = _get_sequence(dilations, n, channel_index, "dilations")
-
-  scopes = {1: "conv1d", 2: "Conv2D", 3: "Conv3D"}
-  if not call_from_convolution and device_context.enclosing_tpu_context(
-  ) is not None:
-    scope = scopes[n]
+  if dilations is None:
+    dilations = _get_sequence(dilations, num_spatial_dims, channel_index,
+                              "dilations")
+    is_dilated_conv = False
   else:
-    scope = "convolution"
+    dilations = _get_sequence(dilations, num_spatial_dims, channel_index,
+                              "dilations")
+    is_dilated_conv = any(i != 1 for i in dilations)
 
-  with ops.name_scope(name, scope, [input, filters]) as name:
-    conv_ops = {1: conv1d, 2: _conv2d_expanded_batch, 3: gen_nn_ops.conv3d}
+  strides = _get_sequence(strides, num_spatial_dims, channel_index, "strides")
+  has_tpu_context = device_context.enclosing_tpu_context() is not None
 
-    if device_context.enclosing_tpu_context() is not None or all(
-        i == 1 for i in dilations):
-      # fast path for TPU or if no dilation as gradient only supported on GPU
-      # for dilations
-      op = conv_ops[n]
+  if name:
+    default_name = None
+  elif not has_tpu_context or call_from_convolution:
+    default_name = "convolution"
+  elif num_spatial_dims == 2:  # Most common case.
+    default_name = "Conv2D"
+  elif num_spatial_dims == 3:
+    default_name = "Conv3D"
+  else:
+    default_name = "conv1d"
+
+  with ops.name_scope(name, default_name, [input, filters]) as name:
+    # Fast path for TPU or if no dilation, as gradient only supported on TPU
+    # for dilations.
+    if not is_dilated_conv or has_tpu_context:
+      if num_spatial_dims == 2:  # Most common case.
+        op = _conv2d_expanded_batch
+      elif num_spatial_dims == 3:
+        op = _conv3d_expanded_batch
+      else:
+        op = conv1d
+
       return op(
           input,
           filters,
@@ -1135,7 +1162,7 @@ def convolution_internal(
           dilation_rate=dilations,
           name=name,
           data_format=data_format,
-          num_spatial_dims=n)
+          num_spatial_dims=num_spatial_dims)
       return op(input, filters)
 
 
@@ -1242,12 +1269,12 @@ class Convolution(object):
       spatial_dims = range(
           num_batch_dims + 1, num_spatial_dims + num_batch_dims + 1)
 
-    if not input_channels_dim.is_compatible_with(
-        filter_shape[num_spatial_dims]):
-      raise ValueError(
-          "Number of input channels does not match corresponding dimension of "
-          "filter, {} != {}".format(input_channels_dim,
-                                    filter_shape[num_spatial_dims]))
+    filter_dim = tensor_shape.dimension_at_index(filter_shape, num_spatial_dims)
+    if not (input_channels_dim % filter_dim).is_compatible_with(0):
+      raise ValueError("The number of input channels is not divisible by the "
+                       "corresponding number of output filters. Received: "
+                       "input channels={}, output filters={}".format(
+                           input_channels_dim, filter_dim))
 
     strides, dilation_rate = _get_strides_and_dilation_rate(
         num_spatial_dims, strides, dilation_rate)
@@ -1783,40 +1810,42 @@ def conv1d(
     name=None,
     input=None,  # pylint: disable=redefined-builtin
     dilations=None):
-  r"""Computes a 1-D convolution given 3-D input and filter tensors.
+  r"""Computes a 1-D convolution of input with rank `>=3` and a `3-D` filter.
 
   Given an input tensor of shape
-    [batch, in_width, in_channels]
-  if data_format is "NWC", or
-    [batch, in_channels, in_width]
-  if data_format is "NCW",
+    `batch_shape + [in_width, in_channels]`
+  if `data_format` is `"NWC"`, or
+    `batch_shape + [in_channels, in_width]`
+  if `data_format` is `"NCW"`,
   and a filter / kernel tensor of shape
-  [filter_width, in_channels, out_channels], this op reshapes
-  the arguments to pass them to conv2d to perform the equivalent
+  `[filter_width, in_channels, out_channels]`, this op reshapes
+  the arguments to pass them to `conv2d` to perform the equivalent
   convolution operation.
 
   Internally, this op reshapes the input tensors and invokes `tf.nn.conv2d`.
   For example, if `data_format` does not start with "NC", a tensor of shape
-    [batch, in_width, in_channels]
+    `batch_shape + [in_width, in_channels]`
   is reshaped to
-    [batch, 1, in_width, in_channels],
+    `batch_shape + [1, in_width, in_channels]`,
   and the filter is reshaped to
-    [1, filter_width, in_channels, out_channels].
+    `[1, filter_width, in_channels, out_channels]`.
   The result is then reshaped back to
-    [batch, out_width, out_channels]
+    `batch_shape + [out_width, out_channels]`
   \(where out_width is a function of the stride and padding as in conv2d\) and
   returned to the caller.
 
   Args:
-    value: A 3D `Tensor`.  Must be of type `float16`, `float32`, or `float64`.
-    filters: A 3D `Tensor`.  Must have the same type as `value`.
+    value: A Tensor of rank at least 3. Must be of type `float16`, `float32`, or
+      `float64`.
+    filters: A Tensor of rank at least 3.  Must have the same type as `value`.
     stride: An int or list of `ints` that has length `1` or `3`.  The number of
       entries by which the filter is moved right at each step.
     padding: 'SAME' or 'VALID'
     use_cudnn_on_gpu: An optional `bool`.  Defaults to `True`.
     data_format: An optional `string` from `"NWC", "NCW"`.  Defaults to `"NWC"`,
-      the data is stored in the order of [batch, in_width, in_channels].  The
-      `"NCW"` format stores data as [batch, in_channels, in_width].
+      the data is stored in the order of `batch_shape + [in_width,
+      in_channels]`.  The `"NCW"` format stores data as `batch_shape +
+      [in_channels, in_width]`.
     name: A name for the operation (optional).
     input: Alias for value.
     dilations: An int or list of `ints` that has length `1` or `3` which
@@ -1832,14 +1861,14 @@ def conv1d(
   """
   value = deprecation.deprecated_argument_lookup("input", input, "value", value)
   with ops.name_scope(name, "conv1d", [value, filters]) as name:
-    # Reshape the input tensor to [batch, 1, in_width, in_channels]
+    # Reshape the input tensor to batch_shape + [1, in_width, in_channels]
     if data_format is None or data_format == "NHWC" or data_format == "NWC":
       data_format = "NHWC"
-      spatial_start_dim = 1
+      spatial_start_dim = -3
       channel_index = 2
     elif data_format == "NCHW" or data_format == "NCW":
       data_format = "NCHW"
-      spatial_start_dim = 2
+      spatial_start_dim = -2
       channel_index = 1
     else:
       raise ValueError("data_format must be \"NWC\" or \"NCW\".")
@@ -1848,15 +1877,30 @@ def conv1d(
 
     value = array_ops.expand_dims(value, spatial_start_dim)
     filters = array_ops.expand_dims(filters, 0)
-    result = gen_nn_ops.conv2d(
-        value,
-        filters,
-        strides,
-        padding,
-        use_cudnn_on_gpu=use_cudnn_on_gpu,
-        data_format=data_format,
-        dilations=dilations,
-        name=name)
+    if value.shape.ndims in (4, 3, 2, 1, 0, None):
+      result = gen_nn_ops.conv2d(
+          value,
+          filters,
+          strides,
+          padding,
+          use_cudnn_on_gpu=use_cudnn_on_gpu,
+          data_format=data_format,
+          dilations=dilations,
+          name=name)
+    else:
+      result = squeeze_batch_dims(
+          value,
+          functools.partial(
+              gen_nn_ops.conv2d,
+              filter=filters,
+              strides=strides,
+              padding=padding,
+              use_cudnn_on_gpu=use_cudnn_on_gpu,
+              data_format=data_format,
+              dilations=dilations,
+          ),
+          inner_rank=3,
+          name=name)
     return array_ops.squeeze(result, [spatial_start_dim])
 
 
@@ -1873,36 +1917,38 @@ def conv1d_v2(
   r"""Computes a 1-D convolution given 3-D input and filter tensors.
 
   Given an input tensor of shape
-    [batch, in_width, in_channels]
-  if data_format is "NWC", or
-    [batch, in_channels, in_width]
-  if data_format is "NCW",
+    `batch_shape + [in_width, in_channels]`
+  if `data_format` is `"NWC"`, or
+    `batch_shape + [in_channels, in_width]`
+  if `data_format` is `"NCW"`,
   and a filter / kernel tensor of shape
-  [filter_width, in_channels, out_channels], this op reshapes
-  the arguments to pass them to conv2d to perform the equivalent
+  `[filter_width, in_channels, out_channels]`, this op reshapes
+  the arguments to pass them to `conv2d` to perform the equivalent
   convolution operation.
 
   Internally, this op reshapes the input tensors and invokes `tf.nn.conv2d`.
-  For example, if `data_format` does not start with "NC", a tensor of shape
-    [batch, in_width, in_channels]
+  For example, if `data_format` does not start with `"NC"`, a tensor of shape
+    `batch_shape + [in_width, in_channels]`
   is reshaped to
-    [batch, 1, in_width, in_channels],
+    `batch_shape + [1, in_width, in_channels]`,
   and the filter is reshaped to
-    [1, filter_width, in_channels, out_channels].
+    `[1, filter_width, in_channels, out_channels]`.
   The result is then reshaped back to
-    [batch, out_width, out_channels]
+    `batch_shape + [out_width, out_channels]`
   \(where out_width is a function of the stride and padding as in conv2d\) and
   returned to the caller.
 
   Args:
-    input: A 3D `Tensor`.  Must be of type `float16`, `float32`, or `float64`.
-    filters: A 3D `Tensor`.  Must have the same type as `input`.
+    input: A Tensor of rank at least 3. Must be of type `float16`, `float32`, or
+      `float64`.
+    filters: A Tensor of rank at least 3.  Must have the same type as `input`.
     stride: An int or list of `ints` that has length `1` or `3`.  The number of
       entries by which the filter is moved right at each step.
     padding: 'SAME' or 'VALID'
     data_format: An optional `string` from `"NWC", "NCW"`.  Defaults to `"NWC"`,
-      the data is stored in the order of [batch, in_width, in_channels].  The
-      `"NCW"` format stores data as [batch, in_channels, in_width].
+      the data is stored in the order of
+      `batch_shape + [in_width, in_channels]`.  The `"NCW"` format stores data
+      as `batch_shape + [in_channels, in_width]`.
     dilations: An int or list of `ints` that has length `1` or `3` which
       defaults to 1. The dilation factor for each dimension of input. If set to
       k > 1, there will be k-1 skipped cells between each filter element on that
@@ -1947,9 +1993,9 @@ def conv1d_transpose(
     input: A 3-D `Tensor` of type `float` and shape
       `[batch, in_width, in_channels]` for `NWC` data format or
       `[batch, in_channels, in_width]` for `NCW` data format.
-    filters: A 3-D `Tensor` with the same type as `value` and shape
+    filters: A 3-D `Tensor` with the same type as `input` and shape
       `[filter_width, output_channels, in_channels]`.  `filter`'s
-      `in_channels` dimension must match that of `value`.
+      `in_channels` dimension must match that of `input`.
     output_shape: A 1-D `Tensor`, containing three elements, representing the
       output shape of the deconvolution op.
     strides: An int or list of `ints` that has length `1` or `3`.  The number of
@@ -1964,7 +2010,7 @@ def conv1d_transpose(
     name: Optional name for the returned tensor.
 
   Returns:
-    A `Tensor` with the same type as `value`.
+    A `Tensor` with the same type as `input`.
 
   Raises:
     ValueError: If input/output depth does not match `filter`'s shape, if
@@ -2051,9 +2097,9 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
   horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
-  
+
   Usage Example:
-  
+
   >>> x_in = np.array([[
   ...   [[2], [1], [2], [0], [1]],
   ...   [[1], [3], [2], [2], [3]],
@@ -2071,9 +2117,9 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
   Args:
     input: A `Tensor`. Must be one of the following types:
       `half`, `bfloat16`, `float32`, `float64`.
-      A 4+-D tensor. The dimension order is interpreted according to the value
-      of `data_format`; with the all-but-inner-3 dimensions acting as batch
-      dimensions.  See below for details.
+      A Tensor of rank at least 4. The dimension order is interpreted according
+      to the value of `data_format`; with the all-but-inner-3 dimensions acting
+      as batch dimensions. See below for details.
     filters: A `Tensor`. Must have the same type as `input`.
       A 4-D tensor of shape
       `[filter_height, filter_width, in_channels, out_channels]`
@@ -2214,6 +2260,8 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
     ndims = getattr(shape, "ndims", -1)
     if ndims == -1: ndims = len(shape)
   if ndims in (4, 3, 2, 1, 0, None):
+    # We avoid calling squeeze_batch_dims to reduce extra python function
+    # call slowdown in eager mode.  This branch doesn't require reshapes.
     return gen_nn_ops.conv2d(
         input,
         filter=filter,
@@ -2224,7 +2272,7 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
         data_format=data_format,
         dilations=dilations,
         name=name)
-  return _squeeze_batch_dims(
+  return squeeze_batch_dims(
       input,
       functools.partial(
           gen_nn_ops.conv2d,
@@ -2530,11 +2578,10 @@ def _conv2d_expanded_batch(
     name):
   """Helper function for `convolution_internal`; handles expanded batches."""
   # Try really hard to avoid modifying the legacy name scopes - return early.
-  shape = getattr(input, "shape", None)
-  if shape is not None:
-    ndims = getattr(shape, "ndims", -1)
-    if ndims == -1: ndims = len(shape)
-  if ndims in (4, 3, 2, 1, 0, None):
+  input_rank = input.shape.rank
+  if input_rank is None or input_rank < 5:
+    # We avoid calling squeeze_batch_dims to reduce extra python function
+    # call slowdown in eager mode.  This branch doesn't require reshapes.
     return gen_nn_ops.conv2d(
         input,
         filter=filters,
@@ -2543,7 +2590,7 @@ def _conv2d_expanded_batch(
         data_format=data_format,
         dilations=dilations,
         name=name)
-  return _squeeze_batch_dims(
+  return squeeze_batch_dims(
       input,
       functools.partial(
           gen_nn_ops.conv2d,
@@ -2931,6 +2978,46 @@ def depthwise_conv2d_native_backprop_filter(  # pylint: disable=redefined-builti
       name=name)
 
 
+def _conv3d_expanded_batch(
+    input,  # pylint: disable=redefined-builtin
+    filter,  # pylint: disable=redefined-builtin
+    strides,
+    padding,
+    data_format,
+    dilations=None,
+    name=None):
+  """Helper function for `conv3d`; handles expanded batches."""
+  # Try really hard to avoid modifying the legacy name sceops - return early.
+  shape = getattr(input, "shape", None)
+  if shape is not None:
+    ndims = getattr(shape, "ndims", -1)
+    if ndims == -1:
+      ndims = len(shape)
+  if ndims in (5, 4, 3, 2, 1, 0, None):
+    # We avoid calling squeeze_batch_dims to reduce extra python function
+    # call slowdown in eager mode.  This branch doesn't require reshapes.
+    return gen_nn_ops.conv3d(
+        input,
+        filter,
+        strides,
+        padding,
+        data_format=data_format,
+        dilations=dilations,
+        name=name)
+  else:
+    return squeeze_batch_dims(
+        input,
+        functools.partial(
+            gen_nn_ops.conv3d,
+            filter=filter,
+            strides=strides,
+            padding=padding,
+            data_format=data_format,
+            dilations=dilations),
+        inner_rank=4,
+        name=name)
+
+
 @tf_export("nn.conv3d", v1=[])
 @dispatch.add_dispatch_support
 def conv3d_v2(input,  # pylint: disable=redefined-builtin,missing-docstring
@@ -2942,13 +3029,8 @@ def conv3d_v2(input,  # pylint: disable=redefined-builtin,missing-docstring
               name=None):
   if dilations is None:
     dilations = [1, 1, 1, 1, 1]
-  return gen_nn_ops.conv3d(input,
-                           filters,
-                           strides,
-                           padding,
-                           data_format=data_format,
-                           dilations=dilations,
-                           name=name)
+  return _conv3d_expanded_batch(input, filters, strides, padding, data_format,
+                                dilations, name)
 
 
 @tf_export(v1=["nn.conv3d"])
@@ -3064,9 +3146,9 @@ def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
     input: A 5-D `Tensor` of type `float` and shape `[batch, depth, height,
       width, in_channels]` for `NDHWC` data format or `[batch, in_channels,
       depth, height, width]` for `NCDHW` data format.
-    filters: A 5-D `Tensor` with the same type as `value` and shape `[depth,
+    filters: A 5-D `Tensor` with the same type as `input` and shape `[depth,
       height, width, output_channels, in_channels]`.  `filter`'s `in_channels`
-      dimension must match that of `value`.
+      dimension must match that of `input`.
     output_shape: A 1-D `Tensor` representing the output shape of the
       deconvolution op.
     strides: An int or list of `ints` that has length `1`, `3` or `5`.  The
@@ -3088,7 +3170,7 @@ def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
     name: Optional name for the returned tensor.
 
   Returns:
-    A `Tensor` with the same type as `value`.
+    A `Tensor` with the same type as `input`.
 
   References:
     Deconvolutional Networks:
@@ -3551,7 +3633,7 @@ def softmax(logits, axis=None, name=None, dim=None):
       Tensor.
     RuntimeError: If a registered conversion function returns an invalid
       value.
-      
+
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:

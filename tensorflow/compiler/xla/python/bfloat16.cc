@@ -227,9 +227,9 @@ PyNumberMethods PyBfloat16_AsNumber = {
     nullptr,              // nb_and
     nullptr,              // nb_xor
     nullptr,              // nb_or
-    PyBfloat16_Int,  // nb_int
-    nullptr,  // reserved
-    PyBfloat16_Float,  // nb_float
+    PyBfloat16_Int,       // nb_int
+    nullptr,              // reserved
+    PyBfloat16_Float,     // nb_float
 
     nullptr,  // nb_inplace_add
     nullptr,  // nb_inplace_subtract
@@ -439,6 +439,29 @@ int NPyBfloat16_SetItem(PyObject* item, void* data, void* arr) {
 void ByteSwap16(void* value) {
   char* p = reinterpret_cast<char*>(value);
   std::swap(p[0], p[1]);
+}
+
+int NPyBfloat16_Compare(const void* a, const void* b, void* arr) {
+  bfloat16 x;
+  memcpy(&x, a, sizeof(bfloat16));
+
+  bfloat16 y;
+  memcpy(&y, b, sizeof(bfloat16));
+
+  if (x < y) {
+    return -1;
+  }
+  if (y < x) {
+    return 1;
+  }
+  // NaNs sort to the end.
+  if (!std::isnan(x) && std::isnan(y)) {
+    return -1;
+  }
+  if (std::isnan(x) && !std::isnan(y)) {
+    return 1;
+  }
+  return 0;
 }
 
 void NPyBfloat16_CopySwapN(void* dstv, npy_intp dstride, void* srcv,
@@ -1213,7 +1236,44 @@ struct LogicalXor {
   }
 };
 
-// TODO(phawkins): implement nextafter, spacing
+struct NextAfter {
+  bfloat16 operator()(bfloat16 from, bfloat16 to) {
+    uint16_t from_as_int, to_as_int;
+    const uint16_t sign_mask = 1 << 15;
+    float from_as_float(from), to_as_float(to);
+    memcpy(&from_as_int, &from, sizeof(bfloat16));
+    memcpy(&to_as_int, &to, sizeof(bfloat16));
+    if (std::isnan(from_as_float) || std::isnan(to_as_float)) {
+      return bfloat16(std::numeric_limits<float>::quiet_NaN());
+    }
+    if (from_as_int == to_as_int) {
+      return to;
+    }
+    if (from_as_float == 0) {
+      if (to_as_float == 0) {
+        return to;
+      } else {
+        // Smallest subnormal signed like `to`.
+        uint16_t out_int = (to_as_int & sign_mask) | 1;
+        bfloat16 out;
+        memcpy(&out, &out_int, sizeof(bfloat16));
+        return out;
+      }
+    }
+    uint16_t from_sign = from_as_int & sign_mask;
+    uint16_t to_sign = to_as_int & sign_mask;
+    uint16_t from_abs = from_as_int & ~sign_mask;
+    uint16_t to_abs = to_as_int & ~sign_mask;
+    uint16_t magnitude_adjustment =
+        (from_abs > to_abs || from_sign != to_sign) ? 0xFFFF : 0x0001;
+    uint16_t out_int = from_as_int + magnitude_adjustment;
+    bfloat16 out;
+    memcpy(&out, &out_int, sizeof(bfloat16));
+    return out;
+  }
+};
+
+// TODO(phawkins): implement spacing
 
 }  // namespace ufuncs
 
@@ -1243,6 +1303,7 @@ bool Initialize() {
   PyArray_InitArrFuncs(&NPyBfloat16_ArrFuncs);
   NPyBfloat16_ArrFuncs.getitem = NPyBfloat16_GetItem;
   NPyBfloat16_ArrFuncs.setitem = NPyBfloat16_SetItem;
+  NPyBfloat16_ArrFuncs.compare = NPyBfloat16_Compare;
   NPyBfloat16_ArrFuncs.copyswapn = NPyBfloat16_CopySwapN;
   NPyBfloat16_ArrFuncs.copyswap = NPyBfloat16_CopySwap;
   NPyBfloat16_ArrFuncs.nonzero = NPyBfloat16_NonZero;
@@ -1467,7 +1528,9 @@ bool Initialize() {
       RegisterUFunc<UnaryUFunc<bfloat16, bfloat16, ufuncs::Ceil>>(numpy.get(),
                                                                   "ceil") &&
       RegisterUFunc<UnaryUFunc<bfloat16, bfloat16, ufuncs::Trunc>>(numpy.get(),
-                                                                   "trunc");
+                                                                   "trunc") &&
+      RegisterUFunc<BinaryUFunc<bfloat16, bfloat16, ufuncs::NextAfter>>(
+          numpy.get(), "nextafter");
 
   return ok;
 }

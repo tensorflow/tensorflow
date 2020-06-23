@@ -167,24 +167,22 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
         parent_->FindDeviceFromName(device_name.c_str(), &device));
     *out = TensorHandle::CreateLazyRemoteHandle(in.op_id(), in.output_num(),
                                                 in.dtype(), device, parent_);
-    TensorHandle::ResourceHandleInfo resource_handle_info;
-    std::vector<DtypeAndPartialTensorShape>* dtypes_and_shapes =
-        &resource_handle_info.dtypes_and_shapes;
+    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
     if (!GetMirroredResourceShape(RemoteTensorHandleInternal(in),
-                                  dtypes_and_shapes)
+                                  &dtypes_and_shapes)
              .ok()) {
       for (const auto& dtype_and_shape_proto :
            in.resource_dtypes_and_shapes()) {
-        dtypes_and_shapes->push_back(DtypeAndPartialTensorShape{
+        dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{
             dtype_and_shape_proto.dtype(),
             TensorShape(dtype_and_shape_proto.shape())});
       }
       mutex_lock l(mirrored_resource_shape_mu_);
       mirrored_resource_shape_map_.emplace(
           RemoteTensorHandleInternal(in.op_id(), in.output_num()),
-          *dtypes_and_shapes);
+          dtypes_and_shapes);
     }
-    (*out)->SetResourceHandleInfo(std::move(resource_handle_info));
+    (*out)->SetResourceHandleDtypeAndShape(std::move(dtypes_and_shapes));
   }
 
   return Status::OK();

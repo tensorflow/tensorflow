@@ -1238,7 +1238,7 @@ def mean_absolute_error(y_true, y_pred):
 def mean_absolute_percentage_error(y_true, y_pred):
   """Computes the mean absolute percentage error between `y_true` and `y_pred`.
 
-  `loss = 100 * mean(abs(y_true - y_pred) / y_true, axis=-1)`
+  `loss = 100 * mean(abs((y_true - y_pred) / y_true), axis=-1)`
 
   Standalone usage:
 
@@ -1414,7 +1414,8 @@ def categorical_hinge(y_true, y_pred):
   y_true = math_ops.cast(y_true, y_pred.dtype)
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
   neg = math_ops.reduce_max((1. - y_true) * y_pred, axis=-1)
-  return math_ops.maximum(0., neg - pos + 1.)
+  zero = math_ops.cast(0., y_pred.dtype)
+  return math_ops.maximum(neg - pos + 1., zero)
 
 
 @keras_export('keras.losses.huber', v1=[])

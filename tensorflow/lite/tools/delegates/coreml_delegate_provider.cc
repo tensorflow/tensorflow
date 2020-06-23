@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 #if defined(__APPLE__)
+#include "TargetConditionals.h"
 #if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
 // Only enable metal delegate when using a real iPhone device.
 #define REAL_IPHONE_DEVICE

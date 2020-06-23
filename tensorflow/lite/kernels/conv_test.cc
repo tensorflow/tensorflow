@@ -12,15 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdarg>
-#include <initializer_list>
+#include <stddef.h>
+#include <stdint.h>
 
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -113,7 +120,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
     resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
                                                     registration);
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
-                     num_threads);
+                     num_threads, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true);
   }
 
  protected:

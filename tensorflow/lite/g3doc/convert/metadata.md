@@ -9,7 +9,8 @@ input / output information. The metadata consists of both
 *   human readable parts which convey the best practice when using the model,
     and
 *   machine readable parts that can be leveraged by code generators, such as
-    [the TensorFlow Lite Android code generator](../guide/codegen.md).
+    [the TensorFlow Lite Android code generator](../guide/codegen.md) and
+    [the Android Studio ML Binding feature](https://developer.android.com/studio/preview/features#tensor-flow-lite-models).
 
 ## Setup the metadata tools
 
@@ -20,7 +21,7 @@ set this up [here](https://www.tensorflow.org/install).
 After setup the Python programming environment, you will need to install
 additional tooling:
 
-```
+```sh
 pip install tflite-support
 ```
 
@@ -32,11 +33,21 @@ There are three parts to the
 [model metadata](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs):
 
 1.  **Model information** - Overall description of the model as well as items
-    such as licence terms.
+    such as licence terms. See
+    [ModelMetadata](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L515).
 2.  **Input information** - Description of the inputs and pre-processing
-    required such as normalization.
+    required such as normalization. See
+    [SubGraphMetadata.input_tensor_metadata](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L500).
 3.  **Output information** - Description of the output and post-processing
-    required such as mapping to labels.
+    required such as mapping to labels. See
+    [SubGraphMetadata.output_tensor_metadata](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L509).
+
+Since TensorFlow Lite only supports single subgraph at this point, the
+[TensorFlow Lite code generator](../guide/codegen.md) and
+[the Android Studio ML Binding feature](https://developer.android.com/studio/preview/features#tensor-flow-lite-models)
+will use `ModelMetadata.name` and `ModelMetadata.description`, instead of
+`SubGraphMetadata.name` and `SubGraphMetadata.description`, when displaying
+metadata and generating code.
 
 ### Supported Input / Output types
 
@@ -51,33 +62,61 @@ Lite metadata:
 *   Bounding box - Rectangular shape bounding boxes. The schema supports
     [a variety of numbering schemes](https://github.com/tensorflow/tensorflow/blob/268853ee81edab09e07f455cc918f7ef9a421485/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L165).
 
+### Pack the associated files
+
+TensorFlow Lite models may come with different associated files. For example,
+natural language models usually have vocab files that map word pieces to word
+IDs; classification models may have label files that indicate object categories.
+Without the associated files (if there are), a model will not function well.
+
+The associated files can now be bundled with the model through the metadata
+Python library. The new TensorFlow Lite model becomes a zip file that contains
+both the model and the associated files. It can be unpacked with common zip
+tools. This new model format keeps using the same file extension, `.tflite`. It
+is compatible with existing TFLite framework and Interpreter. See
+[Pack mtadata and associated files into the model](#pack-metadata-and-associated-files-into-the-model)
+for more details.
+
+The associate file information can be recored in the metadata. Depending on the
+file type and where the file is attached to (i.e. `ModelMetadata`,
+`SubGraphMetadata`, and `TensorMetadata`),
+[the TensorFlow Lite Android code generator](../guide/codegen.md) may apply
+corresponding pre/post processing automatically to the object. See
+[the \<Codegen usage\> section of each associate file type](https://github.com/tensorflow/tensorflow/blob/268853ee81edab09e07f455cc918f7ef9a421485/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L37-L77)
+in the schema for more details.
+
 ### Examples
 
-Note: The export directory specified has to exist before you run the script, it
+Note: The export directory specified has to exist before you run the script; it
 does not get created as part of the process.
 
 You can find examples on how the metadata should be populated for different
 types of models here:
 
-#### Image Classification
+#### Image classification
 
 Download the script
 [here](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/metadata/metadata_writer_for_image_classifier.py)
-and run the script like this:
+, which populates metadata to
+[mobilenet_v1_0.75_160_quantized.tflite](https://tfhub.dev/tensorflow/lite-model/mobilenet_v1_0.75_160_quantized/1/default/1).
+Run the script like this:
 
-```
+```sh
 python ./metadata_writer_for_image_classifier.py \
     --model_file=./model_without_metadata/mobilenet_v1_0.75_160_quantized.tflite \
     --label_file=./model_without_metadata/labels.txt \
     --export_directory=model_with_metadata
 ```
 
-The rest of this guide will highlight some of the key sections in the Image
-Classification example to illustrate the key elements.
+To populate metadata for other image classification models, add the model specs
+like
+[this](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/metadata/metadata_writer_for_image_classifier.py#L63-L74)
+into the script. The rest of this guide will highlight some of the key sections
+in the image classification example to illustrate the key elements.
 
-### Deep dive into the Image Classification example
+### Deep dive into the image classification example
 
-#### Model Information
+#### Model information
 
 Metadata starts by creating a new model info:
 
@@ -103,9 +142,9 @@ model_meta.license = ("Apache License. Version 2.0 "
 
 #### Input / output information
 
-This describe your model's input and output signature and it maybe used by
-automatic code generators to create pre- and post- processing code. To create an
-input or output information about a tensor:
+This section shows you how to describe your model's input and output signature.
+This metadata may be used by automatic code generators to create pre- and post-
+processing code. To create input or output information about a tensor:
 
 ```python
 # Creates input info.
@@ -115,13 +154,13 @@ input_meta = _metadata_fb.TensorMetadataT()
 output_meta = _metadata_fb.TensorMetadataT()
 ```
 
-#### Image Input
+#### Image input
 
 Image is a common input type for machine learning. TensorFlow Lite metadata
 supports information such as colorspace and pre-processing information such as
-normalization. One thing that does not required manual input is the dimension of
-the image as this is already provided by the shape of the input tensor and can
-be automatically inferred.
+normalization. The dimension of the image does not require manual specification
+since it is already provided by the shape of the input tensor and can be
+automatically inferred.
 
 ```python
 input_meta.name = "image"
@@ -153,7 +192,7 @@ input_meta.stats = input_stats
 Label can be mapped to an output tensor via an associated file using
 `TENSOR_AXIS_LABELS`.
 
-```Python
+```python
 # Creates output info.
 output_meta = _metadata_fb.TensorMetadataT()
 output_meta.name = "probability"
@@ -173,9 +212,9 @@ label_file.type = _metadata_fb.AssociatedFileType.TENSOR_AXIS_LABELS
 output_meta.associatedFiles = [label_file]
 ```
 
-#### Put it all together
+#### Create the metadata Flatbuffers
 
-The following code pull the model information together with the input and output
+The following code combines the model information with the input and output
 information:
 
 ```python
@@ -192,8 +231,10 @@ b.Finish(
 metadata_buf = b.Output()
 ```
 
-Once the data structure is ready, the writing of the metadata into the tflite
-file is done via the `populate` method:
+#### Pack metadata and associated files into the model
+
+Once the metadata Flatbuffers is created, the metadata and the label file are
+written into the TFLite file via the `populate` method:
 
 ```python
 populator = _metadata.MetadataPopulator.with_model_file(model_file)
@@ -202,11 +243,18 @@ populator.load_associated_files(["your_path_to_label_file"])
 populator.populate()
 ```
 
-#### Verify the metadata
+You can pack as many associated files as you want into the model through
+`load_associated_files`. However, it is required to pack at least those files
+documented in the metadata. In this example, packing the lable file is
+mandatory.
 
-You can read back the metadata in a tflite file using the `MetadataDisplayer`:
+### Visualize the metadata
 
-```Python
+You can use [Netron](https://github.com/lutzroeder/netron) to visualize your
+metadata, or you can read the metadata from a TensorFlow Lite model into a json
+format using the `MetadataDisplayer`:
+
+```python
 displayer = _metadata.MetadataDisplayer.with_model_file(export_model_path)
 export_json_file = os.path.join(FLAGS.export_directory,
                     os.path.splitext(model_basename)[0] + ".json")

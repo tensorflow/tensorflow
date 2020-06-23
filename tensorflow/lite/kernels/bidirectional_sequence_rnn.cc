@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 
@@ -128,7 +129,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Check all the parameters of tensor match within themselves and match the
   // input configuration.
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
 
   TF_LITE_ENSURE_EQ(context, input->dims->size, 3);
   const bool time_major = params->time_major;

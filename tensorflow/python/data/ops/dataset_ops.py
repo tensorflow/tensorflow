@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import functools
 import sys
 import threading
@@ -30,7 +31,6 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -94,10 +94,17 @@ ops.NotDifferentiable("ReduceDataset")
 AUTOTUNE = -1
 tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 
+# Constants representing infinite and unknown cardinalities.
+INFINITE = -1
+UNKNOWN = -2
+tf_export("data.INFINITE_CARDINALITY").export_constant(__name__, "INFINITE")
+tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
+
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
+class DatasetV2(collections.Iterable, tracking_base.Trackable,
+                composite_tensor.CompositeTensor):
   """Represents a potentially large set of elements.
 
   The `tf.data.Dataset` API supports writing descriptive and efficient input
@@ -394,13 +401,12 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     return dataset
 
   def __iter__(self):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
+    """Creates an iterator for elements of this dataset.
 
-    The returned iterator implements the Python iterator protocol and therefore
-    can only be used in eager mode.
+    The returned iterator implements the Python Iterator protocol.
 
     Returns:
-      An `Iterator` over the elements of this dataset.
+      An `tf.data.Iterator` for the elements of this dataset.
 
     Raises:
       RuntimeError: If not inside of tf.function and not executing eagerly.
@@ -410,6 +416,36 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
+
+  def __bool__(self):
+    return True  # Required as __len__ is defined
+
+  __nonzero__ = __bool__  # Python 2 backward compatibility
+
+  def __len__(self):
+    """Returns the length of the dataset if it is known and finite.
+
+    This method requires that you are running in eager mode, and that the
+    length of the dataset is known and non-infinite. When the length may be
+    unknown or infinite, or if you are running in graph mode, use
+    `tf.data.Dataset.cardinality` instead.
+
+    Returns:
+      An integer representing the length of the dataset.
+
+    Raises:
+      RuntimeError: If the dataset length is unknown or infinite, or if eager
+        execution is not enabled.
+    """
+    if not context.executing_eagerly():
+      raise TypeError("__len__() is not supported while tracing functions. "
+                      "Use `tf.data.Dataset.cardinality` instead.")
+    length = self.cardinality()
+    if length.numpy() == INFINITE:
+      raise TypeError("dataset length is infinite.")
+    if length.numpy() == UNKNOWN:
+      raise TypeError("dataset length is unknown.")
+    return length
 
   @abc.abstractproperty
   def element_spec(self):
@@ -706,7 +742,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Note: The current implementation of `Dataset.from_generator()` uses
     `tf.numpy_function` and inherits the same constraints. In particular, it
-    requires the `Dataset`- and `Iterator`-related operations to be placed
+    requires the dataset and iterator related operations to be placed
     on a device in the same process as the Python program that called
     `Dataset.from_generator()`. The body of `generator` will not be
     serialized in a `GraphDef`, and you should not use this method if you
@@ -2063,6 +2099,10 @@ name=None))
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 1, 2, 1, 2, 3, 4]
 
+    Note: `unbatch` requires a data copy to slice up the batched tensor into
+    smaller, unbatched tensors. When optimizing performance, try to avoid
+    unnecessary usage of `unbatch`.
+
     Returns:
       A `Dataset`.
     """
@@ -2095,6 +2135,34 @@ name=None))
       ValueError: when an option is set more than once to a non-default value
     """
     return _OptionsDataset(self, options)
+
+  def cardinality(self):
+    """Returns the cardinality of the dataset, if known.
+
+    `cardinality` may return `tf.data.INFINITE_CARDINALITY` if the dataset
+    contains an infinite number of elements or `tf.data.UNKNOWN_CARDINALITY` if
+    the analysis fails to determine the number of elements in the dataset
+    (e.g. when the dataset source is a file).
+
+    >>> dataset = tf.data.Dataset.range(42)
+    >>> print(dataset.cardinality().numpy())
+    42
+    >>> dataset = dataset.repeat()
+    >>> cardinality = dataset.cardinality()
+    >>> print((cardinality == tf.data.INFINITE_CARDINALITY).numpy())
+    True
+    >>> dataset = dataset.filter(lambda x: True)
+    >>> cardinality = dataset.cardinality()
+    >>> print((cardinality == tf.data.UNKNOWN_CARDINALITY).numpy())
+    True
+
+    Returns:
+      A scalar `tf.int64` `Tensor` representing the cardinality of the dataset.
+      If the cardinality is infinite or unknown, `cardinality` returns the
+      named constants `tf.data.INFINITE_CARDINALITY` and
+      `tf.data.UNKNOWN_CARDINALITY` respectively.
+    """
+    return gen_dataset_ops.dataset_cardinality(self._variant_tensor)
 
 
 @tf_export(v1=["data.Dataset"])
@@ -2146,7 +2214,7 @@ class DatasetV1(DatasetV2):
       "code base as there are in general no guarantees about the "
       "interoperability of TF 1 and TF 2 code.")
   def make_one_shot_iterator(self):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
+    """Creates an iterator for elements of this dataset.
 
     Note: The returned iterator will be initialized automatically.
     A "one-shot" iterator does not currently support re-initialization. For
@@ -2169,7 +2237,7 @@ class DatasetV1(DatasetV2):
     ```
 
     Returns:
-      An `Iterator` over the elements of this dataset.
+      An `tf.data.Iterator` for elements of this dataset.
     """
     return self._make_one_shot_iterator()
 
@@ -2239,7 +2307,7 @@ class DatasetV1(DatasetV2):
       "are in general no guarantees about the interoperability of TF 1 and TF "
       "2 code.")
   def make_initializable_iterator(self, shared_name=None):
-    """Creates an `Iterator` for enumerating the elements of this dataset.
+    """Creates an iterator for elements of this dataset.
 
     Note: The returned iterator will be in an uninitialized state,
     and you must run the `iterator.initializer` operation before using it:
@@ -2266,7 +2334,7 @@ class DatasetV1(DatasetV2):
         devices (e.g. when using a remote server).
 
     Returns:
-      An `Iterator` over the elements of this dataset.
+      A `tf.data.Iterator` for elements of this dataset.
 
     Raises:
       RuntimeError: If eager execution is enabled.
@@ -2614,7 +2682,7 @@ def _ensure_same_dataset_graph(dataset):
 
 @tf_export(v1=["data.make_one_shot_iterator"])
 def make_one_shot_iterator(dataset):
-  """Creates a `tf.compat.v1.data.Iterator` for enumerating dataset elements.
+  """Creates an iterator for elements of `dataset`.
 
   Note: The returned iterator will be initialized automatically.
   A "one-shot" iterator does not support re-initialization.
@@ -2623,7 +2691,7 @@ def make_one_shot_iterator(dataset):
     dataset: A `tf.data.Dataset`.
 
   Returns:
-    A `tf.compat.v1.data.Iterator` over the elements of this dataset.
+    A `tf.data.Iterator` for elements of `dataset`.
   """
   try:
     # Call the defined `_make_one_shot_iterator()` if there is one, because some
@@ -2635,7 +2703,7 @@ def make_one_shot_iterator(dataset):
 
 @tf_export(v1=["data.make_initializable_iterator"])
 def make_initializable_iterator(dataset, shared_name=None):
-  """Creates a `tf.compat.v1.data.Iterator` for enumerating the elements of a dataset.
+  """Creates an iterator for elements of `dataset`.
 
   Note: The returned iterator will be in an uninitialized state,
   and you must run the `iterator.initializer` operation before using it:
@@ -2654,7 +2722,7 @@ def make_initializable_iterator(dataset, shared_name=None):
       (e.g. when using a remote server).
 
   Returns:
-    A `tf.compat.v1.data.Iterator` over the elements of `dataset`.
+    A `tf.data.Iterator` for elements of `dataset`.
 
   Raises:
     RuntimeError: If eager execution is enabled.
@@ -2669,10 +2737,10 @@ def make_initializable_iterator(dataset, shared_name=None):
 
 @tf_export("data.experimental.get_structure")
 def get_structure(dataset_or_iterator):
-  """Returns the type specification of an element of a `Dataset` or `Iterator`.
+  """Returns the type signature for elements of the input dataset / iterator.
 
   Args:
-    dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
+    dataset_or_iterator: A `tf.data.Dataset` or an `tf.data.Iterator`.
 
   Returns:
     A nested structure of `tf.TypeSpec` objects matching the structure of an
@@ -2680,21 +2748,20 @@ def get_structure(dataset_or_iterator):
     components.
 
   Raises:
-    TypeError: If `dataset_or_iterator` is not a `Dataset` or `Iterator` object.
+    TypeError: If input is not a `tf.data.Dataset` or an `tf.data.Iterator`
+      object.
   """
   try:
     return dataset_or_iterator.element_spec  # pylint: disable=protected-access
   except AttributeError:
-    raise TypeError("`dataset_or_iterator` must be a Dataset or Iterator "
-                    "object, but got %s." % type(dataset_or_iterator))
+    raise TypeError("`dataset_or_iterator` must be a `tf.data.Dataset` or "
+                    "tf.data.Iterator object, but got %s." %
+                    type(dataset_or_iterator))
 
 
 @tf_export(v1=["data.get_output_classes"])
 def get_legacy_output_classes(dataset_or_iterator):
-  """Returns the output classes of a `Dataset` or `Iterator` elements.
-
-  This utility method replaces the deprecated-in-V2
-  `tf.compat.v1.Dataset.output_classes` property.
+  """Returns the output classes for elements of the input dataset / iterator.
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
@@ -2711,10 +2778,7 @@ def get_legacy_output_classes(dataset_or_iterator):
 
 @tf_export(v1=["data.get_output_shapes"])
 def get_legacy_output_shapes(dataset_or_iterator):
-  """Returns the output shapes of a `Dataset` or `Iterator` elements.
-
-  This utility method replaces the deprecated-in-V2
-  `tf.compat.v1.Dataset.output_shapes` property.
+  """Returns the output shapes for elements of the input dataset / iterator.
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
@@ -2731,10 +2795,7 @@ def get_legacy_output_shapes(dataset_or_iterator):
 
 @tf_export(v1=["data.get_output_types"])
 def get_legacy_output_types(dataset_or_iterator):
-  """Returns the output shapes of a `Dataset` or `Iterator` elements.
-
-  This utility method replaces the deprecated-in-V2
-  `tf.compat.v1.Dataset.output_types` property.
+  """Returns the output shapes for elements of the input dataset / iterator.
 
   Args:
     dataset_or_iterator: A `tf.data.Dataset` or `tf.data.Iterator`.
@@ -3546,54 +3607,6 @@ class RangeDataset(DatasetSource):
     return self._structure
 
 
-# This can be deleted after the forward compatibility window for switching
-# to using dummy resource expires on 5/20.
-class _MemoryCacheDeleter(object):
-  """An object which cleans up an anonymous memory cache resource.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectable.
-  """
-
-  def __init__(self, handle, device, deleter):
-    self._deleter = deleter
-    self._handle = handle
-    self._device = device
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    with ops.device(self._device):
-      # Make sure the resource is deleted in the same mode as it was created in.
-      if self._eager_mode:
-        with context.eager_mode():
-          gen_dataset_ops.delete_memory_cache(
-              handle=self._handle, deleter=self._deleter)
-      else:
-        with context.graph_mode():
-          gen_dataset_ops.delete_memory_cache(
-              handle=self._handle, deleter=self._deleter)
-
-
-# This can be deleted after the forward compatibility window for switching
-# to using dummy resource expires on 5/20.
-class _MemoryCache(object):
-  """Represents a memory cache resource."""
-
-  def __init__(self):
-    super(_MemoryCache, self).__init__()
-    if compat.forward_compatible(2020, 5, 20):
-      self._handle = gen_dataset_ops.dummy_memory_cache()
-    else:
-      self._device = context.context().device_name
-      self._handle, self._deleter = gen_dataset_ops.anonymous_memory_cache()
-      self._resource_deleter = _MemoryCacheDeleter(
-          handle=self._handle, device=self._device, deleter=self._deleter)
-
-  @property
-  def handle(self):
-    return self._handle
-
-
 class CacheDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that caches elements of its input."""
 
@@ -3603,11 +3616,10 @@ class CacheDataset(UnaryUnchangedStructureDataset):
     self._filename = ops.convert_to_tensor(
         filename, dtype=dtypes.string, name="filename")
     if tf2.enabled() and (context.executing_eagerly() or ops.inside_function()):
-      self._cache = _MemoryCache()
       variant_tensor = gen_dataset_ops.cache_dataset_v2(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
           filename=self._filename,
-          cache=self._cache.handle,
+          cache=gen_dataset_ops.dummy_memory_cache(),
           **self._flat_structure)
     else:
       variant_tensor = gen_dataset_ops.cache_dataset(
@@ -3615,56 +3627,6 @@ class CacheDataset(UnaryUnchangedStructureDataset):
           filename=self._filename,
           **self._flat_structure)
     super(CacheDataset, self).__init__(input_dataset, variant_tensor)
-
-
-# This can be deleted after the forward compatibility window for switching
-# to using dummy resource expires on 5/22.
-class _SeedGeneratorDeleter(object):
-  """An object which cleans up an anonymous seed generator resource.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectable.
-  """
-
-  def __init__(self, handle, device, deleter):
-    self._deleter = deleter
-    self._handle = handle
-    self._device = device
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    with ops.device(self._device):
-      # Make sure the resource is deleted in the same mode as it was created in.
-      if self._eager_mode:
-        with context.eager_mode():
-          gen_dataset_ops.delete_seed_generator(
-              handle=self._handle, deleter=self._deleter)
-      else:
-        with context.graph_mode():
-          gen_dataset_ops.delete_seed_generator(
-              handle=self._handle, deleter=self._deleter)
-
-
-# This can be deleted after the forward compatibility window for switching
-# to using dummy resource expires on 5/22.
-class _SeedGenerator(object):
-  """Represents a fixed seed generator resource."""
-
-  def __init__(self, seed, seed2, reshuffle):
-    super(_SeedGenerator, self).__init__()
-    if compat.forward_compatible(2020, 5, 22):
-      self._handle = gen_dataset_ops.dummy_seed_generator()
-    else:
-      self._device = context.context().device_name
-      self._handle, self._deleter = (
-          gen_dataset_ops.anonymous_seed_generator(
-              seed=seed, seed2=seed2, reshuffle=reshuffle))
-      self._resource_deleter = _SeedGeneratorDeleter(
-          handle=self._handle, device=self._device, deleter=self._deleter)
-
-  @property
-  def handle(self):
-    return self._handle
 
 
 class ShuffleDataset(UnaryUnchangedStructureDataset):
@@ -3704,23 +3666,14 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
 
     if (tf2.enabled() and
         (context.executing_eagerly() or ops.inside_function())):
-      self._seed_generator = _SeedGenerator(self._seed, self._seed2,
-                                            self._reshuffle_each_iteration)
-      if compat.forward_compatible(2020, 5, 22):
-        variant_tensor = gen_dataset_ops.shuffle_dataset_v3(
-            input_dataset._variant_tensor,  # pylint: disable=protected-access
-            buffer_size=self._buffer_size,
-            seed=self._seed,
-            seed2=self._seed2,
-            seed_generator=self._seed_generator.handle,
-            reshuffle_each_iteration=self._reshuffle_each_iteration,
-            **self._flat_structure)
-      else:
-        variant_tensor = gen_dataset_ops.shuffle_dataset_v2(
-            input_dataset._variant_tensor,  # pylint: disable=protected-access
-            buffer_size=self._buffer_size,
-            seed_generator=self._seed_generator.handle,
-            **self._flat_structure)
+      variant_tensor = gen_dataset_ops.shuffle_dataset_v3(
+          input_dataset._variant_tensor,  # pylint: disable=protected-access
+          buffer_size=self._buffer_size,
+          seed=self._seed,
+          seed2=self._seed2,
+          seed_generator=gen_dataset_ops.dummy_seed_generator(),
+          reshuffle_each_iteration=self._reshuffle_each_iteration,
+          **self._flat_structure)
     else:
       variant_tensor = gen_dataset_ops.shuffle_dataset(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -4348,14 +4301,18 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
     """
     self._input_dataset = input_dataset
     if buffer_size is None:
-      buffer_size = -1  # This is the sentinel for auto-tuning.
+      buffer_size = AUTOTUNE
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
-    variant_tensor = gen_dataset_ops.prefetch_dataset(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        buffer_size=self._buffer_size,
-        slack_period=slack_period,
-        **self._flat_structure)
+    # pylint: disable=protected-access
+    # We colocate the prefetch dataset with its input as this collocation only
+    # happens automatically in graph mode.
+    with ops.device(input_dataset._variant_tensor.device):
+      variant_tensor = gen_dataset_ops.prefetch_dataset(
+          input_dataset._variant_tensor,
+          buffer_size=self._buffer_size,
+          slack_period=slack_period,
+          **self._flat_structure)
     super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
 
 

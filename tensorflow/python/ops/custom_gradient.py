@@ -212,6 +212,8 @@ def custom_gradient(f=None):
   @Bind.decorator
   def decorated(wrapped, args, kwargs):
     """Decorated function with custom gradient."""
+    # raise ValueError("PW: trap")
+
     if context.executing_eagerly():
       return _eager_mode_decorator(wrapped, args, kwargs)
     else:

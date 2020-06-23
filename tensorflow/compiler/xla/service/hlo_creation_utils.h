@@ -276,6 +276,11 @@ HloInstruction* BroadcastZeros(HloComputation* computation,
                                PrimitiveType element_type,
                                absl::Span<const int64> broadcast_dimensions);
 
+// Same as above, but fill the tensor with ones.
+HloInstruction* BroadcastOnes(HloComputation* computation,
+                              PrimitiveType element_type,
+                              absl::Span<const int64> broadcast_dimensions);
+
 // Creates a HLO computation that takes arguments of type `domain` and produces
 // a value of type `range`.
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(

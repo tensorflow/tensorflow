@@ -28,6 +28,10 @@ load(
     "if_static",
     "tf_cuda_tests_tags",
 )
+load(
+    "//tensorflow/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
 
 package(
     default_visibility = [
@@ -121,7 +125,6 @@ filegroup(
         "gpu_managed_allocator.h",
         "gpu_mem_allocator.h",
         "gpu_process_state.h",
-        "gpu_stream_util.h",
         "gpu_util.h",
         "//tensorflow/core/common_runtime:gpu_runtime_headers",
     ],
@@ -137,7 +140,6 @@ tf_cuda_library(
         "gpu_device_factory.cc",
         "gpu_managed_allocator.cc",
         "gpu_process_state.cc",
-        "gpu_stream_util.cc",
         "gpu_util.cc",
         "gpu_util_platform_specific.cc",
     ],
@@ -151,6 +153,7 @@ tf_cuda_library(
         ":gpu_id_impl",
         ":gpu_init_impl",
         ":gpu_lib",
+        "//third_party/eigen3",
         "//tensorflow/core:core_cpu_impl",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -162,8 +165,9 @@ tf_cuda_library(
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
-        "//third_party/eigen3",
-    ],
+    ] + if_gpu_is_configured([
+        "//tensorflow/stream_executor/cuda:cuda_platform",
+    ]),
     alwayslink = 1,
 )
 
@@ -397,32 +401,6 @@ tf_cc_test_gpu(
         "//tensorflow/core/common_runtime:core_cpu",
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
-        "//tensorflow/core/kernels:ops_util",
-    ],
-)
-
-tf_cc_test_gpu(
-    name = "gpu_stream_util_test",
-    size = "small",
-    srcs = ["gpu_stream_util_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
-    deps = [
-        ":gpu_runtime",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime:core_cpu",
-        "//tensorflow/core/common_runtime:core_cpu_internal",
-        "//tensorflow/core/common_runtime:direct_session_internal",
-        "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:ops_util",
     ],
 )

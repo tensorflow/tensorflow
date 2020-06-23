@@ -3,6 +3,10 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load(
+    "//third_party/mlir:tblgen.bzl",
+    "gentbl",
+)
 
 package(
     default_visibility = [
@@ -35,6 +39,25 @@ filegroup(
     ],
 )
 
+gentbl(
+    name = "quantization_interfaces_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "quantization_interface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "quantization_interface.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "quantization.td",
+    td_srcs = [
+        ":quantization_td_files",
+    ],
+)
+
 tf_proto_library(
     name = "quantization_info_proto",
     srcs = [
@@ -57,7 +80,7 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -72,16 +95,18 @@ cc_library(
     name = "quantization_lib",
     srcs = [
         "quantization_driver.cc",
+        "quantization_interface.cc.inc",
         "quantization_utils.cc",
     ],
     hdrs = [
+        "quantization_interface.h.inc",
         "quantization_traits.h",
         "quantization_utils.h",
     ],
     deps = [
         "//tensorflow/core:lib_proto_parsing",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
@@ -100,7 +125,7 @@ cc_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -110,8 +135,8 @@ tf_native_cc_binary(
         "tools/op_quant_spec_getters_gen.cc",
     ],
     deps = [
-        "@llvm-project//llvm:support",
-        "@llvm-project//llvm:tablegen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TableGen",
         "@llvm-project//mlir:TableGen",
     ],
 )
@@ -132,7 +157,7 @@ cc_library(
     deps = [
         ":numerical_utils",
         "@com_google_absl//absl/types:optional",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
@@ -147,7 +172,7 @@ cc_library(
         ":device_target",
         ":quantization_lib",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",

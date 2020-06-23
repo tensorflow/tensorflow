@@ -53,6 +53,8 @@ using gpuEvent_t = cudaEvent_t;
 #define gpuEventCreate cudaEventCreate
 #define gpuEventCreateWithFlags cudaEventCreateWithFlags
 #define gpuEventDisableTiming cudaEventDisableTiming
+#define gpuDeviceSynchronize cudaDeviceSynchronize
+#define gpuFree cudaFree
 #elif TENSORFLOW_USE_ROCM
 using gpuFloatComplex = hipFloatComplex;
 using gpuDoubleComplex = hipDoubleComplex;
@@ -68,6 +70,8 @@ using cudaError_t = int;
 #define gpuEventCreate hipEventCreate
 #define gpuEventCreateWithFlags hipEventCreateWithFlags
 #define gpuEventDisableTiming hipEventDisableTiming
+#define gpuDeviceSynchronize hipDeviceSynchronize
+#define gpuFree hipFree
 static std::string cudaGetErrorString(int err) { return std::to_string(err); }
 #endif
 
@@ -658,6 +662,16 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
   }
 }
 
+template <typename F>
+__device__ long long GpuAtomicCasHelper(long long* ptr, F accumulate) {
+  return static_cast<long long>(
+      GpuAtomicCasHelper(reinterpret_cast<unsigned long long*>(ptr),
+                         [accumulate](unsigned long long a) {
+                           return static_cast<unsigned long long>(
+                               accumulate(static_cast<long long>(a)));
+                         }));
+}
+
 template <typename From, typename To>
 using ToTypeIfConvertible =
     typename std::enable_if<std::is_convertible<From, To>::value, To>::type;
@@ -779,6 +793,11 @@ __device__ inline double GpuAtomicMax(double* ptr, double value) {
       ptr, [value](double a) { return fmax(a, value); });
 }
 
+__device__ inline long long GpuAtomicMax(long long* ptr, long long value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](long long a) { return max(a, value); });
+}
+
 #else
 
 __device__ inline float GpuAtomicMax(float* ptr, float value) {
@@ -804,6 +823,11 @@ __device__ inline tensorflow::uint64 GpuAtomicMax(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](tensorflow::uint64 a) { return max(a, value); });
+}
+
+__device__ inline int64 GpuAtomicMax(int64* ptr, int64 value) {
+  return detail::GpuAtomicCasHelper(ptr,
+                                    [value](int64 a) { return max(a, value); });
 }
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMax, CudaAtomicMax);
@@ -839,6 +863,11 @@ __device__ inline double GpuAtomicMin(double* ptr, double value) {
       ptr, [value](double a) { return fmin(a, value); });
 }
 
+__device__ inline long long GpuAtomicMin(long long* ptr, long long value) {
+  return detail::GpuAtomicCasHelper(
+      ptr, [value](long long a) { return min(a, value); });
+}
+
 #else
 
 __device__ inline float GpuAtomicMin(float* ptr, float value) {
@@ -864,6 +893,11 @@ __device__ inline tensorflow::uint64 GpuAtomicMin(tensorflow::uint64* ptr,
                                                   tensorflow::uint64 value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](tensorflow::uint64 a) { return min(a, value); });
+}
+
+__device__ inline int64 GpuAtomicMin(int64* ptr, int64 value) {
+  return detail::GpuAtomicCasHelper(ptr,
+                                    [value](int64 a) { return min(a, value); });
 }
 #endif
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicMin, CudaAtomicMin);

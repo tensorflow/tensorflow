@@ -814,6 +814,205 @@ TEST_F(WhileCopyInsertionTest, IndependentTupleElements) {
               op::Tuple(op::Copy(op::Constant()), op::Copy(op::Constant())));
 }
 
+// Tests Copy Insertion when a while feeds another while
+//                         PARAMETER
+//                        |        |
+//                        GTE(0)   GTE(1)
+//                        |        |
+//                        X = CreateTuple(GTE(0), GTE(1))
+//                                 |
+//                        WHILE(X) (root)
+TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterWithCopies) {
+  const string& hlo_string = R"(
+HloModule DependentTupleElements
+
+%DependentTupleElements.Body (loop_state.1: (s32[], f32[8])) -> (s32[], f32[8]) {
+  %loop_state.1 = (s32[], f32[8]{0}) parameter(0)
+  %get-tuple-element.1 = s32[] get-tuple-element((s32[], f32[8]{0}) %loop_state.1), index=0
+  %constant.1 = s32[] constant(1)
+  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
+  %get-tuple-element.2 = f32[8]{0} get-tuple-element((s32[], f32[8]{0}) %loop_state.1), index=1
+  %convert = f32[] convert(s32[] %get-tuple-element.1)
+  %broadcast = f32[8]{0} broadcast(f32[] %convert), dimensions={}
+  %add.1 = f32[8]{0} add(f32[8]{0} %get-tuple-element.2, f32[8]{0} %broadcast)
+  ROOT %tuple = (s32[], f32[8]{0}) tuple(s32[] %add, f32[8]{0} %add.1)
+}
+
+%DependentTupleElements.Condition (loop_state: (s32[], f32[8])) -> pred[] {
+  %loop_state = (s32[], f32[8]{0}) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element((s32[], f32[8]{0}) %loop_state), index=0
+  %constant = s32[] constant(10)
+  ROOT %compare = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
+}
+
+ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
+  %constant.2 = s32[] constant(0)
+  %constant.3 = f32[8]{0} constant({0, 0, 0, 0, 0, 0, 0, 0})
+  %tuple.1 = (s32[], f32[8]{0}) tuple(s32[] %constant.2, f32[8]{0} %constant.3)
+  ROOT %while.1 = (s32[], f32[8]{0}) while((s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
+}
+)";
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
+  auto module_ = module_or_status.ConsumeValueOrDie();
+  auto while_hlo = module_->entry_computation()->root_instruction();
+  // module_ and while_hlo are the pre-existing module and hlo, the below
+  // code generates a clone of the existing while and replaces that while
+  // with itself. The body of the new while calls the previous while
+  HloComputation* outer_while_condition =
+      module_->AddEmbeddedComputation(while_hlo->while_condition()->Clone());
+  HloComputation* outer_while_body =
+      module_->AddEmbeddedComputation(while_hlo->while_body()->Clone());
+  HloInstruction* outer_while =
+      while_hlo->parent()->AddInstruction(HloInstruction::CreateWhile(
+          while_hlo->shape(), outer_while_condition, outer_while_body,
+          while_hlo->mutable_operand(0)));
+  HloInstruction* outer_param = outer_while_body->parameter_instruction(0);
+  std::vector<HloInstruction*> materialized_gtes;
+  for (int i = 0; i < outer_param->shape().tuple_shapes_size(); ++i) {
+    materialized_gtes.push_back(
+        outer_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
+            outer_param->shape().tuple_shapes(i), outer_param, i)));
+  }
+  HloInstruction* dual_init = outer_while_body->AddInstruction(
+      HloInstruction::CreateTuple(materialized_gtes));
+  HloInstruction* dual_while =
+      outer_while_body->AddInstruction(HloInstruction::CreateWhile(
+          while_hlo->shape(), while_hlo->while_condition(),
+          while_hlo->while_body(), dual_init));
+  TF_CHECK_OK(outer_while_body->ReplaceInstruction(
+      outer_while_body->root_instruction(), dual_while));
+  TF_CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
+  InsertCopies(module_.get());
+}
+
+// Tests Copy Insertion when a while feeds another while
+//                         PARAMETER
+//                        |        |
+//                         \      /
+//                           WHILE(PARAMETER) (root)
+TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterNoCopies) {
+  const string& hlo_string = R"(
+HloModule DependentTupleElements
+
+%DependentTupleElements.Body (loop_state.1: (s32[], f32[8])) -> (s32[], f32[8]) {
+  %loop_state.1 = (s32[], f32[8]{0}) parameter(0)
+  %get-tuple-element.1 = s32[] get-tuple-element((s32[], f32[8]{0}) %loop_state.1), index=0
+  %constant.1 = s32[] constant(1)
+  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
+  %get-tuple-element.2 = f32[8]{0} get-tuple-element((s32[], f32[8]{0}) %loop_state.1), index=1
+  %convert = f32[] convert(s32[] %get-tuple-element.1)
+  %broadcast = f32[8]{0} broadcast(f32[] %convert), dimensions={}
+  %add.1 = f32[8]{0} add(f32[8]{0} %get-tuple-element.2, f32[8]{0} %broadcast)
+  ROOT %tuple = (s32[], f32[8]{0}) tuple(s32[] %add, f32[8]{0} %add.1)
+}
+
+%DependentTupleElements.Condition (loop_state: (s32[], f32[8])) -> pred[] {
+  %loop_state = (s32[], f32[8]{0}) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element((s32[], f32[8]{0}) %loop_state), index=0
+  %constant = s32[] constant(10)
+  ROOT %compare = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
+}
+
+ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
+  %constant.2 = s32[] constant(0)
+  %constant.3 = f32[8]{0} constant({0, 0, 0, 0, 0, 0, 0, 0})
+  %tuple.1 = (s32[], f32[8]{0}) tuple(s32[] %constant.2, f32[8]{0} %constant.3)
+  ROOT %while.1 = (s32[], f32[8]{0}) while((s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
+}
+)";
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
+  auto module_ = module_or_status.ConsumeValueOrDie();
+  auto while_hlo = module_->entry_computation()->root_instruction();
+  // module_ and while_hlo are the pre-existing module and hlo, the below
+  // code generates a clone of the existing while and replaces that while
+  // with itself. The body of the new while calls the previous while
+  HloComputation* outer_while_condition =
+      module_->AddEmbeddedComputation(while_hlo->while_condition()->Clone());
+  HloComputation* outer_while_body =
+      module_->AddEmbeddedComputation(while_hlo->while_body()->Clone());
+  HloInstruction* outer_while =
+      while_hlo->parent()->AddInstruction(HloInstruction::CreateWhile(
+          while_hlo->shape(), outer_while_condition, outer_while_body,
+          while_hlo->mutable_operand(0)));
+  HloInstruction* outer_param = outer_while_body->parameter_instruction(0);
+  HloInstruction* dual_while =
+      outer_while_body->AddInstruction(HloInstruction::CreateWhile(
+          while_hlo->shape(), while_hlo->while_condition(),
+          while_hlo->while_body(), outer_param));
+  TF_CHECK_OK(outer_while_body->ReplaceInstruction(
+      outer_while_body->root_instruction(), dual_while));
+  TF_CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
+  InsertCopies(module_.get());
+}
+
+// Tests Copy Insertion when a while feeds another while
+//                         PARAMETER
+//                        |        |
+//                         \      /
+//                           WHILE(PARAMETER) (root)
+TEST_F(WhileCopyInsertionTest, WhileFeedingWhileThruParameterBig) {
+  const string& hlo_string = R"(
+HloModule DependentTupleElements
+
+%DependentTupleElements.Body (loop_state.1: (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0})) -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) {
+  %loop_state.1 = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) parameter(0)
+  %get-tuple-element.1 = s32[] get-tuple-element((s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) %loop_state.1), index=0
+  %constant.1 = s32[] constant(1)
+  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
+  %get-tuple-element.2 = f32[8]{0} get-tuple-element((s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) %loop_state.1), index=1
+  %convert = f32[] convert(s32[] %get-tuple-element.1)
+  %broadcast = f32[8]{0} broadcast(f32[] %convert), dimensions={}
+  %add.1 = f32[8]{0} add(f32[8]{0} %get-tuple-element.2, f32[8]{0} %broadcast)
+  ROOT %tuple = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) tuple(s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1, s32[] %add, f32[8]{0} %add.1)
+}
+
+%DependentTupleElements.Condition (loop_state: (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0})) -> pred[] {
+  %loop_state = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element((s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) %loop_state), index=0
+  %constant = s32[] constant(10)
+  ROOT %compare = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
+}
+
+ENTRY %DependentTupleElements.While () -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) {
+  %constant.2 = s32[] constant(0)
+  %constant.3 = f32[8]{0} constant({0, 0, 0, 0, 0, 0, 0, 0})
+  %tuple.1 = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) tuple(s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3, s32[] %constant.2, f32[8]{0} %constant.3)
+  ROOT %while.1 = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) while( (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
+}
+)";
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
+  auto module_ = module_or_status.ConsumeValueOrDie();
+  auto while_hlo = module_->entry_computation()->root_instruction();
+  // module_ and while_hlo are the pre-existing module and hlo, the below
+  // code generates a clone of the existing while and replaces that while
+  // with itself. The body of the new while calls the previous while
+  HloComputation* outer_while_condition =
+      module_->AddEmbeddedComputation(while_hlo->while_condition()->Clone());
+  HloComputation* outer_while_body =
+      module_->AddEmbeddedComputation(while_hlo->while_body()->Clone());
+  HloInstruction* outer_while =
+      while_hlo->parent()->AddInstruction(HloInstruction::CreateWhile(
+          while_hlo->shape(), outer_while_condition, outer_while_body,
+          while_hlo->mutable_operand(0)));
+  HloInstruction* outer_param = outer_while_body->parameter_instruction(0);
+  std::vector<HloInstruction*> materialized_gtes;
+  for (int i = 0; i < outer_param->shape().tuple_shapes_size(); ++i) {
+    materialized_gtes.push_back(
+        outer_while_body->AddInstruction(HloInstruction::CreateGetTupleElement(
+            outer_param->shape().tuple_shapes(i), outer_param, i)));
+  }
+  HloInstruction* dual_init = outer_while_body->AddInstruction(
+      HloInstruction::CreateTuple(materialized_gtes));
+  HloInstruction* dual_while =
+      outer_while_body->AddInstruction(HloInstruction::CreateWhile(
+          while_hlo->shape(), while_hlo->while_condition(),
+          while_hlo->while_body(), dual_init));
+  TF_CHECK_OK(outer_while_body->ReplaceInstruction(
+      outer_while_body->root_instruction(), dual_while));
+  TF_CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
+  InsertCopies(module_.get());
+}
+
 // Tests while body computation with dependent tuple elements:
 //
 //   While.Body({in0, in1})

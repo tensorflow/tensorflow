@@ -13,8 +13,8 @@ The API for TensorFlow 1.X is available
 
 ## New in TF 2.2
 
-Switching to use a new converter backend by default - in the nightly builds and
-TF 2.2 stable. Why we are switching?
+TensorFlow Lite has switched to use a new converter backend by default - in the
+nightly builds and TF 2.2 stable. Why we did we switch?
 
 *   Enables conversion of new classes of models, including Mask R-CNN, Mobile
     BERT, and many more
@@ -46,9 +46,9 @@ In case you encounter any issues:
     and
     [Command Line Tool](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/convert/cmdline.md)
     documentation
-*   Switch to the old converter by setting --experimental_new_converter=false
+*   Switch to the old converter by setting `--experimental_new_converter=false`
     (from the [tflite_convert](https://www.tensorflow.org/lite/convert/cmdline)
-    command line tool) or converter.experimental_new_converter=False (from
+    command line tool) or `converter.experimental_new_converter=False` (from the
     [Python API](https://www.tensorflow.org/api_docs/python/tf/lite/TFLiteConverter))
 
 ## Device deployment

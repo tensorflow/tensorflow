@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -40,16 +40,16 @@ void TestMaxMinFloat(tflite::BuiltinOperator op,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims, "input1_tensor"),
-      CreateFloatTensor(input2_data, input2_dims, "input2_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input1_data, input1_dims),
+      CreateFloatTensor(input2_data, input2_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration = resolver.FindOp(op, 1);
+  ::tflite::AllOpsResolver resolver;
+  const TfLiteRegistration* registration = resolver.FindOp(op);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteIntArray* inputs_array = IntArrayFromInitializer({2, 0, 1});
@@ -96,19 +96,16 @@ void TestMaxMinQuantized(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input1_data, input1_dims, "input1_tensor",
-                            input1_min, input1_max),
-      CreateQuantizedTensor(input2_data, input2_dims, "input2_tensor",
-                            input2_min, input2_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input1_data, input1_dims, input1_min, input1_max),
+      CreateQuantizedTensor(input2_data, input2_dims, input2_min, input2_max),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration = resolver.FindOp(op, 1);
+  ::tflite::AllOpsResolver resolver;
+  const TfLiteRegistration* registration = resolver.FindOp(op);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteIntArray* inputs_array = IntArrayFromInitializer({2, 0, 1});
@@ -153,19 +150,16 @@ void TestMaxMinQuantizedInt32(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(input1_data, input1_dims, "input1_tensor",
-                              input1_scale),
-      CreateQuantized32Tensor(input2_data, input2_dims, "input2_tensor",
-                              input2_scale),
-      CreateQuantized32Tensor(output_data, output_dims, "output_tensor",
-                              output_scale),
+      CreateQuantized32Tensor(input1_data, input1_dims, input1_scale),
+      CreateQuantized32Tensor(input2_data, input2_dims, input2_scale),
+      CreateQuantized32Tensor(output_data, output_dims, output_scale),
   };
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration = resolver.FindOp(op, 1);
+  ::tflite::AllOpsResolver resolver;
+  const TfLiteRegistration* registration = resolver.FindOp(op);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteIntArray* inputs_array = IntArrayFromInitializer({2, 0, 1});

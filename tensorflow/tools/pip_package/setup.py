@@ -1,3 +1,4 @@
+# lint as: python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,7 +58,9 @@ REQUIRED_PACKAGES = [
     'google_pasta >= 0.1.8',
     'h5py >= 2.10.0, < 2.11.0',
     'keras_preprocessing >= 1.1.1, < 1.2',
-    'numpy >= 1.16.0, < 2.0',
+    # TODO(mihaimaruseac): numpy 1.19.0 has ABI breakage
+    # https://github.com/numpy/numpy/pull/15355
+    'numpy >= 1.16.0, < 1.19.0',
     'opt_einsum >= 2.3.2',
     'protobuf >= 3.9.2',
     'tensorboard >= 2.2.0, < 2.3.0',
@@ -113,7 +116,8 @@ CONSOLE_SCRIPTS = [
     # even though the command is not removed, just moved to a different wheel.
     'tensorboard = tensorboard.main:run_main',
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
-    'estimator_ckpt_converter = tensorflow_estimator.python.estimator.tools.checkpoint_converter:main',
+    'estimator_ckpt_converter = '
+    'tensorflow_estimator.python.estimator.tools.checkpoint_converter:main',
 ]
 # pylint: enable=line-too-long
 
@@ -152,11 +156,10 @@ class InstallHeaders(Command):
   """
   description = 'install C/C++ header files'
 
-  user_options = [('install-dir=', 'd',
-                   'directory to install header files to'),
-                  ('force', 'f',
-                   'force installation (overwrite existing files)'),
-                 ]
+  user_options = [
+      ('install-dir=', 'd', 'directory to install header files to'),
+      ('force', 'f', 'force installation (overwrite existing files)'),
+  ]
 
   boolean_options = ['force']
 
@@ -166,8 +169,7 @@ class InstallHeaders(Command):
     self.outfiles = []
 
   def finalize_options(self):
-    self.set_undefined_options('install',
-                               ('install_headers', 'install_dir'),
+    self.set_undefined_options('install', ('install_headers', 'install_dir'),
                                ('force', 'force'))
 
   def mkdir_and_copy_file(self, header):
@@ -227,9 +229,7 @@ so_lib_paths = [
 
 matches = []
 for path in so_lib_paths:
-  matches.extend(
-      ['../' + x for x in find_files('*', path) if '.py' not in x]
-  )
+  matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
 
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
@@ -250,11 +250,10 @@ headers = (
     list(find_files('*.h', 'tensorflow/stream_executor')) +
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
-    list(find_files('*', 'third_party/eigen3')) + list(
-        find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
-    list(
-        find_files('*.inc', 'tensorflow/include/external/com_google_absl'))
-    + list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+    list(find_files('*', 'third_party/eigen3')) +
+    list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
+    list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
+    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(
     name=project_name,
@@ -287,7 +286,7 @@ setup(
         'install': InstallCommand,
     },
     # PyPI package information.
-    classifiers=[
+    classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
@@ -305,7 +304,7 @@ setup(
         'Topic :: Software Development',
         'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Python Modules',
-    ],
+    ]),
     license='Apache 2.0',
     keywords='tensorflow tensor machine learning',
 )

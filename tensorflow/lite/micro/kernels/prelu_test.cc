@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -38,15 +38,15 @@ void TestPreluFloat(std::initializer_list<int> input_dims_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(alpha_data, alpha_dims, "alpha_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(alpha_data, alpha_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PRELU, 1);
+      resolver.FindOp(tflite::BuiltinOperator_PRELU);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   size_t init_data_size = 0;
@@ -102,18 +102,15 @@ void TestPreluQuantized(std::initializer_list<int> input_dims_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(alpha_data, alpha_dims, "alpha_tensor", alpha_min,
-                            alpha_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_dims, input_min, input_max),
+      CreateQuantizedTensor(alpha_data, alpha_dims, alpha_min, alpha_max),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_PRELU, 1);
+      resolver.FindOp(tflite::BuiltinOperator_PRELU);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   size_t init_data_size = 0;

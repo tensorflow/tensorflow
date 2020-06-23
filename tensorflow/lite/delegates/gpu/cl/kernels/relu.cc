@@ -25,11 +25,29 @@ namespace cl {
 ReLU::ReLU(const OperationDef& definition, const ReLUAttributes& attr,
            CalculationsPrecision scalar_precision)
     : ElementwiseOperation(definition) {
+  std::string min_func;
   if (attr.alpha != 0.0f) {
+    min_func = "min(in_out_value * args.alpha, (FLT)(0.0f))";
     alpha_ = FLT(scalar_precision, attr.alpha);
+    if (definition.precision == CalculationsPrecision::F32) {
+      args_.AddFloat("alpha", attr.alpha);
+    } else {
+      args_.AddHalf("alpha", half(attr.alpha));
+    }
+  } else {
+    min_func = "(FLT)(0.0f)";
   }
   if (attr.clip != 0.0f) {
     clip_ = FLT(scalar_precision, attr.clip);
+    if (definition.precision == CalculationsPrecision::F32) {
+      args_.AddFloat("clip", attr.clip);
+    } else {
+      args_.AddHalf("clip", half(attr.clip));
+    }
+    code_ = absl::StrCat("in_out_value = clamp(in_out_value, " + min_func +
+                         ", args.clip);");
+  } else {
+    code_ = absl::StrCat("in_out_value = max(in_out_value, ", min_func, ");");
   }
 }
 

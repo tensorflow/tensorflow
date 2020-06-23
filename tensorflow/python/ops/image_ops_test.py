@@ -239,7 +239,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
 
       # this is the error message we expect the function to raise
-      err_msg = "A grayscale image must be at least two-dimensional"
+      err_msg = "must be at least two-dimensional"
       with self.assertRaisesRegexp(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
 
@@ -1682,7 +1682,7 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
     for x_shape in ([3, 5], [1, 3, 5, 1, 1]):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
                          target_width,
-                         "'image' must have either 3 or 4 dimensions.")
+                         "must have either 3 or 4 dimensions.")
 
   @test_util.run_deprecated_v1
   def testZeroLengthInput(self):
@@ -2022,7 +2022,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     for x_shape in ([3, 5], [1, 3, 5, 1, 1]):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
                          target_width,
-                         "'image' must have either 3 or 4 dimensions.")
+                         "must have either 3 or 4 dimensions.")
 
   @test_util.run_deprecated_v1
   def testZeroLengthInput(self):
@@ -3734,11 +3734,11 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
     for x_shape in ([3, 5],):
       self._assertRaises(x, x_shape, target_height, target_width,
-                         "'image' must have either 3 or 4 dimensions.")
+                         "must have either 3 or 4 dimensions.")
 
     for x_shape in ([1, 3, 5, 1, 1],):
       self._assertRaises(x, x_shape, target_height, target_width,
-                         "'image' must have either 3 or 4 dimensions.")
+                         "must have either 3 or 4 dimensions.")
 
   @test_util.run_deprecated_v1
   def testZeroLengthInput(self):
@@ -4857,6 +4857,29 @@ class SSIMTest(test_util.TensorFlowTestCase):
     ssim = image_ops.ssim(
         constant_op.constant(img1),
         constant_op.constant(img2),
+        1.0,
+        filter_size=11,
+        filter_sigma=1.5,
+        k1=0.01,
+        k2=0.03)
+    with self.cached_session(use_gpu=True):
+      self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
+
+  def testBatchNumpyInputs(self):
+    img = self._LoadTestImages()
+    expected = self._ssim[np.triu_indices(3, k=1)]
+
+    img1, img2 = zip(*itertools.combinations(img, 2))
+    img1 = np.concatenate(img1)
+    img2 = np.concatenate(img2)
+
+    with self.cached_session(use_gpu=True):
+      img1 = self.evaluate(constant_op.constant(img1))
+      img2 = self.evaluate(constant_op.constant(img2))
+
+    ssim = image_ops.ssim(
+        img1,
+        img2,
         1.0,
         filter_size=11,
         filter_sigma=1.5,

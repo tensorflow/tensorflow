@@ -179,6 +179,23 @@ class CategoryCrossingTest(keras_parameterized.TestCase):
     output = layer([inputs_0, inputs_1])
     self.assertAllEqual([[b'1_X_1', b'1_X_3', b'2_X_1', b'2_X_3']], output)
 
+  def test_crossing_with_list_inputs(self):
+    layer = category_crossing.CategoryCrossing()
+    inputs_0 = [[1, 2]]
+    inputs_1 = [[1, 3]]
+    output = layer([inputs_0, inputs_1])
+    self.assertAllEqual([[b'1_X_1', b'1_X_3', b'2_X_1', b'2_X_3']], output)
+
+    inputs_0 = [1, 2]
+    inputs_1 = [1, 3]
+    output = layer([inputs_0, inputs_1])
+    self.assertAllEqual([[b'1_X_1'], [b'2_X_3']], output)
+
+    inputs_0 = np.asarray([1, 2])
+    inputs_1 = np.asarray([1, 3])
+    output = layer([inputs_0, inputs_1])
+    self.assertAllEqual([[b'1_X_1'], [b'2_X_3']], output)
+
   def test_crossing_dense_inputs_depth_int(self):
     layer = category_crossing.CategoryCrossing(depth=1)
     inputs_0 = constant_op.constant([['a'], ['b'], ['c']])

@@ -285,6 +285,30 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(lso.iterations, 7)
     self.assertEqual(opt.iterations, 7)
 
+  @parameterized.named_parameters(*TESTCASES)
+  def testIterationsIncremented(self, strategy_fn):
+    with strategy_fn().scope() as strategy:
+      # Test iterations is incremented in opt.minimize.
+      opt = gradient_descent.SGD(1.0)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale='dynamic')
+      var = variables.Variable([5.0])
+      loss = lambda: var * 2.0 / strategy.num_replicas_in_sync
+      run_fn = lambda: opt.minimize(loss, [var])
+      run_op = strategy.experimental_run(run_fn)
+      self.evaluate(variables.global_variables_initializer())
+      self._run_if_in_graph_mode(run_op)
+      self.assertEqual(self.evaluate(var), 3.0)  # Grad is 2, so var is 5 - 2
+      self.assertEqual(self.evaluate(opt.iterations), 1)
+
+      # Test iterations is incremented in opt.minimize even if gradients aren't
+      # applied to variables due to NaN gradients.
+      loss = lambda: var * float('NaN')
+      run_fn = lambda: opt.minimize(loss, [var])
+      run_op = strategy.experimental_run(run_fn)
+      self._run_if_in_graph_mode(run_op)
+      self.assertEqual(self.evaluate(var), 3.0)
+      self.assertEqual(self.evaluate(opt.iterations), 2)
+
   def testWeightMethods(self):
     with self.test_session():
       var = variables.Variable([1.0])

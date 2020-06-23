@@ -196,6 +196,9 @@ absl::Status ConvPowerVR::Compile(const CreationContext& creation_context) {
       creation_context.device->IsPowerVR()) {
     options.push_back(CompilerOptions::POWERVR_FP16);
   }
+  if (conv_params_.IsPrivateMemBroadcast()) {
+    options.push_back(CompilerOptions::CL_2_0);
+  }
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_);
@@ -308,6 +311,14 @@ std::string GenerateConv(
       conv_params.weights_upload_type ==
           ConvPowerVR::WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
 
+  const int local_mem_size =
+      conv_params.block_size.z * 4 * conv_params.src_depth_loop_size;
+
+  const bool use_simd_broadcast = conv_params.IsPrivateMemBroadcast();
+  const int simd_size = conv_params.GetSimdSize();
+
+  const bool late_oob_check = need_local_mem || use_simd_broadcast;
+
   const std::string weights_space =
       conv_params.weights_upload_type ==
               ConvPowerVR::WeightsUploadType::CONSTANT_MEM
@@ -320,6 +331,12 @@ std::string GenerateConv(
   const std::string weights_global_ptr =
       weights_space + " " + weights_data_type + "*";
 
+  if (use_simd_broadcast) {
+    if (device.cl_version() == OpenCLVersion::CL_2_0) {
+      c += "#pragma OPENCL EXTENSION cl_khr_subgroups : enable\n";
+    }
+  }
+
   const int3 work_group_size = conv_params.work_group_size;
   const int3 block_size = conv_params.block_size;
   if (conv_params.fixed_work_group_size) {
@@ -327,6 +344,10 @@ std::string GenerateConv(
          std::to_string(work_group_size.x) + ", " +
          std::to_string(work_group_size.y) + ", " +
          std::to_string(work_group_size.z) + ")))\n";
+  }
+  if (use_simd_broadcast && device.IsIntel()) {
+    c += "__attribute__((intel_reqd_sub_group_size(" +
+         std::to_string(simd_size) + ")))\n";
   }
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
@@ -355,7 +376,7 @@ std::string GenerateConv(
   for (int y = 0; y < conv_params.block_size.y; ++y) {
     dst_y[y] = "(Y + " + std::to_string(y) + ")";
   }
-  if (!need_local_mem) {
+  if (!late_oob_check) {
     c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) {\n";
     c += "    return;\n";
     c += "  }\n";
@@ -368,6 +389,9 @@ std::string GenerateConv(
       c += "  int lid = get_local_id(1) * " +
            std::to_string(work_group_size.x) + " + get_local_id(0);\n";
     }
+  }
+  if (use_simd_broadcast) {
+    c += "  int simd_id = get_sub_group_local_id();\n";
   }
   for (int z = 0; z < block_size.z; ++z) {
     for (int y = 0; y < block_size.y; ++y) {
@@ -396,13 +420,8 @@ std::string GenerateConv(
   }
   if (need_local_mem) {
     c += "  __local " + weights_data_type + " weights_cache[" +
-         std::to_string(block_size.z * 4 * conv_params.src_depth_loop_size) +
-         "];\n";
-  }
-  if (conv_params.weights_upload_type ==
-          ConvPowerVR::WeightsUploadType::GLOBAL_MEM ||
-      conv_params.weights_upload_type ==
-          ConvPowerVR::WeightsUploadType::CONSTANT_MEM) {
+         std::to_string(local_mem_size) + "];\n";
+  } else {
     c += "    " + weights_global_ptr + " weights_cache;\n";
   }
   if (is1x1) {
@@ -521,9 +540,36 @@ std::string GenerateConv(
           for (int y = 0; y < block_size.y; ++y) {
             for (int x = 0; x < block_size.x; ++x) {
               std::string id = std::to_string(y) + std::to_string(x);
-              c += "    r" + std::to_string(z) + id + " += weights_cache[" +
-                   std::to_string(z * 4 + ch + shared_offset) + "] * src" + id +
-                   "." + channels[ch] + ";\n";
+              if (use_simd_broadcast) {
+                int simd_id = (z * 4 + ch + shared_offset) / simd_size;
+                int thread_id = (z * 4 + ch + shared_offset) % simd_size;
+                std::string w_val_x = "sub_group_broadcast(simd_w" +
+                                      std::to_string(simd_id) + ".x, " +
+                                      std::to_string(thread_id) + "u)";
+                std::string w_val_y = "sub_group_broadcast(simd_w" +
+                                      std::to_string(simd_id) + ".y, " +
+                                      std::to_string(thread_id) + "u)";
+                std::string w_val_z = "sub_group_broadcast(simd_w" +
+                                      std::to_string(simd_id) + ".z, " +
+                                      std::to_string(thread_id) + "u)";
+                std::string w_val_w = "sub_group_broadcast(simd_w" +
+                                      std::to_string(simd_id) + ".w, " +
+                                      std::to_string(thread_id) + "u)";
+                c += "    r" + std::to_string(z) + id + ".x += " + w_val_x +
+                     " * src" + id + "." + channels[ch] + ";\n";
+                c += "    r" + std::to_string(z) + id + ".y += " + w_val_y +
+                     " * src" + id + "." + channels[ch] + ";\n";
+                c += "    r" + std::to_string(z) + id + ".z += " + w_val_z +
+                     " * src" + id + "." + channels[ch] + ";\n";
+                c += "    r" + std::to_string(z) + id + ".w += " + w_val_w +
+                     " * src" + id + "." + channels[ch] + ";\n";
+              } else {
+                std::string w_val = "weights_cache[" +
+                                    std::to_string(z * 4 + ch + shared_offset) +
+                                    "]";
+                c += "    r" + std::to_string(z) + id + " += " + w_val +
+                     " * src" + id + "." + channels[ch] + ";\n";
+              }
             }
           }
         }
@@ -554,17 +600,29 @@ std::string GenerateConv(
       work_group_size.x * work_group_size.y * work_group_size.z;
   if (conv_params.weights_upload_type ==
       ConvPowerVR::WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP) {
-    c +=
-        GenerateAsyncUpload("weights_cache", "filters_loc",
-                            /*global_offset_name*/ "",
-                            block_size.z * 4 * conv_params.src_depth_loop_size);
+    c += GenerateAsyncUpload("weights_cache", "filters_loc",
+                             /*global_offset_name*/ "", local_mem_size);
   } else if (conv_params.weights_upload_type ==
              ConvPowerVR::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
     c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
-    c += GenerateUploadByThreads(
-        "weights_cache", "filters_loc",
-        /*global_offset_name*/ "", "lid", total_work_items,
-        block_size.z * 4 * conv_params.src_depth_loop_size);
+    c += GenerateUploadByThreads("weights_cache", "filters_loc",
+                                 /*global_offset_name*/ "", "lid",
+                                 total_work_items, local_mem_size);
+  } else if (use_simd_broadcast) {
+    int parts = local_mem_size / simd_size;
+    int reminder = local_mem_size % simd_size;
+    for (int i = 0; i < parts; ++i) {
+      c += "    FLT4 simd_w" + std::to_string(i) + " = filters_loc[simd_id + " +
+           std::to_string(i * simd_size) + "];\n";
+    }
+    if (reminder) {
+      c += "    FLT4 simd_w" + std::to_string(parts) + ";\n";
+      c += "    if (simd_id < " + std::to_string(reminder) + ") {\n";
+      c += "      simd_w" + std::to_string(parts) +
+           " = filters_loc[simd_id + " + std::to_string(parts * simd_size) +
+           "];\n";
+      c += "    }\n";
+    }
   } else {  // GLOBAL_MEM/CONSTANT_MEM
     c += "    weights_cache = filters_loc;\n";
   }
@@ -580,9 +638,7 @@ std::string GenerateConv(
     conv_core(i * block_size.z * 4);
     c += "    s += 1;\n";
   }
-  c += "    filters_loc += " +
-       std::to_string(block_size.z * 4 * conv_params.src_depth_loop_size) +
-       ";\n";
+  c += "    filters_loc += " + std::to_string(local_mem_size) + ";\n";
   c += "  } while (s < src_size.z);\n";
   if (!is1x1) {
     c += "  };\n";
@@ -597,10 +653,10 @@ std::string GenerateConv(
     c += GenerateUploadByThreads("weights_cache", "biases", "Z", "lid",
                                  total_work_items, block_size.z);
     c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
-  } else {  // GLOBAL_MEM/CONSTANT_MEM
+  } else {
     c += "    weights_cache = biases + Z;\n";
   }
-  if (need_local_mem) {
+  if (late_oob_check) {
     c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) {\n";
     c += "    return;\n";
     c += "  }\n";
@@ -802,6 +858,41 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  } else if (device.IsIntel()) {
+    if (different_weights_for_height) {
+      conv_params.work_group_size = int3(16, 1, 1);
+      conv_params.work_group_launch_order = int3(0, 1, 2);
+      conv_params.fixed_work_group_size = true;
+    } else {
+      conv_params.linear_hw = true;
+      conv_params.work_group_size = int3(16, 1, 1);
+      conv_params.work_group_launch_order = int3(0, 1, 2);
+      conv_params.fixed_work_group_size = true;
+    }
+    conv_params.block_size = int3(1, 1, 4);
+    conv_params.src_depth_loop_size = 1;
+    if (definition.precision != CalculationsPrecision::F32_F16 &&
+        device.SupportsExtension("cl_khr_subgroups") &&
+        device.SupportsExtension("cl_intel_required_subgroup_size") &&
+        device.IsCL20OrHigher() && device.SupportsSubGroupWithSize(16)) {
+      conv_params.weights_upload_type =
+          WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST;
+    } else {
+      conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    }
+    if (dst_depth % 4 == 0 || dst_depth >= 8) {
+      conv_params.block_size.z = 4;
+    } else if (dst_depth % 2 == 0 || dst_depth >= 4) {
+      conv_params.block_size.z = 2;
+    } else {
+      conv_params.block_size.z = dst_depth;
+    }
+    if (src_depth % 2 == 0) {
+      conv_params.src_depth_loop_size = 2;
+    }
+    if (src_depth % 4 == 0 && conv_params.block_size.z <= 2) {
+      conv_params.src_depth_loop_size = 4;
+    }
   } else {
     conv_params.block_size = int3(1, 1, 4);
     conv_params.work_group_size = int3(8, 2, 1);

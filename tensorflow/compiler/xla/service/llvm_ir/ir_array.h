@@ -66,6 +66,11 @@ class IrArray {
     // Precondition: "shape" has a layout.
     Index(llvm::Value* linear, const Shape& shape, llvm::IRBuilder<>* b);
 
+    // Similar to the above constructor except using "dynamic_dims" instead of
+    // shape's static dimension to constructs the index.
+    Index(llvm::Value* linear, const Shape& shape,
+          absl::Span<llvm::Value*> dynamic_dims, llvm::IRBuilder<>* b);
+
     // Constructs an index from a multi-dimensional index. 'shape' is the shape
     // for which the multi-dimensional index is used. 'index_type' is the type
     // of the index.
@@ -179,6 +184,11 @@ class IrArray {
 
     void Delinearize(std::vector<llvm::Value*>* multidim, llvm::Value* linear,
                      const Shape& shape, llvm::IRBuilder<>* b) const;
+
+    // Delinearize the linear index with the dynamic dimensions.
+    void Delinearize(std::vector<llvm::Value*>* multidim, llvm::Value* linear,
+                     const Shape& shape, absl::Span<llvm::Value*> dynamic_dims,
+                     llvm::IRBuilder<>* b) const;
 
     std::vector<llvm::Value*> multidim_;
 

@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdint.h>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -55,7 +58,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TfLiteIntArray* output_shape = TfLiteIntArrayCopy(input->dims);
-  TF_LITE_ENSURE_EQ(context, output->type, input->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
 
   return context->ResizeTensor(context, output, output_shape);
 }

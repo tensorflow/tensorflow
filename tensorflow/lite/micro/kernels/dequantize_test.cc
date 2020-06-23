@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
@@ -29,12 +29,11 @@ void ValidateDequantizeGoldens(TfLiteTensor* tensors, int tensors_size,
                                const T* expected_output_data, T* output_data,
                                int output_length, float tolerance = 1e-5) {
   TfLiteContext context;
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
-  // Version 2 of dequantize supports int8 quantization.
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_DEQUANTIZE, 2);
+      resolver.FindOp(tflite::BuiltinOperator_DEQUANTIZE);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
@@ -91,8 +90,8 @@ void TestDequantizeToFloat(const int* input_dims_data, const float* input_data,
   const int tensors_size = 2;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims, scale,
-                            zero_point, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+                            zero_point),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   ValidateDequantizeGoldens(tensors, tensors_size, expected_output_data,
@@ -114,8 +113,8 @@ void TestDequantizeToInt32(const int* input_dims_data, const float* input_data,
   const int tensors_size = 2;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
-      CreateInt32Tensor(output_data, output_dims, "output_tensor"),
+                            input_scale, input_zero_point),
+      CreateInt32Tensor(output_data, output_dims),
   };
 
   TfLiteQuantizationParams output_quant;

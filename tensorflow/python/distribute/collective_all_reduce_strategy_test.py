@@ -28,11 +28,11 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_utils
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
-from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -116,7 +116,8 @@ class CollectiveAllReduceStrategyTestBase(
         variable_instance_key_start=10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     strategy.extended._collective_keys = collective_keys
-    strategy.extended._cross_device_ops._collective_keys = (collective_keys)
+    strategy.extended._cross_device_ops._collective_keys = collective_keys
+    strategy.extended._host_cross_device_ops._collective_keys = collective_keys
 
     return strategy, target, session_config
 
@@ -362,16 +363,17 @@ class CollectiveAllReduceStrategyTestBase(
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run([values.select_replica(r, next_element)
-                                   for r in range(len(devices))])
+        computed_value = sess.run([distribute_utils.select_replica(
+            r, next_element) for r in range(len(devices))])
         if ignore_order:
           self.assertCountEqual(list(expected_value), list(computed_value))
         else:
           self.assertEqual(list(expected_value), list(computed_value))
 
-      with self.assertRaises(errors.OutOfRangeError):
+      # error raised by calling optional_get_value on an Optional of None
+      with self.assertRaises(errors.InvalidArgumentError):
         next_element = iterator.get_next()
-        sess.run([values.select_replica(r, next_element)
+        sess.run([distribute_utils.select_replica(r, next_element)
                   for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
@@ -380,8 +382,9 @@ class CollectiveAllReduceStrategyTestBase(
 
         for expected_value in expected_values:
           next_element = iterator.get_next()
-          computed_value = sess.run([values.select_replica(r, next_element)
-                                     for r in range(len(devices))])
+          computed_value = sess.run([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))])
           if ignore_order:
             self.assertCountEqual(list(expected_value), list(computed_value))
           else:
@@ -447,31 +450,35 @@ class DistributedCollectiveAllReduceStrategyTest(
       combinations.combine(
           mode=['graph'], required_gpus=[0, 1, 2], use_dataset=[True, False]))
   def testMakeInputFnIterator(self, required_gpus, use_dataset):
-    if use_dataset:
-      fn = lambda: dataset_ops.Dataset.range(100)
-    else:
-      def fn():
-        dataset = dataset_ops.Dataset.range(100)
-        it = dataset_ops.make_one_shot_iterator(dataset)
-        return it.get_next
-    # We use CPU as the device when required_gpus = 0
-    devices_per_worker = max(1, required_gpus)
-    expected_values = [[i+j for j in range(devices_per_worker)]
-                       for i in range(0, 100, devices_per_worker)]
+    def _worker_fn(task_type, task_id, required_gpus):
+      if use_dataset:
+        fn = lambda: dataset_ops.Dataset.range(100)
+      else:
+        def fn():
+          dataset = dataset_ops.Dataset.range(100)
+          it = dataset_ops.make_one_shot_iterator(dataset)
+          return it.get_next
+      # We use CPU as the device when required_gpus = 0
+      devices_per_worker = max(1, required_gpus)
+      expected_values = [[i+j for j in range(devices_per_worker)]
+                         for i in range(0, 100, devices_per_worker)]
 
-    input_fn = self._input_fn_to_test_input_context(
-        fn,
-        expected_num_replicas_in_sync=3*devices_per_worker,
-        expected_num_input_pipelines=3,
-        expected_input_pipeline_id=1)  # because task_id = 1
-    self._test_input_fn_iterator(
-        'worker',
-        1,
-        required_gpus,
-        input_fn,
-        expected_values,
-        test_reinitialize=use_dataset,
-        ignore_order=not use_dataset)
+      input_fn = self._input_fn_to_test_input_context(
+          fn,
+          expected_num_replicas_in_sync=3*devices_per_worker,
+          expected_num_input_pipelines=3,
+          expected_input_pipeline_id=task_id)
+      self._test_input_fn_iterator(
+          task_type,
+          task_id,
+          required_gpus,
+          input_fn,
+          expected_values,
+          test_reinitialize=use_dataset,
+          ignore_order=not use_dataset)
+
+    self._run_between_graph_clients(_worker_fn, self._cluster_spec,
+                                    required_gpus)
 
   @combinations.generate(combinations.combine(mode=['graph']))
   def testUpdateConfigProto(self):
@@ -498,8 +505,7 @@ class DistributedCollectiveAllReduceStrategyTest(
     self.assertEqual(['CollectiveReduce'],
                      new_rewrite_options.scoped_allocator_opts.enable_op)
 
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testEnableCollectiveOps(self):
+  def _get_strategy_with_mocked_methods(self):
     mock_called = [False]
 
     # pylint: disable=dangerous-default-value
@@ -518,8 +524,20 @@ class DistributedCollectiveAllReduceStrategyTest(
                                 mock_configure_collective_ops):
       strategy, _, _ = self._get_test_object(
           task_type='worker', task_id=1, num_gpus=2)
+
+    return strategy, mock_called
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def testEnableCollectiveOps(self):
+    strategy, mock_called = self._get_strategy_with_mocked_methods()
     self.assertTrue(strategy.extended._std_server_started)
     self.assertTrue(mock_called[0])
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def testEnableCollectiveOpsAndClusterResolver(self):
+    strategy, _ = self._get_strategy_with_mocked_methods()
+    self.assertEqual(strategy.cluster_resolver.task_type, 'worker')
+    self.assertEqual(strategy.cluster_resolver.task_id, 1)
 
 
 class DistributedCollectiveAllReduceStrategyTestWithChief(

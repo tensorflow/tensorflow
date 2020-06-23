@@ -142,6 +142,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace dequantize
 
 TfLiteRegistration* Register_DEQUANTIZE() {
+  // TODO(b/149408647): Once we remove AddBuiltin from MicroOpResolver and
+  // completely switch to the templated AddBuiltin from MicroMutableOpResolver,
+  // this struct no longer needs to be static and can be returned by value.
   static TfLiteRegistration r = {/*init=*/dequantize::Init,
                                  /*free=*/nullptr,
                                  /*prepare=*/dequantize::Prepare,

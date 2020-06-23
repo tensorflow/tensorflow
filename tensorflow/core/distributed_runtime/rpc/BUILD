@@ -165,6 +165,26 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache_partial",
         "//tensorflow/core/distributed_runtime:worker_interface",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
+        "//tensorflow/core/util:env_var",
+    ],
+)
+
+tf_cc_test(
+    name = "grpc_worker_cache_test",
+    size = "small",
+    srcs = [
+        "grpc_worker_cache_test.cc",
+    ],
+    deps = [
+        ":grpc_worker_cache",
+        "//tensorflow/c:tf_status_headers",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/distributed_runtime:test_utils",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:strcat",
     ],
 )
 

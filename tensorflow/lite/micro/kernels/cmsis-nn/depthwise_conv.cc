@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h"
 
-#include "arm_nnfunctions.h"
+#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -104,7 +104,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-#if defined(__ARM_FEATURE_DSP)
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   auto* params =
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
 
@@ -186,7 +186,7 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
   op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
 
-#if defined(__ARM_FEATURE_DSP)
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   RuntimeShape filter_shape = GetTensorShape(filter);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
@@ -284,7 +284,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.output_shift = -data->output_shift;
 
-#if defined(__ARM_FEATURE_DSP)
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   // optimizations utilize loop unrolling which requires the following power
   // of two kernel dimensions
   RuntimeShape filter_shape = GetTensorShape(filter);
