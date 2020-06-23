@@ -2737,15 +2737,16 @@ def sparse_transpose(sp_input, perm=None, name=None):
 @tf_export("sparse.map_values", v1=[])
 @dispatch.add_dispatch_support
 def map_values(op, *args, **kwargs):
-  """Applies `op` to the values of one or more `SparseTensor`s.
+  """Applies `op` to the `.values` tensor of one or more `SparseTensor`s.
 
   Replaces any `SparseTensor` in `args` or `kwargs` with its `values`
-  tensor, and then calls `op`.  Returns a `SparseTensor` that is constructed
-  from the input `SparseTensor`s' `indices` and the value returned by
-  the `op`.
+  tensor (which contains the non-default values for the SparseTensor),
+  and then calls `op`.  Returns a `SparseTensor` that is constructed
+  from the input `SparseTensor`s' `indices`, `dense_shape`, and the
+  value returned by the `op`.
 
   If the input arguments contain multiple `SparseTensor`s, then they must have
-  identical `indices`.
+  equal `indices` and dense shapes.
 
   Examples:
 
@@ -2769,11 +2770,11 @@ def map_values(op, *args, **kwargs):
     **kwargs: Keyword arguments for `op`.
 
   Returns:
-    A `SparseTensor` whose `indices` matches the `indices` of all
-    input `SparseTensor`s.
+    A `SparseTensor` whose `indices` and `dense_shape` matches the `indices`
+    and `dense_shape` of all input `SparseTensor`s.
   Raises:
     ValueError: If args contains no `SparseTensor`, or if the `indices`
-      of the input `SparseTensor`s are not identical.
+      or `dense_shape`s of the input `SparseTensor`s are not equal.
   """
   sparse_list = []
   inner_args = _replace_sparse_with_values(args, sparse_list)
@@ -2784,13 +2785,13 @@ def map_values(op, *args, **kwargs):
   with ops.control_dependencies(_assert_sparse_compatible(sparse_list)):
     # Delegate to op, and then compose the result from the transformed values
     # and the known indices/dense shape. Since we ensure that indices and shape
-    # are identical, we can just use the firs tone.
+    # are identical, we can just use the first one.
     return sparse_tensor.SparseTensor(sparse_list[0].indices,
         op(*inner_args, **inner_kwargs), sparse_list[0].dense_shape)
 
 
 def _assert_sparse_compatible(sparse_tensors):
-  """Check that all of `sparse_tensors` have same `indices` and `dense_shape`
+  """Check that all of `sparse_tensors` have same `indices` and `dense_shape`.
 
   Returns: An op to be used as a control dependency.
   """
