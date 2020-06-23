@@ -976,7 +976,7 @@ class RandomRotationTest(keras_parameterized.TestCase):
         output = strat.run(lambda: layer(input_images, training=True))
       values = output.values
       self.assertAllEqual(2, len(values))
-      self.assertAllClose(values[0], values[1])
+      self.assertAllClose(values[0], values[1], rtol=1e-5)
 
   @tf_test_util.run_v2_only
   def test_config_with_custom_name(self):

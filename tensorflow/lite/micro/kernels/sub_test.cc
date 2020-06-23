@@ -201,7 +201,7 @@ TF_LITE_MICRO_TEST(FloatSubActivationRelu1) {
   float output_data[output_dims_count];
   tflite::testing::TestSubFloat(inout_shape, input1_values, inout_shape,
                                 input2_values, inout_shape, golden_values,
-                                kTfLiteActRelu1, output_data);
+                                kTfLiteActReluN1To1, output_data);
 }
 
 TF_LITE_MICRO_TEST(FloatSubVariousInputShapes) {
@@ -313,7 +313,7 @@ TF_LITE_MICRO_TEST(QuantizedSubActivationRelu1Uint8) {
       inout_shape, input1_values, input1_quantized, scales[0], zero_points[0],
       inout_shape, input2_values, input2_quantized, scales[1], zero_points[1],
       inout_shape, golden_values, golden_quantized, scales[2], zero_points[2],
-      kTfLiteActRelu1, output);
+      kTfLiteActReluN1To1, output);
 }
 
 TF_LITE_MICRO_TEST(QuantizedSubActivationRelu1Int8) {
@@ -334,7 +334,7 @@ TF_LITE_MICRO_TEST(QuantizedSubActivationRelu1Int8) {
       inout_shape, input1_values, input1_quantized, scales[0], zero_points[0],
       inout_shape, input2_values, input2_quantized, scales[1], zero_points[1],
       inout_shape, golden_values, golden_quantized, scales[2], zero_points[2],
-      kTfLiteActRelu1, output);
+      kTfLiteActReluN1To1, output);
 }
 
 TF_LITE_MICRO_TEST(QuantizedSubVariousInputShapesUint8) {

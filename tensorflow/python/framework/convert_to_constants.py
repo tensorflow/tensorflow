@@ -235,7 +235,8 @@ class _Node(_Convertible):
       return _If(node, function, enclosing_graph)
     elif node.op in ["While", "StatelessWhile"]:
       return _While(node, function, enclosing_graph)
-    elif node.op in ["Enter", "Exit", "Identity", "NextIteration", "Switch"]:
+    elif node.op in [
+        "Enter", "Exit", "Identity", "NextIteration", "Switch", "_SwitchN"]:
       return _Intermediate(node, function, enclosing_graph)
     else:
       return _Node(node, function, enclosing_graph)

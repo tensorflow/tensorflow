@@ -66,7 +66,6 @@ class MetadataCollector : public ProfilerInterface {
   Status CollectData(XSpace* space) override {
     if (!debug_info_.empty()) {
       XPlane* plane = FindOrAddMutablePlaneWithName(space, kMetadataPlaneName);
-      plane->set_id(kMetadataPlaneId);
       XPlaneBuilder xplane(plane);
       const XStatMetadata& hlo_proto_stat =
           *xplane.GetOrCreateStatMetadata(kHloProto);

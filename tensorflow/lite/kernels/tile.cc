@@ -211,7 +211,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   const TfLiteTensor* multipliers = GetInput(context, node, kInputMultipliers);
   // Only int32 and int64 multipliers type is supported.

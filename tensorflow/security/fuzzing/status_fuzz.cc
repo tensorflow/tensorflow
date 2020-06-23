@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <fuzzer/FuzzedDataProvider.h>
+
 #include <cstdint>
 #include <cstdlib>
 
@@ -26,10 +28,7 @@ limitations under the License.
 
 namespace {
 
-tensorflow::error::Code BuildRandomErrorCode(uint8_t a, uint8_t b, uint8_t c,
-                                             uint8_t d) {
-  int code = (a << 24) | (b << 16) | (c << 8) | d;
-
+tensorflow::error::Code BuildRandomErrorCode(uint32_t code) {
   // We cannot build a `Status` with error_code of 0 and a message, so force
   // error code to be non-zero.
   if (code == 0) {
@@ -39,22 +38,16 @@ tensorflow::error::Code BuildRandomErrorCode(uint8_t a, uint8_t b, uint8_t c,
   return static_cast<tensorflow::error::Code>(code);
 }
 
-std::string GetRandomErrorString(const uint8_t *data, size_t size) {
-  const char *p = reinterpret_cast<const char *>(data);
-  return std::string(p, size);
-}
-
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  // TODO(mihaimaruseac): Use `FuzzedDataProvider` and then make these `const`
   tensorflow::error::Code error_code;
   std::string error_message;
-  if (size < 4) {
-    error_code = BuildRandomErrorCode(0, 0, 0, 0);
-    error_message = GetRandomErrorString(data, size);
-  } else {
-    error_code = BuildRandomErrorCode(data[0], data[1], data[2], data[3]);
-    error_message = GetRandomErrorString(data + 4, size - 4);
-  }
+
+  FuzzedDataProvider fuzzed_data(data, size);
+
+  uint32_t code = fuzzed_data.ConsumeIntegral<uint32_t>();
+  error_code = BuildRandomErrorCode(code);
+
+  error_message = fuzzed_data.ConsumeRemainingBytesAsString();
 
   tensorflow::Status s = tensorflow::Status(error_code, error_message);
   const std::string actual_message = s.ToString();

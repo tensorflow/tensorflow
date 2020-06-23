@@ -66,8 +66,8 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Input must be bool.
-  TF_LITE_ENSURE(context, input_condition->type == kTfLiteBool);
-  TF_LITE_ENSURE_EQ(context, input_x->type, input_y->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_condition->type, kTfLiteBool);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_x->type, input_y->type);
   output->type = input_x->type;
 
   bool same_shape = HaveSameShapes(input_condition, input_x) &&

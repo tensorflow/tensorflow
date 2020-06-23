@@ -74,7 +74,7 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   int batches = input->dims->data[0];
   int height = input->dims->data[1];
@@ -98,7 +98,7 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
     }
     if (pool_type == kL2) {
       // We currently don't have a quantized implementation of L2Pool
-      TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
+      TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
     }
   }
 
@@ -387,8 +387,8 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
                                              output);
       break;
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -418,8 +418,8 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
                                          output);
       break;
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

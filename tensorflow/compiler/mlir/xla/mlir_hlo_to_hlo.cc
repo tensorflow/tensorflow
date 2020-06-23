@@ -1148,13 +1148,13 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
 
 LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
   if (lowered_computation_.count(f)) return success();
-  if (f.getBlocks().size() != 1) {
+  if (!llvm::hasSingleElement(f)) {
     return f.emitError("only single block Function supported");
   }
 
   // Create a sub-builder if this is not the main function.
   std::unique_ptr<xla::XlaBuilder> builder_up;
-  bool entry_function = f.getName().str() == "main";
+  bool entry_function = f.getName() == "main";
   if (!entry_function)
     builder_up = module_builder_.CreateSubBuilder(f.getName().str());
   auto& builder = entry_function ? module_builder_ : *builder_up;

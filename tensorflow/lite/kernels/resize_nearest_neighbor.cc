@@ -68,7 +68,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // and the size being 1D tensor with exactly 2 elements.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
-  TF_LITE_ENSURE_EQ(context, size->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, size->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, size->dims->data[0], 2);
 
   output->type = input->type;
@@ -122,9 +122,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         GetTensorShape(size), GetTensorData<int32>(size),
         GetTensorShape(output), GetTensorData<int8_t>(output));
   } else {
-    context->ReportError(context,
-                         "Output type is %d, requires float, uint8 or int8.",
-                         output->type);
+    TF_LITE_KERNEL_LOG(context,
+                       "Output type is %s, requires float, uint8 or int8.",
+                       TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
 

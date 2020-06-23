@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cmath>
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -196,8 +197,8 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   if (activation == kTfLiteActRelu6) {
     conv_output_min = 0;
     conv_output_max = 6;
-  } else if (activation == kTfLiteActRelu1) {
-    conv_output_min = 0;
+  } else if (activation == kTfLiteActReluN1To1) {
+    conv_output_min = -1;
     conv_output_max = 1;
   } else if (activation == kTfLiteActRelu) {
     conv_output_min = 0;
@@ -351,8 +352,12 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     output_max_tensor = AddOutput(sizeof(float), 4, kScalarShape);
   }
 
-  // Requantize if activation was not None.
-  if (activation != kTfLiteActNone) {
+  // Requantize if activation was not None & the TFLite tensor's min/max is
+  // different (diff > 1e-2) from the RELU bounds.
+  const float min_bound_diff = std::abs(conv_output_min - output_min);
+  const float max_bound_diff = std::abs(conv_output_max - output_max);
+  if (activation != kTfLiteActNone &&
+      (min_bound_diff > 0.01 || max_bound_diff > 0.01)) {
     auto* requantized_min_const = graph_builder_->AddConstNodeWithData(
         kScalarShape, reinterpret_cast<char*>(&output_min), sizeof(output_min));
     auto* requantized_max_const = graph_builder_->AddConstNodeWithData(

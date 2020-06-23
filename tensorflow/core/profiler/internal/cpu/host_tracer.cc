@@ -147,7 +147,6 @@ Status HostTracer::CollectData(XSpace* space) {
   }
   MakeCompleteEvents(&events_);
   XPlane* plane = FindOrAddMutablePlaneWithName(space, kHostThreadsPlaneName);
-  plane->set_id(kHostPlaneId);
   ConvertCompleteEventsToXPlane(start_timestamp_ns_, events_, plane);
   events_.clear();
   return Status::OK();

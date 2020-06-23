@@ -80,9 +80,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_wav), 3);
   TF_LITE_ENSURE_EQ(context, NumElements(input_rate), 1);
 
-  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
-  TF_LITE_ENSURE_EQ(context, input_wav->type, output->type);
-  TF_LITE_ENSURE_EQ(context, input_rate->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_wav->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input_rate->type, kTfLiteInt32);
 
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(3);
   output_size->data[0] = input_wav->dims->data[0];

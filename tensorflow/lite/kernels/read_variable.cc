@@ -58,7 +58,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* variable_tensor = variable->GetTensor();
   TfLiteTensor* output = GetOutput(context, node, kOutputValue);
 
-  TF_LITE_ENSURE_EQ(context, variable_tensor->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, variable_tensor->type, output->type);
   TF_LITE_ENSURE_OK(
       context, context->ResizeTensor(
                    context, output, TfLiteIntArrayCopy(variable_tensor->dims)));

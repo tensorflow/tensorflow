@@ -78,7 +78,7 @@ using util::IsBinaryOp;
   // 1. non-constant input of add_with_relu6_op
   // 2. 1/6
   // 3. (and add_with_relu6_op[0].outputs[0] - which we already know!)
-  std::vector<string> mul_inputs = mul_op->inputs;
+  std::vector<std::string> mul_inputs = mul_op->inputs;
   mul_inputs.insert(mul_inputs.end(), output_op->inputs.begin(),
                     output_op->inputs.end());
 

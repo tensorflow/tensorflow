@@ -111,8 +111,8 @@ TfLiteStatus ResizeTensor(TfLiteContext* context,
                           TfLiteTensor* tensor_to_resize) {
   // Currently only support int32 for output shape.
   if (shape_tensor->type != kTfLiteInt32) {
-    context->ReportError(context, "Output shape is %d, not int32.",
-                         shape_tensor->type);
+    TF_LITE_KERNEL_LOG(context, "Output shape is %s, not int32.",
+                       TfLiteTypeGetName(shape_tensor->type));
     return kTfLiteError;
   }
 
@@ -176,8 +176,8 @@ TfLiteStatus ResizeCol2ImTensor(TfLiteContext* context,
                                 const TfLiteTensor* input,
                                 TfLiteTensor* col2im) {
   if (output_shape->type != kTfLiteInt32) {
-    context->ReportError(context, "col2im shape is %d, not int32.",
-                         output_shape->type);
+    TF_LITE_KERNEL_LOG(context, "col2im shape is %s, not int32.",
+                       TfLiteTypeGetName(output_shape->type));
     return kTfLiteError;
   }
   TF_LITE_ENSURE_EQ(context, NumElements(output_shape), 4);
@@ -274,7 +274,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     bias = GetOptionalInputTensor(context, node, kBiasTensor);
     if (bias) {
       if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
-        TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
+        TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
         if (input->type == kTfLiteInt8) {
           TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
         }
@@ -282,7 +282,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt64);
         TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
       } else {
-        TF_LITE_ENSURE_EQ(context, bias->type, input->type);
+        TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input->type);
       }
       TF_LITE_ENSURE_EQ(context, NumElements(bias),
                         SizeOfDimension(weights, 0));
@@ -294,9 +294,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   } else {
-    TF_LITE_ENSURE_EQ(context, weights->type, input->type);
+    TF_LITE_ENSURE_TYPES_EQ(context, weights->type, input->type);
   }
-  TF_LITE_ENSURE_EQ(context, output->type, input->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
   // Ensure that weights and inputs have the same channel dimension.
   // Note: TOCO will reorder weights in the following format: OHWI.
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 3),

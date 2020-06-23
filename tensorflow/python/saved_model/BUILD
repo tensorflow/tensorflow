@@ -282,6 +282,15 @@ py_library(
 )
 
 py_library(
+    name = "save_context",
+    srcs = [
+        "save_context.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
     name = "save",
     srcs = [
         "save.py",
@@ -293,6 +302,7 @@ py_library(
         ":function_serialization",
         ":nested_structure_coder",
         ":revived_types",
+        ":save_context",
         ":save_options",
         ":signature_constants",
         ":signature_def_utils",

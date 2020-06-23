@@ -254,7 +254,7 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   return context->ResizeTensor(context, output,
                                TfLiteIntArrayCopy(input->dims));
@@ -274,7 +274,7 @@ TfLiteStatus ReluPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8) {
     double real_multiplier = input->params.scale / output->params.scale;
@@ -355,7 +355,7 @@ TfLiteStatus LeakyReluPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   LeakyReluOpData* data = reinterpret_cast<LeakyReluOpData*>(node->user_data);
 
@@ -384,7 +384,7 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   if (kernel_type == kFixedPointOptimized) {
     if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
@@ -469,7 +469,7 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   if (kernel_type == kFixedPointOptimized) {
     if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
@@ -569,7 +569,7 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
                                 input->type == kTfLiteUInt8 ||
                                 input->type == kTfLiteInt16);
   } else {
-    TF_LITE_ENSURE_EQ(context, input->type, output->type);
+    TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   }
 
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
@@ -632,7 +632,7 @@ TfLiteStatus LogSoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, output->params.scale, 16.0 / 256);
@@ -671,7 +671,7 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* alpha = GetInput(context, node, 1);
   PreluOpData* data = reinterpret_cast<PreluOpData*>(node->user_data);
 
-  TF_LITE_ENSURE_EQ(context, input->type, alpha->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, alpha->type);
 
   output->type = input->type;
 

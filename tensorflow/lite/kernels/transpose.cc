@@ -77,7 +77,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Ensure validity of input tensor.
   TF_LITE_ENSURE_MSG(context, NumDimensions(op_context.input) <= 5,
                      "Transpose op only supports 1D-5D input arrays.");
-  TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
+                          op_context.output->type);
 
   if (!IsConstantTensor(op_context.perm)) {
     SetTensorToDynamic(op_context.output);
@@ -144,9 +145,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      context->ReportError(context,
-                           "Type %d is currently not supported by Transpose.",
-                           op_context.input->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "Type %s is currently not supported by Transpose.",
+                         TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_TRANSPOSE

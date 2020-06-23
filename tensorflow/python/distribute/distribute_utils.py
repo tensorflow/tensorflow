@@ -148,6 +148,9 @@ def select_replica_mirrored(replica_id, structured):
         raise TypeError(
             "Expected value to be mirrored across replicas: %s in %s." %
             (x, structured))
+      packed_var = getattr(x, "_packed_variable", None)
+      if packed_var is not None:
+        return packed_var
       return x.values[replica_id]
     else:
       return x

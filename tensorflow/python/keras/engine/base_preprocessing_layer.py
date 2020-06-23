@@ -185,12 +185,21 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       if not self.built:
         try:
           # If this is a Numpy array or tensor, we can get shape from .shape.
-          # If not, an attribute error will be thrown (and we can assume the
-          # input data is a scalar with shape None.
-          shape = data_element.shape
+          # If not, an attribute error will be thrown.
+          data_shape = data_element.shape
+          data_shape_nones = tuple([None]*len(data_element.shape))
         except AttributeError:
-          shape = None
-        self.build(shape)
+          # The input has an unknown number of dimensions.
+          data_shape = None
+          data_shape_nones = None
+
+        # TODO (b/159261555): move this to base layer build.
+        batch_input_shape = getattr(self, '_batch_input_shape', None)
+        if batch_input_shape is None:
+          # Set the number of dimensions.
+          self._batch_input_shape = data_shape_nones
+
+        self.build(data_shape)
 
       # Once we have built the Layer, we can process the input data. We do so
       # until we've gotten an exception indicating that we have no more data.

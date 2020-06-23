@@ -69,17 +69,17 @@ absl::Status CreatePReLU(const CreationContext& creation_context,
 template <DataType T>
 absl::Status PReLU::UploadParameters(
     const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context) {
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type =
+  TensorLinearDescriptor desc;
+  desc.storage_type =
       DeduceLinearStorageType(definition_.GetPrimaryStorageType());
-  create_info.data_type = definition_.GetPrimaryDataType();
-  RETURN_IF_ERROR(
-      CreateLinearStorage(create_info, parameters, context, &alpha_));
+  desc.element_type = definition_.GetPrimaryDataType();
+  RETURN_IF_ERROR(CreateLinearStorage(desc, parameters, context, &alpha_));
 
   LinearStorage lt;
-  RETURN_IF_ERROR(CreateLinearStorage(create_info, parameters, context, &lt));
+  RETURN_IF_ERROR(CreateLinearStorage(desc, parameters, context, &lt));
   args_.AddObject("alpha", AccessType::READ,
-                  absl::make_unique<LinearStorage>(std::move(lt)));
+                  absl::make_unique<LinearStorage>(std::move(lt)),
+                  absl::make_unique<TensorLinearDescriptor>(desc));
 
   return absl::OkStatus();
 }

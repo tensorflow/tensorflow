@@ -3024,6 +3024,8 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluLeakyReluGrad_Positive);
 // clang-format on
 
 // clang-format off
+#ifdef ENABLE_MKLDNN_V1
+
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
     DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);     \
@@ -3081,6 +3083,7 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhGrad_Positive);
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhTanhGrad_Positive);
 #undef REGISTER_TEST
+#endif  // ENABLE_MKLDNN_V1
 // clang-format on
 
 TEST_F(MklLayoutPassTest, NodeRewrite_AvgPool_Positive) {

@@ -1418,6 +1418,13 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
 
   AddThunkToThunkSequence(
       absl::make_unique<SequentialThunk>(std::move(thunks), sort));
+  if (sort->operand_count() > 1) {
+    // Emit the tuple as part of the last stage of sorting.
+    // We are currently in the block sorted.in_bounds.after.
+    b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
+    llvm_ir::EmitTuple(GetIrArray(*sort, *sort),
+                       ConstructIrArrayForOutputs(*sort), &b_);
+  }
   return Status::OK();
 }
 

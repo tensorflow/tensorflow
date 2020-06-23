@@ -886,3 +886,15 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+tf_py_test(
+    name = "layers_test",
+    size = "small",
+    srcs = ["layers_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":layers",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:tf2",
+    ],
+)

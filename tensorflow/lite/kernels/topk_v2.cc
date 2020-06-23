@@ -37,7 +37,7 @@ namespace {
 TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* top_k = GetInput(context, node, kInputTopK);
   // INT32 number of top results is supported.
-  TF_LITE_ENSURE_EQ(context, top_k->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, top_k->type, kTfLiteInt32);
   // Check that the tensor contains only one value.
   TF_LITE_ENSURE_EQ(context, NumElements(top_k), 1);
   const int32 k = *GetTensorData<int32_t>(top_k);
@@ -197,10 +197,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output_values = GetOutput(context, node, kOutputValues);
-  TF_LITE_ENSURE_EQ(context, input->type, output_values->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output_values->type);
 
   const TfLiteTensor* top_k = GetInput(context, node, kInputTopK);
-  TF_LITE_ENSURE_EQ(context, top_k->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, top_k->type, kTfLiteInt32);
 
   // Set output dynamic if the input is not const.
   if (IsConstantTensor(top_k)) {
@@ -252,9 +252,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
            output_values->data.i64);
       break;
     default:
-      context->ReportError(context,
-                           "Type %d is currently not supported by TopK.",
-                           output_values->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s is currently not supported by TopK.",
+                         TfLiteTypeGetName(output_values->type));
       return kTfLiteError;
   }
 

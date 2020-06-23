@@ -52,15 +52,25 @@ cc_library(
     name = "test_macros_header",
     testonly = True,
     hdrs = ["test_macros.h"],
-    deps = [
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 # Generate a test_macros_${BACKEND} library per backend with the proper copts.
 generate_backend_test_macros()
+
+cc_library(
+    name = "manifest_checking_test",
+    testonly = True,
+    srcs = ["manifest_checking_test.cc"],
+    hdrs = ["manifest_checking_test.h"],
+    deps = [
+        ":test_macros_header",
+        "//tensorflow/core:regexp_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
 
 cc_library(
     name = "test_utils",
@@ -136,6 +146,7 @@ cc_library(
     hdrs = ["hlo_test_base.h"],
     deps = [
         ":literal_test_util",
+        ":manifest_checking_test",
         ":test_utils",
         ":verified_hlo_module",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -193,6 +204,7 @@ cc_library(
     srcs = ["client_library_test_base.cc"],
     hdrs = ["client_library_test_base.h"],
     deps = [
+        ":manifest_checking_test",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
@@ -273,6 +285,7 @@ cc_library(
     hdrs = ["local_client_test_base.h"],
     deps = [
         ":client_library_test_base",
+        ":manifest_checking_test",
         ":verified_hlo_module",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",

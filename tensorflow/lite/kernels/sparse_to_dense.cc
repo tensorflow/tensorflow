@@ -172,7 +172,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                               values->type == kTfLiteInt8 ||
                               values->type == kTfLiteUInt8 ||
                               values->type == kTfLiteFloat32);
-  TF_LITE_ENSURE_EQ(context, values->type, default_value->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, values->type, default_value->type);
 
   // Ensure dimensions match.
   TF_LITE_ENSURE_OK(
@@ -229,10 +229,10 @@ TfLiteStatus EvalForIndexType(TfLiteContext* context, TfLiteNode* node,
       return SparseToDenseImpl<T, int64_t>(context, node);
     }
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
-          "Indice type %d is currently not supported by sparse to dense.",
-          indices->type);
+          "Indice type %s is currently not supported by sparse to dense.",
+          TfLiteTypeGetName(indices->type));
       return kTfLiteError;
   }
 }
@@ -253,10 +253,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteUInt8:
       return EvalForIndexType<uint8_t>(context, node, indices);
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
-          "Value type %d is currently not supported by sparse to dense.",
-          values->type);
+          "Value type %s is currently not supported by sparse to dense.",
+          TfLiteTypeGetName(values->type));
       return kTfLiteError;
   }
 }

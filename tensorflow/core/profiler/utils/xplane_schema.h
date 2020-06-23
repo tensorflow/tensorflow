@@ -45,21 +45,6 @@ ABSL_CONST_INIT extern const absl::string_view kXlaModuleLineName;
 ABSL_CONST_INIT extern const absl::string_view kXlaOpLineName;
 ABSL_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 
-// Id of XPlane that contains TraceMe events.
-ABSL_CONST_INIT extern const int32 kHostPlaneId;
-// Ids prefix of XPlane that contains GPU events.
-ABSL_CONST_INIT extern const int32 kGpuPlaneBaseId;
-// Id of XPlane that contains CUPTI driver API generated events which happens
-// on CPU host threads, e.g. Kernel launch.
-ABSL_CONST_INIT extern const int32 kCuptiDriverApiPlaneId;
-// Id of XPlane that contains profile metadata such as XLA debug info.
-ABSL_CONST_INIT extern const int32 kMetadataPlaneId;
-// Id of XPlane that contains kpi related metrics.
-ABSL_CONST_INIT extern const int32 kTFStreamzPlaneId;
-
-ABSL_CONST_INIT extern const int32 kThreadGroupMinPlaneId;
-ABSL_CONST_INIT extern const int32 kThreadGroupMaxPlaneId;
-
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
   kFirstHostEventType = 0,
@@ -96,9 +81,6 @@ enum HostEventType {
   kWhileOpStartBody,
   kForOp,
   kPartitionedCallOp,
-  // XLA related.
-  kLocalExecutableExecuteOnLocalDevice,
-  kLocalExecutableExecute,
   // tf.data related.
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
@@ -168,6 +150,8 @@ enum StatType {
   kIsEager,
   kTfFunctionCall,
   kTfFunctionTracingCount,
+  kFlops,
+  kBytesAccessed,
   // Performance counter related.
   kRawValue,
   kScaledValue,

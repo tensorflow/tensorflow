@@ -321,7 +321,10 @@ def : Pat<(TF_PadV2Op $input, (TF_ConstOp $padding), $c),
 
 foreach src = [TF_IdentityOp, TF_StopGradientOp] in
   def : Pat<(src $op), (replaceWithValue $op)>;
-def : Pat<(TF_PreventGradientOp $op, $msg), (replaceWithValue $op)>;
+
+// TODO(b/32223192): Support CheckNumerics in HLO.
+foreach src = [TF_PreventGradientOp, TF_CheckNumericsOp] in
+  def : Pat<(src $op, $msg), (replaceWithValue $op)>;
 
 //===----------------------------------------------------------------------===//
 // MatMul op patterns.

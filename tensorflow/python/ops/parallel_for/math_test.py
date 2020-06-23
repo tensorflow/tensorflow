@@ -90,8 +90,6 @@ class MathTest(PForTestCase, parameterized.TestCase):
         math_ops.asinh,
         math_ops.atan,
         math_ops.atanh,
-        math_ops.bessel_i0e,
-        math_ops.bessel_i1e,
         math_ops.cos,
         math_ops.cosh,
         math_ops.digamma,
@@ -107,6 +105,8 @@ class MathTest(PForTestCase, parameterized.TestCase):
         math_ops.log,
         math_ops.log1p,
         math_ops.ndtri,
+        special_math_ops.bessel_i0e,
+        special_math_ops.bessel_i1e,
     ]
     self._test_unary_cwise_ops(real_ops, False)
 

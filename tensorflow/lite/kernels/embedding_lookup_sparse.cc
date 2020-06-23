@@ -109,7 +109,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Mark the output as a dynamic tensor.
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
   output->allocation_type = kTfLiteDynamic;
 
   return kTfLiteOk;

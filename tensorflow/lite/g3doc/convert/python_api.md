@@ -53,7 +53,7 @@ converter = tf.lite.TFLiteConverter.from_saved_model(export_dir)
 tflite_model = converter.convert()
 
 # Save the TF Lite model.
-with tf.gfile.GFile('model.tflite', 'wb') as f:
+with tf.io.gfile.GFile('model.tflite', 'wb') as f:
   f.write(tflite_model)
 ```
 
@@ -125,7 +125,7 @@ converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
 tflite_model = converter.convert()
 
 # Save the TF Lite model.
-with tf.gfile.GFile('model.tflite', 'wb') as f:
+with tf.io.gfile.GFile('model.tflite', 'wb') as f:
   f.write(tflite_model)
 ```
 

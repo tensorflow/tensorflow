@@ -35,7 +35,7 @@ inline float ActivationValFloat(TfLiteFusedActivation act, float a) {
       return a;
     case kTfLiteActRelu:
       return TfLiteMax(0.0f, a);
-    case kTfLiteActRelu1:
+    case kTfLiteActReluN1To1:
       return TfLiteMax(-1.0f, TfLiteMin(a, 1.0f));
     case kTfLiteActRelu6:
       return TfLiteMax(0.0f, TfLiteMin(a, 6.0f));

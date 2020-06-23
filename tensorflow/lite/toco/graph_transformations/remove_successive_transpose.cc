@@ -43,8 +43,8 @@ bool TransformsToIdentity(std::vector<int> const& perm1,
   return true;
 }
 
-void ReplaceOpInputsWith(Model* model, const string& lookfor,
-                         const string& replacewith) {
+void ReplaceOpInputsWith(Model* model, const std::string& lookfor,
+                         const std::string& replacewith) {
   for (const auto& op : model->operators) {
     for (int i = 0; i < op->inputs.size(); ++i) {
       if (op->inputs[i] == lookfor) {

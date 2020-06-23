@@ -402,7 +402,7 @@ TF_LITE_MICRO_TEST(FloatRelu) {
       {0.1, 0.2, 0.3, 0.5},     // input2 data
       {4, 1, 2, 2, 1},          // output shape
       {-0.2, 0.04, 0.21, 0.4},  // expected output data
-      output_data, kTfLiteActRelu1);
+      output_data, kTfLiteActReluN1To1);
 }
 
 TF_LITE_MICRO_TEST(FloatBroadcast) {
