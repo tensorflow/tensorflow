@@ -478,7 +478,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // On mobile, it just cleans the caches.
   void WaitForAndCloseRemoteContexts();
 
-  bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
+  bool PinSmallOpsToCPU() const { return pin_small_ops_to_cpu_; }
 
   tensorflow::Env* TFEnv() const { return env_; }
 

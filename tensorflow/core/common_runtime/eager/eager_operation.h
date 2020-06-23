@@ -126,7 +126,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   bool is_function() const { return is_function_; }
   bool colocation_exempt() const { return colocation_exempt_; }
 
-  tensorflow::EagerContext& EagerContext() { return ctx_; }
+  tensorflow::EagerContext& EagerContext() const { return ctx_; }
 
   AttrBuilder* MutableAttrs() { return &attrs_; }
   const AttrBuilder& Attrs() const { return attrs_; }
