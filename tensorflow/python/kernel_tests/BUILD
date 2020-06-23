@@ -2989,7 +2989,6 @@ cuda_py_test(
     name = "pooling_ops_3d_test",
     size = "medium",
     srcs = ["pooling_ops_3d_test.py"],
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
