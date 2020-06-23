@@ -2378,6 +2378,13 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 def TF_DeviceIndexOp : TF_Op<"DeviceIndex", [NoSideEffect]> {
   let summary = "Return the index of device the op runs.";
 
+  let description = [{
+Given a list of device names, this operation returns the index of the device
+this op runs. The length of the list is returned in two cases:
+(1) Device does not exist in the given device list.
+(2) It is in XLA compilation.
+  }];
+
   let arguments = (ins
     StrArrayAttr:$device_names
   );
