@@ -708,8 +708,8 @@ struct UnaryUFunc {
   static std::vector<int> Types() {
     return {TypeDescriptor<InType>::Dtype(), TypeDescriptor<OutType>::Dtype()};
   }
-  static void Call(char** args, npy_intp* dimensions, npy_intp* steps,
-                   void* data) {
+  static void Call(char** args, const npy_intp* dimensions,
+                   const npy_intp* steps, void* data) {
     const char* i0 = args[0];
     char* o = args[1];
     for (npy_intp k = 0; k < *dimensions; k++) {
@@ -728,8 +728,8 @@ struct UnaryUFunc2 {
     return {TypeDescriptor<InType>::Dtype(), TypeDescriptor<OutType>::Dtype(),
             TypeDescriptor<OutType2>::Dtype()};
   }
-  static void Call(char** args, npy_intp* dimensions, npy_intp* steps,
-                   void* data) {
+  static void Call(char** args, const npy_intp* dimensions,
+                   const npy_intp* steps, void* data) {
     const char* i0 = args[0];
     char* o0 = args[1];
     char* o1 = args[2];
@@ -751,8 +751,8 @@ struct BinaryUFunc {
     return {TypeDescriptor<InType>::Dtype(), TypeDescriptor<InType>::Dtype(),
             TypeDescriptor<OutType>::Dtype()};
   }
-  static void Call(char** args, npy_intp* dimensions, npy_intp* steps,
-                   void* data) {
+  static void Call(char** args, const npy_intp* dimensions,
+                   const npy_intp* steps, void* data) {
     const char* i0 = args[0];
     const char* i1 = args[1];
     char* o = args[2];
@@ -774,8 +774,8 @@ struct BinaryUFunc2 {
     return {TypeDescriptor<InType>::Dtype(), TypeDescriptor<InType2>::Dtype(),
             TypeDescriptor<OutType>::Dtype()};
   }
-  static void Call(char** args, npy_intp* dimensions, npy_intp* steps,
-                   void* data) {
+  static void Call(char** args, const npy_intp* dimensions,
+                   const npy_intp* steps, void* data) {
     const char* i0 = args[0];
     const char* i1 = args[1];
     char* o = args[2];
@@ -873,8 +873,8 @@ struct DivmodUFunc {
   static std::vector<int> Types() {
     return {npy_bfloat16, npy_bfloat16, npy_bfloat16, npy_bfloat16};
   }
-  static void Call(char** args, npy_intp* dimensions, npy_intp* steps,
-                   void* data) {
+  static void Call(char** args, const npy_intp* dimensions,
+                   const npy_intp* steps, void* data) {
     const char* i0 = args[0];
     const char* i1 = args[1];
     char* o0 = args[2];
