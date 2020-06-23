@@ -32,6 +32,7 @@ GPUResources TensorLinearDescriptor::GetGPUResources(
     desc.data_type = element_type;
     desc.access_type = access_type;
     desc.element_size = 4;
+    desc.memory_type = memory_type;
     resources.buffers.push_back({"buffer", desc});
   } else {
     GPUImage2DDescriptor desc;

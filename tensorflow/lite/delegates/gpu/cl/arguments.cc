@@ -457,8 +457,20 @@ std::string Arguments::GetListOfArgs() {
   for (auto& t : buffers_) {
     const std::string type_name =
         t.second.data_type == DataType::FLOAT32 ? "float" : "half";
-    AppendArgument(absl::StrCat("__global ", type_name, t.second.element_size,
-                                "* ", t.first),
+    std::string memory_type;
+    switch (t.second.memory_type) {
+      case MemoryType::GLOBAL:
+        memory_type = "__global";
+        break;
+      case MemoryType::CONSTANT:
+        memory_type = "__constant";
+        break;
+      case MemoryType::LOCAL:
+        memory_type = "__local";
+        break;
+    }
+    AppendArgument(absl::StrCat(memory_type, " ", type_name,
+                                t.second.element_size, "* ", t.first),
                    &result);
   }
   for (auto& t : image_buffers_) {

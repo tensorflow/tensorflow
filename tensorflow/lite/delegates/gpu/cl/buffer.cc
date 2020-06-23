@@ -50,6 +50,7 @@ GPUResources BufferDescriptor::GetGPUResources(AccessType access_type) const {
   desc.data_type = element_type;
   desc.access_type = access_type;
   desc.element_size = element_size;
+  desc.memory_type = memory_type;
   resources.buffers.push_back({"buffer", desc});
   return resources;
 }
@@ -59,6 +60,8 @@ absl::Status BufferDescriptor::PerformSelector(
     const std::vector<std::string>& template_args, std::string* result) const {
   if (selector == "Read") {
     return PerformReadSelector(args, result);
+  } else if (selector == "GetPtr") {
+    return PerformGetPtrSelector(args, result);
   } else {
     return absl::NotFoundError(absl::StrCat(
         "BufferDescriptor don't have selector with name - ", selector));
@@ -73,6 +76,17 @@ absl::Status BufferDescriptor::PerformReadSelector(
                      args.size(), " was passed"));
   }
   *result = absl::StrCat("buffer[", args[0], "]");
+  return absl::OkStatus();
+}
+
+absl::Status BufferDescriptor::PerformGetPtrSelector(
+    const std::vector<std::string>& args, std::string* result) const {
+  if (!args.empty()) {
+    return absl::NotFoundError(
+        absl::StrCat("BufferDescriptor GetPtr require zero arguments, but ",
+                     args.size(), " was passed"));
+  }
+  *result = "buffer";
   return absl::OkStatus();
 }
 
