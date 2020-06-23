@@ -1277,28 +1277,6 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "custom_training_loop_models_test",
-    srcs = ["custom_training_loop_models_test.py"],
-    main = "custom_training_loop_models_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    tpu_tags = [
-        "no_oss",  # b/153615544.
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
     name = "custom_training_loop_optimizer_test",
     srcs = ["custom_training_loop_optimizer_test.py"],
     main = "custom_training_loop_optimizer_test.py",
