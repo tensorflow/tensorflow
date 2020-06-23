@@ -2634,6 +2634,23 @@ def decode_image(contents,
     ValueError: On incorrect number of channels.
   """
   with ops.name_scope(name, 'decode_image'):
+    if compat.forward_compatible(2020, 7, 14):
+      channels = 0 if channels is None else channels
+      if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
+        dest_dtype = dtype
+        dtype = dtypes.uint16
+        return convert_image_dtype(gen_image_ops.decode_image(
+            contents=contents,
+            channels=channels,
+            expand_animations=expand_animations,
+            dtype=dtype), dest_dtype)
+      else:
+        return gen_image_ops.decode_image(
+            contents=contents,
+            channels=channels,
+            expand_animations=expand_animations,
+            dtype=dtype)
+
     if channels not in (None, 0, 1, 3, 4):
       raise ValueError('channels must be in (None, 0, 1, 3, 4)')
     substr = string_ops.substr(contents, 0, 3)

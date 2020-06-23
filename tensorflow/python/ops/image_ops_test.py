@@ -30,6 +30,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -5173,107 +5174,141 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class DecodeImageTest(test_util.TensorFlowTestCase):
 
+  _FORWARD_COMPATIBILITY_HORIZONS = [
+      (2020, 6, 11),
+      (2020, 7, 11),
+      (2525, 1, 1),  # future behavior
+  ]
+
   def testJpegUint16(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/jpeg/testdata"
-      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
-      image0 = image_ops.decode_image(jpeg0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
-                                             dtypes.uint16)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/jpeg/testdata"
+          jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
+          image0 = image_ops.decode_image(jpeg0, dtype=dtypes.uint16)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
+                                                 dtypes.uint16)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testPngUint16(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/png/testdata"
-      png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
-      image0 = image_ops.decode_image(png0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(
-          image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.uint16)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/png/testdata"
+          png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
+          image0 = image_ops.decode_image(png0, dtype=dtypes.uint16)
+          image1 = image_ops.convert_image_dtype(
+              image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.uint16)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
-      # NumPy conversions should happen before
-      x = np.random.randint(256, size=(4, 4, 3), dtype=np.uint16)
-      x_str = image_ops_impl.encode_png(x)
-      x_dec = image_ops_impl.decode_image(
-          x_str, channels=3, dtype=dtypes.uint16)
-      self.assertAllEqual(x, x_dec)
+          # NumPy conversions should happen before
+          x = np.random.randint(256, size=(4, 4, 3), dtype=np.uint16)
+          x_str = image_ops_impl.encode_png(x)
+          x_dec = image_ops_impl.decode_image(
+              x_str, channels=3, dtype=dtypes.uint16)
+          self.assertAllEqual(x, x_dec)
 
   def testGifUint16(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/gif/testdata"
-      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
-      image0 = image_ops.decode_image(gif0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
-                                             dtypes.uint16)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/gif/testdata"
+          gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+          image0 = image_ops.decode_image(gif0, dtype=dtypes.uint16)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
+                                                 dtypes.uint16)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testBmpUint16(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/bmp/testdata"
-      bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
-      image0 = image_ops.decode_image(bmp0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
-                                             dtypes.uint16)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/bmp/testdata"
+          bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
+          image0 = image_ops.decode_image(bmp0, dtype=dtypes.uint16)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
+                                                 dtypes.uint16)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testJpegFloat32(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/jpeg/testdata"
-      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
-      image0 = image_ops.decode_image(jpeg0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
-                                             dtypes.float32)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/jpeg/testdata"
+          jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
+          image0 = image_ops.decode_image(jpeg0, dtype=dtypes.float32)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
+                                                 dtypes.float32)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testPngFloat32(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/png/testdata"
-      png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
-      image0 = image_ops.decode_image(png0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(
-          image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.float32)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/png/testdata"
+          png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
+          image0 = image_ops.decode_image(png0, dtype=dtypes.float32)
+          image1 = image_ops.convert_image_dtype(
+              image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.float32)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testGifFloat32(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/gif/testdata"
-      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
-      image0 = image_ops.decode_image(gif0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
-                                             dtypes.float32)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/gif/testdata"
+          gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+          image0 = image_ops.decode_image(gif0, dtype=dtypes.float32)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
+                                                 dtypes.float32)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testBmpFloat32(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/bmp/testdata"
-      bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
-      image0 = image_ops.decode_image(bmp0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
-                                             dtypes.float32)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/bmp/testdata"
+          bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
+          image0 = image_ops.decode_image(bmp0, dtype=dtypes.float32)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
+                                                 dtypes.float32)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testExpandAnimations(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/gif/testdata"
-      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
-      image0 = image_ops.decode_image(
-          gif0, dtype=dtypes.float32, expand_animations=False)
-      # image_ops.decode_png() handles GIFs and returns 3D tensors
-      animation = image_ops.decode_gif(gif0)
-      first_frame = array_ops.gather(animation, 0)
-      image1 = image_ops.convert_image_dtype(first_frame, dtypes.float32)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertEqual(len(image0.shape), 3)
-      self.assertAllEqual(list(image0.shape), [40, 20, 3])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/gif/testdata"
+          gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+
+          # Test `expand_animations=False` case.
+          image0 = image_ops.decode_image(
+              gif0, dtype=dtypes.float32, expand_animations=False)
+          # image_ops.decode_png() handles GIFs and returns 3D tensors
+          animation = image_ops.decode_gif(gif0)
+          first_frame = array_ops.gather(animation, 0)
+          image1 = image_ops.convert_image_dtype(first_frame, dtypes.float32)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertEqual(len(image0.shape), 3)
+          self.assertAllEqual(list(image0.shape), [40, 20, 3])
+          self.assertAllEqual(image0, image1)
+
+          # Test `expand_animations=True` case.
+          image2 = image_ops.decode_image(gif0, dtype=dtypes.float32)
+          image3 = image_ops.convert_image_dtype(animation, dtypes.float32)
+          image2, image3 = self.evaluate([image2, image3])
+          self.assertEqual(len(image2.shape), 4)
+          self.assertAllEqual(list(image2.shape), [12, 40, 20, 3])
+          self.assertAllEqual(image2, image3)
 
 
 if __name__ == "__main__":
