@@ -200,13 +200,13 @@ def make_reduce_prod_tests(options):
 @register_make_test_function()
 def make_reduce_max_tests(options):
   """Make a set of tests to do max."""
-  return make_reduce_tests(tf.reduce_max)(options)
+  return make_reduce_tests(tf.reduce_max, -10, 10, False, True)(options)
 
 
 @register_make_test_function()
 def make_reduce_min_tests(options):
   """Make a set of tests to do min."""
-  return make_reduce_tests(tf.reduce_min)(options)
+  return make_reduce_tests(tf.reduce_min, -10, 10, False, True)(options)
 
 
 @register_make_test_function()
