@@ -301,7 +301,7 @@ ResourceHandle MakeResourceHandle(
   return MakeResourceHandle(
       container.empty() ? ctx->resource_manager()->default_container()
                         : container,
-      name, *ctx->device(), MakeTypeIndex<T>(), dtypes_and_shapes);
+      name, *ctx->device(), TypeIndex::Make<T>(), dtypes_and_shapes);
 }
 
 template <typename T>
@@ -311,7 +311,7 @@ ResourceHandle MakeResourceHandle(
   return MakeResourceHandle(
       container.empty() ? ctx->resource_manager()->default_container()
                         : container,
-      name, *ctx->device(), MakeTypeIndex<T>(), dtypes_and_shapes);
+      name, *ctx->device(), TypeIndex::Make<T>(), dtypes_and_shapes);
 }
 
 Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
@@ -589,7 +589,7 @@ Status ResourceMgr::Create(const string& container, const string& name,
   CheckDeriveFromResourceBase<T>();
   CHECK(resource != nullptr);
   mutex_lock l(mu_);
-  return DoCreate(container, MakeTypeIndex<T>(), name, resource);
+  return DoCreate(container, TypeIndex::Make<T>(), name, resource);
 }
 
 template <typename T, bool use_dynamic_cast>
@@ -635,7 +635,7 @@ template <typename T, bool use_dynamic_cast>
 Status ResourceMgr::LookupInternal(const string& container, const string& name,
                                    T** resource) const {
   ResourceBase* found = nullptr;
-  Status s = DoLookup(container, MakeTypeIndex<T>(), name, &found);
+  Status s = DoLookup(container, TypeIndex::Make<T>(), name, &found);
   if (s.ok()) {
     // It's safe to down cast 'found' to T* since
     // typeid(T).hash_code() is part of the map key.
@@ -660,7 +660,7 @@ Status ResourceMgr::LookupOrCreate(const string& container, const string& name,
   s = LookupInternal<T, use_dynamic_cast>(container, name, resource);
   if (s.ok()) return s;
   TF_RETURN_IF_ERROR(creator(resource));
-  s = DoCreate(container, MakeTypeIndex<T>(), name, *resource);
+  s = DoCreate(container, TypeIndex::Make<T>(), name, *resource);
   if (!s.ok()) {
     return errors::Internal("LookupOrCreate failed unexpectedly");
   }
@@ -671,7 +671,7 @@ Status ResourceMgr::LookupOrCreate(const string& container, const string& name,
 template <typename T>
 Status ResourceMgr::Delete(const string& container, const string& name) {
   CheckDeriveFromResourceBase<T>();
-  return DoDelete(container, MakeTypeIndex<T>(), name);
+  return DoDelete(container, TypeIndex::Make<T>(), name);
 }
 
 template <typename T>
@@ -710,7 +710,7 @@ Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p);
 template <typename T>
 Status ValidateDeviceAndType(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
-  auto type_index = MakeTypeIndex<T>();
+  auto type_index = TypeIndex::Make<T>();
   if (type_index.hash_code() != p.hash_code()) {
     return errors::InvalidArgument(
         "Trying to access resource using the wrong type. Expected ",
@@ -883,7 +883,7 @@ ResourceHandle ScopedStepContainer::MakeResourceHandle(
   mutex_lock ml(mu_);
   dirty_ = true;
   return tensorflow::MakeResourceHandle(container_, name, device,
-                                        MakeTypeIndex<T>(), {});
+                                        TypeIndex::Make<T>(), {});
 }
 
 template <typename T>
