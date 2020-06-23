@@ -117,8 +117,8 @@ std::vector<int32> ReshapeToTranspose(const Model& model,
     return ::tensorflow::Status::OK();
   }
 
-  const string intermediate_name = reshape_op->inputs[0];
-  const string output_name = reshape_op->outputs[0];
+  const std::string intermediate_name = reshape_op->inputs[0];
+  const std::string output_name = reshape_op->outputs[0];
 
   // Guarantee the input is only consume by the reshape.
   if (CountOpsWithInput(*model, intermediate_name) != 1) {

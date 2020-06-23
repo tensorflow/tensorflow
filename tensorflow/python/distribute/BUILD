@@ -204,6 +204,7 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//third_party/py/numpy",
     ],
 )
@@ -654,7 +655,7 @@ tpu_py_test(
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -744,14 +745,12 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tf_export",
         "//tensorflow/python:type_spec",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:tape",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking:base",
@@ -790,6 +789,7 @@ py_library(
     name = "tpu_values",
     srcs = ["tpu_values.py"],
     deps = [
+        ":packed_distributed_variable",
         ":values",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
@@ -1487,7 +1487,6 @@ cuda_py_test(
         "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -1513,7 +1512,6 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -1605,7 +1603,7 @@ distribute_py_test(
     srcs = ["saved_model_save_load_test.py"],
     full_precision = True,
     main = "saved_model_save_load_test.py",
-    shard_count = 5,
+    shard_count = 7,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
@@ -1638,7 +1636,7 @@ distribute_py_test(
     srcs = ["saved_model_mixed_api_test.py"],
     full_precision = True,
     main = "saved_model_mixed_api_test.py",
-    shard_count = 5,
+    shard_count = 7,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",
@@ -1797,7 +1795,7 @@ py_test(
     name = "multi_process_runner_test",
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
-    tags = ["notsan"],  # TODO(b/158874970)
+    shard_count = 12,
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
@@ -1850,10 +1848,11 @@ py_test(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "strategy_common_test",
     srcs = ["strategy_common_test.py"],
     python_version = "PY3",
+    shard_count = 12,
     tags = [
         "multi_and_single_gpu",
         # TODO(b/155301154): Enable this test on multi-gpu guitar once multi process
@@ -1862,6 +1861,7 @@ cuda_py_test(
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
         ":multi_worker_test_base",
         ":reduce_util",

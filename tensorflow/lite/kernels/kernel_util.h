@@ -169,7 +169,7 @@ void CalculateActivationRange(TfLiteFusedActivation activation,
   } else if (activation == kTfLiteActRelu6) {
     *activation_min = 0;
     *activation_max = 6;
-  } else if (activation == kTfLiteActRelu1) {
+  } else if (activation == kTfLiteActReluN1To1) {
     *activation_min = -1;
     *activation_max = 1;
   } else {

@@ -28,6 +28,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -36,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 
@@ -421,6 +423,17 @@ class TestStrategyTest(test.TestCase):
       dist.extended.update_non_slot(t, update_fn)
 
     test_fn()
+
+  def testClusterResolverDefaultNotImplemented(self):
+    dist = _TestStrategy()
+    self.assertIsNone(dist.cluster_resolver)
+    base_cluster_spec = server_lib.ClusterSpec({
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+    })
+    cluster_resolver = SimpleClusterResolver(base_cluster_spec)
+    dist.extended._cluster_resolver = cluster_resolver
+    self.assertIs(dist.cluster_resolver, cluster_resolver)
 
 
 # _TestStrategy2 is like _TestStrategy, except it doesn't change variable

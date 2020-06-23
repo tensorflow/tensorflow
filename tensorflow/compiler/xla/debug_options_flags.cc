@@ -64,7 +64,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_fast_math_honor_division(true);
 
   // By default, copy TF's Eigen style min_max behavior with nans.
-  opts.set_xla_cpu_enable_fast_min_max(false);
+  opts.set_xla_cpu_enable_fast_min_max(true);
 
   opts.set_xla_gpu_enable_fast_min_max(true);
 

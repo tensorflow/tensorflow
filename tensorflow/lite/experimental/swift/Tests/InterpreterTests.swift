@@ -142,10 +142,12 @@ class InterpreterTests: XCTestCase {
   }
 
   func testResizeInputTensorAtIndexToShape_ThrowsInvalidIndex() {
-    XCTAssertThrowsError(try interpreter.resizeInput(
-      at: AddModel.invalidIndex,
-      to: [2, 2, 3]
-    )) { error in
+    XCTAssertThrowsError(
+      try interpreter.resizeInput(
+        at: AddModel.invalidIndex,
+        to: [2, 2, 3]
+      )
+    ) { error in
       let maxIndex = AddModel.inputTensorCount - 1
       self.assertEqualErrors(
         actual: error,
@@ -162,10 +164,12 @@ class InterpreterTests: XCTestCase {
   }
 
   func testCopyDataToInputTensorAtIndex_ThrowsInvalidIndex() {
-    XCTAssertThrowsError(try interpreter.copy(
-      AddModel.inputData,
-      toInputAt: AddModel.invalidIndex
-    )) { error in
+    XCTAssertThrowsError(
+      try interpreter.copy(
+        AddModel.inputData,
+        toInputAt: AddModel.invalidIndex
+      )
+    ) { error in
       let maxIndex = AddModel.inputTensorCount - 1
       self.assertEqualErrors(
         actual: error,
@@ -178,10 +182,12 @@ class InterpreterTests: XCTestCase {
     try interpreter.resizeInput(at: AddModel.validIndex, to: AddModel.shape)
     try interpreter.allocateTensors()
     let invalidData = Data(count: AddModel.dataCount - 1)
-    XCTAssertThrowsError(try interpreter.copy(
-      invalidData,
-      toInputAt: AddModel.validIndex
-    )) { error in
+    XCTAssertThrowsError(
+      try interpreter.copy(
+        invalidData,
+        toInputAt: AddModel.validIndex
+      )
+    ) { error in
       self.assertEqualErrors(
         actual: error,
         expected: .invalidTensorDataCount(provided: invalidData.count, required: AddModel.dataCount)
@@ -223,12 +229,20 @@ class InterpreterOptionsTests: XCTestCase {
   func testInitWithDefaultValues() {
     let options = Interpreter.Options()
     XCTAssertNil(options.threadCount)
+    XCTAssertFalse(options.isXNNPackEnabled)
   }
 
   func testInitWithCustomValues() {
     var options = Interpreter.Options()
+
     options.threadCount = 2
     XCTAssertEqual(options.threadCount, 2)
+
+    options.isXNNPackEnabled = false
+    XCTAssertFalse(options.isXNNPackEnabled)
+
+    options.isXNNPackEnabled = true
+    XCTAssertTrue(options.isXNNPackEnabled)
   }
 
   func testEquatable() {
@@ -242,6 +256,15 @@ class InterpreterOptionsTests: XCTestCase {
 
     options2.threadCount = 3
     XCTAssertNotEqual(options1, options2)
+
+    options2.threadCount = 2
+    XCTAssertEqual(options1, options2)
+
+    options2.isXNNPackEnabled = true
+    XCTAssertNotEqual(options1, options2)
+
+    options1.isXNNPackEnabled = true
+    XCTAssertEqual(options1, options2)
   }
 }
 
@@ -326,14 +349,15 @@ extension Array {
   init?(unsafeData: Data) {
     guard unsafeData.count % MemoryLayout<Element>.stride == 0 else { return nil }
     #if swift(>=5.0)
-    self = unsafeData.withUnsafeBytes { .init($0.bindMemory(to: Element.self)) }
+      self = unsafeData.withUnsafeBytes { .init($0.bindMemory(to: Element.self)) }
     #else
-    self = unsafeData.withUnsafeBytes {
-      .init(UnsafeBufferPointer<Element>(
-        start: $0,
-        count: unsafeData.count / MemoryLayout<Element>.stride
-      ))
-    }
+      self = unsafeData.withUnsafeBytes {
+        .init(
+          UnsafeBufferPointer<Element>(
+            start: $0,
+            count: unsafeData.count / MemoryLayout<Element>.stride
+          ))
+      }
     #endif  // swift(>=5.0)
   }
 }

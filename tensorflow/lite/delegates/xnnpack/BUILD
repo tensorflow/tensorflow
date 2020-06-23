@@ -14,6 +14,10 @@ EMSCRIPTEN_LINKOPTS = [
     "-s TOTAL_MEMORY=134217728",
 ]
 
+exports_files([
+    "xnnpack_delegate.h",
+])
+
 cc_library(
     name = "xnnpack_delegate",
     srcs = ["xnnpack_delegate.cc"],
@@ -21,6 +25,7 @@ cc_library(
     linkstatic = True,
     deps = [
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
@@ -47,6 +52,7 @@ cc_library(
     linkstatic = True,
     deps = [
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",

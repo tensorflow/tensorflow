@@ -15,10 +15,22 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <fstream>
+
 #include "absl/strings/string_view.h"
 #include "google/cloud/storage/client.h"
+#include "tensorflow/c/env.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_helper.h"
 #include "tensorflow/c/tf_status.h"
+
+#ifdef TF_GCS_FILESYSTEM_TEST
+// For testing purpose, we expose some functions.
+#define TF_STATIC
+#else
+// Otherwise, we don't expose any symbol.
+#define TF_STATIC static
+#endif
 
 // Implementation of a filesystem for GCS environments.
 // This filesystem will support `gs://` URI schemes.
@@ -86,6 +98,20 @@ namespace tf_random_access_file {
 // SECTION 2. Implementation for `TF_WritableFile`
 // ----------------------------------------------------------------------------
 namespace tf_writable_file {
+typedef struct GCSFile {
+  const char* bucket;
+  const char* object;
+  gcs::Client* gcs_client;  // not owned
+  TempFile outfile;
+  bool sync_need;
+} GCSFile;
+
+static void Cleanup(TF_WritableFile* file) {
+  auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
+  plugin_memory_free(const_cast<char*>(gcs_file->bucket));
+  plugin_memory_free(const_cast<char*>(gcs_file->object));
+  delete gcs_file;
+}
 
 // TODO(vnvo2409): Implement later
 
@@ -104,7 +130,7 @@ namespace tf_read_only_memory_region {
 namespace tf_gcs_filesystem {
 
 // TODO(vnvo2409): Add lazy-loading and customizing parameters.
-static void Init(TF_Filesystem* filesystem, TF_Status* status) {
+TF_STATIC void Init(TF_Filesystem* filesystem, TF_Status* status) {
   google::cloud::StatusOr<gcs::Client> client =
       gcs::Client::CreateDefaultClient();
   if (!client) {
@@ -117,7 +143,53 @@ static void Init(TF_Filesystem* filesystem, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
 }
 
+static void Cleanup(TF_Filesystem* filesystem) {
+  plugin_memory_free(filesystem->plugin_filesystem);
+}
+
 // TODO(vnvo2409): Implement later
+
+static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
+                            TF_WritableFile* file, TF_Status* status) {
+  char* bucket;
+  char* object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+  char* temp_file_name = TF_GetTempFileName("");
+  file->plugin_file = new tf_writable_file::GCSFile(
+      {bucket, object, gcs_client,
+       TempFile(temp_file_name, std::ios::binary | std::ios::out), true});
+  // We are responsible for freeing the pointer returned by TF_GetTempFileName
+  free(temp_file_name);
+  TF_SetStatus(status, TF_OK, "");
+}
+
+static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                              TF_WritableFile* file, TF_Status* status) {
+  char* bucket;
+  char* object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+  char* temp_file_name = TF_GetTempFileName("");
+
+  auto gcs_status = gcs_client->DownloadToFile(bucket, object, temp_file_name);
+  TF_SetStatusFromGCSStatus(gcs_status, status);
+  auto status_code = TF_GetCode(status);
+  if (status_code != TF_OK && status_code != TF_NOT_FOUND) {
+    return;
+  }
+  // If this file does not exist on server, we will need to sync it.
+  bool sync_need = (status_code == TF_NOT_FOUND);
+  file->plugin_file = new tf_writable_file::GCSFile(
+      {bucket, object, gcs_client,
+       TempFile(temp_file_name, std::ios::binary | std::ios::app), sync_need});
+  free(temp_file_name);
+  TF_SetStatus(status, TF_OK, "");
+}
 
 }  // namespace tf_gcs_filesystem
 
@@ -126,9 +198,17 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
   TF_SetFilesystemVersionMetadata(ops);
   ops->scheme = strdup(uri);
 
+  ops->writable_file_ops = static_cast<TF_WritableFileOps*>(
+      plugin_memory_allocate(TF_WRITABLE_FILE_OPS_SIZE));
+  ops->writable_file_ops->cleanup = tf_writable_file::Cleanup;
+
   ops->filesystem_ops = static_cast<TF_FilesystemOps*>(
       plugin_memory_allocate(TF_FILESYSTEM_OPS_SIZE));
   ops->filesystem_ops->init = tf_gcs_filesystem::Init;
+  ops->filesystem_ops->cleanup = tf_gcs_filesystem::Cleanup;
+  ops->filesystem_ops->new_writable_file = tf_gcs_filesystem::NewWritableFile;
+  ops->filesystem_ops->new_appendable_file =
+      tf_gcs_filesystem::NewAppendableFile;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {

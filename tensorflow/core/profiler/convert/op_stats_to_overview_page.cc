@@ -130,11 +130,13 @@ void SetCommonRecommendation(absl::string_view input_classification,
                              absl::string_view output_statement,
                              HardwareType hardware_type,
                              absl::string_view tf_function_statement_html,
+                             absl::string_view eager_statement_html,
                              OverviewPageRecommendation* re) {
   re->set_bottleneck(std::string(input_classification));
   re->set_statement(std::string(input_statement));
   re->set_output_statement(std::string(output_statement));
   re->set_tf_function_statement_html(std::string(tf_function_statement_html));
+  re->set_eager_statement_html(std::string(eager_statement_html));
   ComputeHostTips(re);
   ComputeDeviceTips(hardware_type, re);
   ComputeDocumentationTips(re);
@@ -188,13 +190,26 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
       SafeDivide(
           op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps(),
           total_device_compute_ps));
+
   uint64 num_host_tf_ops = 0;
+  uint64 total_host_op_time_ps_exclude_idle = 0;
+  uint64 eager_host_op_time_ps = 0;
   for (const OpMetrics& metrics : op_stats.host_op_metrics_db().metrics_db()) {
     num_host_tf_ops += metrics.occurrences();
+    if (!IsIdleOp(metrics)) {
+      total_host_op_time_ps_exclude_idle += metrics.self_time_ps();
+      if (metrics.is_eager()) eager_host_op_time_ps += metrics.self_time_ps();
+    }
   }
   uint64 num_device_tf_ops = 0;
+  uint64 total_device_op_time_ps_exclude_idle = 0;
+  uint64 eager_device_op_time_ps = 0;
   for (const OpMetrics& metrics : device_tf_op_metrics_db.metrics_db()) {
     num_device_tf_ops += metrics.occurrences();
+    if (!IsIdleOp(metrics)) {
+      total_device_op_time_ps_exclude_idle += metrics.self_time_ps();
+      if (metrics.is_eager()) eager_device_op_time_ps += metrics.self_time_ps();
+    }
   }
   uint64 num_total_tf_ops = num_host_tf_ops + num_device_tf_ops;
   analysis.set_host_tf_op_percent(
@@ -202,6 +217,12 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   analysis.set_device_tf_op_percent(
       100.0 * SafeDivide(num_device_tf_ops, num_total_tf_ops));
   analysis.set_host_trace_level(op_stats.run_environment().host_trace_level());
+  analysis.set_host_op_time_eager_percent(
+      100.0 *
+      SafeDivide(eager_host_op_time_ps, total_host_op_time_ps_exclude_idle));
+  analysis.set_device_op_time_eager_percent(
+      100.0 * SafeDivide(eager_device_op_time_ps,
+                         total_device_op_time_ps_exclude_idle));
   return analysis;
 }
 
@@ -279,6 +300,22 @@ std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db) {
                       ") due to either retracing or eager execution.");
 }
 
+std::string EagerRecommendationHtml(double host_op_time_eager_percent,
+                                    double device_op_time_eager_percent) {
+  std::string recommendation = "";
+  if (host_op_time_eager_percent > kEagerReportThresholdInPercent)
+    absl::StrAppend(&recommendation, host_op_time_eager_percent,
+                    "% of Op time on the host used eager execution. ");
+  if (device_op_time_eager_percent > kEagerReportThresholdInPercent)
+    absl::StrAppend(&recommendation, device_op_time_eager_percent,
+                    "% of Op time on the device used eager execution. ");
+  if (!recommendation.empty())
+    absl::StrAppend(&recommendation, "Performance could be improved with ",
+                    AnchorElement("https://www.tensorflow.org/guide/function",
+                                  "tf.function."));
+  return recommendation;
+}
+
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type) {
   OverviewPage overview_page;
@@ -295,6 +332,9 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
   SetCommonRecommendation(
       bottleneck.input_classification(), bottleneck.input_statement(), "",
       hardware_type, TfFunctionRecommendationHtml(op_stats.tf_function_db()),
+      EagerRecommendationHtml(
+          overview_page.analysis().host_op_time_eager_percent(),
+          overview_page.analysis().device_op_time_eager_percent()),
       overview_page.mutable_recommendation());
   PopulateOverviewDiagnostics(op_stats, overview_page.mutable_diagnostics());
   return overview_page;

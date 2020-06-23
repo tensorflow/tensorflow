@@ -215,6 +215,10 @@ bool InferShapeForNonTFDialectOperation(Operation* op, Dialect* tf_dialect) {
     return InferShapeForPassThroughOps(
         tensor_cast.getOperation()->getOperands(), op, tf_dialect);
   }
+  if (auto launch_op = dyn_cast<tf_device::LaunchOp>(op)) {
+    return InferShapeForPassThroughOps(
+        launch_op.GetBody().getTerminator()->getOperands(), op, tf_dialect);
+  }
   return false;
 }
 

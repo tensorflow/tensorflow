@@ -17,6 +17,7 @@ tensorflow::swig::Flatten
 tensorflow::swig::IsSequenceForData
 tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
+tensorflow::swig::RegisterPyObject
 tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
 

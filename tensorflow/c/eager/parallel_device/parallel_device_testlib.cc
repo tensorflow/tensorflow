@@ -296,8 +296,8 @@ void BasicTestsForTwoDevices(TFE_Context* context, const char* first_device,
     TFE_DeleteTensorHandle(result_handle);
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
-    ExpectScalarEq<int64_t>(components[0].get(), 0);
-    ExpectScalarEq<int64_t>(components[1].get(), 1);
+    ExpectScalarEq<int32_t>(components[0].get(), 0);
+    ExpectScalarEq<int32_t>(components[1].get(), 1);
     std::string first_device =
         TFE_TensorHandleBackingDeviceName(components[0].get(), status.get());
     ASSERT_EQ(underlying_devices[0], first_device);

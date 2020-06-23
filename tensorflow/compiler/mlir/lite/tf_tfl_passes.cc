@@ -39,22 +39,18 @@ namespace tensorflow {
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager* pass_manager) {
   pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(quant_specs));
-  pass_manager->addPass(mlir::TFL::CreateQuantizePass());
-  bool emit_quant_adaptor_ops =
-      quant_specs.inference_type != quant_specs.inference_input_type;
-  pass_manager->addPass(
-      mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
-
   if (quant_specs.default_ranges.first.hasValue() ||
       quant_specs.default_ranges.second.hasValue()) {
     pass_manager->addPass(mlir::TFL::CreateDefaultQuantParamsPass(
         quant_specs.default_ranges.first.getValueOr(0.0),
         quant_specs.default_ranges.second.getValueOr(0.0),
         quant_specs.IsSignedInferenceType()));
-    pass_manager->addPass(mlir::TFL::CreateQuantizePass());
-    pass_manager->addPass(
-        mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
   }
+  pass_manager->addPass(mlir::TFL::CreateQuantizePass());
+  bool emit_quant_adaptor_ops =
+      quant_specs.inference_type != quant_specs.inference_input_type;
+  pass_manager->addPass(
+      mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
 }
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
@@ -63,7 +59,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   standard_pipeline_options.enable_inliner = false;
   standard_pipeline_options.form_clusters = pass_config.form_clusters;
   mlir::TF::CreateTFStandardPipeline(*pass_manager, standard_pipeline_options);
-  pass_manager->addPass(mlir::TFL::CreateDeviceIndexSelectorPass());
+  pass_manager->addPass(mlir::TF::CreateDeviceIndexSelectorPass());
 
   if (pass_config.shape_inference) {
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
@@ -212,9 +208,6 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   // Saved model pass to mark global tensors immutable.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-  // Used to mark non-exported functions in saved model private.
-  pm.addPass(mlir::tf_saved_model::
-                 CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
   // Op fusion pass.
   pm.addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
 

@@ -230,10 +230,10 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<xla_hlo::ReduceOp> {
     auto loc = op.getLoc();
     // TODO(b/137624192) Implement variadic reduce.
     if (op.getNumResults() != 1) return failure();
-    if (op.getParentRegion()->getBlocks().size() != 1) {
-      op.emitOpError() << "tensor to buffer conversion expects a single block "
-                          "in the region containing the operation";
-      return failure();
+    if (!llvm::hasSingleElement(op.body())) {
+      return op.emitOpError()
+             << "tensor to buffer conversion expects a single block "
+                "in the region containing the operation";
     }
     const auto& original_results = op.getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
@@ -389,10 +389,13 @@ struct HloLegalizeToLhlo
     target.addLegalOp<ModuleTerminatorOp>();
     target.addLegalOp<TensorFromElementsOp>();
     target.addIllegalDialect<xla_hlo::XlaHloDialect>();
+
+    BufferAssignmentTypeConverter converter;
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();
-      return std::all_of(inputs.begin(), inputs.end(),
-                         [](Type input) { return input.isa<MemRefType>(); });
+      return llvm::all_of(inputs,
+                          [](Type input) { return input.isa<MemRefType>(); }) &&
+             converter.isLegal(&op.getBody());
     });
     target.addDynamicallyLegalOp<mlir::ReturnOp>([&](mlir::ReturnOp returnOp) {
       return std::all_of(returnOp.operand_type_begin(),
@@ -401,8 +404,7 @@ struct HloLegalizeToLhlo
     });
 
     auto module = getOperation();
-    BufferAssignmentTypeConverter converter;
-    module.walk([&](FuncOp func) {
+    module.walk([&](FuncOp func) -> WalkResult {
       BufferAssignmentPlacer bufferAssignment(func);
       OwningRewritePatternList patterns;
       populateHLOToLHLOConversionPattern(func.getContext(), &bufferAssignment,
@@ -418,8 +420,7 @@ struct HloLegalizeToLhlo
             /*allowMemrefFunctionResults=*/false>(&context, &bufferAssignment,
                                                   &converter, &patterns);
       }
-      return WalkResult(
-          applyPartialConversion(func, target, patterns, &converter));
+      return applyPartialConversion(func, target, patterns);
     });
   }
 
@@ -463,6 +464,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::RealOp>,
       HloToLhloOpConverter<xla_hlo::RemOp>,
       HloToLhloOpConverter<xla_hlo::RsqrtOp>,
+      HloToLhloOpConverter<xla_hlo::ReshapeOp>,
       HloToLhloOpConverter<xla_hlo::SelectOp>,
       HloToLhloOpConverter<xla_hlo::SignOp>,
       HloToLhloOpConverter<xla_hlo::SqrtOp>,

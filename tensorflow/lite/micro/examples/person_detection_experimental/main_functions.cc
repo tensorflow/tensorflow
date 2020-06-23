@@ -73,17 +73,11 @@ void setup() {
   // tflite::AllOpsResolver resolver;
   // NOLINTNEXTLINE(runtime-global-variables)
   static tflite::MicroMutableOpResolver<5> micro_op_resolver;
-  micro_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                               tflite::ops::micro::Register_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_AVERAGE_POOL_2D,
-                               tflite::ops::micro::Register_AVERAGE_POOL_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_RESHAPE,
-                               tflite::ops::micro::Register_RESHAPE());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX());
+  micro_op_resolver.AddAveragePool2D();
+  micro_op_resolver.AddConv2D();
+  micro_op_resolver.AddDepthwiseConv2D();
+  micro_op_resolver.AddReshape();
+  micro_op_resolver.AddSoftmax();
 
   // Build an interpreter to run the model with.
   // NOLINTNEXTLINE(runtime-global-variables)

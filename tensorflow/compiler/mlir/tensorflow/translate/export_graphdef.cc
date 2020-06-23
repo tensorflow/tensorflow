@@ -128,7 +128,7 @@ class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
 Status HasSingleGraphSingleOpIslandsFunctions(mlir::ModuleOp module) {
   Status status = Status::OK();
   module.walk([&](mlir::FuncOp function) {
-    if (function.getBlocks().size() != 1) {
+    if (!llvm::hasSingleElement(function)) {
       status = errors::FailedPrecondition(
           kInvalidExecutorGraphMsg,
           "only single block functions are supported.");

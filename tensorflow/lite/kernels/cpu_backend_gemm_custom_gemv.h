@@ -591,10 +591,10 @@ struct CustomGemvImpl<LhsScalar, RhsScalar, std::int32_t, DstScalar,
 // The float specialization below is unconditionally faster than ruy
 // because ruy does not currently have any Gemv path.
 // But it is not unconditionally faster than Eigen, which is what is used
-// unless TFLITE_WITH_RUY_ONLY is defined. Indeed, Eigen has decently efficient
+// unless TFLITE_WITH_RUY is defined. Indeed, Eigen has decently efficient
 // Gemv paths, and they may use AVX instructions, while the present
 // NEON intrinsics code maps at best to SSE4 on x86.
-#ifdef TFLITE_WITH_RUY_ONLY
+#ifdef TFLITE_WITH_RUY
 
 // We want to use fused multiply-add when it's available (that is, on A64
 // unconditionally and on A32 with VFPv4) because it's often faster, and
@@ -778,7 +778,7 @@ struct CustomGemvImpl<float, float, float, float,
   }
 };
 
-#endif  // TFLITE_WITH_RUY_ONLY
+#endif  // TFLITE_WITH_RUY
 
 #endif  // USE_NEON
 

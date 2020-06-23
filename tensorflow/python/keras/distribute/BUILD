@@ -325,6 +325,51 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "mirrored_strategy_test",
+    srcs = ["mirrored_strategy_test.py"],
+    python_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+        "no_windows_gpu",  # TODO(b/130551176)
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+    ],
+)
+
+cuda_py_test(
+    name = "mirrored_variable_test",
+    srcs = ["mirrored_variable_test.py"],
+    python_version = "PY3",
+    tags = [
+        "guitar",
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:config",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/layers:core",
+    ],
+)
+
+cuda_py_test(
     name = "multi_worker_test",
     srcs = ["multi_worker_test.py"],
     python_version = "PY3",

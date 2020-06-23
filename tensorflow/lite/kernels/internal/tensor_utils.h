@@ -587,7 +587,7 @@ inline void ApplyActivationToVector(const float* __restrict__ vector,
       return;
     case kTfLiteActRelu:
       return ApplyReluToVector(vector, v_size, result);
-    case kTfLiteActRelu1:
+    case kTfLiteActReluN1To1:
       return ApplyRelu1ToVector(vector, v_size, result);
     case kTfLiteActRelu6:
       return ApplyRelu6ToVector(vector, v_size, result);
