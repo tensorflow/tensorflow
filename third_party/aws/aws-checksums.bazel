@@ -16,6 +16,7 @@ cc_library(
         "//conditions:default": [],
     }) + glob([
         "source/intel/*.c",
+        "source/arm/*.c",
         "source/*.c",
     ]),
     hdrs = glob([
