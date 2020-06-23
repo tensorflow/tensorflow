@@ -1857,7 +1857,7 @@ void ProcessArgMinMaxOperator(Model* model, Op* op) {
 
   output_dims.reserve(input_dims.size() - 1);
 
-  for (int i = 0, iter_limit = input_dims.size(); i < iter_limitd; ++i) {
+  for (int i = 0, iter_limit = input_dims.size(); i < iter_limit; ++i) {
     if (i != axis) {
       output_dims.push_back(input_dims[i]);
     }
