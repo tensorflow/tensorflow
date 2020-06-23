@@ -490,7 +490,7 @@ inline void LstmStepFloat(
 // Temporary pre-allocated storage for quantized values:
 //   quantized_input_ptr (same size as input_ptr)
 //   quantized_output_state_ptr (same size as output_state_ptr)
-//   quantized_cell_state_ptr (same size as cell_state_ptr)
+//   quantized_output_scratch (same size as cell_state_ptr)
 // Temporary pre-allocated storage for recovered values:
 //   recovered_cell_weights (same size as cell_to_*_weights)
 //
@@ -540,7 +540,7 @@ inline void LstmStepHybrid(
     float* scratch2, float* scratch3, float* scaling_factors,
     float* scaling_factors_scratch, float* recovered_cell_weights,
     int8_t* quantized_input_ptr, int8_t* quantized_aux_input_ptr,
-    int8_t* quantized_output_state_ptr, int8_t* quantized_cell_state_ptr,
+    int8_t* quantized_output_state_ptr, int8_t* quantized_output_scratch,
     float* output_state_ptr, float* cell_state_ptr, int32_t* accum_scratch_ptr,
     float* output_ptr, int32_t* zero_points, int32_t* row_sums,
     int row_sums_size, bool* compute_row_sums, bool asymmetric_quantize_inputs,
@@ -882,10 +882,10 @@ inline void LstmStepHybrid(
     if (!tensor_utils::IsZeroVector(output_gate_scratch, n_batch * n_cell)) {
       // Save quantization and matmul computation for all zero input.
       tensor_utils::BatchQuantizeFloats(
-          output_gate_scratch, n_batch, n_cell, quantized_cell_state_ptr,
+          output_gate_scratch, n_batch, n_cell, quantized_output_scratch,
           scaling_factors, zero_points, asymmetric_quantize_inputs);
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-          projection_weights_ptr, n_output, n_cell, quantized_cell_state_ptr,
+          projection_weights_ptr, n_output, n_cell, quantized_output_scratch,
           projection_weights_scale, scaling_factors, n_batch, output_state_ptr,
           /*per_channel_scale=*/nullptr,
           asymmetric_quantize_inputs ? zero_points : nullptr, accum_scratch_ptr,
@@ -996,7 +996,7 @@ inline void LstmStepHybrid(
 //   output_state_ptr - size 'n_batch * n_output'
 //   cell_state_ptr   - size 'n_batch * n_cell'
 //   output_ptr       - size 'n_batch * n_output'
-inline void LstmStepInteger(
+inline void LstmStepInteger8x8_16(
     const int8_t* input_ptr, const int8_t* input_to_input_weight_ptr,
     int32_t effective_input_to_input_scale_a,
     int32_t effective_input_to_input_scale_b,
@@ -1060,7 +1060,7 @@ inline void LstmStepInteger(
     int32_t output_state_zp, int16_t* cell_state_ptr, int8_t* output_ptr,
     int16_t* scratch0, int16_t* scratch1, int16_t* scratch2, int16_t* scratch3,
     int8_t* scratch4, int32_t* scratch5, CpuBackendContext* context) {
-  ruy::profiler::ScopeLabel label("LstmStepInteger");
+  ruy::profiler::ScopeLabel label("LstmStepInteger8x8_16");
   // Make named scratch buffers for the different gates.
   int16_t* input_gate_scratch = scratch0;
   int16_t* forget_gate_scratch = scratch1;
@@ -1336,7 +1336,7 @@ inline void LstmStepInteger(
 //   cell_state_ptr   - size 'n_batch * n_cell'
 //   output_ptr       - size 'n_batch * n_output'
 // TODO(b/148688698): Move zero point calculation into Prepare().
-void LstmStepInteger(
+inline void LstmStepInteger8x8_8(
     const int8_t* input_ptr, int32_t input_zp,
     const int8_t* input_to_input_weight_ptr,
     int32_t effective_input_to_input_scale_a,
@@ -1391,6 +1391,7 @@ void LstmStepInteger(
     int8_t* scratch0, int8_t* scratch1, int16_t* scratch2, int16_t* scratch3,
     int16_t* scratch4, int16_t* scratch5, int16_t* scratch6,
     int16_t* scratch7) {
+  ruy::profiler::ScopeLabel label("LstmStepInteger8x8_8");
   // Make named scratch buffers for the different gates.
   int16_t* input_gate_scratch = scratch5;
   int16_t* forget_gate_scratch = scratch2;
@@ -1426,7 +1427,7 @@ void LstmStepInteger(
   tensor_utils::ApplySigmoidFloat(forget_gate_scratch, n_batch, n_cell,
                                   forget_gate_scratch);
 
-  // Update gate.
+  // Cell gate.
   std::fill_n(scratch0, n_batch * n_cell, 0);
   std::fill_n(scratch1, n_batch * n_cell, 0);
   tensor_utils::MatrixBatchVectorMultiply(
@@ -1444,13 +1445,13 @@ void LstmStepInteger(
       intermediate_scale_a[4], intermediate_scale_b[4], intermediate_scale_a[5],
       intermediate_scale_b[5], n_batch, n_cell, cell_gate_scratch);
 
-  // Update gate layer norm.
+  // Cell gate layer norm.
   tensor_utils::ApplyLayerNormFloat(
       cell_gate_scratch, layer_norm_cell_weight_ptr, layer_norm_cell_scale_a,
       layer_norm_cell_scale_b, cell_gate_bias_ptr, n_batch, n_cell,
       cell_gate_scratch);
 
-  // Update gate tanh.
+  // Cell gate tanh.
   tensor_utils::ApplyTanhFloat(cell_gate_scratch, n_batch, n_cell, -12,
                                cell_gate_scratch);
 
@@ -1505,7 +1506,6 @@ void LstmStepInteger(
   tensor_utils::ApplyTanhFloat(cell_state_ptr, n_batch, n_cell, -15,
                                forget_gate_scratch);
 
-  std::vector<int16_t> hidden(n_batch * n_cell);
   tensor_utils::CwiseMul(output_gate_scratch, forget_gate_scratch, n_batch,
                          n_cell, 15 + 15 - 15, cell_gate_scratch);
 
@@ -2004,7 +2004,7 @@ TfLiteStatus EvalInteger8x8_16(
     const int t_rel = t;
     int8_t* output_ptr = GetTensorData<int8_t>(output) + t_rel * output_step;
     const int8_t* input_ptr = GetTensorData<int8_t>(input) + t_rel * input_step;
-    LstmStepInteger(
+    LstmStepInteger8x8_16(
         input_ptr, GetTensorData<int8_t>(input_to_input_weights),
         integer_lstm_param->effective_input_to_input_scale_a,
         integer_lstm_param->effective_input_to_input_scale_b,
@@ -2140,7 +2140,7 @@ TfLiteStatus EvalInteger8x8_8(
     int8_t* output_ptr = GetTensorData<int8_t>(output) + t_rel * output_step;
     // Input can be int8 asymmetric or int16 symmetric.
     const int8_t* input_ptr = GetTensorData<int8_t>(input) + t_rel * input_step;
-    lstm_eval::LstmStepInteger(
+    lstm_eval::LstmStepInteger8x8_8(
         input_ptr, input_zp,
 
         GetTensorData<int8_t>(input_to_input_weights),
