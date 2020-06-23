@@ -433,4 +433,17 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     // CHECK: return %[[CAST_RESULT_0]], %[[CAST_RESULT_1]], %[[ADDI]]
     return %27, %28, %2 : tensor<*xui8>, tensor<*xi8>, tensor<*xi8>
   }
+
+  // CHECK-LABEL: infer_device_launch
+  func @infer_device_launch(%arg0: tensor<1x8x2xi32>) -> (tensor<*xf32>, tensor<*xf32>) {
+    %0 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+    %1 = "tf_device.launch"() ({
+      %2 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x8x2xi32>) -> tensor<1x8x2xf32>
+      tf_device.return %2 : tensor<1x8x2xf32>
+    // CHECK: () -> tensor<1x8x2xf32>
+    }) {device = "/device:CPU:0"} : () -> tensor<*xf32>
+    // CHECK: (tensor<i32>, tensor<1x8x2xf32>) -> (tensor<1x8x1xf32>, tensor<1x8x1xf32>)
+    %3:2 = "tf.Split"(%0, %1) {device = ""} : (tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+    return %3#0, %3#1 : tensor<*xf32>, tensor<*xf32>
+  }
 }
