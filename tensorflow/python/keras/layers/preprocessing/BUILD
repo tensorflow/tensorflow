@@ -369,6 +369,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    tpu_tags = ["no_oss"],
     deps = [
         ":category_crossing",
         "//tensorflow/python/distribute:combinations",
