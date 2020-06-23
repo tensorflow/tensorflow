@@ -61,14 +61,14 @@ class Tests(test.TestCase):
                                           "MatMul", None, None, a_2_by_2,
                                           b_2_by_2, "transpose_a", False,
                                           "transpose_b", False))
-    self.assertAllClose(
-        math_ops.matmul(a_100_by_784, b_100_by_784, transpose_b=True),
-        pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
-                                          "MatMul", None, None, a_100_by_784,
-                                          b_100_by_784, "transpose_a", False,
-                                          "transpose_b", True))
+        self.assertAllClose(
+            math_ops.matmul(a_100_by_784, b_100_by_784, transpose_b=True),
+            pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                              "MatMul", None, None, a_100_by_784,
+                                              b_100_by_784, "transpose_a", False,
+                                              "transpose_b", True))
 
-  @test_util.assert_no_new_tensors
+            @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def testFastpathExecute_ResourceVariableMatMulCorrectResponse(self):
     ctx = context.context()
@@ -100,9 +100,33 @@ class Tests(test.TestCase):
                                             "MatMul", None, None, a_2_by_2,
                                             a_2_by_2, "transpose_a", False,
                                             "transpose_b", False)
-    dz_dy = tape.gradient(z, [a_2_by_2])[0]
+      dz_dy = tape.gradient(z, [a_2_by_2])[0]
     self.assertAllEqual(dz_dy.numpy(),
                         constant_op.constant(4.0, shape=[2, 2]).numpy())
+
+
+  #test to ensure MatMul with different size tensors works with FastPathExecute
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
+  def testFastpathExecute_TapeWrite_MatMul(self):
+    ctx = context.context()
+    ctx.ensure_initialized()
+
+    with backprop.GradientTape(persistent=True) as tape:
+      a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
+      b_2_by_1 = constant_op.constant(2.0, shape=[2, 1])
+      tape.watch(a_2_by_2)
+      tape.watch(b_2_by_1)
+      z = pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                            "MatMul", None, None, a_2_by_2,
+                                            b_2_by_1, "transpose_a", False,
+                                            "transpose_b", False)
+
+    dz_da = tape.gradient(totalsum, [a_2_by_2])[0]
+    self.assertAllEqual(dz_da.numpy(),
+                        constant_op.constant(2.0, shape=[2, 2]).numpy())
+
+
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
@@ -118,11 +142,11 @@ class Tests(test.TestCase):
                                             "MatMul", None, None, m, m,
                                             "transpose_a", False, "transpose_b",
                                             False)
-    dz_dy = tape.gradient(z, [m])[0]
+      dz_dy = tape.gradient(z, [m])[0]
     self.assertAllEqual(dz_dy.numpy(),
                         constant_op.constant(4.0, shape=[2, 2]).numpy())
 
-  # Tests homogeneous list op
+    # Tests homogeneous list op
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def testFastpathExecute_AddNCorrectResponse(self):
@@ -137,7 +161,7 @@ class Tests(test.TestCase):
         pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name, "AddN",
                                           None, None, [a_2_by_2, b_2_by_2]))
 
-  # Tests homogeneous list op
+        # Tests homogeneous list op
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def testFastpathExecute_AddNTapeWrite(self):
@@ -174,7 +198,7 @@ class Tests(test.TestCase):
                                           "IdentityN", None, None,
                                           [a_2_by_2, b_2_by_2]))
 
-  # Tests heterogeneous list op
+        # Tests heterogeneous list op
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def testFastpathExecute_IdentityNTapeWrite(self):
@@ -217,12 +241,12 @@ class Tests(test.TestCase):
       pywrap_tfe.TFE_Py_FastPathExecute(ctx_handle, ctx_handle, "Identity",
                                         None, [])
 
-    # Bad type
+      # Bad type
     with self.assertRaisesRegexp(TypeError, "expected a string for op_name"):
       pywrap_tfe.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name, ctx_handle,
                                         None, [], a_2_by_2)
 
-  @test_util.assert_no_new_tensors
+      @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def testFastPathExecute_InvalidAttributes(self):
     split_dim = constant_op.constant(0, dtype=dtypes.int32)
@@ -236,7 +260,7 @@ class Tests(test.TestCase):
                                         None, None, split_dim, value,
                                         "num_split", -1)
 
-  @test_util.assert_no_new_tensors
+      @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def testInvalidNumOutputs(self):
     with self.assertRaisesRegexp(
@@ -278,11 +302,11 @@ class Tests(test.TestCase):
                                         None, None, m, m, "transpose_a", False,
                                         "transpose_b", False)
 
-  def testOpDefDefaultType(self):
-    im = np.random.randint(
-        low=0, high=65535, size=100, dtype=np.uint16).reshape(10, 10, 1)
+      def testOpDefDefaultType(self):
+        im = np.random.randint(
+            low=0, high=65535, size=100, dtype=np.uint16).reshape(10, 10, 1)
 
-    context.ensure_initialized()
+        context.ensure_initialized()
 
     fastpath_dtype = test_ops.dtype_with_default_op(im).numpy()
     slowpath_dtype = test_ops.dtype_with_default_op_eager_fallback(
@@ -348,7 +372,7 @@ class Tests(test.TestCase):
       full_exception_text = " ".join(
           traceback.format_exception(etype, value, tb))
 
-    self.assertNotRegex(full_exception_text, "_FallbackException")
+      self.assertNotRegex(full_exception_text, "_FallbackException")
 
 if __name__ == "__main__":
   test.main()
