@@ -441,7 +441,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
         handle_deleter = EagerResourceDeleter(
             handle=self._handle, handle_device=self._handle.device)
     self._handle_deleter = handle_deleter
-    self._cached_shape_as_list = None
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
@@ -524,15 +523,16 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     self._shape = self._shape.merge_with(shape)
 
   def _shape_as_list(self):
-    if self.shape.ndims is None:
-      return None
-    return [dim.value for dim in self.shape.dims]
-
-  def _shape_tuple(self):
-    shape = self._shape_as_list()
+    shape = self._shape_tuple()
     if shape is None:
       return None
-    return tuple(shape)
+    return list(shape)
+
+  def _shape_tuple(self):
+    try:
+      return tuple(dim.value for dim in self.shape.dims)
+    except TypeError:
+      return None
 
   @property
   def create(self):

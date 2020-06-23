@@ -513,16 +513,16 @@ class Tensor(internal.NativeObject, core_tf_types.Tensor):
     return _TensorIterator(self, shape[0])
 
   def _shape_as_list(self):
-    if self.shape.ndims is not None:
-      return [dim.value for dim in self.shape.dims]
-    else:
-      return None
-
-  def _shape_tuple(self):
-    shape = self._shape_as_list()
+    shape = self._shape_tuple()
     if shape is None:
       return None
-    return tuple(shape)
+    return list(shape)
+
+  def _shape_tuple(self):
+    try:
+      return tuple(dim.value for dim in self.shape.dims)
+    except TypeError:
+      return None
 
   def _rank(self):
     """Integer rank of this Tensor, if known, else None.

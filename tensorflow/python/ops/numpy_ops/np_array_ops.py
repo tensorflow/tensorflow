@@ -676,7 +676,7 @@ def real(val):
 @np_utils.np_doc('repeat')
 def repeat(a, repeats, axis=None):  # pylint: disable=missing-docstring
   a = asarray(a).data
-  original_shape = a._shape_as_list()  # pylint: disable=protected-access
+  original_shape = a._shape_tuple()  # pylint: disable=protected-access
   # Best effort recovery of the shape.
   known_shape = original_shape is not None and None not in original_shape
   if known_shape:

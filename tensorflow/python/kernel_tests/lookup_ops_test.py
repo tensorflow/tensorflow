@@ -1060,7 +1060,7 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
 
     sp_ids = table.lookup(sp_features)
 
-    self.assertAllEqual([5], sp_ids.values._shape_as_list())
+    self.assertAllEqual((5,), sp_ids.values._shape_tuple())
 
     sp_ids_ind, sp_ids_val, sp_ids_shape = self.evaluate(
         [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
@@ -1086,7 +1086,7 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
 
     sp_ids = table.lookup(sp_features)
 
-    self.assertAllEqual([5], sp_ids.values._shape_as_list())
+    self.assertAllEqual((5,), sp_ids.values._shape_tuple())
 
     sp_ids_ind, sp_ids_val, sp_ids_shape = self.evaluate(
         [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
@@ -1109,7 +1109,7 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
 
     sp_ids = table.lookup(sp_features)
 
-    self.assertAllEqual([5], sp_ids.values._shape_as_list())
+    self.assertAllEqual((5,), sp_ids.values._shape_tuple())
 
     sp_ids_ind, sp_ids_val, sp_ids_shape = self.evaluate(
         [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
@@ -2681,7 +2681,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
 
       sp_ids = table.lookup(sp_features)
 
-      self.assertAllEqual([5], sp_ids.values._shape_as_list())
+      self.assertAllEqual((5,), sp_ids.values._shape_tuple())
 
       sp_ids_ind, sp_ids_val, sp_ids_shape = sess.run(
           [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
@@ -2710,7 +2710,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
 
       sp_ids = table.lookup(sp_features)
 
-      self.assertAllEqual([5], sp_ids.values._shape_as_list())
+      self.assertAllEqual((5,), sp_ids.values._shape_tuple())
 
       sp_ids_ind, sp_ids_val, sp_ids_shape = sess.run(
           [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
@@ -2739,7 +2739,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
 
       sp_ids = table.lookup(sp_features)
 
-      self.assertAllEqual([5], sp_ids.values._shape_as_list())
+      self.assertAllEqual((5,), sp_ids.values._shape_tuple())
 
       sp_ids_ind, sp_ids_val, sp_ids_shape = sess.run(
           [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
