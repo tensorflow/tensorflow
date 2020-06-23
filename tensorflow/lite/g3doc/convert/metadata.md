@@ -1,6 +1,4 @@
-# Adding metadata to TensorFlow Lite model
-
-Note: TensorFlow Lite Metadata is in experimental (beta) phase.
+# Adding metadata to TensorFlow Lite models
 
 TensorFlow Lite metadata provides a standard for model descriptions. The
 metadata is an important source of knowledge about what the model does and its
@@ -8,9 +6,15 @@ input / output information. The metadata consists of both
 
 *   human readable parts which convey the best practice when using the model,
     and
-*   machine readable parts that can be leveraged by code generators, such as
-    [the TensorFlow Lite Android code generator](../guide/codegen.md) and
-    [the Android Studio ML Binding feature](https://developer.android.com/studio/preview/features#tensor-flow-lite-models).
+*   machine readable parts that can be leveraged by code generators, such as the
+    [TensorFlow Lite Android code generator](../guide/codegen.md#generate-code-with-tensorflow-lite-android-code-generator)
+    and the
+    [Android Studio ML Binding feature](../guide/codegen.md#generate-code-with-android-studio-ml-model-binding).
+
+All image models published on
+[TensorFlow Lite hosted models](https://www.tensorflow.org/lite/guide/hosted_models)
+and [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite) have been
+populated with metadata.
 
 ## Setup the metadata tools
 
@@ -29,22 +33,23 @@ TensorFlow Lite metadata tooling supports both Python 2 and Python 3.
 
 ## Adding metadata
 
-There are three parts to the
-[model metadata](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs):
+There are three parts to the model metadata in the
+[schema](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs):
 
 1.  **Model information** - Overall description of the model as well as items
     such as licence terms. See
-    [ModelMetadata](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L515).
+    [ModelMetadata](https://github.com/tensorflow/tensorflow/blob/268853ee81edab09e07f455cc918f7ef9a421485/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L464).
 2.  **Input information** - Description of the inputs and pre-processing
     required such as normalization. See
-    [SubGraphMetadata.input_tensor_metadata](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L500).
+    [SubGraphMetadata.input_tensor_metadata](https://github.com/tensorflow/tensorflow/blob/268853ee81edab09e07f455cc918f7ef9a421485/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L452).
 3.  **Output information** - Description of the output and post-processing
     required such as mapping to labels. See
-    [SubGraphMetadata.output_tensor_metadata](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L509).
+    [SubGraphMetadata.output_tensor_metadata](https://github.com/tensorflow/tensorflow/blob/268853ee81edab09e07f455cc918f7ef9a421485/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L458).
 
 Since TensorFlow Lite only supports single subgraph at this point, the
-[TensorFlow Lite code generator](../guide/codegen.md) and
-[the Android Studio ML Binding feature](https://developer.android.com/studio/preview/features#tensor-flow-lite-models)
+[TensorFlow Lite code generator](../guide/codegen.md#generate-code-with-tensorflow-lite-android-code-generator)
+and the
+[Android Studio ML Binding feature](../guide/codegen.md#generate-code-with-android-studio-ml-model-binding)
 will use `ModelMetadata.name` and `ModelMetadata.description`, instead of
 `SubGraphMetadata.name` and `SubGraphMetadata.description`, when displaying
 metadata and generating code.
@@ -84,6 +89,85 @@ file type and where the file is attached to (i.e. `ModelMetadata`,
 corresponding pre/post processing automatically to the object. See
 [the \<Codegen usage\> section of each associate file type](https://github.com/tensorflow/tensorflow/blob/268853ee81edab09e07f455cc918f7ef9a421485/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L37-L77)
 in the schema for more details.
+
+### Normalization and quantization parameters
+
+Normalization is a common data preprocessing technique in machine learning. The
+goal of normalization is to change the values to a common scale, without
+distorting differences in the ranges of values.
+
+[Model quantization](https://www.tensorflow.org/lite/performance/model_optimization#model_quantization)
+is a technique that allows for reduced precision representations of weights and
+optionally, activations for both storage and computation.
+
+In terms of preprocessing and post-processing, normalization and quantization
+are two independent steps. Here are the details.
+
+|                         | Normalization           | Quantization             |
+| :---------------------: | ----------------------- | ------------------------ |
+| \                       | **Float model**: \      | **Float model**: \       |
+: An example of the       : - mean\: 127.5 \        : - zeroPoint\: 0 \        :
+: parameter values of the : - std\: 127.5 \         : - scale\: 1.0 \          :
+: input image in          : **Quant model**\: \     : **Quant model**\: \      :
+: MobileNet for float and : - mean\: 127.5 \        : - zeroPoint\: 128.0 \    :
+: quant models,           : - std\: 127.5           : - scale\:0.0078125f \    :
+: respectively.           :                         :                          :
+| \                       | \                       | **Float models** does    |
+: \                       : \                       : not need quantization. \ :
+: \                       : **Inputs**\: If input   : **Quantized model** may  :
+: \                       : data is normalized in   : or may not need          :
+: When to invoke?         : training, the input     : quantization in pre/post :
+:                         : data of inference needs : processing. It depends   :
+:                         : to be normalized        : on the datatype of       :
+:                         : accordingly. \          : input/output tensors. \  :
+:                         : **Outputs**\: output    : - float tensors\: no     :
+:                         : data will not be        : quantization in pre/post :
+:                         : normalized in general.  : processing needed. Quant :
+:                         :                         : op and dequant op are    :
+:                         :                         : baked into the model     :
+:                         :                         : graph. \                 :
+:                         :                         : - int8/uint8 tensors\:   :
+:                         :                         : need quantization in     :
+:                         :                         : pre/post processing.     :
+| \                       | \                       | **Quantize for inputs**: |
+: \                       : \                       : \                        :
+: Formula                 : normalized_input =      : q = f / scale +          :
+:                         : (input - mean) / std    : zeroPoint \              :
+:                         :                         : **Dequantize for         :
+:                         :                         : outputs**\: \            :
+:                         :                         : f = (q - zeroPoint) *    :
+:                         :                         : scale                    :
+| \                       | Filled by model creator | Filled automatically by  |
+: Where are the           : and stored in model     : TFLite converter, and    :
+: parameters              : metadata, as            : stored in tflite model   :
+:                         : `NormalizationOptions`  : file.                    :
+| How to get the          | Through the             | Through the TFLite       |
+: parameters?             : `MetadataExtractor` API : `Tensor` API [1] or      :
+:                         : [2]                     : through the              :
+:                         :                         : `MetadataExtractor` API  :
+:                         :                         : [2]                      :
+| Do float and quant      | Yes, float and quant    | No, the float model does |
+: models share the same   : models have the same    : not need quantization.   :
+: value?                  : Normalization           :                          :
+:                         : parameters              :                          :
+| Does TFLite Code        | \                       | \                        |
+: generator or Android    : Yes                     : Yes                      :
+: Studio ML binding       :                         :                          :
+: automatically generate  :                         :                          :
+: it in data processing?  :                         :                          :
+
+[1] The
+[TensorFlow Lite Java API](https://github.com/tensorflow/tensorflow/blob/09ec15539eece57b257ce9074918282d88523d56/tensorflow/lite/java/src/main/java/org/tensorflow/lite/Tensor.java#L73)
+and the
+[TensorFlow Lite C++ API](https://github.com/tensorflow/tensorflow/blob/09ec15539eece57b257ce9074918282d88523d56/tensorflow/lite/c/common.h#L391).
+\
+[2] The
+[metadata extractor library](../guide/codegen.md#read-the-metadata-from-models)
+
+When processing image data for uint8 models, normalization and quantization are
+sometimes skipped. It is fine to do so when the pixel values are in the range of
+[0, 255]. But in general, you should always process the data according to the
+normalization and quantization parameters when applicable.
 
 ### Examples
 
@@ -248,7 +332,7 @@ You can pack as many associated files as you want into the model through
 documented in the metadata. In this example, packing the lable file is
 mandatory.
 
-### Visualize the metadata
+## Visualize the metadata
 
 You can use [Netron](https://github.com/lutzroeder/netron) to visualize your
 metadata, or you can read the metadata from a TensorFlow Lite model into a json
@@ -263,3 +347,49 @@ json_file = displayer.get_metadata_json()
 with open(export_json_file, "w") as f:
   f.write(json_file)
 ```
+
+## Metadata versioning
+
+The
+[metadata schema](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs)
+is versioned both by the Semantic versioning number, which tracks the changes of
+the schema file, and by the Flatbuffers file identification, which indicates the
+true version compatibility.
+
+### The Semantic versioning number
+
+The metadata schema is versioned by the
+[Semantic versioning number](https://github.com/tensorflow/tensorflow/blob/72d30dfb8bc58be931604f853bd161a11b7c9fcc/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L53),
+such as MAJOR.MINOR.PATCH. It tracks schema changes according to the rules
+[here](https://github.com/tensorflow/tensorflow/blob/72d30dfb8bc58be931604f853bd161a11b7c9fcc/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L32-L44).
+See the
+[history of fields](https://github.com/tensorflow/tensorflow/blob/72d30dfb8bc58be931604f853bd161a11b7c9fcc/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L63)
+added after version `1.0.0`.
+
+### The Flatbuffers file identification
+
+Semantic versioning guarantees the compatibility if following the rules, but it
+does not imply the true incompatibility. When bumping up the MAJOR number, it
+does not necessarily mean the backwards compatibility is broken. Therefore, we
+use the
+[Flatbuffers file identification](https://google.github.io/flatbuffers/md__schemas.html),
+[file_identifiler](https://github.com/tensorflow/tensorflow/blob/72d30dfb8bc58be931604f853bd161a11b7c9fcc/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L61),
+to denote the true compatibility of the metadata schema. The file identifier is
+exactly 4 characters long. It is fixed to a certain metadata schema and not
+subject to change by users. If the backward compatibility of the metadata schema
+has to be broken for some reason, the file_identifier will bump up, for example,
+from “M001” to “M002”. File_identifiler is expected to be changed much less
+frequently than the metadata_version.
+
+### The minimum necessary metadata parser version
+
+The
+[minimum necessary metadata parser version](https://github.com/tensorflow/tensorflow/blob/72d30dfb8bc58be931604f853bd161a11b7c9fcc/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L565)
+is the minimum version of metadata parser (the Flatbuffers generated code) that
+can read the metadata Flatbuffers in full. The version is effectively the
+largest version number among the versions of all the fields populated and the
+smallest compatible version indicated by the file identifier. The minimum
+necessary metadata parser version is automaticaly populated by the
+`MetadataPopulator` when the metadata is populated into a TFLite model. See the
+[metadata extractor](../guide/codegen.md#read-the-metadata-from-models) about
+how the minimum necessary metadata parser version is used.
