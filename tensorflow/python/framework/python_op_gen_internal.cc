@@ -513,10 +513,11 @@ const ApiDef::Attr* FindAttr(StringPiece name, const ApiDef& api_def) {
 }
 
 GenPythonOp::GenPythonOp(const OpDef& op_def, const ApiDef& api_def,
-                         const string& function_name)
+                         const string& function_name, const bool type_annotate_op)
     : op_def_(op_def),
       api_def_(api_def),
       function_name_(function_name),
+      type_annotate_op_(type_annotate_op),
       num_outs_(op_def.output_arg_size()) {}
 
 GenPythonOp::~GenPythonOp() {}

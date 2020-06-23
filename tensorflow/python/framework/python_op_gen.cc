@@ -72,10 +72,6 @@ std::unordered_map<string, string> dtype_type {
       {"_dtypes.variant", "_dtypes.Variant"}
 };
 
-// Add op name to this set to add type annotations
-std::unordered_set<string> type_annotate_ops {
-};
-
 string AttrVarName(const string& attr_name,
                    std::unordered_map<string, string>* attr_expressions) {
   const string var = strings::StrCat("_attr_", attr_name);
@@ -137,8 +133,8 @@ string TensorPBString(const TensorProto& pb) {
 class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
  public:
   GenEagerPythonOp(const OpDef& op_def, const ApiDef& api_def,
-                   const string& function_name)
-      : python_op_gen_internal::GenPythonOp(op_def, api_def, function_name) {
+                   const string& function_name, const bool type_annotate_op)
+      : python_op_gen_internal::GenPythonOp(op_def, api_def, function_name, type_annotate_op) {
     op_name_ = function_name_;
     absl::ConsumePrefix(&op_name_, "_");
   }
@@ -218,8 +214,8 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
 };
 
 string GetEagerPythonOp(const OpDef& op_def, const ApiDef& api_def,
-                        const string& function_name) {
-  return GenEagerPythonOp(op_def, api_def, function_name).Code();
+                        const string& function_name, const bool type_annotate_op) {
+  return GenEagerPythonOp(op_def, api_def, function_name, type_annotate_op).Code();
 }
 
 string GenEagerPythonOp::FlattenInputs(
@@ -351,7 +347,7 @@ string GenEagerPythonOp::Code() {
 
   std::unordered_map<string, string> type_annotations;
   // Only populate map for whitelisted ops
-  if (type_annotate_ops.find(op_def_.name()) != type_annotate_ops.end()) {
+  if (type_annotate_op_) {
     type_annotations = GetTypeAnnotationMap();
   }
 
@@ -834,7 +830,7 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
 bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& eager_not_allowed_error, std::unordered_map<string, string>& type_annotations) {
-  if (type_annotate_ops.find(op_def_.name()) != type_annotate_ops.end()) {
+  if (type_annotate_op_) {
     GenerateTypeVars(type_annotations);
   }
   if (api_def_.visibility() == ApiDef::VISIBLE) {
@@ -843,7 +839,7 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
 
   AddExport();
   AddDefLine(function_name_, parameters);
-  if (type_annotate_ops.find(op_def_.name()) != type_annotate_ops.end()) {
+  if (type_annotate_op_) {
     AddReturnTypeAnnotation(type_annotations);
   }
   AddDocStringDescription();
@@ -885,7 +881,7 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
   AddDefLine(
       strings::StrCat(function_name_, kEagerFallbackSuffix),
       strings::StrCat(parameters, parameters.empty() ? "" : ", ", "ctx"));
-  if (type_annotate_ops.find(op_def_.name()) != type_annotate_ops.end()) {
+  if (type_annotate_op_) {
     AddReturnTypeAnnotation(type_annotations);
   }
   if (!eager_not_allowed_error.empty()) {
@@ -1136,7 +1132,8 @@ void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
 
 string GetPythonOpsImpl(const OpList& ops, const ApiDefMap& api_defs,
                         const std::vector<string>& hidden_ops,
-                        const string& source_file_name = "") {
+                        const string& source_file_name = "",
+                        std::unordered_set<string> type_annotate_ops = {}) {
   string result;
   // Header
   // TODO(josh11b): Mention the library for which wrappers are being generated.
@@ -1214,8 +1211,10 @@ from typing import TypeVar
       continue;
     }
 
+    const bool type_annotate_op = type_annotate_ops.find(op_def.name()) != type_annotate_ops.end();
+
     strings::StrAppend(&result,
-                       GetEagerPythonOp(op_def, *api_def, function_name));
+                       GetEagerPythonOp(op_def, *api_def, function_name, type_annotate_op));
   }
 
   return result;
@@ -1225,15 +1224,17 @@ from typing import TypeVar
 
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const std::vector<string>& hidden_ops,
-                    const string& source_file_name) {
-  return GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name);
+                    const string& source_file_name,
+                    std::unordered_set<string> type_annotate_ops) {
+  return GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name, type_annotate_ops);
 }
 
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const std::vector<string>& hidden_ops,
-                    const string& source_file_name) {
+                    const string& source_file_name,
+                    std::unordered_set<string> type_annotate_ops) {
   printf("%s",
-         GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name).c_str());
+         GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name, type_annotate_ops).c_str());
 }
 
 string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {

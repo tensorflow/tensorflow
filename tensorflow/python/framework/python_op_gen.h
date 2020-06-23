@@ -32,7 +32,8 @@ namespace tensorflow {
 // file where the ops' REGISTER_OP() calls reside.
 string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const std::vector<string>& hidden_ops,
-                    const string& source_file_name);
+                    const string& source_file_name,
+                    std::unordered_set<string> type_annotate_ops);
 
 // Prints the output of GetPrintOps to stdout.
 // hidden_ops should be a list of Op names that should get a leading _
@@ -41,7 +42,8 @@ string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
 // where the ops' REGISTER_OP() calls reside.
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const std::vector<string>& hidden_ops,
-                    const string& source_file_name);
+                    const string& source_file_name,
+                    std::unordered_set<string> type_annotate_ops);
 
 // Get the python wrappers for a list of ops in a OpList.
 // `op_list_buf` should be a pointer to a buffer containing
