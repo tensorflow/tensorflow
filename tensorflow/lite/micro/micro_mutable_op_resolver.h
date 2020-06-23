@@ -108,31 +108,23 @@ class MicroMutableOpResolver : public MicroOpResolver {
   // MicroMutableOpResolver object.
 
   TfLiteStatus AddAbs() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_ABS, *tflite::ops::micro::Register_ABS(),
-                      ParseOpData);
+                      ParseAbs);
   }
 
   TfLiteStatus AddAdd() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_ADD, *tflite::ops::micro::Register_ADD(),
-                      ParseOpData);
+                      ParseAdd);
   }
 
   TfLiteStatus AddArgMax() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_ARG_MAX,
-                      *tflite::ops::micro::Register_ARG_MAX(), ParseOpData);
+                      *tflite::ops::micro::Register_ARG_MAX(), ParseArgMax);
   }
 
   TfLiteStatus AddArgMin() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_ARG_MIN,
-                      *tflite::ops::micro::Register_ARG_MIN(), ParseOpData);
+                      *tflite::ops::micro::Register_ARG_MIN(), ParseArgMin);
   }
 
   TfLiteStatus AddAveragePool2D() {
