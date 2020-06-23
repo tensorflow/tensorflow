@@ -55,6 +55,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import saver as saver_lib
@@ -752,6 +753,16 @@ class PackedDistributedVariableTest(test.TestCase, parameterized.TestCase):
         self.assertIsInstance(val, packed.PackedVarAndDevice)
         self.assertEqual(val.device, devices[i])
         self.assertEqual(self.evaluate(val.read_value()), i)
+
+  def testIgnorePackedVariableInSaveContext(self, distribution):
+    distribution._enable_packed_variable_in_eager_mode = True
+    with distribution.scope():
+      v = variables_lib.Variable(0)
+      self.assertIsInstance(
+          v._packed_variable, packed.PackedDistributedVariable)
+
+    with save_context.save_context():
+      self.assertIsNone(v._packed_variable)
 
 
 class MirroredVariableTest(test.TestCase, parameterized.TestCase):
