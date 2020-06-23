@@ -35,7 +35,7 @@ struct CompilationCacheKeyProperty {
   const char* mlir_module;
   const int32_t* device_ids;
   size_t device_ids_size;
-  int32_t guaranteed_constants_size;
+  size_t guaranteed_constants_size;
   uint64_t function_library_fingerprint;
   int32_t num_cores_per_replica;
   int32_t num_replicas;
