@@ -95,11 +95,6 @@ class TypeIndex {
   const char* name_;
 };
 
-template <typename T>
-inline TypeIndex MakeTypeIndex() {
-  return TypeIndex::Make<T>();
-}
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_TYPE_INDEX_H_
