@@ -222,8 +222,8 @@ inline void LstmStepWithAuxInput(
         cell_state_ptr);
   }
   if (params->cell_clip > 0.0) {
-    tensor_utils::ClipVector(cell_state_ptr, n_batch * n_cell,
-                             params->cell_clip, cell_state_ptr);
+    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
+                                params->cell_clip);
   }
 
   // For each batch and cell: update the output gate.
@@ -268,8 +268,8 @@ inline void LstmStepWithAuxInput(
         projection_weights_ptr, n_output, n_cell, output_gate_scratch, n_batch,
         output_state_ptr);
     if (params->proj_clip > 0.0) {
-      tensor_utils::ClipVector(output_state_ptr, n_batch * n_output,
-                               params->proj_clip, output_state_ptr);
+      tensor_utils::CwiseClipping(output_state_ptr, n_batch * n_output,
+                                  params->proj_clip);
     }
   } else {
     std::copy_n(output_gate_scratch, n_batch * n_output, output_state_ptr);
