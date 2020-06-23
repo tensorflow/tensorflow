@@ -125,32 +125,19 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
       opResultTypes.push_back(shapedType);
     }
 
+    int64_t args_count = bodyArgTypes.size();
+    int64_t results_count = bodyResultTypes.size();
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, opResultTypes, args,
-        /*inputCount=*/bodyArgTypes.size(),
-        /*outputCount=*/bodyResultTypes.size(), indexing_maps,
-        GetNParallelLoopsAttrs(nloops));
-
-    // Add a block to the region.
-    auto* region = &linalgOp.region();
-    auto* block = rewriter.createBlock(region, region->end());
-    block->addArguments(bodyArgTypes);
-    if (isLHLO) block->addArguments(bodyResultTypes);
-
-    SmallVector<Value, 4> bodyArgs;
-    for (int i = 0, e = bodyArgTypes.size(); i < e; ++i) {
-      bodyArgs.push_back(block->getArgument(i));
-    }
-
-    rewriter.setInsertionPointToEnd(block);
-    // TODO(ravishankarm) : For now use the method in xla_lhlo namespace. That
-    // method needs to be moved out of there.
-    Value opResult = xla_lhlo::XlaOpToStdScalarOp::map<OpTy>(
-        op, bodyResultTypes, bodyArgs, &rewriter);
-    if (!opResult) {
-      return failure();
-    }
-    rewriter.create<linalg::YieldOp>(loc, opResult);
+        loc, opResultTypes, args, args_count, results_count, indexing_maps,
+        GetNParallelLoopsAttrs(nloops),
+        [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
+          // TODO(ravishankarm) : For now use the method in xla_lhlo namespace.
+          // That method needs to be moved out of there.
+          Value opResult = xla_lhlo::XlaOpToStdScalarOp::map<OpTy>(
+              op, bodyResultTypes,
+              llvm::to_vector<2>(args.take_front(args_count)), &rewriter);
+          nestedBuilder.create<linalg::YieldOp>(loc, opResult);
+        });
     rewriter.replaceOp(op, linalgOp.getOperation()->getResults());
     return success();
   }
@@ -301,27 +288,20 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op)) return failure();
-    auto operandType = op.operand().getType().template cast<ShapedType>();
     auto resultType = getXLAOpResultType<isLHLO>(op);
 
     SmallVector<AffineMap, 2> indexing_maps =
         Derived::getIndexingMaps(op, &rewriter);
     if (indexing_maps.empty()) return failure();
 
-    OpBuilder::InsertionGuard linalgOpGuard(rewriter);
     auto nloops = resultType.getRank();
     auto loc = op.getLoc();
     auto linalgOp = rewriter.create<linalg::GenericOp>(
         loc, isLHLO ? ArrayRef<Type>{} : resultType, args, /*inputCount=*/1,
-        /*outputCount=*/1, indexing_maps, GetNParallelLoopsAttrs(nloops));
-
-    auto* region = &linalgOp.region();
-    auto* block = rewriter.createBlock(region, region->end());
-    block->addArguments(operandType.getElementType());
-    if (isLHLO) block->addArgument(resultType.getElementType());
-
-    rewriter.setInsertionPointToEnd(block);
-    rewriter.create<linalg::YieldOp>(loc, block->getArgument(0));
+        /*outputCount=*/1, indexing_maps, GetNParallelLoopsAttrs(nloops),
+        [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
+          nestedBuilder.create<linalg::YieldOp>(loc, *args.begin());
+        });
 
     rewriter.replaceOp(op, linalgOp.getOperation()->getResults());
     return success();
@@ -437,36 +417,26 @@ class LhloBroadcastInDimConverter
       Value zero = rewriter.create<ConstantIndexOp>(loc, 0);
       Value val =
           rewriter.create<LoadOp>(loc, operand, llvm::makeArrayRef({zero}));
-      auto linalgOp = rewriter.create<linalg::GenericOp>(
+      rewriter.create<linalg::GenericOp>(
           loc, llvm::None, llvm::makeArrayRef(operand_adaptor.output()),
           /*inputCount=*/0, /*outputCount=*/1,
           llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
-          GetNParallelLoopsAttrs(nloops));
+          GetNParallelLoopsAttrs(nloops),
+          [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
+            nestedBuilder.create<linalg::YieldOp>(loc, val);
+          });
 
-      auto* region = &linalgOp.region();
-      auto* block = rewriter.createBlock(region, region->end());
-      block->addArgument(result_type.getElementType());
-
-      rewriter.setInsertionPointToEnd(block);
-      rewriter.create<linalg::YieldOp>(loc, val);
     } else {
       auto indexing_maps = getIndexingMaps(op, broadcast_dims, result_shape,
                                            operand_type, &rewriter);
-
-      OpBuilder::InsertionGuard linalgOpGuard(rewriter);
-      auto linalgOp = rewriter.create<linalg::GenericOp>(
+      rewriter.create<linalg::GenericOp>(
           loc, llvm::None,
           llvm::makeArrayRef({operand, operand_adaptor.output()}),
           /*inputCount=*/1, /*outputCount=*/1, indexing_maps,
-          GetNParallelLoopsAttrs(nloops));
-
-      auto* region = &linalgOp.region();
-      auto* block = rewriter.createBlock(region, region->end());
-      block->addArguments(operand_type.getElementType());
-      block->addArgument(result_type.getElementType());
-
-      rewriter.setInsertionPointToEnd(block);
-      rewriter.create<linalg::YieldOp>(loc, block->getArgument(0));
+          GetNParallelLoopsAttrs(nloops),
+          [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
+            nestedBuilder.create<linalg::YieldOp>(loc, *args.begin());
+          });
     }
     rewriter.replaceOp(op, llvm::None);
     return success();
@@ -686,32 +656,26 @@ class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
     // Construct the indexing maps needed for linalg.generic ops.
     unsigned nloops = resultMemrefType.getRank();
 
-    auto loc = iotaOp.getLoc();
-    auto linalgOp = rewriter.create<linalg::IndexedGenericOp>(
-        loc, ArrayRef<Type>{}, args,
+    rewriter.create<linalg::IndexedGenericOp>(
+        iotaOp.getLoc(), ArrayRef<Type>{}, args,
         0,  // args_in
         1,  // args_out
         llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
-        GetNParallelLoopsAttrs(nloops));
+        GetNParallelLoopsAttrs(nloops),
+        [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange ivs,
+            ValueRange args) {
+          Value castOp = nestedBuilder.create<IndexCastOp>(
+              nestedLoc, ivs[iotaOp.iota_dimension().getZExtValue()],
+              nestedBuilder.getIntegerType(
+                  resultElementType.getIntOrFloatBitWidth()));
+          if (resultElementType.isa<FloatType>()) {
+            castOp = nestedBuilder.create<SIToFPOp>(nestedLoc, castOp,
+                                                    resultElementType);
+          }
+          nestedBuilder.create<linalg::YieldOp>(nestedLoc, castOp);
+        });
 
-    // Add a block to the region.
-    auto* region = &linalgOp.region();
-    auto* block = rewriter.createBlock(region, region->end());
-    for (unsigned i = 0; i < nloops; ++i) {
-      block->addArgument(rewriter.getIndexType());
-    }
-    block->addArguments(llvm::makeArrayRef(resultElementType));
-
-    rewriter.setInsertionPointToEnd(block);
-    Operation* castOp = rewriter.create<IndexCastOp>(
-        loc, block->getArgument(iotaOp.iota_dimension().getZExtValue()),
-        rewriter.getIntegerType(resultElementType.getIntOrFloatBitWidth()));
-    if (resultElementType.isa<FloatType>()) {
-      castOp = rewriter.create<SIToFPOp>(loc, castOp->getResult(0),
-                                         resultElementType);
-    }
-    rewriter.create<linalg::YieldOp>(loc, castOp->getResult(0));
-    rewriter.eraseOp(iotaOp);
+    rewriter.replaceOp(iotaOp, llvm::None);
     return success();
   }
 };
@@ -867,7 +831,7 @@ struct LhloLegalizeToLinalg
 
     auto func = getFunction();
     populateLHLOToLinalgConversionPattern(func.getContext(), &patterns);
-    if (failed(applyPartialConversion(func, target, patterns))) {
+    if (failed(applyPartialConversion(func, target, patterns, nullptr))) {
       signalPassFailure();
     }
   }
@@ -882,7 +846,7 @@ struct HloLegalizeToLinalg
 
     auto func = getFunction();
     xla_hlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
-    if (failed(applyPartialConversion(func, target, patterns))) {
+    if (failed(applyPartialConversion(func, target, patterns, nullptr))) {
       signalPassFailure();
     }
   }
