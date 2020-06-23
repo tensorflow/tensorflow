@@ -27,7 +27,6 @@ import numpy as np
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.eager import forwardprop_util
@@ -284,9 +283,6 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     )
 
   def testJVPFunctionRaisesError(self):
-    context.ensure_initialized()
-    ctx = context.context()
-
     sum_outputs = (constant_op.constant(6.),)
     
     with self.assertRaises(ValueError):

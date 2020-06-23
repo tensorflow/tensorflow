@@ -161,7 +161,6 @@ def _jvp_helper_wrapper(
   
   Raises:
     ValueError: if tangent shapes are not compatible with input shapes.
-
   """
   if use_batch:
     for primal, tangent in zip(inputs, tangents):
