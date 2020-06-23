@@ -336,38 +336,15 @@ def _graph_mode_decorator(f, args, kwargs):
           "All variables used by a function wrapped with @custom_gradient must "
           "be `ResourceVariable`s. Ensure that no `variable_scope` is created "
           "with `use_resource=False`.")
-
-  # It is possible for the caller to pass in an input that is from a different
-  # graph. Even though this is not valid we filter these out if they are not
-  # from the output graph to make it easier for some code to migrate to custom
-  # gradients.
-  inputs = nest.flatten(args)
-  outputs = nest.flatten(result)
-  graphs = {getattr(o, "graph", None) for o in outputs}
-  # Not all results may be tensors. However, we want to ensure that all outputs
-  # are from the same graph and use that to filter the inputs.
-  graphs.discard(None)  # Discard non-graph outputs
-  if graphs:
-    if len(graphs) > 1:
-      raise ValueError("All graph outputs should be from the same graph")
-    output_graph = graphs.pop()
-    filtered_inputs = []
-    for i in inputs:
-      if i.graph != output_graph:
-        logging.warn("%s does not belong to output graph %s", i, output_graph)
-      else:
-        filtered_inputs.append(i)
-
-    inputs = filtered_inputs
-
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
+  inputs = args
   variables_in_tape = frozenset([
       v.ref() for v in variable_watcher.watched_variables()
   ]) - frozenset(v.ref() for v in inputs)
   variables_in_subgraph = frozenset([
       v.ref()
-      for v in get_dependent_variables(input_ops=inputs, output_ops=outputs)
+      for v in get_dependent_variables(input_ops=inputs, output_ops=result)
   ])
   variables = list(
       [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])
@@ -386,7 +363,7 @@ def _graph_mode_decorator(f, args, kwargs):
   flat_result = nest.flatten(result)
   flat_result_len = len(flat_result)
 
-  all_tensors = flat_result + inputs + variables
+  all_tensors = flat_result + args + variables
 
   def tape_grad_fn(*result_grads):
     """Custom grad fn wrapper."""
@@ -538,8 +515,7 @@ def recompute_grad(f):
 
         def transpose(*t_args, **t_kwargs):
           """Gradient function calculation for forward mode autodiff."""
-          # Just throw an error since gradients / activations are not stored on
-          # tape for recompute.
+          # Just throw an error since gradients / activations are not stored on tape for recompute.
           raise NotImplementedError(
               "recompute_grad tried to transpose grad of {}. "
               "Consider not using recompute_grad in forward mode"

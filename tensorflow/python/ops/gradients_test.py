@@ -1197,27 +1197,6 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         dw = sess.run(math_ops.reduce_sum(grads[1]))
         self.assertEqual(12., dw)
 
-  def testCustomGradientOtherGraphVariables(self):
-    with ops.Graph().as_default():
-      v = variables.Variable(1.0)
-
-    @custom_gradient.custom_gradient
-    def MyMultiply(x1, x2, unused_y):
-      result = x1 * x2
-
-      def Grad(dy):
-        # Switched the ordering here.
-        return [dy * x1, dy * x2]
-
-      return result, Grad
-
-    with ops.Graph().as_default():
-      x1 = constant(3.)
-      x2 = constant(5.)
-      y = MyMultiply(x1, x2, v)
-      dy = gradients.gradients(y, [x1, x2])
-      self.assertAllEqual([3., 5.], self.evaluate(dy))
-
   def testCustomGradientWithVariablesNoFalsePositives(self):
 
     @custom_gradient.custom_gradient
