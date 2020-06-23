@@ -1518,6 +1518,7 @@ Status CuptiTracer::DisableActivityTracing() {
 
 Status CuptiTracer::Finalize() {
   if (option_->cupti_finalize) {
+    VLOG(1) << "CuptiFinalize";
     RETURN_IF_CUPTI_ERROR(cupti_interface_->Finalize());
   }
   return Status::OK();
