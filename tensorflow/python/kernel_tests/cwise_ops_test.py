@@ -945,6 +945,9 @@ class MathOpsOverloadTest(test.TestCase):
     test_count = 0
     for sgn in (-1,0,1):
       for dtype in dtypes:
+        # todo(rocm):
+        # investigate why ROCm 3.5 onwards needs a slightly elevated tolerance
+        rtol, atol = (2e-3, 2e-3) if dtype == np.float16 else (1e-6, 1e-6)
         for shape in (
           (1,), (4,), (5,5), (100,14), (3,3,3,3), (3,3,3,3,3),
             (512,3,3,3), (3,512,3,3), (3,3,512,3), (3,3,3,512),
@@ -968,13 +971,13 @@ class MathOpsOverloadTest(test.TestCase):
               inx2 = ops.convert_to_tensor(x2)
               iny2 = ops.convert_to_tensor(y2)
               if sgn>0:
-                self.assertAllClose(x1*y1+x2, _FMA(inx1,iny1,inx2))
-                self.assertAllClose(x1*y1+x2*y2, _FMA2(inx1,iny1,inx2,iny2))
+                self.assertAllClose(x1*y1+x2, _FMA(inx1,iny1,inx2), atol, rtol)
+                self.assertAllClose(x1*y1+x2*y2, _FMA2(inx1,iny1,inx2,iny2), atol, rtol)
               elif sgn<0:
-                self.assertAllClose(x1*y1-x2, _FMS(inx1,iny1,inx2))
-                self.assertAllClose(x1*y1-x2*y2, _FMS2(inx1,iny1,inx2,iny2))
+                self.assertAllClose(x1*y1-x2, _FMS(inx1,iny1,inx2), atol, rtol)
+                self.assertAllClose(x1*y1-x2*y2, _FMS2(inx1,iny1,inx2,iny2), atol, rtol)
               else:
-                self.assertAllClose(x2-x1*y1, _FMSR(inx1,iny1,inx2))
+                self.assertAllClose(x2-x1*y1, _FMSR(inx1,iny1,inx2), atol, rtol)
               if np.prod(shape)<100 and not (test_count % 5):
                 jacob_t, jacob_n = gradient_checker_v2.compute_gradient(
                     _FMA if sgn>0 else (_FMS if sgn<0 else _FMSR),

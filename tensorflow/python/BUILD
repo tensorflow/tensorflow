@@ -7574,9 +7574,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["ops/nn_grad_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
-    ],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
