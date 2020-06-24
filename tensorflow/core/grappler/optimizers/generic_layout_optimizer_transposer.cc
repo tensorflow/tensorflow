@@ -1231,7 +1231,7 @@ bool ReduceTransposer::KeepDims(const utils::MutableNodeView& node) {
 
 bool ReduceTransposer::IsAlongAxis(const Tensor& tensor,
                                    absl::Span<const int> axis, int rank) {
-  int axis_size = axis.size();
+  const int axis_size = axis.size();
   if (tensor.dims() != 1 || tensor.dim_size(0) != axis_size) {
     return false;
   }
