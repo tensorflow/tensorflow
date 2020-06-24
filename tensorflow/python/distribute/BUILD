@@ -1116,6 +1116,8 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
@@ -1124,7 +1126,6 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras/layers",
         "//third_party/py/numpy",
     ],
 )
