@@ -140,7 +140,7 @@ class Tests(test.TestCase):
                                             b_2_by_1, "transpose_a", False,
                                             "transpose_b", False)
 
-    dz_da = tape.gradient(totalsum, [a_2_by_2])[0]
+    dz_da = tape.gradient(z, [a_2_by_2])[0]
     self.assertAllEqual(dz_da.numpy(),
                         constant_op.constant(2.0, shape=[2, 2]).numpy())
 
