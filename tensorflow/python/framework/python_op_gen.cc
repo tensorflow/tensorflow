@@ -434,6 +434,8 @@ std::unordered_map<string, string> GenEagerPythonOp::GetTypeAnnotations() {
     } else if (attr.type() == "bool" || attr.type() == "float" ||
                attr.type() == "int" || attr.type() == "bytes") {
       type_annotations[attr.name()] = attr.type();
+    } else if (attr.type() == "string") {
+      type_annotations[attr.name()] = "str";
     }
   }
 

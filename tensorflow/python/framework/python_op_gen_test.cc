@@ -23,135 +23,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-constexpr char kBaseOpDef[] = R"(
-op {
-  name: "Foo"
-  input_arg {
-    name: "x"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "y"
-    type_attr: "T2"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_UINT8
-        type: DT_INT8
-      }
-    }
-  }
-  attr {
-    name: "T2"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_STRING
-        type: DT_FLOAT
-        type: DT_DOUBLE
-      }
-    }
-  }
-  summary: "Summary for op Foo."
-  description: "Description for op Foo."
-}
-op {
-  name: "Bar"
-  input_arg {
-    name: "x"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "y"
-    type: DT_QINT8
-  }
-  output_arg {
-    name: "output"
-    type: DT_BOOL
-  }
-  summary: "Summary for op Bar."
-  description: "Description for op Bar."
-}
-op {
-  name: "FooBar"
-  input_arg {
-    name: "x"
-    type: DT_FLOAT
-  }
-  output_arg {
-    name: "output"
-    type: DT_BOOL
-  }
-  attr {
-    name: "t"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_INT8
-      }
-    }
-  }
-  attr {
-    name: "var1"
-    type: "bool"
-    default_value {
-      b: false
-    }
-  }
-  attr {
-    name: "var2"
-    type: "int"
-    default_value {
-      i: 0
-    }
-  }
-  summary: "Summary for op FooBar."
-  description: "Description for op FooBar."
-}
-op {
-  name: "Baz"
-  input_arg {
-    name: "inputs"
-    number_attr: "N"
-    type_list_attr: "T"
-  }
-  output_arg {
-    name: "output1"
-    type: DT_BOOL
-  }
-  output_arg {
-    name: "output2"
-    type: DT_BOOL
-  }
-  attr {
-    name: "T"
-    type: "bool"
-  }
-  attr {
-    name: "N"
-    type: "int"
-  }
-  summary: "Summary for op Baz."
-  description: "Description for op Baz."
-}
-)";
-
-std::unordered_set<string> type_annotate_ops {
-  "Foo",
-  "Bar",
-  "FooBar",
-  "Baz"
-};
-
-
 void ExpectHasSubstr(const string& s, const string& expected) {
   EXPECT_TRUE(absl::StrContains(s, expected))
       << "'Generated ops does not contain '" << expected << "'";
@@ -172,19 +43,67 @@ void ExpectSubstrOrder(const string& s, const string& before,
       << before << "' is not before '" << after;
 }
 
-TEST(PythonOpGen, Basic) {
+TEST(PythonOpGen, TypeAnnotateAllOps) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);
 
   ApiDefMap api_def_map(ops);
 
-  string code = GetPythonOps(ops, api_def_map, {}, "", {});
+  std::unordered_set<string> type_annotate_ops;
+  for (const auto& op : ops.op()) {
+    type_annotate_ops.insert(op.name());
+  }
 
-  EXPECT_TRUE(absl::StrContains(code, "def case"));
-  // TODO(mdan): Add tests to verify type annotations are correctly added.
+  string code = GetPythonOps(ops, api_def_map, {}, "", type_annotate_ops);
+
+  const string all_types = ", _dtypes.BFloat16, _dtypes.Bool, _dtypes.Complex128, _dtypes.Complex64, "
+  "_dtypes.Float16, _dtypes.Float32, _dtypes.Float64, _dtypes.Half, _dtypes.Int16, "
+  "_dtypes.Int32, _dtypes.Int64, _dtypes.Int8, _dtypes.QInt16, _dtypes.QInt32, "
+  "_dtypes.QInt8, _dtypes.QUInt16, _dtypes.QUInt8, _dtypes.Resource, _dtypes.String, "
+  "_dtypes.UInt16, _dtypes.UInt32, _dtypes.UInt64, _dtypes.UInt8, _dtypes.Variant)";
+
+  const string fake_param_typevar = "TV_FakeParam_dtype = TypeVar(\"TV_FakeParam_dtype\"" + all_types;
+  const string fake_param = "def fake_param_eager_fallback(dtype: TV_FakeParam_dtype, shape, name, ctx) -> _ops.Tensor[TV_FakeParam_dtype]:";
+  const string fake_param_fallback = "def fake_param_eager_fallback(dtype: TV_FakeParam_dtype, shape, name, ctx) -> _ops.Tensor[TV_FakeParam_dtype]:";
+
+  ExpectHasSubstr(code, fake_param_typevar);
+  ExpectHasSubstr(code, fake_param);
+  ExpectHasSubstr(code, fake_param_fallback);
+
+  const string to_bool_typevar = "TV_ToBool_T = TypeVar(\"TV_ToBool_T\"" + all_types;
+  const string to_bool_ = "def to_bool(input: _ops.Tensor[TV_ToBool_T], name=None) -> _ops.Tensor[_dtypes.Bool]:";
+  const string to_bool_fallback = "def to_bool_eager_fallback(input: _ops.Tensor[TV_ToBool_T], name, ctx) -> _ops.Tensor[_dtypes.Bool]:";
+
+  ExpectHasSubstr(code, to_bool_typevar);
+  ExpectHasSubstr(code, to_bool_);
+  ExpectHasSubstr(code, to_bool_fallback);
 }
 
 TEST(PythonOpGen, TypeAnnotateSingleTypeTensor) {
+  constexpr char kBaseOpDef[] = R"(
+  op {
+    name: "Bar"
+    input_arg {
+      name: "x"
+      type: DT_STRING
+    }
+    input_arg {
+      name: "y"
+      type: DT_QINT8
+    }
+    output_arg {
+      name: "output"
+      type: DT_BOOL
+    }
+    summary: "Summary for op Bar."
+    description: "Description for op Bar."
+  }
+  )";
+
+  std::unordered_set<string> type_annotate_ops {
+    "Bar"
+  };
+
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
@@ -200,6 +119,51 @@ TEST(PythonOpGen, TypeAnnotateSingleTypeTensor) {
 }
 
 TEST(PythonOpGen, TypeAnnotateMultiTypeTensor) {
+  constexpr char kBaseOpDef[] = R"(
+  op {
+    name: "Foo"
+    input_arg {
+      name: "x"
+      type_attr: "T"
+    }
+    input_arg {
+      name: "y"
+      type_attr: "T2"
+    }
+    output_arg {
+      name: "output"
+      type_attr: "T"
+    }
+    attr {
+      name: "T"
+      type: "type"
+      allowed_values {
+        list {
+          type: DT_UINT8
+          type: DT_INT8
+        }
+      }
+    }
+    attr {
+      name: "T2"
+      type: "type"
+      allowed_values {
+        list {
+          type: DT_STRING
+          type: DT_FLOAT
+          type: DT_DOUBLE
+        }
+      }
+    }
+    summary: "Summary for op Foo."
+    description: "Description for op Foo."
+  }
+  )";
+
+  std::unordered_set<string> type_annotate_ops {
+    "Foo",
+  };
+
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
@@ -212,6 +176,51 @@ TEST(PythonOpGen, TypeAnnotateMultiTypeTensor) {
 }
 
 TEST(PythonOpGen, GenerateCorrectTypeVars) {
+  constexpr char kBaseOpDef[] = R"(
+  op {
+    name: "Foo"
+    input_arg {
+      name: "x"
+      type_attr: "T"
+    }
+    input_arg {
+      name: "y"
+      type_attr: "T2"
+    }
+    output_arg {
+      name: "output"
+      type_attr: "T"
+    }
+    attr {
+      name: "T"
+      type: "type"
+      allowed_values {
+        list {
+          type: DT_UINT8
+          type: DT_INT8
+        }
+      }
+    }
+    attr {
+      name: "T2"
+      type: "type"
+      allowed_values {
+        list {
+          type: DT_STRING
+          type: DT_FLOAT
+          type: DT_DOUBLE
+        }
+      }
+    }
+    summary: "Summary for op Foo."
+    description: "Description for op Foo."
+  }
+  )";
+
+  std::unordered_set<string> type_annotate_ops {
+    "Foo",
+  };
+
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
@@ -228,6 +237,51 @@ TV_Foo_T2 = TypeVar("TV_Foo_T2", _dtypes.Float32, _dtypes.Float64, _dtypes.Strin
 }
 
 TEST(PythonOpGen, TypeAnnotateFallback) {
+  constexpr char kBaseOpDef[] = R"(
+  op {
+    name: "Foo"
+    input_arg {
+      name: "x"
+      type_attr: "T"
+    }
+    input_arg {
+      name: "y"
+      type_attr: "T2"
+    }
+    output_arg {
+      name: "output"
+      type_attr: "T"
+    }
+    attr {
+      name: "T"
+      type: "type"
+      allowed_values {
+        list {
+          type: DT_UINT8
+          type: DT_INT8
+        }
+      }
+    }
+    attr {
+      name: "T2"
+      type: "type"
+      allowed_values {
+        list {
+          type: DT_STRING
+          type: DT_FLOAT
+          type: DT_DOUBLE
+        }
+      }
+    }
+    summary: "Summary for op Foo."
+    description: "Description for op Foo."
+  }
+  )";
+
+  std::unordered_set<string> type_annotate_ops {
+    "Foo",
+  };
+
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
@@ -240,6 +294,51 @@ TEST(PythonOpGen, TypeAnnotateFallback) {
 }
 
 TEST(PythonOpGen, GenerateTypeVarAboveOp) {
+  constexpr char kBaseOpDef[] = R"(
+  op {
+    name: "Foo"
+    input_arg {
+      name: "x"
+      type_attr: "T"
+    }
+    input_arg {
+      name: "y"
+      type_attr: "T2"
+    }
+    output_arg {
+      name: "output"
+      type_attr: "T"
+    }
+    attr {
+      name: "T"
+      type: "type"
+      allowed_values {
+        list {
+          type: DT_UINT8
+          type: DT_INT8
+        }
+      }
+    }
+    attr {
+      name: "T2"
+      type: "type"
+      allowed_values {
+        list {
+          type: DT_STRING
+          type: DT_FLOAT
+          type: DT_DOUBLE
+        }
+      }
+    }
+    summary: "Summary for op Foo."
+    description: "Description for op Foo."
+  }
+  )";
+
+  std::unordered_set<string> type_annotate_ops {
+    "Foo",
+  };
+
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
@@ -254,6 +353,50 @@ TEST(PythonOpGen, GenerateTypeVarAboveOp) {
 
 
 TEST(PythonOpGen, TypeAnnotateDefaultParams) {
+  constexpr char kBaseOpDef[] = R"(
+  op {
+    name: "FooBar"
+    input_arg {
+      name: "x"
+      type: DT_FLOAT
+    }
+    output_arg {
+      name: "output"
+      type: DT_BOOL
+    }
+    attr {
+      name: "t"
+      type: "type"
+      allowed_values {
+        list {
+          type: DT_HALF
+          type: DT_INT8
+        }
+      }
+    }
+    attr {
+      name: "var1"
+      type: "bool"
+      default_value {
+        b: false
+      }
+    }
+    attr {
+      name: "var2"
+      type: "int"
+      default_value {
+        i: 0
+      }
+    }
+    summary: "Summary for op FooBar."
+    description: "Description for op FooBar."
+  }
+  )";
+
+  std::unordered_set<string> type_annotate_ops {
+    "FooBar",
+  };
+
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
@@ -268,6 +411,39 @@ TEST(PythonOpGen, TypeAnnotateDefaultParams) {
 }
 
 TEST(PythonOpGen, NoTypingSequenceTensors) {
+  constexpr char kBaseOpDef[] = R"(
+  op {
+    name: "Baz"
+    input_arg {
+      name: "inputs"
+      number_attr: "N"
+      type_list_attr: "T"
+    }
+    output_arg {
+      name: "output1"
+      type: DT_BOOL
+    }
+    output_arg {
+      name: "output2"
+      type: DT_BOOL
+    }
+    attr {
+      name: "T"
+      type: "bool"
+    }
+    attr {
+      name: "N"
+      type: "int"
+    }
+    summary: "Summary for op Baz."
+    description: "Description for op Baz."
+  }
+  )";
+
+  std::unordered_set<string> type_annotate_ops {
+    "Baz"
+  };
+
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
