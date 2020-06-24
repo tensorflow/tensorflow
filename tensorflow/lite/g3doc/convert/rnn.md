@@ -23,14 +23,15 @@ two fold:
 
 ## Converter API
 
-Currently this feature is available through the
-[tf-nightly](https://pypi.org/project/tf-nightly/) pip or from head. This will
-be available in the TensorFlow 2.3 release.
+The feature is part of TensorFlow 2.3 release. It is also available through the
+[tf-nightly](https://pypi.org/project/tf-nightly/) pip or from head.
 
 This conversion functionality is available when converting to TensorFlow Lite
 via a SavedModel or from the Keras model directly. See example usages.
 
 ### From saved model
+
+<a id="from_saved_model"></a>
 
 ```
 # build a saved model. Here concrete_function is the exported function
@@ -64,6 +65,8 @@ illustrates the end to end usage with the TensorFlow Lite interpreter.
 
 ## TensorFlow RNNs APIs supported
 
+<a id="rnn_apis"></a>
+
 ### Keras LSTM conversion (recommended)
 
 We support out-of-the-box conversion of Keras LSTM to TensorFlow Lite. For
@@ -75,12 +78,16 @@ details on how this works please refer to the
 Also important is to highlight the TensorFlow Lite’s LSTM contract with respect
 to the Keras operation definition:
 
-1.  The dimension 0 of the input tensor is the batch size.
-1.  The dimension 0 of the recurrent\_weight tensor is the number of outputs.
+1.  The dimension 0 of the **input** tensor is the batch size.
+1.  The dimension 0 of the **recurrent\_weight** tensor is the number of
+    outputs.
 1.  The **weight** and **recurrent\_kernel** tensors are transposed.
-1.  The transposed weight, transposed recurrent\_kernel and bias tensors are
+1.  The transposed weight, transposed recurrent\_kernel and **bias** tensors are
     split into 4 equal sized tensors along the dimension 0. These correspond to
     **input gate, forget gate, cell, and output gate**.
+
+See the detailed conversion code from Keras LSTM to TensorFlow Lite
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/utils/lstm_utils.cc#L627).
 
 #### Keras LSTM Variants
 
