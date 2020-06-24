@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_node_context_c_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 #define TFTPU_SET_FN(Struct, FnName)                                       \
   Struct->FnName##Fn =                                                     \
