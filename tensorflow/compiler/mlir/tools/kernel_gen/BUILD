@@ -44,8 +44,9 @@ tf_cc_binary(
     visibility = ["//tensorflow/core/kernels/cubin_headers:__pkg__"],
     deps = [
         ":cubin_creator",
-        "//tensorflow/core:framework_internal",
+        "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
     ],
 )

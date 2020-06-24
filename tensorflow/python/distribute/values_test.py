@@ -42,7 +42,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
@@ -56,6 +55,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import saver as saver_lib
@@ -234,11 +234,11 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
               # TODO(b/137795644): support CentralStroageStrategy
               # strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
-          mode=["eager"]
-      ))
+          mode=["eager"]))
   def testMakeDistributedValueDefaultDevicePlacement(self, distribution):
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
@@ -259,11 +259,11 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
               # TODO(b/137795644): support CentralStroageStrategy
               # strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
-          mode=["eager"]
-      ))
+          mode=["eager"]))
   def testMakeDistributedValueExplicitDevicePlacement(self, distribution):
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
@@ -382,6 +382,16 @@ def _make_mirrored():
   mirrored = values.MirroredVariable(
       None, v, variable_scope.VariableAggregation.SUM)
   return mirrored
+
+
+def mirrored_and_tpu_strategy_combinations():
+  return combinations.combine(
+      distribution=[
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.tpu_strategy,
+          strategy_combinations.tpu_strategy_packed_var,
+      ],
+      mode=["graph", "eager"])
 
 
 class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
@@ -563,6 +573,7 @@ class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
             strategy_combinations.mirrored_strategy_with_one_cpu,
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.tpu_strategy,
+            strategy_combinations.tpu_strategy_packed_var,
             strategy_combinations.central_storage_strategy_with_two_gpus,
         ],
         synchronization=[
@@ -708,29 +719,50 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
         self.evaluate(
             distribution.experimental_local_results(distribution.run(assign)))
 
-  def testPackedVariable(self, distribution, synchronization, aggregation):
+
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_one_cpu,
+            strategy_combinations.tpu_strategy,
+        ],
+        mode=["eager"]))
+class PackedDistributedVariableTest(test.TestCase, parameterized.TestCase):
+
+  def testPackedVariable(self, distribution):
     with distribution.scope():
-      v0 = variables_lib.Variable(
-          0., synchronization=synchronization, aggregation=aggregation)
-      if not isinstance(v0, values.DistributedVariable):
-        self.skipTest("This test doesn't apply to non DistributedVariables")
-
-    self.assertEqual(v0._packed_var, None)
-
-    device_type = device.DeviceSpec.from_string(v0._devices[0]).device_type
-    for d in v0._devices:
-      if device.DeviceSpec.from_string(d).device_type != device_type:
-        self.skipTest("Packing variables on devices of different types "
-                      "is not supported yet.")
+      v0 = variables_lib.Variable(0.)
+    self.assertIsNone(v0._packed_var)
 
     distribution._enable_packed_variable_in_eager_mode = True
     with distribution.scope():
-      v1 = variables_lib.Variable(
-          0., synchronization=synchronization, aggregation=aggregation)
-    if ops.executing_eagerly_outside_functions():
+      v1 = variables_lib.Variable(0)
       self.assertIsInstance(v1._packed_var, packed.PackedDistributedVariable)
-    else:
-      self.assertEqual(v1._packed_var, None)
+
+    devices = v1._devices
+    for i in range(1, len(devices)):
+      with distribute_lib.ReplicaContext(distribution, i):
+        v1.assign(i)
+    val = v1._get()
+    self.assertIsInstance(val, packed.PackedVarAndDevice)
+    self.assertEqual(val.device, devices[0])
+    self.assertEqual(self.evaluate(val.read_value()), 0)
+    for i in range(0, len(devices)):
+      with distribute_lib.ReplicaContext(distribution, i):
+        val = v1._get()
+        self.assertIsInstance(val, packed.PackedVarAndDevice)
+        self.assertEqual(val.device, devices[i])
+        self.assertEqual(self.evaluate(val.read_value()), i)
+
+  def testIgnorePackedVariableInSaveContext(self, distribution):
+    distribution._enable_packed_variable_in_eager_mode = True
+    with distribution.scope():
+      v = variables_lib.Variable(0)
+      self.assertIsInstance(
+          v._packed_variable, packed.PackedDistributedVariable)
+
+    with save_context.save_context():
+      self.assertIsNone(v._packed_variable)
 
 
 class MirroredVariableTest(test.TestCase, parameterized.TestCase):
@@ -920,6 +952,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["eager"]))
   def testAssignValueInReplicaContextWithoutAggregation(self, distribution):
@@ -943,6 +976,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_one_cpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["graph", "eager"]))
   def testValueInReplicaContext(self, distribution):
@@ -968,6 +1002,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_one_cpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["graph", "eager"]))
   def testAssignOutOfScope(self, distribution):
@@ -1041,6 +1076,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["eager"]))
   def testInitializedToSameValueInsideEagerRun(self, distribution):
@@ -1066,6 +1102,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_one_cpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["graph", "eager"]))
   def testAggregationOnlyFirstReplica(self, distribution):
@@ -1093,6 +1130,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["eager"]))
   def testInitScope(self, distribution):
@@ -1143,13 +1181,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
         distribution.experimental_local_results(distribution.run(add)))
     self.assertAllEqual([2, 2], per_replica_results)
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.tpu_strategy,
-          ],
-          mode=["graph", "eager"]))
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testAssignAdd(self, distribution):
     with distribution.scope():
       v = variable_scope.variable(
@@ -1456,15 +1488,6 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
     self.assertEqual(2., self.evaluate(add1(replica_local)))
 
 
-def mirrored_and_tpu_strategy_combinations():
-  return combinations.combine(
-      distribution=[
-          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          strategy_combinations.tpu_strategy,
-      ],
-      mode=["graph", "eager"])
-
-
 # TODO(b/144432582): Add variable aggregation type to combinations to simplify
 # tests.
 def strategy_and_run_tf_function_combinations():
@@ -1478,6 +1501,7 @@ def strategy_and_run_tf_function_combinations():
       experimental_run_tf_function=[True, False]) + combinations.combine(
           distribution=[
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["graph", "eager"],
           experimental_run_tf_function=[True])

@@ -147,7 +147,7 @@ void SetMinMaxForConcatenedArray(GraphTransformation* transformation,
   const auto* concat_op =
       static_cast<const ConcatenationOperator*>(concat_base_op);
 
-  for (const string& input_name : concat_op->inputs) {
+  for (const std::string& input_name : concat_op->inputs) {
     // We only expect constant unquantized arrays as input, otherwise we return.
     // We  also make sure the shapes of the input arrays are known and they are
     // all discardable.
@@ -166,10 +166,10 @@ void SetMinMaxForConcatenedArray(GraphTransformation* transformation,
   const int concatenation_axis = concat_op->axis;
 
   CHECK_EQ(concat_op->outputs.size(), 1);
-  string concatenated_array_name = concat_op->outputs[0];
+  std::string concatenated_array_name = concat_op->outputs[0];
   Array& concatenated_array = model->GetOrCreateArray(concatenated_array_name);
   std::vector<Array*> input_arrays;
-  for (const string& input_name : concat_op->inputs) {
+  for (const std::string& input_name : concat_op->inputs) {
     input_arrays.push_back(&model->GetArray(input_name));
   }
 

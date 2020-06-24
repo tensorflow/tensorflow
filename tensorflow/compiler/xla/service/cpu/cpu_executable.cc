@@ -299,12 +299,11 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
       const Shape& expected_shape =
           entry_comp->parameter_instruction(i)->shape();
       const Shape& actual_shape = arguments[i].Buffers().shape();
-      CHECK(
-          Shape::Equal().IgnoreDynamicDimension()(expected_shape, actual_shape))
-          << absl::StreamFormat(
-                 "Shape mismatch on argument %d.  Expected %s, but was %s.", i,
-                 expected_shape.ToString(/*print_layout=*/true),
-                 actual_shape.ToString(/*print_layout=*/true));
+      TF_RET_CHECK(
+          ShapeUtil::DynamicShapeIsCompatible(actual_shape, expected_shape))
+          << "Shape mismatch on argument " << i << ", "
+          << expected_shape.ToString(/*print_layout=*/true) << " vs. "
+          << actual_shape.ToString(/*print_layout=*/true);
     }
   }
 

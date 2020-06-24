@@ -274,6 +274,13 @@ StatusOr<Literal> HloEvaluator::Evaluate(
   engine_.seed(seed_);
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
+
+  if (VLOG_IS_ON(100)) {
+    for (const HloInstruction* instr : computation.instructions()) {
+      VLOG(100) << instr->name() << " = " << GetEvaluatedLiteralFor(instr);
+    }
+  }
+
   return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
 }
 

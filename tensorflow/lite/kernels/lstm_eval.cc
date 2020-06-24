@@ -216,15 +216,20 @@ inline void LstmStepFloat(
     const float* projection_weights_ptr, const float* projection_bias_ptr,
     const TfLiteLSTMParams* params, int n_batch, int n_cell, int n_input,
     int n_aux_input, int n_output, int output_batch_leading_dim,
-    float* output_state_ptr, float* cell_state_ptr, float* input_gate_scratch,
-    float* forget_gate_scratch, float* cell_gate_scratch,
-    float* output_gate_scratch, float* output_ptr) {
+    float* output_state_ptr, float* cell_state_ptr, float* scratch0,
+    float* scratch1, float* scratch2, float* scratch3, float* output_ptr) {
   ruy::profiler::ScopeLabel label("LstmStepFloat");
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weights_ptr != nullptr);
   const bool use_layer_norm = (forget_layer_norm_coefficients_ptr != nullptr);
+
+  // Make named scratch buffers for the different gates.
+  float* input_gate_scratch = scratch0;
+  float* forget_gate_scratch = scratch1;
+  float* cell_gate_scratch = scratch2;
+  float* output_gate_scratch = scratch3;
 
   // Initialize scratch buffers with bias for regular lstm or initialize with
   // zero for layer norm lstm.
@@ -369,8 +374,8 @@ inline void LstmStepFloat(
         cell_state_ptr);
   }
   if (params->cell_clip > 0.0) {
-    tensor_utils::ClipVector(cell_state_ptr, n_batch * n_cell,
-                             params->cell_clip, cell_state_ptr);
+    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
+                                params->cell_clip);
   }
 
   // For each batch and cell: update the output gate.
@@ -410,8 +415,8 @@ inline void LstmStepFloat(
         projection_weights_ptr, n_output, n_cell, output_gate_scratch, n_batch,
         output_state_ptr);
     if (params->proj_clip > 0.0) {
-      tensor_utils::ClipVector(output_state_ptr, n_batch * n_output,
-                               params->proj_clip, output_state_ptr);
+      tensor_utils::CwiseClipping(output_state_ptr, n_batch * n_output,
+                                  params->proj_clip);
     }
   } else {
     std::copy_n(output_gate_scratch, n_batch * n_output, output_state_ptr);
@@ -485,7 +490,7 @@ inline void LstmStepFloat(
 // Temporary pre-allocated storage for quantized values:
 //   quantized_input_ptr (same size as input_ptr)
 //   quantized_output_state_ptr (same size as output_state_ptr)
-//   quantized_cell_state_ptr (same size as cell_state_ptr)
+//   quantized_output_scratch (same size as cell_state_ptr)
 // Temporary pre-allocated storage for recovered values:
 //   recovered_cell_weights (same size as cell_to_*_weights)
 //
@@ -531,12 +536,11 @@ inline void LstmStepHybrid(
     const int8_t* projection_weights_ptr, float projection_weights_scale,
     const float* projection_bias_ptr, const TfLiteLSTMParams* params,
     int n_batch, int n_cell, int n_input, int n_aux_input, int n_output,
-    int output_batch_leading_dim, float* input_gate_scratch,
-    float* forget_gate_scratch, float* cell_gate_scratch,
-    float* output_gate_scratch, float* scaling_factors,
+    int output_batch_leading_dim, float* scratch0, float* scratch1,
+    float* scratch2, float* scratch3, float* scaling_factors,
     float* scaling_factors_scratch, float* recovered_cell_weights,
     int8_t* quantized_input_ptr, int8_t* quantized_aux_input_ptr,
-    int8_t* quantized_output_state_ptr, int8_t* quantized_cell_state_ptr,
+    int8_t* quantized_output_state_ptr, int8_t* quantized_output_scratch,
     float* output_state_ptr, float* cell_state_ptr, int32_t* accum_scratch_ptr,
     float* output_ptr, int32_t* zero_points, int32_t* row_sums,
     int row_sums_size, bool* compute_row_sums, bool asymmetric_quantize_inputs,
@@ -547,6 +551,12 @@ inline void LstmStepHybrid(
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weights_ptr != nullptr);
   const bool use_layer_norm = (forget_layer_norm_coefficients_ptr != nullptr);
+
+  // Make named scratch buffers for the different gates.
+  float* input_gate_scratch = scratch0;
+  float* forget_gate_scratch = scratch1;
+  float* cell_gate_scratch = scratch2;
+  float* output_gate_scratch = scratch3;
 
   // Initialize scratch buffers with bias for regular lstm or initialize with
   // zero for layer norm lstm.
@@ -827,8 +837,8 @@ inline void LstmStepHybrid(
         cell_state_ptr);
   }
   if (params->cell_clip > 0.0) {
-    tensor_utils::ClipVector(cell_state_ptr, n_batch * n_cell,
-                             params->cell_clip, cell_state_ptr);
+    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
+                                params->cell_clip);
   }
 
   // For each batch and cell: update the output gate.
@@ -872,22 +882,19 @@ inline void LstmStepHybrid(
     if (!tensor_utils::IsZeroVector(output_gate_scratch, n_batch * n_cell)) {
       // Save quantization and matmul computation for all zero input.
       tensor_utils::BatchQuantizeFloats(
-          output_gate_scratch, n_batch, n_cell, quantized_cell_state_ptr,
+          output_gate_scratch, n_batch, n_cell, quantized_output_scratch,
           scaling_factors, zero_points, asymmetric_quantize_inputs);
-      for (int b = 0; b < n_batch; ++b) {
-        scaling_factors_scratch[b] =
-            scaling_factors[b] * projection_weights_scale;
-      }
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-          projection_weights_ptr, n_output, n_cell, quantized_cell_state_ptr,
-          scaling_factors_scratch, n_batch, output_state_ptr,
+          projection_weights_ptr, n_output, n_cell, quantized_output_scratch,
+          projection_weights_scale, scaling_factors, n_batch, output_state_ptr,
           /*per_channel_scale=*/nullptr,
           asymmetric_quantize_inputs ? zero_points : nullptr, accum_scratch_ptr,
-          projection_weights_row_sums, compute_row_sums, context);
+          projection_weights_row_sums, compute_row_sums,
+          scaling_factors_scratch, context);
     }
     if (params->proj_clip > 0.0) {
-      tensor_utils::ClipVector(output_state_ptr, n_batch * n_output,
-                               params->proj_clip, output_state_ptr);
+      tensor_utils::CwiseClipping(output_state_ptr, n_batch * n_output,
+                                  params->proj_clip);
     }
   } else {
     std::copy_n(output_gate_scratch, n_batch * n_output, output_state_ptr);
@@ -896,11 +903,11 @@ inline void LstmStepHybrid(
     std::copy_n(output_state_ptr + b * n_output, n_output,
                 output_ptr + b * output_batch_leading_dim);
   }
-}  // namespace
+}
 
 // Fully quantized lstm kernel for 16 bit gate matmul output.
 //
-// Input activation of size n_batch * n_input:
+// Input tensor of size n_batch * n_input:
 //   input_ptr
 //
 // LSTM weights:
@@ -922,7 +929,7 @@ inline void LstmStepHybrid(
 //   cell_to_output_weights              - optional
 //
 // Quantized projection weights of size 'n_output * n_cell'
-//   proj_weight_ptr                     - optional
+//   projection_weight_ptr                     - optional
 //
 // Weight scales (scalars) for each of the weights above.
 //   effective_input_to_input_scale_a    - optional
@@ -945,10 +952,10 @@ inline void LstmStepHybrid(
 //   effective_proj_scale_b                  - optional
 //
 // Gate biases of size 'n_cell':
-//   input_bias_ptr                 - optional
-//   forget_bias_ptr
+//   input_gate_bias_ptr                 - optional
+//   forget_gate_bias_ptr
 //   cell_gate_bias_ptr
-//   output_bias_ptr
+//   output_gate_bias_ptr
 //
 // Layer norm coefficients of size 'n_cell', representing diagonal matrices.
 //   layer_norm_input_weight_ptr    - optional
@@ -969,27 +976,27 @@ inline void LstmStepHybrid(
 // Scalar values:
 //   quantized_cell_clip: quantized clip value for cell.
 //   quantized_proj_clip: quantized clip value for projection.
-//   cell_scale: the power of two scale for cell state.
+//   cell_state_scale: the power of two scale for cell state.
 //
 // Zero points:
-//   activation_zp: zero point of activation
+//   output_state_zp: zero point of output state
 //   hidden_zp: zero point for hidden state.
 //
 // Temporary pre-allocated storage for the calculation. Each is of size n_cell *
 // n_batch.
-//   scratch_0
-//   scratch_1
-//   scratch_2
-//   scratch_3
-//   scratch_4
-//   scratch_5: this scratch buffer is created purely for optimizing the
+//   scratch0
+//   scratch1
+//   scratch2
+//   scratch3
+//   scratch4
+//   scratch5: this scratch buffer is created purely for optimizing the
 //              MatrixBatchVectorMultiplyAccumulate.
 //
 // Outputs:
 //   output_state_ptr - size 'n_batch * n_output'
 //   cell_state_ptr   - size 'n_batch * n_cell'
 //   output_ptr       - size 'n_batch * n_output'
-inline void LstmStepInteger(
+inline void LstmStepInteger8x8_16(
     const int8_t* input_ptr, const int8_t* input_to_input_weight_ptr,
     int32_t effective_input_to_input_scale_a,
     int32_t effective_input_to_input_scale_b,
@@ -1022,10 +1029,10 @@ inline void LstmStepInteger(
     int32_t effective_cell_to_forget_scale_b,
     const int16_t* cell_to_output_weight_ptr,
     int32_t effective_cell_to_output_scale_a,
-    int32_t effective_cell_to_output_scale_b, const int8_t* proj_weight_ptr,
-    int32_t effective_proj_scale_a, int32_t effective_proj_scale_b,
-    int32_t hidden_zp, int32_t effective_hidden_scale_a,
-    int32_t effective_hidden_scale_b,
+    int32_t effective_cell_to_output_scale_b,
+    const int8_t* projection_weight_ptr, int32_t effective_proj_scale_a,
+    int32_t effective_proj_scale_b, int32_t hidden_zp,
+    int32_t effective_hidden_scale_a, int32_t effective_hidden_scale_b,
     const int16_t* layer_norm_input_weight_ptr,
     int32_t layer_norm_input_scale_a, int32_t layer_norm_input_scale_b,
     const int16_t* layer_norm_forget_weight_ptr,
@@ -1034,11 +1041,12 @@ inline void LstmStepInteger(
     int32_t layer_norm_cell_scale_b,
     const int16_t* layer_norm_output_weight_ptr,
     int32_t layer_norm_output_scale_a, int32_t layer_norm_output_scale_b,
-    const int32_t* input_bias_ptr, const int32_t* forget_bias_ptr,
-    const int32_t* cell_gate_bias_ptr, const int32_t* output_bias_ptr,
-    int16_t quantized_cell_clip, int8_t quantized_proj_clip, int32_t cell_scale,
-    int32_t input_variance_guard, int32_t forget_variance_guard,
-    int32_t cell_variance_guard, int32_t output_variance_guard,
+    const int32_t* input_gate_bias_ptr, const int32_t* forget_gate_bias_ptr,
+    const int32_t* cell_gate_bias_ptr, const int32_t* output_gate_bias_ptr,
+    int16_t quantized_cell_clip, int8_t quantized_proj_clip,
+    int32_t cell_state_scale, int32_t input_variance_guard,
+    int32_t forget_variance_guard, int32_t cell_variance_guard,
+    int32_t output_variance_guard,
     const int32_t* input_to_forget_effective_bias,
     const int32_t* recurrent_to_forget_effective_bias,
     const int32_t* input_to_cell_effective_bias,
@@ -1047,18 +1055,23 @@ inline void LstmStepInteger(
     const int32_t* recurrent_to_output_effective_bias,
     const int32_t* input_to_input_effective_bias,
     const int32_t* recurrent_to_input_effective_bias,
-    const int32_t* projection_effective_bias, int32 n_batch, int32 n_cell,
-    int32 n_input, int32 n_output, int8_t* activation_ptr,
-    int32_t activation_zp, int16_t* cell_ptr, int8_t* output_ptr,
-    int16_t* scratch_0_ptr, int16_t* scratch_1_ptr, int16_t* scratch_2_ptr,
-    int16_t* scratch_3_ptr, int8_t* scratch_4_ptr, int32_t* scratch_5_ptr,
-    CpuBackendContext* context) {
-  ruy::profiler::ScopeLabel label("LstmStepInteger");
+    const int32_t* projection_effective_bias, int n_batch, int n_cell,
+    int n_input, int n_output, int8_t* output_state_ptr,
+    int32_t output_state_zp, int16_t* cell_state_ptr, int8_t* output_ptr,
+    int16_t* scratch0, int16_t* scratch1, int16_t* scratch2, int16_t* scratch3,
+    int8_t* scratch4, int32_t* scratch5, CpuBackendContext* context) {
+  ruy::profiler::ScopeLabel label("LstmStepInteger8x8_16");
+  // Make named scratch buffers for the different gates.
+  int16_t* input_gate_scratch = scratch0;
+  int16_t* forget_gate_scratch = scratch1;
+  int16_t* cell_gate_scratch = scratch2;
+  int16_t* output_gate_scratch = scratch3;
+
   // Get hyper parameters.
   const bool use_cifg = (input_to_input_weight_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weight_ptr != nullptr);
   const bool use_layer_norm = (layer_norm_forget_weight_ptr != nullptr);
-  const bool use_projection = (proj_weight_ptr != nullptr);
+  const bool use_projection = (projection_weight_ptr != nullptr);
 
   // Check for nullptrs.
   TFLITE_DCHECK(input_to_forget_effective_bias);
@@ -1075,158 +1088,164 @@ inline void LstmStepInteger(
 
   // Set scratch to 0.
   if (!use_cifg) {
-    std::fill_n(scratch_0_ptr, n_batch * n_cell, 0);
+    std::fill_n(input_gate_scratch, n_batch * n_cell, 0);
   }
-  std::fill_n(scratch_1_ptr, n_batch * n_cell, 0);
-  std::fill_n(scratch_2_ptr, n_batch * n_cell, 0);
-  std::fill_n(scratch_3_ptr, n_batch * n_cell, 0);
+  std::fill_n(forget_gate_scratch, n_batch * n_cell, 0);
+  std::fill_n(cell_gate_scratch, n_batch * n_cell, 0);
+  std::fill_n(output_gate_scratch, n_batch * n_cell, 0);
 
   // Forget gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_ptr, input_to_forget_effective_bias, input_to_forget_weight_ptr,
       effective_input_to_forget_scale_a, effective_input_to_forget_scale_b,
-      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_1_ptr, context);
+      n_batch, n_input, n_cell, 0, scratch5, forget_gate_scratch, context);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, recurrent_to_forget_effective_bias,
+      output_state_ptr, recurrent_to_forget_effective_bias,
       recurrent_to_forget_weight_ptr, effective_recurrent_to_forget_scale_a,
       effective_recurrent_to_forget_scale_b, n_batch, n_output, n_cell, 0,
-      scratch_5_ptr, scratch_1_ptr, context);
+      scratch5, forget_gate_scratch, context);
   if (use_peephole) {
     tensor_utils::VectorBatchVectorCwiseProductAccumulate(
-        cell_to_forget_weight_ptr, n_output, cell_ptr, n_batch,
+        cell_to_forget_weight_ptr, n_output, cell_state_ptr, n_batch,
         effective_cell_to_forget_scale_a, effective_cell_to_forget_scale_b,
-        scratch_1_ptr);
+        forget_gate_scratch);
   }
 
   if (use_layer_norm) {
     tensor_utils::ApplyLayerNorm(
-        scratch_1_ptr, layer_norm_forget_weight_ptr, forget_bias_ptr,
+        forget_gate_scratch, layer_norm_forget_weight_ptr, forget_gate_bias_ptr,
         layer_norm_forget_scale_a, layer_norm_forget_scale_b,
-        forget_variance_guard, n_batch, n_cell, scratch_1_ptr);
+        forget_variance_guard, n_batch, n_cell, forget_gate_scratch);
   }
 
-  tensor_utils::ApplySigmoid(scratch_1_ptr, n_batch, n_cell, scratch_1_ptr);
+  tensor_utils::ApplySigmoid(forget_gate_scratch, n_batch, n_cell,
+                             forget_gate_scratch);
 
-  // Modulation gate.
+  // Cell gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_ptr, input_to_cell_effective_bias, input_to_cell_weight_ptr,
       effective_input_to_cell_scale_a, effective_input_to_cell_scale_b, n_batch,
-      n_input, n_cell, 0, scratch_5_ptr, scratch_2_ptr, context);
+      n_input, n_cell, 0, scratch5, cell_gate_scratch, context);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, recurrent_to_cell_effective_bias,
+      output_state_ptr, recurrent_to_cell_effective_bias,
       recurrent_to_cell_weight_ptr, effective_recurrent_to_cell_scale_a,
       effective_recurrent_to_cell_scale_b, n_batch, n_output, n_cell, 0,
-      scratch_5_ptr, scratch_2_ptr, context);
+      scratch5, cell_gate_scratch, context);
 
   if (use_layer_norm) {
-    tensor_utils::ApplyLayerNorm(scratch_2_ptr, layer_norm_cell_weight_ptr,
+    tensor_utils::ApplyLayerNorm(cell_gate_scratch, layer_norm_cell_weight_ptr,
                                  cell_gate_bias_ptr, layer_norm_cell_scale_a,
                                  layer_norm_cell_scale_b, cell_variance_guard,
-                                 n_batch, n_cell, scratch_2_ptr);
+                                 n_batch, n_cell, cell_gate_scratch);
   }
 
-  tensor_utils::ApplyTanh(3, scratch_2_ptr, n_batch, n_cell, scratch_2_ptr);
+  tensor_utils::ApplyTanh(3, cell_gate_scratch, n_batch, n_cell,
+                          cell_gate_scratch);
 
   // Input gate.
   if (use_cifg) {
-    tensor_utils::Sub1Vector(scratch_1_ptr, n_batch * n_cell, scratch_0_ptr);
+    tensor_utils::Sub1Vector(forget_gate_scratch, n_batch * n_cell,
+                             input_gate_scratch);
   } else {
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_ptr, input_to_input_effective_bias, input_to_input_weight_ptr,
         effective_input_to_input_scale_a, effective_input_to_input_scale_b,
-        n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_0_ptr, context);
+        n_batch, n_input, n_cell, 0, scratch5, input_gate_scratch, context);
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        activation_ptr, recurrent_to_input_effective_bias,
+        output_state_ptr, recurrent_to_input_effective_bias,
         recurrent_to_input_weight_ptr, effective_recurrent_to_input_scale_a,
         effective_recurrent_to_input_scale_b, n_batch, n_output, n_cell, 0,
-        scratch_5_ptr, scratch_0_ptr, context);
+        scratch5, input_gate_scratch, context);
     if (use_peephole) {
       tensor_utils::VectorBatchVectorCwiseProductAccumulate(
-          cell_to_input_weight_ptr, n_output, cell_ptr, n_batch,
+          cell_to_input_weight_ptr, n_output, cell_state_ptr, n_batch,
           effective_cell_to_input_scale_a, effective_cell_to_input_scale_b,
-          scratch_0_ptr);
+          input_gate_scratch);
     }
 
     if (use_layer_norm) {
       tensor_utils::ApplyLayerNorm(
-          scratch_0_ptr, layer_norm_input_weight_ptr, input_bias_ptr,
+          input_gate_scratch, layer_norm_input_weight_ptr, input_gate_bias_ptr,
           layer_norm_input_scale_a, layer_norm_input_scale_b,
-          input_variance_guard, n_batch, n_cell, scratch_0_ptr);
+          input_variance_guard, n_batch, n_cell, input_gate_scratch);
     }
-    tensor_utils::ApplySigmoid(scratch_0_ptr, n_batch, n_cell, scratch_0_ptr);
+    tensor_utils::ApplySigmoid(input_gate_scratch, n_batch, n_cell,
+                               input_gate_scratch);
   }
 
-  // New cell.
-  tensor_utils::CwiseMul(scratch_1_ptr, cell_ptr, n_batch, n_cell, 15,
-                         scratch_1_ptr);
+  // New cell state.
+  tensor_utils::CwiseMul(forget_gate_scratch, cell_state_ptr, n_batch, n_cell,
+                         15, forget_gate_scratch);
 
-  tensor_utils::CwiseMul(scratch_0_ptr, scratch_2_ptr, n_batch, n_cell,
-                         30 + cell_scale, scratch_2_ptr);
+  tensor_utils::CwiseMul(input_gate_scratch, cell_gate_scratch, n_batch, n_cell,
+                         30 + cell_state_scale, cell_gate_scratch);
 
-  tensor_utils::CwiseAdd(scratch_1_ptr, scratch_2_ptr, n_batch, n_cell,
-                         cell_ptr);
+  tensor_utils::CwiseAdd(forget_gate_scratch, cell_gate_scratch, n_batch,
+                         n_cell, cell_state_ptr);
 
   if (quantized_cell_clip > 0) {
-    tensor_utils::CwiseClipping(cell_ptr, quantized_cell_clip, n_batch, n_cell);
+    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
+                                quantized_cell_clip);
   }
 
   // Ouptut gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_ptr, input_to_output_effective_bias, input_to_output_weight_ptr,
       effective_input_to_output_scale_a, effective_input_to_output_scale_b,
-      n_batch, n_input, n_cell, 0, scratch_5_ptr, scratch_3_ptr, context);
+      n_batch, n_input, n_cell, 0, scratch5, output_gate_scratch, context);
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      activation_ptr, recurrent_to_output_effective_bias,
+      output_state_ptr, recurrent_to_output_effective_bias,
       recurrent_to_output_weight_ptr, effective_recurrent_to_output_scale_a,
       effective_recurrent_to_output_scale_b, n_batch, n_output, n_cell, 0,
-      scratch_5_ptr, scratch_3_ptr, context);
+      scratch5, output_gate_scratch, context);
   if (use_peephole) {
     tensor_utils::VectorBatchVectorCwiseProductAccumulate(
-        cell_to_output_weight_ptr, n_output, cell_ptr, n_batch,
+        cell_to_output_weight_ptr, n_output, cell_state_ptr, n_batch,
         effective_cell_to_output_scale_a, effective_cell_to_output_scale_b,
-        scratch_3_ptr);
+        output_gate_scratch);
   }
 
   if (use_layer_norm) {
     tensor_utils::ApplyLayerNorm(
-        scratch_3_ptr, layer_norm_output_weight_ptr, output_bias_ptr,
+        output_gate_scratch, layer_norm_output_weight_ptr, output_gate_bias_ptr,
         layer_norm_output_scale_a, layer_norm_output_scale_b,
-        output_variance_guard, n_batch, n_cell, scratch_3_ptr);
+        output_variance_guard, n_batch, n_cell, output_gate_scratch);
   }
 
-  tensor_utils::ApplySigmoid(scratch_3_ptr, n_batch, n_cell, scratch_3_ptr);
+  tensor_utils::ApplySigmoid(output_gate_scratch, n_batch, n_cell,
+                             output_gate_scratch);
 
   // Hidden.
-  tensor_utils::ApplyTanh(15 + cell_scale, cell_ptr, n_batch, n_cell,
-                          scratch_0_ptr);
+  tensor_utils::ApplyTanh(15 + cell_state_scale, cell_state_ptr, n_batch,
+                          n_cell, input_gate_scratch);
 
-  tensor_utils::CwiseMul(scratch_3_ptr, scratch_0_ptr, effective_hidden_scale_a,
-                         effective_hidden_scale_b, n_batch, n_cell, hidden_zp,
-                         scratch_4_ptr);
+  tensor_utils::CwiseMul(output_gate_scratch, input_gate_scratch,
+                         effective_hidden_scale_a, effective_hidden_scale_b,
+                         n_batch, n_cell, hidden_zp, scratch4);
   // Projection.
   if (use_projection) {
     std::fill_n(output_ptr, n_batch * n_output, 0);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        scratch_4_ptr, projection_effective_bias, proj_weight_ptr,
+        scratch4, projection_effective_bias, projection_weight_ptr,
         effective_proj_scale_a, effective_proj_scale_b, n_batch, n_cell,
-        n_output, activation_zp, scratch_5_ptr, output_ptr, context);
+        n_output, output_state_zp, scratch5, output_ptr, context);
     if (quantized_proj_clip > 0) {
-      tensor_utils::CwiseClipping(output_ptr, quantized_proj_clip, n_batch,
-                                  n_output);
+      tensor_utils::CwiseClipping(output_ptr, n_batch * n_output,
+                                  quantized_proj_clip);
     }
   } else {
-    std::copy_n(scratch_4_ptr, n_batch * n_output, output_ptr);
+    std::copy_n(scratch4, n_batch * n_output, output_ptr);
   }
-  std::copy_n(output_ptr, n_batch * n_output, activation_ptr);
+  std::copy_n(output_ptr, n_batch * n_output, output_state_ptr);
 }
 
 // Fully quantized lstm kernel for 8 bit gate matmul output.
 //
-// Input activation of size n_batch * n_input:
+// Input tensor of size n_batch * n_input:
 //   input_ptr
 //
 // LSTM weights:
@@ -1248,7 +1267,7 @@ inline void LstmStepInteger(
 //   cell_to_output_weights              - optional
 //
 // Quantized projection weights of size 'n_output * n_cell'
-//   proj_weight_ptr                     - optional
+//   projection_weight_ptr                     - optional
 //
 // Weight scales (scalars) for each of the weights above.
 //   effective_input_to_input_scale_a    - optional
@@ -1271,10 +1290,10 @@ inline void LstmStepInteger(
 //   effective_proj_scale_b                  - optional
 //
 // Gate biases of size 'n_cell':
-//   input_bias_ptr                 - optional
-//   forget_bias_ptr
+//   input_gate_bias_ptr                 - optional
+//   forget_gate_bias_ptr
 //   cell_gate_bias_ptr
-//   output_bias_ptr
+//   output_gate_bias_ptr
 //
 // Layer norm coefficients of size 'n_cell', representing diagonal matrices.
 //   layer_norm_input_weight_ptr    - optional
@@ -1295,29 +1314,29 @@ inline void LstmStepInteger(
 // Scalar values:
 //   quantized_cell_clip: quantized clip value for cell.
 //   quantized_proj_clip: quantized clip value for projection.
-//   cell_scale: the power of two scale for cell state.
+//   cell_state_scale: the power of two scale for cell state.
 //
 // Zero points:
-//   activation_zp: zero point of activation
+//   output_state_zp: zero point of output state.
 //   hidden_zp: zero point for hidden state.
 //
 // Temporary pre-allocated storage for the calculation. Each is of size n_cell *
 // n_batch.
-//   scratch_0
-//   scratch_1
-//   scratch_2
-//   scratch_3
-//   scratch_4
-//   scratch_5
-//   scratch_6
-//   scratch_7
+//   scratch0
+//   scratch1
+//   scratch2
+//   scratch3
+//   scratch4
+//   scratch5
+//   scratch6
+//   scratch7
 //
 // Outputs:
 //   output_state_ptr - size 'n_batch * n_output'
 //   cell_state_ptr   - size 'n_batch * n_cell'
 //   output_ptr       - size 'n_batch * n_output'
 // TODO(b/148688698): Move zero point calculation into Prepare().
-void LstmStepInteger(
+inline void LstmStepInteger8x8_8(
     const int8_t* input_ptr, int32_t input_zp,
     const int8_t* input_to_input_weight_ptr,
     int32_t effective_input_to_input_scale_a,
@@ -1351,9 +1370,9 @@ void LstmStepInteger(
     int32_t effective_cell_to_forget_scale_b,
     const int8_t* cell_to_output_weight_ptr,
     int32_t effective_cell_to_output_scale_a,
-    int32_t effective_cell_to_output_scale_b, const int8_t* proj_weight_ptr,
-    int32_t effective_proj_scale_a, int32_t effective_proj_scale_b,
-    const int16_t* layer_norm_input_weight_ptr,
+    int32_t effective_cell_to_output_scale_b,
+    const int8_t* projection_weight_ptr, int32_t effective_proj_scale_a,
+    int32_t effective_proj_scale_b, const int16_t* layer_norm_input_weight_ptr,
     int32_t layer_norm_input_scale_a, int32_t layer_norm_input_scale_b,
     const int16_t* layer_norm_forget_weight_ptr,
     int32_t layer_norm_forget_scale_a, int32_t layer_norm_forget_scale_b,
@@ -1361,17 +1380,24 @@ void LstmStepInteger(
     int32_t layer_norm_cell_scale_b,
     const int16_t* layer_norm_output_weight_ptr,
     int32_t layer_norm_output_scale_a, int32_t layer_norm_output_scale_b,
-    const int32_t* input_bias_ptr, const int32_t* forget_bias_ptr,
-    const int32_t* cell_gate_bias_ptr, const int32_t* output_bias_ptr,
-    const int32_t* proj_bias_ptr, const TfLiteLSTMParams* params,
+    const int32_t* input_gate_bias_ptr, const int32_t* forget_gate_bias_ptr,
+    const int32_t* cell_gate_bias_ptr, const int32_t* output_gate_bias_ptr,
+    const int32_t* projection_bias_ptr, const TfLiteLSTMParams* params,
     const int32_t* intermediate_scale_a, const int32_t* intermediate_scale_b,
-    const int32_t* intermediate_zp, int32 quantized_cell_clip,
-    int32 quantized_proj_clip, int32 n_batch, int32 n_cell, int32 n_input,
-    int32 n_output, int32 output_batch_leading_dim, int8_t* activation_ptr,
-    int32_t activation_zp, int16_t* cell_ptr, int8_t* output_ptr,
+    const int32_t* intermediate_zp, int16_t quantized_cell_clip,
+    int8_t quantized_proj_clip, int n_batch, int n_cell, int n_input,
+    int n_output, int output_batch_leading_dim, int8_t* output_state_ptr,
+    int32_t output_state_zp, int16_t* cell_state_ptr, int8_t* output_ptr,
     int8_t* scratch0, int8_t* scratch1, int16_t* scratch2, int16_t* scratch3,
     int16_t* scratch4, int16_t* scratch5, int16_t* scratch6,
     int16_t* scratch7) {
+  ruy::profiler::ScopeLabel label("LstmStepInteger8x8_8");
+  // Make named scratch buffers for the different gates.
+  int16_t* input_gate_scratch = scratch5;
+  int16_t* forget_gate_scratch = scratch2;
+  int16_t* cell_gate_scratch = scratch3;
+  int16_t* output_gate_scratch = scratch4;
+
   // Forget gate.
   std::fill_n(scratch0, n_batch * n_cell, 0);
   std::fill_n(scratch1, n_batch * n_cell, 0);
@@ -1381,7 +1407,7 @@ void LstmStepInteger(
       n_batch, n_input, n_cell, scratch0, intermediate_zp[4]);
 
   tensor_utils::MatrixBatchVectorMultiply(
-      activation_ptr, activation_zp, recurrent_to_forget_weight_ptr,
+      output_state_ptr, output_state_zp, recurrent_to_forget_weight_ptr,
       effective_recurrent_to_forget_scale_a,
       effective_recurrent_to_forget_scale_b, n_batch, n_output, n_cell,
       scratch1, intermediate_zp[5]);
@@ -1389,17 +1415,19 @@ void LstmStepInteger(
   tensor_utils::TwoGateSaturationgAdd(
       scratch0, intermediate_zp[4], scratch1, intermediate_zp[5],
       intermediate_scale_a[2], intermediate_scale_b[2], intermediate_scale_a[3],
-      intermediate_scale_b[3], n_batch, n_cell, scratch2);
+      intermediate_scale_b[3], n_batch, n_cell, forget_gate_scratch);
 
   // Forget gate layer norm.
   tensor_utils::ApplyLayerNormFloat(
-      scratch2, layer_norm_forget_weight_ptr, layer_norm_forget_scale_a,
-      layer_norm_forget_scale_b, forget_bias_ptr, n_batch, n_cell, scratch2);
+      forget_gate_scratch, layer_norm_forget_weight_ptr,
+      layer_norm_forget_scale_a, layer_norm_forget_scale_b,
+      forget_gate_bias_ptr, n_batch, n_cell, forget_gate_scratch);
 
   // Forget gate sigmoid.
-  tensor_utils::ApplySigmoidFloat(scratch2, n_batch, n_cell, scratch2);
+  tensor_utils::ApplySigmoidFloat(forget_gate_scratch, n_batch, n_cell,
+                                  forget_gate_scratch);
 
-  // Update gate.
+  // Cell gate.
   std::fill_n(scratch0, n_batch * n_cell, 0);
   std::fill_n(scratch1, n_batch * n_cell, 0);
   tensor_utils::MatrixBatchVectorMultiply(
@@ -1408,22 +1436,24 @@ void LstmStepInteger(
       n_input, n_cell, scratch0, intermediate_zp[7]);
 
   tensor_utils::MatrixBatchVectorMultiply(
-      activation_ptr, activation_zp, recurrent_to_cell_weight_ptr,
+      output_state_ptr, output_state_zp, recurrent_to_cell_weight_ptr,
       effective_recurrent_to_cell_scale_a, effective_recurrent_to_cell_scale_b,
       n_batch, n_output, n_cell, scratch1, intermediate_zp[8]);
 
   tensor_utils::TwoGateSaturationgAdd(
       scratch0, intermediate_zp[7], scratch1, intermediate_zp[8],
       intermediate_scale_a[4], intermediate_scale_b[4], intermediate_scale_a[5],
-      intermediate_scale_b[5], n_batch, n_cell, scratch3);
+      intermediate_scale_b[5], n_batch, n_cell, cell_gate_scratch);
 
-  // Update gate with layer norm.
+  // Cell gate layer norm.
   tensor_utils::ApplyLayerNormFloat(
-      scratch3, layer_norm_cell_weight_ptr, layer_norm_cell_scale_a,
-      layer_norm_cell_scale_b, cell_gate_bias_ptr, n_batch, n_cell, scratch3);
+      cell_gate_scratch, layer_norm_cell_weight_ptr, layer_norm_cell_scale_a,
+      layer_norm_cell_scale_b, cell_gate_bias_ptr, n_batch, n_cell,
+      cell_gate_scratch);
 
-  // Update gate tanh.
-  tensor_utils::ApplyTanhFloat(scratch3, n_batch, n_cell, -12, scratch3);
+  // Cell gate tanh.
+  tensor_utils::ApplyTanhFloat(cell_gate_scratch, n_batch, n_cell, -12,
+                               cell_gate_scratch);
 
   // Output gate.
   std::fill_n(scratch0, n_batch * n_cell, 0);
@@ -1434,7 +1464,7 @@ void LstmStepInteger(
       n_batch, n_input, n_cell, scratch0, intermediate_zp[10]);
 
   tensor_utils::MatrixBatchVectorMultiply(
-      activation_ptr, activation_zp, recurrent_to_output_weight_ptr,
+      output_state_ptr, output_state_zp, recurrent_to_output_weight_ptr,
       effective_recurrent_to_output_scale_a,
       effective_recurrent_to_output_scale_b, n_batch, n_output, n_cell,
       scratch1, intermediate_zp[11]);
@@ -1442,52 +1472,57 @@ void LstmStepInteger(
   tensor_utils::TwoGateSaturationgAdd(
       scratch0, intermediate_zp[10], scratch1, intermediate_zp[11],
       intermediate_scale_a[6], intermediate_scale_b[6], intermediate_scale_a[7],
-      intermediate_scale_b[7], n_batch, n_cell, scratch4);
+      intermediate_scale_b[7], n_batch, n_cell, output_gate_scratch);
 
   // Output gate with layer norm.
   tensor_utils::ApplyLayerNormFloat(
-      scratch4, layer_norm_output_weight_ptr, layer_norm_output_scale_a,
-      layer_norm_output_scale_b, output_bias_ptr, n_batch, n_cell, scratch4);
+      output_gate_scratch, layer_norm_output_weight_ptr,
+      layer_norm_output_scale_a, layer_norm_output_scale_b,
+      output_gate_bias_ptr, n_batch, n_cell, output_gate_scratch);
 
   // Output gate sigmoid.
-  tensor_utils::ApplySigmoidFloat(scratch4, n_batch, n_cell, scratch4);
+  tensor_utils::ApplySigmoidFloat(output_gate_scratch, n_batch, n_cell,
+                                  output_gate_scratch);
 
   // Input gate with cifg
-  tensor_utils::Sub1Vector(scratch2, n_batch * n_cell, scratch5);
+  tensor_utils::Sub1Vector(forget_gate_scratch, n_batch * n_cell,
+                           input_gate_scratch);
 
   // New cell.
-  tensor_utils::CwiseMul(scratch2, cell_ptr, n_batch, n_cell, 15 + 15 - 15,
-                         scratch6);
+  tensor_utils::CwiseMul(forget_gate_scratch, cell_state_ptr, n_batch, n_cell,
+                         15 + 15 - 15, scratch6);
 
-  tensor_utils::CwiseMul(scratch5, scratch3, n_batch, n_cell, 15 + 15 - 15,
-                         scratch7);
+  tensor_utils::CwiseMul(input_gate_scratch, cell_gate_scratch, n_batch, n_cell,
+                         15 + 15 - 15, scratch7);
 
-  tensor_utils::CwiseAdd(scratch6, scratch7, n_batch, n_cell, cell_ptr);
+  tensor_utils::CwiseAdd(scratch6, scratch7, n_batch, n_cell, cell_state_ptr);
 
   if (quantized_cell_clip > 0) {
-    tensor_utils::CwiseClipping(cell_ptr, quantized_cell_clip, n_batch, n_cell);
+    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
+                                quantized_cell_clip);
   }
 
   // Cell to hidden.
-  tensor_utils::ApplyTanhFloat(cell_ptr, n_batch, n_cell, -15, scratch2);
+  tensor_utils::ApplyTanhFloat(cell_state_ptr, n_batch, n_cell, -15,
+                               forget_gate_scratch);
 
-  std::vector<int16_t> hidden(n_batch * n_cell);
-  tensor_utils::CwiseMul(scratch4, scratch2, n_batch, n_cell, 15 + 15 - 15,
-                         scratch3);
+  tensor_utils::CwiseMul(output_gate_scratch, forget_gate_scratch, n_batch,
+                         n_cell, 15 + 15 - 15, cell_gate_scratch);
 
   // Projection.
   tensor_utils::MatrixBatchVectorMultiply(
-      scratch3, proj_weight_ptr, effective_proj_scale_a, effective_proj_scale_b,
-      proj_bias_ptr, n_batch, n_cell, n_output, activation_zp, output_ptr);
+      cell_gate_scratch, projection_weight_ptr, effective_proj_scale_a,
+      effective_proj_scale_b, projection_bias_ptr, n_batch, n_cell, n_output,
+      output_state_zp, output_ptr);
 
   // Projection clipping.
   if (quantized_proj_clip > 0) {
-    tensor_utils::CwiseClipping(output_ptr, quantized_proj_clip, n_batch,
-                                n_output);
+    tensor_utils::CwiseClipping(output_ptr, n_batch * n_output,
+                                quantized_proj_clip);
   }
 
-  // Copy output to activation.
-  std::copy_n(output_ptr, n_batch * n_output, activation_ptr);
+  // Copy output to output state.
+  std::copy_n(output_ptr, n_batch * n_output, output_state_ptr);
 }
 
 }  // namespace
@@ -1515,12 +1550,11 @@ TfLiteStatus EvalFloat(
     const TfLiteTensor* aux_input_to_cell_weights,
     const TfLiteTensor* aux_input_to_output_weights,
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
-    const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
+    const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
-    int output_offset, TfLiteTensor* scratch_buffer,
-    TfLiteTensor* activation_state, TfLiteTensor* cell_state,
-    TfLiteTensor* output) {
+    int output_offset, TfLiteTensor* scratch_buffer, TfLiteTensor* output_state,
+    TfLiteTensor* cell_state, TfLiteTensor* output) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   int max_time, n_batch;
   if (input->dims->size == 3) {
@@ -1599,15 +1633,14 @@ TfLiteStatus EvalFloat(
           GetTensorData<float>(output_layer_norm_coefficients),
           GetTensorData<float>(input_gate_bias),
           GetTensorData<float>(forget_gate_bias),
-          GetTensorData<float>(cell_bias),
+          GetTensorData<float>(cell_gate_bias),
           GetTensorData<float>(output_gate_bias),
           GetTensorData<float>(projection_weights),
           GetTensorData<float>(projection_bias), params, n_batch, n_cell,
           n_input, aux_input_size, n_output, output_batch_leading_dim,
-          GetTensorData<float>(activation_state),
-          GetTensorData<float>(cell_state), input_gate_scratch,
-          forget_gate_scratch, cell_gate_scratch, output_gate_scratch,
-          output_ptr);
+          GetTensorData<float>(output_state), GetTensorData<float>(cell_state),
+          input_gate_scratch, forget_gate_scratch, cell_gate_scratch,
+          output_gate_scratch, output_ptr);
     }
   } else {
     for (int b = 0; b < n_batch; b++) {
@@ -1628,9 +1661,9 @@ TfLiteStatus EvalFloat(
         float* output_ptr = GetTensorData<float>(output) +
                             time_offset * output_step + output_offset;
 
-        // Offset the {activation,cell}_state pointers to the right batch.
-        float* activation_state_ptr = GetTensorData<float>(activation_state) +
-                                      b * output_batch_leading_dim;
+        // Offset the {output,cell}_state pointers to the right batch.
+        float* output_state_ptr =
+            GetTensorData<float>(output_state) + b * output_batch_leading_dim;
         float* cell_state_ptr = GetTensorData<float>(cell_state) + b * n_cell;
         // Offset the scratch pointers to the right batch.
         float* input_gate_scratch_ptr =
@@ -1661,12 +1694,12 @@ TfLiteStatus EvalFloat(
             GetTensorData<float>(output_layer_norm_coefficients),
             GetTensorData<float>(input_gate_bias),
             GetTensorData<float>(forget_gate_bias),
-            GetTensorData<float>(cell_bias),
+            GetTensorData<float>(cell_gate_bias),
             GetTensorData<float>(output_gate_bias),
             GetTensorData<float>(projection_weights),
             GetTensorData<float>(projection_bias), params, /*n_batch=*/1,
             n_cell, n_input, aux_input_size, n_output, output_batch_leading_dim,
-            activation_state_ptr, cell_state_ptr, input_gate_scratch_ptr,
+            output_state_ptr, cell_state_ptr, input_gate_scratch_ptr,
             forget_gate_scratch_ptr, cell_gate_scratch_ptr,
             output_gate_scratch_ptr, output_ptr);
       }
@@ -1698,7 +1731,7 @@ TfLiteStatus EvalHybrid(
     const TfLiteTensor* aux_input_to_cell_weights,
     const TfLiteTensor* aux_input_to_output_weights,
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
-    const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
+    const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
     int output_offset, TfLiteTensor* scratch_buffer,
@@ -1807,7 +1840,7 @@ TfLiteStatus EvalHybrid(
           GetTensorData<float>(output_layer_norm_coefficients),
           GetTensorData<float>(input_gate_bias),
           GetTensorData<float>(forget_gate_bias),
-          GetTensorData<float>(cell_bias),
+          GetTensorData<float>(cell_gate_bias),
           GetTensorData<float>(output_gate_bias),
           GetTensorData<int8_t>(projection_weights),
           GetTensorScale(projection_weights),
@@ -1893,7 +1926,7 @@ TfLiteStatus EvalHybrid(
             GetTensorData<float>(output_layer_norm_coefficients),
             GetTensorData<float>(input_gate_bias),
             GetTensorData<float>(forget_gate_bias),
-            GetTensorData<float>(cell_bias),
+            GetTensorData<float>(cell_gate_bias),
             GetTensorData<float>(output_gate_bias),
             GetTensorData<int8_t>(projection_weights),
             GetTensorScale(projection_weights),
@@ -1935,14 +1968,14 @@ TfLiteStatus EvalInteger8x8_16(
     const TfLiteTensor* cell_layer_norm_coefficients,
     const TfLiteTensor* output_layer_norm_coefficients,
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
-    const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
+    const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params,
     const lstm_eval::IntegerLstmParameter* integer_lstm_param,
-    TfLiteTensor* activation_state, TfLiteTensor* cell_state,
-    TfLiteTensor* output, TfLiteTensor* scratch0, TfLiteTensor* scratch1,
-    TfLiteTensor* scratch2, TfLiteTensor* scratch3, TfLiteTensor* scratch4,
-    TfLiteTensor* scratch5, CpuBackendContext* context) {
+    TfLiteTensor* output_state, TfLiteTensor* cell_state, TfLiteTensor* output,
+    TfLiteTensor* scratch0, TfLiteTensor* scratch1, TfLiteTensor* scratch2,
+    TfLiteTensor* scratch3, TfLiteTensor* scratch4, TfLiteTensor* scratch5,
+    CpuBackendContext* context) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int n_input = input->dims->data[input->dims->size - 1];
   int max_time, n_batch;
@@ -1959,7 +1992,7 @@ TfLiteStatus EvalInteger8x8_16(
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
   // Activation zero point
-  int activation_zp = activation_state->params.zero_point;
+  int output_state_zp = output_state->params.zero_point;
 
   // Get params for time/batch/sequence.
   const int output_batch_leading_dim =
@@ -1971,7 +2004,7 @@ TfLiteStatus EvalInteger8x8_16(
     const int t_rel = t;
     int8_t* output_ptr = GetTensorData<int8_t>(output) + t_rel * output_step;
     const int8_t* input_ptr = GetTensorData<int8_t>(input) + t_rel * input_step;
-    LstmStepInteger(
+    LstmStepInteger8x8_16(
         input_ptr, GetTensorData<int8_t>(input_to_input_weights),
         integer_lstm_param->effective_input_to_input_scale_a,
         integer_lstm_param->effective_input_to_input_scale_b,
@@ -2025,7 +2058,7 @@ TfLiteStatus EvalInteger8x8_16(
         integer_lstm_param->layer_norm_output_scale_b,
         GetTensorData<int32_t>(input_gate_bias),
         GetTensorData<int32_t>(forget_gate_bias),
-        GetTensorData<int32_t>(cell_bias),
+        GetTensorData<int32_t>(cell_gate_bias),
         GetTensorData<int32_t>(output_gate_bias),
         integer_lstm_param->quantized_cell_clip,
         integer_lstm_param->quantized_proj_clip, integer_lstm_param->cell_scale,
@@ -2042,8 +2075,8 @@ TfLiteStatus EvalInteger8x8_16(
         integer_lstm_param->input_to_input_effective_bias.get(),
         integer_lstm_param->recurrent_to_input_effective_bias.get(),
         integer_lstm_param->projection_effective_bias.get(), n_batch, n_cell,
-        n_input, n_output, GetTensorData<int8_t>(activation_state),
-        activation_zp, GetTensorData<int16_t>(cell_state), output_ptr,
+        n_input, n_output, GetTensorData<int8_t>(output_state), output_state_zp,
+        GetTensorData<int16_t>(cell_state), output_ptr,
         GetTensorData<int16_t>(scratch0), GetTensorData<int16_t>(scratch1),
         GetTensorData<int16_t>(scratch2), GetTensorData<int16_t>(scratch3),
         GetTensorData<int8_t>(scratch4), GetTensorData<int32_t>(scratch5),
@@ -2070,9 +2103,9 @@ TfLiteStatus EvalInteger8x8_8(
     const TfLiteTensor* cell_layer_norm_coefficients,
     const TfLiteTensor* output_layer_norm_coefficients,
     const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
-    const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
+    const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
-    const TfLiteLSTMParams* params, TfLiteTensor* activation_state,
+    const TfLiteLSTMParams* params, TfLiteTensor* output_state,
     TfLiteTensor* cell_state, TfLiteTensor* output,
     const lstm_eval::IntegerLstmParameter* integer_lstm_param,
     TfLiteTensor* scratch0, TfLiteTensor* scratch1, TfLiteTensor* scratch2,
@@ -2093,49 +2126,8 @@ TfLiteStatus EvalInteger8x8_8(
   const int n_cell = input_to_output_weights->dims->data[0];
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
-  // Weights and states.
-  const int8_t* input_to_input_weight_ptr =
-      GetTensorData<int8_t>(input_to_input_weights);
-  const int8_t* recurrent_to_input_weight_ptr =
-      GetTensorData<int8_t>(recurrent_to_input_weights);
-  const int8_t* cell_to_input_weight_ptr =
-      GetTensorData<int8_t>(cell_to_input_weights);
-  const int8_t* input_to_forget_weight_ptr =
-      GetTensorData<int8_t>(input_to_forget_weights);
-  const int8_t* recurrent_to_forget_weight_ptr =
-      GetTensorData<int8_t>(recurrent_to_forget_weights);
-  const int8_t* cell_to_forget_weight_ptr =
-      GetTensorData<int8_t>(cell_to_forget_weights);
-  const int8_t* input_to_cell_weight_ptr =
-      GetTensorData<int8_t>(input_to_cell_weights);
-  const int8_t* recurrent_to_cell_weight_ptr =
-      GetTensorData<int8_t>(recurrent_to_cell_weights);
-  const int8_t* input_to_output_weight_ptr =
-      GetTensorData<int8_t>(input_to_output_weights);
-  const int8_t* recurrent_to_output_weight_ptr =
-      GetTensorData<int8_t>(recurrent_to_output_weights);
-  const int8_t* cell_to_output_weight_ptr =
-      GetTensorData<int8_t>(cell_to_output_weights);
-  const int8_t* proj_weight_ptr = GetTensorData<int8_t>(projection_weights);
-  const int16_t* layer_norm_input_weight_ptr =
-      GetTensorData<int16_t>(input_layer_norm_coefficients);
-  const int16_t* layer_norm_forget_weight_ptr =
-      GetTensorData<int16_t>(forget_layer_norm_coefficients);
-  const int16_t* layer_norm_cell_weight_ptr =
-      GetTensorData<int16_t>(cell_layer_norm_coefficients);
-  const int16_t* layer_norm_output_weight_ptr =
-      GetTensorData<int16_t>(output_layer_norm_coefficients);
-  const int32_t* input_bias_ptr = GetTensorData<int32_t>(input_gate_bias);
-  const int32_t* forget_bias_ptr = GetTensorData<int32_t>(forget_gate_bias);
-  const int32_t* cell_gate_bias_ptr = GetTensorData<int32_t>(cell_bias);
-  const int32_t* output_bias_ptr = GetTensorData<int32_t>(output_gate_bias);
-  const int32_t* proj_bias_ptr = GetTensorData<int32_t>(projection_bias);
-  int16_t* cell_ptr = GetTensorData<int16_t>(cell_state);
-  int8_t* activation_ptr = GetTensorData<int8_t>(activation_state);
-  int8_t* output_ptr = nullptr;
-
-  const int32 input_zp = input->params.zero_point;
-  const int32 activation_zp = activation_state->params.zero_point;
+  const int32_t input_zp = input->params.zero_point;
+  const int32_t output_state_zp = output_state->params.zero_point;
 
   // Get params for time/batch/sequence.
   const int output_batch_leading_dim =
@@ -2145,89 +2137,93 @@ TfLiteStatus EvalInteger8x8_8(
 
   for (int t = 0; t < max_time; t++) {
     const int t_rel = t;
-    output_ptr = output->data.int8 + t_rel * output_step;
-
+    int8_t* output_ptr = GetTensorData<int8_t>(output) + t_rel * output_step;
     // Input can be int8 asymmetric or int16 symmetric.
-    const int8_t* input_ptr = input->data.int8 + t_rel * input_step;
-    lstm_eval::LstmStepInteger(
+    const int8_t* input_ptr = GetTensorData<int8_t>(input) + t_rel * input_step;
+    lstm_eval::LstmStepInteger8x8_8(
         input_ptr, input_zp,
 
-        input_to_input_weight_ptr,
+        GetTensorData<int8_t>(input_to_input_weights),
         integer_lstm_param->effective_input_to_input_scale_a,
         integer_lstm_param->effective_input_to_input_scale_b,
 
-        input_to_forget_weight_ptr,
+        GetTensorData<int8_t>(input_to_forget_weights),
         integer_lstm_param->effective_input_to_forget_scale_a,
         integer_lstm_param->effective_input_to_forget_scale_b,
 
-        input_to_cell_weight_ptr,
+        GetTensorData<int8_t>(input_to_cell_weights),
         integer_lstm_param->effective_input_to_cell_scale_a,
         integer_lstm_param->effective_input_to_cell_scale_b,
 
-        input_to_output_weight_ptr,
+        GetTensorData<int8_t>(input_to_output_weights),
         integer_lstm_param->effective_input_to_output_scale_a,
         integer_lstm_param->effective_input_to_output_scale_b,
 
-        recurrent_to_input_weight_ptr,
+        GetTensorData<int8_t>(recurrent_to_input_weights),
         integer_lstm_param->effective_recurrent_to_input_scale_a,
         integer_lstm_param->effective_recurrent_to_input_scale_b,
 
-        recurrent_to_forget_weight_ptr,
+        GetTensorData<int8_t>(recurrent_to_forget_weights),
         integer_lstm_param->effective_recurrent_to_forget_scale_a,
         integer_lstm_param->effective_recurrent_to_forget_scale_b,
 
-        recurrent_to_cell_weight_ptr,
+        GetTensorData<int8_t>(recurrent_to_cell_weights),
         integer_lstm_param->effective_recurrent_to_cell_scale_a,
         integer_lstm_param->effective_recurrent_to_cell_scale_b,
 
-        recurrent_to_output_weight_ptr,
+        GetTensorData<int8_t>(recurrent_to_output_weights),
         integer_lstm_param->effective_recurrent_to_output_scale_a,
         integer_lstm_param->effective_recurrent_to_output_scale_b,
 
-        cell_to_input_weight_ptr,
+        GetTensorData<int8_t>(cell_to_input_weights),
         integer_lstm_param->effective_cell_to_input_scale_a,
         integer_lstm_param->effective_cell_to_input_scale_b,
 
-        cell_to_forget_weight_ptr,
+        GetTensorData<int8_t>(cell_to_forget_weights),
         integer_lstm_param->effective_cell_to_forget_scale_a,
         integer_lstm_param->effective_cell_to_forget_scale_b,
 
-        cell_to_output_weight_ptr,
+        GetTensorData<int8_t>(cell_to_output_weights),
         integer_lstm_param->effective_cell_to_output_scale_a,
         integer_lstm_param->effective_cell_to_output_scale_b,
 
-        proj_weight_ptr, integer_lstm_param->effective_proj_scale_a,
+        GetTensorData<int8_t>(projection_weights),
+        integer_lstm_param->effective_proj_scale_a,
         integer_lstm_param->effective_proj_scale_b,
 
-        layer_norm_input_weight_ptr,
+        GetTensorData<int16_t>(input_layer_norm_coefficients),
         integer_lstm_param->layer_norm_input_scale_a,
         integer_lstm_param->layer_norm_input_scale_b,
 
-        layer_norm_forget_weight_ptr,
+        GetTensorData<int16_t>(forget_layer_norm_coefficients),
         integer_lstm_param->layer_norm_forget_scale_a,
         integer_lstm_param->layer_norm_forget_scale_b,
 
-        layer_norm_cell_weight_ptr, integer_lstm_param->layer_norm_cell_scale_a,
+        GetTensorData<int16_t>(cell_layer_norm_coefficients),
+        integer_lstm_param->layer_norm_cell_scale_a,
         integer_lstm_param->layer_norm_cell_scale_b,
 
-        layer_norm_output_weight_ptr,
+        GetTensorData<int16_t>(output_layer_norm_coefficients),
         integer_lstm_param->layer_norm_output_scale_a,
         integer_lstm_param->layer_norm_output_scale_b,
 
-        input_bias_ptr, forget_bias_ptr, cell_gate_bias_ptr, output_bias_ptr,
-        proj_bias_ptr,
+        GetTensorData<int32_t>(input_gate_bias),
+        GetTensorData<int32_t>(forget_gate_bias),
+        GetTensorData<int32_t>(cell_gate_bias),
+        GetTensorData<int32_t>(output_gate_bias),
+        GetTensorData<int32_t>(projection_bias),
 
         params, integer_lstm_param->intermediate_scale_a,
         integer_lstm_param->intermediate_scale_b,
         integer_lstm_param->intermediate_zp,
         integer_lstm_param->quantized_cell_clip,
         integer_lstm_param->quantized_proj_clip, n_batch, n_cell, n_input,
-        n_output, output_batch_leading_dim, activation_ptr, activation_zp,
-        cell_ptr, output_ptr, GetTensorData<int8_t>(scratch0),
-        GetTensorData<int8_t>(scratch1), GetTensorData<int16_t>(scratch2),
-        GetTensorData<int16_t>(scratch3), GetTensorData<int16_t>(scratch4),
-        GetTensorData<int16_t>(scratch5), GetTensorData<int16_t>(scratch6),
-        GetTensorData<int16_t>(scratch7));
+        n_output, output_batch_leading_dim, GetTensorData<int8_t>(output_state),
+        output_state_zp, GetTensorData<int16_t>(cell_state), output_ptr,
+        GetTensorData<int8_t>(scratch0), GetTensorData<int8_t>(scratch1),
+        GetTensorData<int16_t>(scratch2), GetTensorData<int16_t>(scratch3),
+        GetTensorData<int16_t>(scratch4), GetTensorData<int16_t>(scratch5),
+        GetTensorData<int16_t>(scratch6), GetTensorData<int16_t>(scratch7));
   }
 
   return kTfLiteOk;

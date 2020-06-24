@@ -190,9 +190,8 @@ class MirroredStrategy(distribute_lib.Strategy):
 
   This strategy is typically used for training on one
   machine with multiple GPUs. For TPUs, use
-  `tf.distribute.experimental.TPUStrategy`. To use `MirroredStrategy` with
-  multiple workers, please refer to
-  `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
+  `tf.distribute.TPUStrategy`. To use `MirroredStrategy` with multiple workers,
+  please refer to `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
 
   For example, a variable created under a `MirroredStrategy` is a
   `MirroredVariable`. If no devices are specified in the constructor argument of

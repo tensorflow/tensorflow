@@ -32,8 +32,10 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
@@ -75,20 +77,21 @@ def _on_write_update_replica(var, update_fn, value, **kwargs):
 class DistributedValues(object):
   """Base class for representing distributed values.
 
-  A subclass instance of DistributedValues is created when creating variables
-  within a distribution strategy, iterating a `tf.Dataset` or through
-  `strategy.run`.  This base class should never be instantiated
-  directly.  DistributedValues contains a value per replica.  Depending on
+  A subclass instance of `tf.distribute.DistributedValues` is created when
+  creating variables within a distribution strategy, iterating a
+  `tf.distribute.DistributedDataset` or through `tf.distribute.Strategy.run`.
+  This base class should never be instantiated directly.
+  `tf.distribute.DistributedValues` contains a value per replica. Depending on
   the subclass, the values could either be synced on update, synced on demand,
   or never synced.
 
-  DistributedValues can be reduced to obtain single value across replicas,
-  as input into `run` or the per replica values inspected
-  using `experimental_local_results`.
+  `tf.distribute.DistributedValues` can be reduced to obtain single value across
+  replicas, as input into `tf.distribute.Strategy.run` or the per-replica values
+  inspected using `tf.distribute.Strategy.experimental_local_results`.
 
   Example usage:
 
-  1. Created from Dataset:
+  1. Created from a `tf.distribute.DistributedDataset`:
 
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
@@ -470,6 +473,11 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     # variable.
     self._var_policy = var_policy
 
+  def _use_packed_variable(self):
+    # Don't use packed variable when under a SaveContext to avoid explicit
+    # device placement on variable consuming ops.
+    return self._packed_var is not None and not save_context.in_save_context()
+
   def is_initialized(self, name=None):
     """Identifies if all the component variables are initialized.
 
@@ -480,6 +488,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       The op that evaluates to True or False depending on if all the
       component variables are initialized.
     """
+    if self._use_packed_variable():
+      return self._packed_var.is_initialized()
     result = self._primary.is_initialized()
     # We iterate through the list of values except the last one to allow us to
     # name the final `logical_and` op the same name that is passed by the user
@@ -551,12 +561,20 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     return self._aggregation
 
   @property
+  def _packed_variable(self):
+    if self._use_packed_variable():
+      return self._packed_var
+    return None
+
+  @property
   def handle(self):
     replica_id = values_util.get_current_replica_id_as_int()
     if replica_id is None:
       raise ValueError("`handle` is not available outside the replica context"
                        " or a `tf.distribute.Strategy.update()` call.")
     else:
+      if self._use_packed_variable():
+        return self._packed_var.handle
       return self._values[replica_id].handle
 
   def eval(self, session=None):
@@ -604,6 +622,33 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
   @property
   def _in_graph_mode(self):
     return self._primary._in_graph_mode  # pylint: disable=protected-access
+
+  def _get_replica(self, replica_id):
+    """Returns the value on a device with the given replica_id."""
+    if self._use_packed_variable():
+      return self._packed_var.on_device(self._devices[replica_id])
+    return self._values[replica_id]
+
+  def _get(self):
+    """Returns the value for the current device or raises a ValueError."""
+    replica_id = values_util.get_current_replica_id_as_int()
+    if replica_id is None:
+      return self._get_cross_replica()
+    else:
+      return self._get_replica(replica_id)
+
+  def _get_on_device_or_primary(self):
+    """Returns value in same replica or device if possible, else the _primary."""
+    replica_id = values_util.get_current_replica_id_as_int()
+    if replica_id is None:
+      # Try to find a value on the current device.
+      current_device = device_util.canonicalize(device_util.current())
+      for i, value in enumerate(self._values):
+        if device_util.canonicalize(value.device) == current_device:
+          return self._get_replica(i)
+      return self._get_replica(0)
+    else:
+      return self._get_replica(replica_id)
 
   def read_value(self):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
@@ -776,7 +821,8 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       if ds_context.in_cross_replica_context():
         update_replica_id = distribute_lib.get_update_replica_id()
         if update_replica_id is not None:
-          return update_fn(self._values[update_replica_id], value, **kwargs)
+          replica_value = self._get_replica(update_replica_id)
+          return update_fn(replica_value, value, **kwargs)
         return self._update_cross_replica(update_fn, value, **kwargs)
       else:
         values_util.assert_replica_context(self.distribute_strategy)
@@ -791,6 +837,19 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       return ops.convert_to_tensor(
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
+
+  def _map_resources(self):
+    """For implementing `Trackable`."""
+    new_obj = resource_variable_ops.copy_to_graph_uninitialized(self._primary)
+    obj_map, resource_map = {}, {}
+    for v in self._values:
+      obj_map[v] = new_obj
+      resource_map[v.handle] = new_obj.handle
+    obj_map[self] = new_obj
+    resource_map[self] = new_obj.handle
+    if self._packed_var is not None:
+      resource_map[self._packed_var.packed_handle] = new_obj.handle
+    return obj_map, resource_map
 
 
 class _DistributedVariableSaveable(saveable_object.SaveableObject):
@@ -822,6 +881,12 @@ class _MirroredSaveable(saveable_object_util.ResourceVariableSaveable):
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
+    packed_var = self._mirrored_variable._packed_variable  # pylint: disable=protected-access
+    if packed_var is not None:
+      return control_flow_ops.group(
+          tuple(
+              values_util.assign_on_device(d, packed_var, tensor)
+              for d in packed_var.devices))
     return control_flow_ops.group(
         tuple(
             values_util.assign_on_device(v.device, v, tensor)
@@ -1000,7 +1065,7 @@ class SyncOnReadVariable(DistributedVariable):
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-      return self._primary
+      return self._get_replica(0)
 
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       return self._distribute_strategy.reduce(

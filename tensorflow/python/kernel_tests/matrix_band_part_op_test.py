@@ -56,7 +56,7 @@ def _GetMatrixBandPartTest(dtype_, batch_shape_, shape_):
           band_np = np.triu(band_np, -lower)
         if upper >= 0:
           band_np = np.tril(band_np, upper)
-        if batch_shape_ is not ():
+        if batch_shape_ != ():
           band_np = np.tile(band_np, batch_shape_ + (1, 1))
         for index_dtype in [dtypes_lib.int32, dtypes_lib.int64]:
           with self.cached_session(use_gpu=False):

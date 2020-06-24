@@ -36,7 +36,7 @@ limitations under the License.
 namespace toco {
 
 bool ParseModelFlagsFromCommandLineFlags(
-    int* argc, char* argv[], string* msg,
+    int* argc, char* argv[], std::string* msg,
     ParsedModelFlags* parsed_model_flags_ptr) {
   ParsedModelFlags& parsed_flags = *parsed_model_flags_ptr;
   using tensorflow::Flag;
@@ -188,7 +188,7 @@ void ReadModelFlagsFromCommandLineFlags(
   // Load proto containing the initial model flags.
   // Additional flags specified on the command line will overwrite the values.
   if (parsed_model_flags.model_flags_file.specified()) {
-    string model_flags_file_contents;
+    std::string model_flags_file_contents;
     QCHECK(port::file::GetContents(parsed_model_flags.model_flags_file.value(),
                                    &model_flags_file_contents,
                                    port::file::Defaults())
@@ -217,9 +217,9 @@ void ReadModelFlagsFromCommandLineFlags(
   }
 
   if (parsed_model_flags.output_arrays.specified()) {
-    std::vector<string> output_arrays =
+    std::vector<std::string> output_arrays =
         absl::StrSplit(parsed_model_flags.output_arrays.value(), ',');
-    for (const string& output_array : output_arrays) {
+    for (const std::string& output_array : output_arrays) {
       model_flags->add_output_arrays(output_array);
     }
   }
@@ -251,7 +251,7 @@ void ReadModelFlagsFromCommandLineFlags(
     QCHECK(uses_multi_input_flags);
     for (const auto& input_array :
          absl::StrSplit(parsed_model_flags.input_arrays.value(), ',')) {
-      model_flags->add_input_arrays()->set_name(string(input_array));
+      model_flags->add_input_arrays()->set_name(std::string(input_array));
     }
   }
   if (parsed_model_flags.mean_value.specified()) {
@@ -261,7 +261,7 @@ void ReadModelFlagsFromCommandLineFlags(
   }
   if (parsed_model_flags.mean_values.specified()) {
     QCHECK(uses_multi_input_flags);
-    std::vector<string> mean_values =
+    std::vector<std::string> mean_values =
         absl::StrSplit(parsed_model_flags.mean_values.value(), ',');
     QCHECK(static_cast<int>(mean_values.size()) == model_flags->input_arrays_size());
     for (size_t i = 0; i < mean_values.size(); ++i) {
@@ -278,7 +278,7 @@ void ReadModelFlagsFromCommandLineFlags(
   }
   if (parsed_model_flags.std_values.specified()) {
     QCHECK(uses_multi_input_flags);
-    std::vector<string> std_values =
+    std::vector<std::string> std_values =
         absl::StrSplit(parsed_model_flags.std_values.value(), ',');
     QCHECK( static_cast<int>(std_values.size()) == model_flags->input_arrays_size());
     for (size_t i = 0; i < std_values.size(); ++i) {
@@ -296,7 +296,7 @@ void ReadModelFlagsFromCommandLineFlags(
   }
   if (parsed_model_flags.input_data_types.specified()) {
     QCHECK(uses_multi_input_flags);
-    std::vector<string> input_data_types =
+    std::vector<std::string> input_data_types =
         absl::StrSplit(parsed_model_flags.input_data_types.value(), ',');
     QCHECK(static_cast<int>(input_data_types.size()) == model_flags->input_arrays_size());
     for (size_t i = 0; i < input_data_types.size(); ++i) {
@@ -319,7 +319,7 @@ void ReadModelFlagsFromCommandLineFlags(
   }
   if (parsed_model_flags.input_shapes.specified()) {
     QCHECK(uses_multi_input_flags);
-    std::vector<string> input_shapes =
+    std::vector<std::string> input_shapes =
         absl::StrSplit(parsed_model_flags.input_shapes.value(), ':');
     QCHECK(static_cast<int>(input_shapes.size()) == model_flags->input_arrays_size());
     for (size_t i = 0; i < input_shapes.size(); ++i) {
@@ -352,8 +352,8 @@ void ReadModelFlagsFromCommandLineFlags(
   for (const auto& element : parsed_model_flags.rnn_states.value().elements) {
     auto* rnn_state_proto = model_flags->add_rnn_states();
     for (const auto& kv_pair : element) {
-      const string& key = kv_pair.first;
-      const string& value = kv_pair.second;
+      const std::string& key = kv_pair.first;
+      const std::string& value = kv_pair.second;
       if (key == "state_array") {
         rnn_state_proto->set_state_array(value);
       } else if (key == "back_edge_source_array") {
@@ -377,8 +377,8 @@ void ReadModelFlagsFromCommandLineFlags(
   for (const auto& element : parsed_model_flags.model_checks.value().elements) {
     auto* model_check_proto = model_flags->add_model_checks();
     for (const auto& kv_pair : element) {
-      const string& key = kv_pair.first;
-      const string& value = kv_pair.second;
+      const std::string& key = kv_pair.first;
+      const std::string& value = kv_pair.second;
       if (key == "count_type") {
         model_check_proto->set_count_type(value);
       } else if (key == "count_min") {
@@ -411,7 +411,7 @@ void ReadModelFlagsFromCommandLineFlags(
   }
 
   if (parsed_model_flags.arrays_extra_info_file.specified()) {
-    string arrays_extra_info_file_contents;
+    std::string arrays_extra_info_file_contents;
     CHECK(port::file::GetContents(
               parsed_model_flags.arrays_extra_info_file.value(),
               &arrays_extra_info_file_contents, port::file::Defaults())
@@ -443,7 +443,7 @@ void ParseModelFlagsOrDie(int* argc, char* argv[]) {
   // TODO(aselle): in the future allow Google version to use
   // flags, and only use this mechanism for open source
   auto* flags = UncheckedGlobalParsedModelFlags(false);
-  string msg;
+  std::string msg;
   bool model_success =
       toco::ParseModelFlagsFromCommandLineFlags(argc, argv, &msg, flags);
   if (!model_success || !msg.empty()) {

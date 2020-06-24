@@ -48,7 +48,7 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
   }
   // Record data types of output before processing, so we can see at the
   // end if we changed anything, and return the correct boolean value.
-  std::unordered_map<string, ArrayDataType> old_output_data_types;
+  std::unordered_map<std::string, ArrayDataType> old_output_data_types;
   for (const auto& output : op->outputs) {
     old_output_data_types[output] = model->GetArray(output).data_type;
   }

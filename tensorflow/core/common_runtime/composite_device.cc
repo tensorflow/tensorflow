@@ -25,6 +25,16 @@ const char* const kCompositeDeviceType = "COMPOSITE";
 std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
     const std::vector<string>& underlying_devices, const int unique_device_id,
     const DeviceNameUtils::ParsedName& host_name, Status* status) {
+  DeviceNameUtils::ParsedName parsed_name = host_name;
+  parsed_name.type = kCompositeDeviceType;
+  parsed_name.id = unique_device_id;
+  const string device_name = DeviceNameUtils::ParsedNameToString(parsed_name);
+  return CompositeDevice::MakeDevice(underlying_devices, device_name, status);
+}
+
+std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
+    const std::vector<string>& underlying_devices, const string& device_name,
+    Status* status) {
   if (underlying_devices.empty()) {
     status->Update(
         errors::InvalidArgument("underlying_devices should not be empty."));
@@ -63,13 +73,8 @@ std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
     }
   }
 
-  DeviceNameUtils::ParsedName parsed_composite_name = host_name;
   DeviceAttributes device_attributes;
-  parsed_composite_name.type = kCompositeDeviceType;
-  parsed_composite_name.id = unique_device_id;
-  const string composite_name =
-      DeviceNameUtils::ParsedNameToString(parsed_composite_name);
-  device_attributes.set_name(composite_name);
+  device_attributes.set_name(device_name);
   device_attributes.set_device_type(kCompositeDeviceType);
 
   return absl::WrapUnique(

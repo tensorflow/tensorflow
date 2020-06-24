@@ -58,9 +58,6 @@ class Tensor : public GPUObject {
 
   virtual ~Tensor() { Release(); }
 
-  const GPUObjectDescriptor* GetGPUDescriptor() const override {
-    return &descriptor_;
-  }
   GPUResourcesWithValue GetGPUResources(AccessType access_type) const override;
 
   int Width() const { return shape_.w; }

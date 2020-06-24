@@ -152,7 +152,7 @@ namespace toco {
       return ::tensorflow::Status::OK();
   }
 
-  const string& name = op.inputs[weights_index];
+  const std::string& name = op.inputs[weights_index];
   auto& array = model->GetArray(name);
   if (!array.buffer) {
     return ::tensorflow::Status::OK();

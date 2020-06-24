@@ -67,7 +67,8 @@ namespace toco {
 
   // Validate all indices come from the same DynamicPartition.
   DynamicPartitionOperator* indices_partition_op = nullptr;
-  for (const string& indices_partition_output_name : stitch_indices_inputs) {
+  for (const std::string& indices_partition_output_name :
+       stitch_indices_inputs) {
     auto* op = GetOpWithOutput(*model, indices_partition_output_name);
     CHECK(op) << "Source of " << indices_partition_output_name << " not found";
     if (op->type != OperatorType::kDynamicPartition) {
@@ -112,7 +113,7 @@ namespace toco {
 
   // Find all of the gathers used for the data inputs.
   std::vector<GatherOperator*> gather_ops;
-  for (const string& gather_output_name : stitch_data_inputs) {
+  for (const std::string& gather_output_name : stitch_data_inputs) {
     auto* op = GetOpWithOutput(*model, gather_output_name);
     CHECK(op) << "Source of " << gather_output_name << " not found";
     if (op->type != OperatorType::kGather) {

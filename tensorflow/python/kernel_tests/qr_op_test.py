@@ -278,14 +278,13 @@ if __name__ == "__main__":
                                     use_static_shape))
 
   # TODO(pfau): Get working with complex types.
-  # TODO(pfau): Get working with full_matrices when rows != cols
-  # TODO(pfau): Get working when rows < cols
+  # TODO(pfau): Get working with full_matrices when rows > cols
   # TODO(pfau): Get working with shapeholders (dynamic shapes)
   for full_matrices in False, True:
     for dtype in np.float32, np.float64:
       for rows in 1, 2, 5, 10:
         for cols in 1, 2, 5, 10:
-          if rows == cols or (not full_matrices and rows > cols):
+          if rows <= cols or (not full_matrices and rows > cols):
             for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
               shape = batch_dims + (rows, cols)
               name = "%s_%s_full_%s" % (dtype.__name__,
