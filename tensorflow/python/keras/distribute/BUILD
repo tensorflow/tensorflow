@@ -317,6 +317,22 @@ distribute_py_test(
 )
 
 distribute_py_test(
+    name = "keras_save_load_test",
+    size = "medium",
+    srcs = ["keras_save_load_test.py"],
+    full_precision = True,
+    main = "keras_save_load_test.py",
+    shard_count = 7,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python/distribute:saved_model_test_base",
+        "//tensorflow/python/keras/saving",
+    ],
+)
+
+distribute_py_test(
     name = "keras_stateful_lstm_model_correctness_test",
     size = "medium",
     srcs = ["keras_stateful_lstm_model_correctness_test.py"],

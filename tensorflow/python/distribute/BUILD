@@ -1596,22 +1596,6 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "keras_save_load_test",
-    size = "medium",
-    srcs = ["keras_save_load_test.py"],
-    full_precision = True,
-    main = "keras_save_load_test.py",
-    shard_count = 7,
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":saved_model_test_base",
-        "//tensorflow/python/keras/saving",
-    ],
-)
-
-distribute_py_test(
     name = "saved_model_mixed_api_test",
     size = "medium",
     srcs = ["saved_model_mixed_api_test.py"],
