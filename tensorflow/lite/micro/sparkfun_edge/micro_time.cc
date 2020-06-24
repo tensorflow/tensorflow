@@ -47,6 +47,12 @@ constexpr int kClocksPerSecond = 12e6;
 // Enables 96MHz burst mode on Sparkfun Edge. Enable in timer since most
 // benchmarks and profilers want maximum performance for debugging.
 void BurstModeEnable() {
+  am_hal_clkgen_control(AM_HAL_CLKGEN_CONTROL_SYSCLK_MAX, 0);
+
+  // Set the default cache configuration
+  am_hal_cachectrl_config(&am_hal_cachectrl_defaults);
+  am_hal_cachectrl_enable();
+
   am_hal_burst_avail_e eBurstModeAvailable;
   am_hal_burst_mode_e eBurstMode;
 
