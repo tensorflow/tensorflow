@@ -45,7 +45,7 @@ DISPATCH_ATTR = "_tf_dispatchers"
 _GLOBAL_DISPATCHERS = []
 
 
-# Define type variables
+# Type variable for decorators
 F = TypeVar("F", bound=Callable[..., Any])
 
 

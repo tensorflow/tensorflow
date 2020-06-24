@@ -87,7 +87,7 @@ API_ATTRS_V1 = {
 }
 
 
-# Define type variables
+# Type variable for decorators
 F = TypeVar("F", bound=Callable[..., Any])
 
 
