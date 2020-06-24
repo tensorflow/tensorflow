@@ -98,7 +98,7 @@ class _EagerTensorCache(object):
     return self._data.get(key, None)
 
   def flush(self):
-    self._data = {}
+    self._data.clear()
 
 
 class FunctionCallOptions(object):
