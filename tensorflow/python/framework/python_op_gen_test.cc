@@ -106,7 +106,7 @@ TEST(PythonOpGen, TypeAnnotateSingleTypeTensor) {
 
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
-  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
+  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
   string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
@@ -166,7 +166,7 @@ TEST(PythonOpGen, TypeAnnotateMultiTypeTensor) {
 
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
-  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
+  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
   string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
@@ -223,7 +223,7 @@ TEST(PythonOpGen, GenerateCorrectTypeVars) {
 
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
-  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
+  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
   string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
@@ -284,7 +284,7 @@ TEST(PythonOpGen, TypeAnnotateFallback) {
 
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
-  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
+  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
   string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
@@ -341,7 +341,7 @@ TEST(PythonOpGen, GenerateTypeVarAboveOp) {
 
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
-  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
+  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
   string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
@@ -399,7 +399,7 @@ TEST(PythonOpGen, TypeAnnotateDefaultParams) {
 
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
-  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
+  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
   string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
@@ -446,7 +446,7 @@ TEST(PythonOpGen, NoTypingSequenceTensors) {
 
   OpList op_defs;
   OpRegistry::Global()->Export(false, &op_defs);
-  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
+  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
   string code = GetPythonOps(op_defs, api_def_map, {}, "", type_annotate_ops);
@@ -455,8 +455,6 @@ TEST(PythonOpGen, NoTypingSequenceTensors) {
 
   ExpectHasSubstr(code, baz_def_line);
 }
-
-// TODO(mdan): Include more tests with synhtetic ops and api defs.
 
 }  // namespace
 }  // namespace tensorflow

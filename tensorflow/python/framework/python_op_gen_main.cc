@@ -158,7 +158,7 @@ int main(int argc, char* argv[]) {
   std::vector<tensorflow::string> api_def_dirs = tensorflow::str_util::Split(
       argv[1], ",", tensorflow::str_util::SkipEmpty());
 
-  // Add op name to this set to add type annotations
+  // Add op name here to generate type annotations for it
   const std::unordered_set<tensorflow::string> type_annotate_ops {
   };
 
