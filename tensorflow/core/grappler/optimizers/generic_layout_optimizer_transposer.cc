@@ -864,7 +864,7 @@ inline bool IsValidConstPermTransposeNode(const utils::MutableNodeView& node,
   if (!GetValueAttrFromConstInputNode(node, IsTranspose, 1, &tensor)) {
     return false;
   }
-  int permutation_size = permutation.size();
+  const int permutation_size = permutation.size();
   if (tensor.NumElements() != permutation_size) {
     return false;
   }
