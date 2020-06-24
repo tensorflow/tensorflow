@@ -2116,13 +2116,13 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
 
     if context.executing_eagerly():
       # In v2, construction still works when no `training` is specified
-      # When no value passed during construction, it uses the runtime value.
+      # When no value passed during construction, it uses the local default.
       inputs = input_layer_lib.Input(10)
       outputs = my_layer(inputs)
       network = functional.Functional(inputs, outputs)
       self.assertAllEqual(network(x, training=True), _call(x, True))
       self.assertAllEqual(network(x, training=False), _call(x, False))
-      self.assertAllEqual(network(x), _call(x, False))
+      self.assertAllEqual(network(x), _call(x, True))  # Use local default
 
     # `None` value passed positionally during construction is ignored at runtime
     inputs = input_layer_lib.Input(10)
@@ -2131,7 +2131,7 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     self.assertAllEqual(network(x, training=True), _call(x, True))
     self.assertAllEqual(network(x, training=False), _call(x, False))
     if context.executing_eagerly():
-      self.assertAllEqual(network(x), _call(x, False))
+      self.assertAllEqual(network(x), _call(x, True))  # Use local default
     else:
       # in v1 training would have defaulted to using the `None` inside the layer
       # if training is not passed at runtime
@@ -2144,7 +2144,7 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     self.assertAllEqual(network(x, training=True), _call(x, True))
     self.assertAllEqual(network(x, training=False), _call(x, False))
     if context.executing_eagerly():
-      self.assertAllEqual(network(x), _call(x, False))
+      self.assertAllEqual(network(x), _call(x, True))  # Use local default
     else:
       # in v1 training would have defaulted to using the `None` inside the layer
       # if training is not passed at runtime
