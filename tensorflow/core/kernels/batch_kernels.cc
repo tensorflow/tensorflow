@@ -519,12 +519,13 @@ class BatchResource : public ResourceBase {
     std::map<string, std::vector<Tensor>> split_tensors;
 
     DCHECK_EQ(batch->task(0).context->num_outputs(), combined_outputs.size());
-    if (static_cast<int>(combined_outputs.size()) != batch->task(0).context->num_outputs()) {
+    int combined_outputs_size = combined_outputs.size(); 
+    if (combined_outputs_size != batch->task(0).context->num_outputs()) {
       return errors::Internal("Wrong number of batched output tensors");
     }
 
     // Generate 'split_tensors' and populate the context outputs.
-    for (size_t i = 0; i < combined_outputs.size(); ++i) {
+    for (int i = 0, iter_limit = combined_outputs.size(); i < iter_limit; ++i) {
       const Tensor& output_tensor = combined_outputs[i];
       if (output_tensor.shape().dims() == 0) {
         return errors::FailedPrecondition(
