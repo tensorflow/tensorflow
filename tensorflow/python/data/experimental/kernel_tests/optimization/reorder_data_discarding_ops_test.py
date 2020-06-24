@@ -30,7 +30,7 @@ class ReorderDataDiscardingOpsTest(test_base.DatasetTestBase, parameterized.Test
 
   @combinations.generate(combinations.combine(tf_api_version=2,
                                               mode=["eager", "graph"]))
-  def testSimpleHoistingV2(self):
+  def testSimpleReorderingV2(self):
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.apply(
         testing.assert_next(["FiniteSkip", "FiniteTake", "Shard",
@@ -50,7 +50,7 @@ class ReorderDataDiscardingOpsTest(test_base.DatasetTestBase, parameterized.Test
 
   @combinations.generate(combinations.combine(tf_api_version=1,
                                               mode=["eager", "graph"]))
-  def testSimpleHoistingV1(self):
+  def testSimpleReorderingV1(self):
     dataset = dataset_ops.Dataset.range(100)
     # Map ops have preserve_cardinality=false in tensorflow v1.
     dataset = dataset.apply(

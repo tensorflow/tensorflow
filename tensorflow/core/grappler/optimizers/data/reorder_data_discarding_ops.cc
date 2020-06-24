@@ -32,7 +32,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kReorderDataDiscardingOpsOpPrefix[] = "reorder_data_discarding_ops/";
+constexpr char kReorderDataDiscardingOpPrefix[] = "reorder_data_discarding_ops/";
 
 constexpr std::array<const char*, 3> kDataDiscarding = {
     "ShardDataset", "SkipDataset", "TakeDataset",
@@ -95,9 +95,9 @@ Status ReorderDataDiscardingOps::OptimizeAndCollectStats(Cluster* cluster,
       NodeDef* parent = graph_utils::GetInputNode(*discard_node, graph);
       TF_RETURN_IF_ERROR(
           graph.UpdateFanouts(discard_node->name(), parent->name()));
-      if (!absl::StartsWith(discard_node->name(), kReorderDataDiscardingOpsOpPrefix)) {
+      if (!absl::StartsWith(discard_node->name(), kReorderDataDiscardingOpPrefix)) {
         TF_RETURN_IF_ERROR(graph.UpdateNodeName(discard_node->name(),
-            strings::StrCat(kReorderDataDiscardingOpsOpPrefix, discard_node->name()),
+            strings::StrCat(kReorderDataDiscardingOpPrefix, discard_node->name()),
             false));
       }
       for (const auto& attr_name : {"output_types", "output_shapes"}) {

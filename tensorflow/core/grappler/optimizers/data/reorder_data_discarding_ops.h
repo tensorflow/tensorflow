@@ -21,8 +21,9 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-// This optimization hoists the data discarding ops (such as `skip`, `take` and
-// `shard`) to avoid unnecessary computation.
+// This optimization reorders the data discarding ops (such as `skip`, `take`
+// and `shard`) to avoid unnecessary computation,
+// e.g. reordering ds.map(...).cache().take(5) to ds.take(5).map(...).cache().
 class ReorderDataDiscardingOps : public TFDataOptimizerBase {
  public:
   ReorderDataDiscardingOps() = default;
