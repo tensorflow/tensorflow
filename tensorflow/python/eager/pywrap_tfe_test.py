@@ -122,6 +122,28 @@ class Tests(test.TestCase):
     self.assertAllEqual(dz_dy.numpy(),
                         constant_op.constant(4.0, shape=[2, 2]).numpy())
 
+  #test to ensure MatMul with different size tensors works with FastPathExecute
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
+  def testFastpathExecute_TapeWrite_MatMul(self):
+    
+    ctx = context.context()
+    ctx.ensure_initialized()
+
+    with backprop.GradientTape(persistent=True) as tape:
+      a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
+      b_2_by_1 = constant_op.constant(2.0, shape=[2, 1])
+      tape.watch(a_2_by_2)
+      tape.watch(b_2_by_1)
+      z = pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
+                                            "MatMul", None, None, a_2_by_2,
+                                            b_2_by_1, "transpose_a", False,
+                                            "transpose_b", False)
+
+    dz_da = tape.gradient(totalsum, [a_2_by_2])[0]
+    self.assertAllEqual(dz_da.numpy(),
+                        constant_op.constant(2.0, shape=[2, 2]).numpy())
+
   # Tests homogeneous list op
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
