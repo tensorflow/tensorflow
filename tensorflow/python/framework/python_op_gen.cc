@@ -45,7 +45,7 @@ const int kRightMargin = 78;
 
 constexpr char kEagerFallbackSuffix[] = "_eager_fallback";
 
-// Dtype enums mapped to dtype classes which is the type of each dtype
+// Maps C++ dtype enum values to Python DType classes
 const std::unordered_map<string, string> dtype_type {
       {"_dtypes.float16", "_dtypes.Float16"},
       {"_dtypes.half", "_dtypes.Half"},
