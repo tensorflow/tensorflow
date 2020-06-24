@@ -35,7 +35,7 @@ func @not_whitelisted_op(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor
 // CHECK-LABEL: unranked_operand
 func @unranked_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: tf.Abs
-  // expected-remark@+1 {{lowering requires static shaped operands}}
+  // expected-remark@+1 {{lowering requires static shaped tensor operands}}
   %0 = "tf.Abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
 
   return %0 : tensor<*xf32>
@@ -44,10 +44,18 @@ func @unranked_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 // CHECK-LABEL: dynamic_operand
 func @dynamic_operand(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: tf.Abs
-  // expected-remark@+1 {{lowering requires static shaped operands}}
+  // expected-remark@+1 {{lowering requires static shaped tensor operands}}
   %0 = "tf.Abs"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
 
   return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: tuple_type
+func @tuple_type(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
+  // Verifies that the pass can handle operands of non-tensor type like tuple
+  // from non TensorFlow ops.
+  %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
+  return %0 : tensor<f32>
 }
 
 // CHECK-LABEL: unsupported_dtype

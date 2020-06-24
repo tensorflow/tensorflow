@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -59,6 +60,34 @@ TEST(ImageOpsTest, DecodeGif) {
   // Output is always ?,?,?,3.
   INFER_OK(op, "?", "[?,?,?,3]");
   INFER_OK(op, "[]", "[?,?,?,3]");
+}
+
+TEST(ImageOpTest, DecodeImage) {
+  ShapeInferenceTestOp op("DecodeImage");
+
+  // Rank check.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1]");
+
+  // Set `expand_animations` to false. Output is always ?,?,?.
+  TF_ASSERT_OK(NodeDefBuilder("test", "DecodeImage")
+                   .Input({"img", 0, DT_STRING})
+                   .Attr("expand_animations", false)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "[]", "[?,?,?]");
+
+  // Set `expand_animations` to false. Output shape is not known (3D or 4D).
+  TF_ASSERT_OK(NodeDefBuilder("test", "DecodeImage")
+                   .Input({"img", 0, DT_STRING})
+                   .Attr("expand_animations", true)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "[]", "?");
+
+  // Negative channel value is rejected.
+  TF_ASSERT_OK(NodeDefBuilder("test", "DecodeImage")
+                   .Input({"img", 0, DT_STRING})
+                   .Attr("channels", -1)
+                   .Finalize(&op.node_def));
+  INFER_ERROR("channels must be non-negative, got -1", op, "[]");
 }
 
 TEST(ImageOpsTest, DecodeImage_ShapeFn) {
@@ -325,8 +354,8 @@ TEST(ImageOpsTest, DrawBoundingBoxes_ShapeFn) {
 
   // Check images.
   INFER_ERROR("must be rank 4", op, "[1,?,3];?");
-  INFER_ERROR("should be either 1 (GRY), 3 (RGB), or 4 (RGBA)",
-      op, "[1,?,?,5];?");
+  INFER_ERROR("should be either 1 (GRY), 3 (RGB), or 4 (RGBA)", op,
+              "[1,?,?,5];?");
 
   // Check boxes.
   INFER_ERROR("must be rank 3", op, "[1,?,?,4];[1,4]");

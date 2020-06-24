@@ -91,6 +91,14 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
 
 }  // namespace xla_chlo
 
+namespace xla {
+
+// Populates a pattern that translates the standard TanhOp to an approximation
+// that does not use intrinsics.
+void PopulateTanhToApproximationPatterns(MLIRContext *context,
+                                         OwningRewritePatternList *patterns);
+
+}  // namespace xla
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_REWRITERS_H_

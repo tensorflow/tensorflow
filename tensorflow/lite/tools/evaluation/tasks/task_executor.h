@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_EVALUATION_TASKS_TASK_EXECUTOR_H_
 
 #include "absl/types/optional.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 
 namespace tflite {
@@ -25,13 +27,22 @@ namespace evaluation {
 class TaskExecutor {
  public:
   virtual ~TaskExecutor() {}
+
   // If the run is successful, the latest metrics will be returned.
-  virtual absl::optional<EvaluationStageMetrics> Run() = 0;
+  absl::optional<EvaluationStageMetrics> Run(int* argc, char* argv[]);
+
+ protected:
+  // Returns a list of commandline flags that this task defines.
+  virtual std::vector<Flag> GetFlags() = 0;
+
+  virtual absl::optional<EvaluationStageMetrics> RunImpl() = 0;
+
+  DelegateProviders delegate_providers_;
 };
 
 // Just a declaration. In order to avoid the boilerpolate main-function code,
 // every evaluation task should define this function.
-std::unique_ptr<TaskExecutor> CreateTaskExecutor(int* argc, char* argv[]);
+std::unique_ptr<TaskExecutor> CreateTaskExecutor();
 }  // namespace evaluation
 }  // namespace tflite
 

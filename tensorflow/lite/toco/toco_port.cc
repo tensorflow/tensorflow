@@ -28,7 +28,7 @@ double round(double x) { return ::round(x); }
 
 namespace toco {
 namespace port {
-void CopyToBuffer(const string& src, char* dest) {
+void CopyToBuffer(const std::string& src, char* dest) {
   memcpy(dest, src.data(), src.size());
 }
 
@@ -84,7 +84,7 @@ toco::port::file::Options ToOptions(const ::file::Options& options) {
   return Options();
 }
 
-tensorflow::Status Writable(const string& filename) {
+tensorflow::Status Writable(const std::string& filename) {
   File* f = nullptr;
   const auto status = ::file::Open(filename, "w", &f, ::file::Defaults());
   if (f) {
@@ -93,28 +93,30 @@ tensorflow::Status Writable(const string& filename) {
   return ToStatus(status);
 }
 
-tensorflow::Status Readable(const string& filename,
+tensorflow::Status Readable(const std::string& filename,
                             const file::Options& options) {
   return ToStatus(::file::Readable(filename, ::file::Defaults()));
 }
 
-tensorflow::Status Exists(const string& filename,
+tensorflow::Status Exists(const std::string& filename,
                           const file::Options& options) {
   auto status = ::file::Exists(filename, ::file::Defaults());
   return ToStatus(status);
 }
 
-tensorflow::Status GetContents(const string& filename, string* contents,
+tensorflow::Status GetContents(const std::string& filename,
+                               std::string* contents,
                                const file::Options& options) {
   return ToStatus(::file::GetContents(filename, contents, ::file::Defaults()));
 }
 
-tensorflow::Status SetContents(const string& filename, const string& contents,
+tensorflow::Status SetContents(const std::string& filename,
+                               const std::string& contents,
                                const file::Options& options) {
   return ToStatus(::file::SetContents(filename, contents, ::file::Defaults()));
 }
 
-string JoinPath(const string& a, const string& b) {
+std::string JoinPath(const std::string& a, const std::string& b) {
   return ::file::JoinPath(a, b);
 }
 

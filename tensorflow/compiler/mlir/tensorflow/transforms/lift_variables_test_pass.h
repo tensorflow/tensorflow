@@ -96,15 +96,19 @@ class FakeSession : public tensorflow::Session {
     for (const std::string& output_name : output_names) {
       Tensor output;
       if (output_name == "dense/bias") {
-        outputs->push_back(
-            Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({50})));
+        Tensor t = Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({50}));
+        t.flat<float>().setZero();
+        outputs->push_back(t);
       } else if (output_name == "dense/kernel") {
-        outputs->push_back(
-            Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({100, 50})));
+        Tensor t =
+            Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({100, 50}));
+        t.flat<float>().setZero();
+        outputs->push_back(t);
       } else {
         // Create a scalar float tensor.
-        outputs->push_back(
-            Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({})));
+        Tensor t = Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({}));
+        t.flat<float>()(0) = 1.0f;
+        outputs->push_back(t);
       }
     }
     return Status::OK();

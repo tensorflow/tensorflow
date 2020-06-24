@@ -74,7 +74,7 @@ are verified in `IsNodeSupportedByHexagon`:
       - depth_multiplier == 1
       - dilation only supported when stride == 1
       - Otherwise, stride height/width <= 3
-* FullyConnected (without any activation)
+* FullyConnected
 * Hardswish
 * L2Normalization (without any activation)
 * Logistic (aka Sigmoid)

@@ -201,12 +201,12 @@ REGISTER_OP("ComplexAbs")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 // Declares cwise unary operations signature: 't -> 't
-#define UNARY()                                                          \
-  Input("x: T")                                                          \
-      .Output("y: T")                                                    \
-      .Attr(                                                             \
-          "T: {bfloat16, half, float, double, int32, int64, complex64, " \
-          "complex128}")                                                 \
+#define UNARY()                                                            \
+  Input("x: T")                                                            \
+      .Output("y: T")                                                      \
+      .Attr(                                                               \
+          "T: {bfloat16, half, float, double, int8, int16, int32, int64, " \
+          "complex64, complex128}")                                        \
       .SetShapeFn(shape_inference::UnchangedShape)
 
 #define UNARY_REAL()                              \
@@ -296,10 +296,6 @@ REGISTER_OP("Asin").UNARY();
 REGISTER_OP("Acos").UNARY();
 
 REGISTER_OP("Atan").UNARY();
-
-REGISTER_OP("BesselI0e").UNARY_REAL();
-
-REGISTER_OP("BesselI1e").UNARY_REAL();
 
 REGISTER_OP("_UnaryOpsComposition")
     .Input("x: T")

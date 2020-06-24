@@ -206,14 +206,19 @@ void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
   PortableCwiseAdd(input_1, input_2, n_batch, n_input, output);
 }
 
-void CwiseClipping(int16_t* input, const int16_t clipping_value,
-                   int32_t n_batch, int32_t n_input) {
-  PortableCwiseClipping(input, clipping_value, n_batch, n_input);
+void CwiseClipping(float* vector, const int v_size,
+                   const float clipping_value) {
+  PortableCwiseClipping(vector, v_size, clipping_value);
 }
 
-void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
-                   int32_t n_input) {
-  PortableCwiseClipping(input, clipping_value, n_batch, n_input);
+void CwiseClipping(int16_t* vector, const int v_size,
+                   const int16_t clipping_value) {
+  PortableCwiseClipping(vector, v_size, clipping_value);
+}
+
+void CwiseClipping(int8_t* vector, const int v_size,
+                   const int8_t clipping_value) {
+  PortableCwiseClipping(vector, v_size, clipping_value);
 }
 
 void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
@@ -262,10 +267,6 @@ bool IsZeroVector(const int8_t* vector, int v_size) {
 void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
                           float* result) {
   NEON_OR_PORTABLE(VectorScalarMultiply, vector, v_size, scale, result);
-}
-void ClipVector(const float* vector, int v_size, float abs_limit,
-                float* result) {
-  NEON_OR_PORTABLE(ClipVector, vector, v_size, abs_limit, result);
 }
 
 void SymmetricQuantizeFloats(const float* values, const int size,

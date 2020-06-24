@@ -138,6 +138,18 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
     """
     return super(CollectiveAllReduceStrategy, self).scope()
 
+  @property
+  def cluster_resolver(self):
+    """Returns the cluster resolver associated with this strategy.
+
+    As a multi-worker strategy,
+    `tf.distribute.experimental.MultiWorkerMirroredStrategy` provides the
+    associated `tf.distribute.cluster_resolver.ClusterResolver`. If the user
+    provides one in `__init__`, that instance is returned; if the user does
+    not, a default `TFConfigClusterResolver` is provided.
+    """
+    return self.extended._cluster_resolver  # pylint: disable=protected-access
+
 
 @tf_export(v1=["distribute.experimental.MultiWorkerMirroredStrategy"])  # pylint: disable=missing-docstring
 class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):

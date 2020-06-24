@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -38,9 +39,10 @@ namespace nvptx {
 // The Compile.* interfaces each create their own llvm::LLVMContext objects for
 // thread safety, but note that LLVM's multithreaded support is very
 // preliminary; multithreaded use is not recommended at this time.
-StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
-                              const HloModuleConfig& hlo_module_config,
-                              const string& libdevice_dir_path);
+StatusOr<string> CompileToPtx(
+    llvm::Module* module, GpuVersion gpu_version,
+    const HloModuleConfig& hlo_module_config, const string& libdevice_dir_path,
+    std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
 }  // namespace nvptx
 
 namespace amdgpu {

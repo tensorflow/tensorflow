@@ -184,10 +184,14 @@ class Dimension(object):
 
   def __init__(self, value):
     """Creates a new Dimension with the given value."""
-    if value is None:
+    if isinstance(value, int):  # Most common case.
+      if value < 0:
+        raise ValueError("Dimension %d must be >= 0" % value)
+      self._value = value
+    elif value is None:
       self._value = None
     elif isinstance(value, Dimension):
-      self._value = value
+      self._value = value._value
     else:
       try:
         # int(...) compensates for the int/long dichotomy on Python 2.X.
@@ -748,7 +752,9 @@ class TensorShape(object):
     Raises:
       TypeError: If dims cannot be converted to a list of dimensions.
     """
-    if dims is None:
+    if isinstance(dims, (tuple, list)):  # Most common case.
+      self._dims = [Dimension(d) for d in dims]
+    elif dims is None:
       self._dims = None
     elif isinstance(dims, tensor_shape_pb2.TensorShapeProto):
       if dims.unknown_rank:

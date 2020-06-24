@@ -971,4 +971,5 @@ def _AddTests(test_class):
 
 
 if is_tensorrt_enabled():
+  os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "False"
   _AddTests(TfTrtIntegrationTestBase)

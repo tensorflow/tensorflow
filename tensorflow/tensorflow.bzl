@@ -1817,13 +1817,13 @@ def tf_custom_op_library_additional_deps_impl():
 # tf_collected_deps will be the union of the deps of the current target
 # and the tf_collected_deps of the dependencies of this target.
 def _collect_deps_aspect_impl(target, ctx):
-    alldeps = depset()
+    direct, transitive = [], []
     if hasattr(ctx.rule.attr, "deps"):
         for dep in ctx.rule.attr.deps:
-            alldeps = depset([dep.label], transitive = [alldeps])
+            direct.append(dep.label)
             if hasattr(dep, "tf_collected_deps"):
-                alldeps = depset(transitive = [alldeps, dep.tf_collected_deps])
-    return struct(tf_collected_deps = alldeps)
+                transitive.append(dep.tf_collected_deps)
+    return struct(tf_collected_deps = depset(direct = direct, transitive = transitive))
 
 collect_deps_aspect = aspect(
     attr_aspects = ["deps"],
@@ -2896,6 +2896,13 @@ def tf_jit_compilation_passes_extra_deps():
 def if_mlir(if_true, if_false = []):
     return select({
         str(Label("//tensorflow:with_mlir_support")): if_true,
+        "//conditions:default": if_false,
+    })
+
+def if_tpu(if_true, if_false = []):
+    """Shorthand for select()ing whether to build for TPUs."""
+    return select({
+        str(Label("//tensorflow:with_tpu_support")): if_true,
         "//conditions:default": if_false,
     })
 

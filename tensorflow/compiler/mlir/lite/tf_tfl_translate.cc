@@ -172,7 +172,7 @@ int main(int argc, char **argv) {
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
         debug_info_file, input_arrays, input_dtypes, input_shapes,
         output_arrays,
-        /*prune_unused_nodes=*/true, &source_mgr, &context);
+        /*prune_unused_nodes=*/true, upgrade_legacy, &source_mgr, &context);
   }
 
   // If errors occur, the library call in the above already logged the error

@@ -102,30 +102,6 @@ cc_library(
     ],
 )
 
-# TODO(b/144176795): This target should really be handled differently so that we
-# do not have a fork in the build graph. The bug has some initial ideas.
-cc_library(
-    name = "portable_optimized_op_resolver",
-    srcs = [
-        "all_ops_resolver.cc",
-        "micro_mutable_op_resolver.h",
-        "micro_op_resolver.h",
-    ],
-    hdrs = [
-        "all_ops_resolver.h",
-    ],
-    copts = micro_copts(),
-    deps = [
-        ":micro_compatibility",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/micro/kernels:portable_optimized_micro_ops",
-        "//tensorflow/lite/schema:schema_fbs",
-    ],
-)
-
 cc_library(
     name = "debug_log",
     srcs = [
@@ -268,6 +244,7 @@ tflite_micro_cc_test(
         ":micro_framework",
         ":micro_utils",
         ":op_resolvers",
+        ":recording_allocators",
         ":test_helpers",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/micro/testing:micro_test",

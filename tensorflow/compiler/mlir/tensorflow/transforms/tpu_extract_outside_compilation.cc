@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -49,8 +51,9 @@ using OutsideClusterMap =
 // TODO(b/154363171): Add example tranformations.
 
 struct TPUExtractOutsideCompilation
-    : public PassWrapper<TPUExtractOutsideCompilation, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<TPUExtractOutsideCompilation,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Collects and clusters ops in `block` with the same `_xla_outside_compilation`
@@ -90,13 +93,14 @@ void MoveOutsideClusterOpsToLaunchOp(tf_device::LaunchOp launch_op,
 
 // Creates a `tf_device::LaunchOp` to wrap cluster ops.
 tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
-    OpBuilder* builder, Operation* last_cluster_op) {
-  // TODO(b/154363171): Set the CPU device.
+    OpBuilder* builder, Operation* last_cluster_op,
+    llvm::StringRef host_device) {
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated TPUReplicateMetadata op.
   llvm::SmallVector<Type, 8> result_types;
   auto launch_op = builder->create<tf_device::LaunchOp>(
-      last_cluster_op->getLoc(), builder->getStringAttr(""), result_types);
+      last_cluster_op->getLoc(), builder->getStringAttr(host_device),
+      result_types);
 
   launch_op.body().push_back(new Block);
 
@@ -106,18 +110,6 @@ tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
                                        llvm::ArrayRef<Value>{});
 
   return launch_op;
-}
-
-// Propagates the return from `parallel_execute_op` to parent replicate
-// op if it exists.
-void PropagateParallelExecuteReturnToReplicate(
-    tf_device::ParallelExecuteOp parallel_execute_op) {
-  // Update the return for the parallel_execute op parent.
-  auto replicate = llvm::dyn_cast_or_null<tf_device::ReplicateOp>(
-      parallel_execute_op.getParentOp());
-  if (replicate)
-    replicate.GetBody().getTerminator()->setOperands(
-        parallel_execute_op.execute_outputs());
 }
 
 // Extracts all externally provided operands of `cluster_ops`.
@@ -264,8 +256,9 @@ void MoveOutsideCompiledOps(
 
 // Creates a `parallel_execute` op in place of launch with 'clusters` and
 // 'launch` as regions.
-void CreateParallelExecuteFromOutsideClusters(
-    tf_device::ClusterOp tpu_cluster, const OutsideClusterMap& clusters) {
+void CreateParallelExecuteFromOutsideClusters(tf_device::ClusterOp tpu_cluster,
+                                              const OutsideClusterMap& clusters,
+                                              llvm::StringRef host_device) {
   OpBuilder builder(tpu_cluster);
   // Create parallel_execute regions.  The original TPU cluster computation
   // is the extra region.
@@ -280,8 +273,8 @@ void CreateParallelExecuteFromOutsideClusters(
     Block& outside_block =
         parallel_execute_op.GetRegionBlockWithIndex(cluster.index());
     builder.setInsertionPointToEnd(&outside_block);
-    tf_device::LaunchOp host_launch_op =
-        CreateLaunchOpForOutsideCluster(&builder, cluster_ops.back());
+    tf_device::LaunchOp host_launch_op = CreateLaunchOpForOutsideCluster(
+        &builder, cluster_ops.back(), host_device);
 
     // Determine if there are any inputs that are provided out of cluster.
     auto external_inputs = GetExternalOperands(cluster_ops);
@@ -305,12 +298,27 @@ void CreateParallelExecuteFromOutsideClusters(
   tpu_cluster.getOperation()->moveBefore(
       parallel_execute_tpu_block.getTerminator());
 
-  PropagateParallelExecuteReturnToReplicate(parallel_execute_op);
+  // Remap cluster results with parallel_execute results if user is outside of
+  // parallel_execute.
+  for (auto result :
+       llvm::zip(tpu_cluster.getResults(), parallel_execute_op.getResults())) {
+    Value tpu_cluster_result = std::get<0>(result);
+    Value parallel_execute_result = std::get<1>(result);
+    for (auto& use : llvm::make_early_inc_range(tpu_cluster_result.getUses()))
+      if (!parallel_execute_op.getOperation()->isProperAncestor(use.getOwner()))
+        use.set(parallel_execute_result);
+  }
 }
 
-void TPUExtractOutsideCompilation::runOnFunction() {
+void TPUExtractOutsideCompilation::runOnOperation() {
+  // Get runtime devices information from the closest parent module.
+  auto module = getOperation();
+  mlir::TF::RuntimeDevices devices;
+  if (failed(tensorflow::GetDevicesFromOp(module, &devices)))
+    return signalPassFailure();
+
   auto extract_result =
-      getFunction().walk([&](tf_device::ClusterOp tpu_cluster) {
+      module.walk([&](tf_device::ClusterOp tpu_cluster) {
         OutsideClusterMap clusters;
         if (failed(CollectAndGroupOutsideClusterOps(&tpu_cluster.GetBody(),
                                                     &clusters)))
@@ -318,7 +326,11 @@ void TPUExtractOutsideCompilation::runOnFunction() {
 
         if (clusters.empty()) return WalkResult::advance();
 
-        CreateParallelExecuteFromOutsideClusters(tpu_cluster, clusters);
+        std::string host_device;
+        tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
+                                                    &host_device);
+        CreateParallelExecuteFromOutsideClusters(tpu_cluster, clusters,
+                                                 host_device);
 
         return WalkResult::advance();
       });
@@ -328,7 +340,7 @@ void TPUExtractOutsideCompilation::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass() {
   return std::make_unique<TPUExtractOutsideCompilation>();
 }

@@ -91,10 +91,6 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
       {"PartitionedCallOp", kPartitionedCallOp},
-      // XLA related.
-      {"LocalExecutable::ExecuteOnLocalDevices",
-       kLocalExecutableExecuteOnLocalDevice},
-      {"LocalExecutable::Execute", kLocalExecutableExecute},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       {"IteratorGetNextAsOptionalOp::DoCompute", kIteratorGetNextAsOptionalOp},
@@ -166,6 +162,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"is_eager", kIsEager},
       {"tf_function_call", kTfFunctionCall},
       {"tracing_count", kTfFunctionTracingCount},
+      {"flops", kFlops},
+      {"bytes_accessed", kBytesAccessed},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
@@ -227,7 +225,8 @@ bool IsInternalStat(absl::optional<int64> stat_type) {
       StatType::kKernelDetails, StatType::kLevel0,
       StatType::kProducerType,  StatType::kProducerId,
       StatType::kConsumerType,  StatType::kConsumerId,
-      StatType::kIsRoot,        StatType::kIsAsync};
+      StatType::kIsRoot,        StatType::kIsAsync,
+      StatType::kFlops,         StatType::kBytesAccessed};
   return stat_type.has_value() && kInternalStats->contains(*stat_type);
 }
 

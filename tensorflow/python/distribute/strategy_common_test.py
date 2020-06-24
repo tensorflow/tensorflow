@@ -26,6 +26,8 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute.collective_all_reduce_strategy import CollectiveAllReduceStrategy
+from tensorflow.python.distribute.tpu_strategy import TPUStrategy
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -133,6 +135,41 @@ class DistributedCollectiveAllReduceStrategyTest(
 
   # TODO(crccw): add a test that mixes device and host tensors after multi
   # worker strategy combinations can run on a fixed number of GPUs.
+
+
+class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          strategy=[strategy_combinations.multi_worker_mirrored_two_workers] +
+          strategy_combinations.all_strategies,
+          mode=['eager']))
+  def testClusterResolverProperty(self, strategy):
+    # CollectiveAllReduceStrategy and TPUStrategy must have a cluster resolver.
+    # `None` otherwise.
+    resolver = strategy.cluster_resolver
+    if not isinstance(strategy, CollectiveAllReduceStrategy) and not isinstance(
+        strategy, TPUStrategy):
+      self.assertIsNone(resolver)
+      return
+
+    with strategy.scope():
+      self.assertIs(strategy.cluster_resolver, resolver)
+    self.assertTrue(hasattr(resolver, 'cluster_spec'))
+    if isinstance(strategy, TPUStrategy):
+      self.skipTest('b/159747888')
+    self.assertTrue(hasattr(resolver, 'environment'))
+    self.assertTrue(hasattr(resolver, 'master'))
+    self.assertTrue(hasattr(resolver, 'num_accelerators'))
+    self.assertIsNone(resolver.rpc_layer)
+    if isinstance(strategy, CollectiveAllReduceStrategy):
+      self.assertGreaterEqual(resolver.task_id, 0)
+      self.assertLessEqual(resolver.task_id, 1)
+      self.assertEqual(resolver.task_type, 'worker')
+    elif isinstance(strategy, TPUStrategy):
+      # TPUStrategy does not have task_id and task_type applicable.
+      self.assertIsNone(resolver.task_id)
+      self.assertIsNone(resolver.task_type)
 
 
 if __name__ == '__main__':

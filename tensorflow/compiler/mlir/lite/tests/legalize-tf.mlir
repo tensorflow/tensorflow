@@ -9,6 +9,15 @@ func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
 // CHECK:  return
 }
 
+func @sub(%arg0: tensor<1xi64>, %arg1: tensor<1xi64>) -> tensor<1xi64> {
+  %0 = "tf.Sub"(%arg0, %arg1) : (tensor<1xi64>, tensor<1xi64>) -> tensor<1xi64>
+  return %0: tensor<1xi64>
+
+// CHECK-LABEL: sub
+// CHECK:  tfl.sub %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xi64>
+// CHECK:  return
+}
+
 // CHECK-LABEL: testAddHighDimsHaveSameShape
 func @testAddHighDimsHaveSameShape(%arg0: tensor<1x2x3x4x5x6x7x8xi32>, %arg1: tensor<1x2x3x4x5x6x7x8xi32>) -> tensor<1x2x3x4x5x6x7x8xi32> {
   // CHECK: tfl.add %arg0, %arg1 {fused_activation_function = "NONE"}
@@ -988,6 +997,13 @@ func @batch_to_space_nd(%arg0: tensor<4x2x2x3xf32>, %arg1: tensor<2xi32>, %arg2:
   return %0 : tensor<?xf32>
   // CHECK-LABEL: batch_to_space_nd
   // CHECK: "tfl.batch_to_space_nd"(%arg0, %arg1, %arg2) : (tensor<4x2x2x3xf32>, tensor<2xi32>, tensor<2x2xi32>) -> tensor<?xf32>
+}
+
+func @batch_to_space_nd_unsupported(%arg0: tensor<?x1x1x1x4xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3x2xi32>) -> tensor<?x3x3x3x4xf32> {
+  %0 = "tf.BatchToSpaceND"(%arg0, %arg1, %arg2) : (tensor<?x1x1x1x4xf32>, tensor<3xi32>, tensor<3x2xi32>) -> tensor<?x3x3x3x4xf32>
+  return %0 : tensor<?x3x3x3x4xf32>
+  // CHECK-LABEL: batch_to_space_nd_unsupported
+  // CHECK: "tf.BatchToSpaceND"
 }
 
 func @space_to_batch_nd(%arg0: tensor<1x4x4x3xf32>, %arg1: tensor<2xi32>, %arg2: tensor<2x2xi32>) -> tensor<?xf32> {

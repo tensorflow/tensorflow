@@ -1062,35 +1062,35 @@ def _create_local_cuda_repository(repository_ctx):
     ))
 
     # copy files mentioned in third_party/nccl/build_defs.bzl.tpl
+    file_ext = ".exe" if is_windows(repository_ctx) else ""
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "cuda-bin",
         srcs = [
             cuda_config.cuda_toolkit_path + "/bin/" + "crt/link.stub",
-            cuda_config.cuda_toolkit_path + "/bin/" + "nvlink",
-            cuda_config.cuda_toolkit_path + "/bin/" + "fatbinary",
-            cuda_config.cuda_toolkit_path + "/bin/" + "bin2c",
+            cuda_config.cuda_toolkit_path + "/bin/" + "nvlink" + file_ext,
+            cuda_config.cuda_toolkit_path + "/bin/" + "fatbinary" + file_ext,
+            cuda_config.cuda_toolkit_path + "/bin/" + "bin2c" + file_ext,
         ],
         outs = [
             "cuda/bin/" + "crt/link.stub",
-            "cuda/bin/" + "nvlink",
-            "cuda/bin/" + "fatbinary",
-            "cuda/bin/" + "bin2c",
+            "cuda/bin/" + "nvlink" + file_ext,
+            "cuda/bin/" + "fatbinary" + file_ext,
+            "cuda/bin/" + "bin2c" + file_ext,
         ],
     ))
 
     # Select the headers based on the cuDNN version (strip '64_' for Windows).
-    if cuda_config.cudnn_version.rsplit("_", 1)[0] < "8":
-        cudnn_headers = ["cudnn.h"]
-    else:
-        cudnn_headers = [
+    cudnn_headers = ["cudnn.h"]
+    if cuda_config.cudnn_version.rsplit("_", 1)[0] >= "8":
+        cudnn_headers += [
+            "cudnn_backend.h",
             "cudnn_adv_infer.h",
             "cudnn_adv_train.h",
             "cudnn_cnn_infer.h",
             "cudnn_cnn_train.h",
             "cudnn_ops_infer.h",
             "cudnn_ops_train.h",
-            "cudnn.h",
             "cudnn_version.h",
         ]
 

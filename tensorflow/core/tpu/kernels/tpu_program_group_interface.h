@@ -44,9 +44,9 @@ class TpuProgramGroupInterface {
   // Logs program memory summary.
   virtual bool LogProgramMemorySummary() = 0;
 
-  // Hlo metadatas.
-  virtual std::vector<std::shared_ptr<const xla::HloProto>> hlo_metadatas()
-      const = 0;
+  // Hlo metadatas. The pointers can only be used as long as the cache entry is
+  // referenced.
+  virtual absl::Span<const xla::HloProto* const> hlo_metadatas() const = 0;
 
   // Boolean array to indicate if the modification of variables are
   // allowed.

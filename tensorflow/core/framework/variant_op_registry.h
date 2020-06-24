@@ -521,7 +521,7 @@ class UnaryVariantBinaryOpRegistration {
 #define INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(T, direction,   \
                                                              device_copy_fn) \
   INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION_UNIQ_HELPER(          \
-      __COUNTER__, T, direction, MakeTypeIndex<T>(), device_copy_fn)
+      __COUNTER__, T, direction, TypeIndex::Make<T>(), device_copy_fn)
 
 #define INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION_UNIQ_HELPER( \
     ctr, T, direction, type_index, device_copy_fn)                        \
@@ -542,7 +542,7 @@ class UnaryVariantBinaryOpRegistration {
 #define REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(op, device, T,     \
                                                  unary_op_function) \
   REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ_HELPER(             \
-      __COUNTER__, op, device, T, MakeTypeIndex<T>(), unary_op_function)
+      __COUNTER__, op, device, T, TypeIndex::Make<T>(), unary_op_function)
 
 #define REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION_UNIQ_HELPER(       \
     ctr, op, device, T, type_index, unary_op_function)              \
@@ -563,7 +563,7 @@ class UnaryVariantBinaryOpRegistration {
 #define REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(op, device, T,      \
                                                   binary_op_function) \
   REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION_UNIQ_HELPER(              \
-      __COUNTER__, op, device, T, MakeTypeIndex<T>(), binary_op_function)
+      __COUNTER__, op, device, T, TypeIndex::Make<T>(), binary_op_function)
 
 #define REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION_UNIQ_HELPER( \
     ctr, op, device, T, type_index, binary_op_function)        \
