@@ -1395,14 +1395,20 @@ cc_library(
 
 cc_library(
     name = "Analysis",
-    srcs = glob([
-        "lib/Analysis/*.c",
-        "lib/Analysis/*.cpp",
-        "lib/Analysis/*.inc",
-        "include/llvm/Transforms/Utils/Local.h",
-        "include/llvm/Transforms/Scalar.h",
-        "lib/Analysis/*.h",
-    ]),
+    srcs = glob(
+        [
+            "lib/Analysis/*.c",
+            "lib/Analysis/*.cpp",
+            "lib/Analysis/*.inc",
+            "include/llvm/Transforms/Utils/Local.h",
+            "include/llvm/Transforms/Scalar.h",
+            "lib/Analysis/*.h",
+        ],
+        exclude = [
+            "lib/Analysis/MLInlineAdvisor.cpp",
+            "lib/Analysis/ReleaseModeModelRunner.cpp",
+        ],
+    ),
     hdrs = glob([
         "include/llvm/Analysis/*.h",
         "include/llvm/Analysis/*.def",
