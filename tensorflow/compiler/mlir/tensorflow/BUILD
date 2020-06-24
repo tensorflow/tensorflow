@@ -470,6 +470,34 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_saved_model_passes",
+    srcs = [
+        "transforms/freeze_global_tensors.cc",
+        "transforms/lift_variables_pass_registration.cc",
+        "transforms/optimize_global_tensors.cc",
+    ],
+    hdrs = [
+        "transforms/tf_saved_model_passes.h",
+    ],
+    deps = [
+        ":lift_variables_pass",
+        ":tensorflow",
+        ":tensorflow_passes",
+        ":tensorflow_types",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "tensorflow_passes",
     srcs = [
         "transforms/annotate_parameter_replication.cc",
@@ -487,7 +515,6 @@ cc_library(
         "transforms/executor_tpuv1_island_coarsening.cc",
         "transforms/executor_tpuv1_outline_tpu_island.cc",
         "transforms/fold_switch.cc",
-        "transforms/freeze_global_tensors.cc",
         "transforms/functional_control_flow_to_cfg.cc",
         "transforms/functional_control_flow_to_regions.cc",
         "transforms/fused_kernel_matcher.cc",
@@ -499,7 +526,6 @@ cc_library(
         "transforms/layout_optimization.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
-        "transforms/optimize_global_tensors.cc",
         "transforms/parallel_execute_to_islands.cc",
         "transforms/promote_resources_to_args.cc",
         "transforms/readonly_references_to_resources.cc",
