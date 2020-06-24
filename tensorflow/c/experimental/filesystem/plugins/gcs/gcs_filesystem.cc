@@ -12,25 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_filesystem.h"
+
 #include <stdlib.h>
 #include <string.h>
 
-#include <fstream>
-
-#include "absl/strings/string_view.h"
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/env.h"
-#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_helper.h"
 #include "tensorflow/c/tf_status.h"
-
-#ifdef TF_GCS_FILESYSTEM_TEST
-// For testing purpose, we expose some functions.
-#define TF_STATIC
-#else
-// Otherwise, we don't expose any symbol.
-#define TF_STATIC static
-#endif
 
 // Implementation of a filesystem for GCS environments.
 // This filesystem will support `gs://` URI schemes.
@@ -48,8 +38,8 @@ static inline void TF_SetStatusFromGCSStatus(
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
 
-static void ParseGCSPath(absl::string_view fname, bool object_empty_ok,
-                         char** bucket, char** object, TF_Status* status) {
+void ParseGCSPath(absl::string_view fname, bool object_empty_ok, char** bucket,
+                  char** object, TF_Status* status) {
   size_t scheme_end = fname.find("://") + 2;
   if (fname.substr(0, scheme_end + 1) != "gs://") {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
@@ -130,7 +120,7 @@ namespace tf_read_only_memory_region {
 namespace tf_gcs_filesystem {
 
 // TODO(vnvo2409): Add lazy-loading and customizing parameters.
-TF_STATIC void Init(TF_Filesystem* filesystem, TF_Status* status) {
+void Init(TF_Filesystem* filesystem, TF_Status* status) {
   google::cloud::StatusOr<gcs::Client> client =
       gcs::Client::CreateDefaultClient();
   if (!client) {
@@ -143,14 +133,14 @@ TF_STATIC void Init(TF_Filesystem* filesystem, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
 }
 
-static void Cleanup(TF_Filesystem* filesystem) {
+void Cleanup(TF_Filesystem* filesystem) {
   plugin_memory_free(filesystem->plugin_filesystem);
 }
 
 // TODO(vnvo2409): Implement later
 
-static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
-                            TF_WritableFile* file, TF_Status* status) {
+void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
+                     TF_WritableFile* file, TF_Status* status) {
   char* bucket;
   char* object;
   ParseGCSPath(path, false, &bucket, &object, status);
@@ -166,8 +156,8 @@ static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
   TF_SetStatus(status, TF_OK, "");
 }
 
-static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
-                              TF_WritableFile* file, TF_Status* status) {
+void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_WritableFile* file, TF_Status* status) {
   char* bucket;
   char* object;
   ParseGCSPath(path, false, &bucket, &object, status);
