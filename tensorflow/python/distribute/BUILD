@@ -1678,8 +1678,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/keras/layers",
-        "//tensorflow/python/keras/mixed_precision/experimental:test_util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

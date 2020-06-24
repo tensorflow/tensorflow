@@ -77,6 +77,43 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "collective_all_reduce_strategy_test",
+    srcs = ["collective_all_reduce_strategy_test.py"],
+    python_version = "PY3",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    # b/155301154 broken with XLA:GPU
+    xla_enable_strict_auto_jit = True,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:training_util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:cross_device_utils",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:strategy_test_lib",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/mixed_precision/experimental:test_util",
+        "//tensorflow/python/ops/losses",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 distribute_py_test(
     name = "custom_training_loop_models_test",
     srcs = ["custom_training_loop_models_test.py"],
