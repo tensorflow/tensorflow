@@ -55,9 +55,12 @@ inline void GetActivationMinMax(FusedActivationFunctionType ac,
   }
 }
 
-inline float ActivationFunctionWithMinMax(float x, float output_activation_min,
-                                          float output_activation_max) {
-  return std::min(std::max(x, output_activation_min), output_activation_max);
+template <typename T>
+inline T ActivationFunctionWithMinMax(T x, T output_activation_min,
+                                      T output_activation_max) {
+  using std::max;
+  using std::min;
+  return min(max(x, output_activation_min), output_activation_max);
 }
 
 // Legacy function, left for compatibility only.
