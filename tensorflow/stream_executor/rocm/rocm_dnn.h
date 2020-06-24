@@ -885,25 +885,6 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator,
       std::vector<dnn::ProfileResult>* out_algorithms);
 
-  port::Status DoCtcLossImpl(
-      Stream* stream, const MIOpenRnnStateTensorDescriptor& probs_desc,
-      const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
-      absl::Span<const int> labels_lengths_data,
-      absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
-      const MIOpenRnnStateTensorDescriptor& grads_desc,
-      DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
-      DeviceMemory<uint8> scratch_memory);
-
-  port::Status DoPrepareForCtcLoss(
-      Stream* stream, dnn::DataType element_type,
-      const dnn::RnnStateTensorDescriptor& probs_desc,
-      const dnn::RnnStateTensorDescriptor& grads_desc,
-      absl::Span<const int> labels_data,
-      absl::Span<const int> labels_lengths_data,
-      absl::Span<const int> input_lengths_data,
-      ScratchAllocator* scratch_allocator,
-      DeviceMemory<uint8>* scratch_memory) override;
-
   template <class T>
   bool DoPoolBackwardImpl(Stream* stream,
                           const dnn::PoolingDescriptor& pooling_dimensions,
