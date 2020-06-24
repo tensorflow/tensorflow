@@ -62,12 +62,10 @@ void TestLogisticFloat(std::initializer_list<int> input_dims_data,
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = nullptr;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -122,12 +120,10 @@ void TestLogisticInt8(std::initializer_list<int> input_dims_data,
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = nullptr;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }

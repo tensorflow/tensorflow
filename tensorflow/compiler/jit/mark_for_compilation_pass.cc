@@ -1837,7 +1837,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
       "ConcatOffset", "Const", "MirrorPad", "Pack", "Pad", "PadV2", "Reverse",
       "ReverseV2", "ReverseSequence", "Slice", "Split", "SplitV",
       "StridedSlice", "StridedSliceGrad", "ResourceStridedSliceAssign",
-      "Tile", "Transpose", "InvertPermutation", "Unpack"}}};
+      "Tile", "Transpose", "InvertPermutation", "Unpack", "DeviceIndex"}}};
   // clang-format on
   return result;
 }

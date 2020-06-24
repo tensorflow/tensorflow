@@ -576,6 +576,9 @@ Status CapturedFunction::Instantiate(
   DCHECK(lib->device() != nullptr);
   inst_opts.target = lib->device()->name();
 
+  // Maps from a CompositeDevice name to underlying physical device names.
+  absl::flat_hash_map<string, std::vector<string>> composite_devices;
+
   if (inst_opts.is_multi_device_function) {
     // Compute devices of non-captured inputs.
     //
@@ -601,9 +604,29 @@ Status CapturedFunction::Instantiate(
       const auto& input = captured_inputs_[i];
       DataType dtype = input.dtype();
       if (dtype == DT_RESOURCE) {
-        const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
-        inst_opts.input_devices.push_back(handle.device());
-        const auto& dtypes_and_shapes = handle.dtypes_and_shapes();
+        const auto& handles = input.flat<ResourceHandle>();
+        const ResourceHandle& handle0 = handles(0);
+        string composite_device;
+        auto iter = fdef->arg_attr().find(num_non_captured_inputs + i);
+        if (iter != fdef->arg_attr().end()) {
+          auto arg_attr = iter->second.attr().find("_composite_device");
+          if (arg_attr != iter->second.attr().end()) {
+            composite_device = arg_attr->second.s();
+          }
+        }
+        if (!composite_device.empty()) {
+          if (composite_devices.find(composite_device) ==
+              composite_devices.end()) {
+            for (int i = 0; i < handles.size(); ++i) {
+              composite_devices[composite_device].push_back(
+                  handles(i).device());
+            }
+          }
+          inst_opts.input_devices.push_back(composite_device);
+        } else {
+          inst_opts.input_devices.push_back(handle0.device());
+        }
+        const auto& dtypes_and_shapes = handle0.dtypes_and_shapes();
         // Set dtypes and shapes for resource variable inputs.
         if (!dtypes_and_shapes.empty()) {
           input_resource_variable_dtypes_and_shapes[num_non_captured_inputs +
@@ -616,6 +639,10 @@ Status CapturedFunction::Instantiate(
         // Fall back to using the function library runtime device.
         inst_opts.input_devices.push_back(inst_opts.target);
       }
+    }
+
+    for (const auto& it : composite_devices) {
+      inst_opts.composite_devices[it.first] = &it.second;
     }
 
     for (int i = 0, iter_limit = fdef->signature().output_arg_size(); i < iter_limit; ++i) {

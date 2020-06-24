@@ -5,22 +5,22 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures", "if_cu
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""
     for file in filegroup.files.to_list():
-        if file.path.endswith(path):
+        if file.path.endswith(path) or file.path.endswith(path + ".exe"):
             return file
     return None
 
-def _gen_kernel_image_hdr_impl(ctx):
-    if not ctx.attr.gpu_archs:
-        fail("No GPU architecture specified, use --config=cuda or similar")
+CubinInfo = provider(fields = ["cubins"])
 
+def _gen_kernel_cubin_impl(ctx):
     name = ctx.attr.name
     tile_sizes = ctx.attr.tile_size.replace("x", ",")
-    same_shape = []
+    cmd_args = []
     if ctx.attr.same_shape:
-        same_shape.append("--same_shape=%s" % ctx.attr.same_shape)
+        cmd_args.append("--same_shape=%s" % ctx.attr.same_shape)
+    if ctx.attr.unroll_factors:
+        cmd_args.append("--unroll_factors=%s" % ctx.attr.unroll_factors)
 
     cubins = []
-    images = []
     for arch in ctx.attr.gpu_archs:
         # TODO(b/152737872): 'compute_' should generate both SASS and PTX.
         arch = arch.replace("compute_", "sm_")
@@ -30,7 +30,7 @@ def _gen_kernel_image_hdr_impl(ctx):
             inputs = [ctx.file.mlir_op],
             outputs = [cubin],
             executable = ctx.executable._tool,
-            arguments = same_shape + [
+            arguments = cmd_args + [
                 "--tile_sizes=%s" % tile_sizes,
                 "--arch=%s" % arch.split("_")[1],
                 "--input=%s" % ctx.file.mlir_op.path,
@@ -39,13 +39,36 @@ def _gen_kernel_image_hdr_impl(ctx):
             mnemonic = "compile",
         )
         cubins.append(cubin)
+    return [CubinInfo(cubins = cubins)]
+
+_gen_kernel_cubin_rule = rule(
+    implementation = _gen_kernel_cubin_impl,
+    attrs = {
+        "mlir_op": attr.label(mandatory = True, allow_single_file = True),
+        "tile_size": attr.string(mandatory = True),
+        "same_shape": attr.string(),
+        "unroll_factors": attr.string(),
+        "gpu_archs": attr.string_list(mandatory = True),
+        "_tool": attr.label(
+            executable = True,
+            default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_cubin"),
+            cfg = "host",
+        ),
+    },
+    output_to_genfiles = True,
+)
+
+def _gen_kernel_image_hdr_impl(ctx):
+    images = []
+    for cubin in ctx.attr.input[CubinInfo].cubins:
+        arch = cubin.path.split(".")[-2]
         images.append("--image=profile=%s,file=%s" % (arch, cubin.path))
 
     # Generate fatbin file from all cubins.
-    fatbin = ctx.actions.declare_file("%s.fatbin" % name)
+    fatbin = ctx.actions.declare_file("%s.fatbin" % ctx.attr.name)
     ctx.actions.run(
         outputs = [fatbin],
-        inputs = cubins,
+        inputs = ctx.attr.input[CubinInfo].cubins,
         executable = _lookup_file(ctx.attr._cuda_root, "bin/fatbinary"),
         arguments = [
             "--64",
@@ -71,35 +94,31 @@ _gen_kernel_image_hdr_rule = rule(
     implementation = _gen_kernel_image_hdr_impl,
     output_to_genfiles = True,
     attrs = {
-        "mlir_op": attr.label(mandatory = True, allow_single_file = True),
-        "tile_size": attr.string(mandatory = True),
-        "same_shape": attr.string(),
+        "input": attr.label(mandatory = True, providers = [CubinInfo]),
         "out": attr.output(mandatory = True),
         "symbol": attr.string(mandatory = True),
-        "gpu_archs": attr.string_list(mandatory = True),
         "_cuda_root": attr.label(
             default = Label("@local_config_cuda//cuda:cuda_root"),
-        ),
-        "_tool": attr.label(
-            executable = True,
-            default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_cubin"),
-            cfg = "host",
         ),
     },
 )
 
-def _gen_kernel_image_hdr(name, mlir_op, tile_size, tags = [], same_shape = None):
+def _gen_kernel_image_hdr(name, mlir_op, tile_size, same_shape = None, unroll_factors = None):
     """Generates a C header with fatbin data from a Tensorflow op."""
     if cuda_gpu_architectures():
-        _gen_kernel_image_hdr_rule(
-            name = name,
+        _gen_kernel_cubin_rule(
+            name = name + "_cubin",
             mlir_op = mlir_op,
             tile_size = tile_size,
             same_shape = same_shape,
+            unroll_factors = unroll_factors,
+            gpu_archs = cuda_gpu_architectures(),
+        )
+        _gen_kernel_image_hdr_rule(
+            name = name,
+            input = ":" + name + "_cubin",
             out = "%s.h" % name,
             symbol = "k%s" % name.replace("_", " ").title().replace(" ", ""),
-            gpu_archs = cuda_gpu_architectures(),
-            tags = tags,
         )
 
 def _gen_mlir_op_impl(ctx):
@@ -131,13 +150,14 @@ def _gen_mlir_op(name, type):
         out = "{name}_{type}.mlir".format(name = name, type = type),
     )
 
-def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None):
+def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None, unroll_factors = None):
     """ Generate a library with kernels for a specific tensorflow op.
 
     Args:
       name: The name of the tensorflow op.
       types: The types ("f16", "f32", "f64") for which a kernel should be generated.
       tile_size: The tiling specification, e.g. "16x16".
+      unroll_factors: The unrolling specification, e.g. "4,4"
       tags: The tags which should be added to the library.
       same_shape: The information about which shapes are the same, e.g. "0,1".
     """
@@ -152,8 +172,8 @@ def gen_kernel_library(name, types, tile_size, tags = [], same_shape = None):
                 name = "{name}_{type}_kernel".format(name = name, type = type),
                 mlir_op = "{name}_{type}.mlir".format(name = name, type = type),
                 tile_size = tile_size,
-                tags = tags,
                 same_shape = same_shape,
+                unroll_factors = unroll_factors,
             )
 
     native.cc_library(

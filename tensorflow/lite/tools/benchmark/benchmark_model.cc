@@ -229,6 +229,13 @@ TfLiteStatus BenchmarkModel::ParseFlags(int* argc, char** argv) {
     TFLITE_LOG(ERROR) << usage;
     return kTfLiteError;
   }
+
+  std::string unconsumed_args =
+      Flags::ArgsToString(*argc, const_cast<const char**>(argv));
+  if (!unconsumed_args.empty()) {
+    TFLITE_LOG(WARN) << "Unconsumed cmdline flags: " << unconsumed_args;
+  }
+
   return kTfLiteOk;
 }
 

@@ -727,10 +727,33 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
       def get_activations():
         return mid_level_api.dequeue()
 
-      sparse_features = next(sparse_iter)
-      mid_level_api.enqueue(sparse_features, training=False)
-      sparse_activations = strategy.run(get_activations)
-      return sparse_activations
+      features = next(sparse_iter)
+      mid_level_api.enqueue(features, training=False)
+      activations = strategy.run(get_activations)
+      return activations
+
+    with self.assertRaisesRegex(ValueError, 'which is on a TPU input device'):
+      test_fn()
+
+  @parameterized.parameters([True, False])
+  def test_enqueue_cpu_tensor_with_outside_compilation(self, use_mlir):
+    if use_mlir:
+      config.enable_mlir_bridge()
+
+    strategy, mid_level_api, _ = self._create_strategy_and_mid_level('sgd')
+
+    input_fn = self._create_dense_input_fn(strategy)
+    sparse_iter = iter(strategy.experimental_distribute_datasets_from_function(
+        input_fn))
+
+    @def_function.function
+    def test_fn():
+      def get_activations(features):
+        mid_level_api.enqueue(features, training=False)
+        return mid_level_api.dequeue()
+
+      activations = strategy.run(get_activations, args=(next(sparse_iter),))
+      return activations
 
     with self.assertRaisesRegex(ValueError, 'which is on a TPU input device'):
       test_fn()

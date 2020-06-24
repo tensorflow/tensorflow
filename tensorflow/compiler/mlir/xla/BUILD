@@ -515,6 +515,24 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "xla_legalize_tanh_to_approximation",
+    srcs = ["transforms/legalize_tanh_to_approximation.cc"],
+    hdrs = [
+        "transforms/passes.h",
+        "transforms/rewriters.h",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
 gentbl(
     name = "xla_lower_complex_inc_gen",
     tbl_outs = [
@@ -946,6 +964,7 @@ cc_library(
         ":xla_hlo_fusion",
         ":xla_hlo_to_lhlo_with_xla",
         ":xla_legalize_control_flow",
+        ":xla_legalize_tanh_to_approximation",
         ":xla_legalize_tf",
         ":xla_legalize_tf_with_tf2xla",
         ":xla_legalize_to_linalg",

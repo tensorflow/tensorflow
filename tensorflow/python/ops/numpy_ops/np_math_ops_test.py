@@ -124,6 +124,12 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.matmul(
           np_array_ops.ones([2, 3], np.int32), np_array_ops.ones([], np.int32))
 
+  def testVDot(self):
+    operands = [([[1, 2], [3, 4]], [[3, 4], [6, 7]]),
+                ([[1, 2], [3, 4]], [3, 4, 6, 7])]
+    return self._testBinaryOp(
+        np_math_ops.vdot, np.vdot, 'vdot', operands=operands)
+
   def _testUnaryOp(self, math_fun, np_fun, name):
 
     def run_test(a):

@@ -80,4 +80,20 @@ TEST(CompositeDeviceTest, Basic) {
   }
 }
 
+TEST(CompositeDeviceTest, DeviceName) {
+  const string composite_device_name =
+      "/job:localhost/replica:0/task:0/device:CPU:10";
+  std::vector<string> underlying_devices;
+  underlying_devices.push_back("/job:worker/replica:0/task:0/device:CPU:0");
+  underlying_devices.push_back("/job:worker/replica:0/task:0/device:CPU:1");
+  Status status;
+  std::unique_ptr<CompositeDevice> composite_device =
+      CompositeDevice::MakeDevice(underlying_devices, composite_device_name,
+                                  &status);
+  TF_ASSERT_OK(status);
+  EXPECT_EQ(composite_device->name(), composite_device_name);
+  EXPECT_EQ(composite_device->device_type(), kCompositeDeviceType);
+  EXPECT_EQ(underlying_devices, *composite_device->underlying_devices());
+}
+
 }  // namespace tensorflow

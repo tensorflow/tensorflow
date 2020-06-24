@@ -1113,7 +1113,7 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
   // This routine should only be called when control flow operations are still
   // represented with TF IfOp and WhileOp operations. In this case, there should
   // be only one basic blocks in the MLIR representation.
-  if (!hasSingleElement(function.getBlocks())) {
+  if (!llvm::hasSingleElement(function)) {
     return function.emitError()
            << "expect the function to have 1 block while it has "
            << function.getBlocks().size();

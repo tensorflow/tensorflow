@@ -1762,6 +1762,7 @@ tf_cuda_cc_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.cc"],
+    tags = ["no_cuda11"],  # b/159664089
     deps = [
         ":conv_ops",
         ":image",
@@ -3577,6 +3578,7 @@ tf_cc_tests(
 cc_library(
     name = "linalg",
     deps = [
+        ":banded_triangular_solve_op",
         ":cholesky_grad",
         ":cholesky_op",
         ":determinant_op",
@@ -3748,6 +3750,12 @@ tf_kernel_library(
     name = "matrix_square_root_op",
     prefix = "matrix_square_root_op",
     deps = LINALG_DEPS,
+)
+
+tf_kernel_library(
+    name = "banded_triangular_solve_op",
+    prefix = "banded_triangular_solve_op",
+    deps = LINALG_DEPS + [":fill_functor"],
 )
 
 tf_kernel_library(
@@ -4161,6 +4169,25 @@ tf_kernel_library(
     ]),
 )
 
+tf_cuda_cc_test(
+    name = "mlir_generated_op_gpu_tanh_test",
+    size = "small",
+    srcs = if_mlir_generated_gpu_kernels_enabled(["mlir_generated_op_gpu_tanh_test.cc"]),
+    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    deps = [
+        ":cwise_op",
+        ":ops_testutil",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
+    ],
+)
+
 tf_kernel_library(
     name = "nextafter_op",
     prefix = "nextafter_op",
@@ -4413,6 +4440,26 @@ tf_cuda_cc_test(
     deps = [
         ":batch_matmul_op",
         ":broadcast_to_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "banded_triangular_solve_op_test",
+    size = "small",
+    srcs = ["banded_triangular_solve_op_test.cc"],
+    deps = [
+        ":banded_triangular_solve_op",
+        ":matrix_set_diag_op",
+        ":matrix_triangular_solve_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -4873,7 +4920,9 @@ tf_kernel_library(
         "topk_op_gpu_double.cu.cc",
         "topk_op_gpu_float.cu.cc",
         "topk_op_gpu_half.cu.cc",
+        "topk_op_gpu_uint64.cu.cc",
         "topk_op_gpu_int64.cu.cc",
+        "topk_op_gpu_uint32.cu.cc",
         "topk_op_gpu_int32.cu.cc",
         "topk_op_gpu_int16.cu.cc",
         "topk_op_gpu_uint16.cu.cc",
@@ -6129,6 +6178,7 @@ tf_kernel_library(
     ]),
     prefix = "parameterized_truncated_normal_op",
     deps = [
+        ":stateless_random_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -6774,7 +6824,8 @@ filegroup(
         "cwise_op_minimum.cc",
         "cwise_op_mul_1.cc",
         "cwise_op_mul_2.cc",
-        "cwise_op_neg.cc",
+        "cwise_op_neg_1.cc",
+        "cwise_op_neg_2.cc",
         "cwise_op_pow.cc",
         "cwise_op_real.cc",
         "cwise_op_reciprocal.cc",
@@ -8752,7 +8803,8 @@ exports_files([
     "cwise_op_mod.cc",
     "cwise_op_mul_1.cc",
     "cwise_op_mul_2.cc",
-    "cwise_op_neg.cc",
+    "cwise_op_neg_1.cc",
+    "cwise_op_neg_2.cc",
     "cwise_op_not_equal_to_1.cc",
     "cwise_op_not_equal_to_2.cc",
     "cwise_op_round.cc",

@@ -557,7 +557,7 @@ class MutableDenseHashTable final : public LookupInterface {
 
   TensorShape value_shape() const override { return value_shape_; }
 
-  int64 MemoryUsed() const override {
+  int64 MemoryUsed() const override TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return sizeof(MutableDenseHashTable) + key_buckets_.AllocatedBytes() +
            value_buckets_.AllocatedBytes() + empty_key_.AllocatedBytes();

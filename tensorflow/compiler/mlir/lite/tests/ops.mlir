@@ -269,6 +269,14 @@ func @testSub(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testSubInt64
+func @testSubInt64(tensor<? x i64>, tensor<? x i64>) -> tensor<? x i64> {
+^bb0(%arg0: tensor<? x i64>, %arg1: tensor<? x i64>):
+  // CHECK: tfl.sub %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = tfl.sub %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x i64>
+  return %0#0 : tensor<? x i64>
+}
+
 // CHECK-LABEL: testMul
 func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):

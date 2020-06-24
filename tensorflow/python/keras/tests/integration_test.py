@@ -160,10 +160,6 @@ class SequentialIntegrationTest(KerasIntegrationTest):
     model.pop()
     model.add(keras.layers.Dense(y_train.shape[-1], activation='softmax'))
 
-    # TODO(b/134523282): There is an bug with Sequential models, so the model
-    # must be marked as compiled=False to ensure the next compile goes through.
-    model._is_compiled = False
-
     model.compile(
         loss='categorical_crossentropy',
         optimizer=keras.optimizer_v2.adam.Adam(0.005),

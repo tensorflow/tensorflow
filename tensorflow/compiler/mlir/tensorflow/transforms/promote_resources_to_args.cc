@@ -80,11 +80,11 @@ constexpr char kResourceNameArgAttr[] = "tf.resource_name";
 
 // Checks if a function has only one block.
 mlir::LogicalResult CheckSingleBlockFunction(FuncOp function) {
-  if (!hasSingleElement(function.getBlocks()))
+  if (!llvm::hasSingleElement(function)) {
     return function.emitError()
            << "expects function '" << function.getName()
            << "' to have 1 block, got " << function.getBlocks().size();
-
+  }
   return success();
 }
 

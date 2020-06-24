@@ -1004,6 +1004,8 @@ class ReluTest(test_lib.TestCase):
     z = self.evaluate(nn_ops.relu(constant_op.constant(x)))
     self.assertAllEqual(y, z)
 
+  @test_util.disable_xla(
+      "This test relies on undefined behavior that XLA does not replicate")
   @test_util.run_deprecated_v1
   def testNaNs(self):
     # Test that relu(nan) = nan for various sizes.

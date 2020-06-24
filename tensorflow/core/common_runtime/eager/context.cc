@@ -20,6 +20,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -30,8 +31,6 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#include "tensorflow/c/eager/operation_interface.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
@@ -79,7 +78,8 @@ EagerContext::EagerContext(
     bool device_mgr_owned, Rendezvous* rendezvous,
     const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr)
-    : opts_(opts),
+    : ImmediateExecutionContext(kEager),
+      opts_(opts),
       default_device_placement_policy_(default_device_placement_policy),
       default_mirroring_policy_(default_mirroring_policy),
       local_device_manager_(device_mgr, device_mgr_owned),
@@ -895,7 +895,7 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
 }
 
 Status EagerContext::FindCompositeDeviceFromName(
-    const char* device_name, CompositeDevice** device) const {
+    StringPiece device_name, CompositeDevice** device) const {
   tf_shared_lock l(composite_devices_mu_);
   for (const auto& d : composite_devices_) {
     if (d.second->name() == device_name) {
@@ -941,8 +941,13 @@ Status EagerContext::RegisterCustomDevice(
 }
 
 Status EagerContext::FindOrCreateCompositeDevice(
-    const std::vector<string>& underlying_devices,
+    const std::vector<string>& underlying_devices, const string& device_name,
     CompositeDevice** composite_device) {
+  if (!device_name.empty() &&
+      FindCompositeDeviceFromName(device_name, composite_device).ok()) {
+    return Status::OK();
+  }
+
   const uint64 hash_key = Fingerprint64(absl::StrJoin(underlying_devices, ","));
 
   mutex_lock l(composite_devices_mu_);
@@ -953,11 +958,16 @@ Status EagerContext::FindOrCreateCompositeDevice(
   }
 
   Status s;
-  // Create a CompositeDevice on the same task as the host CPU, in order to
-  // trigger packed TensorHandle copy from a client to a remote worker.
-  auto device =
-      CompositeDevice::MakeDevice(underlying_devices, composite_devices_.size(),
-                                  HostCPU()->parsed_name(), &s);
+  std::unique_ptr<CompositeDevice> device;
+  if (device_name.empty()) {
+    // Create a CompositeDevice on the same task as the host CPU, in order to
+    // trigger packed TensorHandle copy from a client to a remote worker.
+    device = CompositeDevice::MakeDevice(underlying_devices,
+                                         composite_devices_.size(),
+                                         HostCPU()->parsed_name(), &s);
+  } else {
+    device = CompositeDevice::MakeDevice(underlying_devices, device_name, &s);
+  }
   TF_RETURN_IF_ERROR(s);
   *composite_device = device.get();
   pflr_->AddCompositeDevice(*composite_device);

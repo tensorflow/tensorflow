@@ -57,6 +57,7 @@ gentbl(
     td_srcs = [
         ":tensorflow_ops_td_files",
     ],
+    test = True,
 )
 
 gentbl(
@@ -88,6 +89,7 @@ gentbl(
     td_srcs = [
         ":tensorflow_ops_td_files",
     ],
+    test = True,
 )
 
 gentbl(
@@ -112,6 +114,7 @@ gentbl(
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
     ],
+    test = True,
 )
 
 gentbl(
@@ -137,6 +140,7 @@ gentbl(
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
     ],
+    test = True,
 )
 
 gentbl(
@@ -161,6 +165,7 @@ gentbl(
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
     ],
+    test = True,
 )
 
 gentbl(
@@ -465,6 +470,34 @@ cc_library(
 )
 
 cc_library(
+    name = "tf_saved_model_passes",
+    srcs = [
+        "transforms/freeze_global_tensors.cc",
+        "transforms/lift_variables_pass_registration.cc",
+        "transforms/optimize_global_tensors.cc",
+    ],
+    hdrs = [
+        "transforms/tf_saved_model_passes.h",
+    ],
+    deps = [
+        ":lift_variables_pass",
+        ":tensorflow",
+        ":tensorflow_passes",
+        ":tensorflow_types",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "tensorflow_passes",
     srcs = [
         "transforms/annotate_parameter_replication.cc",
@@ -475,13 +508,13 @@ cc_library(
         "transforms/cluster_outlining.cc",
         "transforms/collection_ops_util.cc",
         "transforms/decompose_resource_ops_pass.cc",
+        "transforms/device_index_selector.cc",
         "transforms/einsum.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/executor_tpuv1_inline_tpu_island.cc",
         "transforms/executor_tpuv1_island_coarsening.cc",
         "transforms/executor_tpuv1_outline_tpu_island.cc",
         "transforms/fold_switch.cc",
-        "transforms/freeze_global_tensors.cc",
         "transforms/functional_control_flow_to_cfg.cc",
         "transforms/functional_control_flow_to_regions.cc",
         "transforms/fused_kernel_matcher.cc",
@@ -491,10 +524,8 @@ cc_library(
         "transforms/graph_pruning.cc",
         "transforms/launch_to_device_attribute.cc",
         "transforms/layout_optimization.cc",
-        "transforms/mark_function_visibility.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
-        "transforms/optimize_global_tensors.cc",
         "transforms/parallel_execute_to_islands.cc",
         "transforms/promote_resources_to_args.cc",
         "transforms/readonly_references_to_resources.cc",
@@ -661,7 +692,9 @@ cc_library(
         ":tensorflow_types",
         ":translate_utils",
         "//tensorflow/cc/saved_model:bundle_v2",
+        "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:loader_lite",
+        "//tensorflow/cc/saved_model:loader_util",
         "//tensorflow/compiler/jit:shape_inference_helpers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow",
@@ -673,6 +706,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/utils:transitive_fanin",
+        "//tensorflow/core/platform:protobuf_internal",
         "//tensorflow/core/platform:types",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
@@ -682,7 +716,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -1349,6 +1382,7 @@ cc_library(
     srcs = ["utils/tpu_rewrite_device_util.cc"],
     hdrs = ["utils/tpu_rewrite_device_util.h"],
     deps = [
+        ":tensorflow",
         "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",
@@ -1359,6 +1393,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -1367,6 +1402,7 @@ tf_cc_test(
     size = "small",
     srcs = ["utils/tpu_rewrite_device_util_test.cc"],
     deps = [
+        ":device_util",
         ":tpu_rewrite_device_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",

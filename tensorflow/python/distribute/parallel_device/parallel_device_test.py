@@ -172,6 +172,8 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       config.set_synchronous_execution(previous)
 
   def test_checkpointing(self):
+    self.skipTest(
+        "Disable saving until SaveableObject's methods are traceable.")
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     with self.device.scope():
       different_values = self.device.pack(
@@ -263,6 +265,8 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], final_kernels[1].backing_device)
 
   def test_training_loop(self):
+    self.skipTest(
+        "Disable saving until SaveableObject's methods are traceable.")
     for _ in range(5):
       layer = _Dense(5)
       checkpoint = tracking.Checkpoint(layer=layer)

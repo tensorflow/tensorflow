@@ -314,7 +314,6 @@ tf_cc_test(
 cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
-        "transforms/device_index_selector.cc",
         "transforms/dilated_conv.cc",
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_lower_static_tensor_list.inc",
@@ -840,6 +839,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
+        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Analysis",

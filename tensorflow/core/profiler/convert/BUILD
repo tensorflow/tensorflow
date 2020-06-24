@@ -525,6 +525,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:memory_profile_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:group_events",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_test_utils",

@@ -138,6 +138,11 @@ bool IsI32Type(Type element_type) {
   return element_type.isInteger(32) && !element_type.isUnsignedInteger();
 }
 
+// Return true when the given element_type is I64.
+bool IsI64Type(Type element_type) {
+  return element_type.isInteger(64) && !element_type.isUnsignedInteger();
+}
+
 // Return true if the given Add operation has the CPU kernel supported shapes.
 bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
@@ -174,7 +179,8 @@ bool VerifySubOpShapeConstraints(SubOp op) {
   // Allows F32, QUI8, and QI16 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to five dimension or have same shapes.
   if (element_type.isF32() || IsI32Type(element_type) ||
-      IsQUI8Type(element_type) || IsQI16Type(element_type)) {
+      IsI64Type(element_type) || IsQUI8Type(element_type) ||
+      IsQI16Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/5);
@@ -756,6 +762,22 @@ OpFoldResult ConcatenationOp::fold(ArrayRef<Attribute> operands) {
       builder.getIntegerAttr(builder.getIntegerType(32), axis()),
       builder.getStringAttr(fused_activation_function()));
   return new_concat.getResult();
+}
+
+//===----------------------------------------------------------------------===//
+// CustomOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(CustomOp op) {
+  OpaqueElementsAttr opaque_attr =
+      op.custom_option().cast<OpaqueElementsAttr>();
+  if (!opaque_attr.getType().hasStaticShape())
+    return op.emitOpError("custom_option should have a static shape.");
+  if (opaque_attr.getValue().size() !=
+      opaque_attr.getType().cast<ShapedType>().getDimSize(0))
+    return op.emitOpError(
+        "custom_option should have the same length of content with shape.");
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2169,24 +2191,16 @@ static LogicalResult Verify(TransposeOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// WhileOp
+//===----------------------------------------------------------------------===//
+
 LogicalResult Verify(WhileOp op) {
   if (op.getNumOperands() != op.getNumResults())
     return op.emitOpError(llvm::formatv(
         "number of operands does not match number of results ({0} != {1})",
         op.getNumOperands(), op.getNumResults()));
   // TODO(jpienaar): Verify operand, result & block arguments types
-  return success();
-}
-
-static LogicalResult Verify(CustomOp op) {
-  OpaqueElementsAttr opaque_attr =
-      op.custom_option().cast<OpaqueElementsAttr>();
-  if (!opaque_attr.getType().hasStaticShape())
-    return op.emitOpError("custom_option should have a static shape.");
-  if (opaque_attr.getValue().size() !=
-      opaque_attr.getType().cast<ShapedType>().getDimSize(0))
-    return op.emitOpError(
-        "custom_option should have the same length of content with shape.");
   return success();
 }
 

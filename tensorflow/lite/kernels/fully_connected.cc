@@ -312,7 +312,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (!is_pie && !is_hybrid) {
     TF_LITE_ENSURE(context, params->activation == kTfLiteActNone ||
                                 params->activation == kTfLiteActRelu ||
-                                params->activation == kTfLiteActRelu1 ||
+                                params->activation == kTfLiteActReluN1To1 ||
                                 params->activation == kTfLiteActRelu6);
   }
   return PrepareImpl(context, node);

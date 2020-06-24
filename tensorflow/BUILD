@@ -467,6 +467,13 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This flag enables experimental TPU support
+config_setting(
+    name = "with_tpu_support",
+    values = {"define": "with_tpu_support=true"},
+    visibility = ["//visibility:public"],
+)
+
 # Specifies via a config setting if this is a mobile build or not, makes
 # it easier to combine settings later.
 selects.config_setting_group(
