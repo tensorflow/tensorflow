@@ -538,7 +538,7 @@ bool Transposer::IsFaninPortDimsNIfConst(const utils::MutableNodeView& node,
     if (!tensor.FromProto(value_attr->tensor())) {
       return false;
     }
-    int dims_size = dims.size(); 
+    const int dims_size = dims.size(); 
     if (tensor.dims() != dims_size) {
       return false;
     }
