@@ -20,6 +20,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -77,7 +78,8 @@ EagerContext::EagerContext(
     bool device_mgr_owned, Rendezvous* rendezvous,
     const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr)
-    : opts_(opts),
+    : ImmediateExecutionContext(kEager),
+      opts_(opts),
       default_device_placement_policy_(default_device_placement_policy),
       default_mirroring_policy_(default_mirroring_policy),
       local_device_manager_(device_mgr, device_mgr_owned),

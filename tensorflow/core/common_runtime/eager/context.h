@@ -669,6 +669,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
 
+  // For LLVM style RTTI.
+  static bool classof(const AbstractContext* ptr) {
+    return ptr->getKind() == kEager;
+  }
+
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should
   // be).

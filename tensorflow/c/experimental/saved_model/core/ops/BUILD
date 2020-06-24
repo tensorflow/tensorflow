@@ -31,6 +31,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/llvm_rtti",
         "@com_google_absl//absl/types:span",
     ],
 )
