@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -273,20 +273,24 @@ def check_match(keras_block, tf_block, keras_weight_names, tf_weight_names, mode
     keras_weight_names: list of str, each string is a name for weights in keras implementation
     tf_weight_names: list of str, each string is a name for weights in tf implementation
   """
-  match_lst = []
+  names_from_keras = set()
   for x in keras_weight_names:
     if keras_block in x:
       y = keras_name_to_tf_name_block(x, keras_block=keras_block, tf_block=tf_block, model_name_tf=model_name_tf)
-      match_lst.append(y)
+      names_from_keras.add(y)
   
-  assert len(match_lst) > 0, f'there is no weight in block {keras_block}'
+  names_from_tf = set()
   for x in tf_weight_names:
     if tf_block in x and x.split('/')[1].endswith(tf_block):
-      try:
-        match_lst.remove(x)
-      except:
-        raise ValueError(f'{x} not in tf_weight_names')
-  assert len(match_lst) == 0 , f'{len(match_lst)} variables in {tf_block} are not in {keras_block} of keras model. '
+      names_from_tf.add(x)
+
+  names_missing = names_from_keras - names_from_tf
+  if len(names_missing) > 0:
+    raise ValueError(f'{len(names_missing)} variables not found in checkpoint file: {names_missing}')
+
+  names_unused = names_from_keras - names_from_tf 
+  if len(names_unused) > 0:
+    warnings.warn(f'{len(names_unused)} variables from checkpoint file are not used: {names_unused}')
 
 
 if __name__ == '__main__':
