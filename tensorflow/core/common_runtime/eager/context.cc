@@ -602,16 +602,6 @@ const FunctionDef* EagerContext::FindFunctionDef(const string& name) {
   return func_lib_def_.Find(name);
 }
 
-std::vector<const FunctionDef*> EagerContext::ListRegisteredFunctions() {
-  std::vector<const FunctionDef*> result;
-  std::vector<string> function_names = func_lib_def_.ListFunctionNames();
-  result.reserve(function_names.size());
-  for (const string& fn : function_names) {
-    result.emplace_back(func_lib_def_.Find(fn));
-  }
-  return result;
-}
-
 void EagerContext::ClearRunMetadata() { run_metadata_.Clear(); }
 
 bool EagerContext::UsesTFRT() { return false; }
@@ -690,37 +680,35 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
 }
 
 Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
-    const std::vector<const FunctionDef*>& function_defs,
     const std::vector<string>& remote_workers) {
 #if !defined(IS_MOBILE_PLATFORM)
   // Register multiple functions on selected remote workers.
   uint64 context_id = GetContextId();
+  FunctionDefLibrary function_defs = func_lib_def_.ToProto();
   for (int i = 0; i < remote_workers.size(); i++) {
     core::RefCountPtr<eager::EagerClient> eager_client;
     Status s = GetClient(remote_workers[i], &eager_client);
     if (!s.ok()) {
       continue;
     }
-    for (int j = 0; j < function_defs.size(); j++) {
-      auto* request = new eager::EnqueueRequest;
+    for (int j = 0; j < function_defs.function_size(); j++) {
+      auto request = std::make_shared<eager::EnqueueRequest>();
       request->set_context_id(context_id);
       eager::RegisterFunctionOp* register_function =
           request->add_queue()->mutable_register_function();
-      *register_function->mutable_function_def() = *function_defs[j];
+      *register_function->mutable_function_def() = function_defs.function(j);
       StripDefaultAttributes(
           *OpRegistry::Global(),
           register_function->mutable_function_def()->mutable_node_def());
-      auto* response = new eager::EnqueueResponse;
+      auto response = std::make_shared<eager::EnqueueResponse>();
       eager_client->StreamingEnqueueAsync(
-          request, response, [request, response](const Status& s) {
+          request.get(), response.get(), [request, response](const Status& s) {
             if (!s.ok()) {
               LOG(ERROR) << "Failed to register function remotely due to "
                          << s.error_message()
                          << "\nThis shouldn't happen, please file a bug to "
                             "tensorflow team.";
             }
-            delete request;
-            delete response;
           });
     }
   }
@@ -1265,7 +1253,6 @@ Status EagerContext::UpdateRemoteMaster(
                             std::begin(add_remote_contexts),
                             std::end(add_remote_contexts));
   }
-  std::vector<const FunctionDef*> function_defs = ListRegisteredFunctions();
 
   {
     mutex_lock l(remote_state_mu_);
@@ -1292,8 +1279,8 @@ Status EagerContext::UpdateRemoteMaster(
   // ones), and `RegisterExistingFunctionsOnRemoteWorkers` will take care of
   // registering existing functions, where duplicate registrations will be
   // ignored by the remote workers.
-  TF_RETURN_IF_ERROR(RegisterExistingFunctionsOnRemoteWorkers(
-      function_defs, add_remote_contexts));
+  TF_RETURN_IF_ERROR(
+      RegisterExistingFunctionsOnRemoteWorkers(add_remote_contexts));
   return Status::OK();
 }
 

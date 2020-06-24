@@ -482,8 +482,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   tensorflow::Env* TFEnv() const { return env_; }
 
-  std::vector<const FunctionDef*> ListRegisteredFunctions();
-
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
   Status FindCompositeDeviceFromName(StringPiece device_name,
@@ -513,7 +511,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void InitPrioritizedDeviceTypeList();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
   Status RegisterExistingFunctionsOnRemoteWorkers(
-      const std::vector<const FunctionDef*>& function_defs,
       const std::vector<string>& remote_workers);
 
   void ResetPFLR(const DeviceMgr* device_mgr, Env* env,
