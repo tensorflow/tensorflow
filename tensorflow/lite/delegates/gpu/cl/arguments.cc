@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -457,21 +458,15 @@ std::string Arguments::GetListOfArgs() {
   for (auto& t : buffers_) {
     const std::string type_name =
         t.second.data_type == DataType::FLOAT32 ? "float" : "half";
-    std::string memory_type;
-    switch (t.second.memory_type) {
-      case MemoryType::GLOBAL:
-        memory_type = "__global";
-        break;
-      case MemoryType::CONSTANT:
-        memory_type = "__constant";
-        break;
-      case MemoryType::LOCAL:
-        memory_type = "__local";
-        break;
+    std::string attributes;
+    for (const auto& attr : t.second.attributes) {
+      attributes += absl::StrCat("  __attribute__((", attr, "))");
     }
-    AppendArgument(absl::StrCat(memory_type, " ", type_name,
-                                t.second.element_size, "* ", t.first),
-                   &result);
+    AppendArgument(
+        absl::StrCat(MemoryTypeToCLType(t.second.memory_type), " ",
+                     ToCLDataType(t.second.data_type, t.second.element_size),
+                     "* ", t.first, attributes),
+        &result);
   }
   for (auto& t : image_buffers_) {
     AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),

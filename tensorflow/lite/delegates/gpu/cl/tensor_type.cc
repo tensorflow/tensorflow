@@ -147,6 +147,13 @@ absl::Status TensorDescriptor::PerformSelector(
   } else if (selector == "Slices") {
     *result = "slices";
     return absl::OkStatus();
+  } else if (selector == "SliceStride") {
+    if (IsBatchedWidth()) {
+      *result = "width_batched * height";
+    } else {
+      *result = "width * height";
+    }
+    return absl::OkStatus();
   } else if (selector == "Channels") {
     *result = "channels";
     return absl::OkStatus();
