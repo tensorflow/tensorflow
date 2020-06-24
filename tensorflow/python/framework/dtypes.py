@@ -238,14 +238,15 @@ dtype_range = {
 class Float16(DType):
   pass
 
-class Half(DType):
-  pass
+Half = Float16
 
 class Float32(DType):
   pass
 
 class Float64(DType):
   pass
+
+Double = Float64
 
 class BFloat16(DType):
   pass
