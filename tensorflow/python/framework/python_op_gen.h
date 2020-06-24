@@ -54,7 +54,7 @@ string GetPythonWrappers(const char* op_list_buf, size_t op_list_len);
 // Get the type annotation for an arg
 // `arg` should be an input or output of an op
 // `type_annotations` should contain attr names mapped to TypeVar names
-string GetArgAnnotation(const auto& arg,
+string GetArgAnnotation(const string& arg_type_attr, DataType arg_type,
                         const std::unordered_map<string, string>& type_annotations);
 
 }  // namespace tensorflow
