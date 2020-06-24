@@ -614,7 +614,7 @@ Status GpuTracer::DoStart() {
 
 // CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
 #if CUDA_VERSION < 10000
-  if (!options.trace_concurrent_kernels()) options_.cupti_finalize = true;
+  if (!trace_concurrent_kernels) options_.cupti_finalize = true;
 #elif CUDA_VERSION >= 11000
   options_.cupti_finalize = true;
 #endif
