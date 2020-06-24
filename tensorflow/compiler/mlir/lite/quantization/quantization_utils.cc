@@ -76,7 +76,8 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor) {
   if (auto qtype = ele_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
     ArrayRef<double> scales = qtype.getScales();
     // Broadcasting hasn't been implemented yet.
-    if (static_cast<int64_t>(scales.size()) != factor_values.getNumElements()) return {};
+    if (static_cast<int64_t>(scales.size()) != factor_values.getNumElements())
+      return {};
     SmallVector<double, 4> new_scales;
     new_scales.reserve(scales.size());
     auto scales_iter = scales.begin();
@@ -369,7 +370,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
         scales[index_scale.index()] *= index_scale.value();
       }
     } else if (auto type = op_type.dyn_cast<quant::UniformQuantizedType>()) {
-      for (size_t index = 0; index != axis_size; ++index) {
+      for (int index = 0, e = axis_size; index != e; ++index) {
         scales[index] *= type.getScale();
       }
     }
