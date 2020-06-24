@@ -1917,15 +1917,22 @@ class LogSoftmaxStage : public ArithmeticOptimizerStage {
 //      ^                                  |
 //      |                                  |
 //    input                      input  ---+
-class RemoveRedundantReshape : public ArithmeticOptimizerStage {
+//
+// Additionally,  Reshape and BroadcastTo nodes where the
+// input and target shapes are equal are bypassed.
+//
+class RemoveRedundantReshapeOrBroadcastTo : public ArithmeticOptimizerStage {
  public:
-  explicit RemoveRedundantReshape(const GraphOptimizerContext& ctx,
-                                  const ArithmeticOptimizerContext& ctx_ext)
-      : ArithmeticOptimizerStage("RemoveRedundantReshape", ctx, ctx_ext) {}
-  ~RemoveRedundantReshape() override = default;
+  explicit RemoveRedundantReshapeOrBroadcastTo(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveRedundantReshapeOrBroadcastTo", ctx,
+                                 ctx_ext) {}
+  ~RemoveRedundantReshapeOrBroadcastTo() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsReshape(*node) && !IsInPreserveSet(*node);
+    return (IsReshape(*node) || IsBroadcastTo(*node)) &&
+           !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -1933,7 +1940,8 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
 
     // 1. Bypass reshape followed by reshape.
-    if (IsReshape(*input) && !HasControlInputs(*input)) {
+    if (IsReshape(*node) && IsReshape(*input)) {
+      ForwardControlDependencies(node, {input});
       node->set_input(0, input->input(0));
       ctx().node_map->UpdateInput(node->name(), input->name(), input->input(0));
       *simplified_node_name = node->name();
@@ -1944,7 +1952,7 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
     // 2. If the reshape is a no-op, forward its input to its consumers, unless
     // it anchors a control dependency since we want to make sure that control
     // dependency is triggered.
-    if (ReshapeIsIdentity(*node) && !HasControlInputs(*node)) {
+    if (InputMatchesTargetShape(*node) && !HasControlInputs(*node)) {
       *simplified_node_name = node->input(0);
       return Status::OK();
     }
@@ -1954,7 +1962,7 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
 
  private:
   // Returns whether `reshape` is an identity op.
-  bool ReshapeIsIdentity(const NodeDef& reshape) {
+  bool InputMatchesTargetShape(const NodeDef& reshape) {
     const OpInfo::TensorProperties* reshape_props;
     const OpInfo::TensorProperties* input_props;
 
@@ -3673,7 +3681,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.remove_redundant_cast)
     pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
   if (options_.remove_redundant_reshape)
-    pipeline.AddStage<RemoveRedundantReshape>(ctx, ctx_ext);
+    pipeline.AddStage<RemoveRedundantReshapeOrBroadcastTo>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
   if (options_.replace_mul_with_square)
