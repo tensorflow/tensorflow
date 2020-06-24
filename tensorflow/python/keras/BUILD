@@ -1821,6 +1821,7 @@ tf_py_test(
         "//tensorflow/python:util",
     ],
     shard_count = 4,
+    tags = ["no_rocm"],
 )
 
 tf_py_test(

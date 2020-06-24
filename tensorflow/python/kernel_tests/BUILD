@@ -1582,6 +1582,7 @@ cuda_py_test(
     ],
     shard_count = 10,
     tags = [
+        "no_rocm",
         "noasan",  # times out
         "optonly",  # times out
     ],
@@ -1677,6 +1678,7 @@ cuda_py_test(
     additional_deps = [
         ":bias_op_base",
     ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
 )
 

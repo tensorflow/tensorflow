@@ -936,6 +936,7 @@ py_test(
     srcs = ["ragged_dispatch_test.py"],
     python_version = "PY2",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",

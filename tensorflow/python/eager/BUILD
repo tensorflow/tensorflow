@@ -703,6 +703,7 @@ cuda_py_test(
     ],
     tags = [
         "no_mac",
+        "no_rocm",
         "no_windows",
     ],
     xla_enabled = True,
