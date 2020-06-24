@@ -15,13 +15,12 @@
 #ifndef TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_GCS_GCS_FILESYSTEM_H_
 #define TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_GCS_GCS_FILESYSTEM_H_
 
-#include "absl/strings/string_view.h"
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/tf_status.h"
 
-void ParseGCSPath(absl::string_view fname, bool object_empty_ok, char** bucket,
-                  char** object, TF_Status* status);
+void ParseGCSPath(const std::string& fname, bool object_empty_ok,
+                  std::string& bucket, std::string& object, TF_Status* status);
 
 namespace tf_gcs_filesystem {
 void Init(TF_Filesystem* filesystem, TF_Status* status);

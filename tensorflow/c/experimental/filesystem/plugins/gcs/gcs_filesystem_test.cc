@@ -43,9 +43,27 @@ class GCSFilesystemTest : public ::testing::Test {
   TF_Status* status_;
 };
 
-// We have to add this test here because there must be at least one test.
-// This test will be removed in the future.
-TEST_F(GCSFilesystemTest, TestInit) { ASSERT_TF_OK(status_); }
+TEST_F(GCSFilesystemTest, ParseGCSPath) {
+  std::string bucket, object;
+  ParseGCSPath("gs://bucket/path/to/object", false, bucket, object, status_);
+  ASSERT_TF_OK(status_);
+  ASSERT_EQ(bucket, "bucket");
+  ASSERT_EQ(object, "path/to/object");
+
+  ParseGCSPath("gs://bucket/", true, bucket, object, status_);
+  ASSERT_TF_OK(status_);
+  ASSERT_EQ(bucket, "bucket");
+
+  ParseGCSPath("bucket/path/to/object", false, bucket, object, status_);
+  ASSERT_EQ(TF_GetCode(status_), TF_INVALID_ARGUMENT);
+
+  // bucket name must end with "/"
+  ParseGCSPath("gs://bucket", true, bucket, object, status_);
+  ASSERT_EQ(TF_GetCode(status_), TF_INVALID_ARGUMENT);
+
+  ParseGCSPath("gs://bucket/", false, bucket, object, status_);
+  ASSERT_EQ(TF_GetCode(status_), TF_INVALID_ARGUMENT);
+}
 
 }  // namespace
 }  // namespace tensorflow
