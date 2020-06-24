@@ -764,8 +764,8 @@ Tensor GetResourceHandle(const string& var_name, const string& container,
   handle.set_device(device_name);
   handle.set_container(container);
   handle.set_name(var_name);
-  handle.set_hash_code(MakeTypeIndex<Var>().hash_code());
-  handle.set_maybe_type_name(MakeTypeIndex<Var>().name());
+  handle.set_hash_code(TypeIndex::Make<Var>().hash_code());
+  handle.set_maybe_type_name(TypeIndex::Make<Var>().name());
   Tensor tensor(DT_RESOURCE, TensorShape({}));
   tensor.scalar<ResourceHandle>()() = handle;
   return tensor;

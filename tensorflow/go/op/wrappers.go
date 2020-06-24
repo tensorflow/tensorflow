@@ -15370,6 +15370,80 @@ func MergeSummary(scope *Scope, inputs []tf.Output) (summary tf.Output) {
 	return op.Output(0)
 }
 
+// DecodeImageAttr is an optional argument to DecodeImage.
+type DecodeImageAttr func(optionalAttr)
+
+// DecodeImageChannels sets the optional channels attribute to value.
+//
+// value: Number of color channels for the decoded image.
+// If not specified, defaults to 0
+func DecodeImageChannels(value int64) DecodeImageAttr {
+	return func(m optionalAttr) {
+		m["channels"] = value
+	}
+}
+
+// DecodeImageDtype sets the optional dtype attribute to value.
+//
+// value: The desired DType of the returned Tensor.
+// If not specified, defaults to DT_UINT8
+func DecodeImageDtype(value tf.DataType) DecodeImageAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// DecodeImageExpandAnimations sets the optional expand_animations attribute to value.
+//
+// value: Controls the output shape of the returned op. If True, the returned op will
+// produce a 3-D tensor for PNG, JPEG, and BMP files; and a 4-D tensor for all
+// GIFs, whether animated or not. If, False, the returned op will produce a 3-D
+// tensor for all file types and will truncate animated GIFs to the first frame.
+// If not specified, defaults to true
+func DecodeImageExpandAnimations(value bool) DecodeImageAttr {
+	return func(m optionalAttr) {
+		m["expand_animations"] = value
+	}
+}
+
+// Function for decode_bmp, decode_gif, decode_jpeg, and decode_png.
+//
+// Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
+// appropriate operation to convert the input bytes string into a Tensor of type
+// dtype.
+//
+// *NOTE*: decode_gif returns a 4-D array [num_frames, height, width, 3], as
+// opposed to decode_bmp, decode_jpeg and decode_png, which return 3-D arrays
+// [height, width, num_channels]. Make sure to take this into account when
+// constructing your graph if you are intermixing GIF files with BMP, JPEG, and/or
+// PNG files. Alternately, set the expand_animations argument of this function to
+// False, in which case the op will return 3-dimensional tensors and will truncate
+// animated GIF files to the first frame.
+//
+// Arguments:
+//	contents: 0-D. The encoded image bytes.
+//
+// Returns 3-D with shape `[height, width, channels]` or 4-D with shape
+// `[frame, height, width, channels]`..
+func DecodeImage(scope *Scope, contents tf.Output, optional ...DecodeImageAttr) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeImage",
+		Input: []tf.Input{
+			contents,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // AvgPoolAttr is an optional argument to AvgPool.
 type AvgPoolAttr func(optionalAttr)
 

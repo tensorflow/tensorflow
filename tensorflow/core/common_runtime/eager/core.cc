@@ -197,7 +197,7 @@ Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
   if (device == kVariantDeviceNull) {
     bool pin_to_cpu;
     TF_RETURN_IF_ERROR(eager::MaybePinSmallOpsToCpu(
-        &pin_to_cpu, op_name(),
+        &pin_to_cpu, Name(),
         absl::MakeSpan(
             reinterpret_cast<ImmediateExecutionTensorHandle**>(inputs_.data()),
             inputs_.size()),

@@ -45,6 +45,7 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
@@ -985,8 +986,11 @@ def export_meta_graph(obj, filename, signatures=None, options=None):
   ops.dismantle_graph(exported_graph)
 
 
-def _build_meta_graph(obj, export_dir, signatures, options,
-                      meta_graph_def=None):
+def _build_meta_graph_impl(obj,
+                           export_dir,
+                           signatures,
+                           options,
+                           meta_graph_def=None):
   """Creates a MetaGraph containing the resources and functions of an object."""
   if ops.inside_function():
     raise AssertionError(
@@ -1044,3 +1048,14 @@ def _build_meta_graph(obj, export_dir, signatures, options,
         graph_debug_info.SerializeToString(deterministic=True))
 
   return meta_graph_def, exported_graph, object_saver, asset_info
+
+
+def _build_meta_graph(obj,
+                      export_dir,
+                      signatures,
+                      options,
+                      meta_graph_def=None):
+  """Creates a MetaGraph under a SaveContext."""
+  with save_context.save_context():
+    return _build_meta_graph_impl(obj, export_dir, signatures, options,
+                                  meta_graph_def)

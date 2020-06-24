@@ -155,12 +155,12 @@ TEST(VariantOpCopyToGPURegistryTest, TestBasic) {
   // No registered copy fn for GPU<->GPU.
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetDeviceCopyFn(
                 VariantDeviceCopyDirection::DEVICE_TO_DEVICE,
-                MakeTypeIndex<VariantValue>()),
+                TypeIndex::Make<VariantValue>()),
             nullptr);
 
   auto* copy_to_gpu_fn = UnaryVariantOpRegistry::Global()->GetDeviceCopyFn(
       VariantDeviceCopyDirection::HOST_TO_DEVICE,
-      MakeTypeIndex<VariantValue>());
+      TypeIndex::Make<VariantValue>());
   EXPECT_NE(copy_to_gpu_fn, nullptr);
 
   VariantValue vv{true /* early_exit */};
@@ -183,7 +183,7 @@ TEST(VariantOpCopyToGPURegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;
   UnaryVariantOpRegistry::AsyncVariantDeviceCopyFn f;
   class FjFjFj {};
-  const auto kTypeIndex = MakeTypeIndex<FjFjFj>();
+  const auto kTypeIndex = TypeIndex::Make<FjFjFj>();
   registry.RegisterDeviceCopyFn(VariantDeviceCopyDirection::HOST_TO_DEVICE,
                                 kTypeIndex, f);
   EXPECT_DEATH(registry.RegisterDeviceCopyFn(
@@ -193,9 +193,10 @@ TEST(VariantOpCopyToGPURegistryTest, TestDuplicate) {
 
 TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
   class Blah {};
-  EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetUnaryOpFn(
-                ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_CPU, MakeTypeIndex<Blah>()),
-            nullptr);
+  EXPECT_EQ(
+      UnaryVariantOpRegistry::Global()->GetUnaryOpFn(
+          ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_CPU, TypeIndex::Make<Blah>()),
+      nullptr);
 
   VariantValue vv_early_exit{true /* early_exit */, 0 /* value */};
   Variant v = vv_early_exit;
@@ -218,9 +219,10 @@ TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
   class Blah {};
-  EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetUnaryOpFn(
-                ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_GPU, MakeTypeIndex<Blah>()),
-            nullptr);
+  EXPECT_EQ(
+      UnaryVariantOpRegistry::Global()->GetUnaryOpFn(
+          ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_GPU, TypeIndex::Make<Blah>()),
+      nullptr);
 
   VariantValue vv_early_exit{true /* early_exit */, 0 /* value */};
   Variant v = vv_early_exit;
@@ -245,7 +247,7 @@ TEST(VariantOpUnaryOpRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;
   UnaryVariantOpRegistry::VariantUnaryOpFn f;
   class FjFjFj {};
-  const auto kTypeIndex = MakeTypeIndex<FjFjFj>();
+  const auto kTypeIndex = TypeIndex::Make<FjFjFj>();
 
   registry.RegisterUnaryOpFn(ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_CPU,
                              kTypeIndex, f);
@@ -263,7 +265,7 @@ TEST(VariantOpUnaryOpRegistryTest, TestDuplicate) {
 TEST(VariantOpAddRegistryTest, TestBasicCPU) {
   class Blah {};
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetBinaryOpFn(
-                ADD_VARIANT_BINARY_OP, DEVICE_CPU, MakeTypeIndex<Blah>()),
+                ADD_VARIANT_BINARY_OP, DEVICE_CPU, TypeIndex::Make<Blah>()),
             nullptr);
 
   VariantValue vv_early_exit{true /* early_exit */, 3 /* value */};
@@ -290,7 +292,7 @@ TEST(VariantOpAddRegistryTest, TestBasicCPU) {
 TEST(VariantOpAddRegistryTest, TestBasicGPU) {
   class Blah {};
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetBinaryOpFn(
-                ADD_VARIANT_BINARY_OP, DEVICE_GPU, MakeTypeIndex<Blah>()),
+                ADD_VARIANT_BINARY_OP, DEVICE_GPU, TypeIndex::Make<Blah>()),
             nullptr);
 
   VariantValue vv_early_exit{true /* early_exit */, 3 /* value */};
@@ -318,7 +320,7 @@ TEST(VariantOpAddRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;
   UnaryVariantOpRegistry::VariantBinaryOpFn f;
   class FjFjFj {};
-  const auto kTypeIndex = MakeTypeIndex<FjFjFj>();
+  const auto kTypeIndex = TypeIndex::Make<FjFjFj>();
 
   registry.RegisterBinaryOpFn(ADD_VARIANT_BINARY_OP, DEVICE_CPU, kTypeIndex, f);
   EXPECT_DEATH(registry.RegisterBinaryOpFn(ADD_VARIANT_BINARY_OP, DEVICE_CPU,

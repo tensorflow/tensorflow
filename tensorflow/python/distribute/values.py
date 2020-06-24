@@ -35,6 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
@@ -472,11 +473,10 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     # variable.
     self._var_policy = var_policy
 
-  @property
-  def _devices(self):
-    if self._packed_var is not None:
-      return tuple(d for d in self._packed_var.devices)
-    return tuple(v.device for v in self._values)
+  def _use_packed_variable(self):
+    # Don't use packed variable when under a SaveContext to avoid explicit
+    # device placement on variable consuming ops.
+    return self._packed_var is not None and not save_context.in_save_context()
 
   def is_initialized(self, name=None):
     """Identifies if all the component variables are initialized.
@@ -488,7 +488,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       The op that evaluates to True or False depending on if all the
       component variables are initialized.
     """
-    if self._packed_var is not None:
+    if self._use_packed_variable():
       return self._packed_var.is_initialized()
     result = self._primary.is_initialized()
     # We iterate through the list of values except the last one to allow us to
@@ -562,7 +562,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
 
   @property
   def _packed_variable(self):
-    return self._packed_var
+    if self._use_packed_variable():
+      return self._packed_var
+    return None
 
   @property
   def handle(self):
@@ -571,7 +573,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       raise ValueError("`handle` is not available outside the replica context"
                        " or a `tf.distribute.Strategy.update()` call.")
     else:
-      if self._packed_var is not None:
+      if self._use_packed_variable():
         return self._packed_var.handle
       return self._values[replica_id].handle
 
@@ -623,7 +625,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
 
   def _get_replica(self, replica_id):
     """Returns the value on a device with the given replica_id."""
-    if self._packed_var is not None:
+    if self._use_packed_variable():
       return self._packed_var.on_device(self._devices[replica_id])
     return self._values[replica_id]
 
@@ -844,8 +846,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       obj_map[v] = new_obj
       resource_map[v.handle] = new_obj.handle
     obj_map[self] = new_obj
-    resource_map[self.handle] = new_obj.handle
     resource_map[self] = new_obj.handle
+    if self._packed_var is not None:
+      resource_map[self._packed_var.packed_handle] = new_obj.handle
     return obj_map, resource_map
 
 

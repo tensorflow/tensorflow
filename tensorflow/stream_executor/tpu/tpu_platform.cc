@@ -100,7 +100,7 @@ TpuPlatform::GetUncachedExecutor(
     return status.status();
   }
   return std::make_unique<stream_executor::StreamExecutor>(
-      this, absl::make_unique<tensorflow::TpuExecutor>(this, executor),
+      this, std::make_unique<tensorflow::TpuExecutor>(this, executor),
       config.ordinal);
 }
 

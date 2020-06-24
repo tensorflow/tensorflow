@@ -3,6 +3,10 @@
 # Targets in this directory are pure C++ "Classes" underlying the C API types
 # under tf/c/experimental/saved_model/public/. They are subject to change and
 # have visibility limited to Tensorflow's implementation only.
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
 
 package(
     default_visibility = [
@@ -48,6 +52,22 @@ cc_library(
 )
 
 cc_library(
+    name = "saved_model_utils",
+    srcs = [
+        "saved_model_utils.cc",
+    ],
+    hdrs = [
+        "saved_model_utils.h",
+    ],
+    deps = [
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "tf_saved_model_impl",
     srcs = [
         "tf_saved_model_impl.cc",
@@ -83,4 +103,27 @@ filegroup(
         "tf_saved_model_impl.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
+)
+
+tf_cc_test(
+    name = "saved_model_utils_test",
+    srcs = [
+        "saved_model_utils_test.cc",
+    ],
+    deps = [
+        ":saved_model_utils",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
+    ],
 )

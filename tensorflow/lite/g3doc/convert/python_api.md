@@ -30,8 +30,8 @@ This document contains [example usages](#examples) of the API and
 ### Converting a SavedModel <a name="saved_model"></a>
 
 The following example shows how to convert a
-[SavedModel](https://www.tensorflow.org/guide/saved_model) into a
-TensorFlow Lite [`FlatBuffer`](https://google.github.io/flatbuffers/).
+[SavedModel](https://www.tensorflow.org/guide/saved_model) into a TensorFlow
+Lite [`FlatBuffer`](https://google.github.io/flatbuffers/).
 
 ```python
 import tensorflow as tf
@@ -95,6 +95,24 @@ tflite_model = converter.convert()
 # Save the TF Lite model.
 with tf.io.gfile.GFile('model.tflite', 'wb') as f:
   f.write(tflite_model)
+```
+
+If your model requires specifying the input shape, use `tf.keras.layers.Input`
+or `tf.keras.layers.InputLayer` to create a Keras model with a fixed input shape
+as seen below or use the [`from_concrete_functions`](#concrete_function)
+classmethod as shown in the prior section to set the shape of the input arrays
+prior to conversion.
+
+```python
+input = tf.keras.layers.Input(shape=(1), batch_size=1)
+dense_layer = tf.keras.layers.Dense(units=1, input_shape=[1])
+model = tf.keras.Model(input, dense_layer(input))
+```
+
+```python
+model = tf.keras.models.Sequential(
+    [tf.keras.layers.InputLayer(input_shape=(1), batch_size=1),
+     tf.keras.layers.Dense(units=1, input_shape=[1])])
 ```
 
 ### Converting a concrete function <a name="concrete_function"></a>

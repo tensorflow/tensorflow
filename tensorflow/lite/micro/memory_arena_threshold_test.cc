@@ -31,7 +31,7 @@ namespace {
 // Ensure memory doesn't expand more that 3%:
 constexpr float kAllocationThreshold = 0.03;
 constexpr float kAllocationTailMiscCeiling = 1024;
-const bool kIs64BitSystem = sizeof(void*) == 8;
+const bool kIs64BitSystem = (sizeof(void*) == 8);
 
 constexpr int kKeywordModelTensorArenaSize = 22 * 1024;
 uint8_t keyword_model_tensor_arena[kKeywordModelTensorArenaSize];

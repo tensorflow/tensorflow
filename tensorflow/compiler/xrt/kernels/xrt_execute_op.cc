@@ -264,86 +264,28 @@ Status UpdateDynamicInputs(
   return Status::OK();
 }
 
-xla::StatusOr<xla::Literal> ReadMetadataLiteral(
-    se::Stream* stream, se::DeviceMemoryBase buffer,
-    const xla::Shape& buffer_shape, xla::TransferManager* transfer_manager) {
-  TF_ASSIGN_OR_RETURN(auto compiler, xla::Compiler::GetForPlatform(
-                                         stream->parent()->platform()));
-  auto shape_size_fn = compiler->ShapeSizeBytesFunction();
-  xla::Shape buffer_shape_static =
-      xla::ShapeUtil::MakeStaticShape(buffer_shape);
-  const int64 offset = shape_size_fn(buffer_shape_static);
-  int64 metadata_size = shape_size_fn(buffer_shape) - offset;
-  TF_RET_CHECK(metadata_size != 0);
-  auto buffer_8 = se::DeviceMemory<uint8>(buffer);
-  auto metadata_buffer =
-      stream->parent()->GetSubBuffer(&buffer_8, offset, metadata_size);
-  return transfer_manager->TransferArrayFromDevice(
-      stream,
-      xla::ShapeUtil::MakeShape(xla::S32, {buffer_shape.dimensions_size()}),
-      metadata_buffer);
-}
-
-// For each subshape in the result buffer that's dynamic, read the dynamic
-// dimension sizes from the metadata, and update output shapes. The result shape
-// is a static and concrete shape.
-xla::Status UpdateDynamicOutputs(se::Stream* stream,
-                                 const xla::ShapedBuffer& shaped_buffer,
-                                 xla::Shape* output_host_shape,
-                                 xla::Shape* output_device_shape) {
-  DCHECK(output_device_shape->is_dynamic());
-  TF_ASSIGN_OR_RETURN(
-      auto transfer_manager,
-      xla::TransferManager::GetForPlatform(stream->parent()->platform()));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  TF_RETURN_IF_ERROR(shaped_buffer.buffers().ForEachElementWithStatus(
-      [&](const xla::ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
-        const xla::Shape& buffer_shape =
-            xla::ShapeUtil::GetSubshape(*output_device_shape, index);
-        if (buffer_shape.IsTuple()) {
-          return Status::OK();
-        }
-        xla::Shape& host_shape =
-            *xla::ShapeUtil::GetMutableSubshape(output_host_shape, index);
-        xla::Shape& device_shape =
-            *xla::ShapeUtil::GetMutableSubshape(output_device_shape, index);
-        if (device_shape.is_static()) {
-          return Status::OK();
-        }
-        TF_ASSIGN_OR_RETURN(auto metadata,
-                            ReadMetadataLiteral(stream, buffer, buffer_shape,
-                                                transfer_manager));
-        // Update shape size from metadata.
-        for (int64 i = 0; i < metadata.element_count(); ++i) {
-          host_shape.mutable_dimensions()[i] = metadata.Get<int32>({i});
-          device_shape.mutable_dimensions()[i] = metadata.Get<int32>({i});
-        }
-        return Status::OK();
-      }));
-  output_host_shape->clear_dynamic_dimensions();
-  output_device_shape->clear_dynamic_dimensions();
-  return Status::OK();
-}
-
 xla::StatusOr<RefPtr<XRTTupleAllocation>> CreateOutputTuple(
     se::Stream* stream, xla::ExecutionOutput run_result, xla::Backend* backend,
     int device_ordinal) {
   XRTTupleAllocation* output_tuple;
-  const xla::ScopedShapedBuffer& shaped_buffer = run_result.Result();
-  if (shaped_buffer.on_device_shape().is_dynamic()) {
+  xla::ScopedShapedBuffer* shaped_buffer = run_result.MutableResult();
+  if (shaped_buffer->on_device_shape().is_dynamic()) {
     // Update dynamic shapes from output buffer, and create a XRT tensor with
     // dimension sizes read from metadata.
-    xla::Shape output_host_shape = shaped_buffer.on_host_shape();
-    xla::Shape output_device_shape = shaped_buffer.on_device_shape();
-    TF_RETURN_IF_ERROR(UpdateDynamicOutputs(
+    xla::Shape output_host_shape = shaped_buffer->on_host_shape();
+    xla::Shape output_device_shape = shaped_buffer->on_device_shape();
+    TF_ASSIGN_OR_RETURN(
+        auto transfer_manager,
+        xla::TransferManager::GetForPlatform(stream->parent()->platform()));
+    TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
         stream, shaped_buffer, &output_host_shape, &output_device_shape));
     TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
-        shaped_buffer, output_host_shape, output_device_shape, backend,
+        *shaped_buffer, output_host_shape, output_device_shape, backend,
         device_ordinal, &output_tuple));
   } else {
     // Fast-path: Don't copy shapes of output buffer.
     TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
-        shaped_buffer, backend, device_ordinal, &output_tuple));
+        *shaped_buffer, backend, device_ordinal, &output_tuple));
   }
   // After the output tuple is created, we can release the output result
   // buffers, to make sure they won't be cleared by its destructor.

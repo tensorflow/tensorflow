@@ -374,8 +374,8 @@ inline void LstmStepFloat(
         cell_state_ptr);
   }
   if (params->cell_clip > 0.0) {
-    tensor_utils::ClipVector(cell_state_ptr, n_batch * n_cell,
-                             params->cell_clip, cell_state_ptr);
+    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
+                                params->cell_clip);
   }
 
   // For each batch and cell: update the output gate.
@@ -415,8 +415,8 @@ inline void LstmStepFloat(
         projection_weights_ptr, n_output, n_cell, output_gate_scratch, n_batch,
         output_state_ptr);
     if (params->proj_clip > 0.0) {
-      tensor_utils::ClipVector(output_state_ptr, n_batch * n_output,
-                               params->proj_clip, output_state_ptr);
+      tensor_utils::CwiseClipping(output_state_ptr, n_batch * n_output,
+                                  params->proj_clip);
     }
   } else {
     std::copy_n(output_gate_scratch, n_batch * n_output, output_state_ptr);
@@ -837,8 +837,8 @@ inline void LstmStepHybrid(
         cell_state_ptr);
   }
   if (params->cell_clip > 0.0) {
-    tensor_utils::ClipVector(cell_state_ptr, n_batch * n_cell,
-                             params->cell_clip, cell_state_ptr);
+    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
+                                params->cell_clip);
   }
 
   // For each batch and cell: update the output gate.
@@ -893,8 +893,8 @@ inline void LstmStepHybrid(
           scaling_factors_scratch, context);
     }
     if (params->proj_clip > 0.0) {
-      tensor_utils::ClipVector(output_state_ptr, n_batch * n_output,
-                               params->proj_clip, output_state_ptr);
+      tensor_utils::CwiseClipping(output_state_ptr, n_batch * n_output,
+                                  params->proj_clip);
     }
   } else {
     std::copy_n(output_gate_scratch, n_batch * n_output, output_state_ptr);
@@ -1187,8 +1187,8 @@ inline void LstmStepInteger8x8_16(
                          n_cell, cell_state_ptr);
 
   if (quantized_cell_clip > 0) {
-    tensor_utils::CwiseClipping(cell_state_ptr, quantized_cell_clip, n_batch,
-                                n_cell);
+    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
+                                quantized_cell_clip);
   }
 
   // Ouptut gate.
@@ -1234,8 +1234,8 @@ inline void LstmStepInteger8x8_16(
         effective_proj_scale_a, effective_proj_scale_b, n_batch, n_cell,
         n_output, output_state_zp, scratch5, output_ptr, context);
     if (quantized_proj_clip > 0) {
-      tensor_utils::CwiseClipping(output_ptr, quantized_proj_clip, n_batch,
-                                  n_output);
+      tensor_utils::CwiseClipping(output_ptr, n_batch * n_output,
+                                  quantized_proj_clip);
     }
   } else {
     std::copy_n(scratch4, n_batch * n_output, output_ptr);
@@ -1498,8 +1498,8 @@ inline void LstmStepInteger8x8_8(
   tensor_utils::CwiseAdd(scratch6, scratch7, n_batch, n_cell, cell_state_ptr);
 
   if (quantized_cell_clip > 0) {
-    tensor_utils::CwiseClipping(cell_state_ptr, quantized_cell_clip, n_batch,
-                                n_cell);
+    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
+                                quantized_cell_clip);
   }
 
   // Cell to hidden.
@@ -1517,8 +1517,8 @@ inline void LstmStepInteger8x8_8(
 
   // Projection clipping.
   if (quantized_proj_clip > 0) {
-    tensor_utils::CwiseClipping(output_ptr, quantized_proj_clip, n_batch,
-                                n_output);
+    tensor_utils::CwiseClipping(output_ptr, n_batch * n_output,
+                                quantized_proj_clip);
   }
 
   // Copy output to output state.

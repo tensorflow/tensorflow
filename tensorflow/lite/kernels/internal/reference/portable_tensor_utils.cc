@@ -651,36 +651,6 @@ void PortableCwiseAdd(const int16_t* input_1, const int16_t* input_2,
   }
 }
 
-void PortableCwiseClipping(int16_t* input, const int16_t clipping_value,
-                           int32_t n_batch, int32_t n_input) {
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int i = 0; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      if (input[index] > clipping_value) {
-        input[index] = clipping_value;
-      }
-      if (input[index] < -clipping_value) {
-        input[index] = -clipping_value;
-      }
-    }
-  }
-}
-
-void PortableCwiseClipping(int8_t* input, const int8_t clipping_value,
-                           int32_t n_batch, int32_t n_input) {
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int i = 0; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      if (input[index] > clipping_value) {
-        input[index] = clipping_value;
-      }
-      if (input[index] < -clipping_value) {
-        input[index] = -clipping_value;
-      }
-    }
-  }
-}
-
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
                                      int v_size) {
   float result = 0.0;
@@ -754,13 +724,6 @@ void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
                                   const float scale, float* result) {
   for (int v = 0; v < v_size; ++v) {
     *result++ = scale * *vector++;
-  }
-}
-
-void PortableClipVector(const float* vector, int v_size, float abs_limit,
-                        float* result) {
-  for (int v = 0; v < v_size; v++) {
-    result[v] = std::max(std::min(abs_limit, vector[v]), -abs_limit);
   }
 }
 

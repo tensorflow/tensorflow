@@ -77,6 +77,32 @@ cuda_py_test(
     ],
 )
 
+distribute_py_test(
+    name = "custom_training_loop_models_test",
+    srcs = ["custom_training_loop_models_test.py"],
+    main = "custom_training_loop_models_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # b/153615544.
+    ],
+    deps = [
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/module",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "distribute_strategy_test_lib",
     srcs = [
