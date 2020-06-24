@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/types.h"
 
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+
 // This file forms the basis of a stable ABI for third-party kernel
 // implementations. It is crucial that changes to this file are made cautiously
 // and with a focus on maintaining both source and binary compatibility.
@@ -259,4 +262,28 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
     return nullptr;
   }
   return result;
+}
+
+
+TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype, 
+                     int64_t* dims, int num_dims, TF_Status* Status, TF_Tensor* tf_tensor_temp){
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+  // convert inputs to compatible types for API call 
+  // tensorflow::DataType enum_of_dtype = tensorflow::EnumToDataType<dtype>::v(); 
+  // temp_tensor = Tensor(dtype, shape); 
+  // tensorflow::TensorShape s(dimensions); 
+  tensorflow::TensorShape shape;
+  for(int i = 0; i < num_dims; ++i){
+    shape.AddDim(dims[i]); 
+  }
+  tensorflow::Status allocation_status;
+  tensorflow::Tensor tensor_temp; 
+  TF_TensorToTensor(tf_tensor_temp, &tensor_temp); 
+  allocation_status = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape, &tensor_temp);
+  tf_tensor_temp = TF_TensorFromTensor(tensor_temp, &allocation_status); 
+
+
+
+
+  // Status allocation_status = cc_ctx->allocate_temp()
 }
