@@ -128,26 +128,20 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddAveragePool2D() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D,
                       *tflite::ops::micro::Register_AVERAGE_POOL_2D(),
-                      ParseOpData);
+                      ParsePool);
   }
 
   TfLiteStatus AddCeil() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_CEIL,
-                      *tflite::ops::micro::Register_CEIL(), ParseOpData);
+                      *tflite::ops::micro::Register_CEIL(), ParseCeil);
   }
 
   TfLiteStatus AddConcatenation() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_CONCATENATION,
                       *tflite::ops::micro::Register_CONCATENATION(),
-                      ParseOpData);
+                      ParseConcatenation);
   }
 
   TfLiteStatus AddConv2D() {
@@ -156,10 +150,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddCos() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_COS, *tflite::ops::micro::Register_COS(),
-                      ParseOpData);
+                      ParseCos);
   }
 
   TfLiteStatus AddDepthwiseConv2D() {
@@ -175,17 +167,13 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddEqual() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_EQUAL,
-                      *tflite::ops::micro::Register_EQUAL(), ParseOpData);
+                      *tflite::ops::micro::Register_EQUAL(), ParseEqual);
   }
 
   TfLiteStatus AddFloor() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_FLOOR,
-                      *tflite::ops::micro::Register_FLOOR(), ParseOpData);
+                      *tflite::ops::micro::Register_FLOOR(), ParseFloor);
   }
 
   TfLiteStatus AddFullyConnected() {
@@ -195,18 +183,14 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddGreater() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_GREATER,
-                      *tflite::ops::micro::Register_GREATER(), ParseOpData);
+                      *tflite::ops::micro::Register_GREATER(), ParseGreater);
   }
 
   TfLiteStatus AddGreaterEqual() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_GREATER_EQUAL,
                       *tflite::ops::micro::Register_GREATER_EQUAL(),
-                      ParseOpData);
+                      ParseGreaterEqual);
   }
 
   TfLiteStatus AddL2Normalization() {
@@ -274,10 +258,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddMaxPool2D() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_MAX_POOL_2D,
-                      *tflite::ops::micro::Register_MAX_POOL_2D(), ParseOpData);
+                      *tflite::ops::micro::Register_MAX_POOL_2D(), ParsePool);
   }
 
   TfLiteStatus AddMean() {

@@ -91,9 +91,22 @@ TfLiteStatus ParseArgMin(const Operator* op, BuiltinOperator op_type,
                          ErrorReporter* error_reporter,
                          BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParseCeil(const Operator* op, BuiltinOperator op_type,
+                       ErrorReporter* error_reporter,
+                       BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseConcatenation(const Operator* op, BuiltinOperator op_type,
+                                ErrorReporter* error_reporter,
+                                BuiltinDataAllocator* allocator,
+                                void** builtin_data);
+
 TfLiteStatus ParseConv2D(const Operator* op, BuiltinOperator op_type,
                          ErrorReporter* error_reporter,
                          BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseCos(const Operator* op, BuiltinOperator op_type,
+                      ErrorReporter* error_reporter,
+                      BuiltinDataAllocator* allocator, void** builtin_data);
 
 TfLiteStatus ParseDepthwiseConv2D(const Operator* op, BuiltinOperator op_type,
                                   ErrorReporter* error_reporter,
@@ -105,10 +118,31 @@ TfLiteStatus ParseDequantize(const Operator* op, BuiltinOperator op_type,
                              BuiltinDataAllocator* allocator,
                              void** builtin_data);
 
+TfLiteStatus ParseEqual(const Operator* op, BuiltinOperator op_type,
+                        ErrorReporter* error_reporter,
+                        BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseFloor(const Operator* op, BuiltinOperator op_type,
+                        ErrorReporter* error_reporter,
+                        BuiltinDataAllocator* allocator, void** builtin_data);
+
 TfLiteStatus ParseFullyConnected(const Operator* op, BuiltinOperator op_type,
                                  ErrorReporter* error_reporter,
                                  BuiltinDataAllocator* allocator,
                                  void** builtin_data);
+
+TfLiteStatus ParseGreater(const Operator* op, BuiltinOperator op_type,
+                          ErrorReporter* error_reporter,
+                          BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseGreaterEqual(const Operator* op, BuiltinOperator op_type,
+                               ErrorReporter* error_reporter,
+                               BuiltinDataAllocator* allocator,
+                               void** builtin_data);
+
+TfLiteStatus ParsePool(const Operator* op, BuiltinOperator op_type,
+                       ErrorReporter* error_reporter,
+                       BuiltinDataAllocator* allocator, void** builtin_data);
 
 TfLiteStatus ParseQuantize(const Operator* op, BuiltinOperator op_type,
                            ErrorReporter* error_reporter,
