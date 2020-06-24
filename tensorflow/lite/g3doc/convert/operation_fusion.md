@@ -53,10 +53,10 @@ implemented in the fused LSTM operations.
 Converting composite operations from TensorFlow to fused operations in
 TensorFlow Lite is a hard problem. This is because:
 
-1.  Composite operations are represented in the TensorFlow graph as an
-    unstructured set of primitive operations. It can be very challenging to
-    identify (e.g. via pattern matching) the sub-graph corresponding to such a
-    composite operation.
+1.  Composite operations are represented in the TensorFlow graph as a set of
+    primitive operations without a well defined boundary. It can be very
+    challenging to identify (e.g. via pattern matching) the sub-graph
+    corresponding to such a composite operation.
 
 1.  There may be more than one TensorFlow implementation targeting a fused
     TensorFlow Lite operation. For example, there are many LSTM implementations
