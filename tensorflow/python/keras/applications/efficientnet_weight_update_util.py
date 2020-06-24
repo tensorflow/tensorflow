@@ -288,7 +288,7 @@ def check_match(keras_block, tf_block, keras_weight_names, tf_weight_names, mode
   if len(names_missing) > 0:
     raise ValueError(f'{len(names_missing)} variables not found in checkpoint file: {names_missing}')
 
-  names_unused = names_from_keras - names_from_tf 
+  names_unused = names_from_tf - names_from_keras
   if len(names_unused) > 0:
     warnings.warn(f'{len(names_unused)} variables from checkpoint file are not used: {names_unused}')
 
