@@ -774,6 +774,39 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
             np.testing.assert_allclose(np_output[:, :, :, :, offset], 0.)
           np.testing.assert_allclose(np_output[:, :, 2:-2, 2:-2, 2:-2], 1.)
 
+        layer = keras.layers.ZeroPadding3D(padding=((1, 2), (3, 4), (0, 2)),
+                                           data_format=data_format)
+        layer.build(inputs.shape)
+        output = layer(keras.backend.variable(inputs))
+        if context.executing_eagerly():
+          np_output = output.numpy()
+        else:
+          np_output = keras.backend.eval(output)
+        if data_format == 'channels_last':
+          for offset in [0]:
+            np.testing.assert_allclose(np_output[:, offset, :, :, :], 0.)
+          for offset in [-1, -2]:
+            np.testing.assert_allclose(np_output[:, offset, :, :, :], 0.)
+          for offset in [0, 1, 2]:
+            np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+          for offset in [-1, -2, -3, -4]:
+            np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+          for offset in [-1, -2]:
+            np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
+          np.testing.assert_allclose(np_output[:, 1:-2, 3:-4, 0:-2, :], 1.)
+        elif data_format == 'channels_first':
+          for offset in [0]:
+            np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+          for offset in [-1, -2]:
+            np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+          for offset in [0, 1, 2]:
+            np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
+          for offset in [-1, -2, -3, -4]:
+            np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
+          for offset in [-1, -2]:
+            np.testing.assert_allclose(np_output[:, :, :, :, offset], 0.)
+          np.testing.assert_allclose(np_output[:, :, 1:-2, 3:-4, 0:-2], 1.)
+
       # test incorrect use
       with self.assertRaises(ValueError):
         keras.layers.ZeroPadding3D(padding=(1, 1))
