@@ -2199,6 +2199,14 @@ class ConcreteFunction(object):
     assert self._function_spec is not None
     arg_specs, kwarg_specs = self.structured_input_signature
     arg_names = list(self._function_spec.arg_names)
+
+    # If an explicit input_signature is provided to @tf.function, then any
+    # arguments with defaults that are not covered by that explicit signature
+    # are simply dropped from the signature.
+    # TODO(b/159639913) Look into whether dropping arguments with default values
+    # from the signature is the right thing to do.
+    arg_names = arg_names[:len(arg_specs)]
+
     if default_values:
       for i in range(len(arg_names)):
         if not _contains_type_spec(arg_specs[i]):
@@ -2248,6 +2256,14 @@ class ConcreteFunction(object):
     lines = [self._structured_signature_summary(default_values=True)]
     arg_specs, kwarg_specs = self.structured_input_signature
     names = list(self._function_spec.arg_names)
+
+    # If an explicit input_signature is provided to @tf.function, then any
+    # arguments with defaults that are not covered by that explicit signature
+    # are simply dropped from the signature.
+    # TODO(b/159639913) Look into whether dropping arguments with default values
+    # from the signature is the right thing to do.
+    names = names[:len(arg_specs)]
+
     names.extend(sorted(kwarg_specs))
     specs = list(arg_specs) + list(kwarg_specs.values())
     # note: we can skip bound args, since we already displayed thier bound
@@ -2855,7 +2871,6 @@ class Function(object):
       graph_function, _, _ = self._maybe_define_function(args, kwargs)
     return graph_function
 
-  # XX TODO: make sure we fix up this path as well!?
   def _get_concrete_function_internal(self, *args, **kwargs):
     """Bypasses error checking when getting a graph function."""
     graph_function = self._get_concrete_function_internal_garbage_collected(
