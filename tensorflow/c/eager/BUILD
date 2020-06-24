@@ -244,7 +244,6 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/c:c_api",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
     ],
