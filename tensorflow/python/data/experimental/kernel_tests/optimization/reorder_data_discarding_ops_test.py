@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the `HoistDiscard` rewrite."""
+"""Tests for the `ReorderDataDiscardingOps` rewrite."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,7 +26,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class HoistDiscardTest(test_base.DatasetTestBase, parameterized.TestCase):
+class ReorderDataDiscardingOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(tf_api_version=2,
                                               mode=["eager", "graph"]))
@@ -44,7 +44,7 @@ class HoistDiscardTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.shard(2, 0)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.hoist_discard = True
+    options.experimental_optimization.reorder_data_discarding_ops = True
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, range(11, 61, 2))
 
@@ -65,7 +65,7 @@ class HoistDiscardTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.shard(2, 0)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.hoist_discard = True
+    options.experimental_optimization.reorder_data_discarding_ops = True
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, range(11, 61, 2))
 

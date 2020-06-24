@@ -42,7 +42,6 @@ constexpr std::array<const char*, 16> kTFDataOptimizations = {
     "filter_fusion",
     "filter_with_random_uniform_fusion",
     "map_and_filter_fusion",
-    "hoist_discard",
     "hoist_random_uniform",
     "map_parallelization",
     "map_and_batch_fusion",
@@ -50,6 +49,7 @@ constexpr std::array<const char*, 16> kTFDataOptimizations = {
     "latency_all_edges",
     "make_sloppy",
     "parallel_batch",
+    "reorder_data_discarding_ops",
     "slack",
     "inject_prefetch"};
 

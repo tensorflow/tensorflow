@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/grappler/optimizers/data/hoist_discard.h"
+#include "tensorflow/core/grappler/optimizers/data/reorder_data_discarding_ops.h"
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -32,7 +32,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kHoistDiscardOpPrefix[] = "hoist_discard/";
+constexpr char kReorderDataDiscardingOpsOpPrefix[] = "reorder_data_discarding_ops/";
 
 constexpr std::array<const char*, 3> kDataDiscarding = {
     "ShardDataset", "SkipDataset", "TakeDataset",
@@ -69,7 +69,7 @@ bool IsCardinalityPreserving(const NodeDef& node) {
 
 }  // namepsace
 
-Status HoistDiscard::OptimizeAndCollectStats(Cluster* cluster,
+Status ReorderDataDiscardingOps::OptimizeAndCollectStats(Cluster* cluster,
                                              const GrapplerItem& item,
                                              GraphDef* output,
                                              OptimizationStats* stats) {
@@ -95,9 +95,9 @@ Status HoistDiscard::OptimizeAndCollectStats(Cluster* cluster,
       NodeDef* parent = graph_utils::GetInputNode(*discard_node, graph);
       TF_RETURN_IF_ERROR(
           graph.UpdateFanouts(discard_node->name(), parent->name()));
-      if (!absl::StartsWith(discard_node->name(), kHoistDiscardOpPrefix)) {
+      if (!absl::StartsWith(discard_node->name(), kReorderDataDiscardingOpsOpPrefix)) {
         TF_RETURN_IF_ERROR(graph.UpdateNodeName(discard_node->name(),
-            strings::StrCat(kHoistDiscardOpPrefix, discard_node->name()),
+            strings::StrCat(kReorderDataDiscardingOpsOpPrefix, discard_node->name()),
             false));
       }
       for (const auto& attr_name : {"output_types", "output_shapes"}) {
@@ -113,13 +113,13 @@ Status HoistDiscard::OptimizeAndCollectStats(Cluster* cluster,
   return Status::OK();
 }
 
-void HoistDiscard::Feedback(Cluster* cluster, const GrapplerItem& item,
+void ReorderDataDiscardingOps::Feedback(Cluster* cluster, const GrapplerItem& item,
                             const GraphDef& optimize_output,
                             double result) {
   // no-op
 }
 
-REGISTER_GRAPH_OPTIMIZER_AS(HoistDiscard, "hoist_discard");
+REGISTER_GRAPH_OPTIMIZER_AS(ReorderDataDiscardingOps, "reorder_data_discarding_ops");
 
 }  // namespace grappler
 }  // namespace tensorflow

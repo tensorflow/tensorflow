@@ -126,15 +126,6 @@ class OptimizationOptions(options.OptionsBase):
       "Whether to fuse filter dataset that predicts random_uniform < rate into "
       "a sampling dataset. If None, defaults to False.")
 
-  hoist_discard = options.create_option(
-      name="hoist_discard",
-      ty=bool,
-      docstring=
-      "Whether to hoist ops that will discard data (such as skip, take, shard)"
-      "out of unary cardinality preserved transformations, e.g. "
-      "dataset.map(...).take(3) gets optimized to dataset.take(3).map()."
-      "If None, defaults to False.")
-
   hoist_random_uniform = options.create_option(
       name="hoist_random_uniform",
       ty=bool,
@@ -189,6 +180,15 @@ class OptimizationOptions(options.OptionsBase):
       docstring="Whether to parallelize copying of batch elements. If None, "
       "defaults to False.")
 
+  reorder_data_discarding_ops = options.create_option(
+      name="reorder_data_discarding_ops",
+      ty=bool,
+      docstring=
+      "Whether to hoist ops that will discard data (such as skip, take, shard)"
+      "out of unary cardinality preserved transformations, e.g. "
+      "dataset.map(...).take(3) gets optimized to dataset.take(3).map()."
+      "If None, defaults to False.")
+
   shuffle_and_repeat_fusion = options.create_option(
       name="shuffle_and_repeat_fusion",
       ty=bool,
@@ -227,7 +227,6 @@ class OptimizationOptions(options.OptionsBase):
     all_optimizations = [
         "filter_fusion",
         "filter_with_random_uniform_fusion",
-        "hoist_discard",
         "hoist_random_uniform",
         "map_and_batch_fusion",
         "map_and_filter_fusion",
@@ -235,6 +234,7 @@ class OptimizationOptions(options.OptionsBase):
         "map_fusion",
         "noop_elimination",
         "parallel_batch",
+        "reorder_data_discarding_ops",
         "shuffle_and_repeat_fusion",
     ]
     for optimization in all_optimizations:
