@@ -1192,7 +1192,7 @@ class _TapeGradientFunctions(object):
   def _wrap_backward_function(self, forward_graph, backward, outputs):
     """Create a backward function given `outputs` from the forward function."""
     capture_mapping = dict(
-        zip([ops.tensor_id(t) for t in forward_graph.outputs], outputs))
+        zip((ops.tensor_id(t) for t in forward_graph.outputs), outputs))
     remapped_captures = [
         capture_mapping.get(ops.tensor_id(capture), capture)
         for capture in backward.captured_inputs
@@ -1489,9 +1489,8 @@ class ConcreteFunction(object):
     self._captured_closures = self._func_graph.deferred_external_captures
     structured_outputs = self._func_graph.structured_outputs
     self._ndarrays_list = (
-        isinstance(structured_outputs, (list, tuple)) and
-        structured_outputs and
-        all([isinstance(o, np_arrays.ndarray) for o in structured_outputs]))
+        isinstance(structured_outputs, (list, tuple)) and structured_outputs and
+        all(isinstance(o, np_arrays.ndarray) for o in structured_outputs))
     self._ndarray_singleton = isinstance(structured_outputs, np_arrays.ndarray)
 
     # function_spec defines the structured signature.
