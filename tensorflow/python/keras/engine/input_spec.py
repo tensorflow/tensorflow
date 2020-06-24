@@ -54,6 +54,8 @@ class InputSpec(object):
           a specific dimension value.
   """
 
+  __slots__ = ['dtype', 'shape', 'ndim', 'max_ndim', 'min_ndim', 'axes']
+
   def __init__(self,
                dtype=None,
                shape=None,

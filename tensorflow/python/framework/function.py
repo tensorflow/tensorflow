@@ -194,6 +194,8 @@ class Defun(object):
 class _DefinedFunctionDeleter(object):
   """Unregister function from eager context."""
 
+  __slots__ = ["name"]
+
   def __init__(self, name):
     self.name = name
 

@@ -3452,7 +3452,7 @@ _VALUE_SET_CODE_STRING = """
   >>> print(K.get_value(v))
   3.0
 
-  Variable semantics in TensorFlow 2 are eager execution friendly. The above 
+  Variable semantics in TensorFlow 2 are eager execution friendly. The above
   code is roughly equivalent to:
 
   >>> v = tf.Variable(1.)

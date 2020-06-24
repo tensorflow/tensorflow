@@ -262,6 +262,8 @@ def _parse_func_attrs(attributes):
 class _InterpolateFunctionError(object):
   """Context Manager that interpolates the exception from 'top_level_func'."""
 
+  __slots__ = ["_func"]
+
   def __init__(self, top_level_func):
     self._func = top_level_func
 
@@ -377,6 +379,8 @@ def _enclosing_xla_context():
 
 class _EagerDefinedFunctionDeleter(object):
   """Unregister function from eager context."""
+
+  __slots__ = ["name"]
 
   def __init__(self, name):
     self.name = name
@@ -1409,6 +1413,9 @@ _POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
 
 class _ForwardBackwardCall(object):
   """Holds the state of a function call between execution and recording."""
+
+  __slots__ = ["_functions", "_inference_args", "_input_tangents",
+               "_tape_watching"]
 
   def __init__(self, functions, inference_args, input_tangents, tape_watching):
     """Collects information about the function call.
@@ -2740,6 +2747,9 @@ class FunctionCache(object):
   """A lightweight container for cached functions.
   """
 
+  __slots__ = ["missed", "primary", "arg_relaxed_specs",
+               "arg_relaxed", "_garbage_collectors"]
+
   def __init__(self):
     # The set of functions that have been missed; entries are CacheKey with
     # input_signature `None` (e.g. a "call context key")
@@ -3771,6 +3781,8 @@ def class_method_to_instance_method(original_function, instance):
 class _FunctionGarbageCollector(object):
   """Cleans up cycles when a defun goes out of scope."""
 
+  __slots__ = ["_cache"]
+
   def __init__(self, cache):
     self._cache = cache
 
@@ -3787,6 +3799,8 @@ class _FunctionGarbageCollector(object):
 
 class ConcreteFunctionGarbageCollector(object):
   """Cleans up reference cycles when a `ConcreteFunction` goes out of scope."""
+
+  __slots__ = ["_func_graph"]
 
   def __init__(self, func_graph):
     self._func_graph = func_graph
@@ -3806,6 +3820,8 @@ class ConcreteFunctionGarbageCollector(object):
 
 class _Marker(object):
   """Markers used to pretty-print nested args in function signatures."""
+
+  __slots__ = ["_s"]
 
   def __init__(self, s):
     self._s = s
