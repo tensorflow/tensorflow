@@ -20,19 +20,36 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.platform import test
+from absl.testing import parameterized
+from tensorflow.python.framework import test_util
+
 #try:
 #  from tensorflow_zero_out.python.ops.zero_out_ops import zero_out
 #except ImportError:
 #  from zero_out_ops import zero_out
 from tensorflow.python.ops import map_ops
 
-class ZeroOutTest(test.TestCase):
+class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+  """
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 2))
+  @test_util.run_deprecated_v1
+  def testEraseFromEmptyTensorMapFails(self, max_num_elements):
+    m = map_ops.empty_tensor_map(
+        element_dtype=dtypes.float32,
+        element_shape=[],
+        max_num_elements=max_num_elements)
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Trying to erase from an empty map"):
+      m = map_ops.tensor_map_erase(l, element_dtype=dtypes.float32)
+      self.evaluate(l)
+  """
 
   def testZeroOut(self):
     print("Hello World - Test")
     with self.test_session():
       self.assertAllClose(
-          zero_out([[1, 2], [3, 4]]), np.array([[1, 0], [0, 0]]))
+          map_ops.zero_out([[1, 2], [3, 4]]), np.array([[1, 0], [0, 0]]))
 
 
 if __name__ == '__main__':

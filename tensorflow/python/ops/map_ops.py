@@ -22,6 +22,7 @@ from tensorflow.python.framework import load_library
 from tensorflow.python.platform import resource_loader
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_map_ops
 from tensorflow.python.ops.gen_map_ops import *
 
@@ -29,8 +30,21 @@ from tensorflow.python.ops.gen_map_ops import *
 #    resource_loader.get_path_to_datafile('_zero_out_ops.so'))
 #zero_out = zero_out_ops.zero_out 
 
+def empty_tensor_map(element_shape,
+                      element_dtype,
+                      max_num_elements=None,
+                      name=None):
+  if max_num_elements is None:
+    max_num_elements = -1
+
+  return gen_map_ops.empty_tensor_map(
+      element_shape=_build_element_shape(element_shape),
+      element_dtype=element_dtype,
+      max_num_elements=max_num_elements,
+      name=name)
+
 def zero_out(to_zero):
-    print("Hello World - PythonS Op")
+    print("Hello World - Python Op")
     return gen_map_ops.zero_out(to_zero)
 
 @ops.RegisterGradient("ZeroOut")
