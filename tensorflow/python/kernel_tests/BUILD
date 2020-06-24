@@ -3305,9 +3305,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["cwise_ops_test.py"],
     shard_count = 50,
-    tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
