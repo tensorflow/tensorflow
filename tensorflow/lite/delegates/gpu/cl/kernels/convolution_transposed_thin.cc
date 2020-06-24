@@ -28,21 +28,17 @@ namespace gpu {
 namespace cl {
 namespace {
 
-std::string GenerateConvolutionTransposedCode(
-    const OperationDef& op_def, int src_depth, int dst_channels,
-    const int2& kernel_size, const CLDevice& device,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor(
-      "src_data",
-      WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
-      op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor(
-      "dst_data",
-      WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
-      op_def.dst_tensors[0]);
+std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
+                                              int src_depth, int dst_channels,
+                                              const int2& kernel_size,
+                                              Arguments* args) {
+  args->AddObjectRef(
+      "src_tensor", AccessType::READ,
+      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
+  args->AddObjectRef(
+      "dst_tensor", AccessType::WRITE,
+      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
 
-  const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
-  std::string c = GetCommonDefines(op_def.precision);
   const std::string channel_x = dst_channels == 1 ? "" : ".x";
   const std::vector<std::string> postfix = {channel_x, ".y", ".z", ".w"};
   const std::vector<std::string> channel = {".x", ".y", ".z", ".w"};
@@ -62,36 +58,33 @@ std::string GenerateConvolutionTransposedCode(
       break;
   }
 
+  std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
-  c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  c += "    __constant FLT4* filters";
-  c += GetArgsDeclaration(linked_operations);
-  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int4 src_size,             \n";
-  c += "    int4 dst_size,             \n";
-  c += "    FLT4 bias_value            \n";
-  c += ") {\n";
+  c += "$0) {\n";
   if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
-    c += "  int X = linear_id / dst_size.w;\n";
-    c += "  int B = linear_id % dst_size.w;\n";
+    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
   } else {
     c += "  int X = get_global_id(0);\n";
   }
   c += "  int Y = get_global_id(1);\n";
-  c += "  if (X >= src_size.x || Y >= src_size.y) return;\n";
+  c += "  if (X >= args.src_tensor.Width() || Y >= args.src_tensor.Height()) "
+       "return;\n";
   c += "  " + accum_type + " r[" + std::to_string(kernel_size.y) + "][" +
        std::to_string(kernel_size.x) + "];\n";
   c += "  {\n";
-  c += "  FLT4 src = " + src_tensor.ReadWHSB("X", "Y", "0", batch_id) + ";\n";
+  c += "  FLT4 src = args.src_tensor.Read(X, Y, 0);\n";
   int index = 0;
   for (int y = 0; y < kernel_size.y; ++y) {
     for (int x = 0; x < kernel_size.x; ++x) {
       std::string r_s =
           "  r[" + std::to_string(y) + "][" + std::to_string(x) + "]";
       for (int d = 0; d < dst_channels; ++d) {
-        c += r_s + postfix[d] + " = dot(src, filters[" + std::to_string(index) +
-             "]);\n";
+        c += r_s + postfix[d] + " = dot(src, args.weights.Read(" +
+             std::to_string(index) + "));\n";
         index++;
       }
     }
@@ -100,15 +93,15 @@ std::string GenerateConvolutionTransposedCode(
   for (int i = 1; i < src_depth; ++i) {
     c += "  if (X > " + std::to_string(-i) +
          ") {  // always true, to reduce registers usage\n";
-    c += "  FLT4 src = " +
-         src_tensor.ReadWHSB("X", "Y", std::to_string(i), batch_id) + ";\n";
+    c +=
+        "  FLT4 src = args.src_tensor.Read(X, Y, " + std::to_string(i) + ");\n";
     for (int y = 0; y < kernel_size.y; ++y) {
       for (int x = 0; x < kernel_size.x; ++x) {
         std::string r_s =
             "  r[" + std::to_string(y) + "][" + std::to_string(x) + "]";
         for (int d = 0; d < dst_channels; ++d) {
-          c += r_s + postfix[d] + " += dot(src, filters[" +
-               std::to_string(index) + "]);\n";
+          c += r_s + postfix[d] + " += dot(src, args.weights.Read(" +
+               std::to_string(index) + "));\n";
           index++;
         }
       }
@@ -121,21 +114,16 @@ std::string GenerateConvolutionTransposedCode(
     for (int x = 0; x < kernel_size.x; ++x) {
       const std::string x_coord = "X + " + std::to_string(x);
       const std::string y_coord = "Y + " + std::to_string(y);
-      c += "  if (" + x_coord + " < dst_size.x && " + y_coord +
-           " < dst_size.y) {\n";
-      c += "    FLT4 result = bias_value;\n";
+      c += "  if (" + x_coord + " < args.dst_tensor.Width() && " + y_coord +
+           " < args.dst_tensor.Height()) {\n";
+      c += "    FLT4 result = args.weights.Read(" + std::to_string(index) +
+           ");\n";
       for (int d = 0; d < dst_channels; ++d) {
         c += "    result" + channel[d] + " += r[" + std::to_string(y) + "][" +
              std::to_string(x) + "]" + postfix[d] + ";\n";
       }
-      const std::string x_3dcoord = op_def.IsBatchSupported()
-                                        ? "(" + x_coord + ") * dst_size.w + B"
-                                        : x_coord;
-      const LinkingContext context{"result", x_3dcoord, y_coord, "0"};
-      c += PostProcess(linked_operations, context);
-      c += "    " +
-           dst_tensor.WriteWHSB("result", x_coord, y_coord, "0", batch_id) +
-           "\n";
+      c += "    args.dst_tensor.Write(result, " + x_coord + ", " + y_coord +
+           ", 0);\n";
       c += "  }\n";
     }
   }
@@ -150,19 +138,11 @@ ConvolutionTransposedThin::ConvolutionTransposedThin(
     : GPUOperation(definition),
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
       src_channels_(attr.weights.shape.i),
-      dst_channels_(attr.weights.shape.o) {
-  float4 bias_value(0.0f);
-  for (int i = 0; i < attr.weights.shape.o; ++i) {
-    bias_value[i] = attr.bias.data[i];
-  }
-  bias_value_ = FLT4(definition_.precision, bias_value);
-}
+      dst_channels_(attr.weights.shape.o) {}
 
 ConvolutionTransposedThin::ConvolutionTransposedThin(
     ConvolutionTransposedThin&& operation)
     : GPUOperation(std::move(operation)),
-      weights_buf_(std::move(operation.weights_buf_)),
-      bias_value_(std::move(operation.bias_value_)),
       kernel_size_(operation.kernel_size_),
       src_channels_(operation.src_channels_),
       dst_channels_(operation.dst_channels_),
@@ -172,8 +152,6 @@ ConvolutionTransposedThin::ConvolutionTransposedThin(
 ConvolutionTransposedThin& ConvolutionTransposedThin::operator=(
     ConvolutionTransposedThin&& operation) {
   if (this != &operation) {
-    weights_buf_ = std::move(operation.weights_buf_);
-    bias_value_ = std::move(operation.bias_value_);
     std::swap(kernel_size_, operation.kernel_size_);
     std::swap(src_channels_, operation.src_channels_);
     std::swap(dst_channels_, operation.dst_channels_);
@@ -186,9 +164,15 @@ ConvolutionTransposedThin& ConvolutionTransposedThin::operator=(
 
 absl::Status ConvolutionTransposedThin::Compile(
     const CreationContext& creation_context) {
-  const auto code = GenerateConvolutionTransposedCode(
+  std::string code = GenerateConvolutionTransposedCode(
       definition_, DivideRoundUp(src_channels_, 4), dst_channels_, kernel_size_,
-      *creation_context.device, linked_operations_);
+      &args_);
+  std::string element_wise_code;
+  RETURN_IF_ERROR(
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                          {{"dst_tensor", element_wise_code}},
+                                          &code));
 
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
@@ -202,15 +186,10 @@ absl::Status ConvolutionTransposedThin::Compile(
 }
 
 absl::Status ConvolutionTransposedThin::BindArguments() {
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_buf_.GetMemoryPtr()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(bias_value_));
-  return absl::OkStatus();
+  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
+  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
+  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
+  return args_.Bind(kernel_.kernel());
 }
 
 int3 ConvolutionTransposedThin::GetGridSize() const {
@@ -248,7 +227,7 @@ absl::Status CreateConvolutionTransposedThin(
   }
   *result = ConvolutionTransposedThin(definition, attr);
   RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+      result->UploadData(attr.weights, attr.bias, creation_context.context));
   return absl::OkStatus();
 }
 

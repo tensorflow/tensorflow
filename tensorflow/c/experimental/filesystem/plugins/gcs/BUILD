@@ -19,6 +19,7 @@ tf_cc_shared_object(
 cc_library(
     name = "gcs_filesystem_impl",
     srcs = ["gcs_filesystem.cc"],
+    hdrs = ["gcs_filesystem.h"],
     copts = select({
         "//conditions:default": [],
         "//tensorflow:windows": get_win_copts(),
@@ -55,14 +56,9 @@ tf_cc_test(
         "notap",
     ],
     deps = [
-        ":gcs_helper",
-        "//tensorflow/c:env",
-        "//tensorflow/c:tf_status",
+        ":gcs_filesystem_impl",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:test",
-        "@com_github_googlecloudplatform_google_cloud_cpp//:storage_client",
-        "@com_google_absl//absl/strings",
     ],
 )

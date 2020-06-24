@@ -1592,6 +1592,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       predict_function = self.make_predict_function()
       self._predict_counter.assign(0)
       callbacks.on_predict_begin()
+      batch_outputs = None
       for _, iterator in data_handler.enumerate_epochs():  # Single epoch.
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
@@ -1610,6 +1611,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                   outputs, batch_outputs)
             end_step = step + data_handler.step_increment
             callbacks.on_predict_batch_end(end_step, {'outputs': batch_outputs})
+      if batch_outputs is None:
+        raise ValueError('Expect x to be a non-empty array or dataset.')
       callbacks.on_predict_end()
     all_outputs = nest.map_structure_up_to(batch_outputs, concat, outputs)
     return tf_utils.to_numpy_or_python_type(all_outputs)

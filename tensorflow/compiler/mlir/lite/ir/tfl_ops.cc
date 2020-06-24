@@ -138,6 +138,11 @@ bool IsI32Type(Type element_type) {
   return element_type.isInteger(32) && !element_type.isUnsignedInteger();
 }
 
+// Return true when the given element_type is I64.
+bool IsI64Type(Type element_type) {
+  return element_type.isInteger(64) && !element_type.isUnsignedInteger();
+}
+
 // Return true if the given Add operation has the CPU kernel supported shapes.
 bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
@@ -174,7 +179,8 @@ bool VerifySubOpShapeConstraints(SubOp op) {
   // Allows F32, QUI8, and QI16 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to five dimension or have same shapes.
   if (element_type.isF32() || IsI32Type(element_type) ||
-      IsQUI8Type(element_type) || IsQI16Type(element_type)) {
+      IsI64Type(element_type) || IsQUI8Type(element_type) ||
+      IsQI16Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/5);

@@ -466,12 +466,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           op_sig.output_types.at(0) == TensorType_INT16) {
         if (op_sig.options.addsub.pot_scale_int16) {
           return 5;
-        } else {
-          return 4;
-        }
+        } 
       }
-      if (op_sig.options.addsub.need_broadcast &&
-          op_sig.options.addsub.num_dims > 4) {
+      if (!op_sig.input_types.empty() &&
+          op_sig.input_types.at(0) == TensorType_INT64) {
+        return 4;
+      }
+      if (op_sig.options.broadcast.need_broadcast &&
+          op_sig.options.broadcast.num_dims > 4) {
         return 3;
       }
       if (op_sig.input_types.at(0) == TensorType_INT8) {

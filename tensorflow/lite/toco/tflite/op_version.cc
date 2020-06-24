@@ -61,7 +61,7 @@ std::string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kSub, 1}, "1.6.0"},
           {{OperatorType::kSub, 2}, "1.14.0"},
           {{OperatorType::kSub, 3}, "1.15.0"},
-          {{OperatorType::kSub, 4}, "1.15.0"},
+          {{OperatorType::kSub, 4}, kPendingReleaseOpVersion},
           {{OperatorType::kSub, 5}, kPendingReleaseOpVersion},
           {{OperatorType::kDiv, 1}, "1.6.0"},
           {{OperatorType::kBatchToSpaceND, 1}, "1.6.0"},
