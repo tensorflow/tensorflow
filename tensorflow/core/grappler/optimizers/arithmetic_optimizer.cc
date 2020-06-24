@@ -598,7 +598,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     std::deque<InputAndShape> add_ops;
 
     // Prepare leaf AddN nodes for inputs of equal shape
-    for (int i = 0; i < shapes.size(); ++i) {
+    for (int i = 0, iter_limit = shapes.size(); i < iter_limit; ++i) {
       const auto node_name = leaf_node_name(i);
       const auto& inputs = shape_sig_to_inputs[ShapeSignature(shapes[i])];
       add_ops.push_back(AddInputsOfSymbolicallyEqualShape(*group.root_node,
@@ -750,7 +750,8 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
         ctx().node_map->AddOutput(new_add_node->name(), new_outer_node->name());
 
         // Hoist non-shared factors up into the new AddN node.
-        for (int i = 0; i < unique_factors.size(); ++i) {
+        for (int i = 0, iter_limit = unique_factors.size(); i < iter_limit;
+             ++i) {
           const string& unique_factor_i = unique_factors[i];
           new_add_node->set_input(i, unique_factor_i);
           ctx().node_map->AddOutput(unique_factor_i, new_add_node->name());
@@ -1190,7 +1191,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     if (a.size() != b.size()) {
       return false;
     }
-    for (int i = 0; i < a.size(); ++i) {
+    for (int i = 0, iter_limit = a.size(); i < iter_limit; ++i) {
       if (a[b[i]] != i) {
         return false;
       }
@@ -1199,7 +1200,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
   }
 
   bool IsIdentityPermutation(const std::vector<int64>& perm) {
-    for (int64 i = 0; i < perm.size(); ++i) {
+    for (int64 i = 0, iter_limit = perm.size(); i < iter_limit; ++i) {
       if (i != perm[i]) {
         return false;
       }
@@ -1500,7 +1501,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     for (int i = start; i < end; ++i) {
       unique_inputs.insert(node.input(i));
     }
-    return unique_inputs.size() == n;
+    int unique_input_size = unique_inputs.size();
+    return unique_input_size == n;
   }
 
   // Returns the length of the common unary chain of ops that can be
@@ -3248,14 +3250,15 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
                                      slice_begin_vec.size(), ") and size (",
                                      slice_size_vec.size(), ") vectors.");
     }
+    int slice_begin_vec_size = slice_begin_vec.size();
     if (!pack_output_shape.unknown_rank() &&
-        slice_begin_vec.size() != pack_output_shape.dims()) {
+        slice_begin_vec_size != pack_output_shape.dims()) {
       return Status::OK();
     }
-    if (pack_axis >= slice_begin_vec.size()) {
+    if (pack_axis >= slice_begin_vec_size) {
       return errors::InvalidArgument(
           "Input to node ", node->name(), " had pack_axis ", pack_axis,
-          " but rank was ", slice_begin_vec.size(), ".");
+          " but rank was ", slice_begin_vec_size, ".");
     }
 
     *slice_start_value = slice_begin_vec[pack_axis];
@@ -3264,7 +3267,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
       return Status::OK();
     }
 
-    for (size_t i = 0; i < slice_begin_vec.size(); ++i) {
+    for (int i = 0; i < slice_begin_vec_size; ++i) {
       if (i != pack_axis) {
         if (slice_begin_vec[i] != 0 ||
             !(slice_size_vec[i] == -1 ||
@@ -3352,7 +3355,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
     int begin_index = -1;
     int64 begin_value = 0;
-    for (int i = 0; i < slice_begin_vec.size(); ++i) {
+    for (int i = 0, iter_limit = slice_begin_vec.size(); i < iter_limit; ++i) {
       const int64 v = slice_begin_vec[i];
       if (v != 0) {
         if (begin_index != -1) {
@@ -3366,7 +3369,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
     int end_index = -1;
     int64 end_value = 0;
-    for (int i = 0; i < slice_end_vec.size(); ++i) {
+    for (int i = 0, iter_limit = slice_begin_vec.size(); i < iter_limit; ++i) {
       const int64 v = slice_end_vec[i];
       if (v != pack_output_shape.dim_size(i)) {
         if (end_index != -1) {
