@@ -20,7 +20,7 @@
 #include "tensorflow/c/tf_status.h"
 
 void ParseGCSPath(const std::string& fname, bool object_empty_ok,
-                  std::string& bucket, std::string& object, TF_Status* status);
+                  std::string* bucket, std::string* object, TF_Status* status);
 
 namespace tf_gcs_filesystem {
 void Init(TF_Filesystem* filesystem, TF_Status* status);

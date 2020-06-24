@@ -39,7 +39,7 @@ static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
 
 void ParseGCSPath(const std::string& fname, bool object_empty_ok,
-                  std::string& bucket, std::string& object, TF_Status* status) {
+                  std::string* bucket, std::string* object, TF_Status* status) {
   size_t scheme_end = fname.find("://") + 2;
   if (fname.substr(0, scheme_end + 1) != "gs://") {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
@@ -53,10 +53,10 @@ void ParseGCSPath(const std::string& fname, bool object_empty_ok,
                  "GCS path doesn't contain a bucket name.");
     return;
   }
-  bucket = std::move(fname.substr(scheme_end + 1, bucket_end - scheme_end - 1));
+  *bucket = std::move(fname.substr(scheme_end + 1, bucket_end - scheme_end - 1));
 
-  object = std::move(fname.substr(bucket_end + 1));
-  if (object.empty() && !object_empty_ok) {
+  *object = std::move(fname.substr(bucket_end + 1));
+  if (object->empty() && !object_empty_ok) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "GCS path doesn't contain an object name.");
   }
@@ -125,7 +125,7 @@ void Cleanup(TF_Filesystem* filesystem) {
 void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
                      TF_WritableFile* file, TF_Status* status) {
   std::string bucket, object;
-  ParseGCSPath(path, false, bucket, object, status);
+  ParseGCSPath(path, false, &bucket, &object, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
@@ -141,7 +141,7 @@ void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
 void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
                        TF_WritableFile* file, TF_Status* status) {
   std::string bucket, object;
-  ParseGCSPath(path, false, bucket, object, status);
+  ParseGCSPath(path, false, &bucket, &object, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);

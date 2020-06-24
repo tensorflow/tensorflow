@@ -45,23 +45,23 @@ class GCSFilesystemTest : public ::testing::Test {
 
 TEST_F(GCSFilesystemTest, ParseGCSPath) {
   std::string bucket, object;
-  ParseGCSPath("gs://bucket/path/to/object", false, bucket, object, status_);
+  ParseGCSPath("gs://bucket/path/to/object", false, &bucket, &object, status_);
   ASSERT_TF_OK(status_);
   ASSERT_EQ(bucket, "bucket");
   ASSERT_EQ(object, "path/to/object");
 
-  ParseGCSPath("gs://bucket/", true, bucket, object, status_);
+  ParseGCSPath("gs://bucket/", true, &bucket, &object, status_);
   ASSERT_TF_OK(status_);
   ASSERT_EQ(bucket, "bucket");
 
-  ParseGCSPath("bucket/path/to/object", false, bucket, object, status_);
+  ParseGCSPath("bucket/path/to/object", false, &bucket, &object, status_);
   ASSERT_EQ(TF_GetCode(status_), TF_INVALID_ARGUMENT);
 
   // bucket name must end with "/"
-  ParseGCSPath("gs://bucket", true, bucket, object, status_);
+  ParseGCSPath("gs://bucket", true, &bucket, &object, status_);
   ASSERT_EQ(TF_GetCode(status_), TF_INVALID_ARGUMENT);
 
-  ParseGCSPath("gs://bucket/", false, bucket, object, status_);
+  ParseGCSPath("gs://bucket/", false, &bucket, &object, status_);
   ASSERT_EQ(TF_GetCode(status_), TF_INVALID_ARGUMENT);
 }
 
