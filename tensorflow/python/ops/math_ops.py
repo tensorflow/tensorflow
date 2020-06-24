@@ -926,7 +926,6 @@ def cast(x, dtype, name=None):
     return x
 
 
-
 @tf_export("dtypes.saturate_cast", "saturate_cast")
 @dispatch.add_dispatch_support
 def saturate_cast(value, dtype, name=None):
