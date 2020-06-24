@@ -629,11 +629,10 @@ class InputOptions(
   ```
 
   Attributes:
-    experimental_prefetch_to_device: Boolean. Currently only applies to
-      TPUStrategy. Defaults to True. If True, dataset elements will be
-      prefetched to accelerator device memory. When False, dataset elements are
-      prefetched to host device memory. Must be False when using TPUEmbedding
-      API.
+    experimental_prefetch_to_device: Boolean. Defaults to True. If True, dataset
+      elements will be prefetched to accelerator device memory. When False,
+      dataset elements are prefetched to host device memory. Must be False when
+      using TPUEmbedding API.
   """
 
   def __new__(cls, experimental_prefetch_to_device=True):
