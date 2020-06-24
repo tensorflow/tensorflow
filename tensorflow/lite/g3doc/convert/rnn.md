@@ -3,9 +3,9 @@
 ## Overview
 
 TensorFlow Lite supports converting TensorFlow RNN models to TensorFlow Lite’s
-fused LSTM operators. Fused operators exist to maximize the performance of their
-underlying kernel implementations, as well as provide a higher level interface
-to define complex transformations like quantizatization.
+fused LSTM operations. Fused operations exist to maximize the performance of
+their underlying kernel implementations, as well as provide a higher level
+interface to define complex transformations like quantizatization.
 
 Since there are many variants of RNN APIs in TensorFlow, our approach has been
 two fold:
@@ -105,7 +105,7 @@ forward and one for backward, see examples
 [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/layers/wrappers.py#L381).
 Once we see the go\_backward attribute, we recognize it as backward LSTM, then
 we group forward & backward LSTM together. **This is future work.** Currently,
-this creates two UnidirectionalSequenceLSTM operators in the TensorFlow Lite
+this creates two UnidirectionalSequenceLSTM operations in the TensorFlow Lite
 model.
 
 ### User-defined LSTM conversion examples
@@ -141,7 +141,7 @@ MLIR-pass
 [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/transforms/prepare_composite_functions_tf.cc#L108).
 The function’s interface should be treated like an API contract and should
 contain the arguments needed to convert to fused TensorFlow Lite LSTM
-operators - i.e. input, bias, weights, projection, layer normalization, etc. It
+operations - i.e. input, bias, weights, projection, layer normalization, etc. It
 is preferable for the tensors passed as arguments to this function to have known
 rank (i.e. RankedTensorType in MLIR). This makes it much easier to write
 conversion code that can assume these tensors as RankedTensorType and helps
@@ -196,5 +196,5 @@ follows:
     the user program. Such a TensorFlow program can still be converted to
     TensorFlow Lite using the feature being described here.
 1.  Bidirectional LSTM is currently modelled as two UnidirectionalSequenceLSTM
-    operators in TensorFlow Lite. This will be replaced with a single
+    operations in TensorFlow Lite. This will be replaced with a single
     BidirectionalSequenceLSTM op.
