@@ -730,35 +730,55 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
     input_len_dim2 = 5
     input_len_dim3 = 3
 
-    inputs = np.ones((num_samples, input_len_dim1, input_len_dim2,
-                      input_len_dim3, stack_size))
+    for data_format in ['channels_first', 'channels_last']:
+      if data_format == 'channels_first':
+        inputs = np.ones((num_samples, stack_size, input_len_dim1,
+                          input_len_dim2, input_len_dim3))
+      elif data_format == 'channels_last':
+        inputs = np.ones((num_samples, input_len_dim1, input_len_dim2,
+                          input_len_dim3, stack_size))
 
-    with self.cached_session(use_gpu=True):
-      # basic test
-      testing_utils.layer_test(
-          keras.layers.ZeroPadding3D,
-          kwargs={'padding': (2, 2, 2)},
-          input_shape=inputs.shape)
+      with self.cached_session(use_gpu=True):
+        # basic test
+        testing_utils.layer_test(
+            keras.layers.ZeroPadding3D,
+            kwargs={'padding': (2, 2, 2),
+                    'data_format': data_format},
+            input_shape=inputs.shape)
+        testing_utils.layer_test(
+            keras.layers.ZeroPadding3D,
+            kwargs={'padding': ((1, 2), (3, 4), (0, 2)),
+                    'data_format': data_format},
+            input_shape=inputs.shape)
 
-      # correctness test
-      layer = keras.layers.ZeroPadding3D(padding=(2, 2, 2))
-      layer.build(inputs.shape)
-      output = layer(keras.backend.variable(inputs))
-      if context.executing_eagerly():
-        np_output = output.numpy()
-      else:
-        np_output = keras.backend.eval(output)
-      for offset in [0, 1, -1, -2]:
-        np.testing.assert_allclose(np_output[:, offset, :, :, :], 0.)
-        np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
-        np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
-      np.testing.assert_allclose(np_output[:, 2:-2, 2:-2, 2:-2, :], 1.)
+      with self.cached_session(use_gpu=True):
+        # correctness test
+        layer = keras.layers.ZeroPadding3D(padding=(2, 2, 2),
+                                           data_format=data_format)
+        layer.build(inputs.shape)
+        output = layer(keras.backend.variable(inputs))
+        if context.executing_eagerly():
+          np_output = output.numpy()
+        else:
+          np_output = keras.backend.eval(output)
+        if data_format == 'channels_last':
+          for offset in [0, 1, -1, -2]:
+            np.testing.assert_allclose(np_output[:, offset, :, :, :], 0.)
+            np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+            np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
+          np.testing.assert_allclose(np_output[:, 2:-2, 2:-2, 2:-2, :], 1.)
+        elif data_format == 'channels_first':
+          for offset in [0, 1, -1, -2]:
+            np.testing.assert_allclose(np_output[:, :, offset, :, :], 0.)
+            np.testing.assert_allclose(np_output[:, :, :, offset, :], 0.)
+            np.testing.assert_allclose(np_output[:, :, :, :, offset], 0.)
+          np.testing.assert_allclose(np_output[:, :, 2:-2, 2:-2, 2:-2], 1.)
 
-    # test incorrect use
-    with self.assertRaises(ValueError):
-      keras.layers.ZeroPadding3D(padding=(1, 1))
-    with self.assertRaises(ValueError):
-      keras.layers.ZeroPadding3D(padding=None)
+      # test incorrect use
+      with self.assertRaises(ValueError):
+        keras.layers.ZeroPadding3D(padding=(1, 1))
+      with self.assertRaises(ValueError):
+        keras.layers.ZeroPadding3D(padding=None)
 
 
 @test_util.for_all_test_methods(test_util.disable_xla,
