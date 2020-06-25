@@ -1946,13 +1946,13 @@ TEST(uKernels, ReductionSumVectorIntegerTest) {
   EXPECT_THAT(result1, testing::ElementsAreArray({3, 6, -1, 3, 15}));
 }
 
-void TwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
-                           const int8_t* recurrent, int8_t recurrent_zp,
-                           int32_t input_effective_scale_a,
-                           int32_t input_effective_scale_b,
-                           int32_t recurrent_effective_scale_a,
-                           int32_t recurrent_effective_scale_b, int32_t n_batch,
-                           int32_t n_cell, int16_t* output);
+void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
+                          const int8_t* recurrent, int8_t recurrent_zp,
+                          int32_t input_effective_scale_a,
+                          int32_t input_effective_scale_b,
+                          int32_t recurrent_effective_scale_a,
+                          int32_t recurrent_effective_scale_b, int32_t n_batch,
+                          int32_t n_cell, int16_t* output);
 
 TEST(uKernels, TwoGateSaturateAddTest) {
   const std::vector<int8_t> input1 = {1, 2, 3, 4, 55, 66, 77};
@@ -1965,9 +1965,9 @@ TEST(uKernels, TwoGateSaturateAddTest) {
   const int32_t shift2 = -6;
   std::vector<int16_t> output(7);
 
-  TwoGateSaturationgAdd(input1.data(), input1_zp, input2.data(), input2_zp,
-                        multiplier1, shift1, multiplier2, shift2, 1, 7,
-                        output.data());
+  TwoGateSaturatingAdd(input1.data(), input1_zp, input2.data(), input2_zp,
+                       multiplier1, shift1, multiplier2, shift2, 1, 7,
+                       output.data());
 
   const std::vector<int16_t> expected_output = {1, 0, 0, 0, 0, 1, 1};
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));

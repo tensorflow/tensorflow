@@ -1556,7 +1556,7 @@ inline void LstmStepInteger8x8_8(
       effective_recurrent_to_forget_scale_b, n_batch, n_output, n_cell,
       scratch1, intermediate_zp[5]);
 
-  tensor_utils::TwoGateSaturationgAdd(
+  tensor_utils::TwoGateSaturatingAdd(
       scratch0, intermediate_zp[4], scratch1, intermediate_zp[5],
       intermediate_scale_a[2], intermediate_scale_b[2], intermediate_scale_a[3],
       intermediate_scale_b[3], n_batch, n_cell, forget_gate_scratch);
@@ -1584,7 +1584,7 @@ inline void LstmStepInteger8x8_8(
       effective_recurrent_to_cell_scale_a, effective_recurrent_to_cell_scale_b,
       n_batch, n_output, n_cell, scratch1, intermediate_zp[8]);
 
-  tensor_utils::TwoGateSaturationgAdd(
+  tensor_utils::TwoGateSaturatingAdd(
       scratch0, intermediate_zp[7], scratch1, intermediate_zp[8],
       intermediate_scale_a[4], intermediate_scale_b[4], intermediate_scale_a[5],
       intermediate_scale_b[5], n_batch, n_cell, cell_gate_scratch);
@@ -1613,7 +1613,7 @@ inline void LstmStepInteger8x8_8(
       effective_recurrent_to_output_scale_b, n_batch, n_output, n_cell,
       scratch1, intermediate_zp[11]);
 
-  tensor_utils::TwoGateSaturationgAdd(
+  tensor_utils::TwoGateSaturatingAdd(
       scratch0, intermediate_zp[10], scratch1, intermediate_zp[11],
       intermediate_scale_a[6], intermediate_scale_b[6], intermediate_scale_a[7],
       intermediate_scale_b[7], n_batch, n_cell, output_gate_scratch);
