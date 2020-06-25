@@ -612,8 +612,9 @@ TfLiteStatus MicroAllocator::StartModelAllocation(
   TFLITE_DCHECK(subgraph != nullptr);
   model_is_allocating_ = true;
 
+  TF_LITE_ENSURE_STATUS(AllocateTfLiteTensorArray(context, subgraph));
   TF_LITE_ENSURE_STATUS(
-      InitGraphAndContextTensorData(model, context, subgraph));
+      PopulateTfLiteTensorArrayFromFlatbuffer(model, context, subgraph));
   TF_LITE_ENSURE_STATUS(
       AllocateNodeAndRegistrations(subgraph, node_and_registrations));
   TF_LITE_ENSURE_STATUS(PrepareNodeAndRegistrationDataFromFlatbuffer(
@@ -864,14 +865,6 @@ TfLiteStatus MicroAllocator::AllocateVariables(TfLiteContext* context,
 
 ErrorReporter* MicroAllocator::error_reporter() const {
   return error_reporter_;
-}
-
-TfLiteStatus MicroAllocator::InitGraphAndContextTensorData(
-    const Model* model, TfLiteContext* context, const SubGraph* subgraph) {
-  TF_LITE_ENSURE_STATUS(AllocateTfLiteTensorArray(context, subgraph));
-  TF_LITE_ENSURE_STATUS(
-      PopulateTfLiteTensorArrayFromFlatbuffer(model, context, subgraph));
-  return kTfLiteOk;
 }
 
 const SubGraph* MicroAllocator::GetSubGraphFromModel(const Model* model) {
