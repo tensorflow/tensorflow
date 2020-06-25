@@ -64,14 +64,13 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  const TfLiteTensor* output = GetOutput(context, node, 0);
   if (input->type == kTfLiteInt8) {
-    const TfLiteTensor* output = GetOutput(context, node, 0);
     const double real_multiplier = static_cast<double>(input->params.scale) /
                                    static_cast<double>(output->params.scale);
     QuantizeMultiplier(real_multiplier, &op_data->multiplier, &op_data->shift);
   }
 
-  TfLiteTensor* output = GetOutput(context, node, 0);
   int output_size = NumElements(output);
   if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8) {
     context->RequestScratchBufferInArena(context, output_size * sizeof(int32_t),
