@@ -1,6 +1,5 @@
-[submodule "custom_ops_logic"]
-	path = custom_ops_logic
-	url = https://tsahimiz.visualstudio.com/BlinkCore/_git/custom_ops_logic
 [submodule "blink_custom_ops"]
 	path = blink_custom_ops
 	url = https://tsahimiz.visualstudio.com/BlinkCore/_git/custom_ops_logic
+	ignore = dirty
+    branch = master
