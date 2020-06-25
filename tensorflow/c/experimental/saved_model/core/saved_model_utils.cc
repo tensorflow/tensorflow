@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"
 
+#include <memory>
+
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 
 namespace tensorflow {
 namespace internal {
@@ -32,6 +37,21 @@ Status TensorProtoToConstant(ImmediateExecutionContext* ctx,
 
   TensorInterface tensor_interface(std::move(tensor));
   return Constant::Create(ctx, &tensor_interface, output);
+}
+
+// This follows the python variable restoration logic:
+// https://github.com/tensorflow/tensorflow/blob/516608035f85cec8b126712b0ff8407220206b22/tensorflow/python/saved_model/load.py#L407
+Status LoadSavedVariable(ImmediateExecutionContext* ctx,
+                         const SavedVariable& variable,
+                         std::unique_ptr<Variable>* output) {
+  const std::string& name = variable.name();
+  tensorflow::TensorShape shape(variable.shape());
+  tensorflow::DataType dtype = variable.dtype();
+
+  TF_RETURN_IF_ERROR(
+      Variable::CreateUninitialized(ctx, dtype, shape, name, output));
+
+  return Status();
 }
 
 }  // namespace internal
