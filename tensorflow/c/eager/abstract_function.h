@@ -25,7 +25,7 @@ namespace tensorflow {
 // function.
 class AbstractFunction {
  protected:
-  enum AbstractFunctionKind { kGraphFunc, kMlirFunc };
+  enum AbstractFunctionKind { kGraph, kMlir };
   explicit AbstractFunction(AbstractFunctionKind kind) : kind_(kind) {}
 
  public:
