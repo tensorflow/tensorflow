@@ -15,25 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/examples/hello_world/main_functions.h"
 
-// This is the default main used on systems that have the standard C entry
-// point. Other devices (for example FreeRTOS or ESP32) that have different
-// requirements for entry code (like an app_main function) should specialize
-// this main.cc file in a target-specific subfolder.
-#include "tensorflow/lite/micro/examples/hello_world/model.h"
-#include "tensorflow/lite/micro/examples/hello_world/sample.h"
-int main(int argc, char* argv[]) {
-
-
-struct model_info *info =setup(g_model);//g_sine_model_data // tune_model
-print_string((*info).input.name);
-float *y;
-
-y=loop_NN_float(x_input);
-for (int i =0;i<(*info).output.sizes[1];i++)
-{
-	print_string_f2("y[%d]=%f\n",(float)i,y[i]);
-}
-return 0;}
-
-
-
+// Arduino automatically calls the setup() and loop() functions in a sketch, so
+// where other systems need their own main routine in this file, it can be left
+// empty.

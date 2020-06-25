@@ -13,27 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_WORLD_MAIN_FUNCTIONS_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_WORLD_MAIN_FUNCTIONS_H_
 #include "tensorflow/lite/micro/examples/hello_world/main_functions.h"
+// Initializes all data needed for the example. The name is important, and needs
+// to be setup() for Arduino compatibility.
 
-// This is the default main used on systems that have the standard C entry
-// point. Other devices (for example FreeRTOS or ESP32) that have different
-// requirements for entry code (like an app_main function) should specialize
-// this main.cc file in a target-specific subfolder.
-#include "tensorflow/lite/micro/examples/hello_world/model.h"
-#include "tensorflow/lite/micro/examples/hello_world/sample.h"
-int main(int argc, char* argv[]) {
+struct model_info * setup_NN_gcc(const unsigned char *model_data,bool debug);
+float * loop_NN_float_gcc(float * input_data);
+void gcc_fun();
+void print_string_gcc(const char * str);
 
-
-struct model_info *info =setup(g_model);//g_sine_model_data // tune_model
-print_string((*info).input.name);
-float *y;
-
-y=loop_NN_float(x_input);
-for (int i =0;i<(*info).output.sizes[1];i++)
-{
-	print_string_f2("y[%d]=%f\n",(float)i,y[i]);
-}
-return 0;}
-
-
-
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_WORLD_MAIN_FUNCTIONS_H_

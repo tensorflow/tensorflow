@@ -43,7 +43,7 @@ limitations under the License.
 extern "C" void DebugLog(const char* s) {
   static bool is_initialized = false;
   if (!is_initialized) {
-    am_bsp_itm_printf_enable();
+    am_bsp_uart_printf_enable();
     is_initialized = true;
   }
 

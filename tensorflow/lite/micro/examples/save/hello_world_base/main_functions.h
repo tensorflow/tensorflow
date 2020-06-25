@@ -20,31 +20,15 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif
-struct tensor_info{
-	char *name;
-	int  dim;
-	int  dtypes_index;
-	int  sizes[4];
-};
-struct model_info{
-	struct tensor_info input;
-	struct tensor_info output;
-};
-static const char* const types_names[] = {"kTfLiteNoType", "kTfLiteFloat32","kTfLiteInt32","kTfLiteUInt8"
-	"kTfLiteInt64","kTfLiteString","kTfLiteBool","kTfLiteInt16","kTfLiteComplex64","kTfLiteInt8","kTfLiteFloat16"};
 
 // Initializes all data needed for the example. The name is important, and needs
 // to be setup() for Arduino compatibility.
-struct model_info * setup(const unsigned char *model_data);
+void setup();
 
 // Runs one iteration of data gathering and inference. This should be called
 // repeatedly from the application code. The name needs to be loop() for Arduino
 // compatibility.
-float * loop_NN_float(float * input_data);
-
-void print_string(const char * str);
-void print_string_f(const char * str,float f);
-void print_string_f2(const char * str,float f1,float f2);
+void loop();
 
 #ifdef __cplusplus
 }
