@@ -160,20 +160,16 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
 
     with strategy.scope():
       self.assertIs(strategy.cluster_resolver, resolver)
+
     self.assertTrue(hasattr(resolver, 'cluster_spec'))
-    if isinstance(strategy, TPUStrategy):
-      self.skipTest('b/159747888')
-    self.assertTrue(hasattr(resolver, 'environment'))
     self.assertTrue(hasattr(resolver, 'master'))
     self.assertTrue(hasattr(resolver, 'num_accelerators'))
-    self.assertIsNone(resolver.rpc_layer)
+    self.assertTrue(hasattr(resolver, 'task_id'))
+    self.assertTrue(hasattr(resolver, 'task_type'))
     if isinstance(strategy, CollectiveAllReduceStrategy):
       self.assertEqual(resolver.task_id, 0)
       self.assertAllInSet(resolver.task_type, ['chief', 'worker'])
-    elif isinstance(strategy, TPUStrategy):
-      # TPUStrategy does not have task_id and task_type applicable.
-      self.assertIsNone(resolver.task_id)
-      self.assertIsNone(resolver.task_type)
+      self.assertIsNone(resolver.rpc_layer)
 
 
 if __name__ == '__main__':
