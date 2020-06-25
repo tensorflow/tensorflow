@@ -2814,8 +2814,15 @@ class ReplicaContext(object):
     return self._strategy
 
   @property
+  @deprecation.deprecated(None, "Please avoid relying on devices property.")
   def devices(self):
-    """The devices this replica is to be executed on, as a tuple of strings."""
+    """Returns the devices this replica is to be executed on, as a tuple of strings.
+
+    NOTE: For `tf.distribute.MirroredStrategy` and
+    `tf.distribute.experimental.MultiWorkerMirroredStrategy`, this returns a
+    nested
+    list of device strings, e.g, [["gpu:0"]].
+    """
     require_replica_context(self)
     return (device_util.current(),)
 
