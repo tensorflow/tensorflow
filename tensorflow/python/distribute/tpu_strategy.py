@@ -220,7 +220,9 @@ class TPUStrategyV2(distribute_lib.Strategy):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    self._enable_packed_variable_in_eager_mode = False
+    # TODO(b/145922293): Enable this when MLIR bridge is enabled.
+    self._enable_packed_variable_in_eager_mode = (
+        not context.context().enable_mlir_bridge)
 
   def run(self, fn, args=(), kwargs=None, options=None):
     """Run the computation defined by `fn` on each TPU replica.
@@ -330,7 +332,9 @@ class TPUStrategy(distribute_lib.Strategy):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    self._enable_packed_variable_in_eager_mode = False
+    # TODO(b/145922293): Enable this when MLIR bridge is enabled.
+    self._enable_packed_variable_in_eager_mode = (
+        not context.context().enable_mlir_bridge)
 
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
@@ -390,7 +394,9 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    self._enable_packed_variable_in_eager_mode = False
+    # TODO(b/145922293): Enable this when MLIR bridge is enabled.
+    self._enable_packed_variable_in_eager_mode = (
+        not context.context().enable_mlir_bridge)
 
   @property
   def steps_per_run(self):
