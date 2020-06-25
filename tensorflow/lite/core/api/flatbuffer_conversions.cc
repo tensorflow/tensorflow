@@ -289,7 +289,7 @@ TfLiteStatus ParseConcatenation(const Operator* op, BuiltinOperator,
     params->activation =
         ConvertActivation(schema_params->fused_activation_function());
     params->axis = schema_params->axis();
-    params->fixed_point_scaling = concatenation_params->fixed_point_scaling();
+    params->fixed_point_scaling = schema_params->fixed_point_scaling();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
