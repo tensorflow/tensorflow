@@ -167,8 +167,8 @@ def _vectorize_parameters(f, params, use_pfor, dtype):
   if use_pfor:
     return control_flow_ops.vectorized_map(
         _wrapper, math_ops.range(total_size))
-  else:
-    return map_fn.map_fn(_wrapper, math_ops.range(total_size), dtype)
+
+  return map_fn.map_fn(_wrapper, math_ops.range(total_size), dtype)
 
 
 def _forward_over_back_hessian(f, params, use_pfor, dtype=None):
@@ -348,7 +348,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       self._execution_count = execution_count + 1
       x = array_ops.zeros([execution_count])
       with forwardprop.ForwardAccumulator(
-              x, array_ops.ones_like(x)) as acc:
+          x, array_ops.ones_like(x)) as acc:
         y = x + x
       self.assertAllClose(2. * array_ops.ones_like(x), acc.jvp(y))
 
@@ -357,10 +357,10 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     x = constant_op.constant(-2.)
     with self.assertRaisesRegexp(ValueError, "multiple times"):
       with forwardprop.ForwardAccumulator(
-              [x, x], [1., 2.]):
+          [x, x], [1., 2.]):
         pass
     with forwardprop.ForwardAccumulator(
-            [x], [3.]) as acc:
+        [x], [3.]) as acc:
       self.assertAllClose(3., acc.jvp(x))
       acc._watch(x, constant_op.constant(10.))
       self.assertAllClose(13., acc.jvp(x))
@@ -556,9 +556,9 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
     primal = constant_op.constant(1.1)
     with forwardprop.ForwardAccumulator(
-            primal, constant_op.constant(1.)) as outer_acc:
+        primal, constant_op.constant(1.)) as outer_acc:
       with forwardprop.ForwardAccumulator(
-              primal, constant_op.constant(1.)) as acc:
+          primal, constant_op.constant(1.)) as acc:
         primal_out = f(primal)
     inner_jvp = acc.jvp(primal_out)
     outer_jvp = outer_acc.jvp(inner_jvp)
@@ -574,9 +574,9 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     inner_jvp = constant_op.constant(3.)
     with forwardprop.ForwardAccumulator(
         [primal_in, inner_jvp],
-            [constant_op.constant(2.), constant_op.constant(4.)]) as outer_acc:
+        [constant_op.constant(2.), constant_op.constant(4.)]) as outer_acc:
       with forwardprop.ForwardAccumulator(
-              primal_in, inner_jvp) as inner_acc:
+          primal_in, inner_jvp) as inner_acc:
         packed_input_indices, packed_input_tangents = (
             forwardprop_util.pack_tangents([primal_in]))
         self.assertAllClose([3., 2., 4.], packed_input_tangents)
@@ -606,9 +606,9 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
       primal = constant_op.constant(1.1)
       with forwardprop.ForwardAccumulator(
-              primal, constant_op.constant(1.)) as outer_acc:
+          primal, constant_op.constant(1.)) as outer_acc:
         with forwardprop.ForwardAccumulator(
-                primal, constant_op.constant(1.)) as acc:
+            primal, constant_op.constant(1.)) as acc:
           primal_out = f(primal)
       inner_jvp = acc.jvp(primal_out)
       outer_jvp = outer_acc.jvp(inner_jvp)
@@ -640,7 +640,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     matmul = def_function.function(math_ops.matmul)
 
     with forwardprop.ForwardAccumulator(
-            primals=[m1, m2], tangents=[tangent1, tangent2]) as acc:
+        primals=[m1, m2], tangents=[tangent1, tangent2]) as acc:
       result1 = matmul(m1, m1, transpose_b=True)
       result2 = matmul(m2, m2, transpose_b=True)
 
@@ -851,7 +851,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   def testVariableWatched(self):
     v = variables.Variable([1., 2., 3.])
     with forwardprop.ForwardAccumulator(
-            v, constant_op.constant([.1, -.2, .3])) as acc:
+        v, constant_op.constant([.1, -.2, .3])) as acc:
       self.assertAllClose([.1, -.2, .3], acc.jvp(v))
       x = v * 2.
       self.assertAllClose([.2, -.4, .6], acc.jvp(x))
@@ -882,7 +882,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         if self._v is None:
           self._v = variables.Variable([1., 2., 3.])
         with forwardprop.ForwardAccumulator(
-                self._v, constant_op.constant([.1, -.2, .3])) as acc:
+            self._v, constant_op.constant([.1, -.2, .3])) as acc:
           x = self._v * 2.
           x2 = self._v + .1
         return acc.jvp((self._v, x, x2))
