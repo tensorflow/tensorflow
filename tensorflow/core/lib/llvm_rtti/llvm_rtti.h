@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_CORE_LLVM_RTTI_H_
 #define TENSORFLOW_CORE_LIB_CORE_LLVM_RTTI_H_
 
-#include "third_party/llvm/llvm-project/llvm/include/llvm/Support/Casting.h"
+#include "llvm/Support/Casting.h"
 
 namespace tensorflow {
 using llvm::dyn_cast;
