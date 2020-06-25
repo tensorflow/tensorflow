@@ -231,8 +231,7 @@ void CalculateLstmOutputHybrid(
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           projection_weights, n_output, n_cell, scratch1,
           projection_weights_scale, scratch2, n_batch, output_state,
-          /*per_channel_scale=*/nullptr,
-          asymmetric_quantize_inputs ? scratch3 : nullptr, scratch4,
+          /*per_channel_scale=*/nullptr, scratch3, scratch4,
           projection_weights_row_sums, compute_row_sums, scratch2, context);
     }
     if (proj_clip > 0.0f) {
