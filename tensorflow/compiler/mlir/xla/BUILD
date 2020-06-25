@@ -175,6 +175,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/client:sharding_builder",
+        "//tensorflow/compiler/xla/client/lib:conv_grad_size_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/lib/bfloat16",

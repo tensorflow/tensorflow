@@ -1096,7 +1096,6 @@ func @max_pool_grad_valid(%orig_input: tensor<10x24x24x64xf32>, %orig_output: te
   // CHECK: "xla_hlo.return"(%[[SELECT_RESULT]]) : (tensor<f32>) -> ()
   // CHECK: }) {window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>, window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>} : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) -> tensor<10x24x24x64xf32>
   // CHECK: return %[[RESULT]] : tensor<10x24x24x64xf32>
-  // CHECK: }
   %result = "tf.MaxPoolGrad"(%orig_input, %orig_output, %grad) {
      data_format = "NHWC",
      ksize = [1, 2, 2, 1],
@@ -1120,7 +1119,6 @@ func @max_pool_3d_grad_valid(%orig_input: tensor<10x8x24x24x64xf32>, %orig_outpu
   // CHECK: "xla_hlo.return"(%[[SELECT_RESULT]]) : (tensor<f32>) -> ()
   // CHECK: }) {window_dimensions = dense<[1, 1, 2, 2, 1]> : tensor<5xi64>, window_strides = dense<[1, 1, 2, 2, 1]> : tensor<5xi64>} : (tensor<10x8x24x24x64xf32>, tensor<10x8x12x12x64xf32>, tensor<f32>) -> tensor<10x8x24x24x64xf32>
   // CHECK: return %[[RESULT]] : tensor<10x8x24x24x64xf32>
-  // CHECK: }
   %result = "tf.MaxPool3DGrad"(%orig_input, %orig_output, %grad) {data_format = "NDHWC", ksize = [1, 1, 2, 2, 1], padding = "VALID", strides = [1, 1, 2, 2, 1]} : (tensor<10x8x24x24x64xf32>, tensor<10x8x12x12x64xf32>, tensor<10x8x12x12x64xf32>) -> tensor<10x8x24x24x64xf32>
   return %result : tensor<10x8x24x24x64xf32>
 }
@@ -3836,6 +3834,260 @@ func @avgpool_same_padding(%arg0: tensor<2x13x25x7xf32>) -> tensor<2x4x7x7xf32> 
   // CHECK: tf.AvgPool
   %0 = "tf.AvgPool"(%arg0) {data_format = "NHWC", ksize = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 4, 1]} : (tensor<2x13x25x7xf32>) -> tensor<2x4x7x7xf32>
   return %0 : tensor<2x4x7x7xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// AvgPoolGrad op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL:   func @avgpool_grad_valid_padding(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<10x12x16x64xf32>) -> tensor<10x24x32x64xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[DIVISOR:.*]] = xla_hlo.constant dense<4.000000e+00> : tensor<f32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_chlo.broadcast_divide %[[OUT_GRAD]], %[[DIVISOR]]
+// CHECK_SAME:        broadcast_dimensions = dense<[]>
+// CHECK_SAME:        -> tensor<10x12x16x64xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        interior_padding = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        -> tensor<10x25x33x64xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 2, 2, 1]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<10x24x32x64xf32>
+// CHECK:           return %[[RESULT]] : tensor<10x24x32x64xf32>
+func @avgpool_grad_valid_padding(%grad: tensor<10x12x16x64xf32>) -> tensor<10x24x32x64xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[10, 24, 32, 64]> : tensor<4xi32>} : () -> (tensor<4xi32>)
+  %result = "tf.AvgPoolGrad"(%orig_input_shape, %grad) {
+     data_format = "NHWC",
+     ksize = [1, 2, 2, 1],
+     padding = "VALID",
+     strides = [1, 2, 2, 1]
+  } : (tensor<4xi32>, tensor<10x12x16x64xf32>) -> tensor<10x24x32x64xf32>
+  return %result : tensor<10x24x32x64xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_3d_grad_valid_padding(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<10x8x12x16x64xf32>) -> tensor<10x8x24x32x64xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[DIVISOR:.*]] = xla_hlo.constant dense<4.000000e+00> : tensor<f32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_chlo.broadcast_divide %[[OUT_GRAD]], %[[DIVISOR]] {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<10x8x12x16x64xf32>, tensor<f32>) -> tensor<10x8x12x16x64xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 0, 1, 1, 0]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 0, 1, 1, 0]>
+// CHECK-SAME:        interior_padding = dense<[0, 0, 1, 1, 0]>
+// CHECK-SAME:        -> tensor<10x8x25x33x64xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 2, 2, 1]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<10x8x24x32x64xf32>
+// CHECK:           return %[[RESULT]] : tensor<10x8x24x32x64xf32>
+func @avgpool_3d_grad_valid_padding(%grad: tensor<10x8x12x16x64xf32>) -> tensor<10x8x24x32x64xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[10, 8, 24, 32, 64]> : tensor<5xi32>} : () -> (tensor<5xi32>)
+  %result = "tf.AvgPool3DGrad"(%orig_input_shape, %grad) {
+    data_format = "NDHWC",
+    ksize = [1, 1, 2, 2, 1],
+    padding = "VALID",
+    strides = [1, 1, 2, 2, 1]} : (tensor<5xi32>, tensor<10x8x12x16x64xf32>) -> tensor<10x8x24x32x64xf32>
+  return %result : tensor<10x8x24x32x64xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_grad_same_padding(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x4x7x9xf32>) -> tensor<2x13x25x9xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[ALL_ONES:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<2x13x25x9xf32>
+// CHECK:           %[[DIVISOR:.*]] = "xla_hlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM1:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM1]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        padding = dense<{{\[\[}}0, 0], [0, 1], [1, 1], [0, 0]]>
+// CHECK-SAME:        window_dimensions = dense<[1, 2, 3, 1]>
+// CHECK-SAME:        window_strides = dense<[1, 4, 4, 1]>
+// CHECK-SAME:        -> tensor<2x4x7x9xf32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_hlo.divide %[[OUT_GRAD]], %[[DIVISOR]] : tensor<2x4x7x9xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 0, 1, 0]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        interior_padding = dense<[0, 3, 3, 0]>
+// CHECK-SAME:        -> tensor<2x14x27x9xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG3:.*]]: tensor<f32>, %[[ARG4:.*]]: tensor<f32>):
+// CHECK:             %[[SUM2:.*]] = xla_hlo.add %[[ARG3]], %[[ARG4]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM2]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 2, 3, 1]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<2x13x25x9xf32>
+// CHECK:           return %[[RESULT]] : tensor<2x13x25x9xf32>
+func @avgpool_grad_same_padding(%grad: tensor<2x4x7x9xf32>) -> tensor<2x13x25x9xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[2, 13, 25, 9]> : tensor<4xi32>} : () -> (tensor<4xi32>)
+  %result = "tf.AvgPoolGrad"(%orig_input_shape, %grad) {
+     data_format = "NHWC",
+     ksize = [1, 2, 3, 1],
+     padding = "SAME",
+     strides = [1, 4, 4, 1]
+  } : (tensor<4xi32>, tensor<2x4x7x9xf32>) -> tensor<2x13x25x9xf32>
+  return %result : tensor<2x13x25x9xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_3d_grad_same_padding(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x8x4x7x9xf32>) -> tensor<2x8x13x25x9xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[ALL_ONES:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<2x8x13x25x9xf32>
+// CHECK:           %[[DIVISOR:.*]] = "xla_hlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM1:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM1]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        padding = dense<{{\[\[}}0, 0], [0, 0], [0, 1], [1, 1], [0, 0]]>
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 2, 3, 1]>
+// CHECK-SAME:        window_strides = dense<[1, 1, 4, 4, 1]>
+// CHECK-SAME:        -> tensor<2x8x4x7x9xf32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_hlo.divide %[[OUT_GRAD]], %[[DIVISOR]] : tensor<2x8x4x7x9xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 0, 0, 1, 0]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 0, 1, 1, 0]>
+// CHECK-SAME:        interior_padding = dense<[0, 0, 3, 3, 0]>
+// CHECK-SAME:        -> tensor<2x8x14x27x9xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG3:.*]]: tensor<f32>, %[[ARG4:.*]]: tensor<f32>):
+// CHECK:             %[[SUM2:.*]] = xla_hlo.add %[[ARG3]], %[[ARG4]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM2]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 2, 3, 1]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<2x8x13x25x9xf32>
+// CHECK:           return %[[RESULT]] : tensor<2x8x13x25x9xf32>
+func @avgpool_3d_grad_same_padding(%grad: tensor<2x8x4x7x9xf32>) -> tensor<2x8x13x25x9xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[2, 8, 13, 25, 9]> : tensor<5xi32>} : () -> (tensor<5xi32>)
+  %result = "tf.AvgPool3DGrad"(%orig_input_shape, %grad) {
+    data_format = "NDHWC",
+    ksize = [1, 1, 2, 3, 1],
+    padding = "SAME",
+    strides = [1, 1, 4, 4, 1]} : (tensor<5xi32>, tensor<2x8x4x7x9xf32>) -> tensor<2x8x13x25x9xf32>
+  return %result : tensor<2x8x13x25x9xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_grad_nchw_format(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x9x4x7xf32>) -> tensor<2x9x13x25xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[ALL_ONES:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<2x9x13x25xf32>
+// CHECK:           %[[DIVISOR:.*]] = "xla_hlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM1:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM1]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        padding = dense<{{\[\[}}0, 0], [0, 0], [0, 1], [1, 1]]>
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 2, 3]>
+// CHECK-SAME:        window_strides = dense<[1, 1, 4, 4]>
+// CHECK-SAME:        -> tensor<2x9x4x7xf32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_hlo.divide %[[OUT_GRAD]], %[[DIVISOR]] : tensor<2x9x4x7xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 0, 0, 1]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 0, 1, 1]>
+// CHECK-SAME:        interior_padding = dense<[0, 0, 3, 3]>
+// CHECK-SAME:        -> tensor<2x9x14x27xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG3:.*]]: tensor<f32>, %[[ARG4:.*]]: tensor<f32>):
+// CHECK:             %[[SUM2:.*]] = xla_hlo.add %[[ARG3]], %[[ARG4]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM2]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 2, 3]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<2x9x13x25xf32>
+// CHECK:           return %[[RESULT]] : tensor<2x9x13x25xf32>
+func @avgpool_grad_nchw_format(%grad: tensor<2x9x4x7xf32>) -> tensor<2x9x13x25xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[2, 9, 13, 25]> : tensor<4xi32>} : () -> (tensor<4xi32>)
+  %result = "tf.AvgPoolGrad"(%orig_input_shape, %grad) {
+     data_format = "NCHW",
+     ksize = [1, 1, 2, 3],
+     padding = "SAME",
+     strides = [1, 1, 4, 4]
+  } : (tensor<4xi32>, tensor<2x9x4x7xf32>) -> tensor<2x9x13x25xf32>
+  return %result : tensor<2x9x13x25xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_3d_grad_ncdwh_format(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x9x8x4x7xf32>) -> tensor<2x9x8x13x25xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[ALL_ONES:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<2x9x8x13x25xf32>
+// CHECK:           %[[DIVISOR:.*]] = "xla_hlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM1:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM1]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        padding = dense<{{\[\[}}0, 0], [0, 0], [0, 0], [0, 1], [1, 1]]>
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 1, 2, 3]>
+// CHECK-SAME:        window_strides = dense<[1, 1, 1, 4, 4]>
+// CHECK-SAME:        -> tensor<2x9x8x4x7xf32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_hlo.divide %[[OUT_GRAD]], %[[DIVISOR]] : tensor<2x9x8x4x7xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 0, 0, 0, 1]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 0, 0, 1, 1]>
+// CHECK-SAME:        interior_padding = dense<[0, 0, 0, 3, 3]>
+// CHECK-SAME:        -> tensor<2x9x8x14x27xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG3:.*]]: tensor<f32>, %[[ARG4:.*]]: tensor<f32>):
+// CHECK:             %[[SUM2:.*]] = xla_hlo.add %[[ARG3]], %[[ARG4]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM2]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 1, 2, 3]>
+// CHECK-SAME:        window_strides = dense<1> : tensor<5xi64>
+// CHECK-SAME:        -> tensor<2x9x8x13x25xf32>
+// CHECK:           return %[[RESULT]] : tensor<2x9x8x13x25xf32>
+func @avgpool_3d_grad_ncdwh_format(%grad: tensor<2x9x8x4x7xf32>) -> tensor<2x9x8x13x25xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[2, 9, 8, 13, 25]> : tensor<5xi32>} : () -> (tensor<5xi32>)
+  %result = "tf.AvgPool3DGrad"(%orig_input_shape, %grad) {
+    data_format = "NCDHW",
+    ksize = [1, 1, 1, 2, 3],
+    padding = "SAME",
+    strides = [1, 1, 1, 4, 4]} : (tensor<5xi32>, tensor<2x9x8x4x7xf32>) -> tensor<2x9x8x13x25xf32>
+  return %result : tensor<2x9x8x13x25xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_grad_bf16(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<10x12x16x64xbf16>) -> tensor<10x24x32x64xbf16> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<bf16>
+// CHECK:           %[[DIVISOR:.*]] = xla_hlo.constant dense<4.000000e+00> : tensor<bf16>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_chlo.broadcast_divide %[[OUT_GRAD]], %[[DIVISOR]]
+// CHECK-SAME:        broadcast_dimensions = dense<[]>
+// CHECK-SAME:        -> tensor<10x12x16x64xbf16>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        interior_padding = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        -> tensor<10x25x33x64xbf16>
+// CHECK:           %[[REDUCE_WINDOW_INPUT_CONVERTED:.*]] = "xla_hlo.convert"(%[[REDUCE_WINDOW_INPUT]]) : (tensor<10x25x33x64xbf16>) -> tensor<10x25x33x64xf32>
+// CHECK:           %[[ZERO_F32:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT_CONVERTED]], %[[ZERO_F32]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 2, 2, 1]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<10x24x32x64xf32>
+// CHECK:           %[[RESULT_CONVERTED:.*]] = "xla_hlo.convert"(%[[RESULT]]) : (tensor<10x24x32x64xf32>) -> tensor<10x24x32x64xbf16>
+// CHECK:           return %[[RESULT_CONVERTED]] : tensor<10x24x32x64xbf16>
+func @avgpool_grad_bf16(%grad: tensor<10x12x16x64xbf16>) -> tensor<10x24x32x64xbf16> {
+  %orig_input_shape = "tf.Const"() {value = dense<[10, 24, 32, 64]> : tensor<4xi32>} : () -> (tensor<4xi32>)
+  %result = "tf.AvgPoolGrad"(%orig_input_shape, %grad) {
+     data_format = "NHWC",
+     ksize = [1, 2, 2, 1],
+     padding = "VALID",
+     strides = [1, 2, 2, 1]
+  } : (tensor<4xi32>, tensor<10x12x16x64xbf16>) -> tensor<10x24x32x64xbf16>
+  return %result : tensor<10x24x32x64xbf16>
 }
 
 // CHECK-LABEL: xla_sharding
