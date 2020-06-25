@@ -157,7 +157,6 @@ TpuCompilationCacheKey CreateCompilationCacheKey(
 TpuCompilationCacheKey CreateCompilationCacheKey(
     absl::string_view function_name, uint64 function_library_fingerprint,
     absl::string_view mlir_module, const OpInputList& guaranteed_constants,
-    size_t guaranteed_constants_size,
     const std::vector<TensorShape>& dynamic_shapes,
     const TPUCompileMetadataProto& metadata,
     const TpuMeshStateInterface& mesh_state) {
