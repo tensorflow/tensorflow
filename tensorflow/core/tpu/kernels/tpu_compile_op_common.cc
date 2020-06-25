@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
@@ -530,7 +531,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
       ctx->cancellation_manager()->get_cancellation_token();
   const bool already_cancelled =
       !ctx->cancellation_manager()->RegisterCallback(token, [ctx, done]() {
-        if (TpuCompile_ShouldTpuCompileOpIgnoreCancellation()) {
+        if (UtilApiFn()->TpuCompile_ShouldTpuCompileOpIgnoreCancellationFn()) {
           return;
         }
 
