@@ -145,12 +145,11 @@ void AverageEvalQuantized(TfLiteContext* context, const TfLiteNode* node,
     filter_dims.w = params->filter_width;
     filter_dims.c = 1;
 
-    auto* buffer_idx = reinterpret_cast<int*>(node->user_data);
     cmsis_nn_context ctx;
     ctx.buf = nullptr;
     ctx.size = 0;
-    if (*buffer_idx > -1) {
-      ctx.buf = context->GetScratchBuffer(context, *buffer_idx);
+    if (data.buffer_idx > -1) {
+      ctx.buf = context->GetScratchBuffer(context, data.buffer_idx);
     }
 
     TFLITE_DCHECK_EQ(
@@ -232,12 +231,11 @@ TfLiteStatus MaxEvalInt8(TfLiteContext* context, const TfLiteNode* node,
   filter_dims.w = params->filter_width;
   filter_dims.c = 1;
 
-  auto* buffer_idx = reinterpret_cast<int*>(node->user_data);
   cmsis_nn_context ctx;
   ctx.buf = nullptr;
   ctx.size = 0;
-  if (*buffer_idx > -1) {
-    ctx.buf = context->GetScratchBuffer(context, *buffer_idx);
+  if (data.buffer_idx > -1) {
+    ctx.buf = context->GetScratchBuffer(context, data.buffer_idx);
   }
 
   TFLITE_DCHECK_EQ(arm_max_pool_s8(&ctx, &pool_params, &input_dims,
