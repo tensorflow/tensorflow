@@ -216,6 +216,8 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
                          stream->parent()->device_ordinal());
   const HloInputOutputAliasConfig& input_output_alias =
       module().input_output_alias_config();
+  HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
+  const Shape& root_shape = root->shape();
 
   // Move se::OwningDeviceMemory values which contain the array(s) of the result
   // into the respective location in ScopedShapedBuffer which is returned to the
@@ -229,6 +231,13 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     CHECK_EQ(1, sources.values().size());
     const HloValue* value_source = sources.values()[0];
     HloInstruction* src = value_source->instruction();
+
+    // The source for this result buffer can be a nested buffer such as
+    // a tuple element.
+    TF_ASSIGN_OR_RETURN(
+        const BufferAllocation::Slice slice,
+        this->assignment_->GetUniqueSlice(src, value_source->index()));
+    const BufferAllocation::Index buffer_index = slice.index();
 
     // TODO(cheshire): duplication with other backends.
     absl::optional<HloInputOutputAliasConfig::Alias> alias =
@@ -258,17 +267,27 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
           // ScopedShapedBuffer result, if the ExecutionOutput is not committed.
           result.AddAliasedIndex(index);
         }
+      } else {
+        VLOG(3) << "Using copy-protection: aliasing is specified, but the "
+                   "buffer is not donated; allocating a fresh buffer";
+        int64 allocation_size =
+            ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(root_shape, index));
+        TF_ASSIGN_OR_RETURN(
+            se::OwningDeviceMemory allocated_buffer,
+            run_options->allocator()->Allocate(
+                stream->parent()->device_ordinal(), allocation_size));
+        result_buffer = allocated_buffer.Release();
+        MaybeOwningDeviceMemory& registered_buffer = buffers[buffer_index];
+        CHECK_EQ(result_buffer.size(),
+                 registered_buffer.AsDeviceMemoryBase().size());
+        std::memcpy(/*dest=*/result_buffer.opaque(),
+                    /*src=*/registered_buffer.AsDeviceMemoryBase().opaque(),
+                    /*n=*/result_buffer.size());
+        registered_buffer = result_buffer;
       }
     }
 
     if (result_buffer.is_null()) {
-      // The source for this result buffer can be a nested buffer such as
-      // a tuple element. The source instruction should have a
-      // non-parameter buffer assigned.
-      TF_ASSIGN_OR_RETURN(
-          const BufferAllocation::Slice slice,
-          this->assignment_->GetUniqueSlice(src, value_source->index()));
-      const BufferAllocation::Index buffer_index = slice.index();
       MaybeOwningDeviceMemory& buffer = buffers[buffer_index];
       if (absl::optional<se::OwningDeviceMemory> owned_buffer =
               buffer.Release()) {
