@@ -47,8 +47,8 @@ limitations under the License.
 #include <xtensa/tie/xt_FP.h>
 #endif
 
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xa_nnlib/algo/include/xa_nnlib_err_chk.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xa_nnlib/algo/include/xa_nnlib_kernels_api.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xa_nnlib/algo/common/include/xa_nnlib_err_chk.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xa_nnlib/include/nnlib/xa_nnlib_kernels_api.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/xa_nnlib/include/nnlib/xa_nnlib_standards.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/xa_nnlib/include/xa_type_def.h"
 
