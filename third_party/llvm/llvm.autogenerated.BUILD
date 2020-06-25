@@ -678,6 +678,40 @@ gentbl(
     ]),
 )
 
+# TODO(b/159809163): autogenerate this after enabling release-mode ML
+# InlineAdvisor
+cc_library(
+    name = "Analysis",
+    srcs = glob(
+        [
+            "lib/Analysis/*.c",
+            "lib/Analysis/*.cpp",
+            "lib/Analysis/*.inc",
+            "include/llvm/Transforms/Utils/Local.h",
+            "include/llvm/Transforms/Scalar.h",
+            "lib/Analysis/*.h",
+        ],
+        exclude = [
+            "lib/Analysis/MLInlineAdvisor.cpp",
+            "lib/Analysis/ReleaseModeModelRunner.cpp",
+        ],
+    ),
+    hdrs = glob([
+        "include/llvm/Analysis/*.h",
+        "include/llvm/Analysis/*.def",
+        "include/llvm/Analysis/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":BinaryFormat",
+        ":Core",
+        ":Object",
+        ":ProfileData",
+        ":Support",
+        ":config",
+    ],
+)
+
 ########################## Begin generated content ##########################
 cc_library(
     name = "AArch64AsmParser",
@@ -1389,38 +1423,6 @@ cc_library(
         ":Core",
         ":Support",
         ":TransformUtils",
-        ":config",
-    ],
-)
-
-cc_library(
-    name = "Analysis",
-    srcs = glob(
-        [
-            "lib/Analysis/*.c",
-            "lib/Analysis/*.cpp",
-            "lib/Analysis/*.inc",
-            "include/llvm/Transforms/Utils/Local.h",
-            "include/llvm/Transforms/Scalar.h",
-            "lib/Analysis/*.h",
-        ],
-        exclude = [
-            "lib/Analysis/MLInlineAdvisor.cpp",
-            "lib/Analysis/ReleaseModeModelRunner.cpp",
-        ],
-    ),
-    hdrs = glob([
-        "include/llvm/Analysis/*.h",
-        "include/llvm/Analysis/*.def",
-        "include/llvm/Analysis/*.inc",
-    ]),
-    copts = llvm_copts,
-    deps = [
-        ":BinaryFormat",
-        ":Core",
-        ":Object",
-        ":ProfileData",
-        ":Support",
         ":config",
     ],
 )
