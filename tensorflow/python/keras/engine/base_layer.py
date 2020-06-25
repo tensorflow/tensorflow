@@ -3093,6 +3093,9 @@ class TensorFlowOpLayer(Layer):
     # This means `built` is not set in `__call__`.
     self.built = True
 
+    # Do not individually trace TensorflowOpLayers in the SavedModel.
+    self._must_restore_from_config = True
+
   def call(self, inputs):
     if context.executing_eagerly():
       return self._defun_call(inputs)
