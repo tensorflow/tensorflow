@@ -254,10 +254,14 @@ py::object TFE_Py_ExecuteCancelable_wrapper(
 }
 
 static py::object TF_ListPhysicalDevices() {
+  tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
   std::vector<string> devices;
   tensorflow::Status s =
       tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
-  MaybeRaiseRegisteredFromStatus(s);
+  tensorflow::Set_TF_Status_from_Status(status.get(), s);
+  if (!s.ok()) {
+    return py::none();
+  }
   PyObject* result = PyList_New(devices.size());
   int i = 0;
   for (auto& dev : devices) {
