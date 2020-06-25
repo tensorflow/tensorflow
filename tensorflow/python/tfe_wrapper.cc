@@ -1158,7 +1158,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       status->status = tensorflow::errors::InvalidArgument(
           "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
           "Note that a DLPack tensor may be consumed at most once.",
-          pycapsule.name());
+          absl::string_view(pycapsule.name()));
       tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     }
 
