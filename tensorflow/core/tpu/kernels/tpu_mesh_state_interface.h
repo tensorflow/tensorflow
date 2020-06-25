@@ -29,7 +29,7 @@ class TpuMeshCommonState;
 
 namespace tpu {
 
-const char kTpuMeshCommonStateResourceName[] = "tpu_mesh_common_state";
+const char kTpuMeshStateInterfaceResourceName[] = "tpu_mesh_common_state";
 
 class TpuMeshStateInterface : public tensorflow::ResourceBase {
  public:

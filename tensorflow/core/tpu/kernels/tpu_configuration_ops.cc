@@ -36,7 +36,7 @@ namespace {
 Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
                                 tpu::TpuMeshStateInterface** state) {
   if (!rmgr->Lookup(rmgr->default_container(),
-                    tpu::kTpuMeshCommonStateResourceName, state)
+                    tpu::kTpuMeshStateInterfaceResourceName, state)
            .ok()) {
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
@@ -96,16 +96,16 @@ void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
 
   auto* rmgr = GetTPUConfigResourceMgr();
   OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuMeshStateInterface>(
-                          rmgr, tpu::kTpuMeshCommonStateResourceName));
+                          rmgr, tpu::kTpuMeshStateInterfaceResourceName));
 
   tpu::ConfigApiFn()->ConfigureDistributedTpuOp_DoWorkFn(
       num_devices_per_host.size(), num_devices_per_host.data(),
       &host_config_output_size, &host_config_output, status);
 
   auto* tpu_mesh = tpu::TpuMeshStateInterface::Create();
-  OP_REQUIRES_OK(ctx,
-                 rmgr->Create(rmgr->default_container(),
-                              tpu::kTpuMeshCommonStateResourceName, tpu_mesh));
+  OP_REQUIRES_OK(
+      ctx, rmgr->Create(rmgr->default_container(),
+                        tpu::kTpuMeshStateInterfaceResourceName, tpu_mesh));
 
   Tensor* ctx_output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &ctx_output));
@@ -198,7 +198,7 @@ void ShutdownDistributedTpuOp::Compute(OpKernelContext* ctx) {
   TF_Status* status = TF_NewStatus();
   OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuMeshStateInterface>(
                           GetTPUConfigResourceMgr(),
-                          tpu::kTpuMeshCommonStateResourceName));
+                          tpu::kTpuMeshStateInterfaceResourceName));
   tpu::ConfigApiFn()->ShutdownDistributedTpuOp_DoWorkFn(status);
   OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
   TF_DeleteStatus(status);
