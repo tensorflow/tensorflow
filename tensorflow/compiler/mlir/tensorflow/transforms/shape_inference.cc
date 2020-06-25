@@ -114,14 +114,12 @@ Optional<SmallVector<Type, 4>> InferShapeForFunctionReturnType(FuncOp func) {
 
 // Returns if the shape inference pass supports an op outside the TF dialect.
 bool IsSupportedNonTFOp(Operation* op) {
-  return isa<ReturnOp>(op) || isa<tf_device::ReturnOp>(op) ||
-         isa<tf_executor::EnterOp>(op) || isa<tf_executor::ExitOp>(op) ||
-         isa<tf_executor::FetchOp>(op) || isa<tf_executor::GraphOp>(op) ||
-         isa<tf_executor::IslandOp>(op) || isa<tf_executor::LoopCondOp>(op) ||
-         isa<tf_executor::MergeOp>(op) ||
-         isa<tf_executor::NextIterationSinkOp>(op) ||
-         isa<tf_executor::SwitchNOp>(op) || isa<tf_executor::SwitchOp>(op) ||
-         isa<tf_executor::YieldOp>(op);
+  return isa<ReturnOp, tf_device::ReturnOp, tf_executor::EnterOp,
+             tf_executor::ExitOp, tf_executor::FetchOp, tf_executor::GraphOp,
+             tf_executor::IslandOp, tf_executor::LoopCondOp,
+             tf_executor::MergeOp, tf_executor::NextIterationSinkOp,
+             tf_executor::SwitchNOp, tf_executor::SwitchOp,
+             tf_executor::YieldOp>(op);
 }
 
 // Returns whether a cast back would need to be inserted, e.g., whether the

@@ -49,12 +49,10 @@ using mlir::OwningModuleRef;
 using stream_executor::port::StatusOr;
 
 bool IsControlFlowV1Op(Operation* op) {
-  return mlir::isa<mlir::tf_executor::SwitchOp>(op) ||
-         mlir::isa<mlir::tf_executor::MergeOp>(op) ||
-         mlir::isa<mlir::tf_executor::EnterOp>(op) ||
-         mlir::isa<mlir::tf_executor::ExitOp>(op) ||
-         mlir::isa<mlir::tf_executor::NextIterationSinkOp>(op) ||
-         mlir::isa<mlir::tf_executor::NextIterationSourceOp>(op);
+  return mlir::isa<mlir::tf_executor::SwitchOp, mlir::tf_executor::MergeOp,
+                   mlir::tf_executor::EnterOp, mlir::tf_executor::ExitOp,
+                   mlir::tf_executor::NextIterationSinkOp,
+                   mlir::tf_executor::NextIterationSourceOp>(op);
 }
 
 mlir::LogicalResult IsValidGraph(mlir::ModuleOp module) {

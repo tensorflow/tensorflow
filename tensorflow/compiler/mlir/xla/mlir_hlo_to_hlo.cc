@@ -1060,7 +1060,7 @@ LogicalResult ConvertToHloModule::Lower(
     return success();
   }
 
-  if (isa<xla_hlo::ReturnOp>(inst) || isa<mlir::ReturnOp>(inst)) {
+  if (isa<xla_hlo::ReturnOp, mlir::ReturnOp>(inst)) {
     // Construct the return value for the function. If there are multiple
     // values returned, then create a tuple, else return value directly.
     xla::XlaOp return_value;
