@@ -17,35 +17,38 @@ Write weights from  ckpt file as in original repo
 (https://github.com/tensorflow/tpu/tree/master/models/official/efficientnet)
 to h5 file for keras implementation of the models.
 
-Usage: 
+Usage:
 
 # use checkpoint efficientnet-b0/model.ckpt (can be downloaded from
-# https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/ckptsaug/efficientnet-b0.tar.gz)
+# https://storage.googleapis.com/cloud-tpu-checkpoints/
+#     efficientnet/ckptsaug/efficientnet-b0.tar.gz)
 # to update weight without top layers, saving to efficientnetb0_notop.h5
-python efficientnet_weight_update_util.py --model b0 --notop --ckpt efficientnet-b0/model.ckpt --o efficientnetb0_notop.h5
+python efficientnet_weight_update_util.py --model b0 --notop \
+    --ckpt efficientnet-b0/model.ckpt --o efficientnetb0_notop.h5
 
-# use checkpoint noisy_student_efficientnet-b3/model.ckpt (providing improved result for b3, can be downloaded from
-# https://storage.googleapis.com/cloud-tpu-checkpoints/efficientnet/noisystudent/noisy_student_efficientnet-b3.tar.gz)
+# use checkpoint noisy_student_efficientnet-b3/model.ckpt (providing
+# improved result for b3, can be downloaded from
+# https://storage.googleapis.com/cloud-tpu-checkpoints/
+#     efficientnet/noisystudent/noisy_student_efficientnet-b3.tar.gz)
 # to update weight with top layers, saving to efficientnetb3_new.h5
-python efficientnet_weight_update_util.py --model b3 --notop --ckpt noisy_student_efficientnet-b3/model.ckpt --o efficientnetb3_new.h5
+python efficientnet_weight_update_util.py --model b3 --notop \
+    --ckpt noisy_student_efficientnet-b3/model.ckpt --o efficientnetb3_new.h5
 
 """
 
-import tensorflow as tf
-import tensorflow.keras as keras
-import h5py
-import numpy as np
 import argparse
+
+import tensorflow as tf
 from tensorflow.keras.applications import efficientnet
 
 def write_ckpt_to_h5(path_h5, path_ckpt, keras_model, use_ema=True):
   """ Map the weights in checkpoint file (tf) to h5 file (keras)
-  
+
   Args:
     path_h5: str, path to output hdf5 file to write weights loaded
       from ckpt files.
     path_ckpt: str, path to the ckpt files (e.g. 'efficientnet-b0/model.ckpt')
-      that records efficientnet weights from original repo 
+      that records efficientnet weights from original repo
       https://github.com/tensorflow/tpu/tree/master/models/official/efficientnet
     keras_model: keras model, built from keras.applications efficientnet
       functions (e.g. EfficientNetB0)
@@ -62,7 +65,11 @@ def write_ckpt_to_h5(path_h5, path_ckpt, keras_model, use_ema=True):
 
   print('check variables match in each block')
   for keras_block, tf_block in zip(keras_blocks, tf_blocks):
-    check_match(keras_block, tf_block, keras_weight_names, tf_weight_names, model_name_tf)
+    check_match(keras_block,
+                tf_block,
+                keras_weight_names,
+                tf_weight_names,
+                model_name_tf)
     print(f'{keras_block} and {tf_block} match.')
 
   block_mapping = {x[0]: x[1] for x in zip(keras_blocks, tf_blocks)}
@@ -73,11 +80,18 @@ def write_ckpt_to_h5(path_h5, path_ckpt, keras_model, use_ema=True):
       # example: 'block1a_dwconv/depthwise_kernel:0' -> 'block1a'
       keras_block = w.name.split('/')[0].split('_')[0]
       tf_block = block_mapping[keras_block]
-      tf_name = keras_name_to_tf_name_block(w.name, keras_block=keras_block, tf_block=tf_block, use_ema=use_ema, model_name_tf=model_name_tf)
+      tf_name = keras_name_to_tf_name_block(w.name,
+                                            keras_block=keras_block,
+                                            tf_block=tf_block,
+                                            use_ema=use_ema,
+                                            model_name_tf=model_name_tf)
     elif any([x in w.name for x in ['stem', 'top', 'predictions', 'probs']]):
-      tf_name = keras_name_to_tf_name_stem_top(w.name, use_ema=use_ema, model_name_tf=model_name_tf)
+      tf_name = keras_name_to_tf_name_stem_top(w.name,
+                                               use_ema=use_ema,
+                                               model_name_tf=model_name_tf)
     elif 'normalization' in w.name:
-      print(f'skipping variable {w.name}: normalization is a layer in keras implementation, but preprocessing in TF implementation.')
+      print(f'skipping variable {w.name}: normalization is a layer'
+            'in keras implementation, but preprocessing in TF implementation.')
       continue
     else:
       raise ValueError(f'{w.name} failed to parse.')
@@ -87,9 +101,10 @@ def write_ckpt_to_h5(path_h5, path_ckpt, keras_model, use_ema=True):
       if (w.value().numpy() != w_tf).any():
         w.assign(w_tf)
         changed_weights += 1
-    except Exception as e:
+    except ValueError as e:
       if any([x in w.name for x in ['top', 'predictions', 'probs']]):
-        warnings.warn(f'Fail to load top layer variable {w.name} from {tf_name} because of {e}.')
+        warnings.warn(f'Fail to load top layer variable {w.name}'
+                      f'from {tf_name} because of {e}.')
       else:
         raise ValueError(f'Fail to load {w.name} from {tf_name}')
   print(f'{changed_weights}/{len(keras_model.weights)} weights updated')
@@ -121,7 +136,7 @@ def get_variable_names_from_ckpt(path_ckpt, use_ema=True):
 def get_tf_blocks(tf_weight_names):
   """Extract the block names from list of full weight names"""
   # Example: 'efficientnet-b0/blocks_0/conv2d/kernel' -> 'blocks_0'
-  tf_blocks = set([x.split('/')[1] for x in tf_weight_names if 'block' in x])
+  tf_blocks = {x.split('/')[1] for x in tf_weight_names if 'block' in x}
   # sort by number
   tf_blocks = sorted(tf_blocks, key=lambda x: int(x.split('_')[1]))
   return tf_blocks
@@ -130,19 +145,21 @@ def get_tf_blocks(tf_weight_names):
 def get_keras_blocks(keras_weight_names):
   """Extract the block names from list of full weight names"""
   # example: 'block1a_dwconv/depthwise_kernel:0' -> 'block1a'
-  keras_blocks = set([x.split('_')[0] for x in keras_weight_names if 'block' in x])
+  keras_blocks = {x.split('_')[0] for x in keras_weight_names if 'block' in x}
   return sorted(keras_blocks)
 
 
-def keras_name_to_tf_name_stem_top(keras_name, use_ema=True, model_name_tf='efficientnet-b0'):
+def keras_name_to_tf_name_stem_top(keras_name,
+                                   use_ema=True,
+                                   model_name_tf='efficientnet-b0'):
   """ map name in h5 to ckpt that is in stem or top (head)
-  
-  we map name keras_name that points to a weight in h5 file 
-  to a name of weight in ckpt file. 
-  
+
+  we map name keras_name that points to a weight in h5 file
+  to a name of weight in ckpt file.
+
   Args:
     keras_name: str, the name of weight in the h5 file of keras implementation
-    use_ema: Bool, use the ExponentialMovingAverage resuolt in ckpt or not 
+    use_ema: Bool, use the ExponentialMovingAverage resuolt in ckpt or not
     model_name_tf: str, the name of model in ckpt.
 
   Returns:
@@ -167,28 +184,37 @@ def keras_name_to_tf_name_stem_top(keras_name, use_ema=True, model_name_tf='effi
 
   # stem batch normalization
   for bn_weights in ['beta', 'gamma', 'moving_mean', 'moving_variance']:
-    stem_top_dict[f'stem_bn/{bn_weights}:0'] = f'{model_name_tf}/stem/tpu_batch_normalization/{bn_weights}{ema}'
+    f_string = '{}/stem/tpu_batch_normalization/{}{}'
+    stem_top_dict[f'stem_bn/{bn_weights}:0'] = f_string.format(model_name_tf,
+                                                               bn_weights,
+                                                               ema)
   # top / head batch normalization
   for bn_weights in ['beta', 'gamma', 'moving_mean', 'moving_variance']:
-    stem_top_dict[f'top_bn/{bn_weights}:0'] = f'{model_name_tf}/head/tpu_batch_normalization/{bn_weights}{ema}'
+    f_string = '{}/head/tpu_batch_normalization/{}{}'
+    stem_top_dict[f'top_bn/{bn_weights}:0'] = f_string.format(model_name_tf,
+                                                              bn_weights,
+                                                              ema)
 
   if keras_name in stem_top_dict:
     return stem_top_dict[keras_name]
-  else:
-    raise KeyError(f'{keras_name} from h5 file cannot be parsed')
+  raise KeyError(f'{keras_name} from h5 file cannot be parsed')
 
 
-def keras_name_to_tf_name_block(keras_name, keras_block='block1a', tf_block='blocks_0', use_ema=True, model_name_tf='efficientnet-b0'):
+def keras_name_to_tf_name_block(keras_name,
+                                keras_block='block1a',
+                                tf_block='blocks_0',
+                                use_ema=True,
+                                model_name_tf='efficientnet-b0'):
   """ map name in h5 to ckpt that belongs to a block
-  
-  we map name keras_name that points to a weight in h5 file 
-  to a name of weight in ckpt file. 
-  
+
+  we map name keras_name that points to a weight in h5 file
+  to a name of weight in ckpt file.
+
   Args:
     keras_name: str, the name of weight in the h5 file of keras implementation
     keras_block: str, the block name for keras implementation (e.g. 'block1a')
     tf_block: str, the block name for tf implementation (e.g. 'blocks_0')
-    use_ema: Bool, use the ExponentialMovingAverage resuolt in ckpt or not 
+    use_ema: Bool, use the ExponentialMovingAverage resuolt in ckpt or not
     model_name_tf: str, the name of model in ckpt.
 
   Returns:
@@ -202,7 +228,7 @@ def keras_name_to_tf_name_block(keras_name, keras_block='block1a', tf_block='blo
     raise ValueError(f'block name {keras_block} not found in {keras_name}')
 
   # all blocks in the first group will not have expand conv and bn
-  is_first_blocks = (keras_block[5]=='1')
+  is_first_blocks = (keras_block[5] == '1')
 
   tf_name = [model_name_tf, tf_block]
 
@@ -224,8 +250,8 @@ def keras_name_to_tf_name_block(keras_name, keras_block='block1a', tf_block='blo
     elif 'expand_conv' in keras_name:
       tf_name.append('conv2d')
       tf_name.append('kernel')
-      
-  # squeeze expansion layers 
+
+  # squeeze expansion layers
   if '_se_' in keras_name:
     if 'reduce' in keras_name:
       tf_name.append('se/conv2d')
@@ -237,7 +263,7 @@ def keras_name_to_tf_name_block(keras_name, keras_block='block1a', tf_block='blo
     elif 'bias' in keras_name:
       tf_name.append('bias')
 
-  # batch normalization layers 
+  # batch normalization layers
   if 'bn' in keras_name:
     if is_first_blocks:
       if 'project' in keras_name:
@@ -260,25 +286,32 @@ def keras_name_to_tf_name_block(keras_name, keras_block='block1a', tf_block='blo
   return '/'.join(tf_name)
 
 
-def check_match(keras_block, tf_block, keras_weight_names, tf_weight_names, model_name_tf):
+def check_match(keras_block,
+                tf_block,
+                keras_weight_names,
+                tf_weight_names,
+                model_name_tf):
   """ Check if the weights in h5 and ckpt match
-  
-  we match each name from keras_weight_names that is in keras_block 
+
+  we match each name from keras_weight_names that is in keras_block
   and check if there is 1-1 correspondence to names from tf_weight_names
   that is in tf_block
-  
+
   Args:
     keras_block: str, the block name for keras implementation (e.g. 'block1a')
     tf_block: str, the block name for tf implementation (e.g. 'blocks_0')
-    keras_weight_names: list of str, each string is a name for weights in keras implementation
-    tf_weight_names: list of str, each string is a name for weights in tf implementation
+    keras_weight_names: list of str, weight names in keras implementation
+    tf_weight_names: list of str, weight names in tf implementation
   """
   names_from_keras = set()
   for x in keras_weight_names:
     if keras_block in x:
-      y = keras_name_to_tf_name_block(x, keras_block=keras_block, tf_block=tf_block, model_name_tf=model_name_tf)
+      y = keras_name_to_tf_name_block(x,
+                                      keras_block=keras_block,
+                                      tf_block=tf_block,
+                                      model_name_tf=model_name_tf)
       names_from_keras.add(y)
-  
+
   names_from_tf = set()
   for x in tf_weight_names:
     if tf_block in x and x.split('/')[1].endswith(tf_block):
@@ -286,11 +319,13 @@ def check_match(keras_block, tf_block, keras_weight_names, tf_weight_names, mode
 
   names_missing = names_from_keras - names_from_tf
   if len(names_missing) > 0:
-    raise ValueError(f'{len(names_missing)} variables not found in checkpoint file: {names_missing}')
+    raise ValueError(f'{len(names_missing)} variables not found'
+                     f'in checkpoint file: {names_missing}')
 
   names_unused = names_from_tf - names_from_keras
   if len(names_unused) > 0:
-    warnings.warn(f'{len(names_unused)} variables from checkpoint file are not used: {names_unused}')
+    warnings.warn(f'{len(names_unused)} variables from checkpoint file'
+                  f'are not used: {names_unused}')
 
 
 if __name__ == '__main__':
@@ -304,12 +339,27 @@ if __name__ == '__main__':
       'b6': efficientnet.EfficientNetB6,
       'b7': efficientnet.EfficientNetB7
   }
-  parser = argparse.ArgumentParser(description="write weights from checkpoint to h5")
-  parser.add_argument('--model', required=True, type=str, help="name of efficient model", choices=arg_to_model.keys())
-  parser.add_argument('--notop',  action="store_true", help="do not include top layers", default=False)
-  parser.add_argument('--ckpt', required=True, type=str, help="checkpoint path")
-  parser.add_argument('--output', '-o', required=True, type=str, help="output (h5) file path")
-  args = parser.parse_args()
+
+  p = argparse.ArgumentParser(description="write weights from checkpoint to h5")
+  p.add_argument('--model',
+                 required=True,
+                 type=str,
+                 help="name of efficient model",
+                 choices=arg_to_model.keys())
+  p.add_argument('--notop',
+                 action="store_true",
+                 help="do not include top layers",
+                 default=False)
+  p.add_argument('--ckpt',
+                 required=True,
+                 type=str,
+                 help="checkpoint path")
+  p.add_argument('--output',
+                 '-o',
+                 required=True,
+                 type=str,
+                 help="output (h5) file path")
+  args = p.parse_args()
 
   include_top = not args.notop
 
