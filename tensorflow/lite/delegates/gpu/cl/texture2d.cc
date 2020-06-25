@@ -84,7 +84,7 @@ absl::Status Texture2DDescriptor::PerformReadSelector(
     const std::vector<std::string>& args, std::string* result) const {
   if (args.size() != 2) {
     return absl::NotFoundError(
-        absl::StrCat("Texture2DDescriptor Read require one argument, but ",
+        absl::StrCat("Texture2DDescriptor Read require two arguments, but ",
                      args.size(), " was passed"));
   }
   const std::string read =

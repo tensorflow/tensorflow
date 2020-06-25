@@ -54,6 +54,11 @@ struct GPUImageBufferDescriptor {
   cl_mem memory;
 };
 
+struct GPUCustomMemoryDescriptor {
+  std::string type_name;
+  cl_mem memory;
+};
+
 enum class MemoryType { GLOBAL, CONSTANT, LOCAL };
 
 std::string MemoryTypeToCLType(MemoryType type);
@@ -75,6 +80,8 @@ struct GPUResources {
   std::vector<std::pair<std::string, GPUImage2DArrayDescriptor>> image2d_arrays;
   std::vector<std::pair<std::string, GPUImage3DDescriptor>> images3d;
   std::vector<std::pair<std::string, GPUImageBufferDescriptor>> image_buffers;
+  std::vector<std::pair<std::string, GPUCustomMemoryDescriptor>>
+      custom_memories;
 
   std::vector<std::string> GetNames() const {
     std::vector<std::string> names = ints;
@@ -94,6 +101,9 @@ struct GPUResources {
     for (const auto& obj : image_buffers) {
       names.push_back(obj.first);
     }
+    for (const auto& obj : custom_memories) {
+      names.push_back(obj.first);
+    }
     return names;
   }
 };
@@ -106,6 +116,7 @@ struct GPUResourcesWithValue {
   std::vector<std::pair<std::string, cl_mem>> image2d_arrays;
   std::vector<std::pair<std::string, cl_mem>> images3d;
   std::vector<std::pair<std::string, cl_mem>> image_buffers;
+  std::vector<std::pair<std::string, cl_mem>> custom_memories;
 };
 
 class GPUObjectDescriptor {

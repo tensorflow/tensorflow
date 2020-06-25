@@ -162,6 +162,7 @@ Arguments::Arguments(Arguments&& args)
       image2d_arrays_(std::move(args.image2d_arrays_)),
       images3d_(std::move(args.images3d_)),
       image_buffers_(std::move(args.image_buffers_)),
+      custom_memories_(std::move(args.custom_memories_)),
       object_refs_(std::move(args.object_refs_)),
       objects_(std::move(args.objects_)) {}
 Arguments& Arguments::operator=(Arguments&& args) {
@@ -177,6 +178,7 @@ Arguments& Arguments::operator=(Arguments&& args) {
     image2d_arrays_ = std::move(args.image2d_arrays_);
     images3d_ = std::move(args.images3d_);
     image_buffers_ = std::move(args.image_buffers_);
+    custom_memories_ = std::move(args.custom_memories_);
     object_refs_ = std::move(args.object_refs_);
     objects_ = std::move(args.objects_);
   }
@@ -216,6 +218,11 @@ void Arguments::AddImageBuffer(const std::string& name,
   image_buffers_[name] = desc;
 }
 
+void Arguments::AddCustomMemory(const std::string& name,
+                                const GPUCustomMemoryDescriptor& desc) {
+  custom_memories_[name] = desc;
+}
+
 void Arguments::AddObjectRef(const std::string& name, AccessType access_type,
                              GPUObjectDescriptorPtr&& descriptor_ptr) {
   object_refs_[name] = {access_type, std::move(descriptor_ptr)};
@@ -249,6 +256,9 @@ void Arguments::AddGPUResources(const std::string& name,
   }
   for (const auto& r : resources.image_buffers) {
     AddImageBuffer(absl::StrCat(name, "_", r.first), r.second);
+  }
+  for (const auto& r : resources.custom_memories) {
+    AddCustomMemory(absl::StrCat(name, "_", r.first), r.second);
   }
 }
 
@@ -346,6 +356,17 @@ absl::Status Arguments::SetImageBuffer(const std::string& name, cl_mem memory) {
   return absl::OkStatus();
 }
 
+absl::Status Arguments::SetCustomMemory(const std::string& name,
+                                        cl_mem memory) {
+  auto it = custom_memories_.find(name);
+  if (it == custom_memories_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No custom memory argument with name - ", name));
+  }
+  it->second.memory = memory;
+  return absl::OkStatus();
+}
+
 absl::Status Arguments::SetObjectRef(const std::string& name,
                                      const GPUObject* object) {
   auto it = object_refs_.find(name);
@@ -379,6 +400,10 @@ absl::Status Arguments::SetGPUResources(
   }
   for (const auto& r : resources.image_buffers) {
     RETURN_IF_ERROR(SetImageBuffer(absl::StrCat(name, "_", r.first), r.second));
+  }
+  for (const auto& r : resources.custom_memories) {
+    RETURN_IF_ERROR(
+        SetCustomMemory(absl::StrCat(name, "_", r.first), r.second));
   }
   return absl::OkStatus();
 }
@@ -440,6 +465,9 @@ absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
   for (const auto& v : args.image_buffers_) {
     AddImageBuffer(RenameArg(object_names, postfix, v.first), v.second);
   }
+  for (const auto& v : args.custom_memories_) {
+    AddCustomMemory(RenameArg(object_names, postfix, v.first), v.second);
+  }
   return absl::OkStatus();
 }
 
@@ -487,6 +515,9 @@ std::string Arguments::GetListOfArgs() {
     AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
                                 " image3d_t ", t.first),
                    &result);
+  }
+  for (auto& t : custom_memories_) {
+    AppendArgument(absl::StrCat(t.second.type_name, " ", t.first), &result);
   }
   for (int i = 0; i < shared_int4s_data_.size() / 4; ++i) {
     AppendArgument(absl::StrCat("int4 shared_int4_", i), &result);
@@ -542,6 +573,16 @@ absl::Status Arguments::Bind(cl_kernel kernel, int offset) {
     offset++;
   }
   for (auto& t : images3d_) {
+    const int error_code =
+        clSetKernelArg(kernel, offset, sizeof(cl_mem), &t.second.memory);
+    if (error_code != CL_SUCCESS) {
+      return absl::UnknownError(absl::StrCat(
+          "Failed to set kernel arguments - ", CLErrorCodeToString(error_code),
+          "(at index - ", offset, ")"));
+    }
+    offset++;
+  }
+  for (auto& t : custom_memories_) {
     const int error_code =
         clSetKernelArg(kernel, offset, sizeof(cl_mem), &t.second.memory);
     if (error_code != CL_SUCCESS) {
