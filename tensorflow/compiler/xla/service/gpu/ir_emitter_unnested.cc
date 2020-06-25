@@ -377,8 +377,7 @@ Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
   int unroll_factor = 1;
   string ir_name = IrName(pad_to_static);
   auto kernel_thunk = BuildKernelThunk(pad_to_static,
-                                       /*implements_whole_instruction=*/true,
-                                       /*unroll_factor=*/unroll_factor);
+                                       /*implements_whole_instruction=*/true);
   // pseudo code for padToStatic on a 2d array
   //   int* source_array = input[0];
   //   int* dest_array = output[0];
@@ -487,8 +486,7 @@ Status IrEmitterUnnested::HandleSliceToDynamic(
   int unroll_factor = 1;
   string ir_name = IrName(slice_to_dynamic);
   auto kernel_thunk = BuildKernelThunk(slice_to_dynamic,
-                                       /*implements_whole_instruction=*/true,
-                                       /*unroll_factor=*/unroll_factor);
+                                       /*implements_whole_instruction=*/true);
 
   std::vector<llvm::Value*> dynamic_dims;
   const Shape& input_shape = slice_to_dynamic->operand(0)->shape();
@@ -619,9 +617,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         // emit it in a separate kernel. Treat it like a loop fusion, writing to
         // the output buffer.
         {
-          int unroll_factor = ComputeMaxUnrollFactor(fusion);
-          thunks.push_back(BuildKernelThunk(
-              fusion, /*implements_whole_instruction=*/false, unroll_factor));
+          thunks.push_back(
+              BuildKernelThunk(fusion, /*implements_whole_instruction=*/false));
           GpuElementalIrEmitter operand_elemental_emitter(
               hlo_module_config_, ir_emitter_context_->llvm_module(), &b_,
               GetNestedComputer());
@@ -633,7 +630,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
 
           TF_RETURN_IF_ERROR(EmitTargetElementLoopInThunk(
               *fusion, operand_fused_emitter.GetGenerator(root->operand(0)),
-              static_cast<KernelThunk*>(thunks.back().get())));
+              static_cast<KernelThunk*>(thunks.back().get()),
+              ComputeMaxUnrollFactor(fusion)));
         }
 
         // Now build the actual scatter, reading and writing to the freshly
@@ -1673,8 +1671,7 @@ GetHloBufferSlices(const HloInstruction* hlo,
 }
 
 std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
-    const HloInstruction* inst, bool implements_whole_instruction,
-    int unroll_factor) {
+    const HloInstruction* inst, bool implements_whole_instruction) {
   const BufferAssignment& buffer_assn =
       ir_emitter_context_->buffer_assignment();
 
@@ -1776,7 +1773,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
 
   return absl::make_unique<KernelThunk>(
       non_constant_buffers, std::string(kernel->getName()),
-      implements_whole_instruction ? inst : nullptr, unroll_factor);
+      implements_whole_instruction ? inst : nullptr);
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
@@ -2048,8 +2045,8 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
 
 Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
     const HloInstruction& hlo,
-    const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk) {
-  int unroll_factor = thunk->unroll_factor();
+    const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk,
+    int unroll_factor) {
   VLOG(3) << bindings_.ToString();
 
   bool multi_output = hlo.shape().IsTuple();
@@ -2144,10 +2141,10 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
     unroll_factor = ComputeMaxUnrollFactor(&hlo);
   }
 
-  std::unique_ptr<KernelThunk> kernel_thunk = BuildKernelThunk(
-      &hlo, /*implements_whole_instruction=*/true, unroll_factor);
-  Status emit_status =
-      EmitTargetElementLoopInThunk(hlo, body_emitter, kernel_thunk.get());
+  std::unique_ptr<KernelThunk> kernel_thunk =
+      BuildKernelThunk(&hlo, /*implements_whole_instruction=*/true);
+  Status emit_status = EmitTargetElementLoopInThunk(
+      hlo, body_emitter, kernel_thunk.get(), unroll_factor);
   thunk_sequence_->emplace_back(std::move(kernel_thunk));
 
   return emit_status;
@@ -3715,8 +3712,8 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
 Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
     HloInstruction* unnested_hlo) {
   constexpr int unroll_factor = 1;
-  std::unique_ptr<KernelThunk> kernel_thunk = BuildKernelThunk(
-      unnested_hlo, /*implements_whole_instruction=*/true, unroll_factor);
+  std::unique_ptr<KernelThunk> kernel_thunk =
+      BuildKernelThunk(unnested_hlo, /*implements_whole_instruction=*/true);
 
   TF_ASSIGN_OR_RETURN(Shape element_shape,
                       GetConsistentInputShapeForRootSlices(*unnested_hlo));
