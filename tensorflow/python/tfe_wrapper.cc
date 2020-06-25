@@ -1158,7 +1158,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       status->status = tensorflow::errors::InvalidArgument(
           "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
           "Note that a DLPack tensor may be consumed at most once.",
-          absl::string_view(pycapsule.name()));
+          pycapsule.name());
       tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     }
 
@@ -1169,7 +1169,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
     PyCapsule_SetName(pycapsule.ptr(), "used_dltensor");
     PyCapsule_SetDestructor(pycapsule.ptr(), nullptr);
-    return py::handle(EagerTensorFromHandle(thandle));
+    PyObject* pyhandle = EagerTensorFromHandle(thandle, true);
+    return tensorflow::PyoOrThrow(pyhandle);
   });
 
   m.def("TFE_Py_RegisterCustomDevice", [](const py::handle& context,
