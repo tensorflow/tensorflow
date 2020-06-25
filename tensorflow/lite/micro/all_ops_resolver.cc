@@ -42,6 +42,7 @@ AllOpsResolver::AllOpsResolver() {
   AddFullyConnected();
   AddGreater();
   AddGreaterEqual();
+  AddHardSwish();
   AddL2Normalization();
   AddLess();
   AddLessEqual();
