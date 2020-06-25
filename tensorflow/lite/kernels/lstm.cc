@@ -60,6 +60,21 @@ struct OpData {
 namespace full {
 namespace {
 
+// Named temporary tensors.
+enum HybridTemporaryTensor {
+  kScratchBuffer = 0,
+  kInputQuantized = 1,
+  kOutputStateQuantized = 2,
+  kCellStateQuantized = 3,
+  kScalingFactors = 4,
+  kProductScalingFactors = 5,
+  kRecoveredCellWeights = 6,
+  kAccumScratch = 7,
+  kZeroPoints = 8,
+  kRowSums = 9,
+  kNumHybridTemporaryTensors = 10,
+};
+
 TfLiteStatus PopulateQuantizedLstmParams8x8_16(
     TfLiteContext* context, TfLiteNode* node,
     lstm_eval::IntegerLstmParameter* integer_lstm_param) {
@@ -280,14 +295,14 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_16(
 
   if (use_peephole) {
     if (!use_cifg) {
-      effective_cell_to_input_scale = std::pow(2, cell_scale) *
+      effective_cell_to_input_scale = std::pow(2, cell_scale) *  // NOLINT
                                       cell_to_input_weight_scale /
                                       intermediate_scale[0];
     }
-    effective_cell_to_forget_scale = std::pow(2, cell_scale) *
+    effective_cell_to_forget_scale = std::pow(2, cell_scale) *  // NOLINT
                                      cell_to_forget_weight_scale /
                                      intermediate_scale[1];
-    effective_cell_to_output_scale = std::pow(2, cell_scale) *
+    effective_cell_to_output_scale = std::pow(2, cell_scale) *  // NOLINT
                                      cell_to_output_weight_scale /
                                      intermediate_scale[3];
   }
@@ -724,7 +739,8 @@ TfLiteStatus PopulateQuantizedLstmParams8x8_8(
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* op_data = new OpData();
   op_data->kernel_type = kTfLiteLSTMFullKernel;
-  context->AddTensors(context, /*tensors_to_add=*/10,
+  // TODO(b/159066113): maybe just add the minimum required temp tensors?
+  context->AddTensors(context, kNumHybridTemporaryTensors,
                       &op_data->scratch_tensor_index);
   return op_data;
 }
@@ -1233,7 +1249,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
-    node->temporaries = TfLiteIntArrayCreate(10);
+    node->temporaries = TfLiteIntArrayCreate(kNumHybridTemporaryTensors);
   } else if (is_integer) {
     if (is_8x8_16) {
       node->temporaries = TfLiteIntArrayCreate(6);
@@ -1248,8 +1264,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // TODO(b/152066492): Create a is_float boolean and reorganize the temporary
   // buffer allocation logic.
   if (!is_integer) {
-    node->temporaries->data[0] = op_data->scratch_tensor_index;
-    TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
+    node->temporaries->data[kScratchBuffer] =
+        op_data->scratch_tensor_index + kScratchBuffer;
+    TfLiteTensor* scratch_buffer = GetTemporary(context, node, kScratchBuffer);
     scratch_buffer->type = input->type;
     scratch_buffer->allocation_type = kTfLiteArenaRw;
 
@@ -1273,8 +1290,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     op_data->compute_row_sums = true;
     // Allocate temporary tensors to store quantized values of input,
     // output_state and cell_state tensors.
-    node->temporaries->data[1] = op_data->scratch_tensor_index + 1;
-    TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/1);
+    node->temporaries->data[kInputQuantized] =
+        op_data->scratch_tensor_index + kInputQuantized;
+    TfLiteTensor* input_quantized =
+        GetTemporary(context, node, kInputQuantized);
     input_quantized->type = input_to_output_weights->type;
     input_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(input_quantized->dims, input->dims)) {
@@ -1282,9 +1301,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
                                                        input_quantized_size));
     }
-    node->temporaries->data[2] = op_data->scratch_tensor_index + 2;
+    node->temporaries->data[kOutputStateQuantized] =
+        op_data->scratch_tensor_index + kOutputStateQuantized;
     TfLiteTensor* output_state_quantized =
-        GetTemporary(context, node, /*index=*/2);
+        GetTemporary(context, node, kOutputStateQuantized);
     output_state_quantized->type = input_to_output_weights->type;
     output_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(output_state_quantized->dims,
@@ -1295,9 +1315,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                         context->ResizeTensor(context, output_state_quantized,
                                               output_state_quantized_size));
     }
-    node->temporaries->data[3] = op_data->scratch_tensor_index + 3;
+    node->temporaries->data[kCellStateQuantized] =
+        op_data->scratch_tensor_index + kCellStateQuantized;
     TfLiteTensor* cell_state_quantized =
-        GetTemporary(context, node, /*index=*/3);
+        GetTemporary(context, node, kCellStateQuantized);
     cell_state_quantized->type = input_to_output_weights->type;
     cell_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(cell_state_quantized->dims, cell_state->dims)) {
@@ -1312,8 +1333,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // a vector once (which produces the scaling factors) and multiply it with
     // different matrices (which requires multiplying the scaling factors with
     // the scaling factor of the matrix).
-    node->temporaries->data[4] = op_data->scratch_tensor_index + 4;
-    TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/4);
+    node->temporaries->data[kScalingFactors] =
+        op_data->scratch_tensor_index + kScalingFactors;
+    TfLiteTensor* scaling_factors =
+        GetTemporary(context, node, kScalingFactors);
     scaling_factors->type = kTfLiteFloat32;
     scaling_factors->allocation_type = kTfLiteArenaRw;
     int scaling_dims[1] = {n_batch};
@@ -1323,9 +1346,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
     }
-    node->temporaries->data[5] = op_data->scratch_tensor_index + 5;
+    node->temporaries->data[kProductScalingFactors] =
+        op_data->scratch_tensor_index + kProductScalingFactors;
     TfLiteTensor* prod_scaling_factors =
-        GetTemporary(context, node, /*index=*/5);
+        GetTemporary(context, node, kProductScalingFactors);
     prod_scaling_factors->type = kTfLiteFloat32;
     prod_scaling_factors->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqualsArray(prod_scaling_factors->dims, 1,
@@ -1339,9 +1363,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
     // Allocate a temporary tensor to store the recovered cell weights. Since
     // this is used for diagonal matrices, only need to store n_cell values.
-    node->temporaries->data[6] = op_data->scratch_tensor_index + 6;
+    node->temporaries->data[kRecoveredCellWeights] =
+        op_data->scratch_tensor_index + kRecoveredCellWeights;
     TfLiteTensor* recovered_cell_weights =
-        GetTemporary(context, node, /*index=*/6);
+        GetTemporary(context, node, kRecoveredCellWeights);
     recovered_cell_weights->type = kTfLiteFloat32;
     recovered_cell_weights->allocation_type = kTfLiteArenaRw;
     int recovered_cell_dims[1] = {n_cell};
@@ -1355,8 +1380,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
     // Allocate a temporary tensor to store accumulate values for matrix
     // multiplication before multiplication by scaling factor
-    node->temporaries->data[7] = op_data->scratch_tensor_index + 7;
-    TfLiteTensor* accum_scratch = GetTemporary(context, node, /*index=*/7);
+    node->temporaries->data[kAccumScratch] =
+        op_data->scratch_tensor_index + kAccumScratch;
+    TfLiteTensor* accum_scratch = GetTemporary(context, node, kAccumScratch);
     accum_scratch->type = kTfLiteInt32;
     accum_scratch->allocation_type = kTfLiteArenaRw;
     int accum_scratch_dims[2] = {n_cell, n_batch};
@@ -1369,8 +1395,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
           context, context->ResizeTensor(context, accum_scratch, accum_size));
     }
 
-    node->temporaries->data[8] = op_data->scratch_tensor_index + 8;
-    TfLiteTensor* zero_points = GetTemporary(context, node, /*index=*/8);
+    node->temporaries->data[kZeroPoints] =
+        op_data->scratch_tensor_index + kZeroPoints;
+    TfLiteTensor* zero_points = GetTemporary(context, node, kZeroPoints);
     zero_points->type = kTfLiteFloat32;
     zero_points->allocation_type = kTfLiteArenaRw;
     int zero_points_dims[1] = {n_batch};
@@ -1381,7 +1408,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                                        zero_points_size));
     }
 
-    node->temporaries->data[9] = op_data->scratch_tensor_index + 9;
+    node->temporaries->data[kRowSums] =
+        op_data->scratch_tensor_index + kRowSums;
     const TfLiteTensor* input_to_input_weights =
         GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
     const bool use_cifg = (input_to_input_weights == nullptr);
@@ -1392,7 +1420,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       row_sums_rows += ceil(static_cast<float>(n_output) / n_cell);
     }
 
-    TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/9);
+    TfLiteTensor* row_sums = GetTemporary(context, node, kRowSums);
     row_sums->type = kTfLiteInt32;
     row_sums->allocation_type = kTfLiteArenaRwPersistent;
     const int row_sums_dims[2] = {row_sums_rows, n_cell};
@@ -1422,7 +1450,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         node->temporaries->data[scratch_index] =
             op_data->scratch_tensor_index + scratch_index;
         TfLiteTensor* scratch_tensor =
-            GetTemporary(context, node, /*index=*/scratch_index);
+            GetTemporary(context, node, scratch_index);
         scratch_tensor->type = kTfLiteInt16;
         if (scratch_index == 4) {
           scratch_tensor->type = kTfLiteInt8;
@@ -1459,7 +1487,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         node->temporaries->data[scratch_index] =
             op_data->scratch_tensor_index + scratch_index;
         TfLiteTensor* scratch_tensor =
-            GetTemporary(context, node, /*index=*/scratch_index);
+            GetTemporary(context, node, scratch_index);
         if (scratch_index == 0 || scratch_index == 1) {
           scratch_tensor->type = kTfLiteInt8;
         } else {
@@ -1549,7 +1577,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   switch (input_to_output_weights->type) {
     case kTfLiteFloat32: {
       // Index the scratch buffers pointers to the global scratch buffer.
-      TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
+      TfLiteTensor* scratch_buffer = GetTemporary(context, node, 0);
       return lstm_eval::EvalFloat(
           input, input_to_input_weights, input_to_forget_weights,
           input_to_cell_weights, input_to_output_weights,
@@ -1574,24 +1602,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8: {
       const bool is_hybrid = (input->type == kTfLiteFloat32);
       if (is_hybrid) {
-        // Index the scratch buffers pointers to the global scratch buffer.
-        TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
-        TfLiteTensor* input_quantized =
-            GetTemporary(context, node, /*index=*/1);
-        TfLiteTensor* output_state_quantized =
-            GetTemporary(context, node, /*index=*/2);
-        TfLiteTensor* cell_state_quantized =
-            GetTemporary(context, node, /*index=*/3);
-        TfLiteTensor* scaling_factors =
-            GetTemporary(context, node, /*index=*/4);
-        TfLiteTensor* prod_scaling_factors =
-            GetTemporary(context, node, /*index=*/5);
-        TfLiteTensor* recovered_cell_weights =
-            GetTemporary(context, node, /*index=*/6);
-        TfLiteTensor* output_scratch_buffer =
-            GetTemporary(context, node, /*index=*/7);
-        TfLiteTensor* zero_points = GetTemporary(context, node, /*index=*/8);
-        TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/9);
+        TfLiteTensor* row_sums = GetTemporary(context, node, kRowSums);
         const int row_sums_size = row_sums->dims->data[0];
         return lstm_eval::EvalHybrid(
             input, input_to_input_weights, input_to_forget_weights,
@@ -1601,32 +1612,35 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             cell_to_input_weights, cell_to_forget_weights,
             cell_to_output_weights, input_layer_norm_coefficients,
             forget_layer_norm_coefficients, cell_layer_norm_coefficients,
-            output_layer_norm_coefficients,
-            /*aux_input=*/nullptr,
+            output_layer_norm_coefficients, /*aux_input=*/nullptr,
             /*aux_input_to_input_weights=*/nullptr,
             /*aux_input_to_forget_weights=*/nullptr,
             /*aux_input_to_cell_weights=*/nullptr,
             /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
             forget_gate_bias, cell_gate_bias, output_gate_bias,
             projection_weights, projection_bias, params,
-            /*forward_sequence=*/true,
-            /*time_major=*/true, /*output_offset=*/0, scratch_buffer,
-            scaling_factors, prod_scaling_factors, recovered_cell_weights,
-            input_quantized,
-            /*aux_input_quantized=*/nullptr, output_state_quantized,
-            cell_state_quantized, output_state, cell_state,
-            output_scratch_buffer, output, zero_points, row_sums, row_sums_size,
+            /*forward_sequence=*/true, /*time_major=*/true, /*output_offset=*/0,
+            GetTemporary(context, node, kScratchBuffer),
+            GetTemporary(context, node, kScalingFactors),
+            GetTemporary(context, node, kProductScalingFactors),
+            GetTemporary(context, node, kRecoveredCellWeights),
+            GetTemporary(context, node, kInputQuantized),
+            /*aux_input_quantized=*/nullptr,
+            GetTemporary(context, node, kOutputStateQuantized),
+            GetTemporary(context, node, kCellStateQuantized), output_state,
+            cell_state, GetTemporary(context, node, kAccumScratch), output,
+            GetTemporary(context, node, kZeroPoints), row_sums, row_sums_size,
             &op_data->compute_row_sums,
             CpuBackendContext::GetFromContext(context));
       } else {
         const int num_intermediate_tensors = node->intermediates->size;
         if (num_intermediate_tensors == 5) {
-          TfLiteTensor* scratch0 = GetTemporary(context, node, /*index=*/0);
-          TfLiteTensor* scratch1 = GetTemporary(context, node, /*index=*/1);
-          TfLiteTensor* scratch2 = GetTemporary(context, node, /*index=*/2);
-          TfLiteTensor* scratch3 = GetTemporary(context, node, /*index=*/3);
-          TfLiteTensor* scratch4 = GetTemporary(context, node, /*index=*/4);
-          TfLiteTensor* scratch5 = GetTemporary(context, node, /*index=*/5);
+          TfLiteTensor* scratch0 = GetTemporary(context, node, 0);
+          TfLiteTensor* scratch1 = GetTemporary(context, node, 1);
+          TfLiteTensor* scratch2 = GetTemporary(context, node, 2);
+          TfLiteTensor* scratch3 = GetTemporary(context, node, 3);
+          TfLiteTensor* scratch4 = GetTemporary(context, node, 4);
+          TfLiteTensor* scratch5 = GetTemporary(context, node, 5);
           return lstm_eval::EvalInteger8x8_16(
               input, input_to_input_weights, input_to_forget_weights,
               input_to_cell_weights, input_to_output_weights,
@@ -1642,14 +1656,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
               scratch3, scratch4, scratch5,
               CpuBackendContext::GetFromContext(context));
         } else {
-          TfLiteTensor* scratch0 = GetTemporary(context, node, /*index=*/0);
-          TfLiteTensor* scratch1 = GetTemporary(context, node, /*index=*/1);
-          TfLiteTensor* scratch2 = GetTemporary(context, node, /*index=*/2);
-          TfLiteTensor* scratch3 = GetTemporary(context, node, /*index=*/3);
-          TfLiteTensor* scratch4 = GetTemporary(context, node, /*index=*/4);
-          TfLiteTensor* scratch5 = GetTemporary(context, node, /*index=*/5);
-          TfLiteTensor* scratch6 = GetTemporary(context, node, /*index=*/6);
-          TfLiteTensor* scratch7 = GetTemporary(context, node, /*index=*/7);
+          TfLiteTensor* scratch0 = GetTemporary(context, node, 0);
+          TfLiteTensor* scratch1 = GetTemporary(context, node, 1);
+          TfLiteTensor* scratch2 = GetTemporary(context, node, 2);
+          TfLiteTensor* scratch3 = GetTemporary(context, node, 3);
+          TfLiteTensor* scratch4 = GetTemporary(context, node, 4);
+          TfLiteTensor* scratch5 = GetTemporary(context, node, 5);
+          TfLiteTensor* scratch6 = GetTemporary(context, node, 6);
+          TfLiteTensor* scratch7 = GetTemporary(context, node, 7);
           return lstm_eval::EvalInteger8x8_8(
               input, input_to_input_weights, input_to_forget_weights,
               input_to_cell_weights, input_to_output_weights,

@@ -535,7 +535,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     node->temporaries = TfLiteIntArrayCreate(2);  // the two scratch buffers.
   }
   // Create a scratch buffer tensor.
-  node->temporaries->data[kFwScratchBuffer] = op_data->scratch_tensor_index;
+  node->temporaries->data[kFwScratchBuffer] =
+      op_data->scratch_tensor_index + kFwScratchBuffer;
   TfLiteTensor* fw_scratch_buffer =
       GetTemporary(context, node, kFwScratchBuffer);
   fw_scratch_buffer->type = input->type;

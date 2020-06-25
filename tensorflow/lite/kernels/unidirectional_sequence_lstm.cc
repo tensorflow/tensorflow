@@ -345,7 +345,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   } else {
     node->temporaries = TfLiteIntArrayCreate(1);
   }
-  node->temporaries->data[0] = scratch_tensor_index;
+  node->temporaries->data[kScratchBuffer] =
+      scratch_tensor_index + kScratchBuffer;
 
   // Create a scratch buffer tensor.
   TfLiteTensor* scratch_buffer = GetTemporary(context, node, kScratchBuffer);
@@ -557,7 +558,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetOptionalInputTensor(context, node, lstm::full::kProjectionBiasTensor);
 
   // Index the scratch buffers pointers to the global scratch buffer.
-  TfLiteTensor* scratch_buffer = GetTemporary(context, node, /*index=*/0);
+  TfLiteTensor* scratch_buffer = GetTemporary(context, node, kScratchBuffer);
 
   TfLiteTensor* output_state =
       GetVariableInput(context, node, lstm::full::kOutputStateTensor);
@@ -620,21 +621,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteUInt8:
     case kTfLiteInt8: {
       OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
-      TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/1);
-      TfLiteTensor* output_state_quantized =
-          GetTemporary(context, node, /*index=*/2);
-      TfLiteTensor* cell_state_quantized =
-          GetTemporary(context, node, /*index=*/3);
-      TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/4);
-      TfLiteTensor* prod_scaling_factors =
-          GetTemporary(context, node, /*index=*/5);
-      TfLiteTensor* recovered_cell_weights =
-          GetTemporary(context, node, /*index=*/6);
-      TfLiteTensor* accum_scratch =
-          GetTemporary(context, node, /*index=*/kAccumScratch);
-      TfLiteTensor* zero_points =
-          GetTemporary(context, node, /*index=*/kZeroPoints);
-      TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/kRowSums);
+      TfLiteTensor* row_sums = GetTemporary(context, node, kRowSums);
       const int row_sums_size = row_sums->dims->data[0];
       return lstm_eval::EvalHybrid(
           input, input_to_input_weights, input_to_forget_weights,
@@ -652,11 +639,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           forget_gate_bias, cell_gate_bias, output_gate_bias,
           projection_weights, projection_bias, &lstm_params,
           /*forward_sequence=*/true, time_major,
-          /*output_offset=*/0, scratch_buffer, scaling_factors,
-          prod_scaling_factors, recovered_cell_weights, input_quantized,
-          /*aux_input_quantized=*/nullptr, output_state_quantized,
-          cell_state_quantized, output_state, cell_state, accum_scratch, output,
-          zero_points, row_sums, row_sums_size, &op_data->compute_row_sums,
+          /*output_offset=*/0, scratch_buffer,
+          GetTemporary(context, node, kScalingFactors),
+          GetTemporary(context, node, kProductScalingFactors),
+          GetTemporary(context, node, kRecoveredCellWeights),
+          GetTemporary(context, node, kInputQuantized),
+          /*aux_input_quantized=*/nullptr,
+          GetTemporary(context, node, kOutputStateQuantized),
+          GetTemporary(context, node, kCellStateQuantized), output_state,
+          cell_state, GetTemporary(context, node, kAccumScratch), output,
+          GetTemporary(context, node, kZeroPoints), row_sums, row_sums_size,
+          &op_data->compute_row_sums,
           CpuBackendContext::GetFromContext(context));
     }
     default:
