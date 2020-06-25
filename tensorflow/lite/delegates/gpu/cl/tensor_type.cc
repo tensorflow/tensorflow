@@ -147,6 +147,13 @@ absl::Status TensorDescriptor::PerformSelector(
   } else if (selector == "Slices") {
     *result = "slices";
     return absl::OkStatus();
+  } else if (selector == "SliceStride") {
+    if (IsBatchedWidth()) {
+      *result = "width_batched * height";
+    } else {
+      *result = "width * height";
+    }
+    return absl::OkStatus();
   } else if (selector == "Channels") {
     *result = "channels";
     return absl::OkStatus();
@@ -172,6 +179,10 @@ absl::Status TensorDescriptor::PerformSelector(
     return PerformWriteLinearSelector(args, result);
   } else if (selector == "GetAddress") {
     return PerformGetAddressSelector(args, result);
+  } else if (selector == "GetPtrWithSliceOffset") {
+    return PerformGetPtrWithSliceOffsetSelector(args, result);
+  } else if (selector == "GetWHOffset") {
+    return PerformGetWHOffsetSelector(args, result);
   } else {
     return absl::NotFoundError(absl::StrCat(
         "TensorDescriptor don't have selector with name - ", selector));
@@ -348,6 +359,43 @@ absl::Status TensorDescriptor::PerformGetAddressSelector(
 
   *result = DeclareAddress(args[0],
                            GetGlobalAddressNoDeclaration(xc, yc, zc, sc, bc));
+  return absl::OkStatus();
+}
+
+absl::Status TensorDescriptor::PerformGetPtrWithSliceOffsetSelector(
+    const std::vector<std::string>& args, std::string* result) const {
+  if (storage_type != TensorStorageType::BUFFER) {
+    return absl::InvalidArgumentError(
+        "GetPtrWithSliceOffset selector can be used only with BUFFER");
+  }
+  if (args.size() != 1) {
+    return absl::NotFoundError(absl::StrCat(
+        "GetPtrWithSliceOffset require one argument(slice coordinate), but ",
+        args.size(), " was passed"));
+  }
+  const std::string width = IsBatchedWidth() ? "width_batched" : "width";
+  if (HasAxis(Axis::DEPTH)) {
+    *result =
+        absl::StrCat("buffer + ", args[0], " * ", width, " * height * depth");
+  } else {
+    *result = absl::StrCat("buffer + ", args[0], " * ", width, " * height");
+  }
+  return absl::OkStatus();
+}
+
+absl::Status TensorDescriptor::PerformGetWHOffsetSelector(
+    const std::vector<std::string>& args, std::string* result) const {
+  if (storage_type != TensorStorageType::BUFFER) {
+    return absl::InvalidArgumentError(
+        "GetWHOffset selector can be used only with BUFFER");
+  }
+  if (args.size() != 2) {
+    return absl::NotFoundError(absl::StrCat(
+        "GetWHOffset require two arguments(X and Y coordinates), but ",
+        args.size(), " was passed"));
+  }
+  const std::string width = IsBatchedWidth() ? "width_batched" : "width";
+  *result = absl::StrCat(args[1], " * ", width, " + ", args[0]);
   return absl::OkStatus();
 }
 

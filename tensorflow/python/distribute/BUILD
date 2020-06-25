@@ -1116,6 +1116,8 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
@@ -1124,7 +1126,6 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras/layers",
         "//third_party/py/numpy",
     ],
 )
@@ -1263,28 +1264,6 @@ distribute_py_test(
     main = "custom_training_loop_metrics_test.py",
     tags = [
         "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
-    name = "custom_training_loop_models_test",
-    srcs = ["custom_training_loop_models_test.py"],
-    main = "custom_training_loop_models_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    tpu_tags = [
-        "no_oss",  # b/153615544.
     ],
     deps = [
         ":combinations",
@@ -1617,41 +1596,6 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "keras_save_load_test",
-    size = "medium",
-    srcs = ["keras_save_load_test.py"],
-    full_precision = True,
-    main = "keras_save_load_test.py",
-    shard_count = 7,
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":saved_model_test_base",
-        "//tensorflow/python/keras/saving",
-    ],
-)
-
-distribute_py_test(
-    name = "saved_model_mixed_api_test",
-    size = "medium",
-    srcs = ["saved_model_mixed_api_test.py"],
-    full_precision = True,
-    main = "saved_model_mixed_api_test.py",
-    shard_count = 7,
-    tags = [
-        "multi_and_single_gpu",
-        "no_rocm",
-    ],
-    deps = [
-        ":combinations",
-        ":saved_model_test_base",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras/saving",
-    ],
-)
-
-distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
@@ -1699,8 +1643,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/keras/layers",
-        "//tensorflow/python/keras/mixed_precision/experimental:test_util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

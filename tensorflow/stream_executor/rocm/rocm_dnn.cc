@@ -291,7 +291,7 @@ namespace wrap {
   __macro(miopenSetTensorDescriptor)                                 \
   __macro(miopenGetTensorDescriptorSize)                             \
   __macro(miopenPoolingForward)                                      \
-  __macro(miopenPoolingGetWorkSpaceSizeV2                            \
+  __macro(miopenPoolingGetWorkSpaceSizeV2)                           \
   __macro(miopenPoolingBackward)                                     \
   __macro(miopenLRNForward)                                          \
   __macro(miopenLRNBackward)                                         \
@@ -358,13 +358,12 @@ namespace wrap {
   __macro(miopenConvolutionBackwardWeightsGetSolution)               \
   __macro(miopenConvolutionBackwardWeightsGetSolutionWorkspaceSize)  \
   __macro(miopenConvolutionBackwardWeightsCompileSolution)           \
-  __macro(miopenConvolutionBackwardWeightsImmediate)		     \
-  __macro(miopenCreateCTCLossDescriptor)			     \
-  __macro(miopenSetCTCLossDescriptor)				     \
-  __macro(miopenGetCTCLossWorkspaceSize)			     \
-  __macro(miopenCTCLoss)					     \
+  __macro(miopenConvolutionBackwardWeightsImmediate)                 \
+  __macro(miopenCreateCTCLossDescriptor)                             \
+  __macro(miopenSetCTCLossDescriptor)                                \
+  __macro(miopenGetCTCLossWorkspaceSize)                             \
+  __macro(miopenCTCLoss)                                             \
   __macro(miopenDestroyCTCLossDescriptor)
-
 // clang-format on
 
 MIOPEN_DNN_ROUTINE_EACH(STREAM_EXECUTOR_MIOPEN_WRAP)

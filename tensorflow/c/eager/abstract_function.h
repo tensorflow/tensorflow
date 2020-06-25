@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_ABSTRACT_FUNCTION_H_
 #define TENSORFLOW_C_EAGER_ABSTRACT_FUNCTION_H_
 
-#include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -26,7 +25,7 @@ namespace tensorflow {
 // function.
 class AbstractFunction {
  protected:
-  enum AbstractFunctionKind { kGraphFunc, kMlirFunc };
+  enum AbstractFunctionKind { kGraph, kMlir };
   explicit AbstractFunction(AbstractFunctionKind kind) : kind_(kind) {}
 
  public:

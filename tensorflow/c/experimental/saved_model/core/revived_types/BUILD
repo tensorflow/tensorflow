@@ -29,6 +29,27 @@ cc_library(
 )
 
 cc_library(
+    name = "variable",
+    srcs = [
+        "variable.cc",
+    ],
+    hdrs = [
+        "variable.h",
+    ],
+    deps = [
+        ":tensorhandle_convertible",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/experimental/saved_model/core/ops:variable_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:context",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
     name = "tensorhandle_convertible",
     hdrs = [
         "tensorhandle_convertible.h",

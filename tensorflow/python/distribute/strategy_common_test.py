@@ -156,6 +156,8 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
     with strategy.scope():
       self.assertIs(strategy.cluster_resolver, resolver)
     self.assertTrue(hasattr(resolver, 'cluster_spec'))
+    if isinstance(strategy, TPUStrategy):
+      self.skipTest('b/159747888')
     self.assertTrue(hasattr(resolver, 'environment'))
     self.assertTrue(hasattr(resolver, 'master'))
     self.assertTrue(hasattr(resolver, 'num_accelerators'))

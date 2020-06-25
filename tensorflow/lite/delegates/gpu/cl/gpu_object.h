@@ -56,11 +56,14 @@ struct GPUImageBufferDescriptor {
 
 enum class MemoryType { GLOBAL, CONSTANT, LOCAL };
 
+std::string MemoryTypeToCLType(MemoryType type);
+
 struct GPUBufferDescriptor {
   DataType data_type;
   AccessType access_type;
   int element_size;
   MemoryType memory_type = MemoryType::GLOBAL;
+  std::vector<std::string> attributes;
   cl_mem memory;
 };
 

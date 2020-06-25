@@ -141,7 +141,6 @@ cc_library(
         "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_node_context_c_api_hdrs",
-        "//tensorflow/stream_executor/tpu:tpu_platform_hdrs",
     ],
 )
 

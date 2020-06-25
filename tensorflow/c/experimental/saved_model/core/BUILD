@@ -63,7 +63,31 @@ cc_library(
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:variable",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "test_utils",
+    testonly = True,
+    srcs = [
+        "test_utils.cc",
+    ],
+    hdrs = [
+        "test_utils.h",
+    ],
+    deps = [
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
+        "//tensorflow/core/common_runtime/eager:context",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -106,15 +130,35 @@ filegroup(
 )
 
 tf_cc_test(
-    name = "saved_model_utils_test",
+    name = "constant_loading_test",
     srcs = [
-        "saved_model_utils_test.cc",
+        "constant_loading_test.cc",
     ],
     deps = [
         ":saved_model_utils",
+        ":test_utils",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
+    ],
+)
+
+tf_cc_test(
+    name = "saved_variable_loading_test",
+    srcs = [
+        "saved_variable_loading_test.cc",
+    ],
+    deps = [
+        ":saved_model_utils",
+        ":test_utils",
         "//tensorflow/c:tensor_interface",
-        "//tensorflow/c/eager:abstract_tensor_handle",
-        "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
         "//tensorflow/core:framework",

@@ -1192,7 +1192,7 @@ class _TapeGradientFunctions(object):
   def _wrap_backward_function(self, forward_graph, backward, outputs):
     """Create a backward function given `outputs` from the forward function."""
     capture_mapping = dict(
-        zip([ops.tensor_id(t) for t in forward_graph.outputs], outputs))
+        zip((ops.tensor_id(t) for t in forward_graph.outputs), outputs))
     remapped_captures = [
         capture_mapping.get(ops.tensor_id(capture), capture)
         for capture in backward.captured_inputs
@@ -1489,9 +1489,8 @@ class ConcreteFunction(object):
     self._captured_closures = self._func_graph.deferred_external_captures
     structured_outputs = self._func_graph.structured_outputs
     self._ndarrays_list = (
-        isinstance(structured_outputs, (list, tuple)) and
-        structured_outputs and
-        all([isinstance(o, np_arrays.ndarray) for o in structured_outputs]))
+        isinstance(structured_outputs, (list, tuple)) and structured_outputs and
+        all(isinstance(o, np_arrays.ndarray) for o in structured_outputs))
     self._ndarray_singleton = isinstance(structured_outputs, np_arrays.ndarray)
 
     # function_spec defines the structured signature.
@@ -2199,6 +2198,14 @@ class ConcreteFunction(object):
     assert self._function_spec is not None
     arg_specs, kwarg_specs = self.structured_input_signature
     arg_names = list(self._function_spec.arg_names)
+
+    # If an explicit input_signature is provided to @tf.function, then any
+    # arguments with defaults that are not covered by that explicit signature
+    # are simply dropped from the signature.
+    # TODO(b/159639913) Look into whether dropping arguments with default values
+    # from the signature is the right thing to do.
+    arg_names = arg_names[:len(arg_specs)]
+
     if default_values:
       for i in range(len(arg_names)):
         if not _contains_type_spec(arg_specs[i]):
@@ -2248,6 +2255,14 @@ class ConcreteFunction(object):
     lines = [self._structured_signature_summary(default_values=True)]
     arg_specs, kwarg_specs = self.structured_input_signature
     names = list(self._function_spec.arg_names)
+
+    # If an explicit input_signature is provided to @tf.function, then any
+    # arguments with defaults that are not covered by that explicit signature
+    # are simply dropped from the signature.
+    # TODO(b/159639913) Look into whether dropping arguments with default values
+    # from the signature is the right thing to do.
+    names = names[:len(arg_specs)]
+
     names.extend(sorted(kwarg_specs))
     specs = list(arg_specs) + list(kwarg_specs.values())
     # note: we can skip bound args, since we already displayed thier bound
@@ -2855,7 +2870,6 @@ class Function(object):
       graph_function, _, _ = self._maybe_define_function(args, kwargs)
     return graph_function
 
-  # XX TODO: make sure we fix up this path as well!?
   def _get_concrete_function_internal(self, *args, **kwargs):
     """Bypasses error checking when getting a graph function."""
     graph_function = self._get_concrete_function_internal_garbage_collected(

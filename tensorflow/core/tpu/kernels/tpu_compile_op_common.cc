@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -28,8 +29,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
+#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
@@ -516,6 +520,42 @@ Status TpuCompileOpKernelCommon::OptimizeGraph(
   TF_RETURN_IF_ERROR(RewriteTensorListWithConstElement(graph->get(), fld));
 
   return Status::OK();
+}
+
+void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
+  VLOG(1) << "Cloud TPU: TpuCompileOpKernelCommon::Compute";
+
+  std::shared_ptr<std::atomic<bool>> done(new std::atomic<bool>(false));
+
+  CancellationToken token =
+      ctx->cancellation_manager()->get_cancellation_token();
+  const bool already_cancelled =
+      !ctx->cancellation_manager()->RegisterCallback(token, [ctx, done]() {
+        if (UtilApiFn()->TpuCompile_ShouldTpuCompileOpIgnoreCancellationFn()) {
+          return;
+        }
+
+        // Sleep and exit in another thread so the cancellation manager can
+        // continue running callbacks.
+        ctx->env()->SchedClosure([ctx, done]() { ExitCountdown(ctx, done); });
+      });
+
+  // If the RPC was cancelled before we registered the cancellation callback,
+  // don't compile the TPU program.
+  OP_REQUIRES(ctx, !already_cancelled,
+              errors::Cancelled("RPC cancelled, not compiling TPU program"));
+
+  // We only want to abort the process if a cancellation actually occurs during
+  // compilation; we must deregister the callback in the success case. It
+  // doesn't hurt to also deregister the callback in the failure case; the
+  // CancellationManager ensures that already-registered callbacks will be run
+  // once cancellation has started.
+  auto cancellation_cleanup = xla::MakeCleanup([ctx, token, done] {
+    ctx->cancellation_manager()->DeregisterCallback(token);
+    done->store(true);
+  });
+
+  OP_REQUIRES_OK(ctx, ComputeInternal(ctx));
 }
 
 }  // namespace tpu

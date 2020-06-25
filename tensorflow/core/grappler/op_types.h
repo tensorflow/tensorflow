@@ -47,6 +47,7 @@ bool IsBetainc(const NodeDef& node);
 bool IsBiasAdd(const NodeDef& node);
 bool IsBiasAddGrad(const NodeDef& node);
 bool IsBitcast(const NodeDef& node);
+bool IsBroadcastTo(const NodeDef& node);
 bool IsCast(const NodeDef& node);
 bool IsCheckNumerics(const NodeDef& node);
 bool IsCollective(const NodeDef& node);

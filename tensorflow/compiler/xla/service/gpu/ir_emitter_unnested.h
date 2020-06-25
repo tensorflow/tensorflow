@@ -132,10 +132,11 @@ class IrEmitterUnnested : public IrEmitter,
       const llvm_ir::ElementGenerator& body_emitter) override;
 
   // Same as `EmitTargetElementLoop`, but in given `thunk` rather than
-  // `LastThunk()`.
+  // `LastThunk()`. The kernel implementation will be unrolled if
+  // `unroll_factor` is greater than one.
   Status EmitTargetElementLoopInThunk(
       const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter,
-      KernelThunk* thunk);
+      KernelThunk* thunk, int unroll_factor);
 
   // Emits LLVM global variables corresponding to constant instructions.
   Status EmitConstantGlobals();
@@ -489,13 +490,11 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Returns a KernelThunk that invokes the kernel emitted for `inst`. The
   // caller needs to make sure `inst` outlives the lifetime of the returned
-  // Thunk object. The kernel implementation will be unrolled if unroll_factor
-  // is greater than one. 'implements_whole_instruction' specifies whether
-  // this KernelThunk implements the whole 'inst' HloInstruction. In some
-  // cases 'inst' will be implemented by a sequence of Thunks.
+  // Thunk object. 'implements_whole_instruction' specifies whether this
+  // KernelThunk implements the whole 'inst' HloInstruction. In some cases
+  // 'inst' will be implemented by a sequence of Thunks.
   std::unique_ptr<KernelThunk> BuildKernelThunk(
-      const HloInstruction* inst, bool implements_whole_instruction,
-      int unroll_factor = 1);
+      const HloInstruction* inst, bool implements_whole_instruction);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.

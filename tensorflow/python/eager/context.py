@@ -890,13 +890,13 @@ class Context(object):
 
   @property
   def executor(self):
-    ensure_initialized()
+    self.ensure_initialized()
     return executor.Executor(
         pywrap_tfe.TFE_ContextGetExecutorForThread(self._context_handle))
 
   @executor.setter
   def executor(self, e):
-    ensure_initialized()
+    self.ensure_initialized()
     pywrap_tfe.TFE_ContextSetExecutorForThread(self._context_handle, e.handle())
 
   @property

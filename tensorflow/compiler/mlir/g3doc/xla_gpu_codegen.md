@@ -24,10 +24,10 @@ the codegen input.
 
 ## Tasks
 
-              | Host                     | Device
-------------- | ------------------------ | ------------------------
-Input format  | HloInstruction* (Task 1) | HloInstruction* (Task 1)
-Output format | xla::Thunk (Task 2)      | LLVM IR (Task 3)
+|               | Host                     | Device
+| ------------- | ------------------------ | ------------------------
+| Input format  | HloInstruction* (Task 1) | HloInstruction* (Task 1)
+| Output format | xla::Thunk (Task 2)      | LLVM IR (Task 3)
 
 *   **Task 1** changes both host and device input format from HloInstruction* to
     LHLO.

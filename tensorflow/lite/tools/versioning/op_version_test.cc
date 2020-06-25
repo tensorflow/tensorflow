@@ -296,6 +296,14 @@ TEST(OpVersionTest, VersioningSubTest) {
   SimpleVersioningTest(BuiltinOperator_SUB);
 }
 
+TEST(OpVersionTest, VersioningSub4Test) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_SUB,
+      .input_types = std::vector<TensorType>{TensorType_INT64},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+}
+
 void SimpleMulVersioningTest(TensorType data_type, float multiplier,
                              int version) {
   OpSignature fake_op_sig = {

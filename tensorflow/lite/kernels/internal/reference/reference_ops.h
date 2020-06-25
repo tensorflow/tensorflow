@@ -1495,6 +1495,7 @@ inline void GatherNd(const RuntimeShape& params_shape,
   }
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
 template <typename IndicesT = int32>
 inline void GatherNdString(const RuntimeShape& params_shape,
                            const TfLiteTensor* params_data,
@@ -1517,6 +1518,7 @@ inline void GatherNdString(const RuntimeShape& params_shape,
   }
   buffer.WriteToTensor(output_data, /*new_shape=*/nullptr);
 }
+#endif
 
 template <typename IndicesT, typename UpdatesT>
 inline void ScatterNd(const RuntimeShape& indices_shape,

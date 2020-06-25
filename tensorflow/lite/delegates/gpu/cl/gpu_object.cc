@@ -12,9 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_OPS_COMMON_C_API_H_
-#define TENSORFLOW_CORE_TPU_KERNELS_TPU_OPS_COMMON_C_API_H_
 
-typedef struct SE_Status SE_Status;
+#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 
-#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_OPS_COMMON_C_API_H_
+namespace tflite {
+namespace gpu {
+namespace cl {
+
+std::string MemoryTypeToCLType(MemoryType type) {
+  switch (type) {
+    case MemoryType::GLOBAL:
+      return "__global";
+    case MemoryType::CONSTANT:
+      return "__constant";
+      break;
+    case MemoryType::LOCAL:
+      return "__local";
+  }
+  return "";
+}
+
+}  // namespace cl
+}  // namespace gpu
+}  // namespace tflite

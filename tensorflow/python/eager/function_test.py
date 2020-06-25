@@ -3898,6 +3898,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c5_summary = 'func2(x=8, y)'
     self.assertEqual(c5.pretty_printed_signature(verbose=False), c5_summary)
 
+  def testPrettyPrintedExplicitSignatureWithKeywordArg(self):  # b/159639913
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec(None)])
+    def fn(a, b=1):
+      return a + b
+
+    concrete_fn = fn.get_concrete_function()
+    self.assertEqual(concrete_fn.pretty_printed_signature(False), 'fn(a)')
+    self.assertEqual(
+        concrete_fn.pretty_printed_signature(True), 'fn(a)\n'
+        '  Args:\n'
+        '    a: float32 Tensor, shape=<unknown>\n'
+        '  Returns:\n'
+        '    float32 Tensor, shape=<unknown>')
+
   @test_util.run_in_graph_and_eager_modes
   def testIndexedSlicesAsGradientsForConcreteFunctions(self):
 

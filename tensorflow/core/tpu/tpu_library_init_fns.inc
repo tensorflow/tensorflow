@@ -137,6 +137,7 @@ tensorflow::Status SetTpuNodeContextStructFns(void* library_handle) {
 
   TFTPU_SET_FN(node_context_fn, TpuNodeContext_Create);
   TFTPU_SET_FN(node_context_fn, TpuNodeContext_Free);
+  TFTPU_SET_FN(node_context_fn, TpuNodeContext_Initialize);
   TFTPU_SET_FN(node_context_fn, TpuNodeContext_StopChipHeartbeats);
   TFTPU_SET_FN(node_context_fn, TpuNodeContext_CloseTpuHost);
 
