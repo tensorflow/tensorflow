@@ -57,7 +57,6 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
       $(CMSIS_PATH)/CMSIS/NN/Source/ConvolutionFunctions/arm_convolve_wrapper_s8.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConvolutionFunctions/arm_depthwise_conv_wrapper_s8.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/PoolingFunctions/arm_pool_q7_HWC.c \
-      $(CMSIS_PATH)/CMSIS/NN/Source/PoolingFunctions/arm_max_pool_s8_opt.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/PoolingFunctions/arm_avgpool_s8.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/PoolingFunctions/arm_max_pool_s8.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ActivationFunctions/arm_relu_q15.c \
