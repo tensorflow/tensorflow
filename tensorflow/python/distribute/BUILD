@@ -1596,25 +1596,6 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "saved_model_mixed_api_test",
-    size = "medium",
-    srcs = ["saved_model_mixed_api_test.py"],
-    full_precision = True,
-    main = "saved_model_mixed_api_test.py",
-    shard_count = 7,
-    tags = [
-        "multi_and_single_gpu",
-        "no_rocm",
-    ],
-    deps = [
-        ":combinations",
-        ":saved_model_test_base",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras/saving",
-    ],
-)
-
-distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
