@@ -685,24 +685,31 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
   // Register multiple functions on selected remote workers.
   uint64 context_id = GetContextId();
   FunctionDefLibrary function_defs = func_lib_def_.ToProto();
-  for (int i = 0; i < remote_workers.size(); i++) {
+  std::vector<std::shared_ptr<eager::EnqueueRequest>> requests(
+      function_defs.function_size());
+  for (int i = 0; i < function_defs.function_size(); i++) {
+    requests[i] = std::make_shared<eager::EnqueueRequest>();
+    requests[i]->set_context_id(context_id);
+    eager::RegisterFunctionOp* register_function =
+        requests[i]->add_queue()->mutable_register_function();
+    *register_function->mutable_function_def() =
+        std::move(*function_defs.mutable_function(i));
+    StripDefaultAttributes(
+        *OpRegistry::Global(),
+        register_function->mutable_function_def()->mutable_node_def());
+  }
+
+  for (auto& remote_worker : remote_workers) {
     core::RefCountPtr<eager::EagerClient> eager_client;
-    Status s = GetClient(remote_workers[i], &eager_client);
+    Status s = GetClient(remote_worker, &eager_client);
     if (!s.ok()) {
       continue;
     }
-    for (int j = 0; j < function_defs.function_size(); j++) {
-      auto request = std::make_shared<eager::EnqueueRequest>();
-      request->set_context_id(context_id);
-      eager::RegisterFunctionOp* register_function =
-          request->add_queue()->mutable_register_function();
-      *register_function->mutable_function_def() = function_defs.function(j);
-      StripDefaultAttributes(
-          *OpRegistry::Global(),
-          register_function->mutable_function_def()->mutable_node_def());
+    for (int i = 0; i < requests.size(); i++) {
       auto response = std::make_shared<eager::EnqueueResponse>();
       eager_client->StreamingEnqueueAsync(
-          request.get(), response.get(), [request, response](const Status& s) {
+          requests[i].get(), response.get(),
+          [request = requests[i], response](const Status& s) {
             if (!s.ok()) {
               LOG(ERROR) << "Failed to register function remotely due to "
                          << s.error_message()
