@@ -978,6 +978,7 @@ cc_library(
 
 cc_header_only_library(
     name = "py_func_headers_lib",
+    features = ["-parse_headers"],
     tags = ["no-ide"],
     deps = [
         ":py_func_lib",
@@ -1061,6 +1062,7 @@ cc_library(
     name = "py_seq_tensor",
     srcs = ["lib/core/py_seq_tensor.cc"],
     hdrs = ["lib/core/py_seq_tensor.h"],
+    features = ["-parse_headers"],
     deps = [
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",
@@ -1213,6 +1215,7 @@ cc_header_only_library(
     extra_deps = [
         "//tensorflow/core:protos_all_cc",
     ],
+    features = ["-parse_headers"],
     tags = ["no-ide"],
     deps = [
         ":python_op_gen",
