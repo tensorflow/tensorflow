@@ -148,6 +148,7 @@ tensorflow::Status SetTpuUtilStructFns(void* library_handle) {
   auto* util_fn = tensorflow::tpu::UtilApiFn();
 
   TFTPU_SET_FN(util_fn, TpuCompile_IsTpuCompilationEnabled);
+  TFTPU_SET_FN(util_fn, TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
   TFTPU_SET_FN(util_fn, TpuCompile_ToTpuShapeRepresentation);
 
   return tensorflow::Status::OK();

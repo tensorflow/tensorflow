@@ -41,6 +41,7 @@ bool TpuCompile_ShouldTpuCompileOpIgnoreCancellation();
 
 struct TfTpu_UtilApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_IsTpuCompilationEnabled);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ToTpuShapeRepresentation);
 };
 
