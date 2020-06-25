@@ -152,17 +152,22 @@ TEST_F(GCSFilesystemTest, ParseGCSPath) {
 
 TEST_F(GCSFilesystemTest, RandomAccessFile) {
   std::string filepath = GetURIForPath("a_file");
-  auto gcs_client = static_cast<gcs::Client*>(filesystem_->plugin_filesystem);
-  ASSERT_TRUE(
-      WriteToServer(filepath, content_view.length(), gcs_client, status_));
-
   TF_RandomAccessFile* file = new TF_RandomAccessFile;
   tf_gcs_filesystem::NewRandomAccessFile(filesystem_, filepath.c_str(), file,
                                          status_);
   ASSERT_TF_OK(status_);
-
   char* result = new char[content_view.length()];
-  int64_t read = tf_random_access_file::Read(file, 0, 36, result, status_);
+  int64_t read = tf_random_access_file::Read(file, 0, 1, result, status_);
+  ASSERT_EQ(read, -1) << "Read: " << read;
+  ASSERT_EQ(TF_GetCode(status_), TF_NOT_FOUND) << TF_Message(status_);
+  TF_SetStatus(status_, TF_OK, "");
+
+  auto gcs_client = static_cast<gcs::Client*>(filesystem_->plugin_filesystem);
+  ASSERT_TRUE(
+      WriteToServer(filepath, content_view.length(), gcs_client, status_));
+
+  read = tf_random_access_file::Read(file, 0, content_view.length(), result,
+                                     status_);
   ASSERT_TF_OK(status_);
   ASSERT_TRUE(CompareSubString(0, content_view.length(), result, read));
 
