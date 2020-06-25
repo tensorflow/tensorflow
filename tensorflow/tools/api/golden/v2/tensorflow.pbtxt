@@ -118,7 +118,7 @@ tf_module {
   }
   member {
     name: "bfloat16"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.BFloat16\'>"
   }
   member {
     name: "bitwise"
@@ -126,7 +126,7 @@ tf_module {
   }
   member {
     name: "bool"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Bool\'>"
   }
   member {
     name: "compat"
@@ -134,11 +134,11 @@ tf_module {
   }
   member {
     name: "complex128"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Complex128\'>"
   }
   member {
     name: "complex64"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Complex64\'>"
   }
   member {
     name: "config"
@@ -162,7 +162,7 @@ tf_module {
   }
   member {
     name: "double"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Float64\'>"
   }
   member {
     name: "dtypes"
@@ -186,15 +186,15 @@ tf_module {
   }
   member {
     name: "float16"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Float16\'>"
   }
   member {
     name: "float32"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Float32\'>"
   }
   member {
     name: "float64"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Float64\'>"
   }
   member {
     name: "graph_util"
@@ -202,7 +202,7 @@ tf_module {
   }
   member {
     name: "half"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Float16\'>"
   }
   member {
     name: "image"
@@ -214,19 +214,19 @@ tf_module {
   }
   member {
     name: "int16"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Int16\'>"
   }
   member {
     name: "int32"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Int32\'>"
   }
   member {
     name: "int64"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Int64\'>"
   }
   member {
     name: "int8"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Int8\'>"
   }
   member {
     name: "io"
@@ -298,15 +298,15 @@ tf_module {
   }
   member {
     name: "qint16"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.QInt16\'>"
   }
   member {
     name: "qint32"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.QInt32\'>"
   }
   member {
     name: "qint8"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.QInt8\'>"
   }
   member {
     name: "quantization"
@@ -318,11 +318,11 @@ tf_module {
   }
   member {
     name: "quint16"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.QUInt16\'>"
   }
   member {
     name: "quint8"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.QUInt8\'>"
   }
   member {
     name: "ragged"
@@ -346,7 +346,7 @@ tf_module {
   }
   member {
     name: "resource"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Resource\'>"
   }
   member {
     name: "saved_model"
@@ -366,7 +366,7 @@ tf_module {
   }
   member {
     name: "string"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.String\'>"
   }
   member {
     name: "strings"
@@ -394,23 +394,23 @@ tf_module {
   }
   member {
     name: "uint16"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.UInt16\'>"
   }
   member {
     name: "uint32"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.UInt32\'>"
   }
   member {
     name: "uint64"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.UInt64\'>"
   }
   member {
     name: "uint8"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.UInt8\'>"
   }
   member {
     name: "variant"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    mtype: "<class \'tensorflow.python.framework.dtypes.Variant\'>"
   }
   member {
     name: "version"

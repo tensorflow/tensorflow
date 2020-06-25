@@ -308,78 +308,78 @@ class Resource(DType):
 class Variant(DType):
   pass
 
-class Float16_Ref(DType):
-    pass
+class Float16Ref(DType):
+  pass
 
-Half_Ref = Float16_Ref
+HalfRef = Float16Ref
 
-class Float32_Ref(DType):
-    pass
+class Float32Ref(DType):
+  pass
 
-class Float64_Ref(DType):
-    pass
+class Float64Ref(DType):
+  pass
 
-Double_Ref = Float64_Ref
+DoubleRef = Float64Ref
 
-class BFloat16_Ref(DType):
-    pass
+class BFloat16Ref(DType):
+  pass
 
-class Complex64_Ref(DType):
-    pass
+class Complex64Ref(DType):
+  pass
 
-class Complex128_Ref(DType):
-    pass
+class Complex128Ref(DType):
+  pass
 
-class Int8_Ref(DType):
-    pass
+class Int8Ref(DType):
+  pass
 
-class UInt8_Ref(DType):
-    pass
+class UInt8Ref(DType):
+  pass
 
-class UInt16_Ref(DType):
-    pass
+class UInt16Ref(DType):
+  pass
 
-class UInt32_Ref(DType):
-    pass
+class UInt32Ref(DType):
+  pass
 
-class UInt64_Ref(DType):
-    pass
+class UInt64Ref(DType):
+  pass
 
-class Int16_Ref(DType):
-    pass
+class Int16Ref(DType):
+  pass
 
-class Int32_Ref(DType):
-    pass
+class Int32Ref(DType):
+  pass
 
-class Int64_Ref(DType):
-    pass
+class Int64Ref(DType):
+  pass
 
-class Bool_Ref(DType):
-    pass
+class BoolRef(DType):
+  pass
 
-class String_Ref(DType):
-    pass
+class StringRef(DType):
+  pass
 
-class QInt8_Ref(DType):
-    pass
+class QInt8Ref(DType):
+  pass
 
-class QUInt8_Ref(DType):
-    pass
+class QUInt8Ref(DType):
+  pass
 
-class QInt16_Ref(DType):
-    pass
+class QInt16Ref(DType):
+  pass
 
-class QUInt16_Ref(DType):
-    pass
+class QUInt16Ref(DType):
+  pass
 
-class QInt32_Ref(DType):
-    pass
+class QInt32Ref(DType):
+  pass
 
-class Resource_Ref(DType):
-    pass
+class ResourceRef(DType):
+  pass
 
-class Variant_Ref(DType):
-    pass
+class VariantRef(DType):
+  pass
 
 
 # Define standard wrappers for the types_pb2.DataType enum.
@@ -433,33 +433,33 @@ quint16 = QUInt16(types_pb2.DT_QUINT16)
 tf_export("dtypes.quint16", "quint16").export_constant(__name__, "quint16")
 qint32 = QInt32(types_pb2.DT_QINT32)
 tf_export("dtypes.qint32", "qint32").export_constant(__name__, "qint32")
-resource_ref = Resource_Ref(types_pb2.DT_RESOURCE_REF)
-variant_ref = Variant_Ref(types_pb2.DT_VARIANT_REF)
+resource_ref = ResourceRef(types_pb2.DT_RESOURCE_REF)
+variant_ref = VariantRef(types_pb2.DT_VARIANT_REF)
 bfloat16 = BFloat16(types_pb2.DT_BFLOAT16)
 tf_export("dtypes.bfloat16", "bfloat16").export_constant(__name__, "bfloat16")
-float16_ref = Float16_Ref(types_pb2.DT_HALF_REF)
+float16_ref = Float16Ref(types_pb2.DT_HALF_REF)
 half_ref = float16_ref
-float32_ref = Float32_Ref(types_pb2.DT_FLOAT_REF)
-float64_ref = Float64_Ref(types_pb2.DT_DOUBLE_REF)
+float32_ref = Float32Ref(types_pb2.DT_FLOAT_REF)
+float64_ref = Float64Ref(types_pb2.DT_DOUBLE_REF)
 double_ref = float64_ref
-int32_ref = Int32_Ref(types_pb2.DT_INT32_REF)
-uint32_ref = UInt32_Ref(types_pb2.DT_UINT32_REF)
-uint8_ref = UInt8_Ref(types_pb2.DT_UINT8_REF)
-uint16_ref = UInt16_Ref(types_pb2.DT_UINT16_REF)
-int16_ref = Int16_Ref(types_pb2.DT_INT16_REF)
-int8_ref = Int8_Ref(types_pb2.DT_INT8_REF)
-string_ref = String_Ref(types_pb2.DT_STRING_REF)
-complex64_ref = Complex64_Ref(types_pb2.DT_COMPLEX64_REF)
-complex128_ref = Complex128_Ref(types_pb2.DT_COMPLEX128_REF)
-int64_ref = Int64_Ref(types_pb2.DT_INT64_REF)
-uint64_ref = UInt64_Ref(types_pb2.DT_UINT64_REF)
-bool_ref = Bool_Ref(types_pb2.DT_BOOL_REF)
-qint8_ref = QInt8_Ref(types_pb2.DT_QINT8_REF)
-quint8_ref = QUInt8_Ref(types_pb2.DT_QUINT8_REF)
-qint16_ref = QInt16_Ref(types_pb2.DT_QINT16_REF)
-quint16_ref = QUInt16_Ref(types_pb2.DT_QUINT16_REF)
-qint32_ref = QInt32_Ref(types_pb2.DT_QINT32_REF)
-bfloat16_ref = BFloat16_Ref(types_pb2.DT_BFLOAT16_REF)
+int32_ref = Int32Ref(types_pb2.DT_INT32_REF)
+uint32_ref = UInt32Ref(types_pb2.DT_UINT32_REF)
+uint8_ref = UInt8Ref(types_pb2.DT_UINT8_REF)
+uint16_ref = UInt16Ref(types_pb2.DT_UINT16_REF)
+int16_ref = Int16Ref(types_pb2.DT_INT16_REF)
+int8_ref = Int8Ref(types_pb2.DT_INT8_REF)
+string_ref = StringRef(types_pb2.DT_STRING_REF)
+complex64_ref = Complex64Ref(types_pb2.DT_COMPLEX64_REF)
+complex128_ref = Complex128Ref(types_pb2.DT_COMPLEX128_REF)
+int64_ref = Int64Ref(types_pb2.DT_INT64_REF)
+uint64_ref = UInt64Ref(types_pb2.DT_UINT64_REF)
+bool_ref = BoolRef(types_pb2.DT_BOOL_REF)
+qint8_ref = QInt8Ref(types_pb2.DT_QINT8_REF)
+quint8_ref = QUInt8Ref(types_pb2.DT_QUINT8_REF)
+qint16_ref = QInt16Ref(types_pb2.DT_QINT16_REF)
+quint16_ref = QUInt16Ref(types_pb2.DT_QUINT16_REF)
+qint32_ref = QInt32Ref(types_pb2.DT_QINT32_REF)
+bfloat16_ref = BFloat16Ref(types_pb2.DT_BFLOAT16_REF)
 
 # Maintain an intern table so that we don't have to create a large
 # number of small objects.
