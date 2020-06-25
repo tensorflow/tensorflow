@@ -771,6 +771,8 @@ class MultiProcessPoolRunner(object):
     Returns:
       A list of return values.
     """
+    # TODO(b/150264776): skip in OSS until it's implemented.
+    multi_process_lib.Process()
     if self._runner is None:
       self._start()
 

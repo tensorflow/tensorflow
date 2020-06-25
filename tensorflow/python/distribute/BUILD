@@ -815,6 +815,7 @@ py_library(
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python:platform",
+        "//tensorflow/python:tf_decorator",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
@@ -1796,7 +1797,7 @@ distribute_py_test(
     name = "strategy_common_test",
     srcs = ["strategy_common_test.py"],
     python_version = "PY3",
-    shard_count = 12,
+    shard_count = 2,
     tags = [
         "multi_and_single_gpu",
         # TODO(b/155301154): Enable this test on multi-gpu guitar once multi process

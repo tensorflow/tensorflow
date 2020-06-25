@@ -20,10 +20,12 @@ from __future__ import print_function
 
 from tensorflow.python import tf2
 from tensorflow.python.distribute import central_storage_strategy
+from tensorflow.python.distribute import cluster_resolver
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import one_device_strategy as one_device_lib
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -101,6 +103,35 @@ def _get_tpu_strategy_creator(steps_per_run,
   return _create_tpu_strategy
 
 
+def _get_multi_worker_mirrored_creator(required_gpus):
+
+  def _create_multi_worker_mirrored():
+    tf_config = cluster_resolver.TFConfigClusterResolver()
+    resolver = cluster_resolver.SimpleClusterResolver(
+        cluster_spec=tf_config.cluster_spec(),
+        task_type=tf_config.task_type,
+        task_id=tf_config.task_id,
+        environment=tf_config.environment,
+        num_accelerators={"GPU": required_gpus},
+        rpc_layer=tf_config.rpc_layer,
+    )
+    strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+        cluster_resolver=resolver)
+    # TODO(b/152320929): Wait for the cluster before proceeding, otherwise
+    # collectives may hang if any worker launches collectives before the chief
+    # creates the strategy.
+    try:
+      multi_process_runner.barrier().wait()
+    except ValueError:
+      # If the creator is called in the main process,
+      # multi_process_runner.barrier() raises ValueError, which is safe to
+      # ignore.
+      pass
+    return strategy
+
+  return _create_multi_worker_mirrored
+
+
 # pylint: disable=g-long-lambda
 default_strategy = combinations.NamedDistribution(
     "Default",
@@ -169,17 +200,35 @@ central_storage_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
     lambda: central_storage_strategy.CentralStorageStrategy(
         ["/gpu:0", "/cpu:0"]),
     required_gpus=1)
-multi_worker_mirrored_two_workers = combinations.NamedDistribution(
-    "MultiWorkerMirroredTwoWorkers",
-    collective_all_reduce_strategy.CollectiveAllReduceStrategy,
-    has_chief=False,
-    num_workers=2,
-)
-multi_worker_mirrored_one_chief_one_worker = combinations.NamedDistribution(
-    "MultiWorkerMirroredOneChiefOneWorker",
-    collective_all_reduce_strategy.CollectiveAllReduceStrategy,
+# chief + 1 worker, with CPU.
+multi_worker_mirrored_2x1_cpu = combinations.NamedDistribution(
+    "MultiWorkerMirrored2x1CPU",
+    _get_multi_worker_mirrored_creator(required_gpus=0),
     has_chief=True,
     num_workers=1,
+)
+# chief + 1 worker, with 1 GPU each.
+multi_worker_mirrored_2x1_gpu = combinations.NamedDistribution(
+    "MultiWorkerMirrored2x1GPU",
+    _get_multi_worker_mirrored_creator(required_gpus=1),
+    has_chief=True,
+    num_workers=1,
+    required_gpus=1,
+)
+# chief + 1 worker, with 2 GPU each.
+multi_worker_mirrored_2x2_gpu = combinations.NamedDistribution(
+    "MultiWorkerMirrored2x2GPU",
+    _get_multi_worker_mirrored_creator(required_gpus=2),
+    has_chief=True,
+    num_workers=1,
+    required_gpus=2,
+)
+# chief + 3 workers, with CPU.
+multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
+    "MultiWorkerMirrored4x1CPU",
+    _get_multi_worker_mirrored_creator(required_gpus=0),
+    has_chief=True,
+    num_workers=3,
 )
 
 gradient_descent_optimizer_v1_fn = combinations.NamedObject(
@@ -284,14 +333,19 @@ def distributions_and_v1_and_v2_optimizers():
 
 
 strategies_minus_tpu = [
-    default_strategy, one_device_strategy, one_device_strategy_gpu,
-    mirrored_strategy_with_gpu_and_cpu, mirrored_strategy_with_two_gpus,
-    central_storage_strategy_with_gpu_and_cpu
+    default_strategy,
+    one_device_strategy,
+    one_device_strategy_gpu,
+    mirrored_strategy_with_gpu_and_cpu,
+    mirrored_strategy_with_two_gpus,
+    central_storage_strategy_with_gpu_and_cpu,
 ]
 
 strategies_minus_default_and_tpu = [
-    one_device_strategy, one_device_strategy_gpu,
-    mirrored_strategy_with_gpu_and_cpu, mirrored_strategy_with_two_gpus
+    one_device_strategy,
+    one_device_strategy_gpu,
+    mirrored_strategy_with_gpu_and_cpu,
+    mirrored_strategy_with_two_gpus,
 ]
 
 tpu_strategies = [

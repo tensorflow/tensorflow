@@ -39,8 +39,10 @@ class StrategyReduceTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          strategy=[strategy_combinations.multi_worker_mirrored_two_workers] +
-          strategy_combinations.strategies_minus_tpu,
+          strategy=[
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+              strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          ] + strategy_combinations.strategies_minus_tpu,
           mode=['eager']))
   def testSimpleReduce(self, strategy):
 
@@ -69,7 +71,10 @@ class StrategyReduceTest(test.TestCase, parameterized.TestCase):
 
 @combinations.generate(
     combinations.combine(
-        strategy=[strategy_combinations.multi_worker_mirrored_two_workers],
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+        ],
         mode=['eager']))
 class DistributedCollectiveAllReduceStrategyTest(
     strategy_test_lib.DistributionTestBase,
@@ -83,7 +88,7 @@ class DistributedCollectiveAllReduceStrategyTest(
       return d.shard(input_context.num_input_pipelines,
                      input_context.input_pipeline_id)
 
-    expected_sum_on_workers = [10, 35]
+    expected_sum_on_workers = {'chief': 10, 'worker': 35}
     input_iterator = iter(
         strategy.experimental_distribute_datasets_from_function(dataset_fn))
 
@@ -95,7 +100,7 @@ class DistributedCollectiveAllReduceStrategyTest(
     sum_value = math_ops.reduce_sum(result)
     self.assertEqual(
         sum_value.numpy(),
-        expected_sum_on_workers[multi_worker_test_base.get_task_index()])
+        expected_sum_on_workers[multi_worker_test_base.get_task_type()])
 
   def testReduceHostTensor(self, strategy):
     reduced = strategy.reduce(
@@ -141,7 +146,7 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          strategy=[strategy_combinations.multi_worker_mirrored_two_workers] +
+          strategy=[strategy_combinations.multi_worker_mirrored_2x1_cpu] +
           strategy_combinations.all_strategies,
           mode=['eager']))
   def testClusterResolverProperty(self, strategy):
@@ -163,9 +168,8 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(hasattr(resolver, 'num_accelerators'))
     self.assertIsNone(resolver.rpc_layer)
     if isinstance(strategy, CollectiveAllReduceStrategy):
-      self.assertGreaterEqual(resolver.task_id, 0)
-      self.assertLessEqual(resolver.task_id, 1)
-      self.assertEqual(resolver.task_type, 'worker')
+      self.assertEqual(resolver.task_id, 0)
+      self.assertAllInSet(resolver.task_type, ['chief', 'worker'])
     elif isinstance(strategy, TPUStrategy):
       # TPUStrategy does not have task_id and task_type applicable.
       self.assertIsNone(resolver.task_id)

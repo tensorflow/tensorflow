@@ -81,6 +81,8 @@ class ClusterParameters(combinations_lib.ParameterModifier):
       update["has_chief"] = strategy.has_chief if strategy else False
     if "num_workers" in requested_parameters:
       update["num_workers"] = strategy.num_workers if strategy else 1
+    if "runner" in requested_parameters:
+      update["runner"] = strategy.runner if strategy else None
     return update
 
 
@@ -218,7 +220,8 @@ class NamedDistribution(object):
                required_tpu=False,
                use_cloud_tpu=False,
                has_chief=False,
-               num_workers=1):
+               num_workers=1,
+               use_pool_runner=True):
     """Initialize NamedDistribution.
 
     Args:
@@ -229,6 +232,8 @@ class NamedDistribution(object):
       use_cloud_tpu: Whether the strategy requires cloud TPU.
       has_chief: Whether the strategy requires a chief worker.
       num_workers: The number of workers that the strategy requires.
+      use_pool_runner: Whether to use a pool runner so that workers are re-used
+        each time.
     """
     object.__init__(self)
     self._name = name
@@ -238,6 +243,23 @@ class NamedDistribution(object):
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
     self.num_workers = num_workers
+    self._runner = None
+
+    if _num_total_workers(self.has_chief, self.num_workers) > 1:
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          has_chief=has_chief,
+          num_workers=num_workers,
+          num_ps=0,
+          has_eval=False)
+      if use_pool_runner:
+        # Need to create the strategy in the initializer so that collectives are
+        # configured before eager context initialization.
+        self._runner = multi_process_runner.MultiProcessPoolRunner(
+            cluster_spec, initializer=self._distribution_fn)
+
+  @property
+  def runner(self):
+    return self._runner
 
   @property
   def strategy(self):
@@ -360,7 +382,7 @@ def _multi_worker_test(test_method):
     arguments.
   """
 
-  def decorator(self, has_chief, num_workers, **kwargs):
+  def decorator(self, has_chief, num_workers, runner, **kwargs):
     if _num_total_workers(has_chief, num_workers) == 1 or _running_in_worker:
       # We're in worker process or the test is for single worker. Either case we
       # execute the test method directly instead of spawning subprocesses.
@@ -384,16 +406,22 @@ def _multi_worker_test(test_method):
     #                   # _running_in_worker is True
     #                   [sub process]test_method()
     test_id = self.id()
-    cluster_spec = multi_worker_test_base.create_cluster_spec(
-        has_chief=has_chief, num_workers=num_workers, num_ps=0, has_eval=False)
-    result = multi_process_runner.run(
-        _test_runner, cluster_spec, args=(test_id,))
-    for was_successful in result.return_value:
+    if runner:
+      result = runner.run(_test_runner, args=(test_id,))
+    else:
+      cluster_spec = multi_worker_test_base.create_cluster_spec(
+          has_chief=has_chief,
+          num_workers=num_workers,
+          num_ps=0,
+          has_eval=False)
+      result = multi_process_runner.run(
+          _test_runner, cluster_spec, args=(test_id,)).return_value
+    for was_successful in result:
       if not was_successful:
         raise AssertionError("some worker failed, see logs for details")
 
   argspec = tf_inspect.getfullargspec(test_method)
-  decorator_args = (argspec.args or []) + ["has_chief", "num_workers"]
+  decorator_args = (argspec.args or []) + ["has_chief", "num_workers", "runner"]
   decorator_argspec = argspec._replace(args=decorator_args)
   return tf_decorator.make_decorator(
       test_method, decorator, decorator_argspec=decorator_argspec)
