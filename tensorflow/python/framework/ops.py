@@ -6411,9 +6411,7 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
   Returns:
     `name_scope*` context manager.
   """
-  ctx = context.context()
-  in_eager_mode = ctx.executing_eagerly()
-  if not in_eager_mode:
+  if not context.executing_eagerly():
     return internal_name_scope_v1(name, default_name, values)
 
   if skip_on_eager:
