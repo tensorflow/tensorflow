@@ -73,7 +73,7 @@ std::string ToString(TensorStorageType type) {
   }
 }
 
-GPUResources TensorDescriptor::GetGPUResources(AccessType access_type) const {
+GPUResources TensorDescriptor::GetGPUResources() const {
   GPUResources resources;
   if (HasAxis(Axis::WIDTH)) {
     resources.ints.push_back("width");
@@ -95,35 +95,35 @@ GPUResources TensorDescriptor::GetGPUResources(AccessType access_type) const {
   if (storage_type == TensorStorageType::BUFFER) {
     GPUBufferDescriptor desc;
     desc.data_type = data_type;
-    desc.access_type = access_type;
+    desc.access_type = access_type_;
     desc.element_size = 4;
     resources.buffers.push_back({"buffer", desc});
   } else if (storage_type == TensorStorageType::SINGLE_TEXTURE_2D ||
              storage_type == TensorStorageType::TEXTURE_2D) {
     GPUImage2DDescriptor desc;
     desc.data_type = data_type;
-    desc.access_type = access_type;
+    desc.access_type = access_type_;
     resources.images2d.push_back({"image2d", desc});
   } else if (storage_type == TensorStorageType::TEXTURE_ARRAY) {
     GPUImage2DArrayDescriptor desc;
     desc.data_type = data_type;
-    desc.access_type = access_type;
+    desc.access_type = access_type_;
     resources.image2d_arrays.push_back({"image2d_array", desc});
   } else if (storage_type == TensorStorageType::TEXTURE_3D) {
     GPUImage3DDescriptor desc;
     desc.data_type = data_type;
-    desc.access_type = access_type;
+    desc.access_type = access_type_;
     resources.images3d.push_back({"image3d", desc});
   } else if (storage_type == TensorStorageType::IMAGE_BUFFER) {
-    if (access_type == AccessType::READ) {
+    if (access_type_ == AccessType::READ) {
       GPUImageBufferDescriptor desc;
       desc.data_type = data_type;
-      desc.access_type = access_type;
+      desc.access_type = access_type_;
       resources.image_buffers.push_back({"image_buffer", desc});
     } else {
       GPUBufferDescriptor desc;
       desc.data_type = data_type;
-      desc.access_type = access_type;
+      desc.access_type = access_type_;
       desc.element_size = 4;
       resources.buffers.push_back({"buffer", desc});
     }
@@ -413,7 +413,11 @@ absl::Status TensorDescriptor::PerformGetHandleSelector(
       *result = "buffer";
       return absl::OkStatus();
     case TensorStorageType::IMAGE_BUFFER:
-      *result = "image_buffer";
+      if (access_type_ == AccessType::READ) {
+        *result = "image_buffer";
+      } else {
+        *result = "buffer";
+      }
       return absl::OkStatus();
     case TensorStorageType::TEXTURE_2D:
     case TensorStorageType::SINGLE_TEXTURE_2D:

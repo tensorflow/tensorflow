@@ -159,13 +159,11 @@ class Arguments {
   std::map<std::string, GPUCustomMemoryDescriptor> custom_memories_;
 
   struct ObjectRefArg {
-    AccessType access_type;
     GPUObjectDescriptorPtr descriptor;
   };
   std::map<std::string, ObjectRefArg> object_refs_;
 
   struct ObjectArg {
-    AccessType access_type;
     GPUObjectPtr obj_ptr;
     GPUObjectDescriptorPtr descriptor;
   };

@@ -225,13 +225,15 @@ void Arguments::AddCustomMemory(const std::string& name,
 
 void Arguments::AddObjectRef(const std::string& name, AccessType access_type,
                              GPUObjectDescriptorPtr&& descriptor_ptr) {
-  object_refs_[name] = {access_type, std::move(descriptor_ptr)};
+  descriptor_ptr->SetAccess(access_type);
+  object_refs_[name] = {std::move(descriptor_ptr)};
 }
 
 void Arguments::AddObject(const std::string& name, AccessType access_type,
                           GPUObjectPtr&& object,
                           GPUObjectDescriptorPtr&& descriptor_ptr) {
-  objects_[name] = {access_type, std::move(object), std::move(descriptor_ptr)};
+  descriptor_ptr->SetAccess(access_type);
+  objects_[name] = {std::move(object), std::move(descriptor_ptr)};
 }
 
 void Arguments::AddGPUResources(const std::string& name,
@@ -374,7 +376,10 @@ absl::Status Arguments::SetObjectRef(const std::string& name,
     return absl::NotFoundError(
         absl::StrCat("No object ref with name - ", name));
   }
-  return SetGPUResources(name, object->GetGPUResources(it->second.access_type));
+  GPUResourcesWithValue resources;
+  RETURN_IF_ERROR(
+      object->GetGPUResources(it->second.descriptor.get(), &resources));
+  return SetGPUResources(name, resources);
 }
 
 absl::Status Arguments::SetGPUResources(
@@ -429,7 +434,7 @@ absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
       return absl::InvalidArgumentError(
           absl::StrCat("Object reference name collision. Name - ", name));
     }
-    object_refs_[name] = {v.second.access_type, std::move(v.second.descriptor)};
+    object_refs_[name] = {std::move(v.second.descriptor)};
   }
   for (auto& v : args.objects_) {
     object_names.push_back(v.first);
@@ -438,7 +443,7 @@ absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
       return absl::InvalidArgumentError(
           absl::StrCat("Object name collision. Name - ", name));
     }
-    objects_[name] = {v.second.access_type, std::move(v.second.obj_ptr),
+    objects_[name] = {std::move(v.second.obj_ptr),
                       std::move(v.second.descriptor)};
   }
   for (const auto& v : args.int_values_) {
@@ -722,23 +727,20 @@ absl::Status Arguments::ResolveSelector(
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) {
   const GPUObjectDescriptor* desc_ptr;
-  AccessType access_type;
   if (auto it = object_refs_.find(object_name); it != object_refs_.end()) {
     desc_ptr = it->second.descriptor.get();
-    access_type = it->second.access_type;
   } else if (auto it = objects_.find(object_name); it != objects_.end()) {
     desc_ptr = it->second.descriptor.get();
-    access_type = it->second.access_type;
   } else {
     return absl::NotFoundError(
         absl::StrCat("No object with name - ", object_name));
   }
-  auto names = desc_ptr->GetGPUResources(access_type).GetNames();
+  auto names = desc_ptr->GetGPUResources().GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
   if (tensor_desc && selector == "Write") {
     if (auto it = linkables.find(object_name); it != linkables.end()) {
-      if (access_type != AccessType::WRITE &&
-          access_type != AccessType::READ_WRITE) {
+      if (desc_ptr->GetAccess() != AccessType::WRITE &&
+          desc_ptr->GetAccess() != AccessType::READ_WRITE) {
         return absl::FailedPreconditionError(absl::StrCat(
             "Object with name - ", object_name, " should have Write access."));
       }
@@ -812,14 +814,14 @@ absl::Status Arguments::ResolveSelectorsPass(
 
 absl::Status Arguments::AddObjectArgs() {
   for (auto& t : objects_) {
-    AddGPUResources(t.first,
-                    t.second.descriptor->GetGPUResources(t.second.access_type));
-    RETURN_IF_ERROR(SetGPUResources(
-        t.first, t.second.obj_ptr->GetGPUResources(t.second.access_type)));
+    AddGPUResources(t.first, t.second.descriptor->GetGPUResources());
+    GPUResourcesWithValue resources;
+    RETURN_IF_ERROR(t.second.obj_ptr->GetGPUResources(t.second.descriptor.get(),
+                                                      &resources));
+    RETURN_IF_ERROR(SetGPUResources(t.first, resources));
   }
   for (auto& t : object_refs_) {
-    AddGPUResources(t.first,
-                    t.second.descriptor->GetGPUResources(t.second.access_type));
+    AddGPUResources(t.first, t.second.descriptor->GetGPUResources());
   }
   return absl::OkStatus();
 }

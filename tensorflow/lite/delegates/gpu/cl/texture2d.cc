@@ -59,12 +59,11 @@ absl::Status CreateTexture2D(int width, int height, cl_channel_type type,
 }
 }  // namespace
 
-GPUResources Texture2DDescriptor::GetGPUResources(
-    AccessType access_type) const {
+GPUResources Texture2DDescriptor::GetGPUResources() const {
   GPUResources resources;
   GPUImage2DDescriptor desc;
   desc.data_type = element_type;
-  desc.access_type = access_type;
+  desc.access_type = access_type_;
   resources.images2d.push_back({"tex2d", desc});
   return resources;
 }
@@ -130,10 +129,16 @@ void Texture2D::Release() {
   }
 }
 
-GPUResourcesWithValue Texture2D::GetGPUResources(AccessType access_type) const {
-  GPUResourcesWithValue resources;
-  resources.images2d.push_back({"tex2d", texture_});
-  return resources;
+absl::Status Texture2D::GetGPUResources(
+    const GPUObjectDescriptor* obj_ptr,
+    GPUResourcesWithValue* resources) const {
+  const auto* texture_desc = dynamic_cast<const Texture2DDescriptor*>(obj_ptr);
+  if (!texture_desc) {
+    return absl::InvalidArgumentError("Expected Texture2DDescriptor on input.");
+  }
+
+  resources->images2d.push_back({"tex2d", texture_});
+  return absl::OkStatus();
 }
 
 // Creates new 4-channel 2D texture with f32 elements

@@ -58,7 +58,8 @@ class Tensor : public GPUObject {
 
   virtual ~Tensor() { Release(); }
 
-  GPUResourcesWithValue GetGPUResources(AccessType access_type) const override;
+  absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                               GPUResourcesWithValue* resources) const override;
 
   int Width() const { return shape_.w; }
   int Height() const { return shape_.h; }

@@ -139,12 +139,14 @@ class GPUObjectDescriptor {
     *result = "";
     return absl::OkStatus();
   }
-  virtual GPUResources GetGPUResources(AccessType access_type) const {
-    return GPUResources();
-  }
+  virtual GPUResources GetGPUResources() const { return GPUResources(); }
+
+  void SetAccess(AccessType access_type) { access_type_ = access_type; }
+  AccessType GetAccess() const { return access_type_; }
 
  protected:
   mutable std::map<std::string, std::string> state_vars_;
+  AccessType access_type_;
 };
 
 using GPUObjectDescriptorPtr = std::unique_ptr<GPUObjectDescriptor>;
@@ -158,8 +160,9 @@ class GPUObject {
   GPUObject(const GPUObject&) = delete;
   GPUObject& operator=(const GPUObject&) = delete;
   virtual ~GPUObject() = default;
-  virtual GPUResourcesWithValue GetGPUResources(
-      AccessType access_type) const = 0;
+  virtual absl::Status GetGPUResources(
+      const GPUObjectDescriptor* obj_ptr,
+      GPUResourcesWithValue* resources) const = 0;
 };
 
 using GPUObjectPtr = std::unique_ptr<GPUObject>;
