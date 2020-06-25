@@ -82,12 +82,83 @@ typedef struct GCSFile {
   bool sync_need;
 } GCSFile;
 
-static void Cleanup(TF_WritableFile* file) {
+static void SyncImpl(const std::string& bucket, const std::string& object,
+                     TempFile* outfile, gcs::Client* gcs_client,
+                     TF_Status* status) {
+  outfile->operator<<(std::flush);
+  // TODO(vnvo2409): Add resumable upload, compose object, etc.
+  auto metadata = gcs_client->UploadFile(outfile->getName(), bucket, object);
+  if (!metadata) {
+    TF_SetStatusFromGCSStatus(metadata.status(), status);
+    return;
+  }
+  outfile->clear();
+  outfile->seekp(std::ios::end);
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void Cleanup(TF_WritableFile* file) {
   auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
   delete gcs_file;
 }
 
-// TODO(vnvo2409): Implement later
+void Append(const TF_WritableFile* file, const char* buffer, size_t n,
+            TF_Status* status) {
+  auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
+  if (!gcs_file->outfile.is_open()) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                 "The internal temporary file is not writable.");
+    return;
+  }
+  gcs_file->sync_need = true;
+  gcs_file->outfile.write(buffer, n);
+  if (!gcs_file->outfile)
+    TF_SetStatus(status, TF_INTERNAL,
+                 "Could not append to the internal temporary file.");
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+int64_t Tell(const TF_WritableFile* file, TF_Status* status) {
+  auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
+  int64_t position = int64_t(gcs_file->outfile.tellp());
+  if (position == -1)
+    TF_SetStatus(status, TF_INTERNAL,
+                 "tellp on the internal temporary file failed");
+  else
+    TF_SetStatus(status, TF_OK, "");
+  return position;
+}
+
+void Flush(const TF_WritableFile* file, TF_Status* status) {
+  auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
+  if (gcs_file->sync_need) {
+    if (!gcs_file->outfile) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   "Could not append to the internal temporary file.");
+      return;
+    }
+    SyncImpl(gcs_file->bucket, gcs_file->object, &gcs_file->outfile,
+             gcs_file->gcs_client, status);
+    if(TF_GetCode(status) != TF_OK)
+      return;
+    gcs_file->sync_need = false;
+  } else {
+    TF_SetStatus(status, TF_OK, "");
+  }
+}
+
+void Sync(const TF_WritableFile* file, TF_Status* status) {
+  Flush(file, status);
+}
+
+void Close(const TF_WritableFile* file, TF_Status* status) {
+  auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
+  if (gcs_file->sync_need) {
+    Flush(file, status);
+  }
+  gcs_file->outfile.close();
+}
 
 }  // namespace tf_writable_file
 
