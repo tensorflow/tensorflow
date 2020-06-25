@@ -70,7 +70,7 @@ REQUIRED_PACKAGES = [
     'wheel >= 0.26',
     'six >= 1.12.0',
     # scipy < 1.4.1 causes segfaults due to pybind11
-    'scipy == 1.4.1',
+    'scipy >= 1.4.1',
 ]
 
 if sys.byteorder == 'little':
