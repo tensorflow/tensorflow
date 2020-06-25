@@ -16,23 +16,9 @@
 set -e
 set -x
 
-if [[ -n "${KOKORO_ARTIFACTS_DIR}" ]]; then
-  cd "${KOKORO_ARTIFACTS_DIR}"
-  ls
-  source "$(find "${KOKORO_ARTIFACTS_DIR}" -name "common_google.sh")"
-  cd git/gob-tensorflow
-
-fi
-
-if [[ -z "${TF_KOKORO_PY_VERSION}" ]]; then
-  echo "You must set TF_KOKORO_PY_VERSION, e.g. '3.7', indicating the "
-  echo "Python version to be used for this build."
-  exit 2
-fi
-
 source tensorflow/tools/ci_build/release/common.sh
 
-install_ubuntu_16_pip_deps "pip${TF_KOKORO_PY_VERSION}"
+install_ubuntu_16_pip_deps pip3.6
 # Update bazel
 install_bazelisk
 
@@ -46,7 +32,7 @@ export TF_CUDNN_VERSION=7
 export TF_NEED_TENSORRT=1
 export TENSORRT_INSTALL_PATH=/usr/local/tensorrt
 export CC_OPT_FLAGS='-mavx'
-export PYTHON_BIN_PATH=$(which "python${TF_KOKORO_PY_VERSION}")
+export PYTHON_BIN_PATH=$(which python3.6)
 export TF2_BEHAVIOR=1
 export PROJECT_NAME="tensorflow_gpu"
 export LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$TENSORRT_INSTALL_PATH/lib"
@@ -57,8 +43,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
-# Exclude -no_oss_py36, for example
-tag_filters="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py${TF_KOKORO_PY_VERSION//.}"
+tag_filters="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py36"
 
 set +e
 bazel test --config=cuda --config=opt \
@@ -66,8 +51,8 @@ bazel test --config=cuda --config=opt \
   --linkopt=-lrt \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --test_lang_filters=py \
-  --build_tag_filters=${tag_filters} \
   --test_tag_filters=${tag_filters} \
+  --build_tag_filters=${tag_filters} \
   --test_timeout="300,450,1200,3600" --local_test_jobs=4 \
   --test_output=errors --verbose_failures=true --keep_going \
   --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
