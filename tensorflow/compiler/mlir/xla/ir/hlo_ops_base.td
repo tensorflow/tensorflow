@@ -264,17 +264,6 @@ class BASE_HLO_Log1pOp {
   }];
 }
 
-class BASE_HLO_LogisticOp {
-  string summary = "Logistic operator";
-
-  string description = [{
-    Returns `logistic(operand)` element-wise.
-
-    See
-    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
-  }];
-}
-
 class BASE_HLO_NegOp {
   string summary = "Negation operator";
 

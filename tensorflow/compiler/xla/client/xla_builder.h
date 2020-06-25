@@ -1073,7 +1073,6 @@ class XlaBuilder {
   friend XlaOp Round(XlaOp operand);
   friend XlaOp Log(XlaOp operand);
   friend XlaOp Log1p(XlaOp operand);
-  friend XlaOp Logistic(XlaOp operand);
   friend XlaOp Sign(XlaOp operand);
   friend XlaOp Clz(XlaOp operand);
   friend XlaOp Cos(XlaOp operand);
@@ -1914,9 +1913,6 @@ XlaOp Log(XlaOp operand);
 
 // Enqueues an log1p instruction (log(x+1)) onto the computation.
 XlaOp Log1p(XlaOp operand);
-
-// Enqueues a logistic instruction onto the computation.
-XlaOp Logistic(XlaOp operand);
 
 // Enqueues a sign instruction onto the computation.
 XlaOp Sign(XlaOp operand);

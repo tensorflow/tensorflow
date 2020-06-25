@@ -543,7 +543,6 @@ foreach Mapping = [
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
-                   [TF_SigmoidOp, HLO_LogisticOp],
                    [TF_SinOp, HLO_SinOp],
                    [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],
