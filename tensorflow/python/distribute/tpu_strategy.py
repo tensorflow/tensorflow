@@ -477,7 +477,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       # not specified.
       steps_per_run = 1
 
+    # `self._tpu_function_cache` is a dict of `tf.function`s, thus if a
+    # `tf.function` is passed into `strategy.run` in eager mode, the
+    # `tf.function` won't get retraced.
     self._tpu_function_cache = weakref.WeakKeyDictionary()
+
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = self._tpu_cluster_resolver.get_tpu_system_metadata()
     self._device_assignment = device_assignment
@@ -1095,7 +1099,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return func(args, kwargs)
 
   def _tpu_function_creator(self, fn, options):
-    if fn in self._tpu_function_cache:
+    if context.executing_eagerly() and fn in self._tpu_function_cache:
       return self._tpu_function_cache[fn]
 
     strategy = self._container_strategy()
@@ -1180,8 +1184,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     if context.executing_eagerly():
       tpu_function = def_function.function(tpu_function)
-
-    self._tpu_function_cache[fn] = tpu_function
+      self._tpu_function_cache[fn] = tpu_function
     return tpu_function
 
   def _in_multi_worker_mode(self):
