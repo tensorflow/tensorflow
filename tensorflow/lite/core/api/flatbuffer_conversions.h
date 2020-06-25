@@ -45,7 +45,7 @@ class BuiltinDataAllocator {
     // platform targets support that properly.
     static_assert(std::is_pod<T>::value, "Builtin data structure must be POD.");
     void* allocated_memory = this->Allocate(sizeof(T), alignof(T));
-    return new (allocated_memory) T;
+    return new (allocated_memory) T();
   }
 
   virtual ~BuiltinDataAllocator() {}
