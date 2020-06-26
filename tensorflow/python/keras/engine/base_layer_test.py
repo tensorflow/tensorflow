@@ -650,6 +650,17 @@ class BaseLayerTest(keras_parameterized.TestCase):
         else:
           return self._nested_layer(inputs) * 0.5
 
+    class CustomLayerDefaultTrainingNone(base_layer.Layer):
+
+      def __init__(self, nested_layer=None):
+        self._nested_layer = nested_layer or array_ops.identity
+
+      def call(self, inputs, training=None):
+        if training:
+          return self._nested_layer(inputs)
+        else:
+          return self._nested_layer(inputs) * 0.5
+
     class CustomLayerDefaultTrainingFalse(base_layer.Layer):
 
       def __init__(self, nested_layer=None):
@@ -701,21 +712,30 @@ class BaseLayerTest(keras_parameterized.TestCase):
     # Outer layers/models should set the training context implicitly for all
     # nested layers, respecting whatever mode the outer layer was run with.
     layer = CustomLayerDefaultTrainingTrue(CustomLayerDefaultTrainingFalse())
-    self.assertAllEqual(layer(x), x)
+    # No outer value passed: use local defaults
+    self.assertAllEqual(layer(x), x * 0.25)  # Use local default False
+    # Outer value passed: override local defaults
     self.assertAllEqual(layer(x, training=False), x * 0.25)
     self.assertAllEqual(layer(x, training=True), x)
 
     layer = CustomLayerDefaultTrainingFalse(CustomLayerDefaultTrainingTrue())
-    self.assertAllEqual(layer(x), x * 0.25)
+    # No outer value passed: use local defaults
+    self.assertAllEqual(layer(x), x)  # Use local default True
+    # Outer value passed: override local defaults
     self.assertAllEqual(layer(x, training=False), x * 0.25)
     self.assertAllEqual(layer(x, training=True), x)
 
     # If the outer layer `call` doesn't take a training argument at all,
-    # it'll set the nested scope as inference when no training arg is passed in.
+    # it'll set the nested scope as None when no training arg is passed in.
     # If a training arg is passed in it won't use it directly in `call`, but
     # it will set the nested training mode.
     layer = CustomLayerNoTrainingArg(CustomLayerDefaultTrainingTrue())
-    self.assertAllEqual(layer(x), x * 0.5)
+    self.assertAllEqual(layer(x), x)  # Use local default True
+    self.assertAllEqual(layer(x, training=False), x * 0.5)
+    self.assertAllEqual(layer(x, training=True), x)
+
+    layer = CustomLayerDefaultTrainingNone(CustomLayerDefaultTrainingTrue())
+    self.assertAllEqual(layer(x), x)  # Use local default True
     self.assertAllEqual(layer(x, training=False), x * 0.5)
     self.assertAllEqual(layer(x, training=True), x)
 
