@@ -3639,6 +3639,9 @@ XlaOp Log(const XlaOp operand) {
 XlaOp Log1p(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kLog1p, operand);
 }
+XlaOp Logistic(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kLogistic, operand);
+}
 XlaOp Sign(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kSign, operand);
 }
