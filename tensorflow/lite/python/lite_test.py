@@ -435,7 +435,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Test None after 1st dimension.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -666,8 +665,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                                                   [out_tensor])
     log_dir = self.get_temp_dir()
     converter.conversion_summary_dir = log_dir
-    # Conversion logs will only be generated when the mlir converter is enabled.
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -1390,7 +1387,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -1797,7 +1793,6 @@ class FromSavedModelTest(TestModels):
                       'If you encountered a problem')
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
     self.assertIn(optout_message, log.getvalue())
@@ -2385,8 +2380,6 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     # Convert model.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    # Only disable this path in MLIR conversion for toco compatibility.
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
