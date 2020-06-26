@@ -35,6 +35,7 @@ cc_library(
     deps = [
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
     ],
 )
@@ -61,7 +62,16 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_executor",
+    name = "device_memory_base_helper",
+    hdrs = ["device_memory_base_helper.h"],
+    deps = [
+        ":tpu_executor_c_api_hdrs",
+        "//tensorflow/stream_executor:device_memory",
+    ],
+)
+
+cc_library(
+    name = "tpu_executor_base",
     srcs = [
         "tpu_executor.cc",
         "tpu_platform.cc",
@@ -73,7 +83,7 @@ cc_library(
         "tpu_timer.h",
     ],
     deps = [
-        ":c_api_conversions",
+        ":device_memory_base_helper",
         ":status_helper",
         ":tpu_executor_c_api_hdrs",
         ":tpu_executor_interface",
@@ -86,6 +96,16 @@ cc_library(
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_executor",
+    srcs = ["tpu_platform_registration.cc"],
+    deps = [
+        ":tpu_executor_base",
+        "//tensorflow/stream_executor/platform",
     ],
     alwayslink = True,
 )
@@ -118,6 +138,7 @@ cc_library(
     srcs = ["tpu_transfer_manager_registration.cc"],
     deps = [
         ":tpu_executor",
+        ":tpu_executor_base",
         ":tpu_transfer_manager_base",
         "//tensorflow/compiler/xla/service:transfer_manager",
     ],
@@ -131,7 +152,7 @@ cc_library(
         ":c_api_conversions",
         ":proto_helper",
         ":status_helper",
-        ":tpu_executor",
+        ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
