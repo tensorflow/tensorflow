@@ -1342,7 +1342,6 @@ class EarlyStopping(Callback):
         print('Restoring model weights from the end of the best epoch.')
       self.model.set_weights(self.best_weights)
 
-
   def get_monitor_value(self, logs):
     logs = logs or {}
     monitor_value = logs.get(self.monitor)
