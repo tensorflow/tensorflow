@@ -38,9 +38,11 @@ constexpr std::array<const char*, 3> kDataDiscarding = {
     "ShardDataset", "SkipDataset", "TakeDataset",
 };
 
-constexpr std::array<const char*, 6> kCardinalityPreserving = {
-    "CacheDataset", "CacheDatasetV2", "PrefetchDataset",
-    "MapDataset", "ParallelMapDataset", "ParallelMapDatasetV2",
+// TODO(zilinzhu): Support memory cache op when file cache op and
+// memory cache op are separated.
+const std::array<const char*, 4> kCardinalityPreserving = {
+    "PrefetchDataset", "MapDataset",
+    "ParallelMapDataset", "ParallelMapDatasetV2",
 };
 
 bool IsDataDiscarding(const NodeDef& node) {
@@ -58,8 +60,8 @@ bool IsCardinalityPreserving(const NodeDef& node) {
       continue;
     }
     // Map ops with preserve_cardinality=false do not qualify.
-    auto attr_iter = node.attr().find("preserve_cardinality");
-    if (attr_iter != node.attr().end() && !attr_iter->second.b()) {
+    auto attr = node.attr().find("preserve_cardinality");
+    if (attr != node.attr().end() && !attr->second.b()) {
       return false;
     }
     return true;

@@ -23,7 +23,7 @@ namespace grappler {
 
 // This optimization reorders the data discarding ops (such as `skip`, `take`
 // and `shard`) to avoid unnecessary computation,
-// e.g. reordering ds.map(...).cache().take(5) to ds.take(5).map(...).cache().
+// e.g. reordering ds.map(...).take(5) to ds.take(5).map(...).
 class ReorderDataDiscardingOps : public TFDataOptimizerBase {
  public:
   ReorderDataDiscardingOps() = default;

@@ -39,16 +39,10 @@ TEST(ReorderDataDiscardingOpsTest, ExampleOps) {
           {"output_shapes", gtl::ArraySlice<TensorShape>{}},
           {"output_types", gtl::ArraySlice<DataType>{}}, 
       }),
-       NDef("num_parallel_calls", "Const", {},
-            {{"value", 1}, {"dtype", DT_INT32}}),
-       graph_tests_utils::MakeParallelMapNode("map", "range",
-                                              "num_parallel_calls", "XTimesTwo",
-                                              /*sloppy=*/false),
-       NDef("dummy_memory_cache", "DummyMemoryCache", {}, {}),
-       graph_tests_utils::MakeCacheV2Node("cache", "map", "", "dummy_memory_cache"),
+       graph_tests_utils::MakeMapNode("map", "range", "XTimesTwo"),
        NDef("take_count", "Const", {},
             {{"value", 5}, {"dtype", DT_INT32}}),
-       graph_tests_utils::MakeTakeNode("take", "cache", "take_count"),
+       graph_tests_utils::MakeTakeNode("take", "map", "take_count"),
        NDef("skip_count", "Const", {},
             {{"value", 1}, {"dtype", DT_INT32}}),
        graph_tests_utils::MakeSkipNode("skip", "take", "skip_count"),
@@ -87,7 +81,7 @@ TEST(ReorderDataDiscardingOpsTest, ExampleOps) {
                                         graph)->name() == "range");
   EXPECT_TRUE(graph_utils::GetInputNode(*graph.GetNode("reorder_data_discarding_ops/skip"),
                                         graph)->name() == "reorder_data_discarding_ops/take");
-  EXPECT_TRUE(graph_utils::GetInputNode(*graph.GetNode("map_and_batch"), graph)->name() == "cache");
+  EXPECT_TRUE(graph_utils::GetInputNode(*graph.GetNode("map_and_batch"), graph)->name() == "map");
 }
 
 }  // namespace
