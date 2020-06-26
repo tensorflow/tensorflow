@@ -26,7 +26,8 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class ReorderDataDiscardingOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
+class ReorderDataDiscardingOpsTest(test_base.DatasetTestBase,
+                                   parameterized.TestCase):
 
   @combinations.generate(combinations.combine(tf_api_version=2,
                                               mode=["eager", "graph"]))
