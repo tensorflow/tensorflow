@@ -4689,7 +4689,11 @@ def non_max_suppression_padded_v2(boxes,
 
   Args:
     boxes: a tensor of rank 2 or higher with a shape of [..., num_boxes, 4].
-      Dimensions except the last two are batch dimensions.
+      Dimensions except the last two are batch dimensions. The last dimension
+      represents box coordinates, given as [y_1, x_1, y_2, x_2]. The coordinates
+      on each dimension can be given in any order
+      (see also `canonicalized_coordinates`) but must describe a box with
+      a positive area.
     scores: a tensor of rank 1 or higher with a shape of [..., num_boxes].
     max_output_size: a scalar integer `Tensor` representing the maximum number
       of boxes to be selected by non max suppression.
