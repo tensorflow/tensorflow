@@ -65,6 +65,14 @@ This release contains contributions from many people at Google, as well as:
     exsiting C++ kernel `ExtractGlimpse` does not change as well, so saved
     models will not be impacted.
 
+## Bug Fixes and Other Changes
+
+*   `tf.keras`:
+    *   Deprecated the `tf.keras.experimental.PeepholeLSTMCell` layer, which was
+        moved to `tensorflow_addons` as
+        `tensorflow_addons.rnn.PeepholeLSTMCell`. This experimental API is
+        expected to be removed from TF in the next public release (2.4).
+
 # Release 2.1.1
 
 ## Bug Fixes and Other Changes
