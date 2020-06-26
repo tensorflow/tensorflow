@@ -48,7 +48,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/stream_executor:stream",
+        "//tensorflow/stream_executor:device_memory",
         "@com_google_absl//absl/container:inlined_vector",
     ],
 )
@@ -83,7 +83,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/stream_executor:stream",
+        "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -139,7 +139,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/stream_executor:stream",
+        "//tensorflow/stream_executor",
     ],
 )
 
@@ -165,17 +165,6 @@ cc_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/stream_executor:multi_platform_manager",
         "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/stream_executor:stream_executor_pimpl",
-    ],
-)
-
-cc_library(
-    name = "tpu_stream_interface",
-    hdrs = ["tpu_stream_interface.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:stream_executor_internal",
     ],
 )
 
@@ -185,8 +174,16 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_platform_interface",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/stream_executor:stream_executor_internal",
-        "//tensorflow/stream_executor:stream_header",
+        "//tensorflow/stream_executor:stream_executor_headers",
+        "//tensorflow/stream_executor/lib",
+    ],
+)
+
+cc_library(
+    name = "tpu_stream_interface",
+    hdrs = ["tpu_stream_interface.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/stream_executor:stream_executor_headers",
     ],
 )
