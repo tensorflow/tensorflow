@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmark for Bidirectional LSTM on IMDB"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -31,54 +30,49 @@ _MAX_FEATURE = 20000
 _MAX_LEN = 200
 
 
-class BidirectLSTMBenchmark(
+class KerasExamplesBenchmark(
     six.with_metaclass(benchmark.ParameterizedBenchmark, test.Benchmark)):
+  """Benchmark for examples on https://keras.io/examples."""
+
+  """Required Arguments for measure_performance:
+      x: Input data, it could be Numpy or load from tfds.    
+      y: Target data. If `x` is a dataset, generator instance,
+         `y` should not be specified.
+      loss: Loss function for model.
+      optimizer: Optimizer for model.
+      Other details can see in benchmark_util.measure_performance.
+  """
   # Set different batch_size and iteration as needed.
   _benchmark_parameters = [
-      ('bs_32', 32, 2), ('bs_64', 64, 2), ('bs_128', 128, 1),
-      ('bs_256', 256, 1), ('bs_512', 512, 3)]
+    ('bs_32', 32, 2), ('bs_64', 64, 2), ('bs_128', 128, 1),
+    ('bs_256', 256, 1), ('bs_512', 512, 3)]
 
   # Built same model in https://keras.io/examples/nlp/bidirectional_lstm_imdb/
-  def _model(self):
-    # Input for variable-length sequences of integers
+  def _lstm_imdb_model(self):
     inputs = keras.Input(shape=(None,), dtype="int32")
-    # Embed each integer in a 128-dimensional vector
     x = layers.Embedding(_MAX_FEATURE, 128)(inputs)
-    # Add 2 bidirectional LSTMs
     x = layers.Bidirectional(layers.LSTM(64, return_sequences=True))(x)
     x = layers.Bidirectional(layers.LSTM(64))(x)
-    # Add a classifier
     outputs = layers.Dense(1, activation="sigmoid")(x)
     model = keras.Model(inputs, outputs)
     return model
 
-  def set_config(self, batch_size, run_iters):
-    test_config = {
-      'batch_size': batch_size,
-      'run_iters': run_iters,
-      'epoch': 3,
-      'optimizer': 'adam',
-      'loss': 'binary_crossentropy',
-      'metrics': ['accuracy'],
-      'warmup_epoch': 1,
-      'distribution_strategy': 'mirrored',
-      'num_gpus': 2,
-    }
-    return test_config
-
-  # load real data
+  # Benchmark for Bidirectional LSTM on IMDB.
   def benchmark_bidirect_lstm_imdb(self, batch_size, run_iters):
-    (x_train, y_train), (x_val, y_val) = imdb.load_data(
-        num_words=_MAX_FEATURE
-    )
+    # Load dataset.
+    (x_train, y_train), _ = imdb.load_data(num_words=_MAX_FEATURE)
     x_train = preprocessing.sequence.pad_sequences(x_train, maxlen=_MAX_LEN)
-    x_val = preprocessing.sequence.pad_sequences(x_val, maxlen=_MAX_LEN)
-    test_config = self.set_config(batch_size, run_iters)
-    results = benchmark_util._measure_performance(self._model, x_train, y_train,
-                                                  x_val, y_val,
-                                                  test_config=test_config)
+    results = benchmark_util.measure_performance(self._lstm_imdb_model,
+                                                 x=x_train,
+                                                 y=y_train,
+                                                 batch_size=batch_size,
+                                                 run_iters=run_iters,
+                                                 optimizer='adam',
+                                                 loss='binary_crossentropy',
+                                                 metrics=['accuracy'])
+
     self.report_benchmark(
-        iters=test_config['epoch'],
+        iters=run_iters,
         wall_time=results['wall_time'],
         extras=results)
 

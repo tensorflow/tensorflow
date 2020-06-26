@@ -45,13 +45,14 @@ cuda_py_test(
 )
 
 py_test(
-    name = "bidirectional_lstm_benchmark_test",
+    name = "keras_examples_benchmark_test",
     size = "medium",
-    srcs = ["bidirectional_lstm_benchmark_test.py"],
+    srcs = ["keras_examples_benchmark_test.py"],
     python_version = "PY3",
     deps = [
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
+        "benchmark_util",
     ],
 )
 
@@ -63,5 +64,8 @@ py_library(
 
 py_library(
   name = "distribution_util",
-  srcs = ["distribution_util.py"]
+  srcs = ["distribution_util.py"],
+  deps = [
+        "//tensorflow/python/eager:remote",
+  ],
 )

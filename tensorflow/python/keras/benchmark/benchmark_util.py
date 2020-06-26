@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Common util for benchmark"""
+"""Common utils for benchmark."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -25,6 +25,7 @@ from tensorflow.python.keras.benchmark import distribution_util
 
 
 class TimerCallBack(callbacks.Callback):
+  """Callback for logging time in each epoch or batch."""
 
   def __init__(self):
     self.times = []
@@ -44,20 +45,59 @@ class TimerCallBack(callbacks.Callback):
       self.recorded_startup = True
 
 
-def _measure_performance(model_fn, x_train, y_train, x_val, y_val,
-    test_config):
-  optimizer = test_config['optimizer']
-  loss_fn = test_config['loss']
-  metrics = test_config['metrics']
-  warmup_epoch = test_config['warmup_epoch']
-  epoch = test_config['epoch']
-  batch_size = test_config['batch_size']
-  run_iters = test_config['run_iters']
-  num_gpus = test_config['num_gpus']
-  distribution_strategy = test_config['distribution_strategy']
+def measure_performance(model_fn,
+    x=None,
+    y=None,
+    epoch=2,
+    batch_size=32,
+    run_iters=4,
+    optimizer=None,
+    loss=None,
+    metrics=None,
+    verbose=0,
+    num_gpus=0,
+    distribution_strategy='off'):
+  """ Run models and measure the performance.
 
+  Arguments:
+    model_fn: Model built by user.
+    x: Input data. Keep the same definition with keras.fit.
+    y: Target data. Keep the same definition with keras.fit.
+    epoch: Integer. Number of epochs to train the model.
+    batch_size: Integer. Number of samples per gradient update.
+    run_iters: Integer. Number of model will run.
+    metrics: Metrics that users need to monitor.
+    verbose: 0, 1, 2.
+    num_gpus: Number of GPU.
+    distribution_strategy: Distribution strategies.
+        It could be `tpu`, `multi_worker_mirrored`, `one_device`,
+        `mirrored`, `parameter_server`.
+
+  Returns:
+    Performance summary, which contains build_time, compile_time,
+    startup_time, avg_epoch_time, wall_time, exp_per_sec, distribution_strategy,
+    epoch.
+
+  Raise:
+    ValueError: If `x` is none or if `optimizer` is not provided or
+    if `loss` is not provided or if `num_gpus` is negative.
+  """
+  if 'x' is None:
+    raise ValueError('Input data is required.')
+  if 'optimizer' is None:
+    raise ValueError('Optimizer is required.')
+  if 'loss' is None:
+    raise ValueError('Loss function is required.')
+  if num_gpus < 0:
+    raise ValueError("`num_gpus` cannot be negative")
+
+  # TODO: (xingyulong@) We will add tfds support later and
+  #  get the `num_examples` from info.
+  num_examples = x.shape[0]
+
+  build_time_list, compile_time_list, startup_time_list = [], [], []
   avg_epoch_time_list, wall_time_list, exp_per_sec_list = [], [], []
-  total_num_examples = (y_train.shape[0] + y_val.shape[0]) * epoch
+  total_num_examples = epoch * num_examples
 
   strategy = distribution_util.get_distribution_strategy(
       distribution_strategy=distribution_strategy,
@@ -65,33 +105,46 @@ def _measure_performance(model_fn, x_train, y_train, x_val, y_val,
 
   for _ in range(run_iters):
     timer = timeit.default_timer
-    # each time you have to init scope
+    t0 = timer()
+    # Init the distribution strategy scope for each iteration.
     strategy_scope = distribution_util.get_strategy_scope(strategy)
     with strategy_scope:
       model = model_fn()
+      build_time = timer() - t0
+
+      t1 = timer()
       model.compile(
           optimizer=optimizer,
-          loss=loss_fn,
+          loss=loss,
           metrics=metrics,
       )
-
-    model.fit(x_train, y_train, batch_size=batch_size, epochs=warmup_epoch)
+      compile_time = timer() - t1
+    # Run one warm up epoch.
+    model.fit(x=x, y=y, batch_size=batch_size, epochs=1)
     cbk = TimerCallBack()
-    t0 = timer()
-    model.fit(x_train,
-              y_train,
+    t2 = timer()
+    model.fit(x=x,
+              y=y,
               batch_size=batch_size,
-              epochs=epoch - warmup_epoch,
+              epochs=epoch,
               callbacks=[cbk],
-              verbose=0,
-              validation_data=(x_val, y_val))
+              verbose=verbose)
     end_time = timer()
 
-    avg_epoch_time_list.append(np.mean(cbk.times[1:]))
+    build_time_list.append(build_time)
+    compile_time_list.append(compile_time)
+    startup_time_list.append(cbk.startup_time)
+    avg_epoch_time_list.append(np.mean(cbk.times))
     wall_time_list.append(end_time - t0)
-    exp_per_sec_list.append(total_num_examples / (end_time - t0))
+    exp_per_sec_list.append(total_num_examples / (end_time - t2))
 
-  results = {'avg_epoch_time': np.mean(avg_epoch_time_list),
+  results = {'build_time': np.mean(build_time_list),
+             'compile_time': np.mean(compile_time_list),
+             'startup_time': np.mean(startup_time_list),
+             'avg_epoch_time': np.mean(avg_epoch_time_list),
              'wall_time': np.mean(wall_time_list),
-             'exp_per_sec': np.mean(exp_per_sec_list)}
+             'exp_per_sec': np.mean(exp_per_sec_list),
+             'distribution_strategy': distribution_strategy,
+             'epoch': epoch}
+
   return results
