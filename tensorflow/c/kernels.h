@@ -191,7 +191,7 @@ TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
                                             size_t len, TF_Status* status);
 
 TF_CAPI_EXPORT extern TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype, 
-                     int64_t* dims, int num_dims, TF_Status* Status);
+                     int64_t* dims, int num_dims, TF_Status* status);
 
 
 #ifdef __cplusplus

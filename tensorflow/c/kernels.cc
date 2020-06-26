@@ -264,26 +264,24 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
   return result;
 }
 
-
+/* num_dims must equal the array size of dims */ 
 TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype, 
-                     int64_t* dims, int num_dims, TF_Status* Status, TF_Tensor* tf_tensor_temp){
+                     int64_t* dims, int num_dims, TF_Status* status){
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
-  // convert inputs to compatible types for API call 
-  // tensorflow::DataType enum_of_dtype = tensorflow::EnumToDataType<dtype>::v(); 
-  // temp_tensor = Tensor(dtype, shape); 
-  // tensorflow::TensorShape s(dimensions); 
+  TF_SetStatus(status, TF_OK, ""); 
   tensorflow::TensorShape shape;
   for(int i = 0; i < num_dims; ++i){
     shape.AddDim(dims[i]); 
   }
-  tensorflow::Status allocation_status;
-  tensorflow::Tensor tensor_temp; 
-  TF_TensorToTensor(tf_tensor_temp, &tensor_temp); 
-  allocation_status = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape, &tensor_temp);
-  tf_tensor_temp = TF_TensorFromTensor(tensor_temp, &allocation_status); 
-
-
-
-
-  // Status allocation_status = cc_ctx->allocate_temp()
+  tensorflow::Status s;
+  tensorflow::Tensor tensor_temp;  
+  TF_Tensor* tf_tensor_temp; 
+  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape, &tensor_temp);
+  if (s.ok()){ 
+    tf_tensor_temp = TF_TensorFromTensor(tensor_temp, &s); 
+  }
+  if (s.ok()){ 
+    ::tensorflow::Set_TF_Status_from_Status(status, s); 
+    return tf_tensor_temp; 
+  }  
 }
