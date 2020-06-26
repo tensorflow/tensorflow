@@ -264,7 +264,6 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
   return result;
 }
 
-/* num_dims must equal the array size of dims */ 
 TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype, 
                      int64_t* dims, int num_dims, TF_Status* status){
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);

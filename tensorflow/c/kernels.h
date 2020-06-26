@@ -190,6 +190,11 @@ TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
                                             int64_t* dims, int num_dims,
                                             size_t len, TF_Status* status);
 
+// Allocates a temporary Tensor of the specified type and shape. The
+// Tensor must not be used after kernel construction is
+// complete. 
+
+// num_dims must equal the size of array dims 
 TF_CAPI_EXPORT extern TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype, 
                      int64_t* dims, int num_dims, TF_Status* status);
 
