@@ -12,22 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""Benchmarks for low-level eager execution primitives.
-
-To run CPU benchmarks:
-  bazel run -c opt benchmarks_test -- --benchmarks=.
-
-To run GPU benchmarks:
-  bazel run --config=cuda -c opt --copt="-mavx" benchmarks_test -- \
-    --benchmarks=.
-
-To run a subset of benchmarks using --benchmarks flag.
---benchmarks: the list of benchmarks to run. The specified value is interpreted
-as a regular expression and any benchmark whose name contains a partial match
-to the regular expression is executed.
-e.g. --benchmarks=".*matmul*." will run all matmul related benchmarks.
-
-"""
+r"""Benchmarks on Keras components with different Keras model types."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -118,7 +103,7 @@ def run_benchmark(func, num_iters, execution_mode=None):
     return end - start
 
 
-class MicroBenchmarks(test.Benchmark):
+class KerasComponentsBenchmarks(test.Benchmark):
 
   def _run(self, func, num_iters, execution_mode=None):
     total_time = run_benchmark(func, num_iters, execution_mode)
