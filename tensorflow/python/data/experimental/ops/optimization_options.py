@@ -184,12 +184,12 @@ class OptimizationOptions(options.OptionsBase):
       name="reorder_data_discarding_ops",
       ty=bool,
       docstring=
-      "Whether to reorder ops that will discard data to the front of unary"
-      "cardinality preserved transformations, e.g. dataset.map(...).take(3)"
-      "will be optimized to dataset.take(3).map(...). For now this"
-      "optimization will move `skip`, `shard` and `take` to the front of"
-      "`map` and `prefetch`. And notice this optimization is only for"
-      "performance, it will not affect the output of the dataset."
+      "Whether to reorder ops that will discard data to the front of unary "
+      "cardinality preserving transformations, e.g. dataset.map(...).take(3) "
+      "will be optimized to dataset.take(3).map(...). For now this "
+      "optimization will move `skip`, `shard` and `take` to the front of "
+      "`map` and `prefetch`. This optimization is only for performance; "
+      "it will not affect the output of the dataset."
       "If None, defaults to True.")
 
   shuffle_and_repeat_fusion = options.create_option(
