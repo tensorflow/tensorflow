@@ -142,6 +142,19 @@ class TensorMap {
     return out;
   }
 
+  bool insert(Tensor key, Tensor value) {
+    tensors_->values_.try_emplace(key, value);
+    return true;
+  }
+
+  /*Tensor& lookup(Tensor key) {
+    return tensors_->values_.find(key);
+  }*/
+
+  bool erase(Tensor key) {
+    return tensors_->values_.erase(key);
+  }
+
   // Is this TensorMap the only one with a reference to the underlying
   // container?
   bool RefCountIsOne() const { return tensors_->RefCountIsOne(); }
