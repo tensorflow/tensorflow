@@ -371,7 +371,7 @@ class Interpreter {
   /// NOTE: num_threads should be >= -1.
   /// User may pass -1 to let the TFLite interpreter set the no of threads
   /// available to itself.
-  void SetNumThreads(int num_threads);
+  TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
   /// default: not allow.
