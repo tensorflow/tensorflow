@@ -647,6 +647,12 @@ struct CompileOptions {
 
   // XLA's compilation time options.
   ExecutableBuildOptions executable_build_options;
+
+  // If true, the executable can be run on any device. May only be true if
+  // !executable_build_options.has_device_assignment(), so only applies to
+  // single-device executables. Beware: on GPUs, sometimes an executable
+  // compiled for one device doesn't run on another.
+  bool compile_portable_executable = false;
 };
 
 struct ExecuteOptions {
@@ -673,7 +679,7 @@ class PjRtExecutable {
 
   PjRtExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
                  bool parameter_is_tupled_arguments,
-                 DeviceAssignment device_assignment,
+                 std::shared_ptr<DeviceAssignment> device_assignment,
                  std::vector<std::pair<int, int>> local_logical_device_ids,
                  std::vector<Device*> local_devices, PjRtClient* client);
 
@@ -738,10 +744,12 @@ class PjRtExecutable {
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, Device* device,
-      std::vector<PjRtBuffer::ScopedHold>* device_buffers) const;
+      std::vector<PjRtBuffer::ScopedHold>* device_buffers,
+      std::shared_ptr<DeviceAssignment> device_assignment) const;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
-      int partition, const RunId& run_id, const ExecuteOptions& options) const;
+      int partition, const RunId& run_id, const ExecuteOptions& options,
+      Device* device = nullptr) const;
 
   // Create shared pointers so we can free them after the execution: with
   // asynchronous execution, the process being executed can outlive the
