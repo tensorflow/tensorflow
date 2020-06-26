@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
@@ -133,12 +134,13 @@ class SharedBatchScheduler
   // The returned queue's destructor blocks until all tasks submitted to it have
   // been processed.
   struct QueueOptions {
-    // The maximum size of each batch.
+    // The size limit of an input batch to the queue.
     //
-    // The scheduler may form batches of any size between 1 and this number
-    // (inclusive). If there is a need to quantize the batch sizes, i.e. only
-    // submit batches whose size is in a small set of allowed sizes, that can be
-    // done by adding padding in the process-batch callback.
+    // If `enable_large_batch_splitting` is True, 'max_batch_size' should be
+    // greater or equal than `max_execution_batch_size`; otherwise
+    // `max_batch_size` should be equal to `max_execution_batch_size`.
+    // TODO(b/154140947):
+    // Rename it to 'input_batch_size_limit' here and in caller's code.
     size_t max_batch_size = 1000;
 
     // If a task has been enqueued for this amount of time (in microseconds),
@@ -163,8 +165,36 @@ class SharedBatchScheduler
     size_t max_enqueued_batches = 10;
 
     // If true, queue implementation would split one input batch task into
-    // subtasks and fit them into different batches.
+    // subtasks (as specified by `split_input_task_func` below) and fit subtasks
+    // into different batches.
+    //
+    // For usage of `split_input_task_func`, please see its comment.
     bool enable_large_batch_splitting = false;
+
+    // `input_task`: a unit of task to be splitted (raw pointer not owned).
+    // `first_output_task_size`: task size of first output.
+    // `max_batch_size`: Maximum size of each batch.
+    // `output_tasks`: A list of output tasks after split.
+    //
+    // REQUIRED:
+    // 1) All `output_tasks` should be non-empty tasks.
+    // 2) Sizes of `output_tasks` add up to size of `input_task`.
+    //
+    // NOTE:
+    // Instantiations of `TaskType` may vary, so it's up to caller to define
+    // how (e.g., which members to access) to split input tasks.
+    std::function<Status(std::unique_ptr<TaskType>* input_task,
+                         int first_output_task_size, int max_batch_size,
+                         std::vector<std::unique_ptr<TaskType>>* output_tasks)>
+        split_input_task_func;
+
+    // The maximum size of each enqueued batch (i.e., in `batches_`).
+    //
+    // The scheduler may form batches of any size between 1 and this number
+    // (inclusive). If there is a need to quantize the batch sizes, i.e. only
+    // submit batches whose size is in a small set of allowed sizes, that can be
+    // done by adding padding in the process-batch callback.
+    size_t max_execution_batch_size = 1000;
   };
   Status AddQueue(const QueueOptions& options,
                   std::function<void(std::unique_ptr<Batch<TaskType>>)>
@@ -237,6 +267,10 @@ class Queue {
   using ProcessBatchCallback =
       std::function<void(std::unique_ptr<Batch<TaskType>>)>;
   using SchedulableBatchCallback = std::function<void()>;
+  using SplitInputTaskIntoSubtasksCallback = std::function<Status(
+      std::unique_ptr<TaskType>* input_task, int open_batch_remaining_slot,
+      int max_batch_size,
+      std::vector<std::unique_ptr<TaskType>>* output_tasks)>;
   Queue(const typename SharedBatchScheduler<TaskType>::QueueOptions& options,
         Env* env, ProcessBatchCallback process_batch_callback,
         SchedulableBatchCallback schedulable_batch_callback);
@@ -248,6 +282,12 @@ class Queue {
   // BatchScheduler::Schedule().
   Status Schedule(std::unique_ptr<TaskType>* task);
 
+  // 'ScheduleWithoutSplit'.
+  Status ScheduleWithoutSplit(std::unique_ptr<TaskType>* task);
+
+  // 'ScheduleWithSplit'
+  Status ScheduleWithSplit(std::unique_ptr<TaskType>* task);
+
   // Returns the number of enqueued tasks, with the same semantics as
   // BatchScheduler::NumEnqueuedTasks().
   size_t NumEnqueuedTasks() const;
@@ -258,6 +298,17 @@ class Queue {
 
   // Returns the maximum allowed size of tasks submitted to the queue.
   size_t max_task_size() const { return options_.max_batch_size; }
+
+  // Returns the maximum allowed size of tasks to be enqueued.
+  // Returned value would be less than or equal to the maximum allowed input
+  // size that's provided by caller of batch scheduler.
+  size_t max_execution_batch_size() const {
+    if (options_.enable_large_batch_splitting) {
+      return options_.max_execution_batch_size;
+    } else {
+      return options_.max_batch_size;
+    }
+  }
 
   // Called by a thread that is ready to process a batch, to request one from
   // this queue. Either returns a batch that is ready to be processed, or
@@ -285,6 +336,12 @@ class Queue {
   // fresh open batch behind it.
   void StartNewBatch() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Split `input task` into `output_tasks` according to 'task_sizes'.
+  Status SplitInputBatchIntoSubtasks(
+      std::unique_ptr<TaskType>* input_task,
+      std::vector<std::unique_ptr<TaskType>>* output_tasks)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // Determines whether the open batch residing at the back of 'batches_' is
   // currently schedulable.
   bool IsOpenBatchSchedulable() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -294,8 +351,8 @@ class Queue {
   // The environment to use.
   Env* env_;
 
-  // A callback invoked to processes a batch of work units. Always invoked from
-  // a batch thread.
+  // A callback invoked to processes a batch of work units. Always invoked
+  // from a batch thread.
   ProcessBatchCallback process_batch_callback_;
 
   // A callback invoked to notify the scheduler that a new batch has become
@@ -319,18 +376,19 @@ class Queue {
   // in 'batches_'. Valid iff that batch contains at least one task.
   uint64 open_batch_start_time_micros_ TF_GUARDED_BY(mu_);
 
-  // Whether this queue contains a batch that is eligible to be scheduled. Used
-  // to keep track of when to call 'schedulable_batch_callback_'.
+  // Whether this queue contains a batch that is eligible to be scheduled.
+  // Used to keep track of when to call 'schedulable_batch_callback_'.
   bool schedulable_batch_ TF_GUARDED_BY(mu_) = false;
 
   // The number of batches currently being processed by batch threads.
   // Incremented in ScheduleBatch() and decremented in ProcessBatch().
   int num_batches_being_processed_ TF_GUARDED_BY(mu_) = 0;
 
-  // Used by CloseAndWaitUntilEmpty() to wait until the queue is empty, for the
-  // case in which the queue is not empty when CloseAndWaitUntilEmpty() starts.
-  // When ProcessBatch() dequeues the last batch and makes the queue empty, if
-  // 'empty_notification_' is non-null it calls 'empty_notification_->Notify()'.
+  // Used by CloseAndWaitUntilEmpty() to wait until the queue is empty, for
+  // the case in which the queue is not empty when CloseAndWaitUntilEmpty()
+  // starts. When ProcessBatch() dequeues the last batch and makes the queue
+  // empty, if 'empty_notification_' is non-null it calls
+  // 'empty_notification_->Notify()'.
   Notification* empty_notification_ TF_GUARDED_BY(mu_) = nullptr;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Queue);
@@ -414,6 +472,23 @@ Status SharedBatchScheduler<TaskType>::AddQueue(
     return errors::InvalidArgument(
         "max_enqueued_batches must be non-negative; was ",
         options.max_enqueued_batches);
+  }
+
+  if (options.enable_large_batch_splitting &&
+      options.split_input_task_func == nullptr) {
+    return errors::InvalidArgument(
+        "split_input_task_func must be specified when split_input_task is "
+        "true: ",
+        options.enable_large_batch_splitting);
+  }
+
+  if (options.enable_large_batch_splitting &&
+      (options.max_batch_size < options.max_execution_batch_size)) {
+    return errors::InvalidArgument(
+        "When enable_large_batch_splitting is true, max_batch_size must be "
+        "greater than or equal to max_execution_batch_size.",
+        options.enable_large_batch_splitting, options.max_batch_size,
+        options.max_execution_batch_size);
   }
 
   auto schedulable_batch_callback = [this] {
@@ -533,9 +608,17 @@ Queue<TaskType>::~Queue() {
 
 template <typename TaskType>
 Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
+  if (options_.enable_large_batch_splitting) {
+    return ScheduleWithSplit(std::move(task));
+  }
+  return ScheduleWithoutSplit(std::move(task));
+}
+
+template <typename TaskType>
+Status Queue<TaskType>::ScheduleWithoutSplit(std::unique_ptr<TaskType>* task) {
   if ((*task)->size() > options_.max_batch_size) {
     return errors::InvalidArgument("Task size ", (*task)->size(),
-                                   " is larger than maximum batch size ",
+                                   " is larger than maximum input batch size ",
                                    options_.max_batch_size);
   }
 
@@ -577,6 +660,89 @@ Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   return Status::OK();
 }
 
+// TODO(b/154140947):
+// Merge `ScheduleWithSplit` and `ScheduleWithoutSplit` into `Schedule`.
+// Two variants are created so original path (ScheduleWithoutSplit) is kept as
+// it is.
+template <typename TaskType>
+Status Queue<TaskType>::ScheduleWithSplit(std::unique_ptr<TaskType>* task) {
+  profiler::TraceMe trace_me([task] {
+    return strings::StrCat("ScheduleWithSplit:", (*task)->size());
+  });
+  if ((*task)->size() > options_.max_batch_size) {
+    return errors::InvalidArgument("Task size ", (*task)->size(),
+                                   " is larger than maximum input batch size ",
+                                   options_.max_batch_size);
+  }
+
+  // The max size to be enqueued.
+  const int max_execution_batch_size = options_.max_execution_batch_size;
+
+  bool notify_of_schedulable_batch = false;
+  {
+    mutex_lock l(mu_);
+
+    DCHECK(!closed_);
+
+    const int num_new_batches_schedulable =
+        options_.max_enqueued_batches - batches_.size();
+    const int open_batch_capacity =
+        max_execution_batch_size - batches_.back()->size();
+    const int scheduling_capacity =
+        (num_new_batches_schedulable * max_execution_batch_size) +
+        open_batch_capacity;
+
+    // The scenario when concurrent incoming batches arrives and use up all
+    // queue capacity isn't covered by unit test.
+    // The coverage boils down to sepcify "function library" in a way that,
+    // one batch task can synchronize with another task, and then two tasks
+    // run concurrently. An integration test might be a better fit.
+    if ((*task)->size() > scheduling_capacity) {
+      return errors::Unavailable(
+          "The batch scheduling queue to which this task was submitted is "
+          "full");
+    }
+
+    const int64 open_batch_remaining_slot =
+        max_execution_batch_size - batches_.back()->size();
+
+    const int64 input_task_size = (*task)->size();
+
+    std::vector<std::unique_ptr<TaskType>> output_tasks;
+
+    if (input_task_size <= open_batch_remaining_slot) {
+      // This is the fast path when input doesn't need to be splitted.
+      output_tasks.push_back(std::move(*task));
+    } else {
+      TF_RETURN_IF_ERROR(SplitInputBatchIntoSubtasks(task, &output_tasks));
+    }
+
+    for (int i = 0; i < output_tasks.size(); ++i) {
+      if (batches_.back()->size() + output_tasks[i]->size() >
+          options_.max_execution_batch_size) {
+        StartNewBatch();
+      }
+      if (batches_.back()->empty()) {
+        open_batch_start_time_micros_ = env_->NowMicros();
+      }
+      batches_.back()->AddTask(std::move(output_tasks[i]));
+    }
+
+    if (!schedulable_batch_) {
+      if (batches_.size() > 1 || IsOpenBatchSchedulable()) {
+        schedulable_batch_ = true;
+        notify_of_schedulable_batch = true;
+      }
+    }
+  }
+
+  if (notify_of_schedulable_batch) {
+    schedulable_batch_callback_();
+  }
+
+  return Status::OK();
+}
+
 template <typename TaskType>
 size_t Queue<TaskType>::NumEnqueuedTasks() const {
   mutex_lock l(mu_);
@@ -593,8 +759,8 @@ size_t Queue<TaskType>::SchedulingCapacity() const {
   const int num_new_batches_schedulable =
       options_.max_enqueued_batches - batches_.size();
   const int open_batch_capacity =
-      options_.max_batch_size - batches_.back()->size();
-  return (num_new_batches_schedulable * options_.max_batch_size) +
+      max_execution_batch_size() - batches_.back()->size();
+  return (num_new_batches_schedulable * max_execution_batch_size()) +
          open_batch_capacity;
 }
 
@@ -677,12 +843,23 @@ void Queue<TaskType>::StartNewBatch() {
 }
 
 template <typename TaskType>
+Status Queue<TaskType>::SplitInputBatchIntoSubtasks(
+    std::unique_ptr<TaskType>* input_task,
+    std::vector<std::unique_ptr<TaskType>>* output_tasks) {
+  const int open_batch_remaining_slot =
+      max_execution_batch_size() - batches_.back()->size();
+  return options_.split_input_task_func(
+      std::move(input_task), open_batch_remaining_slot,
+      max_execution_batch_size(), std::move(output_tasks));
+}
+
+template <typename TaskType>
 bool Queue<TaskType>::IsOpenBatchSchedulable() const {
   Batch<TaskType>* open_batch = batches_.back().get();
   if (open_batch->empty()) {
     return false;
   }
-  return closed_ || open_batch->size() >= options_.max_batch_size ||
+  return closed_ || open_batch->size() >= max_execution_batch_size() ||
          env_->NowMicros() >=
              open_batch_start_time_micros_ + options_.batch_timeout_micros;
 }
