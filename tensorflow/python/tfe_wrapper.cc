@@ -1169,7 +1169,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
     PyCapsule_SetName(pycapsule.ptr(), "used_dltensor");
     PyCapsule_SetDestructor(pycapsule.ptr(), nullptr);
-    PyObject* pyhandle = EagerTensorFromHandle(thandle, true);
+    
+    PyObject* pyhandle = EagerTensorFromHandle(thandle);
     return tensorflow::PyoOrThrow(pyhandle);
   });
 
