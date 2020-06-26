@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "absl/container/flat_hash_map.h"
 
 namespace tensorflow {
 
@@ -123,8 +124,12 @@ class TensorMap {
   int max_num_elements = -1;
 
   // Access to the underlying tensor container.
-  std::map<Tensor,Tensor>& tensors() { return tensors_->values_; }
-  const std::map<Tensor,Tensor>& tensors() const { return tensors_->values_; }
+  absl::flat_hash_map<Tensor,Tensor>& tensors() { return tensors_->values_; }
+  const absl::flat_hash_map<Tensor,Tensor>& tensors() const { return tensors_->values_; }
+  
+  // Access to shape and element dtype
+  PartialTensorShape& shape() { return element_shape; }
+  DataType dtype() { return element_dtype; }
 
   // Get a new TensorList containing a copy of the underlying tensor container.
   TensorMap Copy() const {
@@ -132,7 +137,7 @@ class TensorMap {
     out.element_shape = element_shape;
     out.element_dtype = element_dtype;
     out.max_num_elements = max_num_elements;
-    // This performs a copy of the std::map.
+    // This performs a copy of the absl::hashmap.
     out.tensors_->values_ = tensors_->values_;
     return out;
   }
@@ -144,7 +149,8 @@ class TensorMap {
  private:
   class Tensors : public core::RefCounted {
    public:
-    std::map<Tensor,Tensor> values_;
+    //std::unordered_map<Tensor,Tensor> values_;
+    absl::flat_hash_map<Tensor,Tensor> values_;
   };
   Tensors* tensors_;
 };

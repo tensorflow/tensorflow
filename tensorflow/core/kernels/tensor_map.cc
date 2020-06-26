@@ -28,38 +28,20 @@ TensorMap::~TensorMap() {
 void TensorMap::Encode(VariantTensorData* data) const {
   data->set_type_name(TypeName());
 
-  std::map<Tensor,Tensor>::iterator map_it = tensors().begin();
-  size_t i = 0;
-  std::vector<size_t> invalid_indices;
+  absl::flat_hash_map<Tensor,Tensor>::const_iterator map_it = tensors().begin();
   while (map_it != tensors().end()) {
     Tensor k = map_it->first;
     Tensor v = map_it->second;
-    // k should also not be DT_RESOURCE or DT_VARIANT
-    if(k.dtype != DT_INVALID && v.dtype != DT_INVALID) {
+    // TODO: k should also not be DT_RESOURCE or DT_VARIANT
+    if(k.dtype() != DT_INVALID && v.dtype() != DT_INVALID) {
       *data->add_tensors() = k;
       *data->add_tensors() = v;
-        // not sure if this is the correct order
-    }
-    else {
-      invalid_indices.push_back(i);
     }
   }
-  /*
-  for (size_t i = 0; i < tensors().size(); i++) {
-    if (tensors().at(i).dtype() != DT_INVALID) {
-      *data->add_tensors() = tensors().at(i);
-    } else {
-      invalid_indices.push_back(i);
-    }
-  }*/
   string metadata;
   // TODO(b/118838800): Add a proto for storing the metadata.
   // Metadata format:
-  // <num_invalid_tensors><invalid_indices><element_dtype><element_shape_proto>
-  core::PutVarint64(&metadata, static_cast<uint64>(invalid_indices.size()));
-  for (size_t i : invalid_indices) {
-    core::PutVarint64(&metadata, static_cast<uint64>(i));
-  }
+  // <element_dtype><element_shape_proto>
   core::PutVarint64(&metadata, static_cast<uint64>(element_dtype));
   core::PutVarint64(&metadata, static_cast<uint64>(max_num_elements));
   TensorShapeProto element_shape_proto;
@@ -74,12 +56,11 @@ static Status TensorMapDeviceCopy(
   to->element_shape = from.element_shape;
   to->element_dtype = from.element_dtype;
   to->max_num_elements = from.max_num_elements;
-  //to->tensors().reserve(from.tensors().size());
   for (const std::pair<Tensor,Tensor>& p : from.tensors()) {
-    to->tensors().emplace(p); //why was it emplace t.dtype?
-    if (t.dtype() != DT_INVALID) {
+    to->tensors().emplace(p); //TODO: check valid dtype
+    //if (t.dtype() != DT_INVALID) {
       //TF_RETURN_IF_ERROR(copy(p, &to->tensors().back()));
-    }
+    //}
   }
   return Status::OK();
 }
@@ -102,33 +83,17 @@ bool TensorMap::Decode(const VariantTensorData& data) {
   data.get_metadata(&metadata);
   uint64 scratch;
   StringPiece iter(metadata);
-  std::vector<size_t> invalid_indices;
-  core::GetVarint64(&iter, &scratch);
-  size_t num_invalid_tensors = static_cast<size_t>(scratch);
-  invalid_indices.resize(num_invalid_tensors);
-  for (size_t i = 0; i < num_invalid_tensors; i++) {
-    core::GetVarint64(&iter, &scratch);
-    invalid_indices[i] = static_cast<size_t>(scratch);
-  }
 
-  size_t total_num_tensors = data.tensors().size()/2 + num_invalid_tensors;
-  //tensors().reserve(total_num_tensors);
-  std::vector<size_t>::iterator invalid_indices_it = invalid_indices.begin();
   std::vector<Tensor>::const_iterator tensors_it = data.tensors().begin();
-  for (size_t i = 0; i < total_num_tensors; i++) {
-    if (invalid_indices_it != invalid_indices.end() &&
-        *invalid_indices_it == i) {
-      //no need to do invalid indices for a map
-      //tensors().emplace(Tensor(DT_INVALID),Tensor(DT_INVALID));
-      invalid_indices_it++;
-    } else if (tensors_it != data.tensors().end()) {
-      // should assert that tensors_it + 1 is also not the end
-      tensors().emplace(*tensors_it,*++tensors_it);
-      tensors_it++;
-    } else {
-      // VariantTensorData is corrupted.
+  while (tensors_it != data.tensors().end())
+  {
+    // should assert that tensors_it + 1 is also not the end
+    /*if (*tensors_it + 1 == data.tensors().end()) {
       return false;
-    }
+    }*/
+    
+    tensors().emplace(*tensors_it,*++tensors_it);
+    tensors_it++;
   }
 
   core::GetVarint64(&iter, &scratch);
