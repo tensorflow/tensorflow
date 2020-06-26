@@ -43,3 +43,15 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
 )
+
+cuda_py_test(
+    name = "applications_saved_model_test",
+    size = "medium",
+    srcs = ["applications_saved_model_test.py"],
+    shard_count = 8,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/applications",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
