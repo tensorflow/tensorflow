@@ -984,3 +984,11 @@ func @ReorderAddWithConstant(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: %[[RESULT:.*]] = tfl.add %arg0, %[[CONST]] {fused_activation_function = "NONE"} : tensor<2x2xf32>
 }
 
+func @RemoveCast(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %1 = "tfl.cast"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %1 : tensor<2x2xf32>
+
+  // CHECK-LABEL: RemoveCast
+  // CHECK: return %arg0
+}
+
