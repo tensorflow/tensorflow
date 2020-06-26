@@ -724,7 +724,8 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
         keras.layers.ZeroPadding2D(padding=None)
 
   @parameterized.named_parameters(
-      ('channels_first', 'channels_last'),
+      ('channels_first', 'channels_first'),
+      ('channels_last', 'channels_last')
   )
   def test_zero_padding_3d(self, data_format):
     num_samples = 2
