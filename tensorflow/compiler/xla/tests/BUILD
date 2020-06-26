@@ -381,7 +381,7 @@ xla_test(
     timeout = "long",
     srcs = ["conv_depthwise_backprop_filter_test.cc"],
     # these backends do not natively handle batch group counts.
-    blacklisted_backends = [
+    disabled_backends = [
         "gpu",
         "cpu",
     ],
@@ -405,7 +405,7 @@ xla_test(
     name = "grouped_convolution_test",
     timeout = "long",
     srcs = ["grouped_convolution_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # disabled because it times out.
         "cpu",
     ],
@@ -490,7 +490,7 @@ xla_test(
 xla_test(
     name = "xla_hlo_profile_test",
     srcs = ["xla_hlo_profile_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # Hlo profiles are not supported on the interpreter backend.
         "interpreter",
     ],
@@ -1220,7 +1220,7 @@ xla_test(
 xla_test(
     name = "batch_normalization_test",
     srcs = ["batch_normalization_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # BatchNorm HLOs are not handled by the interpreter backend, and the
         # BatchNorm expander is not run on the interpreter.
         "interpreter",
@@ -1886,7 +1886,7 @@ xla_test(
 xla_test(
     name = "all_reduce_test",
     srcs = ["all_reduce_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # All reduce is not supported on the interpreter backend.
         "interpreter",
     ],
@@ -2062,7 +2062,7 @@ xla_test(
 xla_test(
     name = "execution_profile_test",
     srcs = ["execution_profile_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # Execution profiles are not supported on the interpreter backend.
         "interpreter",
     ],
@@ -2081,7 +2081,7 @@ xla_test(
     name = "execution_profile_test_with_xla_hlo_profile",
     srcs = ["execution_profile_test.cc"],
     args = ["--xla_hlo_profile"],
-    blacklisted_backends = [
+    disabled_backends = [
         # Hlo profiles are not supported on the interpreter backend.
         "interpreter",
     ],
@@ -2306,7 +2306,7 @@ xla_test(
 xla_test(
     name = "outfeed_in_nested_computation_test",
     srcs = ["outfeed_in_nested_computation_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         # Outfeed ops are not supported on the interpreter backend.
         "interpreter",
     ],
