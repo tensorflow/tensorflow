@@ -829,6 +829,9 @@ py_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
     python_version = "PY3",
+    tags = [
+        "notsan",  # TODO(b/160006974)
+    ],
     deps = [
         ":combinations",
         "//tensorflow/python:client_testlib",
@@ -1819,6 +1822,7 @@ distribute_py_test(
         # TODO(b/155301154): Enable this test on multi-gpu guitar once multi process
         # runner can run on guitar.
         "noguitar",
+        "notsan",  # TODO(b/160006974)
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
