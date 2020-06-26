@@ -76,6 +76,23 @@ absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
   return absl::OkStatus();
 }
 
+absl::Status CreateTensorShared(const CLContext& context, const BHWDC& shape,
+                                const TensorDescriptor& descriptor,
+                                cl_mem memory, Tensor* result) {
+  const bool memory_owner = false;
+  if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    cl_mem image_memory;
+    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
+        context, memory, descriptor.data_type,
+        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
+        &image_memory));
+    *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
+  } else {
+    *result = Tensor(memory, memory_owner, shape, descriptor);
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 Tensor::Tensor(cl_mem memory, bool memory_owner, const BHWC& shape,
@@ -415,21 +432,19 @@ absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
   return CreateTensor(context, device, shape, descriptor, nullptr, result);
 }
 
-absl::Status CreateSharedTensor(const CLContext& context,
-                                const CLDevice& device, cl_mem memory,
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result) {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
-  return CreateTensor(context, device, shape5D, descriptor, memory, result);
+  return CreateTensorShared(context, shape5D, descriptor, memory, result);
 }
 
-absl::Status CreateSharedTensor(const CLContext& context,
-                                const CLDevice& device, cl_mem memory,
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWDC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result) {
-  return CreateTensor(context, device, shape, descriptor, memory, result);
+  return CreateTensorShared(context, shape, descriptor, memory, result);
 }
 
 absl::Status AllocateTensorMemory(const CLContext& context,
