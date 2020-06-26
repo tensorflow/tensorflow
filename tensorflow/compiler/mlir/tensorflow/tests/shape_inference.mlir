@@ -457,4 +457,14 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     %1 = tensor_cast %arg0 : tensor<1xi32> to tensor<*xi32>
     return %1 : tensor<*xi32>
   }
+
+  // CHECK-LABEL: operand_pack_unranked
+  // Verify fix: this only verifies that shape inference runs and completes on
+  // this input, rather than refining any shapes.
+  func @operand_pack_unranked(%arg0: tensor<*xf32>) -> () {
+   // CHECK: tf.Pack
+   %outputs_0 = "tf.Pack"(%arg0) {axis = 0 : i64, device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+   %outputs_2 = "tf.TensorSliceDataset"(%outputs_0) {device = "", output_shapes = [#tf.shape<>]} : (tensor<*xf32>) -> tensor<!tf.variant>
+   return
+  }
 }

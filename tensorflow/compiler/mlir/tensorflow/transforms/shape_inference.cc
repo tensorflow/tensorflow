@@ -369,7 +369,8 @@ LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
   // Note: this focusses only on the trivial pack op case and this could be
   // generalized.
   if (auto pack_op = dyn_cast<TF::PackOp>(op)) {
-    if (pack_op.getType().cast<TensorType>().getRank() != 1) return failure();
+    auto type = pack_op.getType().cast<TensorType>();
+    if (!type.hasRank() || type.getRank() != 1) return failure();
     if (port.size() != 2) return failure();
     assert(port[0] == 0);
     ValuePort req(pack_op.getOperand(port[1]));
@@ -405,7 +406,8 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
   // Note: this focusses only on the trivial pack op case and this could be
   // generalized.
   if (auto pack_op = dyn_cast<TF::PackOp>(op)) {
-    if (pack_op.getType().cast<TensorType>().getRank() != 1) return nullptr;
+    TensorType type = pack_op.getType().cast<TensorType>();
+    if (!type.hasRank() || type.getRank() != 1) return nullptr;
     if (port.size() != 2 || port[0] != 0) return nullptr;
     ValuePort op_port(op->getOperand(port[1]));
     return values(op_port);
