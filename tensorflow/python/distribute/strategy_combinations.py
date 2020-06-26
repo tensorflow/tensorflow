@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import atexit
+
 from tensorflow.python import tf2
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import cluster_resolver
@@ -235,6 +237,22 @@ multi_worker_mirrored_4x1_cpu = combinations.NamedDistribution(
     has_chief=True,
     num_workers=3,
 )
+
+
+# Shutdown the runners gracefully to avoid the processes getting SIGTERM.
+def _shutdown_at_exit():
+  for strategy in [
+      multi_worker_mirrored_2x1_cpu,
+      multi_worker_mirrored_2x1_gpu,
+      multi_worker_mirrored_2x2_gpu,
+      multi_worker_mirrored_4x1_cpu,
+  ]:
+    if strategy.runner:
+      strategy.runner.shutdown()
+
+
+atexit.register(_shutdown_at_exit)
+
 
 gradient_descent_optimizer_v1_fn = combinations.NamedObject(
     "GradientDescentV1",

@@ -717,9 +717,10 @@ class MultiProcessPoolRunner(object):
     self._runner = None
 
   def __del__(self):
-    self._reset()
+    self.shutdown()
 
-  def _reset(self):
+  def shutdown(self):
+    """Shuts down the worker pool."""
     for conn in self._conn.values():
       conn.close()
     self._conn = {}
@@ -776,39 +777,31 @@ class MultiProcessPoolRunner(object):
     if self._runner is None:
       self._start()
 
-    # Since we start the processes as daemon they're going to be killed by
-    # SIGTERM when the program exits. We only turn on streaming during run() to
-    # avoid printing the stacktrace caused by the SIGTERM.
-    self._runner._stream_stdout = True  # pylint: disable=protected-access
+    proc_func = dill.dumps(proc_func, dill.HIGHEST_PROTOCOL)
+    for conn in self._conn.values():
+      conn.send((proc_func, args or [], kwargs or {}))
 
-    try:
-      proc_func = dill.dumps(proc_func, dill.HIGHEST_PROTOCOL)
-      for conn in self._conn.values():
-        conn.send((proc_func, args or [], kwargs or {}))
+    process_statuses = []
+    for (task_type, task_id), conn in self._conn.items():
+      logging.info('Waiting for the result from %s-%d', task_type, task_id)
+      try:
+        process_statuses.append(conn.recv())
+      except EOFError:
+        # This shouldn't happen due to exceptions in proc_func. This usually
+        # means bugs in the runner.
+        self.shutdown()
+        raise RuntimeError('Unexpected EOF. Worker process may have died. '
+                           'Please report a bug')
 
-      process_statuses = []
-      for (task_type, task_id), conn in self._conn.items():
-        logging.info('Waiting for the result from %s-%d', task_type, task_id)
-        try:
-          process_statuses.append(conn.recv())
-        except EOFError:
-          # This shouldn't happen due to exceptions in proc_func. This usually
-          # means bugs in the runner.
-          self._reset()
-          raise RuntimeError('Unexpected EOF. Worker process may have died. '
-                             'Please report a bug')
+    return_values = []
+    for process_status in process_statuses:
+      assert isinstance(process_status, _ProcessStatusInfo)
+      if not process_status.is_successful:
+        six.reraise(*process_status.exc_info)
+      if process_status.return_value is not None:
+        return_values.append(process_status.return_value)
 
-      return_values = []
-      for process_status in process_statuses:
-        assert isinstance(process_status, _ProcessStatusInfo)
-        if not process_status.is_successful:
-          six.reraise(*process_status.exc_info)
-        if process_status.return_value is not None:
-          return_values.append(process_status.return_value)
-
-      return return_values
-    finally:
-      self._runner._stream_stdout = False  # pylint: disable=protected-access
+    return return_values
 
 
 def _pool_runner_worker(initializer, conn):
