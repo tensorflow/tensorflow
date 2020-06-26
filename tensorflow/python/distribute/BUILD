@@ -1715,7 +1715,10 @@ py_library(
 py_library(
     name = "multi_process_lib",
     srcs = ["multi_process_lib.py"],
-    deps = ["//tensorflow/python:client_testlib"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/eager:test",
+    ],
 )
 
 py_test(
