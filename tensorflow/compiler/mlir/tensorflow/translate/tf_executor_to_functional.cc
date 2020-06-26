@@ -76,13 +76,14 @@ LogicalResult LiftIslandOpInnerOpsFromGraph(tf_executor::GraphOp graph) {
     parent_block->getOperations().splice(graph_position, island_body,
                                          island_body.begin(),
                                          std::prev(island_body.end()));
-    // Forward inner op aliased results to outer island op result uses.
+    // Forward island fetches (tf_executor.yield operands) to island op result
+    // uses.
     for (auto result :
          llvm::zip(island_op.outputs(), island_op.GetYield().fetches()))
       std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
   }
 
-  // Forward aliased results in graph to graph result uses.
+  // Forward graph fetches (tf_executor.fetch operands) to graph op result uses.
   for (auto result : llvm::zip(graph.results(), graph.GetFetch().fetches()))
     std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
 
