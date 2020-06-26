@@ -660,6 +660,7 @@ cc_library(
         "transforms/tpu_space_to_depth_pass.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
         "translate/breakup-islands.cc",
+        "translate/tf_executor_to_functional.cc",
         "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [
