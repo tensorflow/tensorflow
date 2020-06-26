@@ -324,7 +324,7 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
 
   TFE_TensorHandle* handle = TFE_NewTensorHandleFromDeviceMemory(
       ctx, device_name.value().c_str(), dtype, dims, num_dims, data,
-      total_bytes, &DeallocatorWrapperFunc, &dlmt, status);
+      total_bytes, &DeallocatorWrapperFunc, dlmt, status);
 
   return handle;
 }
