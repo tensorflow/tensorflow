@@ -100,6 +100,11 @@ void TF_KernelBuilder_HostMemory(TF_KernelBuilder* kernel_builder,
   kernel_builder->cc_builder->HostMemory(arg_name);
 }
 
+void TF_KernelBuilder_Priority(TF_KernelBuilder* kernel_builder, 
+                               int32_t priority_number){ 
+  kernel_builder->cc_builder->Priority(priority_number); 
+}
+
 namespace tensorflow {
 namespace {
 
