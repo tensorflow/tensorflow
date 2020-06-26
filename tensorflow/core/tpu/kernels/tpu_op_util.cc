@@ -77,6 +77,7 @@ std::string GuaranteedConstFingerprint(const string& fingerprint_in_metadata,
     uint64_t fingerprint = 0;
     for (size_t i = 0; i < guaranteed_constants_size; ++i) {
       const Tensor& constant = guaranteed_constants[i];
+      // TODO(henrytan): constant.tensor_data() may be uninitialized.
       fingerprint = TpuCompile_CreateGuaranteedConstFingerprint(
           fingerprint, constant.tensor_data().data(),
           constant.tensor_data().size());
@@ -140,7 +141,7 @@ TpuCompilationCacheKey CreateCompilationCacheKey(
     // managed through the `TPUCompileOpKernelImpl` that outlives the
     // lifetime of the compilation cache lookups.
     string fingerprint;
-    key.guaranteed_const_fingerprint = [&metadata, guaranteed_constants,
+    key.guaranteed_const_fingerprint = [&metadata, &guaranteed_constants,
                                         guaranteed_constants_size,
                                         fingerprint]() mutable {
       if (fingerprint.empty()) {
