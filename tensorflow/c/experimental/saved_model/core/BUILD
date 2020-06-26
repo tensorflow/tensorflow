@@ -161,6 +161,7 @@ tf_cc_test(
         "//tensorflow/c:tensor_interface",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
