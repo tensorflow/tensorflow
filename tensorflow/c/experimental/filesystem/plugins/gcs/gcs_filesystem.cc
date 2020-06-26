@@ -107,6 +107,9 @@ static void SyncImpl(const std::string& bucket, const std::string& object,
       TF_SetStatusFromGCSStatus(metadata.status(), status);
       return;
     }
+    if (*offset == 0) {
+      *offset = static_cast<int64_t>(metadata->size());
+    }
     outfile->clear();
     outfile->seekp(std::ios::end);
     TF_SetStatus(status, TF_OK, "");
@@ -121,7 +124,7 @@ static void SyncImpl(const std::string& bucket, const std::string& object,
     }
     const std::vector<gcs::ComposeSourceObject> source_objects = {
         {object, {}, {}}, {temporary_object, {}, {}}};
-    metadata = gc s_client->ComposeObject(bucket, source_objects, object);
+    metadata = gcs_client->ComposeObject(bucket, source_objects, object);
     if (!metadata) {
       TF_SetStatusFromGCSStatus(metadata.status(), status);
       return;
