@@ -39,7 +39,7 @@ def _collective_communication(all_reduce_alg):
       or None.
 
   Returns:
-    tf.distribute.experimental.CollectiveCommunication object.
+    `distribute.experimental.CollectiveCommunication` object.
 
   Raises:
     ValueError: If `all_reduce_alg` not in [None, "ring", "nccl"].
@@ -65,7 +65,7 @@ def _mirrored_cross_device_ops(all_reduce_alg, num_packs):
     num_packs: an integer specifying number of packs for the cross device op.
 
   Returns:
-    tf.distribute.CrossDeviceOps object or None.
+    `distribute.CrossDeviceOps` object or None.
 
   Raises:
     ValueError: If `all_reduce_alg` not in [None, "nccl", "hierarchical_copy"].
@@ -109,7 +109,7 @@ def get_distribution_strategy(distribution_strategy="mirrored",
     tpu_address: Optional. String that represents TPU to connect to. Must not
       be None if `distribution_strategy` is set to `tpu`.
   Returns:
-    tf.distribute.DistibutionStrategy object.
+    `distribute.DistibutionStrategy` object.
   Raises:
     ValueError: If `distribution_strategy` is "off" or "one_device" and
       `num_gpus` is larger than 1; or `num_gpus` is negative or if

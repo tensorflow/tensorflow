@@ -57,21 +57,27 @@ def measure_performance(model_fn,
     verbose=0,
     num_gpus=0,
     distribution_strategy='off'):
-  """ Run models and measure the performance.
+  """Run models and measure the performance.
 
   Arguments:
-    model_fn: Model built by user.
-    x: Input data. Keep the same definition with keras.fit.
-    y: Target data. Keep the same definition with keras.fit.
+    model_fn: Model function to be benchmarked.
+    x: Input data. See `x` in the `fit()` method of `keras.Model`.
+    y: Target data. See `y` in the `fit()` method of `keras.Model`.
     epoch: Integer. Number of epochs to train the model.
+        If unspecified, `epoch` will default to 2.
     batch_size: Integer. Number of samples per gradient update.
-    run_iters: Integer. Number of model will run.
-    metrics: Metrics that users need to monitor.
-    verbose: 0, 1, 2.
-    num_gpus: Number of GPU.
+        If unspecified, `batch_size` will default to 32.
+    run_iters: Integer. Number of iterations to run the performance measurement.
+        If unspecified, `run_iters` will default to 4.
+    metrics: Lists of metrics to be evaluated by the model during training.
+        See `metrics` in the `compile()` method of  `keras.Model`.
+    verbose: 0, 1, 2. Verbosity mode. See `verbose` in the `fit()`
+        method of `keras.Model`. If unspecified, `verbose` will default to 0.
+    num_gpus: Number of GPUs to run the model.
     distribution_strategy: Distribution strategies.
-        It could be `tpu`, `multi_worker_mirrored`, `one_device`,
-        `mirrored`, `parameter_server`.
+        It could be `tpu`, `multi_worker_mirrored`, `one_device`, `mirrored`,
+        `parameter_server`. If unspecified, `distribution_strategy` will
+        default to 'off'.
 
   Returns:
     Performance summary, which contains build_time, compile_time,

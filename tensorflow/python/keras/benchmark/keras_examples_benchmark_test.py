@@ -40,15 +40,16 @@ class KerasExamplesBenchmark(
          `y` should not be specified.
       loss: Loss function for model.
       optimizer: Optimizer for model.
-      Other details can see in benchmark_util.measure_performance.
+      Other details can see in `measure_performance()` method of 
+      benchmark_util.
   """
   # Set different batch_size and iteration as needed.
   _benchmark_parameters = [
     ('bs_32', 32, 2), ('bs_64', 64, 2), ('bs_128', 128, 1),
     ('bs_256', 256, 1), ('bs_512', 512, 3)]
 
-  # Built same model in https://keras.io/examples/nlp/bidirectional_lstm_imdb/
   def _lstm_imdb_model(self):
+    """LSTM model from https://keras.io/examples/nlp/bidirectional_lstm_imdb/."""
     inputs = keras.Input(shape=(None,), dtype="int32")
     x = layers.Embedding(_MAX_FEATURE, 128)(inputs)
     x = layers.Bidirectional(layers.LSTM(64, return_sequences=True))(x)
