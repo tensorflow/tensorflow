@@ -54,10 +54,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
@@ -466,7 +466,7 @@ Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
   };
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      input_shape, ir_emitter_context_->device_description(), unroll_factor);
+      input_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
   TF_RETURN_IF_ERROR(
@@ -574,7 +574,7 @@ Status IrEmitterUnnested::HandleSliceToDynamic(
   };
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      input_shape, ir_emitter_context_->device_description(), unroll_factor);
+      input_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 
@@ -710,7 +710,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     IrArray output_array = GetIrArray(*fusion, *fusion);
 
     LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-        update_shape, ir_emitter_context_->device_description());
+        update_shape, ir_emitter_context_->gpu_device_info());
     UpdateLaunchDimensions(launch_dimensions, fusion_thunk.get(),
                            ir_emitter_context_->llvm_module());
     AddThunkToThunkSequence(std::move(fusion_thunk));
@@ -854,7 +854,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
   }
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      source->shape(), ir_emitter_context_->device_description());
+      source->shape(), ir_emitter_context_->gpu_device_info());
   llvm::Type* index_type = GetIndexTypeForKernel(
       select_and_scatter, launch_dimensions.launch_bound(), &b_);
   auto index_typed_constant = [&](uint64 c) -> llvm::Constant* {
@@ -1240,7 +1240,7 @@ Status IrEmitterUnnested::EmitScatter(
   // also do one kernel per window instead if bounds checks turn out to be a
   // bottleneck.
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      updates->shape(), ir_emitter_context_->device_description());
+      updates->shape(), ir_emitter_context_->gpu_device_info());
   UpdateLaunchDimensions(launch_dimensions, thunk,
                          ir_emitter_context_->llvm_module());
 
@@ -1325,7 +1325,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   standard_iteration_shape.set_dimensions(dimension_to_sort,
                                           standard_num_iterations_in_sort_dim);
   LaunchDimensions standard_launch_dimensions = CalculateLaunchDimensions(
-      standard_iteration_shape, ir_emitter_context_->device_description());
+      standard_iteration_shape, ir_emitter_context_->gpu_device_info());
 
   // Calculate the launch dimensions for the case where we use tiling. We split
   // the dimension that should be sorted into tiles of size 'kTileSize'. This
@@ -1357,9 +1357,9 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   bool no_tiling =
       kTileSize < 128 ||
       kThreadsPerBlock >
-          ir_emitter_context_->device_description().threads_per_block_limit() ||
+          ir_emitter_context_->gpu_device_info().threads_per_block_limit ||
       total_shared_memory_needed >
-          ir_emitter_context_->device_description().shared_memory_per_block();
+          ir_emitter_context_->gpu_device_info().shared_memory_per_block;
 
   uint64 num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
@@ -1862,7 +1862,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
       BuildKernelThunk(hlo, /*implements_whole_instruction=*/false);
   LaunchDimensions launch_dimensions =
       CalculateLaunchDimensions(ShapeUtil::GetSubshape(hlo->shape(), index),
-                                ir_emitter_context_->device_description());
+                                ir_emitter_context_->gpu_device_info());
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 
@@ -2057,7 +2057,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
           << ShapeUtil::HumanStringWithLayout(hlo.shape())
           << " for unroll_factor " << unroll_factor;
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      element_shape, ir_emitter_context_->device_description(), unroll_factor);
+      element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
   UpdateLaunchDimensions(launch_dimensions, thunk,
                          ir_emitter_context_->llvm_module());
   if (!multi_output) {
@@ -3413,7 +3413,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   }
   std::array<int64, 3> reduction_tiling =
       GetReductionTiling(reduction_dimensions, smallest_input_dtype_bits,
-                         &ir_emitter_context_->device_description());
+                         ir_emitter_context_->cuda_compute_capability());
 
   int64 num_threads_y = reduction_dimensions.is_row_reduction ? 1 : kWarpSize;
   int64 num_threads_x = [&] {
@@ -3439,9 +3439,10 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
                       (reduction_tiling[2] * num_threads_x) ==
                   0;
 
-  int cc_major = 0, cc_minor = 0;
-  ir_emitter_context_->device_description().cuda_compute_capability(&cc_major,
-                                                                    &cc_minor);
+  int cc_major = 0;
+  if (ir_emitter_context_->cuda_compute_capability()) {
+    cc_major = ir_emitter_context_->cuda_compute_capability()->cc_major;
+  }
 
   int num_partial_results = 1;
   KernelMappingScheme::IndexingOrder indexing_order = [&]() {
@@ -3718,7 +3719,7 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
   TF_ASSIGN_OR_RETURN(Shape element_shape,
                       GetConsistentInputShapeForRootSlices(*unnested_hlo));
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      element_shape, ir_emitter_context_->device_description(), unroll_factor);
+      element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 

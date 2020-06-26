@@ -66,6 +66,10 @@ class IrEmitterUnnested : public IrEmitter,
     llvm::Value* lane_id;
   };
 
+  absl::string_view platform_name() const override {
+    return ir_emitter_context_->platform_name();
+  }
+
   // A function object to generate code to process one element in a tile.
   //
   // index: the index for the first output element of the current thread.
@@ -253,10 +257,6 @@ class IrEmitterUnnested : public IrEmitter,
   int64 ByteSizeOf(const Shape& shape) const override {
     return llvm_ir::ByteSizeOf(
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
-  }
-
-  const se::Platform* platform() const override {
-    return ir_emitter_context_->platform();
   }
 
   // Builds the prototype of the IR kernel for `inst` and adds it to the module.

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 
 #include <ostream>
 #include <string>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -39,8 +31,8 @@ std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
-int64 ThreadsPerBlockLimit(const se::DeviceDescription& device_desc) {
-  int64 threads_per_block = device_desc.threads_per_block_limit();
+static int64 ThreadsPerBlockLimit(GpuDeviceInfo gpu_device_info) {
+  int64 threads_per_block = gpu_device_info.threads_per_block_limit;
   if (threads_per_block <= 0) {
     static std::atomic<int64> log_count{0};
     if (log_count.fetch_add(1) < 8) {
@@ -49,7 +41,7 @@ int64 ThreadsPerBlockLimit(const se::DeviceDescription& device_desc) {
                       "StreamExecutor's PopulateDeviceDescription should be "
                       "updated for this device.";
     }
-    threads_per_block = device_desc.threads_per_warp();
+    threads_per_block = gpu_device_info.threads_per_warp;
     if (threads_per_block == 0) {
       // Fall back to *something* if we can't even get num threads per warp.
       threads_per_block = 32;
@@ -59,9 +51,9 @@ int64 ThreadsPerBlockLimit(const se::DeviceDescription& device_desc) {
 }
 
 // Calculates the launch dimensions used to invoke `hlo`.
-LaunchDimensions CalculateLaunchDimensions(
-    const Shape& shape, const se::DeviceDescription& device_desc,
-    int unroll_factor) {
+LaunchDimensions CalculateLaunchDimensions(const Shape& shape,
+                                           GpuDeviceInfo gpu_device_info,
+                                           int unroll_factor) {
   int64 num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
@@ -81,7 +73,7 @@ LaunchDimensions CalculateLaunchDimensions(
   //
   // TODO(jlebar): Investigate this further, and tune this heuristic so we can
   // run faster on the few benchmarks where smaller block size helps.
-  int64 threads_per_block = ThreadsPerBlockLimit(device_desc);
+  int64 threads_per_block = ThreadsPerBlockLimit(gpu_device_info);
   // We unroll kernels to make use of vectorized loads/stores. This means we
   // need more registers to hold intermediate values. Reduce the number of
   // blocks per thread to increase the number of registers available to ptxas.

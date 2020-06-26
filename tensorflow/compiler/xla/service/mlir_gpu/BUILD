@@ -100,7 +100,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gpu_types",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/gpu:nvptx_compiler_impl",
-        "//tensorflow/compiler/xla/service/gpu:partition_assignment",
+        "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
         "//tensorflow/compiler/xla/service/gpu:stream_assignment",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/service/gpu:target_constants",

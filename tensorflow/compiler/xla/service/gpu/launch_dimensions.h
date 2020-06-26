@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Algorithms and data structures for partition assignment.
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PARTITION_ASSIGNMENT_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PARTITION_ASSIGNMENT_H_
-
-#include <iosfwd>
 #include <map>
 #include <memory>
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+#include "tensorflow/compiler/xla/shape.h"
 
 namespace xla {
 namespace gpu {
@@ -57,14 +52,11 @@ class LaunchDimensions {
 std::ostream& operator<<(std::ostream& out,
                          const LaunchDimensions& launch_dims);
 
-// Returns the maximum number of threads per block allowed by the device.
-int64 ThreadsPerBlockLimit(const se::DeviceDescription& device_desc);
-
-LaunchDimensions CalculateLaunchDimensions(
-    const Shape& shape, const se::DeviceDescription& device_desc,
-    int unroll_factor = 1);
+LaunchDimensions CalculateLaunchDimensions(const Shape& shape,
+                                           GpuDeviceInfo gpu_device_info,
+                                           int unroll_factor = 1);
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PARTITION_ASSIGNMENT_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_

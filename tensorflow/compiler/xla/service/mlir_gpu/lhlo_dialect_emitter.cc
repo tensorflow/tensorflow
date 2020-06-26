@@ -222,7 +222,9 @@ int64 LhloDialectEmitter::ByteSizeOf(const Shape& shape) const {
   return ShapeUtil::ByteSizeOf(shape, pointer_size_);
 }
 
-const se::Platform* LhloDialectEmitter::platform() const { return platform_; }
+absl::string_view LhloDialectEmitter::platform_name() const {
+  return platform_->Name();
+}
 
 Status LhloDialectEmitter::EmitComputation(const HloComputation& computation) {
   return computation.root_instruction()->Accept(this);

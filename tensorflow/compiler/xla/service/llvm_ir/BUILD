@@ -178,8 +178,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
         "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
-        "//tensorflow/compiler/xla/service/gpu:partition_assignment",
     ],
 )
 
@@ -195,8 +195,8 @@ cc_library(
         ":loop_emitter",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service/gpu:launch_dimensions",
         "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
-        "//tensorflow/compiler/xla/service/gpu:partition_assignment",
         "//tensorflow/compiler/xla/service/gpu:target_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
