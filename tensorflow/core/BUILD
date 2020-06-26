@@ -629,6 +629,7 @@ tf_gen_op_libs(
         "io_ops",
         "linalg_ops",
         "list_ops",
+        "map_ops",
         "lookup_ops",
         "logging_ops",
         "manip_ops",
@@ -860,6 +861,7 @@ cc_library(
         ":io_ops_op_lib",
         ":linalg_ops_op_lib",
         ":list_ops_op_lib",
+        ":map_ops_op_lib",
         ":logging_ops_op_lib",
         ":lookup_ops_op_lib",
         ":manip_ops_op_lib",
@@ -1121,6 +1123,7 @@ cc_library(
         # these also dynamically loading.
         "//tensorflow/core/kernels:dataset_ops",  # Depends on grappler
         "//tensorflow/core/kernels:list_kernels",  # Depends on variant_op_registry.h
+        "//tensorflow/core/kernels:map_kernels",
     ],
 )
 

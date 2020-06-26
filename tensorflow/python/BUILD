@@ -3034,6 +3034,10 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "map_ops_gen",
+)
+
+tf_gen_op_wrapper_private_py(
     name = "script_ops_gen",
 )
 
@@ -4206,6 +4210,16 @@ py_library(
     deps = [
         ":array_ops",
         ":list_ops_gen",
+    ],
+)
+
+py_library(
+    name = "map_ops",
+    srcs = ["ops/map_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":map_ops_gen",
     ],
 )
 

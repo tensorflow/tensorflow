@@ -319,6 +319,34 @@ class Tensor {
     return true;
   }
 
+  /// Hashable
+  // Equality operator. Needed for absl hashing.
+  friend bool operator==(const Tensor& lhs, const Tensor& rhs) {
+    return lhs.shape() == rhs.shape() && lhs.dtype() == rhs.dtype();
+  }
+
+  // Comparison operator. Needed for absl hashing.
+  /*friend bool operator<(const Tensor& lhs, const Tensor& rhs) {
+    return lhs.NumElements() < rhs.NumElements();
+  }*/
+  
+  // AbslHashValue() function, needed for absl hashing.
+  template <typename H>
+  friend H AbslHashValue(H h, const Tensor& k) {
+    //int temp = k.NumElements();
+
+    uint8* d = (uint8*)(k.buf_->data());
+    std::cout << "buffer " << d << std::endl;
+    size_t s = k.buf_->size();
+    std::vector<uint8> vec;
+
+    for (int i=0; i < s; i++) {
+      vec.push_back(d[i]);
+    }
+
+    return H::combine(std::move(h), vec);
+  }
+
   /// \brief Slice this tensor along the 1st dimension.
 
   /// I.e., the returned tensor satisfies
@@ -648,7 +676,7 @@ class Tensor {
   // buffer is one.
   bool RefCountIsOne() const;
 
- private:
+ protected:
   void CheckType(DataType expected_dtype) const;
   void CheckTypeAndIsAligned(DataType expected_dtype) const;
   void CheckIsAlignedAndSingleElement() const;
