@@ -309,6 +309,29 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
   return Status::OK();
 }
 
+Status LhloDialectEmitter::HandleGather(HloInstruction* instr) {
+  HloGatherInstruction* gather = static_cast<HloGatherInstruction*>(instr);
+  mlir::xla_hlo::GatherDimensionNumbers dim_numbers =
+      xla::CreateGatherDimensionNumbers(gather->gather_dimension_numbers(),
+                                        builder_);
+  mlir::DenseIntElementsAttr slice_sizes = CreateDenseIntElementsAttrFromVector(
+      llvm::SmallVector<int64, 4>{gather->gather_slice_sizes().begin(),
+                                  gather->gather_slice_sizes().end()},
+      builder_);
+
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
+  OpBuilder func_builder(function.getBody());
+
+  // TODO(pifon): Clean-up LHLO GatherOp to be consistent with HLO GatherOp.
+  func_builder.create<lhlo::GatherOp>(
+      getLocation(instr), function.getArgument(0), function.getArgument(1),
+      dim_numbers.index_vector_dim(), dim_numbers.offset_dims(), slice_sizes,
+      dim_numbers.collapsed_slice_dims(), dim_numbers.start_index_map(),
+      function.getArgument(2));
+
+  return Status::OK();
+}
+
 Status LhloDialectEmitter::HandleReduce(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
   llvm::SmallVector<Value, 4> arg_values{function.args_begin(),
