@@ -151,7 +151,11 @@ absl::Status TensorDescriptor::PerformSelector(
     if (IsBatchedWidth()) {
       *result = "width_batched * height";
     } else {
-      *result = "width * height";
+      if (HasAxis(Axis::BATCH)) {
+        *result = "width * height * batch";
+      } else {
+        *result = "width * height";
+      }
     }
     return absl::OkStatus();
   } else if (selector == "Channels") {
