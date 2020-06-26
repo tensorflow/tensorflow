@@ -26,6 +26,15 @@ limitations under the License.
 // This filesystem will support `gs://` URI schemes.
 namespace gcs = google::cloud::storage;
 
+// How to upload new data when Flush() is called multiple times.
+// By default the entire file is reuploaded.
+constexpr char kAppendMode[] = "GCS_APPEND_MODE";
+// If GCS_APPEND_MODE=compose then instead the new data is uploaded to a
+// temporary object and composed with the original object. This is disabled by
+// default as the multiple API calls required add a risk of stranding temporary
+// objects.
+constexpr char kComposeAppend[] = "compose";
+
 // We can cast `google::cloud::StatusCode` to `TF_Code` because they have the
 // same integer values. See
 // https://github.com/googleapis/google-cloud-cpp/blob/6c09cbfa0160bc046e5509b4dd2ab4b872648b4a/google/cloud/status.h#L32-L52
@@ -80,21 +89,51 @@ typedef struct GCSFile {
   gcs::Client* gcs_client;  // not owned
   TempFile outfile;
   bool sync_need;
+  // `offset` tells us how many bytes of this file are already uploaded to
+  // server. If `offset == -1`, we always upload the entire temporary file.
+  int64_t offset;
 } GCSFile;
 
 static void SyncImpl(const std::string& bucket, const std::string& object,
-                     TempFile* outfile, gcs::Client* gcs_client,
-                     TF_Status* status) {
+                     int64_t* offset, TempFile* outfile,
+                     gcs::Client* gcs_client, TF_Status* status) {
   outfile->operator<<(std::flush);
-  // TODO(vnvo2409): Add resumable upload, compose object, etc.
-  auto metadata = gcs_client->UploadFile(outfile->getName(), bucket, object);
-  if (!metadata) {
-    TF_SetStatusFromGCSStatus(metadata.status(), status);
-    return;
+  if (*offset == -1) {
+    // UploadFile will automatically switch to resumable upload based on Client
+    // configuration.
+    auto metadata = gcs_client->UploadFile(outfile->getName(), bucket, object);
+    if (!metadata) {
+      TF_SetStatusFromGCSStatus(metadata.status(), status);
+      return;
+    }
+    outfile->clear();
+    outfile->seekp(std::ios::end);
+    TF_SetStatus(status, TF_OK, "");
+  } else {
+    std::string temporary_object =
+        gcs::CreateRandomPrefixName("tf_writable_file_gcs");
+    auto metadata =
+        gcs_client->UploadFile(outfile->getName(), bucket, temporary_object);
+    if (!metadata) {
+      TF_SetStatusFromGCSStatus(metadata.status(), status);
+      return;
+    }
+    const std::vector<gcs::ComposeSourceObject> source_objects = {
+        {object, {}, {}}, {temporary_object, {}, {}}};
+    metadata = gc s_client->ComposeObject(bucket, source_objects, object);
+    if (!metadata) {
+      TF_SetStatusFromGCSStatus(metadata.status(), status);
+      return;
+    }
+    // We truncate the data that are already uploaded.
+    if (!outfile->truncate()) {
+      TF_SetStatus(status, TF_INTERNAL,
+                   "Could not truncate internal temporary file.");
+      return;
+    }
+    *offset = static_cast<int64_t>(metadata->size());
+    TF_SetStatus(status, TF_OK, "");
   }
-  outfile->clear();
-  outfile->seekp(std::ios::end);
-  TF_SetStatus(status, TF_OK, "");
 }
 
 void Cleanup(TF_WritableFile* file) {
@@ -127,7 +166,9 @@ int64_t Tell(const TF_WritableFile* file, TF_Status* status) {
                  "tellp on the internal temporary file failed");
   else
     TF_SetStatus(status, TF_OK, "");
-  return position;
+  return position == -1
+             ? -1
+             : position + (gcs_file->offset == -1 ? 0 : gcs_file->offset);
 }
 
 void Flush(const TF_WritableFile* file, TF_Status* status) {
@@ -138,10 +179,9 @@ void Flush(const TF_WritableFile* file, TF_Status* status) {
                    "Could not append to the internal temporary file.");
       return;
     }
-    SyncImpl(gcs_file->bucket, gcs_file->object, &gcs_file->outfile,
-             gcs_file->gcs_client, status);
-    if(TF_GetCode(status) != TF_OK)
-      return;
+    SyncImpl(gcs_file->bucket, gcs_file->object, &gcs_file->offset,
+             &gcs_file->outfile, gcs_file->gcs_client, status);
+    if (TF_GetCode(status) != TF_OK) return;
     gcs_file->sync_need = false;
   } else {
     TF_SetStatus(status, TF_OK, "");
@@ -173,6 +213,10 @@ namespace tf_read_only_memory_region {
 // SECTION 4. Implementation for `TF_Filesystem`, the actual filesystem
 // ----------------------------------------------------------------------------
 namespace tf_gcs_filesystem {
+typedef struct GCSFile {
+  gcs::Client gcs_client;  // owned
+  bool compose;
+} GCSFile;
 
 // TODO(vnvo2409): Add lazy-loading and customizing parameters.
 void Init(TF_Filesystem* filesystem, TF_Status* status) {
@@ -182,14 +226,19 @@ void Init(TF_Filesystem* filesystem, TF_Status* status) {
     TF_SetStatusFromGCSStatus(client.status(), status);
     return;
   }
-  filesystem->plugin_filesystem = plugin_memory_allocate(sizeof(gcs::Client));
-  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
-  (*gcs_client) = client.value();
+
+  const char* append_mode = std::getenv(kAppendMode);
+  bool compose =
+      (append_mode != nullptr) && (!strcmp(kAppendMode, append_mode));
+
+  filesystem->plugin_filesystem =
+      new GCSFile({std::move(client.value()), compose});
   TF_SetStatus(status, TF_OK, "");
 }
 
 void Cleanup(TF_Filesystem* filesystem) {
-  plugin_memory_free(filesystem->plugin_filesystem);
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  delete gcs_file;
 }
 
 // TODO(vnvo2409): Implement later
@@ -200,11 +249,12 @@ void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
   ParseGCSPath(path, false, &bucket, &object, status);
   if (TF_GetCode(status) != TF_OK) return;
 
-  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
   char* temp_file_name = TF_GetTempFileName("");
   file->plugin_file = new tf_writable_file::GCSFile(
-      {std::move(bucket), std::move(object), gcs_client,
-       TempFile(temp_file_name, std::ios::binary | std::ios::out), true});
+      {std::move(bucket), std::move(object), &gcs_file->gcs_client,
+       TempFile(temp_file_name, std::ios::binary | std::ios::out), true,
+       (gcs_file->compose ? 0 : -1)});
   // We are responsible for freeing the pointer returned by TF_GetTempFileName
   free(temp_file_name);
   TF_SetStatus(status, TF_OK, "");
@@ -216,21 +266,43 @@ void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
   ParseGCSPath(path, false, &bucket, &object, status);
   if (TF_GetCode(status) != TF_OK) return;
 
-  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
-  char* temp_file_name = TF_GetTempFileName("");
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  char* temp_file_name_c_str = TF_GetTempFileName("");
+  std::string temp_file_name(temp_file_name_c_str);  // To prevent memory-leak
+  free(temp_file_name_c_str);
 
-  auto gcs_status = gcs_client->DownloadToFile(bucket, object, temp_file_name);
-  TF_SetStatusFromGCSStatus(gcs_status, status);
-  auto status_code = TF_GetCode(status);
-  if (status_code != TF_OK && status_code != TF_NOT_FOUND) {
-    return;
+  if (!gcs_file->compose) {
+    auto gcs_status =
+        gcs_file->gcs_client.DownloadToFile(bucket, object, temp_file_name);
+    TF_SetStatusFromGCSStatus(gcs_status, status);
+    auto status_code = TF_GetCode(status);
+    if (status_code != TF_OK && status_code != TF_NOT_FOUND) return;
+    // If this file does not exist on server, we will need to sync it.
+    bool sync_need = (status_code == TF_NOT_FOUND);
+    file->plugin_file = new tf_writable_file::GCSFile(
+        {std::move(bucket), std::move(object), &gcs_file->gcs_client,
+         TempFile(temp_file_name, std::ios::binary | std::ios::app), sync_need,
+         -1});
+  } else {
+    // If compose is true, we do not download anything.
+    // Instead we only check if this file exists on server or not.
+    auto metadata = gcs_file->gcs_client.GetObjectMetadata(bucket, object);
+    TF_SetStatusFromGCSStatus(metadata.status(), status);
+    if (TF_GetCode(status) == TF_OK) {
+      file->plugin_file = new tf_writable_file::GCSFile(
+          {std::move(bucket), std::move(object), &gcs_file->gcs_client,
+           TempFile(temp_file_name, std::ios::binary | std::ios::trunc), false,
+           static_cast<int64_t>(metadata->size())});
+    } else if (TF_GetCode(status) == TF_NOT_FOUND) {
+      file->plugin_file = new tf_writable_file::GCSFile(
+          {std::move(bucket), std::move(object), &gcs_file->gcs_client,
+           TempFile(temp_file_name, std::ios::binary | std::ios::trunc), true,
+           0});
+    } else {
+      return;
+    }
   }
-  // If this file does not exist on server, we will need to sync it.
-  bool sync_need = (status_code == TF_NOT_FOUND);
-  file->plugin_file = new tf_writable_file::GCSFile(
-      {std::move(bucket), std::move(object), gcs_client,
-       TempFile(temp_file_name, std::ios::binary | std::ios::app), sync_need});
-  free(temp_file_name);
+
   TF_SetStatus(status, TF_OK, "");
 }
 
