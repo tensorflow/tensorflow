@@ -20,7 +20,8 @@
 ## Breaking Changes
 * Increases the **minimum bazel version** required to build TF to **3.1.0**.
 * `tf.data`
-  *  Makes the following (breaking) changes to the `tf.data` C++ API: - `IteratorBase::RestoreInternal`, `IteratorBase::SaveInternal`, and `DatasetBase::CheckExternalState` become pure-virtual and subclasses are now expected to provide an implementation.
+  *  Makes the following (breaking) changes to the `tf.data`.
+    * C++ API: - `IteratorBase::RestoreInternal`, `IteratorBase::SaveInternal`, and `DatasetBase::CheckExternalState` become pure-virtual and subclasses are now expected to provide an implementation.
     * The deprecated `DatasetBase::IsStateful` method is removed in favor of `DatasetBase::CheckExternalState`.
     * Deprecated overrides of `DatasetBase::MakeIterator` and `MakeIteratorFromInputElement` are removed.
   * The signature of `tensorflow::data::IteratorBase::SaveInternal` and `tensorflow::data::IteratorBase::SaveInput` has been extended with `SerializationContext` argument to enable overriding the default policy for the handling external state during iterator checkpointing. This is not a backwards compatible change and all subclasses of `IteratorBase` *need to be updated* accordingly.
@@ -87,7 +88,7 @@
     * Deprecate `tf.group`. It is not useful in eager mode.
     * Add a new variant of `FTRL` allowing a learning rate of zero.
     
-### `tf.data: 
+### `tf.data`: 
   * `tf.data.experimental.dense_to_ragged_batch` works correctly with tuples.
   * `tf.data.experimental.dense_to_ragged_batch` to output variable ragged rank.
   * `tf.data.experimental.cardinality` is now a method on `tf.data.Dataset`.
