@@ -5,7 +5,7 @@
     * [snapshot](https://www.tensorflow.org/api_docs/python/tf/data/experimental/snapshot)
     * [tf.data service](https://www.tensorflow.org/api_docs/python/tf/data/experimental/service/distribute). 
 
-  In addition checkout the detailed [guide](https://www.tensorflow.org/guide/data_performance_analysis) on analyzing input pipeline performance with TF Profiler.
+  In addition checkout the detailed [guide](https://www.tensorflow.org/guide/data_performance_analysis) for analyzing input pipeline performance with TF Profiler.
 
   * [`tf.distribute.TPUStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/TPUStrategy) is now a stable API and no longer considered experimental for TensorFlow. (earlier `tf.distribute.experimental.TPUStrategy`).
 
@@ -13,9 +13,9 @@
 
   * Introduces experimental support for Keras Preprocessing Layers API ([`tf.keras.layers.experimental.preprocessing.*`](https://www.tensorflow.org/api_docs/python/tf/keras/layers/experimental/preprocessing?version=nightly)) to handle data preprocessing operations, with support for composite tensor inputs. Please see below for additional details on these layers.
   
-  * TFLite <placeholder>
+  * TFLite now properly supports dynamic shapes during conversion and inference. We’ve also added opt-in support on Android and iOS for [XNNPACK](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/xnnpack), a highly optimized set of CPU kernels, as well as opt-in support for [executing quantized models on the GPU](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/gpu_advanced.md#running-quantized-models-experimental). 
 
-  * Libtensorflow packages will be available in GCS starting this release. We have started to release a nightly version of these packages. 
+  * Libtensorflow packages are available in GCS starting this release. We have also started to release a nightly version of these packages. 
 
 ## Breaking Changes
 * Increases the **minimum bazel version** required to build TF to **3.1.0**.
@@ -70,7 +70,8 @@
   * `tf.saved_model`:
     * `@tf.function` from SavedModel no longer ignores args after a `RaggedTensor` when selecting the concrete function to run.
     * Fix save model issue for ops with a list of functions.
-    * Add `tf.saved_model.LoadOptions`  with [`experimental_io_device`](https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions) as arg to choose the I/O device for saving and loading models and weights.
+    * Add `tf.saved_model.LoadOptions` with [`experimental_io_device`](https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions) as arg with default value `None` to choose the I/O device for loading models and weights.
+     * Update `tf.saved_model.SaveOptions` with [`experimental_io_device`](https://www.tensorflow.org/api_docs/python/tf/saved_model/SaveOptions?version=nightly) as arg with default value `None` to choose the I/O device for saving models and weights.
   * GPU
     * No longer includes PTX kernels for GPU except for sm_70 to reduce binary size.
   * Profiler
@@ -93,12 +94,14 @@
   * `tf.data.Dataset` now supports `len(Dataset)` when the cardinality is finite.
 
 ### `tf.distribute`: 
-  * Add a `tf.distribute.cluster_resolver.TPUClusterResolver.connect` API to simplify TPU initialization. 
-  * Allow var.assign on `MirroredVariables` with `aggregation=NONE` in replica context. Previously this would raise an error since there was no way to confirm that the values being assigned to the `MirroredVariables` were in fact identical.
+  * Expose experimental [`tf.distribute.DistributedDataset`](https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDataset) and [`tf.distribute.DistributedIterator`](https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedIterator) to distribute input data when using `tf.distribute` to scale training on multiple devices. 
+    * Added a `get_next_as_optional` method for `tf.distribute.DistributedIterator` class to return a `tf.experimental.Optional` instance that contains the next value for all replicas or none instead of raising an out of range error. Also see *new* [guide on input distribution](https://www.tensorflow.org/tutorials/distribute/input).
+  * Allow `var.assign` on `MirroredVariables` with `aggregation=NONE` in replica context. Previously this would raise an error since there was no way to confirm that the values being assigned to the `MirroredVariables` were in fact identical.
   * `tf.distribute.experimental.MultiWorkerMirroredStrategy` adds support for partial batches. Workers running out of data now continue to participate in the training with empty inputs, instead of raising an error.
   * Improve the performance of reading metrics eagerly under `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
-  * Fix the issue that `strategy.reduce()` inside `tf.function` may raise exceptions when the value to reduce are from loops or if-clauses.
+  * Fix the issue that `strategy.reduce()` inside `tf.function` may raise exceptions when the values to reduce are from loops or if-clauses.
   * Fix the issue that `tf.distribute.MirroredStrategy` cannot be used together with `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
+  * Add a `tf.distribute.cluster_resolver.TPUClusterResolver.connect` API to simplify TPU initialization.
 
 ### `tf.keras`:
   * Introduces experimental preprocessing layers API (`tf.keras.layers.experimental.preprocessing`)  to handle data preprocessing operations such as categorical feature encoding, text vectorization, data normalization, and data discretization (binning). The newly added layers provide a replacement for the  legacy feature column API, and support composite tensor inputs. 
@@ -114,9 +117,9 @@
     * The `TextVectorization` layer now accounts for the mask_token as part of the vocabulary size when output_mode='int'. This means that, if you have a max_tokens value of 5000, your output will have 5000 unique values (not 5001 as before).
     * Change the return value of `TextVectorization.get_vocabulary()` from `byte` to `string`. Users who previously were calling 'decode' on the output of this method should no longer need to do so.
   * Introduce new Keras dataset generation utilities :
-    * **`image_dataset_from_directory`** is a utility based on `tf.data.Dataset`, meant to replace the legacy `ImageDataGenerator`. It takes you from a structured directory of images to a labeled dataset, in one function call. Note that it doesn't perform image data augmentation (which is meant to be done using preprocessing layers).
-    * **`text_dataset_from_directory`** takes you from a structured directory of text files to a labeled dataset, in one function call.
-    * **`timeseries_dataset_from_array`** is a `tf.data.Dataset`-based replacement of the legacy `TimeseriesGenerator`. It takes you from an array of timeseries data to a dataset of shifting windows with their targets.
+    * **[`image_dataset_from_directory`](https://www.tensorflow.org/api_docs/python/tf/keras/preprocessing/image_dataset_from_directory)** is a utility based on `tf.data.Dataset`, meant to replace the legacy `ImageDataGenerator`. It takes you from a structured directory of images to a labeled dataset, in one function call. Note that it doesn't perform image data augmentation (which is meant to be done using preprocessing layers).
+    * **[`text_dataset_from_directory`](https://www.tensorflow.org/api_docs/python/tf/keras/preprocessing/text_dataset_from_directory)** takes you from a structured directory of text files to a labeled dataset, in one function call.
+    * **[`timeseries_dataset_from_array`](https://www.tensorflow.org/api_docs/python/tf/keras/preprocessing/timeseries_dataset_from_array)** is a `tf.data.Dataset`-based replacement of the legacy `TimeseriesGenerator`. It takes you from an array of timeseries data to a dataset of shifting windows with their targets.
   * Added [`experimental_steps_per_execution`](https://www.tensorflow.org/api_docs/python/tf/keras/Model?version=nightly#compile)
  arg to `model.compile` to indicate the number of batches to run per `tf.function` call. This can speed up Keras Models on TPUs up to 3x.
   * Extends `tf.keras.layers.Lambda` layers to support multi-argument lambdas, and keyword arguments when calling the layer.
@@ -129,6 +132,7 @@
 ### `tf.lite`:
   * Converter
       * Restored `inference_input_type` and `inference_output_type` flags in TF 2.x TFLiteConverter (backward compatible with TF 1.x) to support integer (tf.int8, tf.uint8) input and output types in post training full integer quantized models.
+      * Added support for converting and resizing models with dynamic (placeholder) dimensions. Previously, there was only limited support for dynamic batch size, and even that did not guarantee that the model could be properly resized at runtime.
   * CPU
       * Fix an issue w/ dynamic weights and `Conv2D` on x86.
       * Add a runtime Android flag for enabling `XNNPACK` for optimized CPU performance.
@@ -154,19 +158,18 @@
      * Opensource CoreML delegate
   * Misc
       * Enable building Android TFLite targets on Windows
-      * Add 3D support for TFLite `BatchToSpaceND`.
-      * Add 5D support for TFLite `BroadcastSub`.
-      * Add 5D support for TFLite `Maximum` `Minimum`.
-      * Add 5D support for TFLite `Transpose`.
-      * Add 5D support for `BroadcastDiv`.
+      * Add support for `BatchMatMul`.
+      * Add support for `half_pixel_centers` with `ResizeNearestNeighbor`.
+      * Add 3D support for `BatchToSpaceND`.
+      * Add 5D support for `BroadcastSub`, `Maximum`, `Minimum`, `Transpose` and `BroadcastDiv`.
       * Rename `kTfLiteActRelu1` to `kTfLiteActReluN1To1`.
       * Enable flex delegate on tensorflow.lite.Interpreter Python package.
       * Add `Buckettize`, `SparseCross` and `BoostedTreesBucketize` to the flex whitelist.
-      * Selective registration for flex ops.
+      * Add support for selective registration of flex ops.
       * Add missing kernels for flex delegate whitelisted ops.
       * Fix issue when using direct `ByteBuffer` inputs with graphs that have dynamic shapes.
       * Fix error checking supported operations in a model containing `HardSwish`.  
-
+ 
 ### TPU Enhancements
   * 3D mesh support
   * Added TPU code for `FTRL` with `multiply_linear_by_lr`.
@@ -180,7 +183,6 @@
 
 ### Tracing and Debugging
   * Add a `TFE_Py_Execute` traceme.    
-  
   
 ## Thanks to our Contributors
 
