@@ -50,6 +50,13 @@ absl::Status TensorLinearDescriptor::PerformSelector(
     return absl::OkStatus();
   } else if (selector == "Read") {
     return PerformReadSelector(args, result);
+  } else if (selector == "GetPtr") {
+    if (storage_type != LinearStorageType::BUFFER) {
+      return absl::InvalidArgumentError(
+          "GetPtr selector supported for LinearStorageType::BUFFER only.");
+    }
+    *result = "buffer";
+    return absl::OkStatus();
   } else {
     return absl::NotFoundError(absl::StrCat(
         "TensorLinearDescriptor don't have selector with name - ", selector));
