@@ -16,6 +16,7 @@ limitations under the License.
 #include <iostream>
 
 #include "absl/strings/str_split.h"
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
@@ -220,7 +222,9 @@ int main(int argc, char **argv) {
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
   pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
 
-  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+  // TODO(b/153507667): Pass the session object when importing logic is removed.
+  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,
+                                         /*session=*/llvm::None);
   // TODO(b/150901738): Move those into tf_tfl_translate.cc.
   // Convert back to outlined while format for export back to flatbuffer.
   if (pass_config.legalize_tf_while) {
