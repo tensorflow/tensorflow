@@ -265,7 +265,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       Adam or Adagrad).
     """
     self._strategy = distribution_strategy_context.get_strategy()
-    self._using_tpu = isinstance(self._strategy, tpu_strategy.TPUStrategy)
+    self._using_tpu = isinstance(self._strategy, (tpu_strategy.TPUStrategy,
+                                                  tpu_strategy.TPUStrategyV2))
     self._pipeline_execution_with_tensor_core = (
         pipeline_execution_with_tensor_core)
 
