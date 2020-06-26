@@ -1379,6 +1379,37 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
         }
       };
 
+  // If a kWhile doesn't have a device assignment and it contains a channel
+  // instruction which has one, propagate that to the root of the while body.
+  for (auto computation : module->computations()) {
+    for (auto instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kWhile &&
+          !instruction->has_sharding() &&
+          !instruction->while_body()->root_instruction()->has_sharding()) {
+        absl::optional<int64> unique_device = absl::nullopt;
+        for (HloInstruction* body_instr :
+             instruction->while_body()->instructions()) {
+          auto opcode = body_instr->opcode();
+          if ((opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
+               opcode == HloOpcode::kAllReduce) &&
+              body_instr->sharding_unique_device()) {
+            if (unique_device == absl::nullopt) {
+              unique_device = body_instr->sharding_unique_device();
+            } else if (unique_device != body_instr->sharding_unique_device()) {
+              // The body contains several device assignments; don't propagate.
+              unique_device = absl::nullopt;
+              break;
+            }
+          }
+        }
+        if (unique_device.has_value()) {
+          instruction->while_body()->root_instruction()->set_device_sharding(
+              *unique_device);
+        }
+      }
+    }
+  }
+
   // Populate computation_map in order to associate while bodies to their
   // while instructions.
   for (auto computation : module->computations()) {
@@ -1404,12 +1435,12 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
             inst->set_sharding(sharded_inst->sharding());
           }
         }
-      }
-      if (instruction->opcode() == HloOpcode::kWhile) {
-        computation_map[instruction->while_body()] = instruction;
-      } else if (instruction->opcode() == HloOpcode::kConditional) {
-        for (HloComputation* c : instruction->called_computations()) {
-          computation_map[c] = instruction;
+        if (instruction->opcode() == HloOpcode::kWhile) {
+          computation_map[instruction->while_body()] = instruction;
+        } else {
+          for (HloComputation* c : instruction->called_computations()) {
+            computation_map[c] = instruction;
+          }
         }
       }
     }
