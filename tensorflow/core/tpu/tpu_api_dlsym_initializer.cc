@@ -19,9 +19,10 @@ limitations under the License.
 
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#endif
 
 #define TFTPU_SET_FN(Struct, FnName)                                         \
   Struct->FnName##Fn =                                                       \
@@ -37,6 +38,11 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
+#if defined(PLATFORM_GOOGLE)
+Status InitializeTpuLibrary(void* library_handle) {
+  return errors::Unimplemented("You must statically link in a TPU library.");
+}
+#else
 #include "tensorflow/core/tpu/tpu_library_init_fns.inc"
 
 Status InitializeTpuLibrary(void* library_handle) {
@@ -61,6 +67,7 @@ Status InitializeTpuLibrary(void* library_handle) {
 
   return s;
 }
+#endif
 
 }  // namespace tpu
 }  // namespace tensorflow
