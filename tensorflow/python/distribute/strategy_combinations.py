@@ -111,12 +111,17 @@ def _get_multi_worker_mirrored_creator(required_gpus):
         cluster_spec=tf_config.cluster_spec(),
         task_type=tf_config.task_type,
         task_id=tf_config.task_id,
+        master=tf_config.master(),
         environment=tf_config.environment,
         num_accelerators={"GPU": required_gpus},
-        rpc_layer=tf_config.rpc_layer,
+        rpc_layer=tf_config.rpc_layer or "grpc",
     )
-    strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
-        cluster_resolver=resolver)
+    # Always create the strategy in eager mode so that it starts the server and
+    # configures the eager context. The eager context can no longer be
+    # configured after initialization.
+    with context.eager_mode():
+      strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+          cluster_resolver=resolver)
     # TODO(b/152320929): Wait for the cluster before proceeding, otherwise
     # collectives may hang if any worker launches collectives before the chief
     # creates the strategy.
@@ -359,6 +364,23 @@ all_strategies_minus_default = strategies_minus_default_and_tpu + tpu_strategies
 
 all_strategies = strategies_minus_tpu + tpu_strategies
 
+two_replica_strategies = [
+    mirrored_strategy_with_gpu_and_cpu,
+    mirrored_strategy_with_two_gpus,
+    multi_worker_mirrored_2x1_cpu,
+    multi_worker_mirrored_2x1_gpu,
+    tpu_strategy,  # steps_per_run=2
+    tpu_strategy_one_step,
+    central_storage_strategy_with_gpu_and_cpu,
+]
+
+four_replica_strategies = [
+    multi_worker_mirrored_2x2_gpu,
+    multi_worker_mirrored_4x1_cpu,
+]
+
+# TODO(b/159831907): replace with two_replica_strategies after the tests using
+# it work with MWMS.
 multidevice_strategies = [
     mirrored_strategy_with_gpu_and_cpu,
     mirrored_strategy_with_two_gpus,

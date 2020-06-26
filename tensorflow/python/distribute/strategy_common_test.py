@@ -169,7 +169,6 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
     if isinstance(strategy, CollectiveAllReduceStrategy):
       self.assertEqual(resolver.task_id, 0)
       self.assertAllInSet(resolver.task_type, ['chief', 'worker'])
-      self.assertIsNone(resolver.rpc_layer)
 
 
 if __name__ == '__main__':

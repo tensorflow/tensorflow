@@ -810,13 +810,16 @@ py_library(
         "//tensorflow_models:__subpackages__",
     ],
     deps = [
+        ":collective_all_reduce_strategy",
+        ":distribute_lib",
         ":multi_process_runner",
         ":multi_worker_test_base",
         "//tensorflow/python:framework_combinations",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python:platform",
+        "//tensorflow/python:session",
         "//tensorflow/python:tf_decorator",
-        "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -866,7 +869,7 @@ py_library(
     ],
 )
 
-py_test(
+distribute_py_test(
     name = "strategy_combinations_test",
     srcs = ["strategy_combinations_test.py"],
     python_version = "PY3",
@@ -874,9 +877,9 @@ py_test(
         ":combinations",
         ":reduce_util",
         ":strategy_combinations",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:config",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python/eager:context",
         "@absl_py//absl/testing:parameterized",
     ],
 )
