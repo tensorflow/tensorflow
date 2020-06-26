@@ -98,7 +98,8 @@ static void SyncImpl(const std::string& bucket, const std::string& object,
                      int64_t* offset, TempFile* outfile,
                      gcs::Client* gcs_client, TF_Status* status) {
   outfile->operator<<(std::flush);
-  if (*offset == -1) {
+  // `*offset == 0` means this file does not exist on the server.
+  if (*offset == -1 || *offset == 0) {
     // UploadFile will automatically switch to resumable upload based on Client
     // configuration.
     auto metadata = gcs_client->UploadFile(outfile->getName(), bucket, object);
