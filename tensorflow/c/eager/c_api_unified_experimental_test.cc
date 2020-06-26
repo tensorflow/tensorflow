@@ -86,6 +86,73 @@ TEST_P(UnifiedCAPI, TestBasicEager) {
   TF_DeleteExecutionContext(ctx);
 }
 
+
+//MatMul Test
+TEST_P(UnifiedCAPI, TestBasicEagerMatMul) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TF_ExecutionContext* ctx = TF_NewEagerExecutionContext(opts, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TFE_DeleteContextOptions(opts);
+
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  /* Want to test simple MatMul example: 
+
+    [ [0,0] ,   *   [ [0,0] ,   =   [ [0,0],
+      [0,0] ]         [0,0] ]         [0,0]]
+
+  */
+  // Build an abstract input tensor.  
+  float vals [] = {0.0f,0.0f,0.0f,0.0f};
+  TFE_Context* eager_ctx = TF_ExecutionContextGetTFEContext(ctx);
+  TFE_TensorHandle* t = TestMatrixTensorHandleWithInput(eager_ctx, vals);
+
+  TF_AbstractTensor* at =
+      TF_CreateAbstractTensorFromEagerTensor(t, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  // Build an abstract operation.
+  auto* op = TF_NewAbstractOp(ctx);
+  TF_AbstractOpSetOpType(op, "MatMul", status.get()); //correct syntax to specify matrix multiply for tensors?
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  // Build inputs and outputs.
+  TF_AbstractTensor* inputs[2] = {at, at};
+  TF_OutputList* o = TF_NewOutputList();
+  TF_OutputListSetNumOutputs(o, 1, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  // Execute.
+  TF_ExecuteOperation(op, 2, inputs, o, ctx, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  // Clean up operation and inputs.
+  TF_DeleteAbstractOp(op);
+  TF_DeleteAbstractTensor(at);
+
+  // Verify the results.
+  ASSERT_EQ(1, TF_OutputListNumOutputs(o));
+  TF_AbstractTensor* result = TF_OutputListGet(o, 0);
+  TFE_TensorHandle* result_t =
+      TF_AbstractTensorGetEagerTensor(result, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  TF_Tensor* result_tensor = TFE_TensorHandleResolve(result_t, status.get());
+  TF_Tensor* t_tensor = TFE_TensorHandleResolve(t, status.get()); //Is this the best way to get the TF_Tensor from t?
+  float* result_value = static_cast<float*>(TF_TensorData(result_tensor));
+  float* t_value = static_cast<float*>(TF_TensorData(t_tensor));
+  EXPECT_EQ(*result_value, *t_value);
+
+  TF_DeleteTensor(result_tensor);
+  TF_DeleteTensor(t_tensor);
+  TF_DeleteAbstractTensor(result);
+  TF_DeleteOutputList(o);
+  TF_DeleteExecutionContext(ctx);
+}
+
+
+
 TEST_P(UnifiedCAPI, TestBasicGraph) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);

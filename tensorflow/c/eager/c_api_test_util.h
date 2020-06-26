@@ -34,6 +34,9 @@ TFE_TensorHandle* DoubleTestMatrixTensorHandle(TFE_Context* ctx);
 // Return a tensor handle containing a 2x2 matrix of floats
 TFE_TensorHandle* TestMatrixTensorHandle(TFE_Context* ctx);
 
+//Return a tensor handle containing 2x2 matrix containing given data
+TFE_TensorHandle* TestMatrixTensorHandleWithInput(TFE_Context* ctx, float data[]);
+
 // Return a tensor handle containing a 100x100 matrix of floats
 TFE_TensorHandle* TestMatrixTensorHandle100x100(TFE_Context* ctx);
 
