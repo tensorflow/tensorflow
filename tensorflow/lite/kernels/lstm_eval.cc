@@ -127,6 +127,45 @@ inline float GetTensorScale(const TfLiteTensor* tensor) {
   return tensor == nullptr ? 1.0f : tensor->params.scale;
 }
 
+// LINT.IfChange
+// Updates the LSTM cell state, used by both float and hybrid LSTM versions.
+//
+// Implements the following formula:
+//   cell_state_new = clip(forget_gate * cell_state + input_gate * cell_gate)
+//
+// With CIFG LSTM, input gate is replaced by (1-forget_gate).
+//
+// Parameters:
+//  - n_batch, n_cell: sizes of vectors
+//  - cell_state: input/output vector, size n_batch*n_cell
+//  - input_gate: input vector, size n_batch*n_cell.
+//  - forget_gate: input/scratch vector, size n_batch*n_cell, modified with CIFG
+//  - cell_gate: input vector, size n_batch*n_cell.
+//  - use_cifg: use 1-forget_gate instead of input_gate.
+//  - clip: if > 0, clip the resulting cell state to [-clip, +clip].
+void UpdateLstmCellFloat(int n_batch, int n_cell, float* cell_state,
+                         const float* input_gate, float* forget_gate,
+                         const float* cell_gate, bool use_cifg, float clip) {
+  tensor_utils::VectorVectorCwiseProduct(forget_gate, cell_state,
+                                         n_batch * n_cell, cell_state);
+
+  if (use_cifg) {
+    // With CIFG, input_gate = 1-forget_gate. Use the forget_gate array as
+    // scratch, as input_gate array is not allocated in this case. (Be careful
+    // not to write to the scratch before reading the forget gate data.)
+    float* scratch = forget_gate;
+    tensor_utils::Sub1Vector(forget_gate, n_batch * n_cell, scratch);
+    tensor_utils::VectorVectorCwiseProductAccumulate(
+        cell_gate, scratch, n_batch * n_cell, cell_state);
+  } else {
+    tensor_utils::VectorVectorCwiseProductAccumulate(
+        cell_gate, input_gate, n_batch * n_cell, cell_state);
+  }
+  if (clip > 0.0f) {
+    tensor_utils::CwiseClipping(cell_state, n_batch * n_cell, clip);
+  }
+}
+
 // Calculates the output state tensor of an LSTM step.
 //
 // Implements the following formula:
@@ -148,7 +187,6 @@ inline float GetTensorScale(const TfLiteTensor* tensor) {
 //  - proj_clip: if > 0, clip the output of the projection.
 //  - output_state: output vector, size n_batch*n_output. Must be contigous.
 //  - scratch: scratch area, size n_batch*n_cell.
-// LINT.IfChange
 void CalculateLstmOutputFloat(int n_batch, int n_cell, int n_output,
                               const float* cell_state, const float* output_gate,
                               TfLiteFusedActivation activation,
@@ -180,7 +218,8 @@ void CalculateLstmOutputFloat(int n_batch, int n_cell, int n_output,
     std::copy_n(scratch, n_batch * n_output, output_state);
   }
 }
-// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
+// LINT.ThenChange(../tools/optimize/calibration/builtin_logging_ops/lstm.cc,\
+//                 ../experimental/kernels/fp16/lstm_eval.cc)
 
 // Calculates the output state tensor of an LSTM step. See Float version too.
 //
@@ -239,6 +278,44 @@ void CalculateLstmOutputHybrid(
     }
   } else {
     std::copy_n(scratch0, n_batch * n_output, output_state);
+  }
+}
+
+// Updates the LSTM cell state, used by both integer LSTM versions.
+// Also see UpdateLstmCellFloat.
+//
+// Parameters:
+//  - n_batch, n_cell: sizes of vectors
+//  - cell_state: input/output vector, size n_batch*n_cell
+//  - cell_state_scale: scaling factor of cell state.
+//  - input_gate: input vector, size n_batch*n_cell.
+//  - forget_gate: input/scratch vector, size n_batch*n_cell, always modified.
+//  - cell_gate: input vector, size n_batch*n_cell.
+//  - use_cifg: use 1-forget_gate instead of input_gate.
+//  - clip: if > 0, clip the resulting cell state to [-clip, +clip].
+void UpdateLstmCellInteger(int n_batch, int n_cell, int16_t* cell_state,
+                           int32_t cell_state_scale, const int16_t* input_gate,
+                           int16_t* forget_gate, const int16_t* cell_gate,
+                           bool use_cifg, int16_t clip) {
+  // Use the forget_gate array as scratch, as input_gate array is not allocated
+  // in CIFG case. (Be careful not to write to the scratch before reading the
+  // forget gate data.)
+  int16_t* scratch = forget_gate;
+
+  tensor_utils::CwiseMul(forget_gate, cell_state, n_batch, n_cell, 15,
+                         cell_state);
+  if (use_cifg) {
+    tensor_utils::Sub1Vector(forget_gate, n_batch * n_cell, scratch);
+    tensor_utils::CwiseMul(scratch, cell_gate, n_batch, n_cell,
+                           30 + cell_state_scale, scratch);
+  } else {
+    tensor_utils::CwiseMul(input_gate, cell_gate, n_batch, n_cell,
+                           30 + cell_state_scale, scratch);
+  }
+  tensor_utils::CwiseAdd(cell_state, scratch, n_batch, n_cell, cell_state);
+
+  if (clip > 0) {
+    tensor_utils::CwiseClipping(cell_state, n_batch * n_cell, clip);
   }
 }
 
@@ -552,8 +629,6 @@ inline void LstmStepFloat(
                                      forget_gate_scratch);
 
   // For each batch and cell: update the cell.
-  tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
-                                         n_batch * n_cell, cell_state_ptr);
   if (use_layer_norm) {
     tensor_utils::MeanStddevNormalization(cell_gate_scratch, cell_gate_scratch,
                                           n_cell, n_batch);
@@ -565,21 +640,10 @@ inline void LstmStepFloat(
   }
   tensor_utils::ApplyActivationToVector(cell_gate_scratch, n_batch * n_cell,
                                         params->activation, cell_gate_scratch);
-  if (use_cifg) {
-    tensor_utils::Sub1Vector(forget_gate_scratch, n_batch * n_cell,
-                             forget_gate_scratch);
-    tensor_utils::VectorVectorCwiseProductAccumulate(
-        cell_gate_scratch, forget_gate_scratch, n_batch * n_cell,
-        cell_state_ptr);
-  } else {
-    tensor_utils::VectorVectorCwiseProductAccumulate(
-        cell_gate_scratch, input_gate_scratch, n_batch * n_cell,
-        cell_state_ptr);
-  }
-  if (params->cell_clip > 0.0) {
-    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
-                                params->cell_clip);
-  }
+
+  UpdateLstmCellFloat(n_batch, n_cell, cell_state_ptr, input_gate_scratch,
+                      forget_gate_scratch, cell_gate_scratch, use_cifg,
+                      params->cell_clip);
 
   // For each batch and cell: update the output gate.
   if (use_peephole) {
@@ -611,7 +675,8 @@ inline void LstmStepFloat(
                 output_ptr + b * output_batch_leading_dim);
   }
 }
-// LINT.ThenChange(//tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.cc)
+// LINT.ThenChange(../tools/optimize/calibration/builtin_logging_ops/lstm.cc,\
+//                 ../experimental/kernels/fp16/lstm_eval.cc)
 
 // Same as above but with quantized weight matrices. In detail:
 // Input of size 'n_batch * n_input':
@@ -995,8 +1060,6 @@ inline void LstmStepHybrid(
                                      forget_gate_scratch);
 
   // For each batch and cell: update the cell.
-  tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
-                                         n_batch * n_cell, cell_state_ptr);
   if (use_layer_norm) {
     tensor_utils::MeanStddevNormalization(cell_gate_scratch, cell_gate_scratch,
                                           n_cell, n_batch);
@@ -1008,21 +1071,10 @@ inline void LstmStepHybrid(
   }
   tensor_utils::ApplyActivationToVector(cell_gate_scratch, n_batch * n_cell,
                                         params->activation, cell_gate_scratch);
-  if (use_cifg) {
-    tensor_utils::Sub1Vector(forget_gate_scratch, n_batch * n_cell,
-                             forget_gate_scratch);
-    tensor_utils::VectorVectorCwiseProductAccumulate(
-        cell_gate_scratch, forget_gate_scratch, n_batch * n_cell,
-        cell_state_ptr);
-  } else {
-    tensor_utils::VectorVectorCwiseProductAccumulate(
-        cell_gate_scratch, input_gate_scratch, n_batch * n_cell,
-        cell_state_ptr);
-  }
-  if (params->cell_clip > 0.0) {
-    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
-                                params->cell_clip);
-  }
+
+  UpdateLstmCellFloat(n_batch, n_cell, cell_state_ptr, input_gate_scratch,
+                      forget_gate_scratch, cell_gate_scratch, use_cifg,
+                      params->cell_clip);
 
   // For each batch and cell: update the output gate.
   if (use_peephole) {
@@ -1152,6 +1204,7 @@ inline void LstmStepHybrid(
 //   output_state_ptr - size 'n_batch * n_output'
 //   cell_state_ptr   - size 'n_batch * n_cell'
 //   output_ptr       - size 'n_batch * n_output'
+// TODO(b/159947023): scratch0 is not used if (!cifg). Don't allocate then.
 inline void LstmStepInteger8x8_16(
     const int8_t* input_ptr, const int8_t* input_to_input_weight_ptr,
     int32_t effective_input_to_input_scale_a,
@@ -1300,10 +1353,7 @@ inline void LstmStepInteger8x8_16(
                           cell_gate_scratch);
 
   // Input gate.
-  if (use_cifg) {
-    tensor_utils::Sub1Vector(forget_gate_scratch, n_batch * n_cell,
-                             input_gate_scratch);
-  } else {
+  if (!use_cifg) {
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_ptr, input_to_input_effective_bias, input_to_input_weight_ptr,
         effective_input_to_input_scale_a, effective_input_to_input_scale_b,
@@ -1331,20 +1381,9 @@ inline void LstmStepInteger8x8_16(
                                input_gate_scratch);
   }
 
-  // New cell state.
-  tensor_utils::CwiseMul(forget_gate_scratch, cell_state_ptr, n_batch, n_cell,
-                         15, forget_gate_scratch);
-
-  tensor_utils::CwiseMul(input_gate_scratch, cell_gate_scratch, n_batch, n_cell,
-                         30 + cell_state_scale, cell_gate_scratch);
-
-  tensor_utils::CwiseAdd(forget_gate_scratch, cell_gate_scratch, n_batch,
-                         n_cell, cell_state_ptr);
-
-  if (quantized_cell_clip > 0) {
-    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
-                                quantized_cell_clip);
-  }
+  UpdateLstmCellInteger(n_batch, n_cell, cell_state_ptr, cell_state_scale,
+                        input_gate_scratch, forget_gate_scratch,
+                        cell_gate_scratch, use_cifg, quantized_cell_clip);
 
   // Ouptut gate.
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
@@ -1480,6 +1519,7 @@ inline void LstmStepInteger8x8_16(
 //   cell_state_ptr   - size 'n_batch * n_cell'
 //   output_ptr       - size 'n_batch * n_output'
 // TODO(b/148688698): Move zero point calculation into Prepare().
+// TODO(b/159947023): scratch5 is unused, remove.
 inline void LstmStepInteger8x8_8(
     const int8_t* input_ptr, int32_t input_zp,
     const int8_t* input_to_input_weight_ptr,
@@ -1537,7 +1577,6 @@ inline void LstmStepInteger8x8_8(
     int16_t* scratch7) {
   ruy::profiler::ScopeLabel label("LstmStepInteger8x8_8");
   // Make named scratch buffers for the different gates.
-  int16_t* input_gate_scratch = scratch5;
   int16_t* forget_gate_scratch = scratch2;
   int16_t* cell_gate_scratch = scratch3;
   int16_t* output_gate_scratch = scratch4;
@@ -1628,23 +1667,10 @@ inline void LstmStepInteger8x8_8(
   tensor_utils::ApplySigmoidFloat(output_gate_scratch, n_batch, n_cell,
                                   output_gate_scratch);
 
-  // Input gate with cifg
-  tensor_utils::Sub1Vector(forget_gate_scratch, n_batch * n_cell,
-                           input_gate_scratch);
-
-  // New cell.
-  tensor_utils::CwiseMul(forget_gate_scratch, cell_state_ptr, n_batch, n_cell,
-                         15 + 15 - 15, scratch6);
-
-  tensor_utils::CwiseMul(input_gate_scratch, cell_gate_scratch, n_batch, n_cell,
-                         15 + 15 - 15, scratch7);
-
-  tensor_utils::CwiseAdd(scratch6, scratch7, n_batch, n_cell, cell_state_ptr);
-
-  if (quantized_cell_clip > 0) {
-    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
-                                quantized_cell_clip);
-  }
+  UpdateLstmCellInteger(n_batch, n_cell, cell_state_ptr,
+                        /*cell_state_scale=*/-15, /*input_gate=*/nullptr,
+                        forget_gate_scratch, cell_gate_scratch,
+                        /*use_cifg=*/true, quantized_cell_clip);
 
   CalculateLstmOutputInteger8x8_8(
       n_batch, n_cell, n_output, cell_state_ptr, output_gate_scratch,

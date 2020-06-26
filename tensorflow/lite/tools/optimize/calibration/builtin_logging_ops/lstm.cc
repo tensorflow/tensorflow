@@ -37,6 +37,31 @@ namespace builtin {
 
 namespace {
 
+// TODO(b/159066113): This is the exact same function as UpdateLstmCellFloat in
+// kernels/lstm_eval.cc, make that public and remove this.
+void UpdateLstmCellFloat(int n_batch, int n_cell, float* cell_state,
+                         const float* input_gate, float* forget_gate,
+                         const float* cell_gate, bool use_cifg, float clip) {
+  tensor_utils::VectorVectorCwiseProduct(forget_gate, cell_state,
+                                         n_batch * n_cell, cell_state);
+
+  if (use_cifg) {
+    // With CIFG, input_gate = 1-forget_gate. Use the forget_gate array as
+    // scratch, as input_gate array is not allocated in this case. (Be careful
+    // not to write to the scratch before reading the forget gate data.)
+    float* scratch = forget_gate;
+    tensor_utils::Sub1Vector(forget_gate, n_batch * n_cell, scratch);
+    tensor_utils::VectorVectorCwiseProductAccumulate(
+        cell_gate, scratch, n_batch * n_cell, cell_state);
+  } else {
+    tensor_utils::VectorVectorCwiseProductAccumulate(
+        cell_gate, input_gate, n_batch * n_cell, cell_state);
+  }
+  if (clip > 0.0f) {
+    tensor_utils::CwiseClipping(cell_state, n_batch * n_cell, clip);
+  }
+}
+
 void CalculateLstmOutputFloat(
     int n_batch, int n_cell, int n_output, const float* cell_state,
     const float* output_gate, TfLiteFusedActivation activation,
@@ -230,8 +255,6 @@ inline void LstmStepWithAuxInput(
                                      forget_gate_scratch);
 
   // For each batch and cell: update the cell.
-  tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
-                                         n_batch * n_cell, cell_state_ptr);
   if (use_layer_norm) {
     logger->LogTensorValue(intermediate_tensor_indexes[2], cell_gate_scratch,
                            n_cell * n_batch, error_reporter);
@@ -245,21 +268,10 @@ inline void LstmStepWithAuxInput(
   }
   tensor_utils::ApplyActivationToVector(cell_gate_scratch, n_batch * n_cell,
                                         params->activation, cell_gate_scratch);
-  if (use_cifg) {
-    tensor_utils::Sub1Vector(forget_gate_scratch, n_batch * n_cell,
-                             forget_gate_scratch);
-    tensor_utils::VectorVectorCwiseProductAccumulate(
-        cell_gate_scratch, forget_gate_scratch, n_batch * n_cell,
-        cell_state_ptr);
-  } else {
-    tensor_utils::VectorVectorCwiseProductAccumulate(
-        cell_gate_scratch, input_gate_scratch, n_batch * n_cell,
-        cell_state_ptr);
-  }
-  if (params->cell_clip > 0.0) {
-    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
-                                params->cell_clip);
-  }
+
+  UpdateLstmCellFloat(n_batch, n_cell, cell_state_ptr, input_gate_scratch,
+                      forget_gate_scratch, cell_gate_scratch, use_cifg,
+                      params->cell_clip);
 
   // For each batch and cell: update the output gate.
   if (use_peephole) {
