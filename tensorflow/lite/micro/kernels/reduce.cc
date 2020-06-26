@@ -83,9 +83,17 @@ TfLiteStatus PrepareMax(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = static_cast<OpData*>(node->user_data);
   const TfLiteTensor* input = GetInput(context, node, 0);
   const TfLiteTensor* axis = GetInput(context, node, 1);
+
+  // Interpret an axis tensor with null dimensions as a scalar
+  int num_elements;
+  if (axis->dims == nullptr) {
+    num_elements = 1;
+  } else {
+    num_elements = NumElements(axis);
+  }
   context->RequestScratchBufferInArena(context, sizeof(int) * input->dims->size,
                                        &op_data->temp_buffer_idx);
-  context->RequestScratchBufferInArena(context, sizeof(int) * NumElements(axis),
+  context->RequestScratchBufferInArena(context, sizeof(int) * num_elements,
                                        &op_data->resolved_axis_idx);
 
   return kTfLiteOk;
@@ -116,7 +124,14 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
   TfLiteReducerParams* params =
       reinterpret_cast<TfLiteReducerParams*>(node->builtin_data);
 
-  int num_axis = static_cast<int>(ElementCount(*axis->dims));
+  // Interpret an axis tensor with null dimensions as a scalar
+  int num_axis;
+  if (axis->dims == nullptr) {
+    num_axis = 1;
+  } else {
+    num_axis = static_cast<int>(NumElements(axis));
+  }
+
   int temp_index[kMaxNumberOfAxis];
   int resolved_axis[kMaxNumberOfReducedAxis];
 
@@ -174,7 +189,15 @@ TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node, T init_value,
   TfLiteReducerParams* params =
       reinterpret_cast<TfLiteReducerParams*>(node->builtin_data);
   OpData* op_data = static_cast<OpData*>(node->user_data);
-  int64_t num_axis = NumElements(axis);
+
+  // Interpret an axis tensor with null dimensions as a scalar
+  int num_axis;
+  if (axis->dims == nullptr) {
+    num_axis = 1;
+  } else {
+    num_axis = static_cast<int>(NumElements(axis));
+  }
+
   int* temp_buffer = static_cast<int*>(
       context->GetScratchBuffer(context, op_data->temp_buffer_idx));
   int* resolved_axis = static_cast<int*>(
