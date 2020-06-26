@@ -487,12 +487,6 @@ class MultiProcessRunner(object):
       logging.info('%s-%d exit code: %s', task_type, task_id, p.exitcode)
 
     process_statuses = self._queue_to_list(self._process_status_queue)
-    if not self._all_forced_terminated and len(
-        process_statuses) != self._outstanding_subprocess_count:
-      raise UnexpectedSubprocessExitError(
-          'Missing status(es) from %d subprocess(es). See logs for details.' %
-          (self._outstanding_subprocess_count - len(process_statuses)),
-          self._get_mpr_result(process_statuses))
     for process_status in process_statuses:
       assert isinstance(process_status, _ProcessStatusInfo)
       if not process_status.is_successful:
@@ -500,12 +494,12 @@ class MultiProcessRunner(object):
 
     # Checking all the processes that are expected to exit properly.
     for (task_type, task_id), p in self._processes.items():
-      if self._dependence_on_chief and task_type != 'chief':
+      if self._dependence_on_chief and chief and task_type != 'chief':
         # If _dependence_on_chief, other processes may have been
         # forced-terminated, which is expected.
         continue
       # Successfully exiting process has exit code 0.
-      if p.exitcode > 0:
+      if p.exitcode is None or p.exitcode > 0:
         raise UnexpectedSubprocessExitError(
             'Subprocess %s-%d exited with exit code %d. See logs for details.' %
             (task_type, task_id, p.exitcode),
@@ -844,17 +838,24 @@ def _run_contained(proc_func, args, kwargs):
 
   Returns:
     a _ProcessStatusInfo.
+
   """
+  is_successful = False
+  return_value = None
+  exc_info = None
   try:
     return_value = proc_func(*args, **kwargs)
     is_successful = True
-    exc_info = None
+    return _ProcessStatusInfo(
+        is_successful=is_successful,
+        exc_info=exc_info,
+        return_value=return_value)
+
+  # If `proc_func` ends up exiting with `sys.exit()`, the `SystemExit` is not
+  # handled here.
   except Exception:  # pylint: disable=broad-except
-    return_value = None
-    is_successful = False
     exc_info = sys.exc_info()
-  finally:
-    return _ProcessStatusInfo(  # pylint: disable=lost-exception
+    return _ProcessStatusInfo(
         is_successful=is_successful,
         exc_info=exc_info,
         return_value=return_value)
