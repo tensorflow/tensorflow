@@ -5175,8 +5175,8 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
 class DecodeImageTest(test_util.TensorFlowTestCase):
 
   _FORWARD_COMPATIBILITY_HORIZONS = [
-      (2020, 6, 11),
-      (2020, 7, 11),
+      (2020, 1, 1),
+      (2020, 7, 14),
       (2525, 1, 1),  # future behavior
   ]
 
