@@ -186,6 +186,14 @@ bool IsConv2DBackpropInput(const NodeDef& node) {
 
 bool IsConv3D(const NodeDef& node) { return node.op() == "Conv3D"; }
 
+bool IsConv3DBackpropFilterV2(const NodeDef& node) {
+  return node.op() == "Conv3DBackpropFilterV2";
+}
+
+bool IsConv3DBackpropInputV2(const NodeDef& node) {
+  return node.op() == "Conv3DBackpropInputV2";
+}
+
 bool IsDepthwiseConv2dNative(const NodeDef& node) {
   return node.op() == "DepthwiseConv2dNative";
 }
