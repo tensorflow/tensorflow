@@ -611,12 +611,6 @@ class Trackable(object):
     # building.
     self._self_name_based_restores = set()
 
-    # Dictionary of SaveableObjects factories. This dictionary is defined when
-    # the object is loaded from the SavedModel. When writing a custom class,
-    # prefer overriding "_gather_saveables_from_checkpoint" to using this
-    # attribute.
-    self._self_saveable_object_factories = {}
-
   @property
   def _object_identifier(self):
     """String used to identify this object in a SavedModel.
@@ -978,7 +972,7 @@ class Trackable(object):
        lambda name="global_name_for_this_object":
        SaveableObject(name=name, ...)}
     """
-    return self._self_saveable_object_factories
+    return {}
 
   def _list_extra_dependencies_for_serialization(self, serialization_cache):
     """Lists extra dependencies to serialize.

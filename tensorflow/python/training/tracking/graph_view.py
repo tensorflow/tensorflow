@@ -208,7 +208,7 @@ class ObjectGraphView(object):
 
   def _add_attributes_to_object_graph(
       self, trackable_objects, object_graph_proto, node_ids, object_names,
-      object_map, call_with_mapped_captures):
+      object_map):
     """Create SaveableObjects and corresponding SerializedTensor protos."""
     named_saveable_objects = []
     if self._saveables_cache is None:
@@ -253,9 +253,7 @@ class ObjectGraphView(object):
                 break
         if saveables is None:
           if callable(saveable_factory):
-            maybe_saveable = saveable_object_util.create_saveable_object(
-                saveable_factory, attribute.checkpoint_key,
-                call_with_mapped_captures)
+            maybe_saveable = saveable_factory(name=attribute.checkpoint_key)
           else:
             maybe_saveable = saveable_factory
           if isinstance(maybe_saveable, saveable_object_lib.SaveableObject):
@@ -334,8 +332,7 @@ class ObjectGraphView(object):
     return object_graph_proto
 
   def _serialize_gathered_objects(self, trackable_objects, path_to_root,
-                                  object_map=None,
-                                  call_with_mapped_captures=None):
+                                  object_map=None):
     """Create SaveableObjects and protos for gathered objects."""
     object_names = object_identity.ObjectIdentityDictionary()
     for obj, path in path_to_root.items():
@@ -357,8 +354,7 @@ class ObjectGraphView(object):
             object_graph_proto=object_graph_proto,
             node_ids=node_ids,
             object_names=object_names,
-            object_map=object_map,
-            call_with_mapped_captures=call_with_mapped_captures))
+            object_map=object_map))
     return named_saveable_objects, object_graph_proto, feed_additions
 
   def serialize_object_graph(self):
@@ -386,8 +382,7 @@ class ObjectGraphView(object):
     return self._serialize_gathered_objects(
         trackable_objects, path_to_root)
 
-  def frozen_saveable_objects(self, object_map=None, to_graph=None,
-                              call_with_mapped_captures=None):
+  def frozen_saveable_objects(self, object_map=None, to_graph=None):
     """Creates SaveableObjects with the current object graph frozen."""
     trackable_objects, path_to_root = self._breadth_first_traversal()
     if to_graph:
@@ -398,8 +393,7 @@ class ObjectGraphView(object):
       named_saveable_objects, graph_proto, _ = self._serialize_gathered_objects(
           trackable_objects,
           path_to_root,
-          object_map,
-          call_with_mapped_captures)
+          object_map)
       with ops.device("/cpu:0"):
         object_graph_tensor = constant_op.constant(
             graph_proto.SerializeToString(), dtype=dtypes.string)
