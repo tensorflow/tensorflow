@@ -785,14 +785,15 @@ inline void LstmStepHybrid(
     const float* projection_bias_ptr, const TfLiteLSTMParams* params,
     int n_batch, int n_cell, int n_input, int n_aux_input, int n_output,
     int output_batch_leading_dim, float* scratch0, float* scratch1,
-    float* scratch2, float* scratch3, float* scaling_factors,
-    float* scaling_factors_scratch, float* recovered_cell_weights,
-    int8_t* quantized_input_ptr, int8_t* quantized_aux_input_ptr,
-    int8_t* quantized_output_state_ptr, int8_t* quantized_output_scratch,
-    float* output_state_ptr, float* cell_state_ptr, int32_t* accum_scratch_ptr,
-    float* output_ptr, int32_t* zero_points, int32_t* row_sums,
-    int row_sums_size, bool* compute_row_sums, bool asymmetric_quantize_inputs,
-    CpuBackendContext* context) {
+    float* scratch2, float* scratch3, float* input_sf, float* aux_input_sf,
+    float* output_state_sf, float* scaling_factors_scratch,
+    float* recovered_cell_weights, int8_t* quantized_input_ptr,
+    int8_t* quantized_aux_input_ptr, int8_t* quantized_output_state_ptr,
+    int8_t* quantized_output_scratch, float* output_state_ptr,
+    float* cell_state_ptr, int32_t* accum_scratch_ptr, float* output_ptr,
+    int32_t* input_zp, int32_t* aux_input_zp, int32_t* output_state_zp,
+    int32_t* row_sums, int row_sums_size, bool* compute_row_sums,
+    bool asymmetric_quantize_inputs, CpuBackendContext* context) {
   ruy::profiler::ScopeLabel label("LstmStepHybrid");
   // Since we have already checked that weights are all there or none, we
   // can check the existence of only one to the get the condition.
@@ -897,38 +898,37 @@ inline void LstmStepHybrid(
 
   if (!tensor_utils::IsZeroVector(input_ptr, n_batch * n_input)) {
     tensor_utils::BatchQuantizeFloats(input_ptr, n_batch, n_input,
-                                      quantized_input_ptr, scaling_factors,
-                                      zero_points, asymmetric_quantize_inputs);
+                                      quantized_input_ptr, input_sf, input_zp,
+                                      asymmetric_quantize_inputs);
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           input_to_input_weights_ptr, n_cell, n_input, quantized_input_ptr,
-          input_to_input_weights_scale, scaling_factors, n_batch,
-          input_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
-          accum_scratch_ptr, input_to_input_row_sums, compute_row_sums,
-          scaling_factors_scratch, context);
+          input_to_input_weights_scale, input_sf, n_batch, input_gate_scratch,
+          /*per_channel_scale=*/nullptr, input_zp, accum_scratch_ptr,
+          input_to_input_row_sums, compute_row_sums, scaling_factors_scratch,
+          context);
     }
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_to_forget_weights_ptr, n_cell, n_input, quantized_input_ptr,
-        input_to_forget_weights_scale, scaling_factors, n_batch,
-        forget_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
-        accum_scratch_ptr, input_to_forget_row_sums, compute_row_sums,
-        scaling_factors_scratch, context);
+        input_to_forget_weights_scale, input_sf, n_batch, forget_gate_scratch,
+        /*per_channel_scale=*/nullptr, input_zp, accum_scratch_ptr,
+        input_to_forget_row_sums, compute_row_sums, scaling_factors_scratch,
+        context);
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_to_cell_weights_ptr, n_cell, n_input, quantized_input_ptr,
-        input_to_cell_weights_scale, scaling_factors, n_batch,
-        cell_gate_scratch,
-        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+        input_to_cell_weights_scale, input_sf, n_batch, cell_gate_scratch,
+        /*per_channel_scale=*/nullptr, input_zp, accum_scratch_ptr,
         input_to_cell_row_sums, compute_row_sums, scaling_factors_scratch,
         context);
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_to_output_weights_ptr, n_cell, n_input, quantized_input_ptr,
-        input_to_output_weights_scale, scaling_factors, n_batch,
-        output_gate_scratch, /*per_channel_scale=*/nullptr, zero_points,
-        accum_scratch_ptr, input_to_output_row_sums, compute_row_sums,
-        scaling_factors_scratch, context);
+        input_to_output_weights_scale, input_sf, n_batch, output_gate_scratch,
+        /*per_channel_scale=*/nullptr, input_zp, accum_scratch_ptr,
+        input_to_output_row_sums, compute_row_sums, scaling_factors_scratch,
+        context);
   }
 
   // For each batch and cell: compute aux_input_weight * aux_input.
@@ -936,15 +936,15 @@ inline void LstmStepHybrid(
   if (aux_input_ptr != nullptr &&
       !tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_aux_input)) {
     tensor_utils::BatchQuantizeFloats(aux_input_ptr, n_batch, n_aux_input,
-                                      quantized_aux_input_ptr, scaling_factors,
-                                      zero_points, asymmetric_quantize_inputs);
+                                      quantized_aux_input_ptr, aux_input_sf,
+                                      aux_input_zp, asymmetric_quantize_inputs);
 
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           aux_input_to_input_weights_ptr, n_cell, n_aux_input,
           quantized_aux_input_ptr, aux_input_to_input_weights_scale,
-          scaling_factors, n_batch, input_gate_scratch,
-          /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+          aux_input_sf, n_batch, input_gate_scratch,
+          /*per_channel_scale=*/nullptr, aux_input_zp, accum_scratch_ptr,
           aux_input_to_input_row_sums, compute_row_sums,
           scaling_factors_scratch, context);
     }
@@ -952,24 +952,23 @@ inline void LstmStepHybrid(
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         aux_input_to_forget_weights_ptr, n_cell, n_aux_input,
         quantized_aux_input_ptr, aux_input_to_forget_weights_scale,
-        scaling_factors, n_batch, forget_gate_scratch,
-        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+        aux_input_sf, n_batch, forget_gate_scratch,
+        /*per_channel_scale=*/nullptr, aux_input_zp, accum_scratch_ptr,
         aux_input_to_forget_row_sums, compute_row_sums, scaling_factors_scratch,
         context);
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         aux_input_to_cell_weights_ptr, n_cell, n_aux_input,
-        quantized_aux_input_ptr, aux_input_to_cell_weights_scale,
-        scaling_factors, n_batch, cell_gate_scratch,
-        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
-        aux_input_to_cell_row_sums, compute_row_sums, scaling_factors_scratch,
-        context);
+        quantized_aux_input_ptr, aux_input_to_cell_weights_scale, aux_input_sf,
+        n_batch, cell_gate_scratch, /*per_channel_scale=*/nullptr, aux_input_zp,
+        accum_scratch_ptr, aux_input_to_cell_row_sums, compute_row_sums,
+        scaling_factors_scratch, context);
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         aux_input_to_output_weights_ptr, n_cell, n_aux_input,
         quantized_aux_input_ptr, aux_input_to_output_weights_scale,
-        scaling_factors, n_batch, output_gate_scratch,
-        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+        aux_input_sf, n_batch, output_gate_scratch,
+        /*per_channel_scale=*/nullptr, aux_input_zp, accum_scratch_ptr,
         aux_input_to_output_row_sums, compute_row_sums, scaling_factors_scratch,
         context);
   }
@@ -978,14 +977,14 @@ inline void LstmStepHybrid(
     // Save quantization and matmul computation for all zero input.
     tensor_utils::BatchQuantizeFloats(
         output_state_ptr, n_batch, n_output, quantized_output_state_ptr,
-        scaling_factors, zero_points, asymmetric_quantize_inputs);
+        output_state_sf, output_state_zp, asymmetric_quantize_inputs);
     // For each batch and cell: compute recurrent_weight * output_state.
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           recurrent_to_input_weights_ptr, n_cell, n_output,
           quantized_output_state_ptr, recurrent_to_input_weights_scale,
-          scaling_factors, n_batch, input_gate_scratch,
-          /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+          output_state_sf, n_batch, input_gate_scratch,
+          /*per_channel_scale=*/nullptr, output_state_zp, accum_scratch_ptr,
           recurrent_to_input_row_sums, compute_row_sums,
           scaling_factors_scratch, context);
     }
@@ -993,24 +992,24 @@ inline void LstmStepHybrid(
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         recurrent_to_forget_weights_ptr, n_cell, n_output,
         quantized_output_state_ptr, recurrent_to_forget_weights_scale,
-        scaling_factors, n_batch, forget_gate_scratch,
-        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+        output_state_sf, n_batch, forget_gate_scratch,
+        /*per_channel_scale=*/nullptr, output_state_zp, accum_scratch_ptr,
         recurrent_to_forget_row_sums, compute_row_sums, scaling_factors_scratch,
         context);
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         recurrent_to_cell_weights_ptr, n_cell, n_output,
         quantized_output_state_ptr, recurrent_to_cell_weights_scale,
-        scaling_factors, n_batch, cell_gate_scratch,
-        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+        output_state_sf, n_batch, cell_gate_scratch,
+        /*per_channel_scale=*/nullptr, output_state_zp, accum_scratch_ptr,
         recurrent_to_cell_row_sums, compute_row_sums, scaling_factors_scratch,
         context);
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         recurrent_to_output_weights_ptr, n_cell, n_output,
         quantized_output_state_ptr, recurrent_to_output_weights_scale,
-        scaling_factors, n_batch, output_gate_scratch,
-        /*per_channel_scale=*/nullptr, zero_points, accum_scratch_ptr,
+        output_state_sf, n_batch, output_gate_scratch,
+        /*per_channel_scale=*/nullptr, output_state_zp, accum_scratch_ptr,
         recurrent_to_output_row_sums, compute_row_sums, scaling_factors_scratch,
         context);
   }
@@ -1102,7 +1101,7 @@ inline void LstmStepHybrid(
       params->activation, projection_weights_ptr, projection_weights_scale,
       projection_bias_ptr, params->proj_clip, output_state_ptr,
       asymmetric_quantize_inputs, projection_weights_row_sums, compute_row_sums,
-      context, scratch2, quantized_output_scratch, scaling_factors, zero_points,
+      context, scratch2, quantized_output_scratch, input_sf, input_zp,
       accum_scratch_ptr);
 
   // Copy output_state_ptr to the output. Note that the output batch rows may
@@ -1892,14 +1891,16 @@ TfLiteStatus EvalHybrid(
     const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
-    int output_offset, TfLiteTensor* scratch_buffer,
-    TfLiteTensor* scaling_factors, TfLiteTensor* prod_scaling_factors,
-    TfLiteTensor* recovered_cell_weights, TfLiteTensor* input_quantized,
-    TfLiteTensor* aux_input_quantized, TfLiteTensor* output_state_quantized,
-    TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
-    TfLiteTensor* cell_state, TfLiteTensor* output_scratch_buffer,
-    TfLiteTensor* output, TfLiteTensor* zero_points, TfLiteTensor* row_sums,
-    int row_sums_size, bool* compute_row_sums, CpuBackendContext* context) {
+    int output_offset, TfLiteTensor* scratch_buffer, TfLiteTensor* input_sf,
+    TfLiteTensor* aux_input_sf, TfLiteTensor* output_state_sf,
+    TfLiteTensor* prod_scaling_factors, TfLiteTensor* recovered_cell_weights,
+    TfLiteTensor* input_quantized, TfLiteTensor* aux_input_quantized,
+    TfLiteTensor* output_state_quantized, TfLiteTensor* cell_state_quantized,
+    TfLiteTensor* output_state, TfLiteTensor* cell_state,
+    TfLiteTensor* output_scratch_buffer, TfLiteTensor* output,
+    TfLiteTensor* input_zp, TfLiteTensor* aux_input_zp,
+    TfLiteTensor* output_state_zp, TfLiteTensor* row_sums, int row_sums_size,
+    bool* compute_row_sums, CpuBackendContext* context) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int n_input = input->dims->data[input->dims->size - 1];
   int max_time, n_batch;
@@ -1939,10 +1940,14 @@ TfLiteStatus EvalHybrid(
   const int output_batch_leading_dim =
       output->dims->data[output->dims->size - 1];
 
-  int32_t* zero_points_ptr = nullptr;
+  int32_t* input_zp_ptr = nullptr;
+  int32_t* aux_input_zp_ptr = nullptr;
+  int32_t* output_state_zp_ptr = nullptr;
   int32_t* row_sums_ptr = nullptr;
   if (params->asymmetric_quantize_inputs) {
-    zero_points_ptr = GetTensorData<int32_t>(zero_points);
+    input_zp_ptr = GetTensorData<int32_t>(input_zp);
+    aux_input_zp_ptr = GetTensorData<int32_t>(aux_input_zp);
+    output_state_zp_ptr = GetTensorData<int32_t>(output_state_zp);
     row_sums_ptr = GetTensorData<int32_t>(row_sums);
   }
 
@@ -2005,7 +2010,9 @@ TfLiteStatus EvalHybrid(
           GetTensorData<float>(projection_bias), params, n_batch, n_cell,
           n_input, aux_input_size, n_output, output_batch_leading_dim,
           input_gate_scratch, forget_gate_scratch, cell_gate_scratch,
-          output_gate_scratch, GetTensorData<float>(scaling_factors),
+          output_gate_scratch, GetTensorData<float>(input_sf),
+          GetTensorData<float>(aux_input_sf),
+          GetTensorData<float>(output_state_sf),
           GetTensorData<float>(prod_scaling_factors),
           GetTensorData<float>(recovered_cell_weights),
           GetTensorData<int8_t>(input_quantized),
@@ -2014,8 +2021,9 @@ TfLiteStatus EvalHybrid(
           GetTensorData<int8_t>(cell_state_quantized),
           GetTensorData<float>(output_state), GetTensorData<float>(cell_state),
           GetTensorData<int32_t>(output_scratch_buffer), output_ptr,
-          zero_points_ptr, row_sums_ptr, row_sums_size, compute_row_sums,
-          params->asymmetric_quantize_inputs, context);
+          input_zp_ptr, aux_input_zp_ptr, output_state_zp_ptr, row_sums_ptr,
+          row_sums_size, compute_row_sums, params->asymmetric_quantize_inputs,
+          context);
     }
   } else {
     for (int b = 0; b < n_batch; b++) {
@@ -2092,7 +2100,9 @@ TfLiteStatus EvalHybrid(
             /*n_batch=*/1, n_cell, n_input, aux_input_size, n_output,
             output_batch_leading_dim, input_gate_scratch_ptr,
             forget_gate_scratch_ptr, cell_gate_scratch_ptr,
-            output_gate_scratch_ptr, GetTensorData<float>(scaling_factors),
+            output_gate_scratch_ptr, GetTensorData<float>(input_sf),
+            GetTensorData<float>(aux_input_sf),
+            GetTensorData<float>(output_state_sf),
             GetTensorData<float>(prod_scaling_factors),
             GetTensorData<float>(recovered_cell_weights),
             GetTensorData<int8_t>(input_quantized),
@@ -2100,8 +2110,9 @@ TfLiteStatus EvalHybrid(
             GetTensorData<int8_t>(output_state_quantized),
             GetTensorData<int8_t>(cell_state_quantized), output_state_ptr,
             cell_state_ptr, GetTensorData<int32_t>(output_scratch_buffer),
-            output_ptr, zero_points_ptr, row_sums_ptr, row_sums_size,
-            compute_row_sums, params->asymmetric_quantize_inputs, context);
+            output_ptr, input_zp_ptr, aux_input_zp_ptr, output_state_zp_ptr,
+            row_sums_ptr, row_sums_size, compute_row_sums,
+            params->asymmetric_quantize_inputs, context);
       }
     }
   }

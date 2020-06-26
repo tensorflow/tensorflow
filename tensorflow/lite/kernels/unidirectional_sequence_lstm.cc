@@ -45,13 +45,15 @@ enum TemporaryTensor {
   kInputQuantized = 1,
   kOutputStateQuantized = 2,
   kCellStateQuantized = 3,
-  kScalingFactors = 4,
-  kProductScalingFactors = 5,
-  kRecoveredCellWeights = 6,
-  kAccumScratch = 7,
-  kZeroPoints = 8,
-  kRowSums = 9,
-  kNumTemporaryTensors = 10
+  kInputScalingFactors = 4,
+  kOutputStateScalingFactors = 5,
+  kProductScalingFactors = 6,
+  kRecoveredCellWeights = 7,
+  kAccumScratch = 8,
+  kInputZeroPoints = 9,
+  kOutputStateZeroPoints = 10,
+  kRowSums = 11,
+  kNumTemporaryTensors = 12,
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -416,18 +418,29 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // a vector once (which produces the scaling factors) and multiply it with
     // different matrices (which requires multiplying the scaling factors with
     // the scaling factor of the matrix).
-    node->temporaries->data[kScalingFactors] =
-        scratch_tensor_index + kScalingFactors;
-    TfLiteTensor* scaling_factors =
-        GetTemporary(context, node, kScalingFactors);
-    scaling_factors->type = kTfLiteFloat32;
-    scaling_factors->allocation_type = kTfLiteArenaRw;
+    node->temporaries->data[kInputScalingFactors] =
+        op_data->scratch_tensor_index + kInputScalingFactors;
+    TfLiteTensor* input_sf = GetTemporary(context, node, kInputScalingFactors);
+    input_sf->type = kTfLiteFloat32;
+    input_sf->allocation_type = kTfLiteArenaRw;
     int scaling_dims[1] = {n_batch};
-    if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
-      TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
-      scaling_factors_size->data[0] = n_batch;
-      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
-                                                       scaling_factors_size));
+    if (!TfLiteIntArrayEqualsArray(input_sf->dims, 1, scaling_dims)) {
+      TfLiteIntArray* input_sf_size = TfLiteIntArrayCreate(1);
+      input_sf_size->data[0] = n_batch;
+      TF_LITE_ENSURE_OK(
+          context, context->ResizeTensor(context, input_sf, input_sf_size));
+    }
+    node->temporaries->data[kOutputStateScalingFactors] =
+        op_data->scratch_tensor_index + kOutputStateScalingFactors;
+    TfLiteTensor* output_state_sf =
+        GetTemporary(context, node, kOutputStateScalingFactors);
+    output_state_sf->type = kTfLiteFloat32;
+    output_state_sf->allocation_type = kTfLiteArenaRw;
+    if (!TfLiteIntArrayEqualsArray(output_state_sf->dims, 1, scaling_dims)) {
+      TfLiteIntArray* output_state_sf_size = TfLiteIntArrayCreate(1);
+      output_state_sf_size->data[0] = n_batch;
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, output_state_sf,
+                                                       output_state_sf_size));
     }
     node->temporaries->data[kProductScalingFactors] =
         scratch_tensor_index + kProductScalingFactors;
@@ -477,15 +490,28 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(
           context, context->ResizeTensor(context, accum_scratch, accum_size));
     }
-    node->temporaries->data[kZeroPoints] = scratch_tensor_index + kZeroPoints;
-    TfLiteTensor* zero_points = GetTemporary(context, node, kZeroPoints);
-    zero_points->type = kTfLiteFloat32;
-    zero_points->allocation_type = kTfLiteArenaRw;
-    if (!TfLiteIntArrayEqualsArray(zero_points->dims, 1, scaling_dims)) {
-      TfLiteIntArray* zero_points_size = TfLiteIntArrayCreate(1);
-      zero_points_size->data[0] = n_batch;
-      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, zero_points,
-                                                       zero_points_size));
+    node->temporaries->data[kInputZeroPoints] =
+        op_data->scratch_tensor_index + kInputZeroPoints;
+    TfLiteTensor* input_zp = GetTemporary(context, node, kInputZeroPoints);
+    input_zp->type = kTfLiteFloat32;
+    input_zp->allocation_type = kTfLiteArenaRw;
+    if (!TfLiteIntArrayEqualsArray(input_zp->dims, 1, scaling_dims)) {
+      TfLiteIntArray* input_zp_size = TfLiteIntArrayCreate(1);
+      input_zp_size->data[0] = n_batch;
+      TF_LITE_ENSURE_OK(
+          context, context->ResizeTensor(context, input_zp, input_zp_size));
+    }
+    node->temporaries->data[kOutputStateZeroPoints] =
+        op_data->scratch_tensor_index + kOutputStateZeroPoints;
+    TfLiteTensor* output_state_zp =
+        GetTemporary(context, node, kOutputStateZeroPoints);
+    output_state_zp->type = kTfLiteFloat32;
+    output_state_zp->allocation_type = kTfLiteArenaRw;
+    if (!TfLiteIntArrayEqualsArray(output_state_zp->dims, 1, scaling_dims)) {
+      TfLiteIntArray* output_state_zp_size = TfLiteIntArrayCreate(1);
+      output_state_zp_size->data[0] = n_batch;
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, output_state_zp,
+                                                       output_state_zp_size));
     }
     node->temporaries->data[kRowSums] = scratch_tensor_index + kRowSums;
     TfLiteTensor* row_sums = GetTemporary(context, node, kRowSums);
@@ -640,7 +666,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           projection_weights, projection_bias, &lstm_params,
           /*forward_sequence=*/true, time_major,
           /*output_offset=*/0, scratch_buffer,
-          GetTemporary(context, node, kScalingFactors),
+          GetTemporary(context, node, kInputScalingFactors),
+          /*aux_input_sf=*/nullptr,
+          GetTemporary(context, node, kOutputStateScalingFactors),
           GetTemporary(context, node, kProductScalingFactors),
           GetTemporary(context, node, kRecoveredCellWeights),
           GetTemporary(context, node, kInputQuantized),
@@ -648,8 +676,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTemporary(context, node, kOutputStateQuantized),
           GetTemporary(context, node, kCellStateQuantized), output_state,
           cell_state, GetTemporary(context, node, kAccumScratch), output,
-          GetTemporary(context, node, kZeroPoints), row_sums, row_sums_size,
-          &op_data->compute_row_sums,
+          GetTemporary(context, node, kInputZeroPoints),
+          /*aux_input_zp=*/nullptr,
+          GetTemporary(context, node, kOutputStateZeroPoints), row_sums,
+          row_sums_size, &op_data->compute_row_sums,
           CpuBackendContext::GetFromContext(context));
     }
     default:
