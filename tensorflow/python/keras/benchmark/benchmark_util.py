@@ -46,17 +46,17 @@ class TimerCallBack(callbacks.Callback):
 
 
 def measure_performance(model_fn,
-    x=None,
-    y=None,
-    epoch=2,
-    batch_size=32,
-    run_iters=4,
-    optimizer=None,
-    loss=None,
-    metrics=None,
-    verbose=0,
-    num_gpus=0,
-    distribution_strategy='off'):
+                        x=None,
+                        y=None,
+                        epoch=2,
+                        batch_size=32,
+                        run_iters=4,
+                        optimizer=None,
+                        loss=None,
+                        metrics=None,
+                        verbose=0,
+                        num_gpus=0,
+                        distribution_strategy='off'):
   """Run models and measure the performance.
 
   Arguments:

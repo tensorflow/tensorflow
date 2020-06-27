@@ -44,28 +44,55 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "applications_saved_model_test",
+    size = "medium",
+    srcs = ["applications_saved_model_test.py"],
+    shard_count = 8,
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras/applications",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "model_components_benchmarks_test",
+    srcs = ["model_components_benchmarks_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:profiler",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 py_test(
     name = "keras_examples_benchmark_test",
     size = "medium",
     srcs = ["keras_examples_benchmark_test.py"],
     python_version = "PY3",
     deps = [
+        ":benchmark_util",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
-        ":benchmark_util",
     ],
 )
 
 py_library(
-  name="benchmark_util",
-  srcs=["benchmark_util.py"],
-  deps = [":distribution_util"]
+    name = "benchmark_util",
+    srcs = ["benchmark_util.py"],
+    deps = [":distribution_util"],
 )
 
 py_library(
-  name = "distribution_util",
-  srcs = ["distribution_util.py"],
-  deps = [
+    name = "distribution_util",
+    srcs = ["distribution_util.py"],
+    deps = [
         "//tensorflow/python/eager:remote",
-  ],
+    ],
 )
