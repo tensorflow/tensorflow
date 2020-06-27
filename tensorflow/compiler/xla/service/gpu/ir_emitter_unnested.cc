@@ -1444,8 +1444,6 @@ Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
   return Status::OK();
 }
 
-namespace {}  // namespace
-
 Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
   VLOG(2) << "AllReduce; replica count: " << hlo_module_config_.replica_count()
           << "; operand count: " << crs->operand_count()
@@ -1557,29 +1555,37 @@ Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
   return Status::OK();
 }
 
+// Describes how to access a particular subshape for an HLO.  For instance if
+// `.hlo_index` is {1} and `.gte_index` is {3, 4} then buffer for `.instr` at
+// ShapeIndex {1} (i.e. the buffer for the second tuple element of hlo) is found
+// at `.buffer_slice`[3][4].  That is, `.slice` is a void***, which we
+// dereference twice -- first at index 3, and then at index 4 -- to get the
+// address of our buffer.
+struct HloBufferSlice {
+  const HloInstruction* instr;
+  ShapeIndex hlo_index;
+
+  // The root buffer to look at.
+  BufferAllocation::Slice buffer_slice;
+
+  // Describes how to dereference starting at that buffer to get to the buffer
+  // in question.
+  ShapeIndex gte_index;
+};
+
 // Figures out how to access the buffers for all subshapes of hlo's operands and
 // for hlo itself (i.e. all the buffers produced by HLO).
 //
-// Returns a map keyed on the pair {HloInstruction, ShapeIndex}.  The value for
-// this key is a pair {Slice, ShapeIndex}, where the slice tells you the root
-// buffer to look in, and the ShapeIndex describes how to dereference starting
-// at that buffer to get to the buffer in question.
-//
-// For example, if {hlo, {1}} is mapped to {slice, {3, 4}}, then the buffer for
-// hlo at ShapeIndex {1} (i.e. the buffer for the second tuple element of hlo)
-// is found at slice[3][4].  That is, slice is a void***, which we dereference
-// twice -- first at index 3, and then at index 4 -- to get the address of our
-// buffer.
+// Returns a vector of `HloBufferSlice`s, one for each HLO subshape `hlo` needs
+// to access (including one or more for itself).
 //
 // This function conservatively assumes that we'll touch all sub-buffers of
 // every operand and of the output.
-static std::map<std::pair<const HloInstruction*, ShapeIndex>,
-                std::pair<BufferAllocation::Slice, ShapeIndex>>
-GetHloBufferSlices(const HloInstruction* hlo,
-                   const BufferAssignment& buffer_assn) {
-  std::map<std::pair<const HloInstruction*, ShapeIndex>,
-           std::pair<BufferAllocation::Slice, ShapeIndex>>
-      slices;
+static std::vector<HloBufferSlice> GetHloBufferSlices(
+    const HloInstruction* hlo, const BufferAssignment& buffer_assn) {
+  std::vector<HloBufferSlice> result;
+  absl::flat_hash_set<std::pair<const HloInstruction*, ShapeIndex>>
+      inserted_buffer_slices;
 
   // Tries to find a slice plus an array of indices i1, ..., iN such that the
   // sub-buffer for instr at index can be found at slice[i1]...[iN].
@@ -1646,13 +1652,18 @@ GetHloBufferSlices(const HloInstruction* hlo,
   auto add_slices_for = [&](const HloInstruction* instr) {
     ShapeUtil::ForEachSubshape(
         instr->shape(), [&](const Shape& /*shape*/, const ShapeIndex& index) {
-          if (slices.count({instr, index})) {
+          if (!inserted_buffer_slices.insert({instr, index}).second) {
             // HLOs can have duplicate operands; don't bother redoing work.
             return;
           }
           auto maybe_slice = find_slice_for(instr, index);
           if (maybe_slice.has_value()) {
-            slices[{instr, index}] = *maybe_slice;
+            HloBufferSlice hlo_buffer_slice;
+            hlo_buffer_slice.instr = instr;
+            hlo_buffer_slice.hlo_index = index;
+            hlo_buffer_slice.buffer_slice = maybe_slice->first;
+            hlo_buffer_slice.gte_index = maybe_slice->second;
+            result.push_back(hlo_buffer_slice);
           } else {
             VLOG(1) << "Couldn't find buffer for " << instr->ToString()
                     << " at index " << index.ToString();
@@ -1667,7 +1678,7 @@ GetHloBufferSlices(const HloInstruction* hlo,
     add_slices_for(operand);
   }
 
-  return slices;
+  return result;
 }
 
 std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
@@ -1675,9 +1686,8 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   const BufferAssignment& buffer_assn =
       ir_emitter_context_->buffer_assignment();
 
-  std::map<std::pair<const HloInstruction*, ShapeIndex>,
-           std::pair<BufferAllocation::Slice, ShapeIndex>>
-      hlo_slices = GetHloBufferSlices(inst, buffer_assn);
+  std::vector<HloBufferSlice> hlo_slices =
+      GetHloBufferSlices(inst, buffer_assn);
 
   // Figure out which buffer allocations need to be passed as arguments to our
   // kernel.  This is simply all of the allocations referenced in hlo_slices,
@@ -1685,8 +1695,8 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   // buffer because even if the kernel itself doesn't use it, a nested
   // subcomputation within the kernel (e.g. a kMap's computation) might.
   std::unordered_set<const BufferAllocation*> buffers_needed;
-  for (const auto& kv : hlo_slices) {
-    buffers_needed.insert(kv.second.first.allocation());
+  for (const auto& hlo_buffer_slice : hlo_slices) {
+    buffers_needed.insert(hlo_buffer_slice.buffer_slice.allocation());
   }
   absl::optional<const BufferAllocation*> temp_buffer;
   for (const BufferAllocation& alloc : buffer_assn.Allocations()) {
@@ -1730,11 +1740,11 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
 
   // For each buffer our kernel might want to touch, bind it to a value derived
   // from our kernel args.
-  for (const auto& kv : hlo_slices) {
-    const HloInstruction* instr = kv.first.first;
-    const ShapeIndex& index = kv.first.second;
-    const BufferAllocation::Slice& slice = kv.second.first;
-    const ShapeIndex& gte_index = kv.second.second;
+  for (const auto& hlo_buffer_slice : hlo_slices) {
+    const HloInstruction* instr = hlo_buffer_slice.instr;
+    const ShapeIndex& index = hlo_buffer_slice.hlo_index;
+    const BufferAllocation::Slice& slice = hlo_buffer_slice.buffer_slice;
+    const ShapeIndex& gte_index = hlo_buffer_slice.gte_index;
 
     VLOG(3) << "Buffer for " << instr->ToString() << " at " << index.ToString()
             << " is found in slice " << slice.ToString() << " at GTE index "
