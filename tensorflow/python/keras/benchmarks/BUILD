@@ -29,7 +29,7 @@ py_test(
     srcs = ["keras_cpu_benchmark_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow/python/keras",
+        "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
 )
@@ -40,7 +40,7 @@ cuda_py_test(
     srcs = ["eager_microbenchmarks_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow/python/keras",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -61,12 +61,6 @@ cuda_py_test(
     srcs = ["model_components_benchmarks_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:training_lib",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:profiler",
-        "//tensorflow/python/eager:test",
+        "//tensorflow:tensorflow_py",
     ],
 )
