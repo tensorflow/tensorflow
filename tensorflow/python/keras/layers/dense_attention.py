@@ -49,6 +49,7 @@ class BaseDenseAttention(Layer):
       flow of information from the future towards the past.
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
+    return_attention: Boolean. Set to `True` to return the attention scores.
 
   Call Arguments:
 
@@ -73,10 +74,15 @@ class BaseDenseAttention(Layer):
     Attention outputs of shape `[batch_size, Tq, dim]`.
   """
 
-  def __init__(self, causal=False, dropout=0.0, **kwargs):
+  def __init__(self,
+               causal=False,
+               dropout=0.0,
+               return_attention=False,
+               **kwargs):
     super(BaseDenseAttention, self).__init__(**kwargs)
     self.causal = causal
     self.dropout = dropout
+    self.return_attention = return_attention
     self.supports_masking = True
 
   def _calculate_scores(self, query, key):
@@ -164,6 +170,8 @@ class BaseDenseAttention(Layer):
       # Mask of shape [batch_size, Tq, 1].
       q_mask = array_ops.expand_dims(q_mask, axis=-1)
       result *= math_ops.cast(q_mask, dtype=result.dtype)
+    if self.return_attention:
+      return result, scores
     return result
 
   def compute_mask(self, inputs, mask=None):
@@ -201,6 +209,7 @@ class BaseDenseAttention(Layer):
     config = {
         'causal': self.causal,
         'dropout': self.dropout,
+        'return_attention': self.return_attention
     }
     base_config = super(BaseDenseAttention, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -230,6 +239,7 @@ class Attention(BaseDenseAttention):
       flow of information from the future towards the past.
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
+    return_attention: Boolean. Set to `True` to return the attention scores.
 
   Call Arguments:
 
@@ -365,6 +375,7 @@ class AdditiveAttention(BaseDenseAttention):
       flow of information from the future towards the past.
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
+    return_attention: Boolean. Set to `True` to return the attention scores.
 
   Call Arguments:
 
