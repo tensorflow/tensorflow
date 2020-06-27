@@ -55,7 +55,7 @@ sequential_lib = LazyLoader(
 
 # create lock file
 def create_lockfile(filepath):
-  lockfile_path = f"{filepath}.lock"
+  lockfile_path = filepath + ".lock"
 
   f = GFile(lockfile_path, 'w')
   f.write(str(os.getpid()))
@@ -64,7 +64,7 @@ def create_lockfile(filepath):
   return lockfile_path 
 
 def check_lockfile(filepath):
-  lockfile_path = f"{filepath}.lock"
+  lockfile_path = filepath + ".lock"
   return Exists(lockfile_path)
 
 def save_model_to_hdf5(model, filepath, overwrite=True, lockfile=True, include_optimizer=True):
