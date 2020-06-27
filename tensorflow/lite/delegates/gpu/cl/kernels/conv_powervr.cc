@@ -874,7 +874,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     if (definition.precision != CalculationsPrecision::F32_F16 &&
         device.SupportsExtension("cl_khr_subgroups") &&
         device.SupportsExtension("cl_intel_required_subgroup_size") &&
-        device.IsCL20OrHigher()) {
+        device.IsCL20OrHigher() && device.SupportsSubGroupWithSize(16)) {
       conv_params.weights_upload_type =
           WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST;
     } else {

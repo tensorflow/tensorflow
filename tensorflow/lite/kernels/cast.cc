@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -67,8 +68,8 @@ void copyCast(const std::complex<float>* in, std::complex<float>* out,
 }
 
 template <typename FromT>
-TfLiteStatus copyToTensor(const FromT* in, TfLiteTensor* out,
-                          int num_elements) {
+TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
+                          TfLiteTensor* out, int num_elements) {
   switch (out->type) {
     case kTfLiteInt64:
       copyCast(in, out->data.i64, num_elements);
@@ -91,7 +92,7 @@ TfLiteStatus copyToTensor(const FromT* in, TfLiteTensor* out,
       break;
     default:
       // Unsupported type.
-      return kTfLiteError;
+      TF_LITE_UNSUPPORTED_TYPE(context, out->type, "Cast");
   }
   return kTfLiteOk;
 }
@@ -103,22 +104,23 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, num_elements, NumElements(output));
   switch (input->type) {
     case kTfLiteInt64:
-      return copyToTensor(input->data.i64, output, num_elements);
+      return copyToTensor(context, input->data.i64, output, num_elements);
     case kTfLiteInt32:
-      return copyToTensor(input->data.i32, output, num_elements);
+      return copyToTensor(context, input->data.i32, output, num_elements);
     case kTfLiteUInt8:
-      return copyToTensor(input->data.uint8, output, num_elements);
+      return copyToTensor(context, input->data.uint8, output, num_elements);
     case kTfLiteFloat32:
-      return copyToTensor(GetTensorData<float>(input), output, num_elements);
+      return copyToTensor(context, GetTensorData<float>(input), output,
+                          num_elements);
     case kTfLiteBool:
-      return copyToTensor(input->data.b, output, num_elements);
+      return copyToTensor(context, input->data.b, output, num_elements);
     case kTfLiteComplex64:
       return copyToTensor(
-          reinterpret_cast<std::complex<float>*>(input->data.c64), output,
-          num_elements);
+          context, reinterpret_cast<std::complex<float>*>(input->data.c64),
+          output, num_elements);
     default:
       // Unsupported type.
-      return kTfLiteError;
+      TF_LITE_UNSUPPORTED_TYPE(context, input->type, "Cast");
   }
   return kTfLiteOk;
 }

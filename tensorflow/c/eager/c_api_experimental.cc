@@ -60,6 +60,12 @@ void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
   context->SetShouldStoreGraphs(false);
 }
 
+uint64_t TFE_GetContextId(TFE_Context* ctx) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  return context->GetContextId();
+}
+
 void TFE_MonitoringCounterCellIncrementBy(TFE_MonitoringCounterCell* cell,
                                           int64_t value) {
   cell->cell.IncrementBy(value);

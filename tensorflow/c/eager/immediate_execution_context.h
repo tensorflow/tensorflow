@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_CONTEXT_H_
 #define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_CONTEXT_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -37,7 +38,6 @@ namespace tensorflow {
 // TensorHandles & Operations.
 class ImmediateExecutionContext : public AbstractContext {
  public:
-  static constexpr AbstractContextKind kKind = kImmediateExecution;
   // Optimized scalar creation functions
   virtual AbstractTensorInterface* CreateInt64Scalar(int64 value) = 0;
   virtual AbstractTensorInterface* CreateUint64Scalar(uint64 value) = 0;
@@ -102,10 +102,30 @@ class ImmediateExecutionContext : public AbstractContext {
   // already exists.
   virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
 
+  // For LLVM style RTTI.
+  static bool classof(const AbstractContext* ptr) {
+    return ptr->getKind() == kEager || ptr->getKind() == kTfrt;
+  }
+
  protected:
-  ImmediateExecutionContext() : AbstractContext(kKind) {}
+  explicit ImmediateExecutionContext(AbstractContextKind kind)
+      : AbstractContext(kind) {}
   ~ImmediateExecutionContext() override {}
 };
+
+namespace internal {
+struct ImmediateExecutionContextDeleter {
+  void operator()(ImmediateExecutionContext* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using ImmediateContextPtr =
+    std::unique_ptr<ImmediateExecutionContext,
+                    internal::ImmediateExecutionContextDeleter>;
 
 }  // namespace tensorflow
 

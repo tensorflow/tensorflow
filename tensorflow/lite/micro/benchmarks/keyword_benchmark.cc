@@ -33,20 +33,23 @@ limitations under the License.
 namespace {
 
 // Create an area of memory to use for input, output, and intermediate arrays.
-constexpr int tensor_arena_size = 73 * 1024;
-uint8_t tensor_arena[tensor_arena_size];
+// Align arena to 16 bytes to avoid alignment warnings on certain platforms.
+constexpr int tensor_arena_size = 21 * 1024;
+alignas(16) uint8_t tensor_arena[tensor_arena_size];
 // A random number generator seed to generate input values.
 constexpr int kRandomSeed = 42;
 
-// NOLINTNEXTLINE
-MicroBenchmarkRunner<int16_t> runner(g_keyword_scrambled_model_data,
-                                     tensor_arena, tensor_arena_size,
-                                     kRandomSeed);
+MicroBenchmarkRunner<int16_t>& GetBenchmarkRunner() {
+  // NOLINTNEXTLINE
+  static MicroBenchmarkRunner<int16_t> runner(
+      g_keyword_scrambled_model_data, tensor_arena, tensor_arena_size, 0);
+  return runner;
+}
 
 void KeywordRunTenIerations() {
   // TODO(b/152644476): Add a way to run more than a single deterministic input.
   for (int i = 0; i < 10; i++) {
-    runner.RunSingleIterationRandomInput();
+    GetBenchmarkRunner().RunSingleIterationRandomInput();
   }
 }
 
@@ -54,7 +57,7 @@ void KeywordRunTenIerations() {
 
 TF_LITE_MICRO_BENCHMARKS_BEGIN
 
-TF_LITE_MICRO_BENCHMARK(runner.RunSingleIterationRandomInput());
+TF_LITE_MICRO_BENCHMARK(GetBenchmarkRunner().RunSingleIterationRandomInput());
 
 TF_LITE_MICRO_BENCHMARK(KeywordRunTenIerations());
 

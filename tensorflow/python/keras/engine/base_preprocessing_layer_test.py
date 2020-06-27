@@ -122,11 +122,11 @@ class AddingPreprocessingLayerV1(
   pass
 
 
-def get_layer():
+def get_layer(**kwargs):
   if context.executing_eagerly():
-    return AddingPreprocessingLayer()
+    return AddingPreprocessingLayer(**kwargs)
   else:
-    return AddingPreprocessingLayerV1()
+    return AddingPreprocessingLayerV1(**kwargs)
 
 
 @keras_parameterized.run_all_keras_modes
@@ -365,6 +365,38 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
 
     with self.assertRaisesRegex(RuntimeError, "Unable to restore a layer of"):
       _ = keras.models.load_model(output_path)
+
+  def test_adapt_sets_input_shape_rank(self):
+    """Check that `.adapt()` sets the `input_shape`'s rank."""
+    # Shape: (3,1,2)
+    adapt_dataset = np.array([[[1., 2.]],
+                              [[3., 4.]],
+                              [[5., 6.]]], dtype=np.float32)
+
+    layer = get_layer()
+    layer.adapt(adapt_dataset)
+
+    input_dataset = np.array([[[1., 2.], [3., 4.]],
+                              [[3., 4.], [5., 6.]]], dtype=np.float32)
+    layer(input_dataset)
+
+    model = keras.Sequential([layer])
+    self.assertTrue(model.built)
+    self.assertEqual(model.input_shape, (None, None, None))
+
+  def test_adapt_doesnt_overwrite_input_shape(self):
+    """Check that `.adapt()` doesn't change the `input_shape`."""
+    # Shape: (3, 1, 2)
+    adapt_dataset = np.array([[[1., 2.]],
+                              [[3., 4.]],
+                              [[5., 6.]]], dtype=np.float32)
+
+    layer = get_layer(input_shape=[1, 2])
+    layer.adapt(adapt_dataset)
+
+    model = keras.Sequential([layer])
+    self.assertTrue(model.built)
+    self.assertEqual(model.input_shape, (None, 1, 2))
 
 
 @keras_parameterized.run_all_keras_modes

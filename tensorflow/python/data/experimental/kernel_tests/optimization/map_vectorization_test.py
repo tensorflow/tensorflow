@@ -44,6 +44,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.platform import test
 
 
@@ -90,8 +91,9 @@ def _unary_real_test_combinations():
       ("Asinh", math_ops.asinh),
       ("Atan", math_ops.atan),
       ("Atanh", math_ops.atanh),
-      ("BesselI0e", math_ops.bessel_i0e),
-      ("BesselI1e", math_ops.bessel_i1e),
+      # TODO(b/157272291): Add testing for more special functions.
+      ("BesselI0e", special_math_ops.bessel_i0e),
+      ("BesselI1e", special_math_ops.bessel_i1e),
       ("Ceil", math_ops.ceil),
       ("Cos", math_ops.cos),
       ("Cosh", math_ops.cosh),

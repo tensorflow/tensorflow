@@ -79,10 +79,16 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_stream) {
+#ifdef ENABLE_MKLDNN_THREADPOOL
+    context_.src_mem->set_data_handle(
+        static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
+    context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
+                                      *fwd_stream);
+#else
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-
+#endif  // ENABLE_MKLDNN_THREADPOOL
 #ifdef ENABLE_MKLDNN_V1
     DCHECK_EQ(context_.fwd_primitives.size(),
               context_.fwd_primitives_args.size());
@@ -263,7 +269,7 @@ class MklEltwiseBwdParams {
 
   MklEltwiseBwdParams(const memory::dims& src_dims,
                       const memory::desc& common_md, algorithm alg_kind,
-                      float alpha, float beta, int forward_input_type)
+                      float alpha, float beta, int forward_input_type = -1)
       : src_dims(src_dims),
         common_md(common_md),
         alg_kind(alg_kind),
@@ -297,12 +303,20 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
   //   diff_src_data:  output data buffer of diff_src
   void Execute(const T* src_data, const T* diff_dst_data, T* diff_src_data,
                std::shared_ptr<stream> bwd_stream) {
+#ifdef ENABLE_MKLDNN_THREADPOOL
+    context_.src_mem->set_data_handle(
+        static_cast<void*>(const_cast<T*>(src_data)), *bwd_stream);
+    context_.diff_dst_mem->set_data_handle(
+        static_cast<void*>(const_cast<T*>(diff_dst_data)), *bwd_stream);
+    context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data),
+                                           *bwd_stream);
+#else
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.diff_dst_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(diff_dst_data)));
     context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
-
+#endif  // ENABLE_MKLDNN_THREADPOOL
 #ifdef ENABLE_MKLDNN_V1
     DCHECK_EQ(context_.bwd_primitives.size(),
               context_.bwd_primitives_args.size());
@@ -630,7 +644,10 @@ class MklReluGradOpBase : public OpKernel {
   virtual int GetDiffSrcIndex() const { return 0; }
   // What is the type of input tensor that grad op receives from forward op --
   // is it 'x' (SRC) or 'y' (DST). For Relu-family, it is 'x', so fwd op SRC.
+
+#ifdef ENABLE_MKLDNN_V1
   virtual int GetTypeOfInputTensorFromFwdOp() const { return MKLDNN_ARG_SRC; }
+#endif
 
   void Compute(OpKernelContext* context) {
     try {
@@ -722,8 +739,16 @@ class MklReluGradOpBase : public OpKernel {
         common_md = src_md;
       }
 
+#ifdef ENABLE_MKLDNN_V1
       MklEltwiseBwdParams<T> bwdParams(src_dims, common_md, alg_kind, alpha_,
                                        beta_, GetTypeOfInputTensorFromFwdOp());
+#else
+      // MKLDNN V0 does not support reusing output of forward op in backward.
+      // So this optimization works only in MKLDNN v1.
+      MklEltwiseBwdParams<T> bwdParams(src_dims, common_md, alg_kind, alpha_,
+                                       beta_);
+#endif  // ENABLE_MKLDNN_V1
+
       MklEltwiseBwdPrimitive<T>* eltwise_bwd =
           MklEltwiseBwdPrimitiveFactory<T>::Get(bwdParams);
 
@@ -948,6 +973,11 @@ class MklEluGradOp
   }
 };
 
+#ifdef ENABLE_MKLDNN_V1
+// Optimized TanhGrad support exists in DNNL1.x only
+// (eltwise_tanh_use_dst_for_bwd). We can still support it with DNNL0.x, but
+// it will not be optimized. So we disable it for DNNL0.x.
+
 template <typename Device, typename T>
 class MklTanhOp : public MklReluOpBase<Device, T, ALGORITHM::eltwise_tanh> {
  public:
@@ -1029,6 +1059,7 @@ class MklTanhGradOp
         (static_cast<T*>(user_g))[0] * (static_cast<T>(1) - tanh * tanh);
   }
 };
+#endif  // ENABLE_MKLDNN_V1
 
 #define RELU6_UPPER_BOUND 6.0f
 template <typename Device, typename T>
@@ -1213,6 +1244,7 @@ TF_CALL_bfloat16(REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES);
 TF_CALL_float(REGISTER_ELU_MKL_SUPPORTED_KERNELS_TYPES);
 TF_CALL_bfloat16(REGISTER_ELU_MKL_SUPPORTED_KERNELS_TYPES);
 
+#ifdef ENABLE_MKLDNN_V1
 #define REGISTER_TANH_MKL_SUPPORTED_KERNELS_TYPES(type)        \
   REGISTER_KERNEL_BUILDER(                                     \
       Name("_MklTanh")                                         \
@@ -1228,6 +1260,7 @@ TF_CALL_bfloat16(REGISTER_ELU_MKL_SUPPORTED_KERNELS_TYPES);
       MklTanhGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_TANH_MKL_SUPPORTED_KERNELS_TYPES);
 TF_CALL_bfloat16(REGISTER_TANH_MKL_SUPPORTED_KERNELS_TYPES);
+#endif
 
 #define REGISTER_RELU6_MKL_SUPPORTED_KERNELS_TYPES(type)       \
   REGISTER_KERNEL_BUILDER(                                     \

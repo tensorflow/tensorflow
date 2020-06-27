@@ -117,7 +117,6 @@ class GpuCompiler : public LLVMCompiler {
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
 };
-
 }  // namespace gpu
 }  // namespace xla
 

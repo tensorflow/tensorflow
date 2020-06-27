@@ -28,25 +28,30 @@ namespace xla {
 namespace {
 
 /// Emits the fast tanh approximation that is also used by XLA.
-static Value EmitTanhApproximation(Value input, Value abs_value, Location loc,
-                                   PatternRewriter &rewriter) {
+Value EmitTanhApproximation(Value input, Location loc,
+                            PatternRewriter &rewriter) {
   // For small values of x, we can approximate tanh(x)=x. For extremely small
   // values of x (|x| < 1e-37), the other approximation would evaluate
   // tanh(x) = 0.
   constexpr float kCanUseApprox = 0.0004;
+  Value abs_value = rewriter.create<AbsFOp>(loc, input);
   Value can_use_approx =
       rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(kCanUseApprox));
   Value return_input = rewriter.create<CmpFOp>(loc, CmpFPredicate::OLT,
                                                abs_value, can_use_approx);
-
-  // Clamp the input to [-9, 9].
-  Value plus_nine =
-      rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(9.0));
-  Value smaller_than_nine =
-      rewriter.create<CmpFOp>(loc, CmpFPredicate::ULE, abs_value, plus_nine);
-  Value input_clamped = rewriter.create<SelectOp>(
-      loc, smaller_than_nine, input,
-      rewriter.create<CopySignOp>(loc, plus_nine, input));
+  // Clamp the input to [-c, c].
+  Value max_clamp = rewriter.create<ConstantOp>(
+      loc, rewriter.getF32FloatAttr(7.90531110763549805f));
+  Value smaller_than_max =
+      rewriter.create<CmpFOp>(loc, CmpFPredicate::ULE, input, max_clamp);
+  Value clamped_half =
+      rewriter.create<SelectOp>(loc, smaller_than_max, input, max_clamp);
+  Value min_clamp = rewriter.create<ConstantOp>(
+      loc, rewriter.getF32FloatAttr(-7.90531110763549805f));
+  Value larger_than_min =
+      rewriter.create<CmpFOp>(loc, CmpFPredicate::UGE, clamped_half, min_clamp);
+  Value input_clamped =
+      rewriter.create<SelectOp>(loc, larger_than_min, clamped_half, min_clamp);
 
   static constexpr std::array<float, 7> numerator_coeffs{
       -2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,
@@ -109,23 +114,7 @@ class ApproximateTanhLowering : public OpRewritePattern<TanhOp> {
       return failure();
     }
 
-    // For |operand| > 20.0, we just return -1/1.
-    constexpr double kMaxValue = 20.0;
-    Value max_value =
-        rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(kMaxValue));
-    Value abs_value = rewriter.create<AbsFOp>(loc, input);
-
-    Value one = rewriter.create<ConstantOp>(loc, rewriter.getF32FloatAttr(1.0));
-    Value one_with_sign = rewriter.create<CopySignOp>(loc, one, input);
-
-    Value smaller_than_twenty =
-        rewriter.create<CmpFOp>(loc, CmpFPredicate::ULT, abs_value, max_value);
-
-    // Otherwise, we use the approximation.
-    Value approx = EmitTanhApproximation(input, abs_value, loc, rewriter);
-
-    Value result = rewriter.create<SelectOp>(loc, smaller_than_twenty, approx,
-                                             one_with_sign);
+    Value result = EmitTanhApproximation(input, loc, rewriter);
 
     // Truncate back if needed.
     if (operand_type.isF16()) {

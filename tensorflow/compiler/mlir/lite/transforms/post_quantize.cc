@@ -52,7 +52,7 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
 
 void RemoveQuantizationAdaptorOps(FuncOp func) {
   mlir::OpBuilder builder(func.getBody());
-  auto& bb = func.getBlocks().front();
+  auto& bb = func.front();
   auto* terminator = bb.getTerminator();
 
   int num_args = bb.getNumArguments();

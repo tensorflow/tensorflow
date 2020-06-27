@@ -461,6 +461,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextClearCaches", [](py::handle& o) {
     TFE_ContextClearCaches(tensorflow::InputTFE_Context(o));
   });
+  m.def("TFE_GetContextId", [](py::handle& ctx) {
+    return TFE_GetContextId(tensorflow::InputTFE_Context(ctx));
+  });
   m.def("TFE_ContextGetDevicePlacementPolicy", [](py::handle& ctx) {
     return TFE_ContextGetDevicePlacementPolicy(
         tensorflow::InputTFE_Context(ctx));

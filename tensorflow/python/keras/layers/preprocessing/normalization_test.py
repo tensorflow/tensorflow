@@ -318,6 +318,18 @@ class NormalizationTest(keras_parameterized.TestCase,
     layer.adapt(data)
     self.assertAllClose(expect, layer(data))
 
+  def test_model_summary_after_layer_adapt(self):
+    data = np.array([[[0., 1., 2.], [0., 2., 6.]],
+                     [[2., 3., 4.], [3., 6., 10.]]])
+    cls = get_layer_class()
+    layer = cls(axis=-1)
+    layer.adapt(data)
+    model = keras.Sequential(
+        [layer,
+         keras.layers.Dense(64, activation="relu"),
+         keras.layers.Dense(1)])
+    model.summary()
+
 
 if __name__ == "__main__":
   test.main()

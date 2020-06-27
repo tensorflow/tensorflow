@@ -2104,21 +2104,6 @@ static LogicalResult Verify(IfOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// YieldOp
-//===----------------------------------------------------------------------===//
-
-static LogicalResult Verify(YieldOp op) {
-  auto parent = op.getParentOp();
-  // A YieldOp should be contained within an IfRegion op
-  // (and WhileRegion in future)
-  if (!isa<IfRegionOp>(parent))
-    op.emitError() << " expects parent op "
-                   << "'" << IfRegionOp::getOperationName() << "' but got '"
-                   << parent->getName().getStringRef() << "'";
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // IfRegionOp
 //===----------------------------------------------------------------------===//
 
@@ -2129,8 +2114,10 @@ LogicalResult VerifyRegionResults(Operation *op, Region &region,
   YieldOp yield = cast<YieldOp>(region.front().getTerminator());
   unsigned expected_num_results = op->getNumResults();
   if (yield.getNumOperands() != expected_num_results)
-    return op->emitError(region_name + " region should have " +
-                         Twine(expected_num_results) + " results");
+    return op->emitOpError()
+           << region_name + " should have same number (" << expected_num_results
+           << ") of results as " << op_name << " but has "
+           << yield.getNumOperands() << " results";
 
   for (int idx : llvm::seq<int>(0, expected_num_results)) {
     auto op_result_type = op->getResult(idx).getType().cast<TensorType>();
@@ -4187,6 +4174,81 @@ static LogicalResult Verify(WhileOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// WhileRegionOp
+//===----------------------------------------------------------------------===//
+static LogicalResult Verify(WhileRegionOp op) {
+  // Verify that the condition generates a single tensor<i1> result.
+  YieldOp yield = cast<YieldOp>(op.cond().front().getTerminator());
+  if (yield.getNumOperands() != 1)
+    return op.emitOpError()
+           << "condition should have a single tensor<i1> result";
+
+  auto cond_type = yield.getOperand(0).getType().dyn_cast<RankedTensorType>();
+  if (!cond_type || !cond_type.getShape().equals({}) ||
+      !cond_type.getElementType().isInteger(/*width=*/1))
+    return op.emitOpError()
+           << "condition should have a single tensor<i1> result";
+
+  // The body result types should match while op result types.
+  if (failed(VerifyRegionResults(op, op.body(), "body"))) return failure();
+
+  // Both condition and body should have same number and type of operands as
+  // the WhileRegion inputs.
+  const int num_inputs = op.getNumOperands();
+  auto block_inputs_match_op_inputs = [&](Region &region,
+                                          StringRef name) -> LogicalResult {
+    Block &block = region.front();
+    if (block.getNumArguments() != num_inputs)
+      return op.emitOpError()
+             << name << " should have same number of inputs (" << num_inputs
+             << ") as " << WhileRegionOp::getOperationName() << " but has "
+             << block.getNumArguments() << " inputs";
+
+    for (auto types_idx : llvm::enumerate(
+             llvm::zip(op.getOperandTypes(), block.getArgumentTypes()))) {
+      auto op_input_type = std::get<0>(types_idx.value());
+      auto block_input_type = std::get<1>(types_idx.value());
+      if (!AreCastCompatible({block_input_type, op_input_type}))
+        return op.emitOpError(llvm::formatv(
+            "{0} input type {1} is incompatible with {2} "
+            "input type {3} at index {4}",
+            name, block_input_type, WhileRegionOp::getOperationName(),
+            op_input_type, types_idx.index()));
+    }
+    return success();
+  };
+
+  if (failed(block_inputs_match_op_inputs(op.cond(), "condition")) ||
+      failed(block_inputs_match_op_inputs(op.body(), "body")))
+    return failure();
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// WhileRegionOp LoopLikeOpInterface
+//===----------------------------------------------------------------------===//
+
+Region &WhileRegionOp::getLoopBody() { return body(); }
+
+bool WhileRegionOp::isDefinedOutsideOfLoop(Value value) {
+  // If the Op defining the value exists and the defining op is outside the
+  // scope of this WhileRegion, then we can infer that its defined outside.
+  // The defining Op is outside the scope of this WhileRegion if this
+  // WhileRegionOp is not an ancestor of the defining op in the parent chain.
+  Operation *def_op = value.getDefiningOp();
+  return def_op && !getOperation()->isAncestor(def_op);
+}
+
+LogicalResult WhileRegionOp::moveOutOfLoop(
+    llvm::ArrayRef<mlir::Operation *> ops) {
+  // Move the hoisted value to just before the while.
+  Operation *while_op = this->getOperation();
+  for (auto op : ops) op->moveBefore(while_op);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // XdivyOp
 //===----------------------------------------------------------------------===//
 
@@ -4220,7 +4282,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
                        BlockAndValueMapping &valueMapping) const final {
     // Allow inlining in regions attached to region based control flow
     // operations only if the src region is a single block region
-    return isa<IfRegionOp>(dest->getParentOp()) && llvm::hasSingleElement(*src);
+    return isa<IfRegionOp, WhileRegionOp>(dest->getParentOp()) &&
+           llvm::hasSingleElement(*src);
   }
 
   // Defines the legality of inlining TF operations.

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_ABSTRACT_OPERATION_H_
 #define TENSORFLOW_C_EAGER_ABSTRACT_OPERATION_H_
 
+#include <memory>
+
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
@@ -28,7 +30,7 @@ namespace tensorflow {
 // tracing or immediate execution mode.
 class AbstractOperation {
  protected:
-  enum AbstractOperationKind { kTracing, kImmediateExecution };
+  enum AbstractOperationKind { kGraph, kMlir, kEager, kTfrt };
   explicit AbstractOperation(AbstractOperationKind kind) : kind_(kind) {}
   virtual ~AbstractOperation() {}
 
@@ -109,6 +111,19 @@ class AbstractOperation {
  private:
   const AbstractOperationKind kind_;
 };
+
+namespace internal {
+struct AbstractOperationDeleter {
+  void operator()(AbstractOperation* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using AbstractOperationPtr =
+    std::unique_ptr<AbstractOperation, internal::AbstractOperationDeleter>;
 
 }  // namespace tensorflow
 

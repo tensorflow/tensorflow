@@ -129,6 +129,7 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
     if training_config is not None:
       model.compile(**saving_utils.compile_args_from_training_config(
           training_config))
+      saving_utils.try_build_compiled_arguments(model)
     else:
       logging.warning('No training configuration found in save file, so the '
                       'model was *not* compiled. Compile it manually.')

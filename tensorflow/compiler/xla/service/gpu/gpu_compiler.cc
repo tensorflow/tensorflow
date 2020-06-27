@@ -59,12 +59,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
 #include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -85,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/logistic_expander.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
@@ -174,6 +176,9 @@ Status GpuCompiler::OptimizeHloModule(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
+
+    pipeline.AddPass<LogisticExpander>(
+        /*expansion_type=*/LogisticExpansionType::kExp);
 
     pipeline.AddPass<DynamicPadder>();
 
@@ -371,6 +376,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<ReductionDegenerateDimRemover>();
   pipeline.AddPass<ReductionLayoutNormalizer>();
   pipeline.AddPass<ReductionDimensionGrouper>();
+  pipeline.AddPass<HloPassFix<ReductionSplitter>>();
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -506,9 +512,28 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           << buffer_assignment->GetStats().ToString();
   DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
+  GpuDeviceInfo gpu_device_info;
+  gpu_device_info.threads_per_block_limit =
+      stream_exec->GetDeviceDescription().threads_per_block_limit();
+  gpu_device_info.threads_per_warp =
+      stream_exec->GetDeviceDescription().threads_per_warp();
+  gpu_device_info.shared_memory_per_block =
+      stream_exec->GetDeviceDescription().shared_memory_per_block();
+
+  absl::optional<CudaComputeCapability> cuda_compute_capability =
+      [&]() -> absl::optional<CudaComputeCapability> {
+    CudaComputeCapability cuda_compute_capability;
+    stream_exec->GetDeviceDescription().cuda_compute_capability(
+        &cuda_compute_capability.cc_major, &cuda_compute_capability.cc_minor);
+    if (cuda_compute_capability.cc_major == -1) {
+      return absl::nullopt;
+    }
+    return cuda_compute_capability;
+  }();
+
   IrEmitterContext ir_emitter_context(
-      module.get(), buffer_assignment.get(), stream_exec->platform(),
-      &stream_exec->GetDeviceDescription(), &llvm_module);
+      module.get(), buffer_assignment.get(), stream_exec->platform()->Name(),
+      gpu_device_info, cuda_compute_capability, &llvm_module);
 
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,

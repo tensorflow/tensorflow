@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"
+#include "tensorflow/core/common_runtime/eager/placement_utils.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/platform/errors.h"
 
@@ -187,6 +188,27 @@ Status EagerContext::RegisterFunction(AbstractFunction* f) {
 // eager_operation.cc we can avoid a circular dependency between them.
 Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
                                int* num_retvals) {
+  // Run eager placement logic.
+  VariantDevice device;
+  TF_RETURN_IF_ERROR(eager::MaybePinToCustomDevice(&device, *this));
+  if (device == kVariantDeviceNull) {
+    TF_RETURN_IF_ERROR(eager::MaybePinToResourceDevice(&device, *this));
+  }
+  if (device == kVariantDeviceNull) {
+    bool pin_to_cpu;
+    TF_RETURN_IF_ERROR(eager::MaybePinSmallOpsToCpu(
+        &pin_to_cpu, Name(),
+        absl::MakeSpan(
+            reinterpret_cast<ImmediateExecutionTensorHandle**>(inputs_.data()),
+            inputs_.size()),
+        ctx_));
+    if (pin_to_cpu) {
+      device = ctx_.HostCPU();
+    }
+  }
+  if (device != kVariantDeviceNull) {
+    SetDevice(device);
+  }
   return EagerExecute(
       this, reinterpret_cast<tensorflow::TensorHandle**>(retvals.data()),
       num_retvals);

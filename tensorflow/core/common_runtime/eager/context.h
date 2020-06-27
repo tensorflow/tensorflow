@@ -478,15 +478,13 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // On mobile, it just cleans the caches.
   void WaitForAndCloseRemoteContexts();
 
-  bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
+  bool PinSmallOpsToCPU() const { return pin_small_ops_to_cpu_; }
 
   tensorflow::Env* TFEnv() const { return env_; }
 
-  std::vector<const FunctionDef*> ListRegisteredFunctions();
-
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
-  Status FindCompositeDeviceFromName(const char* device_name,
+  Status FindCompositeDeviceFromName(StringPiece device_name,
                                      CompositeDevice** device) const;
 
   Status FindCustomDeviceFromName(const string& device_name,
@@ -495,9 +493,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status RegisterCustomDevice(const string& name,
                               std::unique_ptr<CustomDevice> device);
 
-  // Find or create a composite device with the given `underlying_devices`.
+  // Find or create a composite device with the given `underlying_devices` and
+  // `device_name` (if not empty).
   Status FindOrCreateCompositeDevice(
-      const std::vector<string>& underlying_devices,
+      const std::vector<string>& underlying_devices, const string& device_name,
       CompositeDevice** composite_device);
 
   bool OnSameTask(const Device* first, const Device* second) const;
@@ -512,7 +511,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void InitPrioritizedDeviceTypeList();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
   Status RegisterExistingFunctionsOnRemoteWorkers(
-      const std::vector<const FunctionDef*>& function_defs,
       const std::vector<string>& remote_workers);
 
   void ResetPFLR(const DeviceMgr* device_mgr, Env* env,
@@ -668,6 +666,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
 
+  // For LLVM style RTTI.
+  static bool classof(const AbstractContext* ptr) {
+    return ptr->getKind() == kEager;
+  }
+
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should
   // be).
@@ -721,6 +724,19 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {
   return down_cast<EagerContext*>(context);
 }
+
+namespace internal {
+struct EagerContextDeleter {
+  void operator()(EagerContext* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using EagerContextPtr =
+    std::unique_ptr<EagerContext, internal::EagerContextDeleter>;
 
 }  // namespace tensorflow
 

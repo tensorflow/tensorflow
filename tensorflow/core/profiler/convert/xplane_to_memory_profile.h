@@ -25,6 +25,7 @@ namespace profiler {
 
 // Process the host threads XPlane and generate MemoryProfile result; at most
 // max_num_snapshots will be displayed on the UI.
+// REQUIRED: host_plane should have been grouped by calling GroupTfEvents().
 MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane,
                                            int64 max_num_snapshots = 1000);
 

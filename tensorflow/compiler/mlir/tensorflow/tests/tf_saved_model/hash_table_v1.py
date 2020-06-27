@@ -36,6 +36,13 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK: "tf_saved_model.session_initializer"() {initializer = [[init:@.*]]} : () -> ()
 # CHECK: "tf_saved_model.global_tensor"()
 
+# CHECK:      func [[init]]
+# CHECK-NEXT: [[R5:%.*]] = "tf.Const"()
+# CHECK-NEXT: [[R6:%.*]] = "tf.Const"()
+# CHECK-NEXT: [[R7:%.*]] = "tf.HashTableV2"()
+# CHECK-SAME: shared_name = "[[hash_table:.*]]"
+# CHECK-NEXT: "tf.LookupTableImportV2"([[R7]], [[R5]], [[R6]])
+
 # CHECK:      func {{@[a-zA-Z_0-9]+}}(
 # CHECK-SAME: [[ARG0:%.*]]: tensor<i32>
 # CHECK-SAME: [[ARG1:%.*]]: tensor<!tf.resource
@@ -43,18 +50,11 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 
 # CHECK-NEXT: [[R0:%.*]] = "tf.Const"()
 # CHECK-NEXT: [[R1:%.*]] = "tf.HashTableV2"()
-# CHECK-SAME: shared_name = "[[hash_table:.*]]"
+# CHECK-SAME: shared_name = "[[hash_table]]"
 # CHECK-NEXT: [[R2:%.*]] = "tf.LookupTableFindV2"([[R1]], [[ARG0]], [[R0]])
 # CHECK-NEXT: [[R3:%.*]] = "tf.ReadVariableOp"([[ARG1]])
 # CHECK-NEXT: [[R4:%.*]] = "tf.AddV2"([[R2]], [[R3]])
 # CHECK-NEXT: return [[R4]]
-
-# CHECK:      func [[init]]
-# CHECK-NEXT: [[R5:%.*]] = "tf.Const"()
-# CHECK-NEXT: [[R6:%.*]] = "tf.Const"()
-# CHECK-NEXT: [[R7:%.*]] = "tf.HashTableV2"()
-# CHECK-SAME: shared_name = "[[hash_table]]"
-# CHECK-NEXT: "tf.LookupTableImportV2"([[R7]], [[R5]], [[R6]])
 
 
 def Test():
@@ -89,4 +89,4 @@ def Test():
 
 if __name__ == '__main__':
   common_v1.set_tf_options()
-  common_v1.do_test(Test())
+  common_v1.do_test(Test(), tf.tables_initializer())

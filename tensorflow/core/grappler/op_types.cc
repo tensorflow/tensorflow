@@ -117,6 +117,8 @@ bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
 
+bool IsBroadcastTo(const NodeDef& node) { return node.op() == "BroadcastTo"; }
+
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
 
 bool IsCastLike(const NodeDef& node) {
