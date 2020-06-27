@@ -19,18 +19,17 @@ limitations under the License.
 #include "am_bsp.h"
 #include "am_util.h"
 #endif
+
 #include "tensorflow/lite/micro/examples/hello_world/main_functions.h"
 
-#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/examples/hello_world/constants.h"
-#include "tensorflow/lite/micro/examples/hello_world/model.h"
+//#include "tensorflow/lite/micro/examples/hello_world/model.h"
 #include "tensorflow/lite/micro/examples/hello_world/output_handler.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
-
-
 
 // Globals, used for compatibility with Arduino-style sketches.
 namespace {
@@ -44,7 +43,7 @@ int inference_count = 0;
 // Create an area of memory to use for input, output, and intermediate arrays.
 // Minimum arena size, at the time of writing. After allocating tensors
 // you can retrieve this value by invoking interpreter.arena_used_bytes().
-const int kModelArenaSize = 10000;
+const int kModelArenaSize = 20000;
 // Extra headroom for model + alignment + future interpreter changes.
 const int kExtraArenaSize = 560 + 16 + 1000;
 const int kTensorArenaSize = kModelArenaSize + kExtraArenaSize;
@@ -56,7 +55,7 @@ uint8_t tensor_arena[kTensorArenaSize];
 
 
 // The name of this function is important for Arduino compatibility.
-struct model_info * setup(const unsigned char *model_data) {
+struct model_info * setup_NN_gcc(const unsigned char *model_data) {
   // Set up logging. Google style is to avoid globals or statics because of
   // lifetime uncertainty, but since this has a trivial destructor it's okay.
   // NOLINTNEXTLINE(runtime-global-variables)
@@ -64,6 +63,7 @@ struct model_info * setup(const unsigned char *model_data) {
 
   static tflite::MicroErrorReporter micro_error_reporter;
   error_reporter = &micro_error_reporter;
+//error_reporter =NULL;
   static struct model_info info;
 #ifdef MC
   am_bsp_uart_printf_enable(); 
@@ -146,7 +146,7 @@ struct model_info * setup(const unsigned char *model_data) {
 }
 
 // The name of this function is important for Arduino compatibility.
-float * loop_NN_float(float * input_data) {
+float * loop_NN_gcc(float * input_data) {
 	
 	input->data.f=input_data;
 	TfLiteStatus invoke_status = interpreter->Invoke();
@@ -161,6 +161,6 @@ float * loop_NN_float(float * input_data) {
 }
 
 
-void print_string(const char * str){  error_reporter->Report(str);}
-void print_string_f(const char * str,float f){  error_reporter->Report(str,f);}
-void print_string_f2(const char * str,float f1,float f2){  error_reporter->Report(str,f1,f2);}
+void print_string_gcc(const char * str){  error_reporter->Report(str);}
+void print_string_f_gcc(const char * str,float f){  error_reporter->Report(str,f);}
+void print_string_f2_gcc(const char * str,float f1,float f2){  error_reporter->Report(str,f1,f2);}

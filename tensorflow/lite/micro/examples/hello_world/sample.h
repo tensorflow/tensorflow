@@ -20,6 +20,6 @@ limitations under the License.
 
 #ifndef TENSORFLOW_LITE_MICRO_EXAMPLES_HELLO_WORLD_SAMPLE_H_
 #define TENSORFLOW_LITE_MICRO_EXAMPLES_HELLO_WORLD_SAMPLE_H_
-
-extern const float x_input[];
+extern const float domm;
+extern float x_input[];
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_WORLD_SINE_MODEL_DATA_H_

@@ -32,19 +32,13 @@ struct model_info{
 };
 static const char* const types_names[] = {"kTfLiteNoType", "kTfLiteFloat32","kTfLiteInt32","kTfLiteUInt8"
 	"kTfLiteInt64","kTfLiteString","kTfLiteBool","kTfLiteInt16","kTfLiteComplex64","kTfLiteInt8","kTfLiteFloat16"};
+struct model_info * setup_NN_gcc(const unsigned char *model_data);
 
-// Initializes all data needed for the example. The name is important, and needs
-// to be setup() for Arduino compatibility.
-struct model_info * setup(const unsigned char *model_data);
+float * loop_NN_gcc(float * input_data);
 
-// Runs one iteration of data gathering and inference. This should be called
-// repeatedly from the application code. The name needs to be loop() for Arduino
-// compatibility.
-float * loop_NN_float(float * input_data);
-
-void print_string(const char * str);
-void print_string_f(const char * str,float f);
-void print_string_f2(const char * str,float f1,float f2);
+void print_string_gcc(const char * str);
+void print_string_f_gcc(const char * str,float f);
+void print_string_f2_gcc(const char * str,float f1,float f2);
 
 #ifdef __cplusplus
 }

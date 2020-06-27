@@ -15,13 +15,29 @@ limitations under the License.
 
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_WORLD_MAIN_FUNCTIONS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_WORLD_MAIN_FUNCTIONS_H_
+
+//#include <stdint.h>
+//#include <stdbool.h>
+
 #include "tensorflow/lite/micro/examples/hello_world/main_functions.h"
 // Initializes all data needed for the example. The name is important, and needs
 // to be setup() for Arduino compatibility.
 
-struct model_info * setup_NN_gcc(const unsigned char *model_data,bool debug);
-float * loop_NN_float_gcc(float * input_data);
-void gcc_fun();
-void print_string_gcc(const char * str);
+struct model_info * setup_NN(const unsigned char *model_data);
+float * loop_NN(float * input_data);
+void print_string(const char * str);
+*/
+/*
+void * getHandle();
+void setup_PDM();
+void pdm_desable();
 
+
+void pdm_config_print(void);
+void pdm_data_get(void);
+bool is_data_ready();
+void clear_data_ready();
+int16_t * getBuffer();
+void getBuffer_ext(int16_t ** buf);
+*/
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_HELLO_WORLD_MAIN_FUNCTIONS_H_
