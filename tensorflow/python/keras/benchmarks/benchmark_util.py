@@ -77,7 +77,7 @@ def measure_performance(model_fn,
     distribution_strategy: Distribution strategies.
         It could be `multi_worker_mirrored`, `one_device`, `mirrored`.
         If unspecified, `distribution_strategy` will default to 'off'.
-        TODO: `TPU`, `parameter_server`
+        TODO: `TPU`, `parameter_server`.
   Returns:
     Performance summary, which contains build_time, compile_time,
     startup_time, avg_epoch_time, wall_time, exp_per_sec, distribution_strategy,
