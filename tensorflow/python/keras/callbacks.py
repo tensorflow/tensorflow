@@ -294,23 +294,28 @@ class CallbackList(object):
     """Helper function for `on_*_batch_begin` methods."""
     hook_name = 'on_{mode}_batch_begin'.format(mode=mode)
     self._check_timing = batch == 1 and hook_name not in self._timing
-    self._call_batch_hook_helper(hook_name, batch, logs)
 
     if self._check_timing:
       self._batch_start_time = time.time()
 
+    self._call_step_hook_helper(hook_name, batch, logs)
+
+    if self._check_timing:
+      self._timing[hook_name] = time.time() - self._batch_start_time
+
   def _call_batch_end_hook(self, mode, batch, logs):
     """Helper function for `on_*_batch_end` methods."""
-    hook_name = 'on_{mode}_batch_end'.format(mode=mode)
+    end_hook_name = 'on_{mode}_batch_end'.format(mode=mode)
 
     if self._check_timing:
-      batch_time = time.time() - self._batch_start_time
+      start_time = time.time()
 
-    self._call_batch_hook_helper(hook_name, batch, logs)
+    self._call_step_hook_helper(end_hook_name, batch, logs)
 
     if self._check_timing:
-      end_hook_name = hook_name
+      self._timing[end_hook_name] = time.time() - start_time
       begin_hook_name = 'on_{mode}_batch_begin'.format(mode=mode)
+      batch_time = start_time - self._batch_start_time
 
       threshold_time = 1.5 * batch_time
       warning_msg = ('Callbacks method `{hook}` is slow compared to '
@@ -329,24 +334,31 @@ class CallbackList(object):
       self._check_timing = False
       self._batch_start_time = None
 
-  def _call_batch_hook_helper(self, hook_name, batch, logs):
-    """Helper function for `on_*_batch_*` methods."""
+  def _call_step_hook_helper(self, hook_name, step, logs):
+    """Helper function for `on_*` methods."""
     logs = logs or {}
     numpy_logs = None
-    if self._check_timing:
-      start_time = time.time()
-
     for callback in self.callbacks:
       hook = getattr(callback, hook_name)
       if getattr(callback, '_supports_tf_logs', False):
-        hook(batch, logs)
+        hook(step, logs)
       else:
         if numpy_logs is None:  # Only convert once.
           numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        hook(batch, numpy_logs)
+        hook(step, numpy_logs)
 
-    if self._check_timing:
-      self._timing[hook_name] = time.time() - start_time
+  def _call_hook_helper(self, hook_name, logs):
+    """Helper function for `on_*` methods."""
+    logs = logs or {}
+    numpy_logs = None
+    for callback in self.callbacks:
+      hook = getattr(callback, hook_name)
+      if getattr(callback, '_supports_tf_logs', False):
+        hook(logs)
+      else:
+        if numpy_logs is None:  # Only convert once.
+          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
+        hook(numpy_logs)
 
   def _call_begin_hook(self, mode):
     """Helper function for on_{train|test|predict}_begin methods."""
@@ -384,15 +396,7 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
-    for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_epoch_begin(epoch, logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_epoch_begin(epoch, numpy_logs)
+    self._call_step_hook_helper("on_epoch_begin", epoch, logs)
 
   def on_epoch_end(self, epoch, logs=None):
     """Calls the `on_epoch_end` methods of its callbacks.
@@ -405,15 +409,7 @@ class CallbackList(object):
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`.
     """
-    logs = logs or {}
-    numpy_logs = None
-    for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_epoch_end(epoch, logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_epoch_end(epoch, numpy_logs)
+    self._call_step_hook_helper("on_epoch_end", epoch, logs)
 
   def on_train_batch_begin(self, batch, logs=None):
     """Calls the `on_train_batch_begin` methods of its callbacks.
@@ -490,15 +486,7 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
-    for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_train_begin(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_train_begin(numpy_logs)
+    self._call_hook_helper("on_train_begin", logs)
 
   def on_train_end(self, logs=None):
     """Calls the `on_train_end` methods of its callbacks.
@@ -507,15 +495,7 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
-    for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_train_end(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_train_end(numpy_logs)
+    self._call_hook_helper("on_train_end", logs)
 
   def on_test_begin(self, logs=None):
     """Calls the `on_test_begin` methods of its callbacks.
@@ -524,15 +504,7 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
-    for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_test_begin(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_test_begin(numpy_logs)
+    self._call_hook_helper("on_test_begin", logs)
 
   def on_test_end(self, logs=None):
     """Calls the `on_test_end` methods of its callbacks.
@@ -541,15 +513,7 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
-    for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_test_end(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_test_end(numpy_logs)
+    self._call_hook_helper("on_test_end", logs)
 
   def on_predict_begin(self, logs=None):
     """Calls the 'on_predict_begin` methods of its callbacks.
@@ -558,15 +522,7 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
-    for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_predict_begin(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_predict_begin(numpy_logs)
+    self._call_hook_helper("on_predict_begin", logs)
 
   def on_predict_end(self, logs=None):
     """Calls the `on_predict_end` methods of its callbacks.
@@ -575,15 +531,7 @@ class CallbackList(object):
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
-    logs = logs or {}
-    numpy_logs = None
-    for callback in self.callbacks:
-      if getattr(callback, '_supports_tf_logs', False):
-        callback.on_predict_end(logs)
-      else:
-        if numpy_logs is None:  # Only convert once.
-          numpy_logs = tf_utils.to_numpy_or_python_type(logs)
-        callback.on_predict_end(numpy_logs)
+    self._call_hook_helper("on_predict_end", logs)
 
   def __iter__(self):
     return iter(self.callbacks)
