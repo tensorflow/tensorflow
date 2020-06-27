@@ -4321,6 +4321,10 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.cc.inc"
 
+std::vector<TensorFlowDialect::AdditionalOpFunction>
+    *TensorFlowDialect::additional_operation_hooks_ =
+        new std::vector<TensorFlowDialect::AdditionalOpFunction>();
+
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context) {
   addOperations<
@@ -4338,6 +4342,10 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   // Support unknown operations because not all TensorFlow operations are
   // registered.
   allowUnknownOperations();
+
+  for (auto hook : *TensorFlowDialect::additional_operation_hooks_) {
+    hook(*this);
+  }
 }
 
 namespace {
