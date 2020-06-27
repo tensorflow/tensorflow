@@ -174,9 +174,10 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, GetTpuMeshStateInterface(rmgr, &mesh_state));
   core::ScopedUnref mesh_state_unref(mesh_state);
 
+  auto* mesh_common_state = mesh_state->mesh_common_state();
   tpu::ConfigApiFn()->WaitForDistributedTpuOp_DoWorkFn(
       num_hosts, num_devices_per_host,
-      const_cast<const int32_t**>(mapping_arg.data()), mesh_state,
+      const_cast<const int32_t**>(mapping_arg.data()), mesh_common_state,
       &tpu_topology_output_size, &tpu_topology_output, status);
 
   Tensor* ctx_output;
@@ -210,11 +211,24 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "InitializeHostForDistributedTpuOp";
   XLA_SCOPED_LOGGING_TIMER("InitializeHostForDistributedTpuOp");
 
+  auto* rmgr = GetTPUConfigResourceMgr();
   auto tpu_host_config = ctx->input(0).scalar<tstring>()();
 
   size_t device_id_output_size;
   int32_t* device_id_output;
   TF_Status* status = TF_NewStatus();
+
+  bool is_master_worker =
+      tpu::ConfigApiFn()->TpuConfigurationApi_HasTPUPodStateFn();
+  if (!is_master_worker) {
+    // Reset the mesh interface if we are not the master.
+    OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuMeshStateInterface>(
+                            rmgr, tpu::kTpuMeshStateInterfaceResourceName));
+    auto* mesh_state_interface = tpu::TpuMeshStateInterface::Create();
+    OP_REQUIRES_OK(ctx, rmgr->Create(rmgr->default_container(),
+                                     tpu::kTpuMeshStateInterfaceResourceName,
+                                     mesh_state_interface));
+  }
 
   tpu::ConfigApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(
       tpu_host_config.size(), tpu_host_config.data(),
