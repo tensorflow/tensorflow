@@ -1170,6 +1170,39 @@ class Function(object):
     concrete._garbage_collector.release()  # pylint: disable=protected-access
     return concrete
 
+  def validate_annotations(self):
+    """Ensures type annotations and input_signature match.
+
+    Raises:
+      ValueError when type annotations do not match input_signature.
+    """
+    if self.input_signature is None:
+      return
+    for tensor in self.input_signature:
+      if tensor.__class__ != tensor_spec.TensorSpec:
+        return
+    input_signature_dtypes = tuple(tensor.dtype for tensor
+                                   in self.input_signature)
+    if len(self.function_spec.arg_names) != len(input_signature_dtypes):
+      return
+
+    arg_dtype_list = zip(self.function_spec.arg_names,
+                         input_signature_dtypes)
+    # A dict mapping from arg name to input signature dtype
+    arg_to_dtype = dict(arg_dtype_list)
+    type_annotations = self.function_spec.fullargspec.annotations
+    for arg, annot in type_annotations.items():
+      if (not hasattr(typing, "_GenericAlias") or
+          not isinstance(annot, typing._GenericAlias)):
+        return
+      annotation_dtype = annot.__args__[0]
+      input_signature_dtype = arg_to_dtype.get(arg)
+      # Type annotation is not a Tensor
+      if annot.__origin__ != ops.Tensor:
+        return
+      if annotation_dtype != input_signature_dtype.__class__:
+        raise ValueError("Type annotation does not match input_signature")
+
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
     del owner
@@ -1418,58 +1451,29 @@ def function(func=None,
   Raises:
      ValueError when attempting to use experimental_compile, but XLA support is
      not enabled.
-     ValueError when type annotations do not match input_signature.
   """
   if input_signature is not None:
     function_lib.validate_signature(input_signature)
-
-  # Ensure type annotations and input_signature match
-  def typecheck(inner_function):
-    if input_signature is None:
-      return
-    for tensor in input_signature:
-      if tensor.__class__ != tensor_spec.TensorSpec:
-        return
-
-    input_signature_dtypes = tuple(tensor.dtype for tensor in input_signature)
-    if len(inner_function.__code__.co_varnames) != len(input_signature_dtypes):
-      return
-
-    arg_dtype_list = zip(inner_function.__code__.co_varnames,
-                         input_signature_dtypes)
-    # A dict mapping from arg name to input signature dtype
-    arg_to_dtype = dict(arg_dtype_list)
-    type_annotations = inner_function.__annotations__
-    for arg, annot in type_annotations.items():
-      if (not hasattr(typing, "_GenericAlias") or
-          not isinstance(annot, typing._GenericAlias)):
-        return
-      annotation_dtype = annot.__args__[0]
-      input_signature_dtype = arg_to_dtype.get(arg)
-      # Type annotation is not a Tensor
-      if annot.__origin__ != ops.Tensor:
-        return
-      if annotation_dtype != input_signature_dtype.__class__:
-        raise ValueError("Type annotation does not match input_signature")
 
   def decorated(inner_function):
     try:
       name = inner_function.__name__
     except AttributeError:
       name = "function"
-    typecheck(inner_function)
+    f = Function(
+        inner_function,
+        name,
+        input_signature=input_signature,
+        autograph=autograph,
+        experimental_autograph_options=experimental_autograph_options,
+        experimental_relax_shapes=experimental_relax_shapes,
+        experimental_compile=experimental_compile,
+        experimental_implements=experimental_implements)
+    f.validate_annotations()
     return tf_decorator.make_decorator(
         inner_function,
         decorator_name="tf.function",
-        decorator_func=Function(
-            inner_function,
-            name,
-            input_signature=input_signature,
-            autograph=autograph,
-            experimental_autograph_options=experimental_autograph_options,
-            experimental_relax_shapes=experimental_relax_shapes,
-            experimental_compile=experimental_compile,
-            experimental_implements=experimental_implements))
+        decorator_func=f)
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:
