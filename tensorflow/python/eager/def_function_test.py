@@ -917,46 +917,49 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(logs.output, 1)
     self.assertIn('Tracing is expensive', logs.output[0])
 
-  def test_type_annotations_basic(self):
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(None, dtype=dtypes.int32),
-        tensor_spec.TensorSpec(None)
-    ])
+  def test_type_annotation_basic(self):
     def f(x: ops.Tensor[dtypes.Int32], y: ops.Tensor[dtypes.Float32]):
       return x
+    signature = [tensor_spec.TensorSpec(None, dtypes.int32),
+                 tensor_spec.TensorSpec(None, dtypes.float32)]
+    def_function.function(f, input_signature=signature)
 
   def test_mismatch_type_annotation(self):
-    with self.assertRaises(ValueError):
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(None, dtype=dtypes.int32),
-          tensor_spec.TensorSpec(None)
-      ])
+    msg = 'Type annotation does not match input_signature'
+    with self.assertRaisesRegexp(ValueError, msg):
       def f(x: ops.Tensor[dtypes.Int32], y: ops.Tensor[dtypes.String]):
         return x
+      signature = [tensor_spec.TensorSpec(None, dtypes.int32),
+                   tensor_spec.TensorSpec(None, dtypes.float32)]
+      def_function.function(f, input_signature=signature)
 
-  def test_invalid_type_annotation(self):
-    @def_function.function(input_signature=[tensor_spec.TensorSpec(None)])
+  def test_non_tensor_type_annotation(self):
     def f(x: int):
       return x
+    signature = [tensor_spec.TensorSpec(None, dtypes.int32)]
+    def_function.function(f, input_signature=signature)
 
-    with self.assertRaises(ValueError):
-      @def_function.function(input_signature=[tensor_spec.TensorSpec(None)])
+    msg = 'Type annotation does not match input_signature'
+    with self.assertRaisesRegexp(ValueError, msg):
       def g(x: ops.Tensor[int]):
         return x
+      signature = [tensor_spec.TensorSpec(None, dtypes.int32)]
+      def_function.function(g, input_signature=signature)
 
-  def test_variable_type_annotation(self):
+  def test_alias_type_annotation(self):
     type_annotation = ops.Tensor[dtypes.Float32]
 
-    @def_function.function(input_signature=[tensor_spec.TensorSpec(None)])
     def f(x: type_annotation):
       return x
+    signature = [tensor_spec.TensorSpec(None, dtypes.float32)]
+    def_function.function(f, input_signature=signature)
 
-    with self.assertRaises(ValueError):
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec([], dtype=dtypes.int32)
-      ])
+    msg = 'Type annotation does not match input_signature'
+    with self.assertRaisesRegexp(ValueError, msg):
       def g(x: type_annotation):
         return x
+      signature = [tensor_spec.TensorSpec(None, dtypes.int32)]
+      def_function.function(g, input_signature=signature)
 
 
 if __name__ == '__main__':
