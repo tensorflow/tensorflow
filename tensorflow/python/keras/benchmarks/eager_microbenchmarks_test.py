@@ -19,15 +19,9 @@ from __future__ import print_function
 
 import time
 
+import tensorflow as tf
+
 from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
-from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.layers import advanced_activations
-from tensorflow.python.keras.layers import convolutional
-from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.layers import embeddings
-from tensorflow.python.keras.layers import normalization
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
@@ -92,24 +86,39 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_call_overhead(self):
 
-    class OnlyOverheadLayer(base_layer.Layer):
+    class OnlyOverheadLayer(tf.keras.layers.Layer):
 
       def call(self, x):
         return x
 
     layer = OnlyOverheadLayer()
-    x = ops.convert_to_tensor([[1.]])
+    x = tf.convert_to_tensor([[1.]])
 
     def fn():
-      layer(x)
+      layer(x)  # pylint: disable=not-callable
 
     self._run(fn, 10000)
+
+  def benchmark_model_predict_tensorlike_overhead(self):
+
+    class OnlyOverheadLayer(tf.keras.layers.Layer):
+
+      def call(self, x):
+        return x
+
+    model = tf.keras.Sequential([OnlyOverheadLayer()])
+    x = tf.convert_to_tensor([[1.]])
+
+    def fn():
+      model.predict(x)
+
+    self._run(fn, 20)
 
   # Naming convention: benchmark_layers_{module_name}_{class}_overhead.
   def benchmark_layers_advanced_activations_leaky_relu_overhead(self):
 
-    layer = advanced_activations.LeakyReLU()
-    x = array_ops.ones((1, 1))
+    layer = tf.keras.layers.LeakyReLU()
+    x = tf.ones((1, 1))
 
     def fn():
       layer(x)
@@ -118,8 +127,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_advanced_activations_prelu_overhead(self):
 
-    layer = advanced_activations.PReLU()
-    x = array_ops.ones((1, 1))
+    layer = tf.keras.layers.PReLU()
+    x = tf.ones((1, 1))
 
     def fn():
       layer(x)
@@ -128,8 +137,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_advanced_activations_elu_overhead(self):
 
-    layer = advanced_activations.ELU()
-    x = array_ops.ones((1, 1))
+    layer = tf.keras.layers.ELU()
+    x = tf.ones((1, 1))
 
     def fn():
       layer(x)
@@ -138,8 +147,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_advanced_activations_thresholded_relu_overhead(self):
 
-    layer = advanced_activations.ThresholdedReLU()
-    x = array_ops.ones((1, 1))
+    layer = tf.keras.layers.ThresholdedReLU()
+    x = tf.ones((1, 1))
 
     def fn():
       layer(x)
@@ -148,8 +157,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_advanced_activations_softmax_overhead(self):
 
-    layer = advanced_activations.Softmax()
-    x = array_ops.ones((1, 1))
+    layer = tf.keras.layers.Softmax()
+    x = tf.ones((1, 1))
 
     def fn():
       layer(x)
@@ -158,8 +167,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_advanced_activations_relu_overhead(self):
 
-    layer = advanced_activations.ReLU()
-    x = array_ops.ones((1, 1))
+    layer = tf.keras.layers.ReLU()
+    x = tf.ones((1, 1))
 
     def fn():
       layer(x)
@@ -168,8 +177,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_core_masking_overhead(self):
 
-    layer = core.Masking()
-    x = array_ops.ones((1, 1))
+    layer = tf.keras.layers.Masking()
+    x = tf.ones((1, 1))
 
     def fn():
       layer(x)
@@ -178,8 +187,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_core_dropout_overhead(self):
 
-    layer = core.Dropout(0.5)
-    x = array_ops.ones((1, 1))
+    layer = tf.keras.layers.Dropout(0.5)
+    x = tf.ones((1, 1))
 
     def fn():
       layer(x, training=True)
@@ -188,8 +197,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_core_flatten_overhead(self):
 
-    layer = core.Flatten()
-    x = ops.convert_to_tensor([[[1.]]])
+    layer = tf.keras.layers.Flatten()
+    x = tf.convert_to_tensor([[[1.]]])
 
     def fn():
       layer(x)
@@ -198,8 +207,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_core_dense_overhead(self):
 
-    layer = core.Dense(1)
-    x = ops.convert_to_tensor([[1.]])
+    layer = tf.keras.layers.Dense(1)
+    x = tf.convert_to_tensor([[1.]])
 
     def fn():
       layer(x)
@@ -208,8 +217,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_convolutional_conv1d_overhead(self):
 
-    layer = convolutional.Conv1D(1, (1,))
-    x = array_ops.ones((1, 1, 1))
+    layer = tf.keras.layers.Conv1D(1, (1,))
+    x = tf.ones((1, 1, 1))
 
     def fn():
       layer(x)
@@ -218,8 +227,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_convolutional_conv2d_overhead(self):
 
-    layer = convolutional.Conv2D(1, (1, 1))
-    x = array_ops.ones((1, 1, 1, 1))
+    layer = tf.keras.layers.Conv2D(1, (1, 1))
+    x = tf.ones((1, 1, 1, 1))
 
     def fn():
       layer(x)
@@ -228,8 +237,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_convolutional_conv3d_overhead(self):
 
-    layer = convolutional.Conv3D(1, (1, 1, 1))
-    x = array_ops.ones((1, 1, 1, 1, 1))
+    layer = tf.keras.layers.Conv3D(1, (1, 1, 1))
+    x = tf.ones((1, 1, 1, 1, 1))
 
     def fn():
       layer(x)
@@ -238,8 +247,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_embeddings_embedding_overhead(self):
 
-    layer = embeddings.Embedding(1, 1)
-    x = array_ops.zeros((1, 1), dtype="int32")
+    layer = tf.keras.layers.Embedding(1, 1)
+    x = tf.zeros((1, 1), dtype="int32")
 
     def fn():
       layer(x)
@@ -248,8 +257,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_batch_norm_fused_inf(self):
 
-    layer = normalization.BatchNormalization(fused=True)
-    x = array_ops.ones((1, 1, 1, 1))
+    layer = tf.keras.layers.BatchNormalization(fused=True)
+    x = tf.ones((1, 1, 1, 1))
 
     def fn():
       layer(x)
@@ -258,8 +267,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_batch_norm_fused_train(self):
 
-    layer = normalization.BatchNormalization(fused=True)
-    x = array_ops.ones((1, 1, 1, 1))
+    layer = tf.keras.layers.BatchNormalization(fused=True)
+    x = tf.ones((1, 1, 1, 1))
 
     def fn():
       layer(x, training=True)
@@ -268,8 +277,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_batch_norm_nonfused_inf(self):
 
-    layer = normalization.BatchNormalization(fused=False)
-    x = array_ops.ones((1, 1, 1, 1))
+    layer = tf.keras.layers.BatchNormalization(fused=False)
+    x = tf.ones((1, 1, 1, 1))
 
     def fn():
       layer(x)
@@ -278,8 +287,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_batch_norm_nonfused_train(self):
 
-    layer = normalization.BatchNormalization(fused=False)
-    x = array_ops.ones((1, 1, 1, 1))
+    layer = tf.keras.layers.BatchNormalization(fused=False)
+    x = tf.ones((1, 1, 1, 1))
 
     def fn():
       layer(x, training=True)
@@ -288,8 +297,8 @@ class MicroBenchmarksBase(test.Benchmark):
 
   def benchmark_layers_normalization_layer_normalization_overhead(self):
 
-    layer = normalization.LayerNormalization()
-    x = array_ops.ones((1, 1))
+    layer = tf.keras.layers.LayerNormalization()
+    x = tf.ones((1, 1))
 
     def fn():
       layer(x, training=True)
@@ -298,5 +307,5 @@ class MicroBenchmarksBase(test.Benchmark):
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution()
+  assert tf.executing_eagerly()
   test.main()

@@ -23,7 +23,8 @@ import timeit
 import numpy as np
 import six
 
-from tensorflow.python import keras
+import tensorflow as tf
+
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
@@ -40,7 +41,7 @@ _LSTM_X = np.random.randint(0, 1999, size=(2500, 100))
 _LSTM_Y = np.random.random((2500, 1))
 
 
-class TimerCallback(keras.callbacks.Callback):
+class TimerCallback(tf.keras.callbacks.Callback):
 
   def __init__(self):
     self.times = []
@@ -110,35 +111,35 @@ class KerasModelCPUBenchmark(
         extras=results)
 
   def _mnist_mlp(self):
-    model = keras.Sequential()
-    model.add(keras.layers.Dense(512, activation='relu', input_shape=(784,)))
-    model.add(keras.layers.Dropout(0.2))
-    model.add(keras.layers.Dense(512, activation='relu'))
-    model.add(keras.layers.Dropout(0.2))
-    model.add(keras.layers.Dense(10, activation='softmax'))
+    model = tf.keras.Sequential()
+    model.add(tf.keras.layers.Dense(512, activation='relu', input_shape=(784,)))
+    model.add(tf.keras.layers.Dropout(0.2))
+    model.add(tf.keras.layers.Dense(512, activation='relu'))
+    model.add(tf.keras.layers.Dropout(0.2))
+    model.add(tf.keras.layers.Dense(10, activation='softmax'))
 
     return model
 
   def _mnist_convnet(self):
-    model = keras.Sequential()
+    model = tf.keras.Sequential()
     model.add(
-        keras.layers.Conv2D(
+        tf.keras.layers.Conv2D(
             32, kernel_size=(3, 3), activation='relu', input_shape=(28, 28, 1)))
-    model.add(keras.layers.Conv2D(64, (3, 3), activation='relu'))
-    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
-    model.add(keras.layers.Dropout(0.25))
-    model.add(keras.layers.Flatten())
-    model.add(keras.layers.Dense(128, activation='relu'))
-    model.add(keras.layers.Dropout(0.5))
-    model.add(keras.layers.Dense(10, activation='softmax'))
+    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='relu'))
+    model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(tf.keras.layers.Dropout(0.25))
+    model.add(tf.keras.layers.Flatten())
+    model.add(tf.keras.layers.Dense(128, activation='relu'))
+    model.add(tf.keras.layers.Dropout(0.5))
+    model.add(tf.keras.layers.Dense(10, activation='softmax'))
 
     return model
 
   def _imdb_lstm(self):
-    model = keras.Sequential()
-    model.add(keras.layers.Embedding(20000, 128))
-    model.add(keras.layers.LSTM(128, dropout=0.2, recurrent_dropout=0.2))
-    model.add(keras.layers.Dense(1, activation='sigmoid'))
+    model = tf.keras.Sequential()
+    model.add(tf.keras.layers.Embedding(20000, 128))
+    model.add(tf.keras.layers.LSTM(128, dropout=0.2, recurrent_dropout=0.2))
+    model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
 
     return model
 

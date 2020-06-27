@@ -22,29 +22,26 @@ import time
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import backprop  # pylint: disable=unused-import
+import tensorflow as tf
+
 from tensorflow.python.eager import context
 from tensorflow.python.eager import profiler
-from tensorflow.python.eager import test
-from tensorflow.python.ops import random_ops
-from tensorflow.python.training import gradient_descent
+from tensorflow.python.platform import test
 
 
-class SubclassedKerasModel(keras.Model):
+class SubclassedKerasModel(tf.keras.Model):
 
   def __init__(self, initializer="ones"):
     super(SubclassedKerasModel, self).__init__()
-    self.layer_a = keras.layers.Dense(
+    self.layer_a = tf.keras.layers.Dense(
         64, kernel_initializer=initializer, bias_initializer="zeros")
-    self.layer_b = keras.layers.Dense(
+    self.layer_b = tf.keras.layers.Dense(
         128, kernel_initializer=initializer, bias_initializer="zeros")
-    self.layer_c = keras.layers.Dense(
+    self.layer_c = tf.keras.layers.Dense(
         256, kernel_initializer=initializer, bias_initializer="zeros")
-    self.layer_d = keras.layers.Dense(
+    self.layer_d = tf.keras.layers.Dense(
         256, kernel_initializer=initializer, bias_initializer="zeros")
-    self.layer_e = keras.layers.Dense(
+    self.layer_e = tf.keras.layers.Dense(
         10, kernel_initializer=initializer, bias_initializer="zeros")
 
   def call(self, x):
@@ -56,32 +53,32 @@ class SubclassedKerasModel(keras.Model):
 
 
 def make_keras_model(initializer="ones"):
-  model_input = keras.Input(shape=(10,))
-  x = keras.layers.Dense(
+  model_input = tf.keras.Input(shape=(10,))
+  x = tf.keras.layers.Dense(
       64, kernel_initializer=initializer, bias_initializer="zeros")(model_input)
-  x = keras.layers.Dense(
+  x = tf.keras.layers.Dense(
       128, kernel_initializer=initializer, bias_initializer="zeros")(x)
-  x = keras.layers.Dense(
+  x = tf.keras.layers.Dense(
       256, kernel_initializer=initializer, bias_initializer="zeros")(x)
-  x = keras.layers.Dense(
+  x = tf.keras.layers.Dense(
       256, kernel_initializer=initializer, bias_initializer="zeros")(x)
-  x = keras.layers.Dense(
+  x = tf.keras.layers.Dense(
       10, kernel_initializer=initializer, bias_initializer="zeros")(x)
-  return keras.Model(inputs=model_input, outputs=x)
+  return tf.keras.Model(inputs=model_input, outputs=x)
 
 
 def make_sequential_keras_model(initializer="ones"):
-  model = keras.models.Sequential()
-  model.add(keras.layers.Dense(
+  model = tf.keras.models.Sequential()
+  model.add(tf.keras.layers.Dense(
       64, kernel_initializer=initializer, bias_initializer="zeros",
       input_shape=(10,)))
-  model.add(keras.layers.Dense(
+  model.add(tf.keras.layers.Dense(
       128, kernel_initializer=initializer, bias_initializer="zeros"))
-  model.add(keras.layers.Dense(
+  model.add(tf.keras.layers.Dense(
       256, kernel_initializer=initializer, bias_initializer="zeros"))
-  model.add(keras.layers.Dense(
+  model.add(tf.keras.layers.Dense(
       256, kernel_initializer=initializer, bias_initializer="zeros"))
-  model.add(keras.layers.Dense(
+  model.add(tf.keras.layers.Dense(
       10, kernel_initializer=initializer, bias_initializer="zeros"))
   return model
 
@@ -120,9 +117,9 @@ class KerasComponentsBenchmarks(test.Benchmark):
 
   def benchmark_keras_model_subclassed(self):
     model = SubclassedKerasModel()
-    data = random_ops.random_uniform((10, 10))
+    data = tf.random.uniform((10, 10))
 
-    func = lambda: model(data)
+    func = lambda: model(data)  # pylint: disable=not-callable
     # First call is more expensive (creates variables etc.), discount that.
     func()
 
@@ -135,16 +132,16 @@ class KerasComponentsBenchmarks(test.Benchmark):
 
   def benchmark_keras_model_functional(self):
     model = make_keras_model()
-    data = random_ops.random_uniform((10, 10))
-    func = lambda: model(data)
+    data = tf.random.uniform((10, 10))
+    func = lambda: model(data)  # pylint: disable=not-callable
     # Symmetry with benchmark_keras_model_subclassed
     func()
-    assert np.equal(func(), SubclassedKerasModel()(data)).all()
+    assert np.equal(func(), SubclassedKerasModel()(data)).all()  # pylint: disable=not-callable
     self._run(func, 30000)
 
   def benchmark_keras_model_sequential(self):
     model = make_sequential_keras_model()
-    data = random_ops.random_uniform((10, 10))
+    data = tf.random.uniform((10, 10))
     func = lambda: model(data)
     # Symmetry with benchmark_keras_model_functional
     func()
@@ -152,11 +149,11 @@ class KerasComponentsBenchmarks(test.Benchmark):
     self._run(func, 30000)
 
   def _benchmark_keras_model_fit(self, model, run_eagerly=False):
-    data = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
-    labels = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
-    dataset = dataset_ops.Dataset.from_tensors((data, labels)).repeat()
+    data = tf.random.uniform((10, 10), minval=-1, maxval=1)
+    labels = tf.random.uniform((10, 10), minval=-1, maxval=1)
+    dataset = tf.data.Dataset.from_tensors((data, labels)).repeat()
     model.compile(
-        gradient_descent.GradientDescentOptimizer(learning_rate=0.001),
+        "sgd",
         loss="mse", run_eagerly=run_eagerly)
     func = lambda: model.fit(dataset, epochs=1, steps_per_epoch=1000, verbose=0)
     # First call is more expensive (creates variables etc.), discount that.
@@ -165,11 +162,11 @@ class KerasComponentsBenchmarks(test.Benchmark):
     self._run(func, 1)
 
   def _benchmark_keras_model_evaluate(self, model, run_eagerly=False):
-    data = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
-    labels = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
-    dataset = dataset_ops.Dataset.from_tensors((data, labels)).repeat()
+    data = tf.random.uniform((10, 10), minval=-1, maxval=1)
+    labels = tf.random.uniform((10, 10), minval=-1, maxval=1)
+    dataset = tf.data.Dataset.from_tensors((data, labels)).repeat()
     model.compile(
-        gradient_descent.GradientDescentOptimizer(learning_rate=0.001),
+        "sgd",
         loss="mse", run_eagerly=run_eagerly)
     func = lambda: model.evaluate(dataset, steps=1000, verbose=0)
     # First call is more expensive (creates variables etc.), discount that.
@@ -178,10 +175,10 @@ class KerasComponentsBenchmarks(test.Benchmark):
     self._run(func, 1)
 
   def _benchmark_keras_model_predict(self, model, run_eagerly=False):
-    data = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
-    dataset = dataset_ops.Dataset.from_tensors(data).repeat()
+    data = tf.random.uniform((10, 10), minval=-1, maxval=1)
+    dataset = tf.data.Dataset.from_tensors(data).repeat()
     model.compile(
-        gradient_descent.GradientDescentOptimizer(learning_rate=0.001),
+        "sgd",
         loss="mse", run_eagerly=run_eagerly)
     func = lambda: model.predict(dataset, steps=1000, verbose=0)
     # First call is more expensive (creates variables etc.), discount that.

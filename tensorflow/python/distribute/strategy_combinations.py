@@ -109,11 +109,15 @@ def _get_multi_worker_mirrored_creator(required_gpus):
 
   def _create_multi_worker_mirrored():
     tf_config = cluster_resolver.TFConfigClusterResolver()
+    master = tf_config.master()
+    if tf_config.rpc_layer:
+      # Strip off the rpc_layer suffix.
+      master = master[len("%s://" % tf_config.rpc_layer):]
     resolver = cluster_resolver.SimpleClusterResolver(
         cluster_spec=tf_config.cluster_spec(),
         task_type=tf_config.task_type,
         task_id=tf_config.task_id,
-        master=tf_config.master(),
+        master=master,
         environment=tf_config.environment,
         num_accelerators={"GPU": required_gpus},
         rpc_layer=tf_config.rpc_layer or "grpc",

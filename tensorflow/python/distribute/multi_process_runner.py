@@ -138,7 +138,7 @@ class MultiProcessRunner(object):
                     "worker2.example.com:2222"],
          "ps": ["ps0.example.com:2222",
                 "ps1.example.com:2222"]}
-      rpc_layer: RPC layer to use. Default value is 'grpc+loas'.
+      rpc_layer: RPC layer to use. Default value is 'grpc'.
       max_run_time: If set, child processes is forced to exit at approximately
         this many seconds after `start` is called. We achieve this through
         `signal.alarm()` api. Note that this is best effort at Python level
@@ -184,7 +184,7 @@ class MultiProcessRunner(object):
 
     self._proc_func = proc_func
     self._cluster_spec = cluster_spec
-    self._rpc_layer = rpc_layer
+    self._rpc_layer = rpc_layer or 'grpc'
     self._max_run_time = max_run_time
     self._grpc_fail_fast = grpc_fail_fast
     self._stream_stdout = stream_stdout
