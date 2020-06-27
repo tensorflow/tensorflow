@@ -1926,7 +1926,6 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self.embeddings_freq = embeddings_freq
     self.embeddings_metadata = embeddings_metadata
     self._init_profile_batch(profile_batch)
-    self._epoch = 0
     self._global_train_batch = 0
 
     # Lazily initialized in order to avoid creating event files when
@@ -2169,10 +2168,6 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
     if self._is_tracing and self._global_train_batch >= self._stop_batch:
       self._stop_trace()
-
-  def on_epoch_begin(self, epoch, logs=None):
-    # Keeps track of epoch for profiling.
-    self._epoch = epoch
 
   def on_epoch_end(self, epoch, logs=None):
     """Runs metrics and histogram summaries at epoch end."""
