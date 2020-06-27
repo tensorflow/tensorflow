@@ -194,10 +194,9 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddHardSwish() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_HARD_SWISH,
-                      *tflite::ops::micro::Register_HARD_SWISH(), ParseOpData);
+                      *tflite::ops::micro::Register_HARD_SWISH(),
+                      ParseHardSwish);
   }
 
   TfLiteStatus AddL2Normalization() {
@@ -256,17 +255,13 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddMean() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_MEAN,
-                      *tflite::ops::micro::Register_MEAN(), ParseOpData);
+                      *tflite::ops::micro::Register_MEAN(), ParseReducer);
   }
 
   TfLiteStatus AddMinimum() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_MINIMUM,
-                      *tflite::ops::micro::Register_MINIMUM(), ParseOpData);
+                      *tflite::ops::micro::Register_MINIMUM(), ParseMinimum);
   }
 
   TfLiteStatus AddMul() {
@@ -277,17 +272,13 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddNeg() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_NEG, *tflite::ops::micro::Register_NEG(),
-                      ParseOpData);
+                      ParseNeg);
   }
 
   TfLiteStatus AddNotEqual() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_NOT_EQUAL,
-                      *tflite::ops::micro::Register_NOT_EQUAL(), ParseOpData);
+                      *tflite::ops::micro::Register_NOT_EQUAL(), ParseNotEqual);
   }
 
   TfLiteStatus AddPack() {
@@ -298,24 +289,18 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddPad() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_PAD, *tflite::ops::micro::Register_PAD(),
-                      ParseOpData);
+                      ParsePad);
   }
 
   TfLiteStatus AddPadV2() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_PADV2,
-                      *tflite::ops::micro::Register_PADV2(), ParseOpData);
+                      *tflite::ops::micro::Register_PADV2(), ParsePadV2);
   }
 
   TfLiteStatus AddPrelu() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_PRELU,
-                      *tflite::ops::micro::Register_PRELU(), ParseOpData);
+                      *tflite::ops::micro::Register_PRELU(), ParsePrelu);
   }
 
   TfLiteStatus AddQuantize() {
@@ -324,17 +309,13 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddRelu() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_RELU,
-                      *tflite::ops::micro::Register_RELU(), ParseOpData);
+                      *tflite::ops::micro::Register_RELU(), ParseRelu);
   }
 
   TfLiteStatus AddRelu6() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_RELU6,
-                      *tflite::ops::micro::Register_RELU6(), ParseOpData);
+                      *tflite::ops::micro::Register_RELU6(), ParseRelu6);
   }
 
   TfLiteStatus AddReshape() {
@@ -351,24 +332,18 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddRound() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_ROUND,
-                      *tflite::ops::micro::Register_ROUND(), ParseOpData);
+                      *tflite::ops::micro::Register_ROUND(), ParseRound);
   }
 
   TfLiteStatus AddRsqrt() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_RSQRT,
-                      *tflite::ops::micro::Register_RSQRT(), ParseOpData);
+                      *tflite::ops::micro::Register_RSQRT(), ParseRsqrt);
   }
 
   TfLiteStatus AddSin() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_SIN, *tflite::ops::micro::Register_SIN(),
-                      ParseOpData);
+                      ParseSin);
   }
 
   TfLiteStatus AddSoftmax() {
@@ -384,17 +359,13 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddSqrt() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_SQRT,
-                      *tflite::ops::micro::Register_SQRT(), ParseOpData);
+                      *tflite::ops::micro::Register_SQRT(), ParseSqrt);
   }
 
   TfLiteStatus AddSquare() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_SQUARE,
-                      *tflite::ops::micro::Register_SQUARE(), ParseOpData);
+                      *tflite::ops::micro::Register_SQUARE(), ParseSquare);
   }
 
   TfLiteStatus AddStridedSlice() {
@@ -418,10 +389,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddTanh() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_TANH,
-                      *tflite::ops::micro::Register_TANH(), ParseOpData);
+                      *tflite::ops::micro::Register_TANH(), ParseTanh);
   }
 
   TfLiteStatus AddUnpack() {
