@@ -38,7 +38,86 @@ namespace {
 using ConditionalCodeMotionTest = HloTestBase;
 namespace op = xla::testing::opcode_matchers;
 
-TEST_F(ConditionalCodeMotionTest, DoNotMoveConvertOut) {
+TEST_F(ConditionalCodeMotionTest, MoveSubsetTupleOut) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveDotOpOut
+
+on_true {
+  %arg_tuple.1 = (f32[93184,4]{1,0}) parameter(0)
+  %get-tuple-element.1 = f32[93184,4]{1,0} get-tuple-element(%arg_tuple.1), index=0
+  %reshape.8493 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.1)
+  %convert.2894 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %reshape.8493)
+  ROOT %tuple.1 = ( bf16[2,512,364]{2,1,0}, f32[2,512,364]{2,1,0}) tuple(%convert.2894, %reshape.8493)
+}
+
+on_false {
+  %arg_tuple.2 = (f32[93184,4]{1,0}) parameter(0)
+  %get-tuple-element.3 = f32[93184,4]{1,0} get-tuple-element(%arg_tuple.2), index=0
+  %reshape.9717 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.3)
+  %add = f32[2,512,364]{2,1,0} add(f32[2,512,364]{2,1,0} %reshape.9717, f32[2,512,364]{2,1,0} %reshape.9717)
+  %convert.3604 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %reshape.9717), metadata={op_type="Cast" op_name="gradients/Cast_125_grad/Cast"}
+  ROOT %tuple.2 = (bf16[2,512,364]{2,1,0}, f32[2,512,364]{2,1,0}) tuple(%convert.3604, %add)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  arg_tuple.11 = (f32[93184,4]{1,0}) parameter(1)
+  arg_tuple.22 = (f32[93184,4]{1,0}) parameter(2)
+  conditional = (bf16[2,512,364]{2,1,0}, f32[2,512,364]{2,1,0}) conditional(pred.1, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
+  get-first-index = bf16[2,512,364]{2,1,0} get-tuple-element(conditional), index=0
+  get-first-index.2 = f32[2,512,364]{2,1,0} get-tuple-element(conditional), index=1
+  ROOT result = (bf16[2,512,364]{2,1,0}, f32[2,512,364]{2,1,0}) tuple(get-first-index, get-first-index.2)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Tuple(op::Convert(), op::GetTupleElement())));
+}
+
+TEST_F(ConditionalCodeMotionTest, MoveConvertOutConditionalRoot) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveDotOpOut
+
+on_true {
+  %arg_tuple.1 = (f32[93184,4]{1,0}) parameter(0)
+  %get-tuple-element.1 = f32[93184,4]{1,0} get-tuple-element(%arg_tuple.1), index=0
+  %reshape.8493 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.1)
+  %add.8493 = f32[2,512,364]{2,1,0} add(f32[2,512,364]{2,1,0} %reshape.8493, f32[2,512,364]{2,1,0} %reshape.8493)
+  %convert.2894 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %add.8493)
+  ROOT %tuple.1 = ( bf16[2,512,364]{2,1,0}) tuple(%convert.2894)
+}
+
+on_false {
+  %arg_tuple.2 = (f32[93184,4]{1,0}) parameter(0)
+  %get-tuple-element.3 = f32[93184,4]{1,0} get-tuple-element(%arg_tuple.2), index=0
+  %reshape.9717 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.3)
+  %add.8493 = f32[2,512,364]{2,1,0} add(f32[2,512,364]{2,1,0} %reshape.9717, f32[2,512,364]{2,1,0} %reshape.9717)
+  %sub.8493 = f32[2,512,364]{2,1,0} subtract(f32[2,512,364]{2,1,0} %add.8493, f32[2,512,364]{2,1,0} %reshape.9717)
+  %convert.3604 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %reshape.9717), metadata={op_type="Cast" op_name="gradients/Cast_125_grad/Cast"}
+  ROOT %tuple.2 = (bf16[2,512,364]{2,1,0}) tuple(%convert.3604)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  arg_tuple.11 = (f32[93184,4]{1,0}) parameter(1)
+  arg_tuple.22 = (f32[93184,4]{1,0}) parameter(2)
+  ROOT conditional = (bf16[2,512,364]{2,1,0}) conditional(pred.1, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Tuple(op::Convert())));
+}
+
+TEST_F(ConditionalCodeMotionTest, MoveConvertOut) {
   absl::string_view hlo_string =
       R"(
 HloModule RemoveDotOpOut
@@ -65,12 +144,16 @@ ENTRY main {
   arg_tuple.22 = (f32[93184,4]{1,0}) parameter(2)
   conditional = (bf16[2,512,364]{2,1,0}) conditional(pred.1, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
   get-first-index = bf16[2,512,364]{2,1,0} get-tuple-element(conditional), index=0
-  ROOT result = (bf16[2,512,364]{2,1,0}) tuple(get-first-index)
+  add.1 = bf16[2,512,364]{2,1,0} add(bf16[2,512,364]{2,1,0} get-first-index, bf16[2,512,364]{2,1,0} get-first-index)
+  ROOT result = (bf16[2,512,364]{2,1,0}) tuple(add.1)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
-  ConditionalCodeMotion pass;
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Tuple(op::Add(op::Convert(), op::Convert()))));
 }
 
 TEST_F(ConditionalCodeMotionTest, UserShareOperandCannotBeMoved) {
@@ -123,7 +206,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
-  ConditionalCodeMotion pass;
+  ConditionalCodeMotion pass(true, true);
   ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
 
   const HloInstruction* conditional =
@@ -181,7 +264,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
-  ConditionalCodeMotion pass;
+  ConditionalCodeMotion pass(true, true);
   ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
@@ -245,7 +328,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
-  ConditionalCodeMotion pass;
+  ConditionalCodeMotion pass(true, true);
   ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
 
   const HloInstruction* conditional =
@@ -317,7 +400,7 @@ ENTRY main {
 )";
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
-  ConditionalCodeMotion pass;
+  ConditionalCodeMotion pass(true, true);
   ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
 }
 
@@ -390,7 +473,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
-  ConditionalCodeMotion pass;
+  ConditionalCodeMotion pass(true, true);
   ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");

@@ -90,12 +90,12 @@ MicroInterpreter::MicroInterpreter(const Model* model,
 }
 
 MicroInterpreter::MicroInterpreter(const Model* model,
-                                   const MicroOpResolver* op_resolver,
+                                   const MicroOpResolver& op_resolver,
                                    MicroAllocator* allocator,
                                    ErrorReporter* error_reporter,
                                    tflite::Profiler* profiler)
     : model_(model),
-      op_resolver_(*op_resolver),
+      op_resolver_(op_resolver),
       error_reporter_(error_reporter),
       allocator_(*allocator),
       tensors_allocated_(false),

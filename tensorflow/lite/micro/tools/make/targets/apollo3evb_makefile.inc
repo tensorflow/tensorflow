@@ -24,9 +24,6 @@ ifeq ($(TARGET),$(filter $(TARGET),\
 $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)
   endif
 
-  # Use the faster depthwise conv implementation.
-  ALL_TAGS += portable_optimized
-
   PLATFORM_FLAGS = \
     -DPART_apollo3 \
     -DAM_PACKAGE_BGA \

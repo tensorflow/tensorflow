@@ -14,6 +14,9 @@
 # ==============================================================================
 """Code for backpropagation using the tape utilities."""
 
+# TODO(b/159343581): Properly support CompositeTensor in all functions in this
+# file.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -59,6 +62,9 @@ from tensorflow.python.util.tf_export import tf_export
 pfor_ops = LazyLoader(
     "pfor_ops", globals(),
     "tensorflow.python.ops.parallel_for.control_flow_ops")
+np_arrays = LazyLoader(
+    "np_arrays", globals(),
+    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 function = LazyLoader("function", globals(),
                       "tensorflow.python.eager.function")
@@ -693,7 +699,7 @@ def _ones(shape, dtype):
   if as_dtype == dtypes.string:
     return None
 
-  if not context.context().executing_eagerly():
+  if not context.executing_eagerly():
     return array_ops.ones(shape, dtype)
 
   if as_dtype.is_bool:
@@ -718,9 +724,11 @@ pywrap_tfe.TFE_Py_RegisterVSpace(_default_vspace)
 
 
 def _handle_or_self(x):
-  """If x is ResourceVariable, return its handle, else x."""
+  """Unwrap resource variable/ndarray to return tensors."""
   if resource_variable_ops.is_resource_variable(x):
-    x = x.handle
+    return x.handle
+  if isinstance(x, np_arrays.ndarray):
+    return x.data
   return x
 
 
@@ -1020,6 +1028,7 @@ class GradientTape(object):
             "gradient in order to compute higher order "
             "derivatives.", 1)
 
+    num_ndarrays = 0
     flat_targets = []
     for t in nest.flatten(target):
       if not backprop_util.IsTrainable(t):
@@ -1030,7 +1039,12 @@ class GradientTape(object):
       if resource_variable_ops.is_resource_variable(t):
         with self:
           t = ops.convert_to_tensor(t)
+      elif isinstance(t, np_arrays.ndarray):
+        t = t.data
+        num_ndarrays += 1
       flat_targets.append(t)
+    # Only rewrap if all targets are ndarray. If not, prefer tensors.
+    rewrap_as_ndarray = num_ndarrays == len(flat_targets)
 
     flat_sources = nest.flatten(sources)
     flat_sources_raw = flat_sources
@@ -1062,6 +1076,9 @@ class GradientTape(object):
       # Keep track of watched variables before setting tape to None
       self._watched_variables = self._tape.watched_variables()
       self._tape = None
+
+    if rewrap_as_ndarray:
+      flat_grad = nest.map_structure(np_arrays.tensor_to_ndarray, flat_grad)
 
     grad = nest.pack_sequence_as(sources, flat_grad)
     return grad
@@ -1117,6 +1134,10 @@ class GradientTape(object):
       ValueError: If vectorization of jacobian computation fails.
     """
     flat_sources = nest.flatten(sources)
+    rewrap_as_ndarray = False
+    if isinstance(target, np_arrays.ndarray):
+      target = target.data
+      rewrap_as_ndarray = True
     target_static_shape = target.shape
     target_shape = array_ops.shape(target)
     # Note that we push and pop the tape here and below. This is needed since we
@@ -1166,6 +1187,8 @@ class GradientTape(object):
         out = array_ops.reshape(out, new_shape)
         if context.executing_eagerly():
           out.set_shape(target_static_shape.concatenate(flat_sources[i].shape))
+      if rewrap_as_ndarray:
+        out = np_arrays.tensor_to_ndarray(out)
       output[i] = out
 
     return nest.pack_sequence_as(sources, output)

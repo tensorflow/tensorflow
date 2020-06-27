@@ -21,77 +21,37 @@
 #include <utility>
 #include <vector>
 
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "llvm/Support/CommandLine.h"
+#include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/cubin_creator.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/command_line_flags.h"
-
-namespace {
-bool ParseStringList(std::string string_list, std::vector<uint32_t>* result) {
-  result->clear();
-  uint32_t item;
-  auto items = absl::StrSplit(string_list, ',');
-  for (const auto& item_str : items) {
-    if (!absl::SimpleAtoi(item_str, &item)) {
-      LOG(ERROR) << "Expected token " << item_str << " to be an integer";
-      return false;
-    }
-    result->push_back(item);
-  }
-  return true;
-}
-}  // namespace
 
 int main(int argc, char** argv) {
-  std::string input_file = "foo.mlir";
-  std::string output_file = "foo.bin";
-  int32_t architecture = 50;
-  std::vector<uint32_t> tile_sizes;
-  std::vector<uint32_t> unroll_factors;
-  std::vector<uint32_t> same_shape;
+  llvm::cl::opt<std::string> input_file("input", llvm::cl::desc("input file"),
+                                        llvm::cl::value_desc("filename"),
+                                        llvm::cl::init("foo.mlir"));
+  llvm::cl::opt<std::string> output_file(
+      "output", llvm::cl::desc("output file"), llvm::cl::value_desc("filename"),
+      llvm::cl::init("foo.bin"));
+  llvm::cl::opt<int32_t> architecture(
+      "arch", llvm::cl::desc("target architecture (e.g. 50 for sm_50)"),
+      llvm::cl::init(50));
+  llvm::cl::list<uint32_t> tile_sizes(
+      "tile_sizes", llvm::cl::desc("tile sizes to use"), llvm::cl::ZeroOrMore,
+      llvm::cl::CommaSeparated);
+  llvm::cl::list<uint32_t> unroll_factors(
+      "unroll_factors",
+      llvm::cl::desc("factors to unroll by, separated by commas"),
+      llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
+  llvm::cl::list<uint32_t> same_shape(
+      "same_shape",
+      llvm::cl::desc("arguments with same shape, separated by commas"),
+      llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
 
-  auto parse_tile_sizes = [&tile_sizes](std::string tile_sizes_str) {
-    if (!ParseStringList(tile_sizes_str, &tile_sizes)) {
-      return false;
-    }
-    // Initialize with the default.
-    if (tile_sizes.empty()) {
-      tile_sizes.push_back(16);
-      tile_sizes.push_back(64);
-    }
-    return true;
-  };
-
-  auto parse_unroll_factors =
-      [&unroll_factors](std::string unroll_factors_str) {
-        return ParseStringList(unroll_factors_str, &unroll_factors);
-      };
-
-  auto parse_same_shape = [&same_shape](std::string same_shape_str) {
-    return ParseStringList(same_shape_str, &same_shape);
-  };
-
-  std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("input", &input_file, "input file"),
-      tensorflow::Flag("output", &output_file, "output file"),
-      tensorflow::Flag("arch", &architecture,
-                       "target architecture (e.g. 50 for sm_50)"),
-      tensorflow::Flag("tile_sizes", parse_tile_sizes, "16,64",
-                       "tile sizes to use"),
-      tensorflow::Flag("unroll_factors", parse_unroll_factors, "",
-                       "factors to unroll by, separated by commas"),
-      tensorflow::Flag("same_shape", parse_same_shape, "",
-                       "arguments with same shape, separated by commas"),
-  };
-  bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  tensorflow::port::InitMain("usage", &argc, &argv);
-  if (!parse_ok) {
-    return 1;
-  }
+  tensorflow::InitMlir y(&argc, &argv);
+  llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
 
   std::pair<int32_t, int32_t> compute_capability(architecture / 10,
                                                  architecture % 10);

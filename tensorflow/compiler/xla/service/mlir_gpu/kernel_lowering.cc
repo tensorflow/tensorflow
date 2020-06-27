@@ -174,8 +174,7 @@ struct DeadTempBufferRemoval
     for (auto result : op->getResults()) {
       if (!llvm::all_of(result.getUsers(), [&](mlir::Operation* op) {
             // Store and Dealloc is OK.
-            if (llvm::isa<mlir::StoreOp>(op) ||
-                llvm::isa<mlir::DeallocOp>(op)) {
+            if (llvm::isa<mlir::StoreOp, mlir::DeallocOp>(op)) {
               return true;
             }
             // Load without uses is also ok.
@@ -225,8 +224,8 @@ struct MoveScalarComputationsIntoGpuLaunch
     : mlir::PassWrapper<MoveScalarComputationsIntoGpuLaunch,
                         mlir::FunctionPass> {
   static bool isInliningBeneficiary(mlir::Operation* op) {
-    return llvm::isa<mlir::ConstantOp>(op) || llvm::isa<mlir::DimOp>(op) ||
-           llvm::isa<mlir::SelectOp>(op) || llvm::isa<mlir::CmpIOp>(op);
+    return llvm::isa<mlir::ConstantOp, mlir::DimOp, mlir::SelectOp,
+                     mlir::CmpIOp>(op);
   }
 
   static bool extractBeneficiaryOps(
@@ -301,7 +300,7 @@ struct RewriteKernelSignature
         signalPassFailure();
         return;
       }
-      if (func.getBlocks().size() != 1) {
+      if (!llvm::hasSingleElement(func)) {
         func.emitError() << "surrounding function has more than one block";
         signalPassFailure();
         return;
@@ -505,6 +504,16 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Some basic cleanup.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  // Make loops with min bounds into a conditional plus static bounds.
+  // Only do this if we unrolled in the first place.
+  if (!options.unroll_factors.empty()) {
+    pm.addNestedPass<::mlir::FuncOp>(mlir::createForLoopSpecializationPass());
+  }
+  // Approximate of requested.
+  if (options.use_approximations) {
+    pm.addNestedPass<::mlir::FuncOp>(
+        ::mlir::xla::createLegalizeTanhToApproximationPass());
+  }
   // Move scalar operations into the launch to ensure smaller signatures.
   pm.addPass(absl::make_unique<MoveScalarComputationsIntoGpuLaunch>());
   // Take launches to launches with kernels.
@@ -547,7 +556,7 @@ class LowerToNVVMPass
     // TODO(csigg): Remove once we support replacing non-root ops.
     target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
                       ::mlir::gpu::YieldOp>();
-    if (failed(mlir::applyFullConversion(m, target, patterns, &converter))) {
+    if (failed(mlir::applyFullConversion(m, target, patterns))) {
       signalPassFailure();
     }
   }

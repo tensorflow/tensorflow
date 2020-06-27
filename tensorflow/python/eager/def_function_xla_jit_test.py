@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
@@ -384,6 +385,24 @@ class DefFunctionTest(test.TestCase):
 
     f64_input = constant_op.constant([1.1, 2.2, 3.3], dtype=dtypes.float64)
     self.assertAllClose([1.1, 3.3, 6.6], f(f64_input))
+
+  def testNoExcessiveRetracing(self):
+    inner_retracings = 0
+
+    @def_function.function(experimental_compile=True)
+    def inner(a, b):
+      nonlocal inner_retracings
+      inner_retracings += 1
+      return a * b + a
+
+    def outer(a, b):
+      return inner(a, b)
+
+    func_input = random_ops.random_normal([10, 10])
+    for _ in range(2):
+      def_function.function(outer)(func_input, func_input)
+
+    self.assertEqual(inner_retracings, 1)
 
 
 if __name__ == '__main__':

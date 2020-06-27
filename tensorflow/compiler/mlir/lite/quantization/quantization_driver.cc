@@ -289,8 +289,8 @@ class QuantizationDriver {
       llvm::errs() << "\n\n\n" << current_op->getName() << "\n";
     }
     fn_.walk([&](Operation *op) {
-      if (llvm::isa<quant::QuantizeCastOp>(op) ||
-          llvm::isa<quant::DequantizeCastOp>(op) || llvm::isa<ConstantOp>(op))
+      if (llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp>(
+              op))
         return;
       if (current_op == op) llvm::errs() << "===>>>";
       llvm::errs() << op->getName() << " : (";

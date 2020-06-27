@@ -422,7 +422,7 @@ def enable_check_numerics(stack_height_limit=30,
   tf.debugging.enable_check_numerics()
 
   resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
-  strategy = tf.distribute.experimental.TPUStrategy(resolver)
+  strategy = tf.distribute.TPUStrategy(resolver)
   with strategy.scope():
     # ...
   ```

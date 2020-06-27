@@ -828,37 +828,45 @@ TEST_F(ArithmeticOptimizerTest, FoldConjugateTransposeIntoBatchMatMul) {
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshapeIdentityReshape) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs =
-      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, 28, 28}));
-  Output inputs_shape = ops::Shape(s, inputs);
-  // The target shape of the reshape is the concatenation of `batch_size` and
-  // [3,28,28].
-  Output batch_size = ops::Slice(s, inputs_shape, ops::Const(s, {0}, {1}),
-                                 ops::Const(s, {1}, {1}));
-  Output target_shape = ops::Concat(
-      s.WithOpName("target_shape"),
-      {batch_size, ops::Const(s, {3, 28, 28}, {3})}, ops::Const(s, {0}, {}));
-  Output reshape = ops::Reshape(s, inputs, target_shape);
-  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+  for (bool is_broadcastto : {false, true}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output inputs =
+        ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, 28, 28}));
+    Output inputs_shape = ops::Shape(s, inputs);
+    // The target shape of the reshape is the concatenation of `batch_size` and
+    // [3,28,28].
+    Output batch_size = ops::Slice(s, inputs_shape, ops::Const(s, {0}, {1}),
+                                   ops::Const(s, {1}, {1}));
+    Output target_shape = ops::Concat(
+        s.WithOpName("target_shape"),
+        {batch_size, ops::Const(s, {3, 28, 28}, {3})}, ops::Const(s, {0}, {}));
+    if (is_broadcastto) {
+      Output outputs = ops::Identity(s.WithOpName("outputs"),
+                                     ops::BroadcastTo(s, inputs, target_shape));
+    } else {
+      Output outputs = ops::Identity(s.WithOpName("outputs"),
+                                     ops::Reshape(s, inputs, target_shape));
+    }
 
-  GrapplerItem item;
-  item.fetch = {"outputs"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 3, 28, 28}));
-  auto tensors_expected =
-      EvaluateNodes(item.graph, item.fetch, {{"Placeholder", x_t}});
-  ASSERT_EQ(tensors_expected.size(), 1);
+    GrapplerItem item;
+    item.fetch = {"outputs"};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 3, 28, 28}));
+    auto tensors_expected =
+        EvaluateNodes(item.graph, item.fetch, {{"Placeholder", x_t}});
+    ASSERT_EQ(tensors_expected.size(), 1);
 
-  GraphDef output;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveRedundantReshape(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyRemoveRedundantReshape(&optimizer);
+    OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 0);
-  auto tensors = EvaluateNodes(output, item.fetch, {{"Placeholder", x_t}});
-  ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+    EXPECT_EQ(CountOpNodes(output, "Reshape"), 0);
+    EXPECT_EQ(CountOpNodes(output, "BroadcastTo"), 0);
+    auto tensors = EvaluateNodes(output, item.fetch, {{"Placeholder", x_t}});
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+  }
 }
 
 TEST_F(ArithmeticOptimizerTest,
@@ -1023,7 +1031,9 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshapeCombineReshapes) {
                      ops::Const(s.WithOpName("perm"), {0, 2, 3, 1, 4}, {5}));
   Output nhwc = ops::Reshape(
       s.WithOpName("nhwc"), transpose,
-      ops::Const(s.WithOpName("nhwc_shape"), {8, 28, 28, 12}, {4}));
+      ops::Const(
+          s.WithControlDependencies(nchw_vect_c).WithOpName("nhwc_shape"),
+          {8, 28, 28, 12}, {4}));
   Output flatten = ops::Reshape(
       s.WithOpName("flatten"), nhwc,
       ops::Const(s.WithOpName("flatten_shape"), {8, 28 * 28 * 12}, {2}));

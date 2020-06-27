@@ -35,10 +35,6 @@ struct TensorArray : ::mlir::SideEffects::Resource::Base<TensorArray> {
   StringRef getName() final { return "TensorArray"; }
 };
 
-struct Table : ::mlir::SideEffects::Resource::Base<Table> {
-  StringRef getName() final { return "Table"; }
-};
-
 }  // namespace ResourceEffects
 }  // namespace TF
 }  // namespace mlir

@@ -14,8 +14,8 @@ package(
 # This will cause TFLite to build with ruy only, providing a smaller binary.
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "tflite_with_ruy_only_explicit_true",
-    define_values = {"TFLITE_WITH_RUY_ONLY": "true"},
+    name = "tflite_with_ruy_explicit_true",
+    define_values = {"tflite_with_ruy": "true"},
 )
 
 # Disables usage of ruy as the exclusive GEMM backend in TFLite kernels.
@@ -23,14 +23,14 @@ config_setting(
 # the default GEMM option at runtime.
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "tflite_with_ruy_only_explicit_false",
-    define_values = {"TFLITE_WITH_RUY_ONLY": "false"},
+    name = "tflite_with_ruy_explicit_false",
+    define_values = {"tflite_with_ruy": "false"},
 )
 
 ###### Beginning of config_setting's to match aarch64 ######
 #
 # We need to identify the aarch64 instruction set to decide whether to enable
-# TFLITE_WITH_RUY_ONLY by default. This is surprisingly hard to do because select()
+# TFLITE_WITH_RUY by default. This is surprisingly hard to do because select()
 # can only consume config_setting's, these config_settings are not centralized,
 # and the "cpu" value which they define are free-form strings and there is no
 # standardization of the strings that we need to match for the aarch64 architecture.
@@ -239,45 +239,45 @@ cc_test(
 )
 
 cc_library(
-    name = "tflite_with_ruy_only_enabled",
+    name = "tflite_with_ruy_enabled",
     build_for_embedded = True,
-    defines = ["TFLITE_WITH_RUY_ONLY"],
+    defines = ["TFLITE_WITH_RUY"],
     visibility = ["//visibility:private"],
 )
 
 cc_library(
-    name = "tflite_with_ruy_only_and_caching_enabled",
+    name = "tflite_with_ruy_and_caching_enabled",
     defines = [
-        "TFLITE_WITH_RUY_ONLY",
+        "TFLITE_WITH_RUY",
         "TFLITE_WITH_RUY_GEMV",
     ],
     visibility = ["//visibility:private"],
 )
 
 cc_library(
-    name = "tflite_with_ruy_only_default",
+    name = "tflite_with_ruy_default",
     build_for_embedded = True,
     select_deps = {
-        ":chromiumos_arm64": [":tflite_with_ruy_only_enabled"],
-        ":cpu_aarch64": [":tflite_with_ruy_only_enabled"],
-        ":cpu_arm64": [":tflite_with_ruy_only_enabled"],
-        ":cpu_arm64e": [":tflite_with_ruy_only_enabled"],
-        ":cpu_ios_arm64": [":tflite_with_ruy_only_enabled"],
-        ":cpu_ios_arm64e": [":tflite_with_ruy_only_enabled"],
-        ":cpu_arm64_v8a": [":tflite_with_ruy_only_enabled"],
-        "//tensorflow:android_arm": ["tflite_with_ruy_only_enabled"],
+        ":chromiumos_arm64": [":tflite_with_ruy_enabled"],
+        ":cpu_aarch64": [":tflite_with_ruy_enabled"],
+        ":cpu_arm64": [":tflite_with_ruy_enabled"],
+        ":cpu_arm64e": [":tflite_with_ruy_enabled"],
+        ":cpu_ios_arm64": [":tflite_with_ruy_enabled"],
+        ":cpu_ios_arm64e": [":tflite_with_ruy_enabled"],
+        ":cpu_arm64_v8a": [":tflite_with_ruy_enabled"],
+        "//tensorflow:android_arm": ["tflite_with_ruy_enabled"],
         "//conditions:default": [],
     },
     visibility = ["//visibility:private"],
 )
 
 cc_library(
-    name = "tflite_with_ruy_only",
+    name = "tflite_with_ruy",
     build_for_embedded = True,
     select_deps = {
-        ":tflite_with_ruy_only_explicit_true": [":tflite_with_ruy_only_enabled"],
-        ":tflite_with_ruy_only_explicit_false": [],
-        "//conditions:default": [":tflite_with_ruy_only_default"],
+        ":tflite_with_ruy_explicit_true": [":tflite_with_ruy_enabled"],
+        ":tflite_with_ruy_explicit_false": [],
+        "//conditions:default": [":tflite_with_ruy_default"],
     },
 )
 
@@ -291,7 +291,7 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
-        ":tflite_with_ruy_only",
+        ":tflite_with_ruy",
         ":op_macros",
         # For now this unconditionally depends on both ruy and gemmlowp.
         # See the comment inside class CpuBackendContext on the
@@ -311,11 +311,11 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":cpu_backend_context",
-        ":tflite_with_ruy_only",
+        ":tflite_with_ruy",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:types",
         # For now this unconditionally depends on both ruy and gemmlowp.
-        # We only need to depend on gemmlowp when tflite_with_ruy_only
+        # We only need to depend on gemmlowp when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
         "@ruy//ruy:context",
@@ -349,20 +349,20 @@ cc_library(
     ],
     copts = tflite_copts(),
     deps = [
-        ":tflite_with_ruy_only",
+        ":tflite_with_ruy",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:cpu_check",
         "//tensorflow/lite/kernels/internal:types",
         ":cpu_backend_context",
         ":cpu_backend_threadpool",
-        # Depend on ruy regardless of `tflite_with_ruy_only`. See the comment in
+        # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
         "@ruy//ruy",
         "@ruy//ruy:matrix",
         "@ruy//ruy:path",
         "@ruy//ruy/profiler:instrumentation",
-        # We only need to depend on gemmlowp and Eigen when tflite_with_ruy_only
+        # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
         "@gemmlowp",
@@ -605,7 +605,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite:string",
         "@farmhash_archive//:farmhash",
-    ] + [":tflite_with_ruy_only_and_caching_enabled"],
+    ] + [":tflite_with_ruy_and_caching_enabled"],
 )
 
 cc_library(

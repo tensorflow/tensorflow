@@ -82,7 +82,7 @@ class MicroInterpreter {
   // have allocation handled in more than one interpreter or for recording
   // allocations inside the interpreter. The lifetime of the allocator must be
   // as long as that of the interpreter object.
-  MicroInterpreter(const Model* model, const MicroOpResolver* op_resolver,
+  MicroInterpreter(const Model* model, const MicroOpResolver& op_resolver,
                    MicroAllocator* allocator, ErrorReporter* error_reporter,
                    tflite::Profiler* profiler = nullptr);
 

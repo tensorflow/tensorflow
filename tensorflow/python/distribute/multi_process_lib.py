@@ -22,7 +22,7 @@ import multiprocessing as _multiprocessing
 import os
 import unittest
 
-from tensorflow.python.platform import test
+from tensorflow.python.eager import test
 
 
 try:

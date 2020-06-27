@@ -55,7 +55,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
@@ -100,8 +99,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -1462,6 +1461,29 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     const absl::InlinedVector<OutputTensor, 4>& arg_nodes,
     const absl::InlinedVector<OutputTensor, 4>& ret_nodes,
     const absl::InlinedVector<Node*, 4>& control_ret_nodes) {
+  auto set_attributes_on_func = [&](Node* node, int64_t index, bool is_arg) {
+    for (const auto& node_attr : node->attrs()) {
+      const auto& key = node_attr.first;
+      // Only import optional attributes (e.g., those starting with an
+      // underscore).
+      if (key.empty() || key[0] != '_') continue;
+      // Ignore shape inference attributes as shape information is already
+      // populated in the result type.
+      if (IsOutputShapesAttribute(node_attr.second, key) ||
+          IsResourceOutputShapesAttribute(node_attr.second, key))
+        continue;
+      TF_ASSIGN_OR_RETURN(auto converted_attr,
+                          ConvertAttributeValue(node_attr.second));
+      std::string dialect_attribute = "tf." + key;
+      if (is_arg) {
+        func.setArgAttr(index, dialect_attribute, converted_attr);
+      } else {
+        func.setResultAttr(index, dialect_attribute, converted_attr);
+      }
+    }
+    return Status::OK();
+  };
+
   auto* bb = &func.front();
   llvm::SmallDenseMap<std::pair<Node*, int>, mlir::Value, 4>
       arg_nodes_to_values;
@@ -1492,19 +1514,8 @@ Status ImporterBase::ConvertFunctionArgAndRets(
           builder_.getStringAttr(arg_node.node->requested_device()));
 
     if (arg_node.node->IsArg()) {
-      for (const auto& arg_node_attr : arg_node.node->attrs()) {
-        const auto& key = arg_node_attr.first;
-        // Only import attributes starting with an underscore.
-        if (key.empty() || key[0] != '_') continue;
-        // Ignore shape inference attributes as shape information is already
-        // populated in the result type.
-        if (IsOutputShapesAttribute(arg_node_attr.second, key) ||
-            IsResourceOutputShapesAttribute(arg_node_attr.second, key))
-          continue;
-        TF_ASSIGN_OR_RETURN(auto converted_attr,
-                            ConvertAttributeValue(arg_node_attr.second));
-        func.setArgAttr(i, llvm::formatv("tf.{0}", key).str(), converted_attr);
-      }
+      TF_RETURN_IF_ERROR(
+          set_attributes_on_func(arg_node.node, i, /*is_arg=*/true));
     }
 
     island->dropAllReferences();
@@ -1512,11 +1523,12 @@ Status ImporterBase::ConvertFunctionArgAndRets(
   }
 
   llvm::SmallVector<mlir::Value, 8> inst_to_return;
-  for (const auto& ret : ret_nodes) {
+  for (auto ret_and_idx : llvm::enumerate(ret_nodes)) {
+    const auto& ret = ret_and_idx.value();
     auto* inst = node_values_[ret.node->id()];
-    auto op = absl::string_view(ret.node->type_string());
-    if (op == FunctionLibraryDefinition::kRetOp ||
-        op == FunctionLibraryDefinition::kDeviceRetOp) {
+    if (ret.node->IsRetval()) {
+      TF_RETURN_IF_ERROR(set_attributes_on_func(ret.node, ret_and_idx.index(),
+                                                /*is_arg=*/false));
       // Lookup the instruction inside the island
       auto island_op = llvm::cast<mlir::tf_executor::IslandOp>(inst);
       mlir::Operation* inner_op = &island_op.GetBody().front();
@@ -3276,6 +3288,9 @@ class SavedModelSignatureDefImporter {
       const std::vector<std::pair<std::string, TensorInfo>>& outputs,
       const std::vector<std::string> control_outputs);
 
+  // Coarsens the islands in `module_`.
+  Status CoarsenIslands();
+
   // Creates GlobalTensorOp for each variable and moves each VarHandle op to
   // the enclosing function's arguments.
   Status LiftVariables();
@@ -3284,6 +3299,10 @@ class SavedModelSignatureDefImporter {
   // enclosing function's argument list and erases this VarHandleOp. The global
   // tensor's shape is used to provide the most accurate nested shape.
   void LiftVariable(VarHandleOp op, GlobalTensorOp global_tensor);
+
+  // Removes the variable and related ops in the init function if it is already
+  // imported as a global tensor.
+  void RemoveVariable(VarHandleOp op);
 
   using VarGlobalMap = llvm::MapVector<
       llvm::StringRef,
@@ -3335,6 +3354,12 @@ Status SavedModelSignatureDefImporter::ConvertInitializer() {
 
   mlir::OpBuilder builder(module_->getBodyRegion());
 
+  // Set the exported name of init function to an reserved name for
+  // tf_saved_model.
+  init_func_op.setAttr(
+      "tf_saved_model.exported_names",
+      builder.getStrArrayAttr({"__tf_saved_model_session_initializer"}));
+
   builder.create<mlir::tf_saved_model::SessionInitializerOp>(
       module_->getLoc(), builder.getSymbolRefAttr(init_func_op.getName()));
 
@@ -3378,10 +3403,13 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
   }
 
   TF_RETURN_IF_ERROR(ConvertInitializer());
-  TF_RETURN_IF_ERROR(LiftVariables());
 
   mlir::OpBuilder builder(module_->getBodyRegion());
   module_->setAttr("tf_saved_model.semantics", builder.getUnitAttr());
+
+  TF_RETURN_IF_ERROR(CoarsenIslands());
+  TF_RETURN_IF_ERROR(LiftVariables());
+
   SortSavedModelModule(*module_);
   MarkSavedModelFunctionVisibility(*module_);
 
@@ -3464,16 +3492,28 @@ Status SavedModelSignatureDefImporter::ConvertSignature(
       sub_block->begin(), mlir::Block::iterator(sub_block->getTerminator()));
 
   return Status::OK();
-}
+}  // namespace
 
 Status SavedModelSignatureDefImporter::LiftVariables() {
   VarGlobalMap var_globals;
+  llvm::SmallVector<VarHandleOp, 4> init_vars;
 
-  auto walker = [&var_globals](mlir::Operation* op) {
-    if (auto var_handle_op = llvm::dyn_cast<VarHandleOp>(op))
-      var_globals[var_handle_op.shared_name()].second.push_back(var_handle_op);
-    else if (op->getName().getStringRef() == "tf.VariableV2")
+  auto session_initializer =
+      mlir::tf_saved_model::GetSessionInitializerOp(*module_);
+
+  auto walker = [&var_globals, &init_vars,
+                 &session_initializer](mlir::Operation* op) {
+    if (auto var_handle_op = llvm::dyn_cast<VarHandleOp>(op)) {
+      if (session_initializer &&
+          session_initializer.initializer() ==
+              var_handle_op.getParentOfType<mlir::FuncOp>().getName())
+        init_vars.push_back(var_handle_op);
+      else
+        var_globals[var_handle_op.shared_name()].second.push_back(
+            var_handle_op);
+    } else if (op->getName().getStringRef() == "tf.VariableV2") {
       return mlir::WalkResult::interrupt();
+    }
     return mlir::WalkResult::advance();
   };
   bool contains_ref_variable = module_->walk(walker).wasInterrupted();
@@ -3490,7 +3530,49 @@ Status SavedModelSignatureDefImporter::LiftVariables() {
     for (VarHandleOp var_handle : it.second.second)
       LiftVariable(var_handle, it.second.first);
 
+  for (auto op : init_vars) RemoveVariable(op);
+
   return Status::OK();
+}
+
+Status SavedModelSignatureDefImporter::CoarsenIslands() {
+  mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
+
+  mlir::PassManager pm(module_->getContext());
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::tf_executor::CreateTFExecutorIslandCoarseningPass());
+  if (mlir::failed(pm.run(*module_)))
+    return diag_handler.Combine(
+        errors::Internal("failed to coarsening islands."));
+
+  return Status::OK();
+}
+
+void SavedModelSignatureDefImporter::RemoveVariable(VarHandleOp op) {
+  llvm::SmallVector<mlir::Operation*, 4> work_list;
+  work_list.push_back(op);
+  while (!work_list.empty()) {
+    auto* op = work_list.back();
+    work_list.pop_back();
+
+    for (mlir::Value res : op->getResults()) {
+      for (mlir::Operation* user : res.getUsers()) {
+        work_list.push_back(user);
+      }
+    }
+
+    for (auto& use : op->getOpOperands()) {
+      if (mlir::Value value = use.get()) {
+        mlir::Operation* def = value.getDefiningOp();
+        work_list.push_back(def);
+      }
+    }
+
+    op->dropAllReferences();
+    op->dropAllDefinedValueUses();
+
+    op->erase();
+  }
 }
 
 void SavedModelSignatureDefImporter::LiftVariable(
@@ -3525,12 +3607,7 @@ void SavedModelSignatureDefImporter::LiftVariable(
   // Add the newly added function param to entry block's arguments.
   auto new_value = func_op.front().addArgument(resource_type);
 
-  // Remove the VarHandleOp also updating the containing island's return type.
-  DCHECK(llvm::isa<mlir::tf_executor::IslandOp>(op.getParentOp()));
-  DCHECK(llvm::cast<mlir::tf_executor::IslandOp>(op.getParentOp())
-             .WrapsSingleOp());
   op.getOperation()->replaceAllUsesWith(llvm::ArrayRef<mlir::Value>(new_value));
-  op.getParentOp()->getResult(0).setType(resource_type);
   op.getOperation()->erase();
 }
 
@@ -3685,15 +3762,20 @@ StatusOr<mlir::OwningModuleRef> ConvertSavedModelV1ToMlir(
                                                  context);
 }
 
-std::string MlirModuleToString(mlir::ModuleOp module, bool show_debug_info) {
+std::string MlirModuleToString(mlir::ModuleOp module,
+                               mlir::OpPrintingFlags flags) {
   std::string txt_module;
   {
-    mlir::OpPrintingFlags flags;
-    if (show_debug_info) flags.enableDebugInfo();
     llvm::raw_string_ostream os{txt_module};
     module.print(os, flags);
   }
   return txt_module;
+}
+
+std::string MlirModuleToString(mlir::ModuleOp module, bool show_debug_info) {
+  mlir::OpPrintingFlags flags;
+  if (show_debug_info) flags.enableDebugInfo();
+  return MlirModuleToString(module, flags);
 }
 
 }  // namespace tensorflow

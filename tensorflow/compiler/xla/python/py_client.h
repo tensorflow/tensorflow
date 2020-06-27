@@ -91,6 +91,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   explicit PyClient(std::shared_ptr<PjRtClient> pjrt_client);
 
   PjRtClient* pjrt_client() const { return pjrt_client_.get(); }
+  std::shared_ptr<PjRtClient> shared_pjrt_client() { return pjrt_client_; }
 
   const std::string& platform_name() const {
     return pjrt_client_->platform_name();

@@ -33,8 +33,6 @@ namespace tensorflow {
 // is needed a static_cast can be applied.
 class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
  public:
-  static constexpr AbstractTensorHandleKind kKind = kImmediateExecution;
-
   // Returns tensor dtype.
   virtual tensorflow::DataType DataType() const = 0;
   // Returns number of dimensions.
@@ -54,10 +52,30 @@ class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
   // Return a copy of the handle.
   virtual ImmediateExecutionTensorHandle* Copy() = 0;
 
+  // For LLVM style RTTI.
+  static bool classof(const AbstractTensorHandle* ptr) {
+    return ptr->getKind() == kEager || ptr->getKind() == kTfrt;
+  }
+
  protected:
-  ImmediateExecutionTensorHandle() : AbstractTensorHandle(kKind) {}
+  explicit ImmediateExecutionTensorHandle(AbstractTensorHandleKind kind)
+      : AbstractTensorHandle(kind) {}
   ~ImmediateExecutionTensorHandle() override {}
 };
+
+namespace internal {
+struct ImmediateExecutionTensorHandleDeleter {
+  void operator()(ImmediateExecutionTensorHandle* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using ImmediateTensorHandlePtr =
+    std::unique_ptr<ImmediateExecutionTensorHandle,
+                    internal::ImmediateExecutionTensorHandleDeleter>;
 
 }  // namespace tensorflow
 

@@ -128,7 +128,7 @@ class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
 Status HasSingleGraphSingleOpIslandsFunctions(mlir::ModuleOp module) {
   Status status = Status::OK();
   module.walk([&](mlir::FuncOp function) {
-    if (function.getBlocks().size() != 1) {
+    if (!llvm::hasSingleElement(function)) {
       status = errors::FailedPrecondition(
           kInvalidExecutorGraphMsg,
           "only single block functions are supported.");
@@ -280,6 +280,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   return node_def;
 }
 
+// TODO(b/160014479): Support exporting function result attributes as optional
+// attributes.
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     mlir::FuncOp function, Value operand, unsigned index,
     llvm::StringRef name) {

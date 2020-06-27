@@ -207,6 +207,43 @@ TEST(QuantizedConvolutionOpModel, SimpleConvTestReLU6Activation) {
                   1e-5)));
 }
 
+// Same as above, but the output min/max matches the RELU bounds.
+// Therefore, a Requantize node will not get added after Supernode.
+TEST(QuantizedConvolutionOpModel,
+     SimpleConvTestReLU6Activation_NoRequantizeRequired) {
+  QuantizedConvolutionOpModel m(
+      BuiltinOperator_CONV_2D, {TensorType_UINT8, {2, 2, 4, 1}, -63.5, 64},
+      {TensorType_UINT8, {3, 2, 2, 1}, -63.5, 64}, {TensorType_UINT8, {}, 0, 6},
+      Padding_VALID, /**dilation_factor**/ 1,
+      /**stride**/ 2, ActivationFunctionType_RELU6);
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetFilter({
+      1, 2, 3, 4,    // first 2x2 filter
+      -1, 1, -1, 1,  // second 2x2 filter
+      -1, -1, 1, 1,  // third 2x2 filter
+  });
+  m.SetBias({1, 2, 3});
+
+  m.ApplyDelegateAndInvoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      6, 2, 5,  // first batch, left
+                      6, 2, 5,  // first batch, right
+                      6, 4, 3,  // second batch, left
+                      6, 4, 3,  // second batch, right
+                  },
+                  2e-2)));
+}
+
 TEST(QuantizedConvolutionOpModel, SimplePerTensor_Int8) {
   QuantizedConvolutionOpModel m(
       BuiltinOperator_CONV_2D,
@@ -510,6 +547,53 @@ TEST(QuantizedConvolutionOpModel, DepthwiseConvSimplePerTensor_Int8) {
   EXPECT_THAT(
       m.GetDequantizedOutput<int8_t>(),
       ElementsAreArray(ArrayFloatNear({43, 48, 40, 52, 3, -4, 4, 4}, 0.6f)));
+}
+
+TEST(QuantizedConvolutionOpModel, DepthwiseConvSimplePerTensor_Int8_RELU1) {
+  QuantizedConvolutionOpModel m(
+      BuiltinOperator_DEPTHWISE_CONV_2D,
+      {TensorType_INT8, {1, 2, 3, 1}, -63.5, 64, 0.5, -1},
+      {TensorType_INT8,
+       // [1 * 2 * 2 * 4] as [input_channel, y, x, output_channel]
+       {1, 2, 2, 4},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.1, 2, 3, 0.4},
+       /*per_channel_quantization_offsets=*/{0, 0, 0, 0},
+       /*channel_index=*/3},
+      {TensorType_INT8, {}, -63.5, 64, 0.5, -1}, Padding_VALID,
+      /**dilation_factor**/ 1,
+      /**stride**/ 1, ActivationFunctionType_RELU_N1_TO_1);
+  m.SetInt8Input({
+      // [1 * 2 * 3 * 1] as [batch, y, x, input_channel]
+      3,   // batch = 0, y = 0, x = 0
+      1,   // batch = 0, y = 0, x = 1
+      -2,  // batch = 0, y = 0, x = 2
+      4,   // batch = 0, y = 1, x = 0
+      2,   // batch = 0, y = 1, x = 1
+      -4,  // batch = 0, y = 1, x = 2
+  });
+  m.SetPerChannelQuantizedFilter({
+      // [1 * 2 * 2 * 4] as [input_channel, y, x, output_channel]
+      // depth multiplier = 2
+      1, 2, 3, 4,  // y = 0, x = 0
+      3, 4, 5, 6,  // y = 0, x = 1
+      7, 8, 5, 6,  // y = 1, x = 0
+      3, 4, 1, 2,  // y = 1, x = 1
+  });
+  m.SetPerChannelQuantizedBias({3, -2, 4, 6});
+
+  // Reference output.
+  m.Invoke();
+  auto reference_output = m.GetDequantizedOutput<int8_t>();
+
+  m.ApplyDelegateAndInvoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(reference_output, 1e-2)));
 }
 
 TEST(QuantizedConvolutionOpModel, DepthwiseConvSimplePerAxis_Int8) {

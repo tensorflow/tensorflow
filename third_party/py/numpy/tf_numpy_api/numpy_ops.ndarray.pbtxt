@@ -1,0 +1,58 @@
+path: "numpy_ops.ndarray"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.numpy_ops.np_arrays.ndarray\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "T"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "data"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "ndim"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "size"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'shape\', \'dtype\', \'buffer\'], varargs=None, keywords=None, defaults=[\"<class \'float\'>\", \'None\'], "
+  }
+  member_method {
+    name: "astype"
+    argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_tensor"
+    argspec: "args=[\'cls\', \'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ravel"
+    argspec: "args=[\'a\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reshape"
+    argspec: "args=[\'a\'], varargs=newshape, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "tolist"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "transpose"
+    argspec: "args=[\'a\', \'axes\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}
