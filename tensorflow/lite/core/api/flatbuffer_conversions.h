@@ -140,6 +140,48 @@ TfLiteStatus ParseGreaterEqual(const Operator* op, BuiltinOperator op_type,
                                BuiltinDataAllocator* allocator,
                                void** builtin_data);
 
+TfLiteStatus ParseL2Normalization(const Operator* op, BuiltinOperator op_type,
+                                  ErrorReporter* error_reporter,
+                                  BuiltinDataAllocator* allocator,
+                                  void** builtin_data);
+
+TfLiteStatus ParseLess(const Operator* op, BuiltinOperator op_type,
+                       ErrorReporter* error_reporter,
+                       BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseLessEqual(const Operator* op, BuiltinOperator op_type,
+                            ErrorReporter* error_reporter,
+                            BuiltinDataAllocator* allocator,
+                            void** builtin_data);
+
+TfLiteStatus ParseLog(const Operator* op, BuiltinOperator op_type,
+                      ErrorReporter* error_reporter,
+                      BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseLogicalAnd(const Operator* op, BuiltinOperator op_type,
+                             ErrorReporter* error_reporter,
+                             BuiltinDataAllocator* allocator,
+                             void** builtin_data);
+
+TfLiteStatus ParseLogicalNot(const Operator* op, BuiltinOperator op_type,
+                             ErrorReporter* error_reporter,
+                             BuiltinDataAllocator* allocator,
+                             void** builtin_data);
+
+TfLiteStatus ParseLogicalOr(const Operator* op, BuiltinOperator op_type,
+                            ErrorReporter* error_reporter,
+                            BuiltinDataAllocator* allocator,
+                            void** builtin_data);
+
+TfLiteStatus ParseLogistic(const Operator* op, BuiltinOperator op_type,
+                           ErrorReporter* error_reporter,
+                           BuiltinDataAllocator* allocator,
+                           void** builtin_data);
+
+TfLiteStatus ParseMaximum(const Operator* op, BuiltinOperator op_type,
+                          ErrorReporter* error_reporter,
+                          BuiltinDataAllocator* allocator, void** builtin_data);
+
 TfLiteStatus ParsePool(const Operator* op, BuiltinOperator op_type,
                        ErrorReporter* error_reporter,
                        BuiltinDataAllocator* allocator, void** builtin_data);
