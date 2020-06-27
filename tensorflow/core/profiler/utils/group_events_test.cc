@@ -40,8 +40,9 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, kStepNum}});
+  CreateXEvent(
+      &host_plane_builder, &main_thread, HostEventType::kTraceContext, 0, 100,
+      {{StatType::kGraphType, "train"}, {StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
                10, 90, {{StatType::kStepId, kStepId}});
 
@@ -68,7 +69,7 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
                 device_plane->lines(0).events(0).stats(1)),
             StatType::kGroupId);
   EXPECT_EQ(event_group_name_map.size(), 1);
-  EXPECT_EQ(event_group_name_map[0], "123");
+  EXPECT_EQ(event_group_name_map[0], "train 123");
 }
 
 TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
