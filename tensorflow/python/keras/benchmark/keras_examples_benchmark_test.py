@@ -43,7 +43,15 @@ class KerasExamplesBenchmark(
       Other details can see in `measure_performance()` method of 
       benchmark_util.
   """
-  # Set different batch_size and iteration as needed.
+
+  """The parameters of each benchmark is a tuple:
+     (suffix_of_benchmark, batch_size, run_iters).
+     suffix_of_benchmark: The suffix of the benchmark test name with
+     convention `{bs}_{batch_size}`.
+     batch_size: Integer. Number of samples per gradient update.
+     run_iters: Integer. Number of iterations to run the 
+         performance measurement.
+  """
   _benchmark_parameters = [
     ('bs_32', 32, 2), ('bs_64', 64, 2), ('bs_128', 128, 1),
     ('bs_256', 256, 1), ('bs_512', 512, 3)]

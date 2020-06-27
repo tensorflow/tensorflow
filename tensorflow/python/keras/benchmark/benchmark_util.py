@@ -75,10 +75,9 @@ def measure_performance(model_fn,
         method of `keras.Model`. If unspecified, `verbose` will default to 0.
     num_gpus: Number of GPUs to run the model.
     distribution_strategy: Distribution strategies.
-        It could be `tpu`, `multi_worker_mirrored`, `one_device`, `mirrored`,
-        `parameter_server`. If unspecified, `distribution_strategy` will
-        default to 'off'.
-
+        It could be `multi_worker_mirrored`, `one_device`, `mirrored`.
+        If unspecified, `distribution_strategy` will default to 'off'.
+        TODO: `TPU`, `parameter_server`.
   Returns:
     Performance summary, which contains build_time, compile_time,
     startup_time, avg_epoch_time, wall_time, exp_per_sec, distribution_strategy,

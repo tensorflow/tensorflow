@@ -19,14 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
-import os
-
 from tensorflow.python import distribute
 from tensorflow.python.distribute import cross_device_ops
-from tensorflow.python.eager import remote
-from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.distribute.tpu_strategy import TPUStrategy
 from tensorflow.python.distribute.collective_all_reduce_strategy import \
   CollectiveAllReduceStrategy
 
@@ -125,10 +119,7 @@ def get_distribution_strategy(distribution_strategy="mirrored",
           "When {} GPUs are specified, distribution_strategy "
           "flag cannot be set to `off`.".format(num_gpus))
     return None
-
-  if distribution_strategy == 'tpu':
-    cluster_resolver = tpu_initialize(tpu_address)
-    return TPUStrategy(cluster_resolver)
+  # TODO: `TPU`, `parameter_server`.
 
   if distribution_strategy == 'multi_worker_mirrored':
     return CollectiveAllReduceStrategy(
@@ -151,41 +142,8 @@ def get_distribution_strategy(distribution_strategy="mirrored",
         devices=devices,
         cross_device_ops=_mirrored_cross_device_ops(all_reduce_alg, num_packs))
 
-  if distribution_strategy == "parameter_server":
-    return distribute.parameter_server_strategy.ParameterServerStrategy()
-
   raise ValueError(
       "Unrecognized Distribution Strategy: %r" % distribution_strategy)
-
-
-def configure_cluster(worker_hosts=None, task_index=-1):
-  """Set multi-worker cluster spec in TF_CONFIG environment variable.
-
-  Args:
-    worker_hosts: Comma-separated list of worker ip:port pairs.
-
-  Returns:
-    Number of workers in the cluster.
-  """
-  tf_config = json.load(os.environ.get("TF_CONFIG", "{}"))
-  if tf_config:
-    num_workers = (len(tf_config["cluster"].get("chief", [])) +
-                   len(tf_config["cluster"].get("worker", [])))
-  elif worker_hosts:
-    workers = worker_hosts.split(",")
-    num_workers = len(workers)
-    if num_workers > 1 and task_index < 0:
-      raise ValueError("Must specify task_index when number of workers > 1")
-    task_index = 0 if num_workers == 1 else task_index
-    os.environ["TF_CONFIG"] = json.dumps({
-      "cluster": {
-        "worker": workers
-      },
-      "task": {"type": "worker", "index": task_index}
-    })
-  else:
-    num_workers = 1
-  return num_workers
 
 
 def get_strategy_scope(strategy):
@@ -195,23 +153,6 @@ def get_strategy_scope(strategy):
     strategy_scope = DummyContextManager()
 
   return strategy_scope
-
-
-def tpu_initialize(tpu_address):
-  """Initializes TPU for TF 2.0 training.
-
-    Args:
-      tpu_address: String, bns address of master TPU worker.
-
-    Returns:
-      A TPUClusterResolver.
-    """
-  cluster_resolver = distribute.cluster_resolver.TPUClusterResolver(
-      tpu=tpu_address)
-  if tpu_address not in ('', 'local'):
-    remote.connect_to_cluster(cluster_resolver)
-  tpu_strategy_util.initialize_tpu_system(cluster_resolver)
-  return cluster_resolver
 
 
 class DummyContextManager(object):
