@@ -695,22 +695,22 @@ class HybridLstmParam : public BaseLstmParam {
     return &cell_quantized_tensor_;
   }
   TfLiteTensor* GetInputZeroPoints() {
-    PackWeightToTensor(&zero_points_tensor0_, input_zp_,
+    PackWeightToTensor(&input_zp_tensor_, input_zp_,
                        quantization_extra_scratch_buffer_sizes_);
-    zero_points_tensor0_.data.i32 = input_zp_.data();
-    return &zero_points_tensor0_;
+    input_zp_tensor_.data.i32 = input_zp_.data();
+    return &input_zp_tensor_;
   }
   TfLiteTensor* GetAuxInputZeroPoints() {
-    PackWeightToTensor(&zero_points_tensor1_, aux_input_zp_,
+    PackWeightToTensor(&aux_input_zp_tensor_, aux_input_zp_,
                        quantization_extra_scratch_buffer_sizes_);
-    zero_points_tensor1_.data.i32 = aux_input_zp_.data();
-    return &zero_points_tensor1_;
+    aux_input_zp_tensor_.data.i32 = aux_input_zp_.data();
+    return &aux_input_zp_tensor_;
   }
   TfLiteTensor* GetOutputStateZeroPoints() {
-    PackWeightToTensor(&zero_points_tensor2_, output_state_zp_,
+    PackWeightToTensor(&output_state_zp_tensor_, output_state_zp_,
                        quantization_extra_scratch_buffer_sizes_);
-    zero_points_tensor2_.data.i32 = output_state_zp_.data();
-    return &zero_points_tensor2_;
+    output_state_zp_tensor_.data.i32 = output_state_zp_.data();
+    return &output_state_zp_tensor_;
   }
   TfLiteTensor* GetRowSums() {
     PackWeightToTensor(&row_sums_tensor_, row_sums_, row_sums_size_);
@@ -808,9 +808,9 @@ class HybridLstmParam : public BaseLstmParam {
     TfLiteIntArrayFree(input_quantized_tensor_.dims);
     TfLiteIntArrayFree(activation_quantized_tensor_.dims);
     TfLiteIntArrayFree(cell_quantized_tensor_.dims);
-    TfLiteIntArrayFree(zero_points_tensor0_.dims);
-    TfLiteIntArrayFree(zero_points_tensor1_.dims);
-    TfLiteIntArrayFree(zero_points_tensor2_.dims);
+    TfLiteIntArrayFree(input_zp_tensor_.dims);
+    TfLiteIntArrayFree(aux_input_zp_tensor_.dims);
+    TfLiteIntArrayFree(output_state_zp_tensor_.dims);
     TfLiteIntArrayFree(row_sums_tensor_.dims);
   }
 
@@ -833,11 +833,11 @@ class HybridLstmParam : public BaseLstmParam {
   TfLiteTensor prod_scaling_factors_tensor_;
 
   std::vector<int32_t> input_zp_;
-  TfLiteTensor zero_points_tensor0_;
+  TfLiteTensor input_zp_tensor_;
   std::vector<int32_t> aux_input_zp_;
-  TfLiteTensor zero_points_tensor1_;
+  TfLiteTensor aux_input_zp_tensor_;
   std::vector<int32_t> output_state_zp_;
-  TfLiteTensor zero_points_tensor2_;
+  TfLiteTensor output_state_zp_tensor_;
 
   std::vector<int8_t> input_quantized_;
   TfLiteTensor input_quantized_tensor_;
