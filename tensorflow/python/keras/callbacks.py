@@ -379,12 +379,10 @@ class CallbackList(object):
       self.on_predict_end()
 
   def on_batch_begin(self, batch, logs=None):
-    if self._should_call_train_batch_hooks:
-      self._call_batch_hook(ModeKeys.TRAIN, 'begin', batch, logs=logs)
+    super().on_train_batch_begin(batch, logs=logs)
 
   def on_batch_end(self, batch, logs=None):
-    if self._should_call_train_batch_hooks:
-      self._call_batch_hook(ModeKeys.TRAIN, 'end', batch, logs=logs)
+    super().on_train_batch_end(batch, logs=logs)
 
   def on_epoch_begin(self, epoch, logs=None):
     """Calls the `on_epoch_begin` methods of its callbacks.
@@ -423,7 +421,7 @@ class CallbackList(object):
     # TODO(b/150629188): Make ProgBarLogger callback not use batch hooks
     # when verbose != 1
     if self._should_call_train_batch_hooks:
-      self._call_batch_hook(ModeKeys.TRAIN, 'begin', batch, logs=logs)
+      self._call_batch_begin_hook(ModeKeys.TRAIN, batch, logs=logs)
 
   def on_train_batch_end(self, batch, logs=None):
     """Calls the `on_train_batch_end` methods of its callbacks.
@@ -433,7 +431,7 @@ class CallbackList(object):
         logs: Dict. Aggregated metric results up until this batch.
     """
     if self._should_call_train_batch_hooks:
-      self._call_batch_hook(ModeKeys.TRAIN, 'end', batch, logs=logs)
+      self._call_batch_end_hook(ModeKeys.TRAIN, batch, logs=logs)
 
   def on_test_batch_begin(self, batch, logs=None):
     """Calls the `on_test_batch_begin` methods of its callbacks.
@@ -445,7 +443,7 @@ class CallbackList(object):
           `{'loss': 0.2, 'accuracy': 0.7}`.
     """
     if self._should_call_test_batch_hooks:
-      self._call_batch_hook(ModeKeys.TEST, 'begin', batch, logs=logs)
+      self._call_batch_begin_hook(ModeKeys.TEST, batch, logs=logs)
 
   def on_test_batch_end(self, batch, logs=None):
     """Calls the `on_test_batch_end` methods of its callbacks.
@@ -455,7 +453,7 @@ class CallbackList(object):
         logs: Dict. Aggregated metric results up until this batch.
     """
     if self._should_call_test_batch_hooks:
-      self._call_batch_hook(ModeKeys.TEST, 'end', batch, logs=logs)
+      self._call_batch_end_hook(ModeKeys.TEST, batch, logs=logs)
 
   def on_predict_batch_begin(self, batch, logs=None):
     """Calls the `on_predict_batch_begin` methods of its callbacks.
@@ -467,7 +465,7 @@ class CallbackList(object):
           the model's outputs.
     """
     if self._should_call_predict_batch_hooks:
-      self._call_batch_hook(ModeKeys.PREDICT, 'begin', batch, logs=logs)
+      self._call_batch_begin_hook(ModeKeys.PREDICT, batch, logs=logs)
 
   def on_predict_batch_end(self, batch, logs=None):
     """Calls the `on_predict_batch_end` methods of its callbacks.
@@ -477,7 +475,7 @@ class CallbackList(object):
         logs: Dict. Aggregated metric results up until this batch.
     """
     if self._should_call_predict_batch_hooks:
-      self._call_batch_hook(ModeKeys.PREDICT, 'end', batch, logs=logs)
+      self._call_batch_end_hook(ModeKeys.PREDICT, batch, logs=logs)
 
   def on_train_begin(self, logs=None):
     """Calls the `on_train_begin` methods of its callbacks.
