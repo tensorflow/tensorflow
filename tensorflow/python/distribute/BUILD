@@ -20,6 +20,7 @@ py_library(
         ":single_loss_example",
         ":strategy_combinations",
         ":strategy_test_lib",
+        ":test_util",
         "//tensorflow/python/keras/distribute:keras_correctness_test_lib",
         "//tensorflow/python/keras/distribute:keras_test_lib",
     ],
@@ -1856,5 +1857,40 @@ distribute_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "test_util",
+    srcs = ["test_util.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":collective_all_reduce_strategy",
+        ":cross_device_utils",
+        ":distribute_utils",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/types",
+    ],
+)
+
+distribute_py_test(
+    name = "test_util_test",
+    srcs = ["test_util_test.py"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":combinations",
+        ":strategy_combinations",
+        ":test_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
