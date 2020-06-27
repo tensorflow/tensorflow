@@ -568,6 +568,31 @@ TfLiteStatus ParseMinimum(const Operator*, BuiltinOperator, ErrorReporter*,
   return kTfLiteOk;
 }
 
+TfLiteStatus ParseMul(const Operator* op, BuiltinOperator,
+                      ErrorReporter* error_reporter,
+                      BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteMulParams, SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteMulParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const MulOptions* schema_params = op->builtin_options_as_MulOptions();
+
+  if (schema_params != nullptr) {
+    params->activation =
+        ConvertActivation(schema_params->fused_activation_function());
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
@@ -581,6 +606,32 @@ TfLiteStatus ParseNeg(const Operator*, BuiltinOperator, ErrorReporter*,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseNotEqual(const Operator*, BuiltinOperator, ErrorReporter*,
                            BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParsePack(const Operator* op, BuiltinOperator,
+                       ErrorReporter* error_reporter,
+                       BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLitePackParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLitePackParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const PackOptions* schema_params = op->builtin_options_as_PackOptions();
+
+  if (schema_params != nullptr) {
+    params->values_count = schema_params->values_count();
+    params->axis = schema_params->axis();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
   return kTfLiteOk;
 }
 
@@ -731,6 +782,33 @@ TfLiteStatus ParseReshape(const Operator* op, BuiltinOperator,
   return kTfLiteOk;
 }
 
+TfLiteStatus ParseResizeNearestNeighbor(const Operator* op, BuiltinOperator,
+                                        ErrorReporter* error_reporter,
+                                        BuiltinDataAllocator* allocator,
+                                        void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteResizeNearestNeighborParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteResizeNearestNeighborParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const ResizeNearestNeighborOptions* schema_params =
+      op->builtin_options_as_ResizeNearestNeighborOptions();
+
+  if (schema_params != nullptr) {
+    params->align_corners = schema_params->align_corners();
+    params->half_pixel_centers = schema_params->half_pixel_centers();
+  } else {
+    params->align_corners = false;
+    params->half_pixel_centers = false;
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
@@ -781,6 +859,31 @@ TfLiteStatus ParseSoftmax(const Operator* op, BuiltinOperator,
   return kTfLiteOk;
 }
 
+TfLiteStatus ParseSplit(const Operator* op, BuiltinOperator,
+                        ErrorReporter* error_reporter,
+                        BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteSplitParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteSplitParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const SplitOptions* schema_params = op->builtin_options_as_SplitOptions();
+
+  if (schema_params != nullptr) {
+    params->num_splits = schema_params->num_splits();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
@@ -794,6 +897,62 @@ TfLiteStatus ParseSqrt(const Operator*, BuiltinOperator, ErrorReporter*,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseSquare(const Operator*, BuiltinOperator, ErrorReporter*,
                          BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseStridedSlice(const Operator* op, BuiltinOperator,
+                               ErrorReporter* error_reporter,
+                               BuiltinDataAllocator* allocator,
+                               void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteStridedSliceParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteStridedSliceParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const StridedSliceOptions* schema_params =
+      op->builtin_options_as_StridedSliceOptions();
+
+  if (schema_params != nullptr) {
+    params->begin_mask = schema_params->begin_mask();
+    params->end_mask = schema_params->end_mask();
+    params->ellipsis_mask = schema_params->ellipsis_mask();
+    params->new_axis_mask = schema_params->new_axis_mask();
+    params->shrink_axis_mask = schema_params->shrink_axis_mask();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseSub(const Operator* op, BuiltinOperator,
+                      ErrorReporter* error_reporter,
+                      BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteSubParams, SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteSubParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const SubOptions* schema_params = op->builtin_options_as_SubOptions();
+
+  if (schema_params != nullptr) {
+    params->activation =
+        ConvertActivation(schema_params->fused_activation_function());
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
   return kTfLiteOk;
 }
 
@@ -830,6 +989,32 @@ TfLiteStatus ParseSvdf(const Operator* op, BuiltinOperator,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseTanh(const Operator*, BuiltinOperator, ErrorReporter*,
                        BuiltinDataAllocator*, void**) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseUnpack(const Operator* op, BuiltinOperator,
+                         ErrorReporter* error_reporter,
+                         BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteUnpackParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteUnpackParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const UnpackOptions* schema_params = op->builtin_options_as_UnpackOptions();
+
+  if (schema_params != nullptr) {
+    params->num = schema_params->num();
+    params->axis = schema_params->axis();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
   return kTfLiteOk;
 }
 
@@ -984,22 +1169,36 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_MINIMUM: {
       return ParseMinimum(op, op_type, error_reporter, allocator, builtin_data);
     }
+
+    case BuiltinOperator_MUL: {
+      return ParseMul(op, op_type, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_NEG: {
       return ParseNeg(op, op_type, error_reporter, allocator, builtin_data);
     }
+
     case BuiltinOperator_NOT_EQUAL: {
       return ParseNotEqual(op, op_type, error_reporter, allocator,
                            builtin_data);
     }
+
+    case BuiltinOperator_PACK: {
+      return ParsePack(op, op_type, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_PAD: {
       return ParsePad(op, op_type, error_reporter, allocator, builtin_data);
     }
+
     case BuiltinOperator_PADV2: {
       return ParsePadV2(op, op_type, error_reporter, allocator, builtin_data);
     }
+
     case BuiltinOperator_PRELU: {
       return ParsePrelu(op, op_type, error_reporter, allocator, builtin_data);
     }
+
     case BuiltinOperator_QUANTIZE: {
       return ParseQuantize(op, op_type, error_reporter, allocator,
                            builtin_data);
@@ -1033,6 +1232,11 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       return ParseReshape(op, op_type, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR: {
+      return ParseResizeNearestNeighbor(op, op_type, error_reporter, allocator,
+                                        builtin_data);
+    }
+
     case BuiltinOperator_ROUND: {
       return ParseRound(op, op_type, error_reporter, allocator, builtin_data);
     }
@@ -1049,12 +1253,25 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       return ParseSoftmax(op, op_type, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_SPLIT: {
+      return ParseSplit(op, op_type, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_SQRT: {
       return ParseSqrt(op, op_type, error_reporter, allocator, builtin_data);
     }
 
     case BuiltinOperator_SQUARE: {
       return ParseSquare(op, op_type, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_STRIDED_SLICE: {
+      return ParseStridedSlice(op, op_type, error_reporter, allocator,
+                               builtin_data);
+    }
+
+    case BuiltinOperator_SUB: {
+      return ParseSub(op, op_type, error_reporter, allocator, builtin_data);
     }
 
     case BuiltinOperator_SUM: {
@@ -1067,6 +1284,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
 
     case BuiltinOperator_TANH: {
       return ParseTanh(op, op_type, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_UNPACK: {
+      return ParseUnpack(op, op_type, error_reporter, allocator, builtin_data);
     }
 
     case BuiltinOperator_CAST: {
@@ -1150,30 +1371,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_HASHTABLE_LOOKUP:
       // no-op.
       return kTfLiteOk;
-    case BuiltinOperator_MUL: {
-      auto params = safe_allocator.Allocate<TfLiteMulParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_MulOptions()) {
-        params->activation =
-            ConvertActivation(schema_params->fused_activation_function());
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
     case BuiltinOperator_DIV: {
       auto params = safe_allocator.Allocate<TfLiteDivParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
       if (const auto* schema_params = op->builtin_options_as_DivOptions()) {
-        params->activation =
-            ConvertActivation(schema_params->fused_activation_function());
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_SUB: {
-      auto params = safe_allocator.Allocate<TfLiteSubParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_SubOptions()) {
         params->activation =
             ConvertActivation(schema_params->fused_activation_function());
       }
@@ -1275,21 +1476,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
-    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR: {
-      auto params =
-          safe_allocator.Allocate<TfLiteResizeNearestNeighborParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params =
-              op->builtin_options_as_ResizeNearestNeighborOptions()) {
-        params->align_corners = schema_params->align_corners();
-        params->half_pixel_centers = schema_params->half_pixel_centers();
-      } else {
-        params->align_corners = false;
-        params->half_pixel_centers = false;
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
     case BuiltinOperator_SKIP_GRAM: {
       auto params = safe_allocator.Allocate<TfLiteSkipGramParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -1333,15 +1519,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
-    case BuiltinOperator_SPLIT: {
-      auto params = safe_allocator.Allocate<TfLiteSplitParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_SplitOptions()) {
-        params->num_splits = schema_params->num_splits();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
     case BuiltinOperator_SPLIT_V: {
       auto params = safe_allocator.Allocate<TfLiteSplitParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -1360,20 +1537,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
             error_reporter, "squeeze"));
         params->num_squeeze_dims = squeeze_dims->size();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_STRIDED_SLICE: {
-      auto params = safe_allocator.Allocate<TfLiteStridedSliceParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params =
-              op->builtin_options_as_StridedSliceOptions()) {
-        params->begin_mask = schema_params->begin_mask();
-        params->end_mask = schema_params->end_mask();
-        params->ellipsis_mask = schema_params->ellipsis_mask();
-        params->new_axis_mask = schema_params->new_axis_mask();
-        params->shrink_axis_mask = schema_params->shrink_axis_mask();
       }
       *builtin_data = params.release();
       return kTfLiteOk;
@@ -1410,16 +1573,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
-    case BuiltinOperator_PACK: {
-      auto params = safe_allocator.Allocate<TfLitePackParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* pack_params = op->builtin_options_as_PackOptions()) {
-        params->values_count = pack_params->values_count();
-        params->axis = pack_params->axis();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       TF_LITE_REPORT_ERROR(error_reporter,
@@ -1444,16 +1597,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       TF_LITE_ENSURE(error_reporter, params != nullptr);
       if (const auto* schema_params = op->builtin_options_as_OneHotOptions()) {
         params->axis = schema_params->axis();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_UNPACK: {
-      auto params = safe_allocator.Allocate<TfLiteUnpackParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* unpack_params = op->builtin_options_as_UnpackOptions()) {
-        params->num = unpack_params->num();
-        params->axis = unpack_params->axis();
       }
       *builtin_data = params.release();
       return kTfLiteOk;

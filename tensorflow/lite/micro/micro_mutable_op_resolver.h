@@ -265,10 +265,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddMul() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_MUL, *tflite::ops::micro::Register_MUL(),
-                      ParseOpData);
+                      ParseMul);
   }
 
   TfLiteStatus AddNeg() {
@@ -282,10 +280,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddPack() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_PACK,
-                      *tflite::ops::micro::Register_PACK(), ParseOpData);
+                      *tflite::ops::micro::Register_PACK(), ParsePack);
   }
 
   TfLiteStatus AddPad() {
@@ -324,11 +320,9 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddResizeNearestNeighbor() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
                       *tflite::ops::micro::Register_RESIZE_NEAREST_NEIGHBOR(),
-                      ParseOpData);
+                      ParseResizeNearestNeighbor);
   }
 
   TfLiteStatus AddRound() {
@@ -352,10 +346,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddSplit() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_SPLIT,
-                      *tflite::ops::micro::Register_SPLIT(), ParseOpData);
+                      *tflite::ops::micro::Register_SPLIT(), ParseSplit);
   }
 
   TfLiteStatus AddSqrt() {
@@ -369,18 +361,14 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddStridedSlice() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_STRIDED_SLICE,
                       *tflite::ops::micro::Register_STRIDED_SLICE(),
-                      ParseOpData);
+                      ParseStridedSlice);
   }
 
   TfLiteStatus AddSub() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_SUB, *tflite::ops::micro::Register_SUB(),
-                      ParseOpData);
+                      ParseSub);
   }
 
   TfLiteStatus AddSvdf() {
@@ -394,10 +382,8 @@ class MicroMutableOpResolver : public MicroOpResolver {
   }
 
   TfLiteStatus AddUnpack() {
-    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
-    // function.
     return AddBuiltin(BuiltinOperator_UNPACK,
-                      *tflite::ops::micro::Register_UNPACK(), ParseOpData);
+                      *tflite::ops::micro::Register_UNPACK(), ParseUnpack);
   }
 
   unsigned int GetRegistrationLength() { return registrations_len_; }
