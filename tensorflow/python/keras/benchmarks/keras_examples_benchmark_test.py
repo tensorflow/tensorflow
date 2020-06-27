@@ -22,7 +22,7 @@ from tensorflow.python import keras
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import preprocessing
 from tensorflow.python.keras.datasets import imdb
-from tensorflow.python.keras.benchmark import benchmark_util
+from tensorflow.python.keras.benchmarks import benchmark_util
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
