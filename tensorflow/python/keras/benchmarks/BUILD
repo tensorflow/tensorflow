@@ -88,5 +88,5 @@ py_library(
     srcs = ["distribution_util.py"],
     deps = [
         "//tensorflow/python/eager:remote",
-  ],
+    ],
 )

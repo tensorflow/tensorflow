@@ -39,9 +39,9 @@ def _collective_communication(all_reduce_alg):
     ValueError: If `all_reduce_alg` not in [None, "ring", "nccl"].
   """
   collective_communication_options = {
-    None: cross_device_ops.CollectiveCommunication.AUTO,
-    "ring": cross_device_ops.CollectiveCommunication.RING,
-    "nccl": cross_device_ops.CollectiveCommunication.NCCL
+      None: cross_device_ops.CollectiveCommunication.AUTO,
+      "ring": cross_device_ops.CollectiveCommunication.RING,
+      "nccl": cross_device_ops.CollectiveCommunication.NCCL
   }
   if all_reduce_alg not in collective_communication_options:
     raise ValueError(
@@ -67,8 +67,8 @@ def _mirrored_cross_device_ops(all_reduce_alg, num_packs):
   if all_reduce_alg is None:
     return None
   mirrored_all_reduce_options = {
-    "nccl": cross_device_ops.NcclAllReduce,
-    "hierarchical_copy": cross_device_ops.HierarchicalCopyAllReduce
+      "nccl": cross_device_ops.NcclAllReduce,
+      "hierarchical_copy": cross_device_ops.HierarchicalCopyAllReduce
   }
   if all_reduce_alg not in mirrored_all_reduce_options:
     raise ValueError(
@@ -80,16 +80,17 @@ def _mirrored_cross_device_ops(all_reduce_alg, num_packs):
 
 
 def get_distribution_strategy(distribution_strategy="mirrored",
-    num_gpus=0,
-    all_reduce_alg=None,
-    num_packs=1,
-    tpu_address=None):
+                              num_gpus=0,
+                              all_reduce_alg=None,
+                              num_packs=1,
+                              tpu_address=None):
   """Return a DistributionStrategy for running the model.
 
   Args:
     distribution_strategy: A string specifying which distribution strategy to
       use. Accepted values are "off", "one_device", "mirrored",
-      "parameter_server", "multi_worker_mirrored", and "tpu" -- case insensitive.
+      "parameter_server", "multi_worker_mirrored", and "tpu" --
+      case insensitive.
       "off" means not to use Distribution Strategy; "tpu" means to use
       TPUStrategy using `tpu_address`.
     num_gpus: Number of GPUs to run this model.

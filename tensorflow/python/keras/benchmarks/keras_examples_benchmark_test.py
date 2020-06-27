@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Benchmark for examples on https://keras.io/examples."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -32,7 +33,6 @@ _MAX_LEN = 200
 
 class KerasExamplesBenchmark(
     six.with_metaclass(benchmark.ParameterizedBenchmark, test.Benchmark)):
-  """Benchmark for examples on https://keras.io/examples."""
 
   """Required Arguments for measure_performance:
       x: Input data, it could be Numpy or load from tfds.    
@@ -53,8 +53,8 @@ class KerasExamplesBenchmark(
          performance measurement.
   """
   _benchmark_parameters = [
-    ('bs_32', 32, 2), ('bs_64', 64, 2), ('bs_128', 128, 1),
-    ('bs_256', 256, 1), ('bs_512', 512, 3)]
+      ('bs_32', 32, 2), ('bs_64', 64, 2), ('bs_128', 128, 1),
+      ('bs_256', 256, 1), ('bs_512', 512, 3)]
 
   def _lstm_imdb_model(self):
     """LSTM model from https://keras.io/examples/nlp/bidirectional_lstm_imdb/."""
@@ -66,8 +66,8 @@ class KerasExamplesBenchmark(
     model = keras.Model(inputs, outputs)
     return model
 
-  # Benchmark for Bidirectional LSTM on IMDB.
   def benchmark_bidirect_lstm_imdb(self, batch_size, run_iters):
+    """Benchmark for Bidirectional LSTM on IMDB."""
     # Load dataset.
     (x_train, y_train), _ = imdb.load_data(num_words=_MAX_FEATURE)
     x_train = preprocessing.sequence.pad_sequences(x_train, maxlen=_MAX_LEN)
