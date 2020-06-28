@@ -35,7 +35,7 @@ from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import serialization
 from tensorflow.python.util.lazy_loader import LazyLoader
-from tensorflow.python.platform.gfile import GFile, Remove, Exists
+import tensorflow.python.platform.gfile as gfile
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -57,7 +57,7 @@ sequential_lib = LazyLoader(
 def create_lockfile(filepath):
   lockfile_path = filepath + ".lock"
 
-  f = GFile(lockfile_path, 'w')
+  f = gfile.GFile(lockfile_path, 'w')
   f.write(str(os.getpid()))
   f.close()
 
@@ -65,7 +65,7 @@ def create_lockfile(filepath):
 
 def check_lockfile(filepath):
   lockfile_path = filepath + ".lock"
-  return Exists(lockfile_path)
+  return gfile.Exists(lockfile_path)
 
 def save_model_to_hdf5(model, filepath, overwrite=True, lockfile=True, include_optimizer=True):
   """Saves a model to a HDF5 file.
@@ -150,7 +150,7 @@ def save_model_to_hdf5(model, filepath, overwrite=True, lockfile=True, include_o
 
       # remove lock file
       if (lockfile == True):
-        Remove(lockfile_path)
+        gfile.Remove(lockfile_path)
 
 
 def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
