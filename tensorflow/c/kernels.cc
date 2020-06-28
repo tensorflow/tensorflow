@@ -25,9 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/types.h"
-
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 // This file forms the basis of a stable ABI for third-party kernel
 // implementations. It is crucial that changes to this file are made cautiously
@@ -281,11 +279,14 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
   tensorflow::Tensor tensor_temp;  
   TF_Tensor* tf_tensor_temp; 
   s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape, &tensor_temp);
-  if (s.ok()){ 
-    tf_tensor_temp = TF_TensorFromTensor(tensor_temp, &s); 
+  if (!s.ok()){ 
+  	::tensorflow::Set_TF_Status_from_Status(status, s); 
+  	return nullptr; 
   }
-  if (s.ok()){ 
+  tf_tensor_temp = TF_TensorFromTensor(tensor_temp, &s); 
+  if (!s.ok()){ 
     ::tensorflow::Set_TF_Status_from_Status(status, s); 
-    return tf_tensor_temp; 
+    return nullptr; 
   }  
+  return tf_tensor_temp; 
 }
