@@ -456,7 +456,8 @@ class Function(object):
                experimental_implements=None,
                experimental_autograph_options=None,
                experimental_relax_shapes=False,
-               experimental_compile=None):
+               experimental_compile=None,
+               experimental_type_tracing=False):
     """Initializes a `Function`.
 
     Args:
@@ -512,6 +513,9 @@ class Function(object):
         executor). Set this value to `False` when directly running a
         multi-device function on TPUs (e.g. two TPU cores, one TPU core and its
         host CPU).
+      experimental_type_tracing: When true, arguments type annotated with
+        tf.TensorLike will be treated as if they were a tensor.
+
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
@@ -519,7 +523,8 @@ class Function(object):
     self._lock = threading.Lock()
     self._python_function = python_function
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
-        python_function, input_signature)
+        python_function, input_signature,
+        experimental_type_tracing=experimental_type_tracing)
     self._implements = experimental_implements
     # If `True`, the function uses the rendezvous of the parent. This is only
     # needed to support code where raw send/recv operations are inserted and
@@ -529,6 +534,7 @@ class Function(object):
     self._experimental_autograph_options = experimental_autograph_options
     self._experimental_relax_shapes = experimental_relax_shapes
     self._experimental_compile = experimental_compile
+    self._experimental_type_tracing = experimental_type_tracing
     self._created_variables = None  # GUARDED_BY(self._lock)
     self._stateful_fn = None  # GUARDED_BY(self._lock)
     self._stateless_fn = None  # GUARDED_BY(self._lock)
@@ -658,6 +664,7 @@ class Function(object):
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options,
         experimental_compile=self._experimental_compile,
+        experimental_type_tracing=self._experimental_type_tracing,
         experimental_relax_shapes=self._experimental_relax_shapes)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
@@ -716,7 +723,8 @@ class Function(object):
         experimental_implements=self._implements,
         experimental_autograph_options=self._experimental_autograph_options,
         experimental_relax_shapes=self._experimental_relax_shapes,
-        experimental_compile=self._experimental_compile)
+        experimental_compile=self._experimental_compile,
+        experimental_type_tracing=self._experimental_type_tracing)
 
     if self._shared_rendezvous:
       f._shared_rendezvous = self._shared_rendezvous  # pylint: disable=protected-access
@@ -1203,7 +1211,8 @@ def function(func=None,
              experimental_implements=None,
              experimental_autograph_options=None,
              experimental_relax_shapes=False,
-             experimental_compile=None):
+             experimental_compile=None,
+             experimental_type_tracing=False):
   """Compiles a function into a callable TensorFlow graph.
 
   `tf.function` constructs a callable that executes a TensorFlow graph
@@ -1406,6 +1415,8 @@ def function(func=None,
     experimental_compile: If True, the function is always compiled by
       [XLA](https://www.tensorflow.org/xla). XLA may be more efficient in some
       cases (e.g. TPU, XLA_GPU, dense tensor computations).
+    experimental_type_tracing: When true, arguments type annotated with
+      tf.TensorLike will be treated as if they were a tensor.
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
@@ -1436,7 +1447,8 @@ def function(func=None,
             experimental_autograph_options=experimental_autograph_options,
             experimental_relax_shapes=experimental_relax_shapes,
             experimental_compile=experimental_compile,
-            experimental_implements=experimental_implements))
+            experimental_implements=experimental_implements,
+            experimental_type_tracing=experimental_type_tracing))
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:
