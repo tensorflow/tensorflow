@@ -74,6 +74,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.types import core as core_tf_types
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
@@ -2534,6 +2535,31 @@ class FunctionSpec(object):
     kwargs = {kw: ops.convert_to_tensor(x) for kw, x in kwargs.items()}
     return tuple(args), kwargs
 
+  def _convert_typed_variables_to_tensors(self, args, kwargs):
+    if self.input_signature is not None:
+      return
+
+    args = list(args)
+    for i, arg in enumerate(args):
+      if i < len(self._fullargspec.args):
+        arg_annotation = self._fullargspec.annotations.get(
+            self._fullargspec.args[i])
+        if arg_annotation == core_tf_types.TensorLike:
+          args[i] = ops.convert_to_tensor(arg)
+      else:
+        varargs_annotation = self._fullargspec.annotations.get(
+            self._fullargspec.varargs)
+        if varargs_annotation == core_tf_types.TensorLike:
+          args[i] = ops.convert_to_tensor(arg)
+
+    if self._fullargspec.varkw is not None:
+      varkw_annotation = self._fullargspec.annotations.get(
+          self._fullargspec.varkw)
+      if varkw_annotation == core_tf_types.TensorLike:
+        kwargs = {kw: ops.convert_to_tensor(x) for kw, x in kwargs.items()}
+
+    return tuple(args), kwargs
+
   def canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
 
@@ -2566,6 +2592,8 @@ class FunctionSpec(object):
     """
     if self._is_pure:
       args, kwargs = self._convert_variables_to_tensors(args, kwargs)
+    if self._experimental_type_tracing:
+      args, kwargs = self._convert_typed_variables_to_tensors(args, kwargs)
     if self._input_signature is not None:
       if len(args) > len(self._input_signature):
         raise TypeError("{} takes {} positional arguments (as specified by the "
