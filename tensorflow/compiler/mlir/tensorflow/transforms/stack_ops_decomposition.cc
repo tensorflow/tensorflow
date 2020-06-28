@@ -343,7 +343,7 @@ LogicalResult HandlePartitionedCallOp(
   }
   llvm::SmallDenseMap<Value, Value> callee_map;
   FuncOp lowered_callee = callee;
-  if (callee.getVisibility() != SymbolTable::Visibility::Private) {
+  if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
     lowered_callee.setVisibility(SymbolTable::Visibility::Private);

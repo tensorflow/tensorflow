@@ -191,11 +191,13 @@ Status DoTransposeImpl(const Device& d, const Tensor& in,
     case DT_FLOAT:
     case DT_INT32:
     case DT_QINT32:
+    case DT_UINT32:
       Transpose<Device, uint32>::run(d, in, perm, out);
       break;
 
     case DT_DOUBLE:
     case DT_INT64:
+    case DT_UINT64:
       Transpose<Device, uint64>::run(d, in, perm, out);
       break;
 

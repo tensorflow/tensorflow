@@ -19,6 +19,7 @@ from __future__ import print_function
 import contextlib
 import os
 import re
+import zipfile
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python import keras
@@ -43,6 +44,8 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
   def skip_fetch_failure_exception(self):
     try:
       yield
+    except zipfile.BadZipfile as e:
+      self.skipTest('Data loading error: Bad magic number for file header.')
     except Exception as e:  # pylint: disable=broad-except
       if 'URL fetch failure' in str(e):
         self.skipTest('URL fetch error not considered failure of the test.')
@@ -120,8 +123,8 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
 
       multi_worker_model.fit(
           multi_worker_dataset,
-          epochs=3,
-          steps_per_epoch=70,
+          epochs=2,
+          steps_per_epoch=20,
           callbacks=callbacks)
 
     with test_util.skip_if_error(self, errors_impl.UnavailableError):

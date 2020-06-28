@@ -19,7 +19,9 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
@@ -43,7 +45,7 @@ class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
     auto func = getFunction();
 
     // TODO(pifon): Remove assumption that the function has a single block.
-    if (func.getBlocks().size() != 1) {
+    if (!llvm::hasSingleElement(func)) {
       emitError(func.getLoc(), "The function needs to have a single block.");
       signalPassFailure();
       return;
@@ -52,13 +54,21 @@ class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
     // The fusion in Linalg is currently possible only when the consumer op is
     // tiled. In order to greedily fuse the ops, we have to start from the tiled
     // root linalg ops, i.e. linalg ops that write to output buffers of the
-    // function.
-    llvm::SmallDenseSet<Value> func_args;
+    // function or are returned in case of escaping allocations.
+    llvm::SmallDenseSet<Value> result_buffers;
     for (auto func_arg : func.getArguments()) {
-      func_args.insert(func_arg);
+      result_buffers.insert(func_arg);
     }
+    for (auto& block : func) {
+      auto returnOp = mlir::dyn_cast<mlir::ReturnOp>(block.getTerminator());
+      if (!returnOp) continue;
+      for (auto operand : returnOp.getOperands()) {
+        result_buffers.insert(operand);
+      }
+    }
+    MLIRContext* ctx = func.getContext();
     OpBuilder b(func);
-    OperationFolder folder(func.getContext());
+    OperationFolder folder(ctx);
     func.walk([&](linalg::GenericOp generic_op) {
       SmallVector<int64_t, 2> tile_sizes(tile_sizes_.begin(),
                                          tile_sizes_.end());
@@ -67,13 +77,15 @@ class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
       }
       auto op = cast<LinalgOp>(generic_op.getOperation());
       for (const Value result : op.getOutputBuffers()) {
-        if (!func_args.count(result)) continue;
-        if (tileGenericOp(op, tile_sizes, &b, &folder)) {
+        if (!result_buffers.count(result)) continue;
+        if (tileGenericOp(op, tile_sizes, &b)) {
           generic_op.erase();
           return;
         }
       }
     });
+    auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
+    applyPatternsAndFoldGreedily(func, patterns);
 
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
@@ -92,19 +104,22 @@ class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
           *originalOpInLinalgOpsVector = info->fusedProducer.getOperation();
         }
       }
+
+      auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
+      applyPatternsAndFoldGreedily(func, patterns);
     }
     for (auto* e : erase_set) e->erase();
   }
 
  private:
-  bool tileGenericOp(LinalgOp op, ArrayRef<int64_t> tile_sizes, OpBuilder* b,
-                     OperationFolder* folder) {
-    auto tiled_generic_op =
-        use_parallel_loops_
-            ? linalg::tileLinalgOpToParallelLoops(*b, op, tile_sizes,
-                                                  /*permutation=*/{}, folder)
-            : linalg::tileLinalgOp(*b, op, tile_sizes,
-                                   /*permutation=*/{}, folder);
+  bool tileGenericOp(LinalgOp op, ArrayRef<int64_t> tile_sizes, OpBuilder* b) {
+    auto loopType = use_parallel_loops_
+                        ? linalg::LinalgTilingLoopType::ParallelLoops
+                        : linalg::LinalgTilingLoopType::Loops;
+    auto tiled_generic_op = linalg::tileLinalgOp(*b, op,
+                                                 linalg::LinalgTilingOptions()
+                                                     .setTileSizes(tile_sizes)
+                                                     .setLoopType(loopType));
     return tiled_generic_op.hasValue();
   }
 

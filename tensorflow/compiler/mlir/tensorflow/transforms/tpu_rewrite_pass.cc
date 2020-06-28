@@ -146,6 +146,9 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       // We can simply change name of TPU program's main function because there
       // should be no other reference to it.
       clone.setName("main");
+      clone.setVisibility(FuncOp::Visibility::Public);
+    } else {
+      clone.setVisibility(FuncOp::Visibility::Private);
     }
     symbol_table.insert(clone);
   }
@@ -700,6 +703,19 @@ LogicalResult Rewrite(
       tpu_device_assignment.compilation_device,
       std::move(tpu_device_assignment.xla_device_assignment), builder);
   if (!compile_op) return failure();
+
+  // This replaces _TPUCompileMlir placeholder ops that are required
+  // by XlaRecvAtHost and XlaSendFromHost ops add in earlier pass.
+  // TODO(b/157054714): When a better abstraction instead of _TPUCompileMlirOp
+  // and _XlaRecvAtHostOp and _XlaSendFromHostOp are used, update to a more
+  // structured lowering.
+  if (auto parallel_op = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
+          cluster_func.getParentOp())) {
+    parallel_op.walk([&](TF::_TPUCompileMlirOp parallel_compile_op) {
+      parallel_compile_op.replaceAllUsesWith(compile_op);
+      parallel_compile_op.erase();
+    });
+  }
 
   // After rewrite, find if there is a TPUCompilationResultOp in the block with
   // the same _tpu_replicate attribute and replace it with the result of the

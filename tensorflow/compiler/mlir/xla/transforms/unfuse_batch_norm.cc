@@ -60,9 +60,7 @@ Value CalculateShapeValue(Location loc, Value operand,
   for (int64_t i = 0; i < rank; ++i) {
     shape_values.push_back(rewriter.create<mlir::DimOp>(loc, operand, i));
   }
-  Type shape_element_type = shape_values.front().getType();
-  return rewriter.create<ScalarsToDimensionTensorOp>(
-      loc, RankedTensorType::get({rank}, shape_element_type), shape_values);
+  return rewriter.create<TensorFromElementsOp>(loc, shape_values);
 }
 
 Value MaterializeEpsilon(Operation* op, FloatAttr epsilon_attr,

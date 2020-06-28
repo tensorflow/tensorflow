@@ -60,7 +60,6 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
   ### Examples
 
-  ```python
   >>> # A scalar StructuredTensor describing a single person.
   >>> s1 = StructuredTensor.from_pyval(
   ...     {"age": 82, "nicknames": ["Bob", "Bobby"]})
@@ -78,7 +77,7 @@ class StructuredTensor(composite_tensor.CompositeTensor):
   TensorShape([3])
   >>> s2[0]["age"]
   <tf.Tensor: shape=(), dtype=int32, numpy=12>
-  ```
+
 
   ### Field Paths
 
@@ -156,18 +155,19 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     Examples:
 
       >>> StructuredTensor.from_fields({'x': 1, 'y': [1, 2, 3]})
-      <StructuredTensor(fields={
-                            x: tf.Tensor(1, shape=(), dtype=int32),
-                            y: tf.Tensor([1 2 3], shape=(3,), dtype=int32)},
-                        shape=())>
+      <StructuredTensor(
+        fields={
+          "x": tf.Tensor(1, shape=(), dtype=int32),
+          "y": tf.Tensor([1 2 3], shape=(3,), dtype=int32)},
+        shape=())>
 
       >>> StructuredTensor.from_fields({'foo': [1, 2], 'bar': [3, 4]},
       ...                              shape=[2])
-      <StructuredTensor(fields={
-                            bar: tf.Tensor([3 4], shape=(2,), dtype=int32),
-                            foo: tf.Tensor([1 2], shape=(2,), dtype=int32)},
-                        shape=(2,))>
-
+      <StructuredTensor(
+        fields={
+          "bar": tf.Tensor([3 4], shape=(2,), dtype=int32),
+          "foo": tf.Tensor([1 2], shape=(2,), dtype=int32)},
+        shape=(2,))>
     """
     shape = tensor_shape.as_shape(shape)
     rank = shape.rank
@@ -437,9 +437,15 @@ class StructuredTensor(composite_tensor.CompositeTensor):
       return self._fields[key[rank]].__getitem__(key[:rank] + key[rank + 1:])
 
   def __repr__(self):
-    return '<StructuredTensor(fields={%s}, shape=%s)>' % (', '.join(
-        '"%s": %s' % (k, v)
-        for k, v in sorted(self._fields.items())), self._shape)
+    fields = sorted(self._fields.items())
+    fields = ((k, str(v).replace('\n', '\n            ')) for k, v in fields)
+    fields = ('"{}": {}'.format(k, v) for k, v in fields)
+    dict_repr = ',\n        '.join(fields)
+    return (
+        '<StructuredTensor(\n'
+        '    fields={\n'
+        '        %s},\n'
+        '    shape=%s)>' % (dict_repr, self._shape))
 
   #=============================================================================
   # Conversion
@@ -506,10 +512,11 @@ class StructuredTensor(composite_tensor.CompositeTensor):
 
     >>> StructuredTensor.from_pyval(
     ...     {'a': [1, 2, 3], 'b': [[4, 5], [6, 7]]})
-    <StructuredTensor(fields={
-                          a: tf.Tensor([1 2 3], shape=(3,), dtype=int32),
-                          b: <tf.RaggedTensor [[4, 5], [6, 7]]>},
-                      shape=())>
+    <StructuredTensor(
+        fields={
+          "a": tf.Tensor([1 2 3], shape=(3,), dtype=int32),
+          "b": <tf.RaggedTensor [[4, 5], [6, 7]]>},
+        shape=())>
 
     Note that `StructuredTensor.from_pyval(pyval).to_pyval() == pyval`.
 
@@ -639,9 +646,10 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     ...     [{'foo': 12}, {'foo': 33}, {'foo': 99}])
     >>> partition = RowPartition.from_row_lengths([2, 0, 1])
     >>> st.partition_outer_dimension(partition)
-    <StructuredTensor(fields={
-                          foo: <tf.RaggedTensor [[12, 33], [], [99]]>},
-                      shape=(3, None))>
+    <StructuredTensor(
+      fields={
+        "foo": <tf.RaggedTensor [[12, 33], [], [99]]>},
+      shape=(3, None))>
 
     Args:
       row_partition: A `RowPartition`.
@@ -664,9 +672,10 @@ class StructuredTensor(composite_tensor.CompositeTensor):
     >>> st = StructuredTensor.from_pyval(
     ...     [[{'foo': 12}, {'foo': 33}], [], [{'foo': 99}]])
     >>> st.merge_dims(0, 1)
-    <StructuredTensor(fields={
-                          foo: tf.Tensor([12 33 99], shape=(3,), dtype=int32)},
-                      shape=(3,))>
+    <StructuredTensor(
+      fields={
+        "foo": tf.Tensor([12 33 99], shape=(3,), dtype=int32)},
+      shape=(3,))>
 
     Args:
       outer_axis: `int`: The first dimension in the range of dimensions to
@@ -1071,16 +1080,17 @@ def _partition_outer_dimension(value, row_partition):
 
   Examples:
 
-    >>> partition = row_partition.RowPartition.from_row_lengths([2, 0, 1])
+    >>> partition = RowPartition.from_row_lengths([2, 0, 1])
     >>> _partition_outer_dimension(tf.constant([1, 2, 3]), partition)
     <tf.RaggedTensor [[1, 2], [], [3]]>
 
     >>> struct_value = StructuredTensor.from_pyval(
     ...     [{'x': 1}, {'x': 2}, {'x': 3}])
     >>> _partition_outer_dimension(struct_value, partition)
-    <StructuredTensor(fields={
-                          x: <tf.RaggedTensor [[1, 2], [], [3]]>},
-                      shape=(3, None))>
+    <StructuredTensor(
+      fields={
+        "x": <tf.RaggedTensor [[1, 2], [], [3]]>},
+      shape=(3, None))>
 
   Args:
     value: Tensor, RaggedTensor, or StructuredTensor

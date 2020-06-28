@@ -42,29 +42,39 @@ class Shape;
 // Helper class for importing HloComputations.
 class HloFunctionImporter {
  public:
-  static StatusOr<mlir::FuncOp> ImportFunction(
-      mlir::ModuleOp module, mlir::Builder* builder,
-      std::unordered_map<xla::HloComputation*, mlir::FuncOp>* function_map,
-      xla::HloComputation* computation);
+  // Imports the given computation as a function in the given module. This also
+  // imports any computations referred by instructions in this computation.
+  static Status ImportAsFunc(const xla::HloComputation& computation,
+                             mlir::ModuleOp module,
+                             std::unordered_map<const xla::HloComputation*,
+                                                mlir::FuncOp>* function_map,
+                             mlir::Builder* builder);
+
+  // Imports the given hlo computation to the specified region.
+  static Status ImportAsRegion(const xla::HloComputation& computation,
+                               mlir::Region* region, mlir::Builder* builder);
 
  private:
-  HloFunctionImporter(
-      mlir::ModuleOp module, mlir::Builder* builder,
-      std::unordered_map<xla::HloComputation*, mlir::FuncOp>* function_map)
+  HloFunctionImporter(mlir::ModuleOp module,
+                      std::unordered_map<const xla::HloComputation*,
+                                         mlir::FuncOp>* function_map,
+                      mlir::Builder* builder)
       : context_(module.getContext()),
         module_(module),
         builder_(builder),
         function_map_(function_map) {}
 
-  StatusOr<mlir::FuncOp> ImportFunction(xla::HloComputation* computation);
+  // Imports the given computation as a new function, if it hasn't been already
+  // imported.
+  StatusOr<mlir::FuncOp> ImportAsFunc(const xla::HloComputation& computation);
 
   // Imports the given computation in the specified region.
-  tensorflow::Status ImportComputation(HloComputation* computation,
-                                       mlir::Region* region);
+  tensorflow::Status ImportAsRegion(const HloComputation& computation,
+                                    mlir::Region* region);
 
   // Imports instructions from the given computation in the specified block.
   // Assumes that the block already has correct arguments populated.
-  tensorflow::Status ImportInstructions(HloComputation* computation,
+  tensorflow::Status ImportInstructions(const HloComputation& computation,
                                         mlir::Block* block);
 
   // Imports an instruction.
@@ -125,7 +135,7 @@ class HloFunctionImporter {
   mlir::Builder* builder_;
 
   // Mapping from HloComputation to the created MLIR function.
-  std::unordered_map<xla::HloComputation*, mlir::FuncOp>* function_map_;
+  std::unordered_map<const xla::HloComputation*, mlir::FuncOp>* function_map_;
 
   // Mapping from HloInstructions to the associative MLIR values.
   std::unordered_map<xla::HloInstruction*, mlir::Value> instruction_value_map_;

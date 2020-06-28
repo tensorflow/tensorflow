@@ -38,9 +38,10 @@ tf_cuda_library(
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            ":context_interface",
-            ":operation_interface",
-            ":tensor_handle_interface",
+            ":immediate_execution_context",
+            ":immediate_execution_operation",
+            ":immediate_execution_tensor_handle",
+            ":abstract_tensor_handle",
             ":tfe_context_internal",
             ":tfe_cancellation_manager_internal",
             ":tfe_executor_internal",
@@ -101,13 +102,17 @@ tf_cuda_library(
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
+        "abstract_context.h",
+        "abstract_function.h",
+        "abstract_operation.h",
+        "abstract_tensor_handle.h",
         "c_api_experimental.h",
         "c_api_internal.h",
         "c_api_unified_experimental.h",
-        "context_interface.h",
         "dlpack.h",
-        "operation_interface.h",
-        "tensor_handle_interface.h",
+        "immediate_execution_context.h",
+        "immediate_execution_operation.h",
+        "immediate_execution_tensor_handle.h",
         "tfe_cancellation_manager_internal.h",
         "tfe_executor_internal.h",
         "tfe_monitoring_internal.h",
@@ -145,12 +150,44 @@ cc_library(
 )
 
 cc_library(
-    name = "tensor_handle_interface",
-    hdrs = ["tensor_handle_interface.h"],
+    name = "c_api_unified_internal",
+    hdrs = [
+        "c_api_unified_experimental_internal.h",
+    ],
     visibility = [
         "//tensorflow:internal",
     ],
     deps = [
+        ":abstract_context",
+        ":abstract_operation",
+        ":abstract_tensor_handle",
+        ":c_api",
+        ":c_api_experimental",
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:conversion_macros",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "abstract_tensor_handle",
+    hdrs = ["abstract_tensor_handle.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [],
+)
+
+cc_library(
+    name = "immediate_execution_tensor_handle",
+    hdrs = ["immediate_execution_tensor_handle.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_tensor_handle",
         "//tensorflow/c:tensor_interface",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -159,13 +196,13 @@ cc_library(
 )
 
 cc_library(
-    name = "operation_interface",
-    hdrs = ["operation_interface.h"],
+    name = "abstract_operation",
+    hdrs = ["abstract_operation.h"],
     visibility = [
         "//tensorflow:internal",
     ],
     deps = [
-        ":tensor_handle_interface",
+        ":abstract_tensor_handle",
         "//tensorflow/c:tensor_interface",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -175,16 +212,58 @@ cc_library(
 )
 
 cc_library(
-    name = "context_interface",
-    hdrs = ["context_interface.h"],
+    name = "immediate_execution_operation",
+    hdrs = ["immediate_execution_operation.h"],
     visibility = [
         "//tensorflow:internal",
     ],
     deps = [
-        ":operation_interface",
-        ":tensor_handle_interface",
+        ":abstract_operation",
+        ":abstract_tensor_handle",
+        ":immediate_execution_tensor_handle",
         "//tensorflow/c:tensor_interface",
-        "//tensorflow/c/experimental/saved_model/core:saved_model_api",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "abstract_context",
+    hdrs = ["abstract_context.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_function",
+        ":abstract_operation",
+    ],
+)
+
+cc_library(
+    name = "abstract_function",
+    hdrs = ["abstract_function.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+    ],
+)
+
+cc_library(
+    name = "immediate_execution_context",
+    hdrs = ["immediate_execution_context.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_context",
+        ":immediate_execution_operation",
+        ":immediate_execution_tensor_handle",
+        "//tensorflow/c:tensor_interface",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -200,7 +279,7 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        ":context_interface",
+        ":immediate_execution_context",
         "//tensorflow/c:conversion_macros",
     ],
 )
@@ -260,7 +339,7 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        ":operation_interface",
+        ":immediate_execution_operation",
         "//tensorflow/c:conversion_macros",
     ],
 )
@@ -283,7 +362,7 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        ":tensor_handle_interface",
+        ":immediate_execution_tensor_handle",
         "//tensorflow/c:conversion_macros",
     ],
 )
@@ -350,7 +429,43 @@ tf_cuda_cc_test(
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
-    tags = ["noasan"],  # leaks gRPC server instances
+    tags = [
+        "no_windows",
+        "noasan",  # leaks gRPC server instances
+    ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_internal",
+        ":c_api_test_util",
+        ":tfe_tensorhandle_internal",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:function_optimization_registry",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "c_api_distributed_test",
+    size = "small",
+    srcs = [
+        "c_api_distributed_test.cc",
+    ],
+    # TODO(b/136478427): Figure out how to correctly shut the server down
+    args = ["--heap_check=local"],
+    extra_copts = tfe_xla_copts(),
+    tags = [
+        "no_windows",
+        "noasan",  # leaks gRPC server instances
+    ],
     deps = [
         ":c_api",
         ":c_api_experimental",
@@ -380,7 +495,10 @@ tf_cuda_cc_test(
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
-    tags = ["noasan"],  # leaks gRPC server instances
+    tags = [
+        "no_windows",
+        "noasan",  # leaks gRPC server instances
+    ],
     deps = [
         ":c_api",
         ":c_api_experimental",
@@ -424,6 +542,12 @@ tf_cuda_library(
             ":tfe_context_internal",
             ":tfe_op_internal",
             ":tfe_tensorhandle_internal",
+            ":abstract_operation",
+            ":abstract_context",
+            ":abstract_tensor_handle",
+            ":immediate_execution_tensor_handle",
+            ":immediate_execution_context",
+            "//tensorflow/core/lib/llvm_rtti",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",
@@ -442,6 +566,7 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "@com_google_absl//absl/types:variant",
+            "//tensorflow/c:conversion_macros",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -511,6 +636,7 @@ tf_cuda_cc_test(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -614,6 +740,10 @@ filegroup(
         ],
         exclude = [
             "c_api_experimental.cc",
+            "c_api_unified_experimental.cc",
+            "c_api_unified_experimental_eager.cc",
+            "c_api_unified_experimental_graph.cc",
+            "c_api_unified_experimental_internal.h",
             "*test*",
             "*dlpack*",
         ],

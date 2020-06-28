@@ -289,12 +289,12 @@ class QuantizationDriver {
       llvm::errs() << "\n\n\n" << current_op->getName() << "\n";
     }
     fn_.walk([&](Operation *op) {
-      if (llvm::isa<quant::QuantizeCastOp>(op) ||
-          llvm::isa<quant::DequantizeCastOp>(op) || llvm::isa<ConstantOp>(op))
+      if (llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp, ConstantOp>(
+              op))
         return;
       if (current_op == op) llvm::errs() << "===>>>";
       llvm::errs() << op->getName() << " : (";
-      for (auto i = 0; i < op->getNumOperands(); ++i) {
+      for (int i = 0, e = op->getNumOperands(); i < e; ++i) {
         if (auto params = GetOperandQuantState(op, i).params)
           params.print(llvm::errs());
         else
@@ -303,7 +303,7 @@ class QuantizationDriver {
         llvm::errs() << ",";
       }
       llvm::errs() << ") -> (";
-      for (auto i = 0; i < op->getNumResults(); ++i) {
+      for (int i = 0, e = op->getNumResults(); i < e; ++i) {
         if (auto params = GetResultQuantState(op, i).params)
           params.print(llvm::errs());
         else
@@ -494,6 +494,13 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   auto quantize = builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
   auto dequantize = builder_.create<quant::DequantizeCastOp>(
       loc, expressed_type, quantize.getResult());
+
+  // This attribute is set to distinguish the quantize ops being added by the
+  // quantization pass. These ops can be removed without losing original
+  // program accuracy.
+  // TODO(fengliuai): make the attribute being part of op definition.
+  quantize.setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
+
   // `original_result` has a use to `quantize`, so this will replace that use
   // by the result of `dequantize`. Remember to reset that use afterwards
   value.replaceAllUsesWith(dequantize);

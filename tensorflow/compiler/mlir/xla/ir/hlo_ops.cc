@@ -106,53 +106,6 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
   return GetI64ElementsAttr(slice_limits, builder);
 }
 
-// Returns the padding value of the given position. If padding_attr is a
-// nullptr, returns 0.
-static int64_t GetPaddingValue(DenseIntElementsAttr padding_attr,
-                               ArrayRef<uint64_t> index) {
-  if (!padding_attr) return 0;
-  return padding_attr.getValue<int64_t>(index);
-}
-
-static bool IsOnlyPaddingSpatialDims(Value lhs,
-                                     ConvDimensionNumbers dimension_numbers,
-                                     DenseIntElementsAttr edge_padding_low,
-                                     DenseIntElementsAttr edge_padding_high) {
-  const int64_t batch_dim = dimension_numbers.input_batch_dimension().getInt();
-  const int64_t feature_dim =
-      dimension_numbers.input_feature_dimension().getInt();
-  if (edge_padding_low.getValue<int64_t>(batch_dim) ||
-      edge_padding_high.getValue<int64_t>(batch_dim))
-    return false;
-  if (edge_padding_low.getValue<int64_t>(feature_dim) ||
-      edge_padding_high.getValue<int64_t>(feature_dim))
-    return false;
-  return true;
-}
-
-DenseIntElementsAttr BuildConvPaddingAttrs(
-    DenseIntElementsAttr edge_padding_low,
-    DenseIntElementsAttr edge_padding_high, DenseIntElementsAttr padding_attr,
-    ConvDimensionNumbers dimension_numbers, Builder* builder) {
-  SmallVector<int64_t, 4> padding_low, padding_high;
-  for (const auto& dim : dimension_numbers.input_spatial_dimensions()) {
-    unsigned i = dim.getZExtValue();
-    padding_low.push_back(edge_padding_low.getValue<int64_t>(i));
-    padding_high.push_back(edge_padding_high.getValue<int64_t>(i));
-  }
-
-  int rank = padding_low.size();
-  SmallVector<int64_t, 8> padding;
-  for (unsigned i = 0; i < rank; ++i) {
-    padding.push_back(GetPaddingValue(padding_attr, {i, 0}) + padding_low[i]);
-    padding.push_back(GetPaddingValue(padding_attr, {i, 1}) + padding_high[i]);
-  }
-  // padding_attr.getType() doesn't work because it is an optional attribute,
-  // which can be a nullptr.
-  auto type = RankedTensorType::get({rank, 2}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get(type, padding);
-}
-
 #include "tensorflow/compiler/mlir/xla/transforms/generated_canonicalize.inc"
 }  // namespace
 
@@ -260,6 +213,34 @@ static LogicalResult Verify(IotaOp op) {
     return op.emitOpError() << "iota dimension cannot go beyond the output "
                                "rank or be negative.";
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DynamicIotaOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+struct DynamicIotaIsStatic : public OpRewritePattern<DynamicIotaOp> {
+  using OpRewritePattern<DynamicIotaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicIotaOp iota,
+                                PatternRewriter& rewriter) const override {
+    auto result_ty = iota.getType().cast<ShapedType>();
+    if (!result_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<IotaOp>(iota, result_ty, iota.iota_dimension());
+    return success();
+  }
+};
+
+}  // namespace
+
+void DynamicIotaOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<DynamicIotaIsStatic>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -568,48 +549,6 @@ OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute>) {
 }
 
 //===----------------------------------------------------------------------===//
-// ScalarsToDimensionTensorOp
-//===----------------------------------------------------------------------===//
-
-namespace {
-
-// Canonicalizes the pattern of the form
-//
-// %2 = "xla_hlo.scalars_to_dimension_tensor"(%0, %1)
-//          : (i32, i32) -> tensor<2xi32>
-// %3 = extract_element %2[%c0] : tensor<2xi32>
-//
-// to just %0.
-struct ExtractElementFromScalarsToDimensionTensor
-    : public OpRewritePattern<ExtractElementOp> {
-  using OpRewritePattern<ExtractElementOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(ExtractElementOp extract,
-                                PatternRewriter& rewriter) const override {
-    if (extract.indices().size() != 1) return failure();
-
-    if (auto scalars_to_tensor = dyn_cast_or_null<ScalarsToDimensionTensorOp>(
-            extract.aggregate().getDefiningOp())) {
-      APInt index;
-      if (!matchPattern(*extract.indices().begin(), m_ConstantInt(&index))) {
-        return failure();
-      }
-      rewriter.replaceOp(extract,
-                         scalars_to_tensor.getOperand(index.getZExtValue()));
-      return success();
-    }
-    return failure();
-  }
-};
-
-}  // namespace
-
-void ScalarsToDimensionTensorOp::getCanonicalizationPatterns(
-    OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<ExtractElementFromScalarsToDimensionTensor>(context);
-}
-
-//===----------------------------------------------------------------------===//
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
 
@@ -838,6 +777,58 @@ class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
 };
 }  // namespace
 
+LogicalResult ConcatenateOp::inferReturnTypes(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  if (operands.empty()) {
+    return failure();
+  }
+
+  auto dimension_attr = attributes.get("dimension").cast<IntegerAttr>();
+  auto dimension = dimension_attr.getInt();
+
+  auto first_type = (*operands.begin()).getType().cast<ShapedType>();
+  auto out_element = first_type.getElementType();
+
+  for (auto operand : operands.getTypes()) {
+    auto element_type = getElementTypeOrSelf(operand);
+    if (element_type != out_element) {
+      return failure();
+    }
+  }
+
+  // If an input is unranked the output shape is unranked.
+  if (!first_type.hasRank()) {
+    inferredReturnTypes.push_back(UnrankedTensorType::get(out_element));
+    return success();
+  }
+
+  auto out_shape = llvm::to_vector<6>(first_type.getShape());
+  out_shape[dimension] = 0;
+
+  for (auto operand : operands.getTypes()) {
+    auto type = operand.cast<ShapedType>();
+    if (!type.hasRank()) {
+      inferredReturnTypes.push_back(UnrankedTensorType::get(out_element));
+      return success();
+    }
+
+    // If the dimension is dynamic we know the output dimension is dynamic.
+    auto dim = type.getShape()[dimension];
+    if (dim == -1) {
+      out_shape[dimension] = -1;
+      break;
+    }
+
+    out_shape[dimension] += dim;
+  }
+
+  inferredReturnTypes.push_back(RankedTensorType::get(out_shape, out_element));
+
+  return success();
+}
+
 void ConcatenateOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<ConcatenateOperandRemoval>(context);
@@ -853,7 +844,7 @@ static Attribute foldConcatenateHelper(ConcatenateOp* op,
   auto shape = type.getShape();
 
   size_t top_size = 1;
-  for (int i = 0; i < axis; i++) {
+  for (int i = 0, e = axis; i < e; i++) {
     top_size = top_size * shape[i];
   }
 
@@ -911,26 +902,39 @@ OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
 }
 
 static LogicalResult Verify(ConcatenateOp op) {
-  auto firstType = op.getOperand(0).getType().cast<RankedTensorType>();
+  Type element_type = getElementTypeOrSelf(op.getOperand(0).getType());
+  RankedTensorType first_ranked_type;
+  int num_operands = op.getNumOperands();
+  for (int i = 0; i < num_operands; i++) {
+    auto second_type = op.getOperand(i).getType().dyn_cast<ShapedType>();
+    if (second_type.getElementType() != element_type) {
+      return op.emitOpError(
+          llvm::formatv("operands (0) and ({0}) do not match element type", i));
+    }
 
-  auto firstShape = firstType.getShape();
-  int numOperands = op.getNumOperands();
-  for (int i = 1; i < numOperands; i++) {
-    auto secondType = op.getOperand(i).getType().cast<RankedTensorType>();
+    if (!second_type.hasRank()) {
+      continue;
+    }
 
-    if (firstType.getRank() != secondType.getRank()) {
+    if (!first_ranked_type) {
+      first_ranked_type = second_type.cast<RankedTensorType>();
+      continue;
+    }
+
+    if (first_ranked_type.getRank() != second_type.getRank()) {
       return op.emitOpError(
           llvm::formatv("operands (0) and ({0}) do not match rank", i));
     }
 
-    auto secondShape = secondType.getShape();
-    for (int d = 0; d < firstType.getRank(); ++d) {
-      if (firstShape[d] != secondShape[d] && d != op.dimension()) {
+    auto first_shape = second_type.getShape();
+    auto second_shape = second_type.getShape();
+    for (int d = 0; d < first_ranked_type.getRank(); ++d) {
+      if (first_shape[d] != second_shape[d] && d != op.dimension()) {
         return op.emitOpError(llvm::formatv(
             "operands (0) and ({0}) non-concat dimensions do not match "
             "({1}) != ({2})",
-            i, llvm::make_range(firstShape.begin(), firstShape.end()),
-            llvm::make_range(secondShape.begin(), secondShape.end())));
+            i, llvm::make_range(first_shape.begin(), first_shape.end()),
+            llvm::make_range(second_shape.begin(), second_shape.end())));
       }
     }
   }
@@ -1118,7 +1122,7 @@ static LogicalResult Verify(MapOp op) {
   // increasing.
   auto values = op.dimensions().getValues<int64_t>();
   auto dimensions = std::vector<int64_t>{values.begin(), values.end()};
-  for (int i = 0; i < dimensions.size(); ++i) {
+  for (int i = 0, e = dimensions.size(); i < e; ++i) {
     if (dimensions[i] != i)
       return op.emitOpError() << "requires monotonically increasing dimension "
                                  "numbers, but got: "
@@ -1397,6 +1401,47 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// Case Op
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(CaseOp op) {
+  auto num_branches = op.branches().size();
+  if (op.branch_operands().size() != num_branches)
+    return op.emitOpError() << "expects number of branches " << num_branches
+                            << " to be same as number of branch operands "
+                            << op.branch_operands().size();
+
+  MutableArrayRef<Region> branches = op.branches();
+  OperandRange branch_operands = op.branch_operands();
+  for (unsigned i = 0; i < num_branches; ++i) {
+    mlir::Region& branch_region = branches[i];
+    if (branch_region.empty())
+      return op.emitOpError() << "cannot have empty regions";
+    mlir::Block& entry_block = branch_region.front();
+    if (entry_block.getNumArguments() != 1)
+      return op.emitOpError()
+             << "expects branch regions to have single argument, but found "
+             << entry_block.getNumArguments() << " for branch " << i;
+    auto operand = branch_operands[i];
+    if (entry_block.getArgument(0).getType() != operand.getType())
+      return op.emitOpError()
+             << "expects operand " << i + 1 << " to be of type "
+             << entry_block.getArgument(0).getType() << ", but found "
+             << operand.getType();
+    WalkResult walker = branch_region.walk([&](ReturnOp return_op) {
+      if (return_op.getOperands().getTypes() != op.getResultTypes())
+        return WalkResult::interrupt();
+      return WalkResult::advance();
+    });
+    if (walker.wasInterrupted())
+      return op.emitOpError()
+             << "branch " << i
+             << " returned values do not match op result types";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BinaryOps
 //===----------------------------------------------------------------------===//
 
@@ -1447,6 +1492,38 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   return DenseElementsAttr::get(type, values);
 }
 
+template <typename T>
+struct divide : std::divides<T> {};
+
+template <>
+struct divide<APInt> {
+  APInt operator()(const APInt& a, const APInt& b) const { return a.sdiv(b); }
+};
+
+template <typename T>
+struct max {
+  T operator()(const T& a, const T& b) const { return std::max<T>(a, b); }
+};
+
+template <>
+struct max<APInt> {
+  APInt operator()(const APInt& a, const APInt& b) const {
+    return llvm::APIntOps::smax(a, b);
+  }
+};
+
+template <typename T>
+struct min {
+  T operator()(const T& a, const T& b) const { return std::min<T>(a, b); }
+};
+
+template <>
+struct min<APInt> {
+  APInt operator()(const APInt& a, const APInt& b) const {
+    return llvm::APIntOps::smin(a, b);
+  }
+};
+
 #define BINARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                           \
     if (getElementTypeOrSelf(getType()).isa<FloatType>())                      \
@@ -1456,9 +1533,16 @@ static Attribute BinaryFolder(Op* op, ArrayRef<Attribute> attrs) {
     return {};                                                                 \
   }
 
+// Addition, subtraction and multiplication use the std:: versions of the ops.
+// Due to the other ops behaving differently in signed vs unsigned integers,
+// APInts need a special implementation. Currently, it replicates signed int
+// op behavior.
 BINARY_FOLDER(AddOp, std::plus);
 BINARY_FOLDER(SubOp, std::minus);
 BINARY_FOLDER(MulOp, std::multiplies);
+BINARY_FOLDER(DivOp, divide);
+BINARY_FOLDER(MaxOp, max);
+BINARY_FOLDER(MinOp, min);
 
 #undef BINARY_FOLDER
 
@@ -1557,6 +1641,103 @@ OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return {};
+}
+
+namespace {
+// In cases where a concat is fed into a slice, it is possible the concat
+// can be simplified or bypassed. This checks which inputs to the concat are
+// used by the slice, either reducing the number of concatenated values or
+// entirely removes the concat.
+struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
+  using OpRewritePattern<SliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SliceOp slice,
+                                PatternRewriter& rewriter) const override {
+    auto result_ty = slice.getType().cast<ShapedType>();
+    if (!result_ty.hasStaticShape()) {
+      return failure();
+    }
+
+    auto slice_input = slice.operand();
+    auto slice_input_ty = slice_input.getType().cast<ShapedType>();
+    auto concat = dyn_cast_or_null<ConcatenateOp>(slice_input.getDefiningOp());
+    if (!concat) {
+      return failure();
+    }
+
+    auto dimension = concat.dimension().getSExtValue();
+
+    auto start = slice.start_indices().getIntValues();
+    auto limit = slice.limit_indices().getIntValues();
+
+    auto slice_start = (*(start.begin() + dimension)).getSExtValue();
+    auto slice_limit = (*(limit.begin() + dimension)).getSExtValue();
+
+    // We need to determine what inputs from the concat affect the slice, and
+    // how the bounds of the slice need to be updated for the minimally required
+    // inputs.
+    int64_t running_size = 0;
+    int64_t front_offset = slice_input_ty.getShape()[dimension];
+
+    auto subset_start = concat.operand_end();
+    auto subset_end = concat.operand_end();
+    for (auto it = concat.operand_begin(); it < concat.operand_end(); ++it) {
+      auto input = *it;
+      ShapedType input_ty = input.getType().cast<ShapedType>();
+      if (input_ty.isDynamicDim(dimension)) {
+        return failure();
+      }
+      auto dim_size = input_ty.getShape()[dimension];
+
+      // If this position is in the slice its the start of the subset and we
+      // need to update the start and limit values.
+      if (running_size + dim_size > slice_start &&
+          subset_start == concat.operand_end()) {
+        subset_start = it;
+        front_offset = running_size;
+      }
+
+      // Determine the last required offset.
+      if (running_size < slice_limit) {
+        subset_end = it + 1;
+      }
+
+      running_size += dim_size;
+    }
+
+    auto subset_size = subset_end - subset_start;
+    // We need all inputs so no optimization.
+    if (subset_size == concat.getNumOperands()) {
+      return failure();
+    }
+
+    if (subset_size > 1 && !concat.getResult().hasOneUse()) {
+      return failure();
+    }
+
+    auto concat_range = OperandRange(subset_start, subset_end);
+    auto new_concat = rewriter.create<ConcatenateOp>(
+        concat.getLoc(), concat_range, concat.dimension());
+
+    llvm::SmallVector<APInt, 6> new_start(start);
+    llvm::SmallVector<APInt, 6> new_limit(limit);
+    new_start[dimension] -= front_offset;
+    new_limit[dimension] -= front_offset;
+
+    auto attr_type = slice.start_indices().getType().cast<ShapedType>();
+    auto create = rewriter.create<SliceOp>(
+        slice.getLoc(), new_concat,
+        DenseIntElementsAttr::get(attr_type, new_start),
+        DenseIntElementsAttr::get(attr_type, new_limit), slice.strides());
+    rewriter.replaceOp(slice, create.getResult());
+    return success();
+  }
+};
+}  // namespace
+
+void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                          MLIRContext* context) {
+  results.insert<SimplifyConcatSlice>(context);
 }
 
 // Returns output dimension size for slice result for the given arguments.
@@ -1920,21 +2101,9 @@ LogicalResult deriveShapeFromFirstOperand(
           loc, builder->getI64IntegerAttr(element.value())));
     }
   }
-  *reifiedReturnShapes =
-      SmallVector<Value, 1>{builder->create<ScalarsToDimensionTensorOp>(
-          loc,
-          RankedTensorType::get({operand_type.getRank()}, shape_scalar_type),
-          shape_values)};
+  *reifiedReturnShapes = SmallVector<Value, 1>{
+      builder->create<TensorFromElementsOp>(loc, shape_values)};
   return success();
-}
-
-//===----------------------------------------------------------------------===//
-// ConvOp
-//===----------------------------------------------------------------------===//
-
-void ConvOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
-                                         MLIRContext* context) {
-  results.insert<FoldPadIntoConv>(context);
 }
 
 }  // namespace xla_hlo

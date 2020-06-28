@@ -28,9 +28,12 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/ViewLikeInterface.h"  // from @llvm-project
 
 namespace mlir {
 class OpBuilder;
+
+#include "tensorflow/compiler/mlir/xla/ir/lhlo_structs.h.inc"
 
 namespace xla_lhlo {
 

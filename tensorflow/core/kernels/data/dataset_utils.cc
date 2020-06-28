@@ -455,6 +455,16 @@ Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
   return Status::OK();
 }
 
+Status VerifyTypeMatch(const DataType& expected, const DataType& received,
+                       int index) {
+  if (expected != received) {
+    return errors::InvalidArgument("Data type mismatch at component ", index,
+                                   ": expected ", DataTypeString(expected),
+                                   " but got ", DataTypeString(received), ".");
+  }
+  return Status::OK();
+}
+
 Status VerifyTypesMatch(const DataTypeVector& expected,
                         const DataTypeVector& received) {
   if (expected.size() != received.size()) {
@@ -463,12 +473,30 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
         " types but got ", received.size(), ".");
   }
   for (size_t i = 0; i < expected.size(); ++i) {
-    if (expected[i] != received[i]) {
-      return errors::InvalidArgument("Data type mismatch at component ", i,
-                                     ": expected ", DataTypeString(expected[i]),
-                                     " but got ", DataTypeString(received[i]),
-                                     ".");
-    }
+    TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i], i));
+  }
+  return Status::OK();
+}
+
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const std::vector<Tensor>& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " types but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i].dtype(), i));
+  }
+  return Status::OK();
+}
+
+Status VerifyShapeCompatible(const PartialTensorShape& expected,
+                             const PartialTensorShape& received, int index) {
+  if (!expected.IsCompatibleWith(received)) {
+    return errors::InvalidArgument("Incompatible shapes at component ", index,
+                                   ": expected ", expected.DebugString(),
+                                   " but got ", received.DebugString(), ".");
   }
   return Status::OK();
 }
@@ -481,12 +509,22 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
         " shapes but got ", received.size(), ".");
   }
   for (size_t i = 0; i < expected.size(); ++i) {
-    if (!expected[i].IsCompatibleWith(received[i])) {
-      return errors::InvalidArgument("Incompatible shapes at component ", i,
-                                     ": expected ", expected[i].DebugString(),
-                                     " but got ", received[i].DebugString(),
-                                     ".");
-    }
+    TF_RETURN_IF_ERROR(VerifyShapeCompatible(expected[i], received[i], i));
+  }
+
+  return Status::OK();
+}
+
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<Tensor>& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " shapes but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    TF_RETURN_IF_ERROR(
+        VerifyShapeCompatible(expected[i], received[i].shape(), i));
   }
 
   return Status::OK();

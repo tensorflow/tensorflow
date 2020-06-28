@@ -70,16 +70,6 @@ void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
 absl::Status SelectMean(const MeanAttributes& attr, const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr);
 
-absl::Status SelectMultiplyScalar(const MultiplyAttributes& attr,
-                                  const CreationContext& creation_context,
-                                  const OperationDef& op_def,
-                                  std::unique_ptr<GPUOperation>* ptr);
-
-absl::Status SelectBroadcastAdd(const AddAttributes& attr,
-                                const CreationContext& creation_context,
-                                const OperationDef& op_def,
-                                std::unique_ptr<GPUOperation>* ptr);
-
 void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr);
 

@@ -193,8 +193,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
 
   const bool any_op_is_loop_variant = [&] {
     for (mlir::Operation& op : llvm::make_range(begin_op, end_op)) {
-      if (mlir::isa<mlir::AffineForOp>(op) ||
-          mlir::isa<mlir::AffineStoreOp>(op)) {
+      if (mlir::isa<mlir::AffineForOp, mlir::AffineStoreOp>(op)) {
         return true;
       }
     }

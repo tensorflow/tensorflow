@@ -90,7 +90,7 @@ TEST_P(CPPSavedModelAPITest, LoadsSavedModel) {
   // That unblocks writing other tests that require a TF_SavedModel*,
   // like loading a ConcreteFunction. This test at least checks that the
   // C API builds and can be minimally run.
-  EXPECT_EQ(status.code(), TF_UNIMPLEMENTED);
+  EXPECT_EQ(status.code(), TF_UNIMPLEMENTED) << status.message();
 }
 
 INSTANTIATE_TEST_SUITE_P(RuntimeAgnosticCPPSavedModelTests,

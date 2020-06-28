@@ -86,6 +86,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/keras/engine:keras_tensor",
     ],
 )
 
@@ -140,7 +141,7 @@ py_library(
     deps = [
         ":backend",
         "//tensorflow/python/distribute:distributed_file_utils",
-        "//tensorflow/python/keras/distribute:multi_worker_training_state",
+        "//tensorflow/python/keras/distribute:worker_training_state",
         "//tensorflow/python/keras/protobuf:projector_config_proto_py",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
@@ -584,6 +585,7 @@ tf_py_test(
     deps = [
         ":backend",
         ":combinations",
+        ":engine",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

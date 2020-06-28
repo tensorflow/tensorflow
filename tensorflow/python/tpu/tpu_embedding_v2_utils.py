@@ -20,13 +20,11 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import abc
-import functools
 import math
 import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
 from tensorflow.python.ops import init_ops_v2
-from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -101,13 +99,13 @@ class _Optimizer(object):
     """Returns the retrieve function for the optimizer."""
     raise NotImplementedError
 
-  def _create_slots(self, table):
+  def _create_slots(self, table, variable_creator):
     """Creates slot variables for table.
 
-    Uses shape of table to create parallel slot variables.
-
     Args:
-      table: A Variable or equivalent.
+      table: The table variable to create slots for.
+      variable_creator: A function which creates variables. Takes parameters
+        'name', 'initializer'.
 
     Returns:
       A dict of variables, keyed by self._slot_names().
@@ -118,11 +116,7 @@ class _Optimizer(object):
       slots = {}
       for slot, initializer in zip(self._slot_names(),
                                    self._slot_initializers()):
-        slots[slot] = tf_variables.Variable(
-            name=table.name + "/" + slot,
-            initial_value=functools.partial(
-                initializer, shape=table.shape, dtype=table.dtype),
-            trainable=False)
+        slots[slot] = variable_creator(name=slot, initializer=initializer)
       return slots
 
 

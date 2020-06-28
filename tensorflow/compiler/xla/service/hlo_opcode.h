@@ -63,6 +63,8 @@ namespace xla {
   V(kCholesky, "cholesky", 1)                                          \
   V(kClamp, "clamp", 3)                                                \
   V(kCollectivePermute, "collective-permute", 1)                       \
+  V(kCollectivePermuteStart, "collective-permute-start", 1)            \
+  V(kCollectivePermuteDone, "collective-permute-done", 1)              \
   V(kClz, "count-leading-zeros", 1)                                    \
   V(kCompare, "compare", 2)                                            \
   V(kComplex, "complex", 2)                                            \
@@ -96,6 +98,7 @@ namespace xla {
   V(kIsFinite, "is-finite", 1)                                         \
   V(kLog, "log", 1)                                                    \
   V(kLog1p, "log-plus-one", 1)                                         \
+  V(kLogistic, "logistic", 1)                                          \
   V(kAnd, "and", 2)                                                    \
   V(kNot, "not", 1)                                                    \
   V(kOr, "or", 2)                                                      \

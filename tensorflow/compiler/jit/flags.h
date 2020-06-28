@@ -133,6 +133,11 @@ struct IntroduceFloatingPointJitterPassFlags {
   std::vector<string> tensor_names;
 };
 
+// Flags for common MLIR configurations.
+struct MlirCommonFlags {
+  bool tf_mlir_enable_mlir_bridge;
+};
+
 // Return a pointer to the DumpGraphFlags struct;
 // repeated calls return the same pointer.
 // This should be called only after Flags::Parse() has returned.
@@ -147,6 +152,8 @@ const XlaOpsCommonFlags& GetXlaOpsCommonFlags();
 
 const IntroduceFloatingPointJitterPassFlags&
 GetIntroduceFloatingPointJitterPassFlags();
+
+MlirCommonFlags* GetMlirCommonFlags();
 
 // Appends the flag definitions associated with
 // MarkForCompilationPassFlags/DumpGraphFlags to `flag_list`.

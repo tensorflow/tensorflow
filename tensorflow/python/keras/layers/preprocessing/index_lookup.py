@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import table_utils
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import compat
 
 # The string tokens in the extracted vocabulary
@@ -78,7 +79,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     invert: If true, this layer will map indices to vocabulary items instead
       of mapping vocabulary items to indices.
   """
-  # TODO(momernick): Add an examples section to the docstring.
 
   def __init__(self,
                max_tokens,
@@ -118,23 +118,30 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     else:
       self._oov_value = -1
 
+    if max_tokens is not None:
+      num_mask_tokens = (0 if mask_token is None else 1)
+      vocab_size = max_tokens - (num_oov_indices + num_mask_tokens)
+    else:
+      vocab_size = None
+
     super(IndexLookup, self).__init__(
-        combiner=_IndexLookupCombiner(self.max_tokens, self.mask_token),
-        **kwargs)
+        combiner=_IndexLookupCombiner(vocab_size, self.mask_token), **kwargs)
 
     self._output_dtype = dtypes.int64
 
+    # We need to save the key dtype so that we know if we're expecting int64
+    # keys. If we are, we will cast int32 inputs to int64 as well.
     if invert:
-      key_dtype = self._output_dtype
+      self._key_dtype = self._output_dtype
       value_dtype = self.dtype
       oov_value = self.oov_token
     else:
-      key_dtype = self.dtype
+      self._key_dtype = self.dtype
       value_dtype = self._output_dtype
       oov_value = self._oov_value
 
     self._table = lookup_ops.MutableHashTable(
-        key_dtype=key_dtype,
+        key_dtype=self._key_dtype,
         value_dtype=value_dtype,
         default_value=oov_value,
         name=(self._name + "_index_table"))
@@ -361,6 +368,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     self.set_vocabulary(updates[_VOCAB_NAME])
 
   def call(self, inputs):
+    if self._key_dtype == dtypes.int64 and inputs.dtype == dtypes.int32:
+      inputs = math_ops.cast(inputs, dtypes.int64)
     return self._table_handler.lookup(inputs)
 
   def _use_v1_apis(self):

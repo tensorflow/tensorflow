@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
+from tensorflow.python import _dtypes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -63,6 +64,13 @@ class TypesTest(test_util.TensorFlowTestCase):
         self.assertEqual(
             dtypes.as_dtype(datatype_enum).base_dtype,
             dtypes.as_dtype(numpy_dtype))
+
+  def testAllPybind11DTypeConvertibleToDType(self):
+    for datatype_enum in types_pb2.DataType.values():
+      if datatype_enum == types_pb2.DT_INVALID:
+        continue
+      dtype = _dtypes.DType(datatype_enum)
+      self.assertEqual(dtypes.as_dtype(datatype_enum), dtype)
 
   def testInvalid(self):
     with self.assertRaises(TypeError):
@@ -317,14 +325,18 @@ class TypesTest(test_util.TensorFlowTestCase):
     for enum in dtypes._TYPE_TO_STRING:
       dtype = dtypes.DType(enum)
       ctor, args = dtype.__reduce__()
-      self.assertEquals(ctor, dtypes.as_dtype)
-      self.assertEquals(args, (dtype.name,))
+      self.assertEqual(ctor, dtypes.as_dtype)
+      self.assertEqual(args, (dtype.name,))
       reconstructed = ctor(*args)
-      self.assertEquals(reconstructed, dtype)
+      self.assertEqual(reconstructed, dtype)
 
   def testAsDtypeInvalidArgument(self):
     with self.assertRaises(TypeError):
       dtypes.as_dtype((dtypes.int32, dtypes.float32))
+
+  def testAsDtypeReturnsInternedVersion(self):
+    dt = dtypes.DType(types_pb2.DT_VARIANT)
+    self.assertIs(dtypes.as_dtype(dt), dtypes.variant)
 
 
 if __name__ == "__main__":

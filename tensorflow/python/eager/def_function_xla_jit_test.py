@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
@@ -289,6 +290,119 @@ class DefFunctionTest(test.TestCase):
           'TensorList crossing the XLA/TF boundary'):
         y = f(x)
         tape.gradient(y, x)
+
+  def testTensorListConcatV2(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[3])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    compiled_f = def_function.function(experimental_compile=True)(f)
+
+    inputs = constant_op.constant([3.14, 2.68, 7.69])
+
+    self.assertAllClose([6.28, 5.36, 15.38, 9.42, 8.04, 23.07], f(inputs))
+
+    self.assertAllClose(compiled_f(inputs), f(inputs))
+
+  def testTensorListConcatV2Multidim(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[3, 2])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    compiled_f = def_function.function(experimental_compile=True)(f)
+
+    inputs = constant_op.constant([[3.14, 21.1], [2.68, 22.2], [7.69, 23.3]])
+    self.assertAllClose(f(inputs), compiled_f(inputs))
+
+  def testTensorListConcatV2Scalars(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[1])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    compiled_f = def_function.function(experimental_compile=True)(f)
+    inputs = constant_op.constant([3.14])
+    self.assertAllClose(f(inputs), compiled_f(inputs))
+
+  def testTensorListConcatGrad(self):
+
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[3])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    def g():
+      x = constant_op.constant([3.14, 2.68, 7.69])
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = f(x)
+        return tape.gradient(y, x)
+
+    compiled_g = def_function.function(experimental_compile=True)(g)
+
+    self.assertAllClose([5.0, 5.0, 5.0], g())
+    self.assertAllClose(compiled_g(), g())
+
+  def testTensorListConcatGradNestedCompile(self):
+
+    @def_function.function(experimental_compile=True)
+    def f(x):
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, size=2, element_shape=[3])
+      ta = ta.write(0, 2 * x)
+      ta = ta.write(1, 3 * x)
+      return ta.concat()
+
+    @def_function.function(experimental_compile=True)
+    def g():
+      x = constant_op.constant([3.14, 2.68, 7.69])
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = f(x)
+        out = tape.gradient(y, x)
+      return out
+
+    self.assertAllClose([5.0, 5.0, 5.0], g())
+
+  def testCumsum(self):
+
+    @def_function.function(experimental_compile=True)
+    def f(x):
+      return math_ops.cumsum(x)
+
+    f64_input = constant_op.constant([1.1, 2.2, 3.3], dtype=dtypes.float64)
+    self.assertAllClose([1.1, 3.3, 6.6], f(f64_input))
+
+  def testNoExcessiveRetracing(self):
+    inner_retracings = 0
+
+    @def_function.function(experimental_compile=True)
+    def inner(a, b):
+      nonlocal inner_retracings
+      inner_retracings += 1
+      return a * b + a
+
+    def outer(a, b):
+      return inner(a, b)
+
+    func_input = random_ops.random_normal([10, 10])
+    for _ in range(2):
+      def_function.function(outer)(func_input, func_input)
+
+    self.assertEqual(inner_retracings, 1)
 
 
 if __name__ == '__main__':

@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -64,8 +65,10 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
@@ -625,16 +628,20 @@ void ExecutorState<PropagatorStateType>::ProcessConstTensor(
 template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
                                                  int64 scheduled_nsec) {
-  profiler::TraceMe activity(
+  profiler::TraceMeConsumer activity(
+      // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
+      // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
       [&] {
         // NOTE: This tracing uses the iteration number from the first tagged
         // node that executes during this call to `Process()`. In principle,
         // subsequent nodes could have different values of `iter_num` that
         // will not be traced.
-        return absl::StrCat("ExecutorState::Process#id=", step_id_,
-                            ",iter_num=", tagged_node.get_iter_num(), "#");
+        return profiler::TraceMeEncode(
+            "ExecutorState::Process",
+            {{"id", step_id_}, {"iter_num", tagged_node.get_iter_num()}});
       },
-      2);
+      profiler::ContextType::kTfExecutor, step_id_,
+      profiler::TraceMeLevel::kInfo);
   WithContext wc(context_);
   TaggedNodeSeq ready;
   TaggedNodeReadyQueue inline_ready;
@@ -1054,10 +1061,12 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
         // aborting all other execution in the step.
         abort_run = true;
 
-        // If execution has been cancelled, mark any new errors as being
-        // derived. This ensures any errors triggered by cancellation are marked
-        // as derived.
-        if (cancellation_manager_ && cancellation_manager_->IsCancelled()) {
+        // If execution has been cancelled, mark cancelled or aborted errors as
+        // being derived. Note that the original node that fails might also
+        // trigger cancellation, and here we make sure the original error is
+        // exposed to users and not buried as a derived error.
+        if (cancellation_manager_ && cancellation_manager_->IsCancelled() &&
+            (errors::IsCancelled(s) || errors::IsAborted(s))) {
           status_ = StatusGroup::MakeDerived(s);
         } else {
           status_ = s;
@@ -1236,11 +1245,15 @@ void ExecutorState<PropagatorStateType>::Finish() {
     }
     delete this;
     runner([step_id, status, done_cb = std::move(done_cb)]() {
-      profiler::TraceMe traceme(
+      profiler::TraceMeConsumer activity(
+          // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
+          // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
           [&] {
-            return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
+            return profiler::TraceMeEncode("ExecutorDoneCallback",
+                                           {{"id", step_id}});
           },
-          2);
+          profiler::ContextType::kTfExecutor, step_id,
+          profiler::TraceMeLevel::kInfo);
       done_cb(status);
     });
     return;
@@ -1255,22 +1268,30 @@ void ExecutorState<PropagatorStateType>::Finish() {
                   done_cb = std::move(done_cb)](const Status& status) mutable {
       delete this;
       runner([step_id, status, done_cb = std::move(done_cb)]() {
-        profiler::TraceMe traceme(
+        profiler::TraceMeConsumer activity(
+            // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
+            // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
             [&] {
-              return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
+              return profiler::TraceMeEncode("ExecutorDoneCallback",
+                                             {{"id", step_id}});
             },
-            2);
+            profiler::ContextType::kTfExecutor, step_id,
+            profiler::TraceMeLevel::kInfo);
         done_cb(status);
       });
     });
   } else {
     delete this;
     runner([step_id, status, done_cb = std::move(done_cb)]() {
-      profiler::TraceMe traceme(
+      profiler::TraceMeConsumer activity(
+          // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
+          // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
           [&] {
-            return absl::StrCat("ExecutorDoneCallback#id=", step_id, "#");
+            return profiler::TraceMeEncode("ExecutorDoneCallback",
+                                           {{"id", step_id}});
           },
-          2);
+          profiler::ContextType::kTfExecutor, step_id,
+          profiler::TraceMeLevel::kInfo);
       done_cb(status);
     });
   }

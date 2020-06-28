@@ -362,7 +362,11 @@ cc_test(
 cc_library(
     name = "cppmath",
     srcs = [],
-    hdrs = ["cppmath.h"],
+    hdrs = [
+        "cppmath.h",
+        "max.h",
+        "min.h",
+    ],
     build_for_embedded = True,
     copts = tflite_copts(),
 )
@@ -447,6 +451,7 @@ cc_library(
         "reference/dequantize.h",
         "reference/floor.h",
         "reference/fully_connected.h",
+        "reference/hard_swish.h",
         "reference/integer_ops/add.h",
         "reference/integer_ops/conv.h",
         "reference/integer_ops/depthwise_conv.h",
@@ -481,6 +486,7 @@ cc_library(
         "reference/strided_slice.h",
         "reference/sub.h",
         "reference/svdf.h",
+        "reference/tanh.h",
     ],
     build_for_embedded = True,
     copts = tflite_copts(),
@@ -500,6 +506,7 @@ cc_library(
         ":common",
         ":compatibility",
         ":cppmath",
+        ":portable_tensor_utils",
         ":quantization_util",
         ":strided_slice_logic",
         ":tensor",
@@ -532,6 +539,7 @@ cc_library(
         "reference/dequantize.h",
         "reference/floor.h",
         "reference/fully_connected.h",
+        "reference/hard_swish.h",
         "reference/l2normalization.h",
         "reference/legacy_reference_ops.h",
         "reference/logistic.h",
@@ -551,6 +559,7 @@ cc_library(
         "reference/softmax.h",
         "reference/strided_slice.h",
         "reference/sub.h",
+        "reference/tanh.h",
     ],
     copts = tflite_copts(),
     deps = [

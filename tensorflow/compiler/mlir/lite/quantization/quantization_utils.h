@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
@@ -41,6 +42,11 @@ limitations under the License.
 
 namespace mlir {
 namespace quant {
+
+// A unit attribute can be attached to the quantize/dequantize ops which are
+// added by the quantization passes. These ops can be removed erased without
+// losing accuracy.
+constexpr char kVolatileOpAttrName[] = "volatile";
 
 using QuantParams = quant::QuantizedType;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
@@ -166,7 +172,7 @@ struct QuantizationPattern : public RewritePattern {
     Value quantized_value = op->getResult(0);
     for (Operation* quantized_op : quantized_value.getUsers()) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op)) {
+      if (llvm::isa<Q, DQ>(quantized_op)) {
         return failure();
       }
 
@@ -174,8 +180,8 @@ struct QuantizationPattern : public RewritePattern {
       // ops dialect, we shouldn't rewrite.
       if (quantized_op->isKnownTerminator() ||
           quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-          llvm::isa<quant::QuantizeCastOp>(quantized_op) ||
-          llvm::isa<quant::DequantizeCastOp>(quantized_op)) {
+          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(
+              quantized_op)) {
         return failure();
       }
 
@@ -380,7 +386,8 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
 
     Operation* def = pre_quantized.getDefiningOp();
     if (!def) return failure();
-    if (def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() ||
+    if (llvm::isa<FixedOutputRangeInterface>(def) ||
+        def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() ||
         def->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
       return failure();
     }

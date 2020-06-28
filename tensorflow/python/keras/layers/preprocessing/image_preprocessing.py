@@ -36,6 +36,7 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import stateless_random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.util.tf_export import keras_export
 
 ResizeMethod = image_ops.ResizeMethod
@@ -292,10 +293,15 @@ class RandomCrop(Layer):
 
 @keras_export('keras.layers.experimental.preprocessing.Rescaling')
 class Rescaling(Layer):
-  """Multiply inputs by `scale`.
+  """Multiply inputs by `scale` and adds `offset`.
 
-  For instance, to rescale an input in the `[0, 255]` range
+  For instance:
+
+  1. To rescale an input in the `[0, 255]` range
   to be in the `[0, 1]` range, you would pass `scale=1./255`.
+
+  2. To rescale an input in the `[0, 255]` range to be in the `[-1, 1]` range,
+  you would pass `scale=1./127.5, offset=-1`.
 
   The rescaling is applied both during training and inference.
 
@@ -307,16 +313,20 @@ class Rescaling(Layer):
 
   Arguments:
     scale: Float, the scale to apply to the inputs.
+    offset: Float, the offset to apply to the inputs.
     name: A string, the name of the layer.
   """
 
-  def __init__(self, scale, name=None, **kwargs):
+  def __init__(self, scale, offset=0., name=None, **kwargs):
     self.scale = scale
+    self.offset = offset
     super(Rescaling, self).__init__(name=name, **kwargs)
 
   def call(self, inputs):
     dtype = self._compute_dtype
-    return math_ops.cast(inputs, dtype) * math_ops.cast(self.scale, dtype)
+    scale = math_ops.cast(self.scale, dtype)
+    offset = math_ops.cast(self.offset, dtype)
+    return math_ops.cast(inputs, dtype) * scale + offset
 
   def compute_output_shape(self, input_shape):
     return input_shape
@@ -324,6 +334,7 @@ class Rescaling(Layer):
   def get_config(self):
     config = {
         'scale': self.scale,
+        'offset': self.offset,
     }
     base_config = super(Rescaling, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -1056,8 +1067,8 @@ class RandomContrast(Layer):
     else:
       self.lower = self.upper = factor
     if self.lower < 0. or self.upper < 0. or self.lower > 1.:
-      raise ValueError('Factor cannot have negative values, '
-                       'got {}'.format(factor))
+      raise ValueError('Factor cannot have negative values or greater than 1.0,'
+                       ' got {}'.format(factor))
     self.seed = seed
     self.input_spec = InputSpec(ndim=4)
     super(RandomContrast, self).__init__(name=name, **kwargs)
@@ -1282,11 +1293,44 @@ class RandomWidth(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+# TODO(b/147877541, b/158339556): This class is added to temporarily enable
+# creating generators within distribution strategies. Remove it when the proper
+# API is in place.
+class _RandomGenerator(stateful_random_ops.Generator):
+  """A subclass that allows creation inside distribution strategies.
+
+  This is a temporary solution to allow creating tf.random.Generator inside
+  distribution strategies. It will be removed when proper API is in place.
+
+  All replicas will have the same RNG state and generate the same random
+  numbers.
+  """
+
+  # TODO(b/157995497): Temporarily use primary variable handle inside cross
+  # replica context.
+  @property
+  def state(self):
+    """The internal state of the RNG."""
+    state_var = self._state_var
+    try:
+      _ = getattr(state_var, 'handle')
+      return state_var
+    except ValueError:
+      return state_var.values[0]
+
+  def _create_variable(self, *args, **kwargs):
+    # This function does the same thing as the base class's namesake, except
+    # that it skips the distribution-strategy check. When we are inside a
+    # distribution-strategy scope, variables.Variable will pick a proper
+    # variable class (e.g. MirroredVariable).
+    return variables.Variable(*args, **kwargs)
+
+
 def make_generator(seed=None):
   if seed:
-    return stateful_random_ops.Generator.from_seed(seed)
+    return _RandomGenerator.from_seed(seed)
   else:
-    return stateful_random_ops.Generator.from_non_deterministic_state()
+    return _RandomGenerator.from_non_deterministic_state()
 
 
 def get_interpolation(interpolation):

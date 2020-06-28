@@ -135,18 +135,16 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
     self._VerifyTriangularSolve(
         a.astype(np.float32), b.astype(np.float32), True, False, 1e-4)
 
-  @test_util.run_deprecated_v1
-  def testNonSquareCoefficientMatrixV1(self):
+  def testNonSquareCoefficientMatrix(self):
     rng = np.random.RandomState(0)
     for dtype in self.float_types:
       a = rng.randn(3, 4).astype(dtype)
       b = rng.randn(4, 4).astype(dtype)
-      with self.assertRaises(ValueError):
-        linalg_ops.matrix_triangular_solve(a, b)
-      with self.assertRaises(ValueError):
-        linalg_ops.matrix_triangular_solve(a, b)
+      with self.test_scope():
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          linalg_ops.matrix_triangular_solve(a, b)
 
-  @test_util.run_v2_only
+  @test_util.run_v2_only  # Different error types
   def testWrongDimensionsV2(self):
     randn = np.random.RandomState(0).randn
     for dtype in self.float_types:

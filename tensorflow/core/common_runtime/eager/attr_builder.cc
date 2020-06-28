@@ -224,6 +224,11 @@ const NodeDef& AttrBuilder::BuildNodeDef() {
   return node_def_;
 }
 
+void AttrBuilder::CopyAttributes(const AttrBuilder& other) {
+  encoded_attrs_.insert(other.encoded_attrs_.begin(),
+                        other.encoded_attrs_.end());
+}
+
 Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
                       TF_AttrType* out, unsigned char* is_list) {
   auto* t = gtl::FindOrNull(m, attr_name);

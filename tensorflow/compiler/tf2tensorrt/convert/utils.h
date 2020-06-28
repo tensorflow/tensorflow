@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -28,6 +29,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
+
+static constexpr char kCastOutputTypeAttrName[] = "DstT";
 
 class IONamePrefixes {
  public:
@@ -84,6 +87,10 @@ inline bool HasStaticShape(const nvinfer1::Dims& dims) {
     if (dims.d[d] < 0) return false;
   }
   return true;
+}
+
+inline bool HasStaticShape(std::vector<int> dims) {
+  return !absl::c_any_of(dims, [](int i) { return i < 0; });
 }
 
 template <typename TensorShapeType>

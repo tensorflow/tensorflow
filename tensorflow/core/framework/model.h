@@ -274,6 +274,7 @@ class Node {
 
   // Records that a node thread has stopped executing.
   void record_stop(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
+    // TODO(jsimsa): Use DCHECK_NE(work_start_, 0) here.
     if (work_start_ != 0) {
       processing_time_ += time_nanos - work_start_;
       work_start_ = 0;
@@ -293,9 +294,10 @@ class Node {
     autotune_.store(autotune);
   }
 
-  // Given the average time between output events (`output_time`), the average
-  // time between input events (`input_time`) and the buffer size, the method
-  // computes the expected time an input event will have to wait.
+  // Given the average time between events when the elements in the buffer are
+  // produced (`producer_time`), the average time between events when elements
+  // in the buffer are consumed (`consumer_time`) and the buffer size, the
+  // method computes the expected time an consumer event will have to wait.
   //
   // The wait time is approximated as the product of the probability the buffer
   // will be empty and the time it takes to produce an element into the buffer.
@@ -304,13 +306,14 @@ class Node {
   // problem as an M/M/1/K queue
   // (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
   //
-  // Collects derivatives of `ComputeWaitTime` w.r.t `output_time`, `input_time'
-  // and `buffer_size` if the corresponding pointers are not `nullptr`.
-  static double ComputeWaitTime(const double& output_time,
-                                const double& input_time,
+  // Collects derivatives of `ComputeWaitTime` w.r.t `producer_time`,
+  // `consumer_time' and `buffer_size` if the corresponding pointers are not
+  // `nullptr`.
+  static double ComputeWaitTime(const double& producer_time,
+                                const double& consumer_time,
                                 const double& buffer_size,
-                                double* output_time_derivative,
-                                double* input_time_derivative,
+                                double* producer_time_derivative,
+                                double* consumer_time_derivative,
                                 double* buffer_size_derivative);
 
   // Collects tunable parameters in the subtree rooted in this node.
@@ -598,10 +601,9 @@ class Model {
   // Indicates whether to collect resource usage.
   bool collect_resource_usage() const { return collect_resource_usage_; }
 
-  // Adds a node with the given name and given output. The method returns
-  // a pointer to the node but does not transfer ownership.
+  // Adds a node with the given name and given parent.
   void AddNode(Node::Factory factory, const string& name,
-               const string& output_name, std::shared_ptr<Node>* out_node)
+               std::shared_ptr<Node> parent, std::shared_ptr<Node>* out_node)
       TF_LOCKS_EXCLUDED(mu_);
 
   // Flushes metrics record by the model.
@@ -612,7 +614,7 @@ class Model {
       TF_LOCKS_EXCLUDED(mu_);
 
   // Removes the given node.
-  void RemoveNode(const string& name) TF_LOCKS_EXCLUDED(mu_);
+  void RemoveNode(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_);
 
  private:
   // Collects tunable parameters in the tree rooted in the given node, returning
@@ -670,8 +672,6 @@ class Model {
   mutex mu_;
   int64 id_counter_ TF_GUARDED_BY(mu_) = 1;
   std::shared_ptr<Node> output_ TF_GUARDED_BY(mu_);
-  absl::flat_hash_map<string, std::shared_ptr<Node>> lookup_table_
-      TF_GUARDED_BY(mu_);
 
   // Indicates whether the modeling framework should collect resource usage
   // (e.g. CPU, memory). The logic for collecting this information assumes that

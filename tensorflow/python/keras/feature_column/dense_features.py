@@ -23,12 +23,13 @@ import json
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.feature_column import base_feature_layer as kfc
 from tensorflow.python.util import serialization
 from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export(v1=['keras.layers.DenseFeatures'])
-class DenseFeatures(fc._BaseFeaturesLayer):  # pylint: disable=protected-access
+class DenseFeatures(kfc._BaseFeaturesLayer):  # pylint: disable=protected-access
   """A layer that produces a dense `Tensor` based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.

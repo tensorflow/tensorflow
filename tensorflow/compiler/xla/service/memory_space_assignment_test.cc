@@ -53,22 +53,18 @@ class MemorySpaceAssignmentTest : public HloTestBase,
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
     auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
-    std::unique_ptr<HloLiveRange> hlo_live_range =
-        HloLiveRange::Run(module->schedule(), *alias_analysis,
-                          module->entry_computation())
-            .ValueOrDie();
-    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-    MemorySpaceAssignmentCostAnalysis cost_analysis(
-        hlo_cost_analysis, kAsyncCopyBandwidth, kAlternateMemBandwidth,
-        *hlo_live_range, *call_graph);
+    auto cost_analysis = MemorySpaceAssignmentCostAnalysis::Create(
+                             hlo_cost_analysis, kAsyncCopyBandwidth,
+                             kAlternateMemBandwidth, *module)
+                             .ValueOrDie();
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
-            cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
+            *cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
             /*max_async_copy_to_overlap_ratio=*/10.0));
     return AssignMemorySpace(
         module, /*max_outstanding_async_copies=*/-1,
         MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
-            cost_analysis),
+            *cost_analysis, &cache_),
         &prefetch_interval_picker);
   }
 
@@ -127,7 +123,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     options.prefetch_interval_picker = prefetch_interval_picker;
     options.size_fn = size_fn;
     options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
-    options.max_outstanding_async_copies = max_outstanding_async_copies;
+    options.max_outstanding_prefetches = max_outstanding_async_copies;
+    options.max_outstanding_evictions = max_outstanding_async_copies;
     options.allocate_across_sequential_calls = GetParam();
     options.verify = true;
 
@@ -185,20 +182,45 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     }
   }
 
-  /*static*/ int64 CountMaximumOutstandingAsyncCopies(const HloModule& module) {
-    int64 max_copies = 0;
+  struct OutstandingAsyncCopies {
+    int64 max_copies;
+    int64 max_prefetches;
+    int64 max_evictions;
+  };
+
+  /*static*/ OutstandingAsyncCopies CountMaximumOutstandingAsyncCopies(
+      const HloModule& module) {
+    OutstandingAsyncCopies copies{0, 0, 0};
     int64 current_copies = 0;
+    int64 current_prefetches = 0;
+    int64 current_evictions = 0;
     for (HloInstruction* instruction : module.schedule()
                                            .sequence(module.entry_computation())
                                            .instructions()) {
       if (instruction->opcode() == HloOpcode::kCopyStart) {
         current_copies++;
+        if (ShapeUtil::GetSubshape(instruction->shape(), {0})
+                .layout()
+                .memory_space() == kAlternateMemorySpace) {
+          current_prefetches++;
+        } else {
+          current_evictions++;
+        }
       } else if (instruction->opcode() == HloOpcode::kCopyDone) {
         current_copies--;
+        if (instruction->shape().layout().memory_space() ==
+            kAlternateMemorySpace) {
+          current_prefetches--;
+        } else {
+          current_evictions--;
+        }
       }
-      max_copies = std::max(max_copies, current_copies);
+      copies.max_copies = std::max(copies.max_copies, current_copies);
+      copies.max_prefetches =
+          std::max(copies.max_prefetches, current_prefetches);
+      copies.max_prefetches = std::max(copies.max_evictions, current_evictions);
     }
-    return max_copies;
+    return copies;
   }
 
   std::unique_ptr<HloModule> CreateEvictAndPrefetchModule() {
@@ -259,6 +281,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     TF_CHECK_OK(module->set_schedule(schedule));
     return module;
   }
+
+  MemorySpaceAssignmentCostAnalysis::Cache cache_;
 };
 
 TEST_P(MemorySpaceAssignmentTest, ParameterOnly) {
@@ -408,7 +432,8 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
 
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/0);
 
-  EXPECT_EQ(CountMaximumOutstandingAsyncCopies(*module), 0);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_prefetches, 0);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_evictions, 0);
 }
 
 TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
@@ -416,7 +441,8 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
 
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/1);
 
-  EXPECT_EQ(CountMaximumOutstandingAsyncCopies(*module), 1);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_prefetches, 1);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_evictions, 1);
 }
 
 TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
@@ -424,7 +450,8 @@ TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
 
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/2);
 
-  EXPECT_EQ(CountMaximumOutstandingAsyncCopies(*module), 2);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_prefetches, 2);
+  EXPECT_LE(CountMaximumOutstandingAsyncCopies(*module).max_evictions, 2);
 }
 
 // TODO(berkin): This test is broken with some prefetch timing improvements.
@@ -1604,7 +1631,8 @@ TEST_P(MemorySpaceAssignmentTest, WhileCondAliasBug) {
     %constant.5 = s32[1]{0:T(128)} constant({1})
     %prev.4 = s32[6]{0:T(128)} parameter(0)
     %rng.8 = s32[5]{0:T(128)} rng(s32[]{:T(128)} %constant.6, s32[]{:T(128)} %constant.7), distribution=rng_uniform
-    ROOT %fusion = s32[6]{0:T(128)} fusion(s32[6]{0:T(128)} %prev.4, s32[1]{0:T(128)} %constant.5, s32[5]{0:T(128)} %rng.8), kind=kLoop, calls=%fused_computation
+    %neg = s32[1]{0:T(128)} negate(s32[1]{0:T(128)} %constant.5)
+    ROOT %fusion = s32[6]{0:T(128)} fusion(s32[6]{0:T(128)} %prev.4, s32[1]{0:T(128)} %neg, s32[5]{0:T(128)} %rng.8), kind=kLoop, calls=%fused_computation
   }
 
   %WhileWithPrngScalarResult.11 (prev.12: s32[6]) -> pred[] {
@@ -1632,6 +1660,62 @@ TEST_P(MemorySpaceAssignmentTest, WhileCondAliasBug) {
                 .layout()
                 .memory_space(),
             kDefaultMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest, WhileInPlaceBuffer) {
+  // Ensure that a dynamic update slice within a while loop is able to get an
+  // alternate memory allocation.
+  absl::string_view hlo_string = R"(
+  HloModule Module, is_scheduled=true
+
+  fused_computation {
+    param0 = f32[2,3] parameter(0)
+    constant.1 = f32[] constant(0)
+    broadcast = f32[2,1] broadcast(constant.1), dimensions={}
+    constant.3 = s32[] constant(0)
+    ROOT dynamic-update-slice.5 = f32[2,3] dynamic-update-slice(param0, broadcast, constant.3, constant.3)
+  }
+
+  %WhileBody (body_param: (f32[2,3], f32[2,3], f32[])) -> (f32[2,3], f32[2,3], f32[]) {
+    %body_param = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %body_param), index=2
+    %get-tuple-element.2 = f32[2,3]{1,0} get-tuple-element((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %body_param), index=0
+    %get-tuple-element.3 = f32[2,3]{1,0} get-tuple-element((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %body_param), index=1
+    %fusion = f32[2,3]{1,0} fusion(get-tuple-element.3), kind=kLoop, calls=fused_computation
+    %multiply = f32[2,3]{1,0} multiply(f32[2,3]{1,0} %get-tuple-element.2, f32[2,3]{1,0} %fusion)
+    ROOT %tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) tuple(f32[2,3]{1,0} %multiply, f32[2,3]{1,0} %fusion, f32[] %get-tuple-element.1)
+  }
+
+  %WhileCond (cond_param: (f32[2,3], f32[2,3], f32[])) -> pred[] {
+    %cond_param = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element = f32[] get-tuple-element((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %cond_param), index=2
+    %constant = f32[] constant(50)
+    ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+  }
+
+  ENTRY %Entry (param_data: f32[2,3], param_iter: f32[], p2: f32[2,3]) -> f32[2,3] {
+    %param_iter = f32[] parameter(1)
+    %param_data = f32[2,3]{1,0} parameter(0)
+    %p2 = f32[2,3]{1,0} parameter(2)
+    %copy1 = f32[2,3]{1,0} copy(param_data)
+    %copy2 = f32[2,3]{1,0} copy(p2)
+    %tuple.1 = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) tuple(f32[2,3]{1,0} copy1, f32[2,3]{1,0} copy2, f32[] %param_iter)
+    %while = (f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) while((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %tuple.1), condition=%WhileCond, body=%WhileBody
+    %get-tuple-element.4 = f32[2,3]{1,0} get-tuple-element((f32[2,3]{1,0}, f32[2,3]{1,0}, f32[]) %while), index=0
+    ROOT %copy3 = f32[2,3]{1,0} copy(get-tuple-element.4)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  const HloInstruction* while_op =
+      module->entry_computation()->GetInstructionWithName("while");
+  if (GetParam()) {
+    EXPECT_EQ(
+        ShapeUtil::GetSubshape(while_op->shape(), {1}).layout().memory_space(),
+        kAlternateMemorySpace);
+  }
 }
 
 TEST_P(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
@@ -3749,6 +3833,52 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
 
   HloSchedule schedule(module.get());
   schedule.set_sequence(computation, {param, lhs, rhs, dot});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  if (!cross_program_prefetches.empty()) {
+    EXPECT_EQ(cross_program_prefetches[0].first, 0);
+    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({1}));
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTest) {
+  HloComputation::Builder builder(TestName());
+
+  constexpr int kBatch = 8;
+  constexpr int kFeature = 8;
+  constexpr int kOutput = 2;
+
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kOutput, kFeature});
+  auto bitcast_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p0"));
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(lhs_shape, param, 0));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(rhs_shape, param, 1));
+
+  auto bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(bitcast_shape, rhs));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      result_shape, lhs, bitcast, dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {param, lhs, rhs, bitcast, dot});
   TF_CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());

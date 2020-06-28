@@ -558,7 +558,7 @@ def main(argv):
       # Only build images for host architecture
       proc_arch = platform.processor()
       is_x86 = proc_arch.startswith('x86')
-      if (is_x86 and any([arch in tag for arch in ['ppc64le']]) or
+      if (is_x86 and any(arch in tag for arch in ['ppc64le']) or
           not is_x86 and proc_arch not in tag):
         continue
 

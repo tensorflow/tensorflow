@@ -15,27 +15,28 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
 
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <limits>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_multithread.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv_hybrid.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/kernels/padding.h"
 
 namespace tflite {
@@ -121,7 +122,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context,
                  data_type == kTfLiteFloat32 || data_type == kTfLiteUInt8 ||
                      data_type == kTfLiteInt8 || data_type == kTfLiteInt16);
-  TF_LITE_ENSURE_EQ(context, output->type, data_type);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, data_type);
   if (!is_hybrid) {
     TF_LITE_ENSURE(context,
                    filter->type == data_type || data_type == kTfLiteInt16);
@@ -133,15 +134,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   if (hasBias) {
     bias = GetInput(context, node, kBiasTensor);
     if (data_type == kTfLiteUInt8 || data_type == kTfLiteInt8) {
-      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
     } else if (data_type == kTfLiteInt16) {
-      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt64);
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt64);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
       TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
-      TF_LITE_ENSURE_EQ(context, bias->type, data_type);
+      TF_LITE_ENSURE_TYPES_EQ(context, bias->type, data_type);
     }
     TF_LITE_ENSURE_EQ(context, NumDimensions(bias), 1);
     TF_LITE_ENSURE_EQ(context, SizeOfDimension(filter, 3),
@@ -519,9 +520,9 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
         return EvalHybridPerChannel<kernel_type>(context, node, params, data,
                                                  input, filter, bias, output);
       } else {
-        context->ReportError(
-            context, "Type %d with filter type %d not currently supported.",
-            input->type, filter->type);
+        TF_LITE_KERNEL_LOG(
+            context, "Type %s with filter type %s not currently supported.",
+            TfLiteTypeGetName(input->type), TfLiteTypeGetName(filter->type));
         return kTfLiteError;
       }
       break;

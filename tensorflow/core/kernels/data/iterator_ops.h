@@ -216,12 +216,19 @@ class MakeIteratorOp : public HybridAsyncOpKernel {
 class IteratorGetNextOp : public HybridAsyncOpKernel {
  public:
   explicit IteratorGetNextOp(OpKernelConstruction* ctx)
-      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {}
+      : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
 
   AsyncOpKernel* AsAsync() override;
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override;
+
+ private:
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 class DeleteIteratorOp : public HybridAsyncOpKernel {

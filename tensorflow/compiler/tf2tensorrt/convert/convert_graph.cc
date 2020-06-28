@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
@@ -41,21 +42,18 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
-#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"  // NOLINT
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tools/graph_transforms/transform_utils.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 namespace tensorflow {
@@ -89,8 +87,6 @@ bool AllowDynamicNonBatchDimension(const ConversionParams& params) {
   return !params.use_implicit_batch ||
          GetEngineType(params) == EngineInfo::EngineType::TRTDynamic;
 }
-
-}  // namespace
 
 struct EdgePtrCompare {
   bool operator()(const Edge* lhs, const Edge* rhs) const {
@@ -280,8 +276,9 @@ Status GetEngineInfo(const Graph* g,
   if (segment_devices.size() == 1) {
     info->device = *segment_devices.begin();
   } else if (segment_devices.size() > 1) {
-    LOG(WARNING) << "Detected multiple (" << segment_devices.size()
-                 << ") devices for the segment. Picking first one to continue.";
+    LOG_WARNING_WITH_PREFIX
+        << "Detected multiple (" << segment_devices.size()
+        << ") devices for the segment. Picking first one to continue.";
     info->device = *segment_devices.begin();
   } else {
     TfGpuId tf_gpu_id;
@@ -555,6 +552,58 @@ Status CreateTRTNode(const ConversionParams& params,
   return Status::OK();
 }
 
+int64 GetNextGraphSequenceNumber() {
+  static std::atomic<int64> graph_sequence_num;
+  return graph_sequence_num++;
+}
+
+constexpr char kCastInputTypeAttrName[] = "SrcT";
+
+// Transforms node = cast(x, fp32) where datatype(x) != fp16 to:
+//   castToFp16 = cast(x, fp16)
+//   node = cast(castToFp16, fp32)
+//
+Status MaybeRewriteCastToFp32(GraphDef* graph_def, NodeDef* node_def) {
+  if (node_def->op() != "Cast") {
+    return Status::OK();
+  }
+
+  DataTypeVector input_types;
+  DataTypeVector output_types;
+  TF_RETURN_IF_ERROR(
+      graph_transforms::GetInOutTypes(*node_def, &input_types, &output_types));
+
+  if (input_types.size() != 1 || output_types.size() != 1) {
+    return errors::Internal("Bad cast operation");
+  }
+
+  if (input_types[0] == DT_HALF || output_types[0] != DT_FLOAT) {
+    return Status::OK();
+  }
+
+  VLOG(2) << "Rewriting cast to FP32 " << node_def->DebugString();
+
+  NodeDef* castToFp16 = graph_def->add_node();
+  for (auto attr_value : node_def->attr()) {
+    (*castToFp16->mutable_attr())[attr_value.first] = attr_value.second;
+  }
+  castToFp16->set_name(node_def->name() + "_split");
+  castToFp16->set_op("Cast");
+  castToFp16->set_device(node_def->device());
+  castToFp16->add_input(node_def->input(0));
+  (*castToFp16->mutable_attr())[kCastOutputTypeAttrName].set_type(DT_HALF);
+
+  node_def->set_input(0, castToFp16->name() + ":0");
+  (*node_def->mutable_attr())[kCastInputTypeAttrName].set_type(DT_HALF);
+
+  VLOG(2) << castToFp16->DebugString();
+  VLOG(2) << node_def->DebugString();
+
+  return Status::OK();
+}
+
+}  // namespace
+
 Status RegisterGraphToFunctionLibrary(const GraphDef& segment_graph_def,
                                       Graph* graph, const string& engine_name) {
   Graph segment_graph(graph->flib_def());
@@ -615,7 +664,7 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
       StrAppend(&msg, engine.device, "': ");
       for (auto d : devices) StrAppend(&msg, d->name(), ", ");
       StrAppend(&msg, ". Will get the allocator from first one.");
-      LOG(WARNING) << msg;
+      LOG_WARNING_WITH_PREFIX << msg;
     }
     AllocatorAttributes alloc_attr;
     cuda_device_id = devices[0]->tensorflow_gpu_device_info()->gpu_id;
@@ -623,15 +672,10 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
     VLOG(1) << "Using allocator " << dev_allocator->Name()
             << " and cuda_device_id " << cuda_device_id;
   } else {
-    LOG(WARNING) << "Cluster is set but device '" << engine.device
-                 << "' is not found in the cluster";
+    LOG_WARNING_WITH_PREFIX << "Cluster is set but device '" << engine.device
+                            << "' is not found in the cluster";
   }
   return std::make_pair(cuda_device_id, dev_allocator);
-}
-
-int64 GetNextGraphSequenceNumber() {
-  static std::atomic<int64> graph_sequence_num;
-  return graph_sequence_num++;
 }
 
 // Entry function from optimization pass.
@@ -643,12 +687,43 @@ Status ConvertAfterShapes(const ConversionParams& params) {
         "Calibration with FP32 or FP16 is not supported.");
   }
 
+  // Make a copy of the input_graph_def because grappler doesn't allow changes
+  // to the input_graph_def and GraphProperties only accepts GraphDef, but not
+  // Graph, as inputs.
+  //
+  // If the overhead of copying the input_graph_def becomes a concern, we can
+  // avoid the copy by (1) enhancing the GraphPropertiers representation to
+  // allow adding shape properties for newly created graph nodes and (2) rewrite
+  // the GraphDef transformation to Graph transformation.
+  GraphDef modified_graph_def = params.grappler_item->graph;
+  // When precision_mode is FP16, transform cast(x, fp32) to
+  // cast(cast(x, fp16), fp32). This creates cast(fp16, f32) that can be
+  // included in the TRTEngineOp as an TensorRT Identity layer for performance:
+  //  . Avoid cast(fp32, fp16) in the TRT engine implementation for fp16
+  //    precision.
+  //  . Changing the input to the TRTEngine from fp32 to fp16 may reduce data
+  //    moving from the host to the GPU.
+  if (params.precision_mode == TrtPrecisionMode::FP16) {
+    for (int i = 0; i < modified_graph_def.node_size(); i++) {
+      NodeDef* node_def = modified_graph_def.mutable_node(i);
+      TF_RETURN_IF_ERROR(MaybeRewriteCastToFp32(&modified_graph_def, node_def));
+    }
+  }
+
+  // Construct a GrapplerItem using the modified graph_def and the input
+  // grappler_item.
+  grappler::GrapplerItem grappler_item =
+      params.grappler_item->WithGraph(std::move(modified_graph_def));
+  const GraphDef& graph_def = grappler_item.graph;
+
+  grappler::GraphProperties static_graph_properties(grappler_item);
+  TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
+
   // Convert graphdef to graph.
-  FunctionLibraryDefinition flib(OpRegistry::Global(),
-                                 params.input_graph_def->library());
+  FunctionLibraryDefinition flib(OpRegistry::Global(), graph_def.library());
   Graph graph(flib);
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
-                                            *params.input_graph_def, &graph));
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToGraph(GraphConstructorOptions(), graph_def, &graph));
 
   // Segment the graph into subgraphs that can be converted to TensorRT
   segment::SegmentOptions segment_options;
@@ -662,10 +737,10 @@ Status ConvertAfterShapes(const ConversionParams& params) {
       AllowDynamicNonBatchDimension(params);
 
   segment::SegmentNodesVector initial_segments;
-  TrtNodeValidator validator(*params.graph_properties, params.precision_mode,
+  TrtNodeValidator validator(static_graph_properties, params.precision_mode,
                              params.use_calibration, params.use_implicit_batch);
   TF_RETURN_IF_ERROR(segment::SegmentGraph(
-      &graph, params.graph_properties,
+      &graph, &static_graph_properties,
       std::bind(&TrtNodeValidator::IsTensorRTCandidate, &validator,
                 std::placeholders::_1),
       // Input validation is already done by TrtNodeValidator, so we don't
@@ -693,12 +768,11 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     auto& curr_segment = initial_segments.at(t);
     EngineInfo curr_engine;
     curr_engine.engine_name = StrCat(engine_name_prefix, t);
-    Status status =
-        GetEngineInfo(&graph, *params.graph_properties, curr_segment, node_map,
-                      reverse_topo_order, &curr_engine);
+    Status status = GetEngineInfo(&graph, static_graph_properties, curr_segment,
+                                  node_map, reverse_topo_order, &curr_engine);
     if (!status.ok()) {
-      LOG(WARNING) << "Failed to get engine info for segment " << t << ": "
-                   << status;
+      LOG_WARNING_WITH_PREFIX << "Failed to get engine info for segment " << t
+                              << ": " << status;
       continue;
     }
     curr_engine.precision_mode = params.precision_mode;
@@ -711,8 +785,9 @@ Status ConvertAfterShapes(const ConversionParams& params) {
                                             &graph, curr_engine.engine_name);
 
     if (!status.ok()) {
-      LOG(WARNING) << "Failed to register segment graphdef to the library " << t
-                   << ": " << status;
+      LOG_WARNING_WITH_PREFIX
+          << "Failed to register segment graphdef to the library " << t << ": "
+          << status;
       continue;
     }
 
@@ -763,7 +838,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
       alloc.reset(new TRTDeviceAllocator(device_alloc.second));
     } else {
       // Setting allocator as nullptr should get revert to the cudamalloc
-      LOG(WARNING) << "Can't identify the cuda device. Running on device 0 ";
+      LOG_WARNING_WITH_PREFIX
+          << "Can't identify the cuda device. Running on device 0 ";
     }
     cudaSetDevice(cuda_device_id);
     auto status =
@@ -777,9 +853,9 @@ Status ConvertAfterShapes(const ConversionParams& params) {
       LOG(INFO) << "Replaced " << msg << ".";
     } else {
       // Graph is not modified.
-      LOG(WARNING) << "Cannot replace " << msg
-                   << " reason: " << status.error_message()
-                   << " (keeping original segment).";
+      LOG_WARNING_WITH_PREFIX << "Cannot replace " << msg
+                              << " reason: " << status.error_message()
+                              << " (keeping original segment).";
     }
     if (VLOG_IS_ON(1)) {
       msg = "Segment consists of nodes: ";
@@ -807,5 +883,4 @@ Status ConvertAfterShapes(const ConversionParams& params) {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
