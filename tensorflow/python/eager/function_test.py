@@ -80,6 +80,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_ops
+from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -3931,6 +3932,83 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     gradients(constant_op.constant([[[1.0], [2.0]]]))  # No error is raised
 
+  def testTraceWithAnnotationsBasic(self):
+    trace_count = [0]
+    def func(x: core_tf_types.TensorLike):
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_type_tracing=True)
+    disabled = def_function.function(func, experimental_type_tracing=False)
+
+    enabled(1) # Initial call gets traced
+    enabled(2)
+    enabled(3)
+    self.assertEqual(trace_count[0], 1)
+
+    trace_count = [0]
+    disabled(1)
+    disabled(2) # Retrace
+    disabled(3) # Retrace
+    self.assertEqual(trace_count[0], 3)
+
+  def testTraceWithAnnotationsWithArgs(self):
+    trace_count = [0]
+    def func(*args: core_tf_types.TensorLike):
+      trace_count[0] += 1
+      return args
+
+    enabled = def_function.function(func, experimental_type_tracing=True)
+    disabled = def_function.function(func, experimental_type_tracing=False)
+
+    args = ("abc", "def",) * 20
+    args2 = ("def", "abc",) * 20
+
+    enabled(args)
+    enabled(args2)
+    self.assertEqual(trace_count[0], 1)
+
+    trace_count = [0]
+    disabled(args)
+    disabled(args2) # Retrace
+    self.assertEqual(trace_count[0], 2)
+
+  def testTraceWithAnnotationsWithKwargs(self):
+    trace_count = [0]
+    def func(t: core_tf_types.TensorLike, **kwargs: core_tf_types.TensorLike):
+      trace_count[0] += 1
+      return t
+
+    enabled = def_function.function(func, experimental_type_tracing=True)
+    disabled = def_function.function(func, experimental_type_tracing=False)
+
+    enabled(1, x=1, y=1.0, z="one")
+    enabled(2, x=2, y=2.0, z="two")
+    self.assertEqual(trace_count[0], 1)
+
+    trace_count = [0]
+    disabled(1, x=1, y=1.0, z="one")
+    disabled(2, x=2, y=2.0, z="two") # Retrace
+    self.assertEqual(trace_count[0], 2)
+
+  def testTraceWithAnnotationsWithMultipleInputTypes(self):
+    trace_count = [0]
+    def func(t: core_tf_types.TensorLike, *args: core_tf_types.TensorLike,
+             **kwargs: core_tf_types.TensorLike):
+      trace_count[0] += 1
+      return t
+
+    enabled = def_function.function(func, experimental_type_tracing=True)
+    disabled = def_function.function(func, experimental_type_tracing=False)
+
+    enabled(1, constant_op.constant(1), "str", x=4.0)
+    enabled(2, constant_op.constant(2), "str2", x=5.0)
+    self.assertEqual(trace_count[0], 1)
+
+    trace_count = [0]
+    disabled(1, constant_op.constant(1), "str", x=4.0)
+    disabled(2, constant_op.constant(2), "str2", x=5.0) # Retrace
+    self.assertEqual(trace_count[0], 2)
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
