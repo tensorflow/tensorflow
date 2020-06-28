@@ -959,12 +959,15 @@ class ProgbarLogger(Callback):
   def on_test_begin(self, logs=None):
     if not self._called_in_fit:
       self._reset_progbar()
+      self._maybe_init_progbar()
 
   def on_predict_begin(self, logs=None):
     self._reset_progbar()
+    self._maybe_init_progbar()
 
   def on_epoch_begin(self, epoch, logs=None):
     self._reset_progbar()
+    self._maybe_init_progbar()
     if self.verbose and self.epochs > 1:
       print('Epoch %d/%d' % (epoch + 1, self.epochs))
 
@@ -1044,7 +1047,7 @@ class ProgbarLogger(Callback):
         if not self.use_steps:
           counter *= logs.get('size', 1)
       self.target = counter or self.seen
-    self._maybe_init_progbar()
+      self.progbar.target = self.target
     self.progbar.update(self.target, list(logs.items()), finalize=True)
 
 
