@@ -423,7 +423,7 @@ void ProcessActiveAllocations(int64 peak_bytes_profile_step_id,
 
   // Fill the sorted active_allocations proto messages at peak memory usage.
   // Merge identical allocations and show occurrences.
-  for (int i = 0; i < active_allocs.size(); i++) {
+  for (int i = 0, iter_limit = active_allocs.size(); i < iter_limit; i++) {
     ActiveAllocation* allocation = memory_profile->add_active_allocations();
     allocation->set_snapshot_index(active_allocs[i].first);
     if (active_allocs[i].first < 0) {
@@ -432,7 +432,8 @@ void ProcessActiveAllocations(int64 peak_bytes_profile_step_id,
       allocation->set_special_index(-1);
     }
     allocation->set_num_occurrences(1);
-    while (i < active_allocs.size() - 1 &&
+    int _active_allocs_size = active_allocs.size() - 1;
+    while (i < _active_allocs_size &&
            active_allocs[i] == active_allocs[i + 1]) {
       allocation->set_num_occurrences(allocation->num_occurrences() + 1);
       i++;
