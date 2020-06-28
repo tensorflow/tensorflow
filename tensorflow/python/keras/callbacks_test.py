@@ -1704,6 +1704,19 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     self.assertEqual(my_cb.test_batches, 0)
     self.assertEqual(my_cb.predict_batches, 0)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_default_callbacks_do_not_call_batch_hooks(self):
+    model = keras.Sequential([keras.layers.Dense(1)])
+    log_dir = self.get_temp_dir()
+    cb_list = keras.callbacks.CallbackList([
+        keras.callbacks.TensorBoard(log_dir, profile_batch=0),
+        keras.callbacks.ModelCheckpoint(log_dir),
+        ], add_progbar=True, model=model, verbose=2, epochs=3)
+    self.assertLen(cb_list.callbacks, 3)
+    self.assertFalse(cb_list._should_call_train_batch_hooks)
+    self.assertFalse(cb_list._should_call_test_batch_hooks)
+    self.assertFalse(cb_list._should_call_predict_batch_hooks)
+
 
 # A summary that was emitted during a test. Fields:
 #   logdir: str. The logdir of the FileWriter to which the summary was

@@ -424,8 +424,6 @@ class CallbackList(object):
           the values of the `Model`'s metrics are returned.  Example:
           `{'loss': 0.2, 'accuracy': 0.7}`.
     """
-    # TODO(b/150629188): Make ProgBarLogger callback not use batch hooks
-    # when verbose != 1
     if self._should_call_train_batch_hooks:
       self._call_batch_hook(ModeKeys.TRAIN, 'begin', batch, logs=logs)
 
@@ -929,6 +927,9 @@ class ProgbarLogger(Callback):
     self.verbose = 1
     self.epochs = 1
 
+    self._train_step, self._test_step, self._predict_step = None, None, None
+    self._call_batch_hooks = True
+
     self._called_in_fit = False
 
   def set_params(self, params):
@@ -940,6 +941,16 @@ class ProgbarLogger(Callback):
       self.target = params['samples']
     else:
       self.target = None  # Will be inferred at the end of the first epoch.
+
+    self._call_batch_hooks = self.verbose == 1
+    if self.target is None:
+      try:
+        self._train_step = self.model._train_counter  # pylint: disable=protected-access
+        self._test_step = self.model._test_counter  # pylint: disable=protected-access
+        self._predict_step = self.model._predict_counter  # pylint: disable=protected-access
+      except AttributeError:
+        self._call_batch_hooks = True
+
 
   def on_train_begin(self, logs=None):
     # When this logger is called inside `fit`, validation is silent.
@@ -969,14 +980,14 @@ class ProgbarLogger(Callback):
     self._batch_update_progbar(batch, None)
 
   def on_epoch_end(self, epoch, logs=None):
-    self._finalize_progbar(logs)
+    self._finalize_progbar(logs, self._train_step)
 
   def on_test_end(self, logs=None):
     if not self._called_in_fit:
-      self._finalize_progbar(logs)
+      self._finalize_progbar(logs, self._test_step)
 
   def on_predict_end(self, logs=None):
-    self._finalize_progbar(logs)
+    self._finalize_progbar(logs, self._predict_step)
 
   def _reset_progbar(self):
     self.seen = 0
@@ -985,7 +996,7 @@ class ProgbarLogger(Callback):
   def _maybe_init_progbar(self):
     if self.stateful_metrics is None:
       if self.model:
-        self.stateful_metrics = (set(m.name for m in self.model.metrics))
+        self.stateful_metrics = set(m.name for m in self.model.metrics)
       else:
         self.stateful_metrics = set()
 
@@ -995,6 +1006,15 @@ class ProgbarLogger(Callback):
           verbose=self.verbose,
           stateful_metrics=self.stateful_metrics,
           unit_name='step' if self.use_steps else 'sample')
+
+  def _implements_train_batch_hooks(self):
+    return self._call_batch_hooks
+
+  def _implements_test_batch_hooks(self):
+    return self._call_batch_hooks
+
+  def _implements_predict_batch_hooks(self):
+    return self._call_batch_hooks
 
   def _batch_update_progbar(self, batch, logs=None):
     """Updates the progbar."""
@@ -1016,14 +1036,16 @@ class ProgbarLogger(Callback):
       logs = tf_utils.to_numpy_or_python_type(logs)
       self.progbar.update(self.seen, list(logs.items()), finalize=False)
 
-  def _finalize_progbar(self, logs):
-    logs = logs or {}
-    self._maybe_init_progbar()
+  def _finalize_progbar(self, logs, counter):
+    logs = tf_utils.to_numpy_or_python_type(logs or {})
     if self.target is None:
-      self.target = self.seen
-      self.progbar.target = self.seen
-    logs = tf_utils.to_numpy_or_python_type(logs)
-    self.progbar.update(self.seen, list(logs.items()), finalize=True)
+      if counter is not None:
+        counter = counter.numpy()
+        if not self.use_steps:
+          counter *= logs.get('size', 1)
+      self.target = counter or self.seen
+    self._maybe_init_progbar()
+    self.progbar.update(self.target, list(logs.items()), finalize=True)
 
 
 @keras_export('keras.callbacks.History')
