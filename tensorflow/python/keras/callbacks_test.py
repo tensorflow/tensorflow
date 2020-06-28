@@ -2203,7 +2203,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
     model.compile('sgd', 'mse', run_eagerly=False)
     self.fitModelAndAssertKerasModelWritten(model)
 
-  def test_TensoriBoard_writeModel(self):
+  def test_TensorBoard_writeModel(self):
     inputs = keras.layers.Input([10, 10, 1])
     x = keras.layers.Conv2D(8, (3, 3), activation='relu')(inputs)
     x = keras.layers.Flatten()(x)

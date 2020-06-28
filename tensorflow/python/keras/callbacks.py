@@ -1235,6 +1235,10 @@ class ModelCheckpoint(Callback):
           raise ValueError('Error loading file from {}. Reason: {}'.format(
               filepath_to_load, e))
 
+  def _implements_train_batch_hooks(self):
+    # Only call batch hooks when saving on batch
+    return self.save_freq != 'epoch'
+
   def on_train_batch_end(self, batch, logs=None):
     if self._should_save_on_batch(batch):
       self._save_model(epoch=self._current_epoch, logs=logs)
@@ -2154,6 +2158,9 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def on_test_end(self, logs=None):
     self._pop_writer()
+
+  def _implements_train_batch_hooks(self):
+    return self._should_trace  # Only call batch hooks when tracing is enabled
 
   def on_train_batch_begin(self, batch, logs=None):
     self._global_train_batch += 1
