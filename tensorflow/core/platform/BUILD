@@ -674,6 +674,7 @@ cc_library(
 cc_library(
     name = "strong_hash",
     hdrs = ["strong_hash.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":platform",
         ":types",
@@ -935,6 +936,13 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "tf32_utils",
+    srcs = ["tf32_utils.cc"],
+    hdrs = ["tf32_utils.h"],
+    copts = tf_copts(),
 )
 
 tf_cc_tests(

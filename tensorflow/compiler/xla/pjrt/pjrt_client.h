@@ -20,15 +20,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -46,6 +49,8 @@ limitations under the License.
 // PjRt stands for "Pretty much Just another RunTime".
 
 namespace xla {
+
+class PjRtClient;
 
 class Device {
  public:
@@ -86,12 +91,17 @@ class Device {
 
   virtual std::string DebugString() const;
 
+  PjRtClient* client() const { return client_; }
+
  private:
+  friend class PjRtClient;
+
   const int id_;
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   const int host_id_;
   const std::string platform_name_;
   const std::string device_kind_;
+  PjRtClient* client_ = nullptr;
 };
 
 // Forward declaration.
@@ -113,7 +123,7 @@ using PjRtCrossHostRecvNotifier =
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
 // alive as long as any of the other runtime objects are alive.
-class PjRtClient : public std::enable_shared_from_this<PjRtClient> {
+class PjRtClient {
  public:
   // `allocator` may null, in which case the platform default allocator is used.
   explicit PjRtClient(
@@ -121,6 +131,7 @@ class PjRtClient : public std::enable_shared_from_this<PjRtClient> {
       std::vector<std::unique_ptr<Device>> devices, int host_id,
       std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
+      bool should_stage_host_to_device_transfers,
       std::unique_ptr<GpuExecutableRunOptions> gpu_run_options);
   virtual ~PjRtClient() = default;
 
@@ -145,6 +156,9 @@ class PjRtClient : public std::enable_shared_from_this<PjRtClient> {
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
   tensorflow::Allocator* host_memory_allocator() const {
     return host_memory_allocator_.get();
+  }
+  bool should_stage_host_to_device_transfers() const {
+    return should_stage_host_to_device_transfers_;
   }
 
   GpuExecutableRunOptions* gpu_run_options() const {
@@ -183,6 +197,9 @@ class PjRtClient : public std::enable_shared_from_this<PjRtClient> {
   std::string platform_name_;
   LocalClient* client_;
 
+  // Allocator to be used for staging memory transfers to devices.
+  std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
+
   // Includes all devices, including non-local devices on multi-host platforms.
   std::vector<std::unique_ptr<Device>> devices_;
   // Maps Device::id() to the corresponding Device. Includes all devices.
@@ -194,10 +211,10 @@ class PjRtClient : public std::enable_shared_from_this<PjRtClient> {
   se::DeviceMemoryAllocator* allocator_;
   std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator_;
 
-  // Allocator to be used for staging memory transfers to devices. Optional;
-  // only used on GPU where it is more efficient to copy buffers to and from the
-  // device via a staging area of pinned memory.
-  std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
+  // Should we always prefer to stage host-to-device transfers via memory
+  // allocated on host_memory_allocator_? True only on GPU, where we prefer to
+  // transfer via pinned memory.
+  bool should_stage_host_to_device_transfers_;
 
   std::unique_ptr<GpuExecutableRunOptions> gpu_run_options_;
 
@@ -266,6 +283,18 @@ class PjRtBuffer {
   class ScopedHold {
    public:
     enum Type { kUsage = 0, kExternalReference, kDonation, kMaxValue };
+    // Use a State enum instead of encoding the state in an error Status to
+    // avoid creating Status values in non-error cases. Creating a Status
+    // entails several allocations and can add O(us) to every use of a hold.
+    enum State {
+      kUninitialized = 0,
+      kValid,
+      kMoved,
+      kConverted,
+      kReleased,
+      kDonated,
+      kError
+    };
 
     ~ScopedHold();
     ScopedHold(ScopedHold&& other);
@@ -274,11 +303,32 @@ class PjRtBuffer {
 
     Type type() const { return type_; }
 
-    Status status() const { return buffer_or_.status(); }
-    bool ok() const { return buffer_or_.ok(); }
+    Status status() const {
+      // Lazily create Status values only when they are requested.
+      switch (state_) {
+        case kUninitialized:
+          return InvalidArgument("Buffer has not been initialized");
+        case kValid:
+          return Status::OK();
+        case kMoved:
+          return InvalidArgument("Buffer has been moved.");
+        case kConverted:
+          return InvalidArgument("Buffer has been converted");
+        case kReleased:
+          return InvalidArgument("Buffer has been released");
+        case kDonated:
+          return InvalidArgument("Buffer has been donated");
+        case kError:
+          return buffer_or_.status();
+        default:
+          CHECK(false) << "Unexpected state value " << state_;
+      }
+    }
+    bool ok() const { return state_ == kValid; }
 
     // Access to the underlying device buffer storage. Requires this->ok().
     const std::shared_ptr<TrackedDeviceBuffer>& buffer() const {
+      CHECK_EQ(state_, kValid);
       CHECK_NE(buffer_or_.ValueOrDie(), nullptr);
       return buffer_or_.ValueOrDie();
     }
@@ -322,22 +372,22 @@ class PjRtBuffer {
     // Helper struct that makes it possible to move a ScopedHold through a
     // closure.
     using ForClosure =
-        std::tuple<PjRtBuffer*, Type,
+        std::tuple<PjRtBuffer*, Type, State,
                    StatusOr<std::shared_ptr<TrackedDeviceBuffer>>>;
 
-    ScopedHold(PjRtBuffer* parent, Type type) : parent_(parent), type_(type) {
-      SetError(InvalidArgument("Buffer has not been initialized"));
-    }
+    ScopedHold(PjRtBuffer* parent, Type type)
+        : parent_(parent), type_(type), state_(kUninitialized) {}
     explicit ScopedHold(const ForClosure& closure_helper)
         : parent_(std::get<0>(closure_helper)),
           type_(std::get<1>(closure_helper)),
-          buffer_or_(std::get<2>(closure_helper)) {
+          state_(std::get<2>(closure_helper)),
+          buffer_or_(std::get<3>(closure_helper)) {
       // Check the buffer is not in an error state.
       CHECK(buffer_or_.ValueOrDie() != nullptr);
     }
 
-    // Sets error status.
-    void SetError(Status s) { buffer_or_ = s; }
+    // Sets buffer state.
+    void SetState(State state) { state_ = state; }
 
     // Sets buffer_or_. Called by parent_ to initialize the hold.
     void Acquire(StatusOr<std::shared_ptr<TrackedDeviceBuffer>>&& buffer_or);
@@ -349,18 +399,42 @@ class PjRtBuffer {
 
     PjRtBuffer* const parent_;
     const Type type_;
-    // There is an invariant that if buffer_or_.ok() then
+
+    // There is an invariant that if ok() then
     // buffer_or_.ValueOrDie() != nullptr.
+    State state_;
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or_;
   };
 
-  // If `force_copy` is true, forces a copy of the input buffer on CPU.
-  // Otherwise the library is free to alias the output buffer with `data`.
-  // `buffer_reference` is an optional shared pointer that should be kept alive
-  // by the runtime as long as the contents of `data` may still be accessed by
-  // the runtime (may be nullptr).
+  // Describes the semantics the caller to FromHostBuffer expects from the
+  // runtime, in a total order from most restrictive to least restrictive.
+  enum class HostBufferSemantics {
+    // The runtime may not hold references to `data` after the call to
+    // `FromHostBuffer` completes. The caller promises that `data` is immutable
+    // and will not be freed only for the duration of the FromHostBuffer call.
+    // `buffer_reference` will be freed by the time `FromHostBuffer` returns.
+    kImmutableOnlyDuringCall,
+
+    // The runtime may hold onto `data` after the call to `FromHostBuffer`
+    // returns while the runtime completes a transfer to the device. The caller
+    // promises not to mutate or free `data` until the transfer completes, at
+    // which point the runtime will release `buffer_reference`. It is also
+    // correct to wait on the host (directly or indirectly) for the buffer's
+    // definition event to complete.
+    kImmutableUntilTransferCompletes,
+
+    // The PjRtBuffer may alias `data` internally and the runtime may use the
+    // `data` contents as long as the buffer is alive.
+    // The caller promises to keep `data` alive and not to mutate its contents
+    // as long as the buffer is alive; to notify the caller that the buffer may
+    // be freed, the runtime will release its `buffer_reference` when the
+    // PjRtBuffer is freed. On non-CPU platforms this acts identically to
+    // kImmutableUntilTransferCompletes.
+    kZeroCopy,
+  };
   static StatusOr<std::unique_ptr<PjRtBuffer>> FromHostBuffer(
-      const void* data, const Shape& shape, bool force_copy,
+      const void* data, const Shape& shape,
+      HostBufferSemantics host_buffer_semantics,
       std::shared_ptr<void> buffer_reference, PjRtClient* client,
       Device* device);
 
@@ -402,15 +476,25 @@ class PjRtBuffer {
     return on_host_shape_.IsTuple() && on_host_shape_.tuple_shapes_size() == 0;
   }
 
+  // Returns the size of the on-device representation of this buffer in bytes.
+  int64 OnDeviceSizeInBytes() const;
+
   // Returns the buffer's value as an XLA Literal. If the value has previously
   // been prefetched to the host, then returns the prefetched version, otherwise
-  // copies the buffer to the host. Blocks until the value is ready.
-  StatusOr<std::shared_ptr<Literal>> ToLiteral();
+  // copies the buffer to the host. Blocks until the value is ready. If
+  // `discard_cached_copy` is true then buffer will no longer keep hold of a
+  // cached copy of the literal (i.e. The reference to the host value will be
+  // removed.) If a layout is passed than a literal with this layout will be
+  // returned.
+  StatusOr<std::shared_ptr<Literal>> ToLiteral(
+      bool discard_cached_copy = false,
+      absl::optional<xla::Layout> layout = {});
 
   // Initiates a copy of the buffer to the host. Does not block waiting for
   // the transfer to complete. The value can be retrieved by a later call to
-  // ToLiteral().
-  Status CopyToHostAsync();
+  // ToLiteral(). If a layout is passed then a cached copy with this layout will
+  // be created.
+  Status CopyToHostAsync(absl::optional<xla::Layout> layout = {});
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
@@ -518,6 +602,14 @@ class PjRtBuffer {
   // successfully donated to an execution.
   void ConfirmDonation(TrackedDeviceBuffer* device_buffer);
 
+  // Initiates a copy of the buffer to the host. Does not block waiting for
+  // the transfer to complete. A host value is returned and if
+  // `discard_cached_copy` is false stored in an internal buffer so that future
+  // transfers don't have to transfer the data from host again. If a layout is
+  // passed then a literal of this layout will be returned and possibly cached.
+  StatusOr<std::shared_ptr<HostValue>> CopyToHostAsyncInternal(
+      bool discard_cached_copy, absl::optional<xla::Layout> layout);
+
   // Drops a hold without taking any other action. Does a sanity check that
   // buffer==device_buffer_ or device_buffer_==nullptr.
   void DropHold(ScopedHold::Type type, TrackedDeviceBuffer* buffer);
@@ -536,6 +628,8 @@ class PjRtBuffer {
 
   mutable absl::Mutex mu_;
   std::shared_ptr<TrackedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<xla::Layout, std::shared_ptr<HostValue>> host_values_
+      TF_GUARDED_BY(mu_);
   std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ TF_GUARDED_BY(mu_);
@@ -553,6 +647,12 @@ struct CompileOptions {
 
   // XLA's compilation time options.
   ExecutableBuildOptions executable_build_options;
+
+  // If true, the executable can be run on any device. May only be true if
+  // !executable_build_options.has_device_assignment(), so only applies to
+  // single-device executables. Beware: on GPUs, sometimes an executable
+  // compiled for one device doesn't run on another.
+  bool compile_portable_executable = false;
 };
 
 struct ExecuteOptions {
@@ -579,7 +679,7 @@ class PjRtExecutable {
 
   PjRtExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
                  bool parameter_is_tupled_arguments,
-                 DeviceAssignment device_assignment,
+                 std::shared_ptr<DeviceAssignment> device_assignment,
                  std::vector<std::pair<int, int>> local_logical_device_ids,
                  std::vector<Device*> local_devices, PjRtClient* client);
 
@@ -644,10 +744,12 @@ class PjRtExecutable {
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, Device* device,
-      std::vector<PjRtBuffer::ScopedHold>* device_buffers) const;
+      std::vector<PjRtBuffer::ScopedHold>* device_buffers,
+      std::shared_ptr<DeviceAssignment> device_assignment) const;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
-      int partition, const RunId& run_id, const ExecuteOptions& options) const;
+      int partition, const RunId& run_id, const ExecuteOptions& options,
+      Device* device = nullptr) const;
 
   // Create shared pointers so we can free them after the execution: with
   // asynchronous execution, the process being executed can outlive the

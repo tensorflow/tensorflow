@@ -215,7 +215,15 @@ def _yield_sorted_items(iterable):
   Yields:
     The iterable's (key, value) pairs, in order of sorted keys.
   """
-  if isinstance(iterable, _collections_abc.Mapping):
+  # Ordered to check common structure types (list, tuple, dict) first.
+  if isinstance(iterable, list):
+    for item in enumerate(iterable):
+      yield item
+  # namedtuples handled separately to avoid expensive namedtuple check.
+  elif type(iterable) == tuple:  # pylint: disable=unidiomatic-typecheck
+    for item in enumerate(iterable):
+      yield item
+  elif isinstance(iterable, (dict, _collections_abc.Mapping)):
     # Iterate through dictionaries in a deterministic order by sorting the
     # keys. Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing

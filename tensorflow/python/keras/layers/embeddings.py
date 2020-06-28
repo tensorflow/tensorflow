@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
@@ -183,7 +184,10 @@ class Embedding(Layer):
     dtype = K.dtype(inputs)
     if dtype != 'int32' and dtype != 'int64':
       inputs = math_ops.cast(inputs, 'int32')
-    out = embedding_ops.embedding_lookup(self.embeddings, inputs)
+    if isinstance(self.embeddings, sharded_variable.ShardedVariable):
+      out = embedding_ops.embedding_lookup_v2(self.embeddings.variables, inputs)
+    else:
+      out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
     return out
 
   def get_config(self):

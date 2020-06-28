@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
-#include "tensorflow/core/profiler/utils/errors.h"
+#include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
@@ -552,29 +552,19 @@ StepSummary ComputeStepTimeSummaryInMs(
   return GetStepSummaryForSampleStats(total_step_stats_in_ms);
 }
 
-void AddErrorMessages(const OpStats& op_stats,
-                      InputPipelineAnalysisResult* result) {
-  if (op_stats.step_db().use_incomplete_step()) {
-    *result->add_error_messages() =
-        absl::StrCat("WARNING: ", kErrorIncompleteStep);
-  } else if (op_stats.step_db().step_sequence().empty()) {
-    *result->add_error_messages() =
-        absl::StrCat("WARNING: ", kErrorNoStepMarker);
-  }
-}
-
 InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
     const OpStats& op_stats, const HardwareType& hardware_type) {
   InputPipelineAnalysisResult result =
       ComputeGenericInputPipelineAnalysisResult(
           op_stats.step_db().step_sequence());
-  AddErrorMessages(op_stats, &result);
+  PopulateStepDiagnostics(op_stats, result.mutable_diagnostics());
   result.set_hardware_type(HardwareType_Name(hardware_type));
   GenerateHostResult(op_stats.host_op_metrics_db(), &result);
 
   InputPipelineAnalysisRecommendation recommendation = GenerateRecommendation();
   BottleneckAnalysis bottleneck_analysis = ComputeBottleneckAnalysis(
       result.input_time_breakdown(), result.step_details());
+  result.set_overall_input_percent(bottleneck_analysis.input_percent());
   recommendation.mutable_bottleneck_analysis()->PackFrom(bottleneck_analysis);
   *recommendation.mutable_summary_next_step() =
       GetSummaryNextStep(bottleneck_analysis.input_classification(),
@@ -647,10 +637,7 @@ void OutputAnalysis(double output_percent, std::string* output_classification,
         "you would need to reduce both the output time and other time.");
   } else {
     *output_classification = "device";
-    *output_statement =
-        absl::StrCat("Your program is NOT output-bound because only ",
-                     tc_outfeed_percent_str,
-                     "% of the total step time sampled is spent on output.");
+    *output_statement = "";
   }
 }
 
@@ -719,6 +706,7 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
                    &all_other_classification, &all_other_statement);
 
   BottleneckAnalysis analysis;
+  analysis.set_input_percent(input_percent);
   analysis.set_input_classification(input_classification);
   analysis.set_input_statement(input_statement);
   analysis.set_kernel_launch_classification(kernel_launch_classification);
@@ -750,6 +738,18 @@ std::string GetSummaryNextStep(absl::string_view input_classification,
   }
 
   return summary_next_step;
+}
+
+double HostToDeviceTransferAsPercentOfInputTime(
+    const InputTimeBreakdown& breakdown) {
+  // Thanks to the scaling trick we did in GenerateHostResult(), we can
+  // estimate the percentage of input-time spent on host-to-device transfer in
+  // the following way.
+  double total_input_time_us =
+      breakdown.demanded_file_read_us() + breakdown.advanced_file_read_us() +
+      breakdown.preprocessing_us() + breakdown.enqueue_us() +
+      breakdown.unclassified_non_enqueue_us();
+  return 100.0 * SafeDivide(breakdown.enqueue_us(), total_input_time_us);
 }
 
 }  // namespace profiler

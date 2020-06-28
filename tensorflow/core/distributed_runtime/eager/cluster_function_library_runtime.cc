@@ -66,13 +66,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << target
           << " (this: " << this << ")";
   core::RefCountPtr<eager::EagerClient> eager_client;
-  Device* device;
-  s = ctx_->FindDeviceFromName(target.c_str(), &device);
-  if (!s.ok()) {
-    done(s);
-    return;
-  }
-  s = ctx_->GetClient(device, &eager_client);
+  s = ctx_->GetClient(target, &eager_client);
   if (!s.ok()) {
     done(s);
     return;

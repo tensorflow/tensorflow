@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
@@ -58,8 +59,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 #include "third_party/tensorrt/NvInferPlugin.h"
 
@@ -404,6 +404,18 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
   // Compare broadcast feasibility
   if (check_feasibility) {
     for (int i = 0; i < broadcast_num_dims; ++i) {
+      if (!use_implicit_batch && (output_l[i] == -1 || output_r[i] == -1)) {
+        // If the condition is true then we are in explicit batch mode and (at
+        // least) one of the input dimensions are unknown. In other words we
+        // are in dynamic shape mode. During conversion time we only see -1 for
+        // the unknown shapes, therefore we cannot decide on the feasibility of
+        // broadcast over the unknown dimensions. Therefore we just continue for
+        // the next dimension. In dynamic shape mode TRT can only check the
+        // feasibility of the broadcast when the actual input dimensions are
+        // specified by SetTrtEngineInputs and the inference job is launched by
+        // TrtEnque.
+        continue;
+      }
       if ((output_l[i] != output_r[i]) && (output_l[i] != 1) &&
           (output_r[i] != 1)) {
         return errors::InvalidArgument("Infeasible broadcast scheme (",
@@ -433,16 +445,32 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   return trt_tensor;
 }
 
+// Creates a scalar constant and fills with value.
+template <typename T>
+Status CreateScalarConstant(
+    OpConverterParams* params, T value, nvinfer1::ITensor** tensor,
+    nvinfer1::DataType trt_type = nvinfer1::DataType::kINT32,
+    const nvinfer1::Dims& dims = {1, {1}}) {
+  TRT_ShapedWeights weights =
+      params->weight_store->GetTempWeights(trt_type, dims);
+  TF_RETURN_IF_ERROR(weights.SetValues(value));
+  *tensor = params->converter->CreateConstantLayer(weights, dims);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, params->node_def.name());
+  params->converter->ProvideQuantizationRange(*tensor, value, value);
+  return Status::OK();
+}
+
+// Creates a constant with the same rank as dims, where each dimension has
+// size = 1.
 Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
                                          const nvinfer1::Dims& dims,
                                          nvinfer1::ITensor** tensor,
                                          const char* dtype_attr_name = "T") {
-  nvinfer1::DataType trt_dtype =
-      nvinfer1::DataType::kFLOAT;  // Default to FP32.
+  nvinfer1::DataType trt_type = nvinfer1::DataType::kFLOAT;  // Default to FP32.
   TFAttrs attrs(params->node_def);
   if (attrs.count(dtype_attr_name)) {
     DataType dtype = attrs.get<DataType>(dtype_attr_name);
-    TF_RETURN_IF_ERROR(TfDataTypeToTrt(dtype, &trt_dtype));
+    TF_RETURN_IF_ERROR(TfDataTypeToTrt(dtype, &trt_type));
   }
 
   // In order to be broadcastable, the number of dims has to match.
@@ -450,24 +478,8 @@ Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
   for (int i = 0; i < broadcastable_dims.nbDims; i++) {
     broadcastable_dims.d[i] = 1;
   }
-  TRT_ShapedWeights weights =
-      params->weight_store->GetTempWeights(trt_dtype, broadcastable_dims);
-  void* raw_ptr = weights.GetValues();
-  switch (trt_dtype) {
-    case nvinfer1::DataType::kFLOAT:
-      static_cast<float*>(raw_ptr)[0] = value;
-      break;
-    case nvinfer1::DataType::kHALF:
-      static_cast<Eigen::half*>(raw_ptr)[0] = Eigen::half(value);
-      break;
-    default:
-      return errors::InvalidArgument("Unsupported data type ",
-                                     DebugString(trt_dtype));
-  }
-  *tensor = params->converter->CreateConstantLayer(weights, broadcastable_dims);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, params->node_def.name());
-  params->converter->ProvideQuantizationRange(*tensor, value, value);
-  return Status::OK();
+  return CreateScalarConstant(params, value, tensor, trt_type,
+                              broadcastable_dims);
 }
 
 // Convert an axis from TF format to TRT format while validating. TF format
@@ -649,6 +661,31 @@ int64_t TRT_ShapedWeights::count() const {
 
 nvinfer1::Weights TRT_ShapedWeights::GetTrtWeights() const {
   return nvinfer1::Weights{type_, GetValues(), count()};
+}
+
+template <typename T>
+Status TRT_ShapedWeights::SetValues(T value) {
+  switch (type_) {
+    case nvinfer1::DataType::kFLOAT: {
+      float* ptr = tensor_.flat<float>().data();
+      std::fill(ptr, ptr + count(), value);
+      break;
+    }
+    case nvinfer1::DataType::kHALF: {
+      Eigen::half* ptr = tensor_.flat<Eigen::half>().data();
+      std::fill(ptr, ptr + count(), Eigen::half(value));
+      break;
+    }
+    case nvinfer1::DataType::kINT32: {
+      int32* ptr = tensor_.flat<int32>().data();
+      std::fill(ptr, ptr + count(), value);
+      break;
+    }
+    default:
+      return errors::InvalidArgument("Unsupported data type ",
+                                     tensorflow::tensorrt::DebugString(type_));
+  }
+  return Status::OK();
 }
 
 size_t TRT_ShapedWeights::size_bytes() const {
@@ -1177,15 +1214,16 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
       getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
   if (!trt_plugin_creator_list) {
-    LOG(WARNING) << "Can not find any TensorRT plugins in registry.";
+    LOG_WARNING_WITH_PREFIX << "Can not find any TensorRT plugins in registry.";
   } else {
     VLOG(1) << "Found the following " << num_trt_plugins
             << " TensorRT plugins in registry:";
     for (int i = 0; i < num_trt_plugins; ++i) {
       if (!trt_plugin_creator_list[i]) {
-        LOG(WARNING) << "TensorRT plugin at index " << i
-                     << " is not accessible (null pointer returned by "
-                        "getPluginCreatorList for this plugin)";
+        LOG_WARNING_WITH_PREFIX
+            << "TensorRT plugin at index " << i
+            << " is not accessible (null pointer returned by "
+               "getPluginCreatorList for this plugin)";
       } else {
         VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
       }
@@ -1285,10 +1323,14 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
   // We verify the batch size only for the input nodes, and rely on individual
   // op converter to ensure the batch size of the outputs is not changed.
   // TODO(laigd): we need to test this properties.
-  Status status = MaybeUpdateBatchSize(batch_size);
-  if (!status.ok()) {
-    return Status(status.code(), StrCat("Batch size doesn't match for tensor ",
-                                        name, ": ", status.error_message()));
+  Status status;
+  if (use_implicit_batch_) {
+    status = MaybeUpdateBatchSize(batch_size);
+    if (!status.ok()) {
+      return Status(status.code(),
+                    StrCat("Batch size doesn't match for tensor ", name, ": ",
+                           status.error_message()));
+    }
   }
   nvinfer1::ITensor* tensor = network()->addInput(name.c_str(), dtype, dims);
   if (tensor == nullptr) {
@@ -1786,9 +1828,9 @@ void Converter::MaybeApplyQuantizationRanges() {
       // are tensors which are created internally by TF-TRT. The ranges for
       // these unnamed ITensors are always inferred from user provided ranges,
       // thus there will also be a warning for the range(s) the user missed.
-      LOG(WARNING) << "Quantization range was not found for "
-                   << tensor->getName() << ". "
-                   << "Setting invalid quantization range.";
+      LOG_WARNING_WITH_PREFIX << "Quantization range was not found for "
+                              << tensor->getName() << ". "
+                              << "Setting invalid quantization range.";
       // Set the range to something unusable so the engine will fail if it
       // tries to actually use the tensor's range.
       tensor->setDynamicRange(0, 0);
@@ -1881,37 +1923,56 @@ Status Converter::GetInputs(const NodeDef& node_def,
   return Status::OK();
 }
 
+enum class TrtInputArg { kTensor = 1, kWeight = 2, kBoth = 3 };
+
 // Checks that the number of inputs match, and enforces that the inputs marked
-// as true are constant weights. true means that the input must be a weight,
-// while false means the input must be a tensor. In the future, false will mean
-// the input can be a tensor or weight.
+// as weights are constant. Inputs are allowed to be both weight and tensor.
 Status CheckInputsWeights(
     const OpConverterParams& params,
-    const std::vector<std::pair<string, bool>>& inputs_is_weight) {
+    const std::vector<std::pair<string, TrtInputArg>>& expected_inputs) {
   const auto& inputs = params.inputs;
   const auto& node_def = params.node_def;
-  if (inputs.size() != inputs_is_weight.size()) {
+  if (inputs.size() != expected_inputs.size()) {
     return errors::InvalidArgument(
         node_def.op(), " got ", inputs.size(), " inputs but expected ",
-        inputs_is_weight.size(), ", at ", node_def.name());
+        expected_inputs.size(), ", at ", node_def.name());
   }
   for (int i = 0; i < inputs.size(); i++) {
-    if (inputs_is_weight[i].second && inputs.at(i).is_tensor()) {
-      return errors::Unimplemented("The input \"", inputs_is_weight[i].first,
+    if (expected_inputs[i].second == TrtInputArg::kWeight &&
+        inputs.at(i).is_tensor()) {
+      return errors::Unimplemented("The input \"", expected_inputs[i].first,
                                    "\" for ", node_def.op(),
                                    " must be a constant, at ", node_def.name());
     }
-    // TODO(tmorris): Remove this check and provide a method to automatically
+    // TODO(tfeher): Remove this check and provide a method to automatically
     // retrieve an input as a tensor, converting via CreateConstantLayer if it
     // was originally a weight. We will want a caching mechanism to prevent many
     // duplicate constants from being created.
-    if (!inputs_is_weight[i].second && inputs.at(i).is_weights()) {
-      return errors::Unimplemented("The input \"", inputs_is_weight[i].first,
+    if (expected_inputs[i].second == TrtInputArg::kTensor &&
+        inputs.at(i).is_weights()) {
+      return errors::Unimplemented("The input \"", expected_inputs[i].first,
                                    "\" for ", node_def.op(),
                                    " must be a tensor, at ", node_def.name());
     }
   }
   return Status::OK();
+}
+
+// Checks that the number of inputs match, and enforces that the inputs marked
+// as true are constant weights. true means that the input must be a weight,
+// while false means the input must be a tensor.
+Status CheckInputsWeights(
+    const OpConverterParams& params,
+    const std::vector<std::pair<string, bool>>& inputs_is_weight) {
+  std::vector<std::pair<string, TrtInputArg>> expected_inputs;
+  expected_inputs.reserve(inputs_is_weight.size());
+  std::transform(
+      inputs_is_weight.begin(), inputs_is_weight.end(),
+      std::back_inserter(expected_inputs), [](std::pair<string, bool> x) {
+        return std::make_pair(
+            x.first, x.second ? TrtInputArg::kWeight : TrtInputArg::kTensor);
+      });
+  return CheckInputsWeights(params, expected_inputs);
 }
 
 Status GetNodeDefTfType(const NodeDef& node_def, DataType* tf_type,
@@ -2146,6 +2207,12 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
         "Stride must be 1 for batch and channel dimensions, at ",
         node_def.name());
   }
+  // Channel dim must be static for DepthwiseConv2dNative since we use that
+  // value for num_groups at build time.
+  if (!params->use_implicit_batch && tensor->getDimensions().d[c_index] == -1) {
+    return errors::InvalidArgument("Channel dimension must be static, at ",
+                                   node_def.name());
+  }
   const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
   if (params->validation_only) return Status::OK();
 
@@ -2157,11 +2224,12 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   }
   // Dimensions of transposed tensor.
   const auto tensor_dim = tensor->getDimensions();
+  const int c_dim_size = tensor_dim.d[params->use_implicit_batch ? 0 : 1];
 
   // group == 0 signifies that this is a depthwise convolution, so set
   // num_groups to size of input's channel dim. For a non-depthwise conv,
   // num_groups will be 1.
-  const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
+  const int num_groups = (group == 0) ? c_dim_size : group;
 
   // For conv, TF weights are RSCK, and TRT expects KCRS.
   // For backprop, TF weights are RSKC, and TRT expects CKRS.
@@ -2432,53 +2500,114 @@ Status ConvertExpandDims(OpConverterParams* params) {
   // ExpandDim's ability to add an axis at end of the shape.
   int trt_axis;
   TF_RETURN_IF_ERROR(ConvertAxis(axis[0], dims.nbDims + 1, node_def.name(),
-                                 /*use_implicit_batch=*/true, &trt_axis));
+                                 params->use_implicit_batch, &trt_axis));
   if (params->validation_only) return Status::OK();
-
-  // ExpandDims: Insert new dim of size 1.
-  input_dims.insert(input_dims.begin() + trt_axis, 1);
-  // Reshape tensor.
-  nvinfer1::Dims new_dims;
-  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims));
   nvinfer1::ITensor* output_tensor = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      input_tensor, new_dims, /*validation_only=*/false, &output_tensor));
+
+  if (!params->use_implicit_batch && !HasStaticShape(input_dims)) {
+    TF_RETURN_IF_ERROR(params->converter->DynamicExpandDims(
+        input_tensor.tensor(), dims, trt_axis, params, &output_tensor));
+  } else {
+    // ExpandDims: Insert new dim of size 1.
+    input_dims.insert(input_dims.begin() + trt_axis, 1);
+    // Reshape tensor.
+    nvinfer1::Dims new_dims;
+    TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims));
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        input_tensor, new_dims, /*validation_only=*/false, &output_tensor));
+  }
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
 
+Status Converter::DynamicReshape(nvinfer1::ITensor* input,
+                                 std::vector<std::pair<int, int>> slices,
+                                 OpConverterParams* params,
+                                 nvinfer1::ITensor** output,
+                                 std::vector<int> size_for_added_dims) {
+  *output = nullptr;
+  // DynamicReshape relies on INetworkDefinition::addShape that was introduced
+  // in TensorRT 6.
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  if (params->validation_only) {
+    return errors::Internal(
+        "DynamicReshape should not be used during validation");
+  }
+  nvinfer1::ITensor* shape = network()->addShape(*input)->getOutput(0);
+  // Build new shape = shape[:trt_axis] + [1] + shape[trt_axis:]
+  std::vector<nvinfer1::ITensor const*> concat_inputs;
+  for (int i = 0; i < std::max(slices.size(), size_for_added_dims.size());
+       i++) {
+    nvinfer1::ITensor* tensor;
+    // maybe_add_a_dimension(i);
+    if (i < size_for_added_dims.size() && size_for_added_dims[i] >= 0) {
+      TF_RETURN_IF_ERROR(
+          CreateScalarConstant(params, size_for_added_dims[i], &tensor));
+      concat_inputs.push_back(tensor);
+    }
+    if (i < slices.size()) {
+      concat_inputs.push_back(
+          network()
+              ->addSlice(*shape, {1, {slices[i].first}},
+                         {1, {slices[i].second - slices[i].first}}, {1, {1}})
+              ->getOutput(0));
+    }
+  }
+  nvinfer1::IConcatenationLayer* concat_layer = network()->addConcatenation(
+      const_cast<nvinfer1::ITensor* const*>(concat_inputs.data()),
+      concat_inputs.size());
+  concat_layer->setAxis(0);
+  nvinfer1::ITensor* new_shape = concat_layer->getOutput(0);
+  // Reshape input using new shape
+  nvinfer1::IShuffleLayer* shuffle = network()->addShuffle(*input);
+  shuffle->setInput(1, *new_shape);
+  *output = shuffle->getOutput(0);
+  return Status::OK();
+#else
+  return errors::Unavailable(
+      "Dynamic shape input requires TensorRT 6 or above");
+#endif
+}
+
+Status Converter::DynamicExpandDims(nvinfer1::ITensor* input,
+                                    const nvinfer1::Dims& dims, int axis,
+                                    OpConverterParams* params,
+                                    nvinfer1::ITensor** output) {
+  if (params->validation_only) {
+    *output = nullptr;
+    return errors::Internal(
+        "DynamicExpandDims should not be used during validation");
+  }
+  std::vector<std::pair<int, int>> slices;
+  std::vector<int> extra_dims;
+  if (axis != 0) {
+    slices.push_back(std::pair<int, int>{0, axis});
+    extra_dims.push_back(-1);
+  }
+  extra_dims.push_back(1);
+  if (axis != dims.nbDims) {
+    slices.push_back(std::pair<int, int>{axis, dims.nbDims});
+  }
+  return DynamicReshape(input, slices, params, output, extra_dims);
+}
+
 Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
                                 std::vector<int>* input_dims,
+                                OpConverterParams* params,
                                 nvinfer1::ITensor** output) {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   // If the remaining dimensions of a squeeze operation have dynamic sizes, we
   // need to use TRT ops to build the result shape for the squeeze operation.
   // This is because IShuffleLayer::setReshapeDimensions treats -1 as a special
   // value.
-  if (absl::c_any_of(*input_dims, [](int i) { return i == -1; })) {
-    nvinfer1::ITensor* shape = network()->addShape(*input)->getOutput(0);
-    std::vector<nvinfer1::ITensor const*> concat_inputs;
+  if (!params->use_implicit_batch && !HasStaticShape(*input_dims)) {
+    std::vector<std::pair<int, int>> slices;
     for (int i = 0; i < input_dims->size(); i++) {
-      // If input dim wasn't set to 0 earlier, we include it in new shape.
       if (input_dims->at(i) != 0) {
-        concat_inputs.push_back(
-            network()
-                ->addSlice(*shape, {1, {i}}, {1, {1}}, {1, {1}})
-                ->getOutput(0));
+        slices.push_back(std::pair<int, int>(i, i + 1));
       }
     }
-    nvinfer1::IConcatenationLayer* concat_layer = network()->addConcatenation(
-        const_cast<nvinfer1::ITensor* const*>(concat_inputs.data()),
-        concat_inputs.size());
-    concat_layer->setAxis(0);
-    nvinfer1::ITensor* new_shape = concat_layer->getOutput(0);
-    // Reshape input using new shape
-    nvinfer1::IShuffleLayer* shuffle = network()->addShuffle(*input);
-    shuffle->setInput(1, *new_shape);
-    *output = shuffle->getOutput(0);
-    return Status::OK();
+    return DynamicReshape(input, slices, params, output);
   }
-#endif
   // Remove all dims which are equal to 0.
   input_dims->erase(std::remove(input_dims->begin(), input_dims->end(), 0),
                     input_dims->end());
@@ -2545,7 +2674,7 @@ Status ConvertSqueeze(OpConverterParams* params) {
 
   nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
-      input_tensor.tensor(), &input_dims, &output_tensor));
+      input_tensor.tensor(), &input_dims, params, &output_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
@@ -3888,11 +4017,26 @@ Status ConvertBiasAdd(OpConverterParams* params) {
 
   nvinfer1::Dims input_shape = inputs.at(0).GetTrtDims();
   nvinfer1::Dims bias_shape = inputs.at(1).GetTrtDims();
-  // If the input is NCHW, then we need to unsqueeze the bias such that its last
-  // dimensions are 1s (and the first dimension is C).
+  // The bias input arg is a 1-D tensor with length C. If the input is NCHW,
+  // then we need to unsqueeze the bias such that its shape is [1, C, 1, 1].
   if (data_format == "NCHW") {
-    bias_shape.nbDims = input_shape.nbDims;
-    std::fill(bias_shape.d + 1, bias_shape.d + bias_shape.nbDims, 1);
+    if (params->use_implicit_batch) {
+      // The batch dim is not included in implicit batch mode, so the shape of
+      // the bias tensor is [C, 1, 1].
+      bias_shape.nbDims = input_shape.nbDims;
+      std::fill(bias_shape.d + 1, bias_shape.d + bias_shape.nbDims, 1);
+    } else {
+      // In explicit batch mode we create a tensor with shape [1, C, 1, 1].
+      std::vector<int> bias_shape_vec(bias_shape.d,
+                                      bias_shape.d + bias_shape.nbDims);
+      // Insert 1 before for batch dim
+      bias_shape_vec.insert(bias_shape_vec.begin(), 1);
+      // Trail with 1s to match input_shape size
+      bias_shape_vec.insert(bias_shape_vec.end(),
+                            input_shape.nbDims - bias_shape_vec.size(), 1);
+      TF_RETURN_IF_ERROR(
+          TensorShapeArrayToTrtDims(bias_shape_vec, &bias_shape));
+    }
   } else {
     // Next, broadcast the bias across the input.
     TF_RETURN_IF_ERROR(GetTrtBroadcastShape(inputs.at(0), inputs.at(1),
@@ -4115,8 +4259,13 @@ Status ConvertBinary(OpConverterParams* params) {
                                    " inputs but expected 2, at ",
                                    node_def.name());
   }
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
+                                   DataType::DT_INT32};
+#else
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF};
+#endif
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
 
   // Constant folding should have been done by TensorFlow
   if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
@@ -4276,8 +4425,13 @@ Status ConvertSquare(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
+#if IS_TRT_VERSION_GE(6, 0, 1, 0)
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+#else
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+#endif
   if (params->validation_only) return Status::OK();
 
   // Constant 2 with same rank as input
@@ -4649,7 +4803,9 @@ Status ConvertCast(OpConverterParams* params) {
   }
 
   DataType output_type;
-  TF_RETURN_IF_ERROR(GetOutputTfType(*params, &output_type));
+  TF_RETURN_IF_ERROR(GetNodeDefTfType(params->node_def, &output_type,
+                                      kCastOutputTypeAttrName));
+
   if (output_type != DataType::DT_FLOAT) {
     return unsupport_cast_error();
   }
@@ -4743,10 +4899,11 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     // Trying to use batchnorm in training mode is a very common problem.
     // Because the error message will only be printed in VLOG(1) by the
     // segmenter, we issue a special warning so that users will actually see it.
-    LOG(WARNING) << node_def.op() << " only supports is_training=false. If you "
-                 << "are using Keras, please call "
-                 << "keras.backend.set_learning_phase(0) before constructing "
-                 << "your model. At " << node_def.name();
+    LOG_WARNING_WITH_PREFIX
+        << node_def.op() << " only supports is_training=false. If you "
+        << "are using Keras, please call "
+        << "keras.backend.set_learning_phase(0) before constructing "
+        << "your model. At " << node_def.name();
     return errors::Unimplemented(node_def.op(),
                                  " only supports is_training=false, at ",
                                  node_def.name());
@@ -4860,24 +5017,14 @@ Status ConvertGather(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   // TODO(tmorris): Use CheckInputsWeights by changing bool to enum with an
   // option for an input to be either tensor or weight.
-  if (inputs.size() != 3) {
-    return errors::InvalidArgument("GatherV2 got ", inputs.size(),
-                                   " inputs but expected 3, at ",
-                                   node_def.name());
-  }
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"params", TrtInputArg::kBoth},
+                                   {"indices", TrtInputArg::kTensor},
+                                   {"axis", TrtInputArg::kWeight}}));
+
   const auto& params_input = inputs.at(0);
   const auto& indices_input = inputs.at(1);
   const auto& axis_input = inputs.at(2);
-  if (!axis_input.is_weights()) {
-    return errors::Unimplemented(
-        "The input \"axis\" for GatherV2 must be a constant, at ",
-        node_def.name());
-  }
-  if (!indices_input.is_tensor()) {
-    return errors::Unimplemented(
-        "The input \"indices\" for GatherV2 must be a tensor, at ",
-        node_def.name());
-  }
 
   TF_RETURN_IF_ERROR(AllowDataTypes(
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32},
@@ -4891,14 +5038,16 @@ Status ConvertGather(OpConverterParams* params) {
                                    node_def.name());
   }
   int trt_axis = 0;
-  TF_RETURN_IF_ERROR(ConvertAxis(axis[0], params_input.GetTrtDims().nbDims,
-                                 node_def.name(), params_input.is_tensor(),
-                                 &trt_axis));
-  if (params_input.is_weights() && trt_axis != 0) {
+  TF_RETURN_IF_ERROR(ConvertAxis(
+      axis[0], params_input.GetTrtDims().nbDims, node_def.name(),
+      params->use_implicit_batch && params_input.is_tensor(), &trt_axis));
+  if (params->use_implicit_batch && params_input.is_weights() &&
+      trt_axis != 0) {
     return errors::Unimplemented(
         "The input axis must be zero when params is a weight.");
   }
-  if (params_input.is_tensor() && indices_input.batch_size() != 1) {
+  if (params->use_implicit_batch && params_input.is_tensor() &&
+      indices_input.batch_size() != 1) {
     return errors::Unimplemented(
         "Indices must have a batch size of 1 when params is a tensor.");
   }
@@ -4907,10 +5056,13 @@ Status ConvertGather(OpConverterParams* params) {
   // where "+ 1" adds the batch dim. If params is a weight, the TRT rank matches
   // the TF rank so we don't have to add + 1.
   const int params_tf_rank =
-      params_input.GetTrtDims().nbDims + (params_input.is_tensor() ? 1 : 0);
-  const int indices_tf_rank = indices_input.GetTrtDims().nbDims + 1;
+      params_input.GetTrtDims().nbDims +
+      (params->use_implicit_batch && params_input.is_tensor() ? 1 : 0);
+  const int indices_tf_rank =
+      indices_input.GetTrtDims().nbDims + (params->use_implicit_batch ? 1 : 0);
   const int tf_gather_output_rank = params_tf_rank + indices_tf_rank - 1;
-  if (tf_gather_output_rank > nvinfer1::Dims::MAX_DIMS + 1) {
+  if (tf_gather_output_rank >
+      nvinfer1::Dims::MAX_DIMS + (params->use_implicit_batch ? 1 : 0)) {
     return errors::InvalidArgument(
         "Result of gather has dimension greater than ",
         nvinfer1::Dims::MAX_DIMS + 1);
@@ -4942,7 +5094,8 @@ Status ConvertGather(OpConverterParams* params) {
   // because of the implicit batch dim in the indices (see the above note).
   const int expected_trt_output_rank =
       tf_gather_output_rank - (params_input.is_tensor() ? 2 : 1);
-  if (trt_gather_output_dims.nbDims != expected_trt_output_rank) {
+  if (params->use_implicit_batch &&
+      trt_gather_output_dims.nbDims != expected_trt_output_rank) {
     return errors::Internal(
         "Get unexpected output dimensions of IGatherLayer. Expect nbDims: ",
         expected_trt_output_rank,
@@ -4950,7 +5103,7 @@ Status ConvertGather(OpConverterParams* params) {
   }
   // Reshape the output so after adding the implicit batch dim it'll match the
   // output shape of TF GatherV2.
-  if (params_input.is_tensor()) {
+  if (params->use_implicit_batch && params_input.is_tensor()) {
     for (int i = trt_gather_output_dims.nbDims; i > trt_axis; --i) {
       trt_gather_output_dims.d[i] = trt_gather_output_dims.d[i - 1];
     }
@@ -5888,7 +6041,7 @@ Status ConvertGraphDefToEngine(
         const string error_message =
             StrCat("Validation failed for ", node_name, " and input slot ",
                    slot_number, ": ", status.error_message());
-        LOG(WARNING) << error_message;
+        LOG_WARNING_WITH_PREFIX << error_message;
         return Status(status.code(), error_message);
       }
       VLOG(2) << "Adding engine input tensor " << node_name << " with shape "
@@ -6104,5 +6257,4 @@ bool OutputEdgeValidator::operator()(const Edge* out_edge) const {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

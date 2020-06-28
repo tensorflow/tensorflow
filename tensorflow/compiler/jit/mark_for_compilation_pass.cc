@@ -1837,7 +1837,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
       "ConcatOffset", "Const", "MirrorPad", "Pack", "Pad", "PadV2", "Reverse",
       "ReverseV2", "ReverseSequence", "Slice", "Split", "SplitV",
       "StridedSlice", "StridedSliceGrad", "ResourceStridedSliceAssign",
-      "Tile", "Transpose", "InvertPermutation", "Unpack"}}};
+      "Tile", "Transpose", "InvertPermutation", "Unpack", "DeviceIndex"}}};
   // clang-format on
   return result;
 }
@@ -2034,6 +2034,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "TensorArraySplitV3",
                                      "TensorArrayV3",
                                      "TensorArrayWriteV3",
+                                     "TensorListConcatV2",
                                      "TensorListElementShape",
                                      "TensorListFromTensor",
                                      "TensorListGather",
@@ -2043,6 +2044,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "TensorListPushBack",
                                      "TensorListReserve",
                                      "TensorListSetItem",
+                                     "TensorListSplit",
                                      "TensorListStack",
                                      "TensorScatterAdd",
                                      "TensorScatterSub",

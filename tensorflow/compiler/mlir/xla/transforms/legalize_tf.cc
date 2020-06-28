@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <numeric>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -49,11 +51,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
+#include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -516,6 +520,26 @@ static Value Broadcast1DToFeatureDim(Location loc, Value broadcast_to,
       loc, to_type, broadcast_from, result_extents, broadcast_dims);
 }
 
+// Broadcasts `input` to the shape of `broadcast_to` value following
+// TF::BroadcastTo semantics.
+//
+// Requires that input is a ranked tensor.
+//
+// TODO(hinsu): Utilize TF::ShapeOp followed by TF::BroadcastTo once ShapeOp
+// supports unranked inputs in the lowering.
+static Value BroadcastToShapeOf(Location loc, Value input, Value broadcast_to,
+                                OpBuilder &builder) {
+  auto result_shape = builder.create<shape::ShapeOfOp>(loc, broadcast_to);
+  auto to_type = broadcast_to.getType().cast<TensorType>();
+  auto result_extents_type = GetExtentsTensorTypeFor(to_type);
+  auto result_extents = builder.create<shape::ToExtentTensorOp>(
+      loc, result_extents_type, result_shape);
+  int64_t rank = input.getType().cast<RankedTensorType>().getRank();
+  auto broadcast_dims = GetI64ElementsAttrForSeq(0, rank, &builder);
+  return builder.create<DynamicBroadcastInDimOp>(
+      loc, to_type, input, result_extents, broadcast_dims);
+}
+
 // Creates a batch dot using xla_hlo::DotGeneralOp.
 Value BatchDot(Location loc, Value lhs, bool transpose_lhs, Value rhs,
                bool transpose_rhs, int64_t num_batch_dims,
@@ -547,7 +571,7 @@ Value BatchDot(Location loc, Value lhs, bool transpose_lhs, Value rhs,
       dimension_numbers, precision_config);
 }
 
-// Builds body for reduce op by using the using the template binary op as the
+// Builds body for reduce op by using the template binary op as the
 // reducer op.
 template <typename Op>
 static void BuildReduceBody(Type element_type, Region *body,
@@ -859,6 +883,31 @@ static Type GetAccumulationType(Type ty) {
   // Upcast 16 bit sum reductions to 32 bit to reduce the precision loss from
   // repeated floating point additions.
   return (ty.isF16() || ty.isBF16()) ? FloatType::getF32(ty.getContext()) : ty;
+}
+
+//===----------------------------------------------------------------------===//
+// Softplus op utilities.
+//===----------------------------------------------------------------------===//
+
+static DenseElementsAttr GetEpsilonValue(Type ty) {
+  auto element_ty = ty.cast<TensorType>().getElementType();
+  auto scalar_ty = RankedTensorType::get({}, element_ty);
+  if (element_ty.isF16()) {
+    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::half>::epsilon().x;
+    auto value = APFloat(APFloat::IEEEhalf(), APInt(16, raw_epsilon));
+    return DenseElementsAttr::get(scalar_ty, value);
+  } else if (element_ty.isBF16()) {
+    uint16_t raw_epsilon = tensorflow::bfloat16::epsilon().value;
+    auto value = APFloat(APFloat::BFloat(), APInt(16, raw_epsilon));
+    return DenseElementsAttr::get(scalar_ty, value);
+  } else if (element_ty.isF32()) {
+    auto value = APFloat(std::numeric_limits<float>::epsilon());
+    return DenseElementsAttr::get(scalar_ty, value);
+  } else if (element_ty.isF64()) {
+    auto value = APFloat(std::numeric_limits<double>::epsilon());
+    return DenseElementsAttr::get(scalar_ty, value);
+  }
+  llvm_unreachable("unsupported element type for tf.SoftPlus");
 }
 
 //===----------------------------------------------------------------------===//
@@ -1649,17 +1698,21 @@ class ConvertFusedBatchNormV3Op
   }
 };
 
-// Returns padding attribute for ReduceWindow op with given params.
+using PaddingArray =
+    std::vector<std::pair<tensorflow::int64, tensorflow::int64>>;
+
+// Returns padding values for ReduceWindow op as a vector of pairs.
 //
 // Requires padding to be either 'SAME' or 'VALID' and the number of input
 // dimensions to be equal to the size of window dimensions and window strides.
 template <int num_dims>
-static DenseIntElementsAttr GetReduceWindowPadding(
+static PaddingArray GetReduceWindowPaddingAsArray(
     llvm::ArrayRef<int64_t> input_dims, ArrayAttr window_dims,
     ArrayAttr window_strides, StringRef padding, Builder *builder) {
-  if (padding == "VALID") return {};
-  DCHECK_EQ(padding.str(), "SAME");
-
+  if (padding == "VALID") {
+    return PaddingArray(num_dims, std::make_pair(0, 0));
+  }
+  assert(padding == "SAME");
   llvm::SmallVector<tensorflow::int64, num_dims> input_shape, window_shape,
       strides;
   input_shape.reserve(input_dims.size());
@@ -1672,9 +1725,21 @@ static DenseIntElementsAttr GetReduceWindowPadding(
   for (Attribute attr : window_strides)
     strides.push_back(attr.cast<IntegerAttr>().getInt());
 
-  std::vector<std::pair<tensorflow::int64, tensorflow::int64>> paddings =
-      ::xla::MakePadding(input_shape, window_shape, strides,
-                         ::xla::Padding::kSame);
+  PaddingArray paddings = ::xla::MakePadding(input_shape, window_shape, strides,
+                                             ::xla::Padding::kSame);
+  return paddings;
+}
+
+// Same as GetReduceWindowPaddingAsArray but returns padding as
+// DenseIntElementsAttr. Returns empty attribute for `VALID` padding.
+template <int num_dims>
+static DenseIntElementsAttr GetReduceWindowPaddingAsAttr(
+    llvm::ArrayRef<int64_t> input_dims, ArrayAttr window_dims,
+    ArrayAttr window_strides, StringRef padding, Builder *builder) {
+  if (padding == "VALID") return {};
+  assert(padding == "SAME");
+  PaddingArray paddings = GetReduceWindowPaddingAsArray<num_dims>(
+      input_dims, window_dims, window_strides, padding, builder);
   int64_t rank = paddings.size();
   llvm::SmallVector<int64_t, num_dims * 2> flatten_paddings(rank * 2);
   for (int i = 0; i < rank; i++) {
@@ -1726,8 +1791,8 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
     Value init =
         GetScalarConstOfType(sum_element_type, op.getLoc(), 0, &rewriter);
     DenseIntElementsAttr paddings_attr =
-        GetReduceWindowPadding<4>(input_type.getShape(), op.ksize(),
-                                  op.strides(), op.padding(), &rewriter);
+        GetReduceWindowPaddingAsAttr<4>(input_type.getShape(), op.ksize(),
+                                        op.strides(), op.padding(), &rewriter);
     auto reduce = rewriter.create<ReduceWindowOp>(
         op.getLoc(), result_type, input_value, init,
         GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
@@ -1759,6 +1824,229 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
   }
 };
 
+// `AvgPoolGradOp` is converted to the following operations:
+// 1. Divide each entry of the output gradient (the gradient for the previous
+//    layer in backpropagation order) by the count of the corresponding window
+//    (i.e., the number of non-padding entries of the window which `AvgPool`
+//    has mapped to this entry in forward propagation).
+// 2. Add appropriate interior and exterior padding for step 3 (see example
+//    below).
+// 3. Convolve the result of step 2. with a kernel consisting of 1's (same shape
+//    as windows) and stride 1 in each dimension. This is implemented as a
+//    `ReduceWindowOp` with `AddOp` as body.
+//
+// Example:
+// Let f : R^4 -> R^2 be an average pool function with window size 3, stride 2,
+// and SAME padding with 0's. It is defined by
+//    f(x) = [ (x_1 + x_2 + x_3) / 3 ]      ( x = (x_1, x_2, x_3, x_4) )
+//           [ (x_3 + x_4 + 0)   / 2 ]      (the 0 results from right padding)
+// Note that for SAME padding in `AvgPool` the padded entries are not counted
+// for the average, this is why the second denominator is 2 and not 3.
+// The Jacobian Df is
+//    [ 1/3  1/3  1/3  0   ]
+//    [ 0    0    1/2  1/2 ]
+//
+// Note that the Jacobian is constant (this is why `ConvertAvgPoolGradOp` only
+// needs the original input shape and not the tensor as argument).
+// Let v = [ 4  6 ]^T  be the output gradient (^T = transposed). Then the
+// average pool gradient is given by
+//    Df^T * v = [ 4/3  4/3  13/3  3 ]^T
+// Instead of a matrix-vector-multiplication we can utilize the sparsity and
+// structure of Df by using the 3-step approach from above:
+// 1. Divide output gradient v by window counts: [ 4/3  6/2 ]^T
+// 2. Add appropriate padding: [ 0  0  4/3  0  3  0 ]^T
+// 3. Convolve with kernel [ 1  1  1 ]: [ 4/3  4/3  11/3  3 ]^T
+//
+// Note that the padding in step 2. is chosen in such a way that the subsequent
+// convolution produces the gradient. Higher dimensions, different padding, and
+// different windows/strides work in a similar way, the main difference is in
+// the computation of the paddings in step 2.
+//
+// For more details on backpropagation for convolution of which `AvgPoolGrad`
+// is a special case see `tensorflow/core/kernels/conv_grad_ops.h`.
+// `tensorflow/compiler/mlir/xla/tests/legalize-tf.mlir` has more
+// examples for different cases.
+template <typename OpTy, int num_dims>
+class ConvertAvgPoolGradOp : public OpRewritePattern<OpTy> {
+  using DimVector = SmallVector<int64_t, num_dims>;
+
+ public:
+  using OpRewritePattern<OpTy>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    tensorflow::TensorFormat data_format;
+    if (!FormatFromString(op.data_format().str(), &data_format)) {
+      return failure();
+    }
+    // `out_grad` is the gradient that was propagated via backpropagation from
+    // the output layer.
+    Value out_grad = op.grad();
+    auto out_grad_type =
+        out_grad.getType().template dyn_cast<RankedTensorType>();
+    if (!out_grad_type) {
+      return failure();
+    }
+    Type element_type = out_grad_type.getElementType();
+    DenseIntElementsAttr orig_input_shape_attr;
+    if (!matchPattern(op.orig_input_shape(),
+                      m_Constant(&orig_input_shape_attr))) {
+      return failure();
+    }
+    auto orig_input_shape_values = orig_input_shape_attr.getValues<int32_t>();
+    DimVector orig_input_shape(orig_input_shape_values.begin(),
+                               orig_input_shape_values.end());
+    RankedTensorType orig_input_type =
+        RankedTensorType::get(orig_input_shape, element_type);
+    DimVector ksize, strides;
+    GetI64ArrayAttrValues(op.ksize(), &ksize);
+    GetI64ArrayAttrValues(op.strides(), &strides);
+    Value zero = GetScalarConstOfType(element_type, loc, 0, &rewriter);
+
+    Operation *out_grad_divided = nullptr;
+    if (op.padding() == "VALID") {
+      // All window counts are equal here because we don't have padding
+      // (each entry of `out_grad` corresponds to a window that consists of
+      //  original input entries only).
+      int64_t window_count = std::accumulate(ksize.begin(), ksize.end(), 1,
+                                             std::multiplies<int64_t>());
+      // Divide `out_grad` by window counts.
+      Value divisor =
+          GetScalarConstOfType(element_type, loc, window_count, &rewriter);
+      auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
+      out_grad_divided = rewriter.create<xla_chlo::BroadcastDivOp>(
+          loc, out_grad_type, out_grad, divisor, scalar_broadcast_dims);
+    } else {
+      assert(op.padding() == "SAME");
+      // For SAME padding, only original entries that contributed to a window
+      // are counted for the average of this window, not padded entries.
+
+      // Build all-ones tensor of same shape as the original input.
+      ElementsAttr splat = xla::getSplat(&rewriter, orig_input_type, 1);
+      auto all_ones_tensor = rewriter.create<ConstOp>(loc, splat);
+
+      // Get the same padding as for the original input.
+      DenseIntElementsAttr orig_padding_attr =
+          GetReduceWindowPaddingAsAttr<num_dims>(orig_input_shape, op.ksize(),
+                                                 op.strides(), op.padding(),
+                                                 &rewriter);
+
+      // Count the 1's in each window, using the same padding as for the
+      // original input, which gives us the window counts by which `out_grad`
+      // needs to be divided.
+      auto window_counts = rewriter.create<ReduceWindowOp>(
+          loc, out_grad_type,
+          /*operand=*/all_ones_tensor,
+          /*init_value=*/zero,
+          /*window_dimensions=*/GetI64ElementsAttr(op.ksize()),
+          /*window_strides=*/GetI64ElementsAttr(op.strides()),
+          /*base_dilations=*/DenseIntElementsAttr(),
+          /*window_dilations=*/DenseIntElementsAttr(),
+          /*padding=*/orig_padding_attr);
+      BuildReduceBody<AddOp>(element_type, &window_counts.body(), &rewriter);
+
+      // Divide `out_grad` by window counts.
+      out_grad_divided = rewriter.create<xla_hlo::DivOp>(
+          loc, out_grad_type, out_grad, window_counts);
+    }
+
+    // Get same padding as for original input.
+    PaddingArray orig_padding = GetReduceWindowPaddingAsArray<num_dims>(
+        orig_input_shape, op.ksize(), op.strides(), op.padding(), &rewriter);
+
+    // Add padding around `out_grad_divided` values in such a way that the
+    // subsequent `ReduceWindowOp` produces the gradient.
+    DimVector out_grad_shape(
+        llvm::to_vector<num_dims>(out_grad_type.getShape()));
+    DimVector low_padding(num_dims, 0);
+    DimVector high_padding(num_dims, 0);
+    DimVector interior_padding(num_dims, 0);
+    constexpr int num_spatial_dims = num_dims - 2;
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      int dim = tensorflow::GetTensorSpatialDimIndex(num_dims, data_format, i);
+      int orig_input_shape_padded_in_dim = orig_input_shape[dim] +
+                                           orig_padding[dim].first +
+                                           orig_padding[dim].second;
+      // Set interior padding such that neighboring entries from
+      // `out_grad_divided` have distance `strides[dim]` from each other in
+      // every dimension.
+      interior_padding[dim] = strides[dim] - 1;
+      // Set exterior padding in the same way as for convolution gradient
+      // computation.
+      auto status = ::xla::ConvGradExtractAndVerifyDimension(
+          /*input_size=*/orig_input_shape_padded_in_dim,
+          /*filter_size=*/ksize[dim],
+          /*output_size=*/out_grad_shape[dim],
+          /*dilation=*/1,
+          /*stride=*/strides[dim],
+          /*padding=*/::xla::Padding::kValid);
+      if (!status.ok()) {
+        return failure();
+      }
+      ::xla::SpatialDimensionOutputSizeAndPadding &conv_grad_spatial_dim =
+          status.ValueOrDie();
+      // Subtract the original exterior padding since it doesn't contribute to
+      // the gradient. Note that we save one `PadOp` and some unnecessary kernel
+      // computations, compared to the `xla::AvgPoolGrad` implementation, by
+      // subtracting the original exterior padding before `ReduceWindowOp`
+      // instead of trimming the result of `ReduceWindowOp` (the final result is
+      // the same because all strides are 1).
+      low_padding[dim] =
+          conv_grad_spatial_dim.pad_before - orig_padding[dim].first;
+      high_padding[dim] =
+          conv_grad_spatial_dim.pad_after - orig_padding[dim].second;
+
+      // Update `out_grad_shape` to result shape of following `PadOp`.
+      out_grad_shape[dim] = low_padding[dim] + high_padding[dim] +
+                            (out_grad_shape[dim] - 1) * strides[dim] + 1;
+    }
+    Value reduce_window_input = rewriter.create<PadOp>(
+        loc, RankedTensorType::get(out_grad_shape, element_type),
+        /*operand=*/out_grad_divided->getOpResult(0),
+        /*padding_value=*/zero,
+        /*edge_padding_low=*/GetI64ElementsAttr(low_padding, &rewriter),
+        /*edge_padding_high=*/GetI64ElementsAttr(high_padding, &rewriter),
+        /*interior_padding=*/GetI64ElementsAttr(interior_padding, &rewriter));
+
+    // Compute result by convolving `reduce_window_input` with an all-ones
+    // kernel, using `ReduceWindowOp` with `AddOp` body.
+
+    Type sum_element_type = GetSumAccumulationType(element_type);
+    if (element_type != sum_element_type) {
+      // Convert to appropriate sum accumulation type to avoid precision loss.
+      reduce_window_input = rewriter.create<ConvertOp>(loc, reduce_window_input,
+                                                       sum_element_type);
+      zero = GetScalarConstOfType(sum_element_type, loc, 0, &rewriter);
+    }
+    auto ones = GetI64ElementsAttr(DimVector(num_dims, 1), &rewriter);
+    auto reduce_window_op = rewriter.create<ReduceWindowOp>(
+        loc, RankedTensorType::get(orig_input_shape, sum_element_type),
+        /*operand=*/reduce_window_input,
+        /*init_value=*/zero,
+        /*window_dimensions=*/GetI64ElementsAttr(op.ksize()),
+        /*window_strides=*/ones,
+        /*base_dilations=*/DenseIntElementsAttr(),
+        /*window_dilations=*/DenseIntElementsAttr(),
+        /*padding=*/DenseIntElementsAttr());
+    BuildReduceBody<AddOp>(sum_element_type, &reduce_window_op.body(),
+                           &rewriter);
+    Value result = reduce_window_op.getResult();
+
+    if (element_type != sum_element_type) {
+      // Convert back to original element type.
+      result = rewriter.create<ConvertOp>(op.getLoc(), result, element_type);
+    }
+    rewriter.replaceOp(op, {result});
+    return success();
+  }
+};
+
+using ConvertAvgPool2DGradOp =
+    ConvertAvgPoolGradOp<TF::AvgPoolGradOp, /*num_dims=*/4>;
+using ConvertAvgPool3DGradOp =
+    ConvertAvgPoolGradOp<TF::AvgPool3DGradOp, /*num_dims=*/5>;
+
 // Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with max as the reduction function.
 //
@@ -1783,7 +2071,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
 
     auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
-    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding<num_dims>(
+    DenseIntElementsAttr paddings_attr = GetReduceWindowPaddingAsAttr<num_dims>(
         input_ty.getShape(), op.ksize(), op.strides(), op.padding(), &rewriter);
     auto reduce = rewriter.create<ReduceWindowOp>(
         loc, op.getType(), op.input(), init.getResult(),
@@ -1904,27 +2192,20 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 
   LogicalResult matchAndRewrite(TF::SigmoidOp op,
                                 PatternRewriter &rewriter) const override {
-    auto operand = op.getOperand();
+    Location loc = op.getLoc();
 
-    auto scalar_one = rewriter.create<ConstOp>(
-        op.getLoc(),
-        rewriter.getFloatAttr(getElementTypeOrSelf(operand.getType()), 0.5));
+    // Create constant half with shape and element type same as the operand.
+    Value operand = op.getOperand();
+    auto operand_ty = operand.getType().cast<TensorType>();
+    auto scalar_ty = RankedTensorType::get({}, operand_ty.getElementType());
+    ElementsAttr attr = mlir::xla::getSplat(&rewriter, scalar_ty, 0.5);
+    auto scalar_half = rewriter.create<ConstOp>(loc, attr);
+    auto half = BroadcastToShapeOf(loc, scalar_half, operand, rewriter);
 
-    auto type = operand.getType().dyn_cast<RankedTensorType>();
-    if (!type)
-      return rewriter.notifyMatchFailure(op, "requires ranked tensor type");
-    auto constant_ones = rewriter.create<BroadcastOp>(
-        op.getLoc(), type, scalar_one,
-        GetI64ElementsAttr(type.getShape(), &rewriter));
-
-    auto scaled_input =
-        rewriter.create<xla_hlo::MulOp>(op.getLoc(), operand, constant_ones);
-    auto tanh_op =
-        rewriter.create<TanhOp>(op.getLoc(), operand.getType(), scaled_input);
-    auto mul_op =
-        rewriter.create<xla_hlo::MulOp>(op.getLoc(), tanh_op, constant_ones);
-    auto add_op =
-        rewriter.create<xla_hlo::AddOp>(op.getLoc(), mul_op, constant_ones);
+    auto scaled_input = rewriter.create<MulOp>(loc, operand, half);
+    auto tanh_op = rewriter.create<TanhOp>(loc, scaled_input);
+    auto mul_op = rewriter.create<MulOp>(loc, tanh_op, half);
+    auto add_op = rewriter.create<AddOp>(loc, mul_op, half);
 
     rewriter.replaceOp(op, add_op.getResult());
     return success();
@@ -2751,6 +3032,86 @@ class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
   }
 };
 
+// Converts RangeOp for cases with the length is a dynamic value. The shape of
+// the resulting tensor computed, then the start and delta is used with the
+// dynamic_iota value to compute the final range value.
+//
+// For example, the resulting range op value:
+//   %range = "tf.range"(%start, %limit, %delta)
+//
+// Is converted to the following.
+//   %start + %delta * iota(ceil(abs((%limit - %start) / %delta))
+//
+// Implementation is defined in C++ due to the complicated type behavior.
+class ConvertDynamicRangeOp : public OpRewritePattern<TF::RangeOp> {
+  using OpRewritePattern<TF::RangeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::RangeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto result = op.getResult();
+    auto result_type = result.getType().cast<ShapedType>();
+    if (result_type.hasStaticShape()) {
+      return failure();
+    }
+
+    Value start = op.start();
+    Value delta = op.delta();
+    Value limit = op.limit();
+
+    // To compute the length we need to use floating point calculations so that
+    // ceil can be computed for the number of steps.
+    auto compute_element_type =
+        getElementTypeOrSelf(start.getType()).isa<FloatType>()
+            ? getElementTypeOrSelf(start.getType())
+            : rewriter.getF64Type();
+    auto compute_type = RankedTensorType::get(
+        limit.getType().cast<ShapedType>().getShape(), compute_element_type);
+
+    // Compute the length of the sequence we are going to need. This includes
+    // some conversion to float for the operations.
+    //
+    // %size = ceil(abs((%limit - %start) / %delta))
+    auto range = rewriter.create<xla_hlo::SubOp>(op.getLoc(), limit, start);
+    auto abs = rewriter.create<xla_hlo::AbsOp>(op.getLoc(), range);
+
+    // Delta is not necessarily the same type as start and limit.
+    auto abs_cast =
+        rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), compute_type, abs);
+    auto delta_cast =
+        rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), compute_type, delta);
+
+    // Compute the total number of integer steps and convert to the HLO
+    // dimension tensor.
+    auto normalized =
+        rewriter.create<xla_hlo::DivOp>(op.getLoc(), abs_cast, delta_cast);
+    auto ceil = rewriter.create<xla_hlo::CeilOp>(op.getLoc(), normalized);
+    auto steps = rewriter.create<xla_hlo::ConvertOp>(
+        op.getLoc(), RankedTensorType::get({}, rewriter.getI64Type()), ceil);
+    auto reshape = rewriter.create<xla_hlo::ReshapeOp>(
+        op.getLoc(), RankedTensorType::get({1}, rewriter.getI64Type()), steps);
+
+    // Using the resulting length compute the correct range value:
+    //
+    // %range = %start + %delta * iota(%size)
+    auto out_scalar_type =
+        RankedTensorType::get({}, getElementTypeOrSelf(result_type));
+    auto start_out_cast = rewriter.create<xla_hlo::ConvertOp>(
+        op.getLoc(), out_scalar_type, start);
+    auto delta_out_cast = rewriter.create<xla_hlo::ConvertOp>(
+        op.getLoc(), out_scalar_type, delta);
+
+    auto iota = rewriter.create<DynamicIotaOp>(
+        op.getLoc(), result_type, reshape, rewriter.getI64IntegerAttr(0));
+    auto scaled = rewriter.create<xla_chlo::BroadcastMulOp>(
+        op.getLoc(), result_type, iota, delta_out_cast,
+        xla::getBroadcastDimensionsAttr(&rewriter, iota, delta_cast));
+    rewriter.replaceOpWithNewOp<xla_chlo::BroadcastAddOp>(
+        op, result_type, scaled, start_out_cast,
+        xla::getBroadcastDimensionsAttr(&rewriter, scaled, start_out_cast));
+    return success();
+  }
+};
+
 ElementsAttr ConvertAxisAttr(Value val, ElementsAttr attr, Builder *builder) {
   auto int_attr = attr.cast<DenseIntElementsAttr>();
   auto type = val.getType().cast<ShapedType>();
@@ -3209,16 +3570,19 @@ class ConvertTileOp : public OpRewritePattern<TF::TileOp> {
 
       // Line input up with the next dimension in broadcasted_shape
       // when broadcasting.
-      broadcast_dimensions.push_back(broadcasted_shape.size());
+      int64_t broadcast_dim;
       int64_t output_size = input_size * multiple;
       if (input_size == 1 || multiple == 1) {
         // Special case for when normal broadcasting will just work.
+        broadcast_dim = broadcasted_shape.size();
         broadcasted_shape.push_back(output_size);
       } else {
         // Tiling will happen for this dimension during the ReshapeOp below.
-        broadcasted_shape.push_back(input_size);
         broadcasted_shape.push_back(multiple);
+        broadcast_dim = broadcasted_shape.size();
+        broadcasted_shape.push_back(input_size);
       }
+      broadcast_dimensions.push_back(broadcast_dim);
     }
     Location loc = op.getLoc();
     Type broadcasted_type =
@@ -3257,7 +3621,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<OpTy> {
     auto input_ty =
         op.orig_input().getType().template dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
-    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding<num_dims>(
+    DenseIntElementsAttr paddings_attr = GetReduceWindowPaddingAsAttr<num_dims>(
         input_ty.getShape(), op.ksize(), op.strides(), op.padding(), &rewriter);
 
     auto result = rewriter.create<SelectAndScatterOp>(
@@ -3790,17 +4154,15 @@ class ConvertInfeedDequeueTupleOp
 
       // Token is a control signal and not a real data, so arbitrarily assign
       // the token to device 0.
-      if (sharding_proto.type() == ::xla::OpSharding::TUPLE)
+      if (sharding_proto.type() == ::xla::OpSharding::TUPLE) {
         *sharding_proto.add_tuple_shardings() =
             ::xla::sharding_builder::AssignDevice(0);
-
-      std::string sharding_str;
-      if (!::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
-                                                             &sharding_str))
-        return failure();
-
-      data_and_token.setAttr(kShardingAttr,
-                             rewriter.getStringAttr(sharding_str));
+        data_and_token.setAttr(
+            kShardingAttr,
+            rewriter.getStringAttr(sharding_proto.SerializeAsString()));
+      } else {
+        data_and_token.setAttr(kShardingAttr, op._XlaShardingAttr());
+      }
     }
 
     // The infeed instruction produces a tuple of the infeed data and a token
@@ -4293,45 +4655,6 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
   }
 };
 
-// Converts tf.VariableShape op to a XLA HLO constant representing the variable
-// shape.
-class ConvertVariableShapeOp : public OpRewritePattern<TF::VariableShapeOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::VariableShapeOp op,
-                                PatternRewriter &rewriter) const override {
-    // The input type should be a tensor<!tf.resource<resource-type>>. We need
-    // to get the inner resource type.
-    auto input_type = op.input().getType().cast<TensorType>();
-    auto subtypes =
-        input_type.getElementType().cast<TF::ResourceType>().getSubtypes();
-    // It can be missing; then we cannot convert.
-    if (subtypes.empty()) return failure();
-
-    auto resource_type = subtypes[0].cast<TensorType>();
-    if (!resource_type.hasStaticShape()) return failure();
-
-    auto resource_shape = resource_type.getShape();
-    Attribute const_attr;
-
-    // We need to match the original op result's element type.
-    auto element_type = op.getType().cast<TensorType>().getElementType();
-    unsigned bitwidth = element_type.cast<IntegerType>().getWidth();
-    if (bitwidth == 32) {
-      SmallVector<int32_t, 4> shape(resource_shape.begin(),
-                                    resource_shape.end());
-      const_attr = GetI32ElementsAttr(shape, &rewriter);
-    } else {
-      assert(bitwidth == 64);
-      const_attr = GetI64ElementsAttr(resource_shape, &rewriter);
-    }
-
-    rewriter.replaceOpWithNewOp<xla_hlo::ConstOp>(op, const_attr);
-    return success();
-  }
-};
-
 // Converts an XlaSharding op to a XLA HLO shard op with sharding attributes.
 class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
  public:
@@ -4343,21 +4666,12 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
     // using a string.
     if (!op._XlaSharding().hasValue()) return failure();
 
-    // _XlaSharding attribute in TF is a serialized string of the OpSharding
-    // proto, so convert to a text form here.
-    ::xla::OpSharding sharding_proto;
-    std::string sharding_str;
-    if (!sharding_proto.ParseFromString(op._XlaSharding().getValue().str()) ||
-        !::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
-                                                           &sharding_str))
-      return failure();
-
     auto custom_call = rewriter.create<xla_hlo::CustomCallOp>(
         op.getLoc(), op.getType(), op.input(),
         /*call_target_name=*/rewriter.getStringAttr("Sharding"),
         /*has_side_effect=*/rewriter.getBoolAttr(false),
         /*backend_config=*/rewriter.getStringAttr(""));
-    custom_call.setAttr(kShardingAttr, rewriter.getStringAttr(sharding_str));
+    custom_call.setAttr(kShardingAttr, op._XlaShardingAttr());
     rewriter.replaceOp(op, custom_call.getResult());
 
     return success();
@@ -4521,6 +4835,34 @@ class ConvertCumsumOp : public OpRewritePattern<TF::CumsumOp> {
         rewriter.create<ConvertOp>(op.getLoc(), result, input_element_type);
 
     rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+// Converts the Tensorflow ShapeOp to a sequence of Shape dialect and Standard
+// dialect lowerings. This involves extracting the shape type, extracting and
+// converting each dimension to a known integer type, and repacking into a final
+// tensor.
+class ConvertShapeOp : public OpRewritePattern<TF::ShapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::ShapeOp op,
+                                PatternRewriter &rewriter) const override {
+    Value input = op.input();
+
+    auto shape_op = rewriter.create<shape::ShapeOfOp>(op.getLoc(), input);
+    auto result_ty = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!result_ty) {
+      return failure();
+    }
+
+    auto index_tensor =
+        RankedTensorType::get(result_ty.getShape(), rewriter.getIndexType());
+    auto extent_tensor = rewriter.create<shape::ToExtentTensorOp>(
+        op.getLoc(), index_tensor, shape_op);
+
+    rewriter.replaceOpWithNewOp<IndexCastOp>(op, result_ty, extent_tensor);
     return success();
   }
 };
@@ -5100,17 +5442,19 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
       ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
       ConvertInfeedDequeueTupleOp, ConvertInplaceUpdateOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPool2DOp,
-      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
-      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertQrOp, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertSigmoidOp, ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertAvgPool2DGradOp,
+      ConvertAvgPool3DGradOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
+      ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
+      ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
+      ConvertDynamicRangeOp, ConvertRangeOp, ConvertSelectV2Op,
+      ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
+      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
       ConvertUnpackOp, ConvertUnsortedSegmentMaxOp, ConvertUnsortedSegmentMinOp,
       ConvertUnsortedSegmentProdOp, ConvertUnsortedSegmentSumOp,
-      ConvertRandomShuffleOp, ConvertVariableShapeOp, ConvertXlaShardingOp,
+      ConvertRandomShuffleOp, ConvertXlaShardingOp,
       ConvertXlaDynamicUpdateSliceOp>(op->getContext());
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
@@ -5135,8 +5479,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
     // Fully qualify ReturnOp here as xla_hlo dialect also defines a ReturnOp.
     target.addLegalOp<ModuleOp, FuncOp, ModuleTerminatorOp, ::mlir::ReturnOp>();
     DenseSet<Operation *> nonlegalized_ops;
-    LogicalResult result = applyPartialConversion(
-        op, target, patterns, /*converter=*/nullptr, &nonlegalized_ops);
+    LogicalResult result =
+        applyPartialConversion(op, target, patterns, &nonlegalized_ops);
     // In order to enforce that the conversion result is fully converted,
     // fail if there are any nonlegalized ops in the set.
     if (failed(result) || !nonlegalized_ops.empty()) {

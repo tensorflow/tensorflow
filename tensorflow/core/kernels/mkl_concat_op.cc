@@ -265,8 +265,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
  public:
   explicit MklConcatFwdPrimitive(const MklConcatFwdParams& concat_fwd_dims,
                                  const std::vector<memory::desc>& srcs_md)
-      : cpu_engine_(ENGINE_CPU, 0) {
-    context_.fwd_stream.reset(new CPU_STREAM(cpu_engine_));
+      : MklPrimitive(engine(ENGINE_CPU, 0)) {
     // Create concat primitive
     Setup(concat_fwd_dims, srcs_md);
   }
@@ -278,24 +277,33 @@ class MklConcatFwdPrimitive : public MklPrimitive {
   //   dst_data:    output data buffer of dst
   void Execute(const std::vector<mkldnn::memory>& in_data,
                const mkldnn::memory& dst_data,
-               const MklConcatFwdParams& concat_fwd_dims) {
+               const MklConcatFwdParams& concat_fwd_dims,
+               std::shared_ptr<stream> fwd_stream) {
     DCHECK_EQ(in_data.size(), context_.data_mem.size());
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
+#ifdef ENABLE_MKLDNN_THREADPOOL
+      context_.data_mem_shdptr[i]->set_data_handle(
+          static_cast<void*>(in_data[i].get_data_handle()), *fwd_stream);
+    }
+    context_.dst_mem->set_data_handle(
+        static_cast<void*>(dst_data.get_data_handle()), *fwd_stream);
+#else
       context_.data_mem_shdptr[i]->set_data_handle(
           static_cast<void*>(in_data[i].get_data_handle()));
     }
     context_.dst_mem->set_data_handle(
         static_cast<void*>(dst_data.get_data_handle()));
+#endif  // ENABLE_MKLDNN_THREADPOOL
 
     for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
       context_.data_mem[i] = *context_.data_mem_shdptr[i];
     }
 
 #ifdef ENABLE_MKLDNN_V1
-    execute_primitives(context_.fwd_primitives, context_.fwd_stream,
+    execute_primitives(context_.fwd_primitives, fwd_stream,
                        context_.fwd_primitives_args);
 #else
-    context_.fwd_stream->submit(context_.fwd_primitives);
+    fwd_stream->submit(context_.fwd_primitives);
 #endif  // ENABLE_MKLDNN_V1
 
     // After exec, set data handle back
@@ -335,7 +343,6 @@ class MklConcatFwdPrimitive : public MklPrimitive {
     std::shared_ptr<mkldnn::concat::primitive_desc> fwd_pd;
     std::shared_ptr<mkldnn::primitive> concat_fwd;
 
-    std::shared_ptr<mkldnn::stream> fwd_stream;
     std::vector<mkldnn::primitive> fwd_primitives;
 
 #ifdef ENABLE_MKLDNN_V1
@@ -343,10 +350,7 @@ class MklConcatFwdPrimitive : public MklPrimitive {
 #endif  // ENABLE_MKLDNN_V1
 
     ConcatFwdContext()
-        : dst_mem(nullptr),
-          fwd_pd(nullptr),
-          concat_fwd(nullptr),
-          fwd_stream(nullptr) {}
+        : dst_mem(nullptr), fwd_pd(nullptr), concat_fwd(nullptr) {}
   };
 
   // Creates the src and dst memory descriptor for mkl concat
@@ -417,7 +421,6 @@ class MklConcatFwdPrimitive : public MklPrimitive {
   }
 
   struct ConcatFwdContext context_;
-  engine cpu_engine_;
 };
 
 // Class to create/cache the mkl concat primitives based on the
@@ -758,7 +761,7 @@ class MklConcatOp : public OpKernel {
         for (int k = 0; k < input_tensors.size(); k++) {
           if (input_tensors[k].NumElements() > 0) {
             srcs[k].CheckReorderToOpMem(
-                MEMORY_PD_WITHOUT_DATA(srcs_pd[k], cpu_engine));
+                MEMORY_PD_WITHOUT_DATA(srcs_pd[k], cpu_engine), context);
             inputs.push_back(srcs[k].GetOpMem());
           }
         }
@@ -793,10 +796,13 @@ class MklConcatOp : public OpKernel {
                                     dnn_shape_dst);
           DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
 
+          std::shared_ptr<stream> fwd_cpu_stream;
+          fwd_cpu_stream.reset(CreateStream(context, cpu_engine));
+
           if (dnn_shape_dst.IsMklTensor())
             dst_md = dnn_shape_dst.GetMklLayout();
           dst.SetUsrMem(dst_md, dst_tensor);
-          stream concat_stream = CPU_STREAM(cpu_engine);
+          dst.SetUsrMemDataHandle(dst_tensor, fwd_cpu_stream);
 #ifdef ENABLE_MKLDNN_V1
           auto concat_op = concat(concat_pd);
           std::unordered_map<int, memory> net_args = {
@@ -805,12 +811,12 @@ class MklConcatOp : public OpKernel {
           for (int i = 0; i < inputs.size(); ++i) {
             net_args.insert({MKLDNN_ARG_MULTIPLE_SRC + i, inputs[i]});
           }
-          concat_op.execute(concat_stream, net_args);
+          concat_op.execute(*fwd_cpu_stream, net_args);
 #else
           auto concat_op = concat(concat_pd, inputs, dst.GetOpMem());
           std::vector<primitive> net;
           net.push_back(concat_op);
-          concat_stream.submit(net).wait();
+          fwd_cpu_stream->submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
         } else {
           MklConcatFwdPrimitive<T>* concat_fwd = nullptr;
@@ -834,10 +840,13 @@ class MklConcatOp : public OpKernel {
 
           dst_md = dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout()
                                                : dst_md;
+          std::shared_ptr<stream> fwd_cpu_stream;
+          fwd_cpu_stream.reset(CreateStream(context, concat_fwd->GetEngine()));
           dst.SetUsrMem(dst_md, dst_tensor);
-
+          dst.SetUsrMemDataHandle(dst_tensor, fwd_cpu_stream);
           // Execute concat
-          concat_fwd->Execute(srcs_mem, dst.GetOpMem(), concat_fwd_dims);
+          concat_fwd->Execute(srcs_mem, dst.GetOpMem(), concat_fwd_dims,
+                              fwd_cpu_stream);
         }
 
         // For quantized concat, min and max outputs are also computed.

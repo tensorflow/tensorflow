@@ -54,10 +54,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/replica_id_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
@@ -371,7 +371,231 @@ Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
   return IrEmitter::HandleConvolution(convolution);
 }
 
+// Input = {dynamic array(with dynamic dimension meta data at the end)}
+// Output = {static array, dynamic_dim0, dynamic_dim1}
+Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
+  int unroll_factor = 1;
+  string ir_name = IrName(pad_to_static);
+  auto kernel_thunk = BuildKernelThunk(pad_to_static,
+                                       /*implements_whole_instruction=*/true);
+  // pseudo code for padToStatic on a 2d array
+  //   int* source_array = input[0];
+  //   int* dest_array = output[0];
+  std::vector<llvm::Value*> dynamic_dims;
+  const Shape& data_shape = ShapeUtil::GetSubshape(pad_to_static->shape(), {0});
+  const Shape& input_shape = pad_to_static->operand(0)->shape();
+  llvm_ir::IrArray data_array = GetIrArray(*pad_to_static, *pad_to_static, {0});
+  llvm::Value* source_buffer = GetBasePointer(*pad_to_static->operand(0));
+  llvm::Value* raw_buffer =
+      b_.CreateBitCast(source_buffer, b_.getInt8Ty()->getPointerTo());
+  int64 raw_data_size =
+      ShapeUtil::ByteSizeOf(ShapeUtil::MakeStaticShape(input_shape));
+
+  //   int* dyn_dim0_size = source_array + meta_data_offset;
+  //   int* dyn_dim1_size = source_array + meta_data_offset + sizeof(int);
+  for (int64 i = 1; i < pad_to_static->shape().tuple_shapes_size(); ++i) {
+    // Dynamic size of each dimension is attached at the end of the source
+    // array(operand(0)). We need to extract these value.
+    const Shape& dim_shape =
+        ShapeUtil::GetSubshape(pad_to_static->shape(), {i});
+    TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
+
+    const int64 dim_index = i - 1;
+    llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
+        b_.getInt8Ty(), raw_buffer, raw_data_size + dim_index * sizeof(int32));
+    llvm::Value* dyn_dim_size = b_.CreateLoad(
+        b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()),
+        "dyn_dim_size");
+    dynamic_dims.push_back(dyn_dim_size);
+  }
+
+  // only one thread need to store the dynamic index
+  //   int thread_id = GetThreadId();
+  //   int block_id = GetBlockId();
+  //   if (thread_id == 0 && block_id == 0) {
+  //     *output[1] = *dyn_dim0_size;
+  //     *output[2] = *dyn_dim1_size;
+  //   }
+  KernelSupportLibrary{&b_}.If("is_thred_0", IsBlock0Thread0(&b_), [&] {
+    for (int64 i = 1; i < pad_to_static->shape().tuple_shapes_size(); ++i) {
+      llvm::Value* dest_dim_size_address = GetBasePointer(*pad_to_static, {i});
+      // output[i] stores dynamic_dim_(i-1)
+      b_.CreateStore(dynamic_dims[i - 1],
+                     b_.CreateBitCast(dest_dim_size_address,
+                                      b_.getInt32Ty()->getPointerTo()));
+    }
+  });
+
+  //     int dyn_element_total = 1;
+  //     dyn_element_total *= *dyn_dim0_size;
+  //     dyn_element_total *= *dyn_dim1_size;
+  llvm::Value* dyn_element_total = llvm::ConstantInt::get(b_.getInt32Ty(), 1);
+  for (llvm::Value* dynamic_dim : dynamic_dims) {
+    dyn_element_total = b_.CreateMul(dyn_element_total, dynamic_dim,
+                                     /*Name=*/"dyn_element_total");
+  }
+
+  //   linear_index = block_id * thread_per_block + thread_id;
+  //   if (linear_index < max_num_element) {
+  //     Index static_index =
+  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
+  //     if (linerized_index < dyn_element_total) {
+  //       Index dyn_index =
+  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
+  //       dest_array[dyn_index.dim0][dyn_index.dim1] =
+  //           source_array[static_index.dim0][static_index.dim1];
+  //     }
+  //   }
+  llvm_ir::LoopEmitter::BodyEmitter body_generator =
+      [&](const llvm_ir::IrArray::Index& array_index) -> Status {
+    llvm::Value* linearIndex =
+        array_index.Linearize(input_shape.dimensions(), &b_);
+    auto if_in_dyn_bounds = llvm_ir::EmitIfThenElse(
+        b_.CreateICmpULT(linearIndex, dyn_element_total),
+        llvm_ir::IrName(ir_name, "in_dyn_bounds"), &b_, false);
+    // Set IR builder insertion point to the body of the if structure.
+    llvm_ir::SetToFirstInsertPoint(if_in_dyn_bounds.true_block, &b_);
+    llvm_ir::IrArray::Index dyn_index(linearIndex, input_shape,
+                                      absl::MakeSpan(dynamic_dims), &b_);
+    data_array.EmitWriteArrayElement(
+        dyn_index,
+        GetIrArray(*pad_to_static->operand(0), *pad_to_static)
+            .EmitReadArrayElement(array_index, &b_, /*name=*/""),
+        &b_, /*use_linear_index=*/false);
+    return Status::OK();
+  };
+
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      input_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
+  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                         ir_emitter_context_->llvm_module());
+  TF_RETURN_IF_ERROR(
+      ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
+                          unroll_factor)
+          .EmitLoop(ir_name,
+                    GetIndexTypeForKernel(
+                        pad_to_static, launch_dimensions.launch_bound(), &b_)));
+  thunk_sequence_->emplace_back(std::move(kernel_thunk));
+  return Status::OK();
+}
+
+// Input = {dynamic array(with dynamic dimension meta data at the end)}
+// Output = {static array, dynamic_dim0, dynamic_dim1}
+Status IrEmitterUnnested::HandleSliceToDynamic(
+    HloInstruction* slice_to_dynamic) {
+  int unroll_factor = 1;
+  string ir_name = IrName(slice_to_dynamic);
+  auto kernel_thunk = BuildKernelThunk(slice_to_dynamic,
+                                       /*implements_whole_instruction=*/true);
+
+  std::vector<llvm::Value*> dynamic_dims;
+  const Shape& input_shape = slice_to_dynamic->operand(0)->shape();
+  const Shape& data_shape = slice_to_dynamic->shape();
+  int32 raw_data_size = ShapeUtil::ByteSizeOf(
+      ShapeUtil::MakeStaticShape(slice_to_dynamic->shape()));
+  // pseudo code for sliceToDynamic on a 2d array
+  //   int* source_array = input[0];
+  //   int* dest_array = output[0];
+  llvm::Value* dest_buffer = GetBasePointer(*slice_to_dynamic);
+  llvm::Value* raw_buffer =
+      b_.CreateBitCast(dest_buffer, b_.getInt8Ty()->getPointerTo());
+  llvm_ir::IrArray data_array =
+      GetIrArray(*slice_to_dynamic, *slice_to_dynamic);
+
+  // calculate the location where metadata needs to be inserted
+  //   int* dyn_dim0_size = dest_array + meta_data_offset;
+  //   int* dyn_dim1_size = dest_array + meta_data_offset + sizeof(int);
+  for (int64 i = 1; i < slice_to_dynamic->operand_count(); ++i) {
+    // const int64 dim_index = i - 1;
+    llvm::Value* source_buffer = GetBasePointer(*slice_to_dynamic->operand(i));
+    llvm::LoadInst* dyn_dim_size = b_.CreateLoad(source_buffer, "dyn_dim_size");
+    dynamic_dims.push_back(dyn_dim_size);
+  }
+
+  // only one thread need to store the dynamic index
+  //   int thread_id = GetThreadId();
+  //   int block_id = GetBlockId();
+  //   if (thread_id == 0 && block_id == 0) {
+  //     *dyn_dim0_size = *output[1];
+  //     *dyn_dim1_size = *output[2];
+  //   }
+  KernelSupportLibrary{&b_}.If("is_thred_0", IsBlock0Thread0(&b_), [&] {
+    for (int64 i = 1; i < slice_to_dynamic->operand_count(); ++i) {
+      const int64 dim_index = i - 1;
+      llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(
+          b_.getInt8Ty(), raw_buffer,
+          raw_data_size + dim_index * sizeof(int32));
+      // output[i] stores dynamic_dim_(i-1)
+      b_.CreateStore(
+          dynamic_dims[dim_index],
+          b_.CreateBitCast(metadata, b_.getInt32Ty()->getPointerTo()));
+    }
+  });
+
+  //     int dyn_element_total = 1;
+  //     dyn_element_total *= dyn_dim0_size;
+  //     dyn_element_total *= dyn_dim1_size;
+  llvm::Value* dyn_element_total = llvm::ConstantInt::get(b_.getInt32Ty(), 1);
+  for (llvm::Value* dynamic_dim : dynamic_dims) {
+    dyn_element_total = b_.CreateMul(dyn_element_total, dynamic_dim,
+                                     /*Name=*/"dyn_element_total");
+  }
+
+  //   linear_index = block_id * thread_per_block + thread_id;
+  //   if (linear_index < max_num_element) {
+  //     Index static_index =
+  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
+  //     if (linerized_index < dyn_element_total) {
+  //       Index dyn_index =
+  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
+  //       dest_array[static_index.dim0][static_index.di] =
+  //           source_array[dyn_index.dim0][dyn_index.dim1];
+  //     }
+  //   }
+  llvm_ir::LoopEmitter::BodyEmitter body_generator =
+      [&](const llvm_ir::IrArray::Index& array_index) -> Status {
+    llvm::Value* linearIndex =
+        array_index.Linearize(input_shape.dimensions(), &b_);
+    auto if_in_dyn_bounds = llvm_ir::EmitIfThenElse(
+        b_.CreateICmpULT(linearIndex, dyn_element_total),
+        llvm_ir::IrName(ir_name, "in_dyn_bounds"), &b_, false);
+    // Set IR builder insertion point to the body of the if structure.
+    llvm_ir::SetToFirstInsertPoint(if_in_dyn_bounds.true_block, &b_);
+    llvm_ir::IrArray::Index dyn_index(linearIndex, input_shape,
+                                      absl::MakeSpan(dynamic_dims), &b_);
+
+    data_array.EmitWriteArrayElement(
+        array_index,
+        GetIrArray(*slice_to_dynamic->operand(0), *slice_to_dynamic)
+            .EmitReadArrayElement(dyn_index, &b_, /*name=*/"",
+                                  /*use_linear_index=*/false),
+        &b_);
+    return Status::OK();
+  };
+
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      input_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
+  UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
+                         ir_emitter_context_->llvm_module());
+
+  TF_RETURN_IF_ERROR(
+      ParallelLoopEmitter(body_generator, data_shape, launch_dimensions, &b_,
+                          unroll_factor)
+          .EmitLoop(ir_name, GetIndexTypeForKernel(
+                                 slice_to_dynamic,
+                                 launch_dimensions.launch_bound(), &b_)));
+  thunk_sequence_->emplace_back(std::move(kernel_thunk));
+
+  return Status::OK();
+}
+
 Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
+  if (custom_call->custom_call_target() == "PadToStatic") {
+    return HandlePadToStatic(custom_call);
+  }
+  if (custom_call->custom_call_target() == "SliceToDynamic") {
+    return HandleSliceToDynamic(custom_call);
+  }
   return ThunkEmitter(this).HandleCustomCall(custom_call);
 }
 
@@ -393,9 +617,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         // emit it in a separate kernel. Treat it like a loop fusion, writing to
         // the output buffer.
         {
-          int unroll_factor = ComputeMaxUnrollFactor(fusion);
-          thunks.push_back(BuildKernelThunk(
-              fusion, /*implements_whole_instruction=*/false, unroll_factor));
+          thunks.push_back(
+              BuildKernelThunk(fusion, /*implements_whole_instruction=*/false));
           GpuElementalIrEmitter operand_elemental_emitter(
               hlo_module_config_, ir_emitter_context_->llvm_module(), &b_,
               GetNestedComputer());
@@ -407,7 +630,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
 
           TF_RETURN_IF_ERROR(EmitTargetElementLoopInThunk(
               *fusion, operand_fused_emitter.GetGenerator(root->operand(0)),
-              static_cast<KernelThunk*>(thunks.back().get())));
+              static_cast<KernelThunk*>(thunks.back().get()),
+              ComputeMaxUnrollFactor(fusion)));
         }
 
         // Now build the actual scatter, reading and writing to the freshly
@@ -486,7 +710,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
     IrArray output_array = GetIrArray(*fusion, *fusion);
 
     LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-        update_shape, ir_emitter_context_->device_description());
+        update_shape, ir_emitter_context_->gpu_device_info());
     UpdateLaunchDimensions(launch_dimensions, fusion_thunk.get(),
                            ir_emitter_context_->llvm_module());
     AddThunkToThunkSequence(std::move(fusion_thunk));
@@ -630,7 +854,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
   }
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      source->shape(), ir_emitter_context_->device_description());
+      source->shape(), ir_emitter_context_->gpu_device_info());
   llvm::Type* index_type = GetIndexTypeForKernel(
       select_and_scatter, launch_dimensions.launch_bound(), &b_);
   auto index_typed_constant = [&](uint64 c) -> llvm::Constant* {
@@ -1016,7 +1240,7 @@ Status IrEmitterUnnested::EmitScatter(
   // also do one kernel per window instead if bounds checks turn out to be a
   // bottleneck.
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      updates->shape(), ir_emitter_context_->device_description());
+      updates->shape(), ir_emitter_context_->gpu_device_info());
   UpdateLaunchDimensions(launch_dimensions, thunk,
                          ir_emitter_context_->llvm_module());
 
@@ -1101,7 +1325,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   standard_iteration_shape.set_dimensions(dimension_to_sort,
                                           standard_num_iterations_in_sort_dim);
   LaunchDimensions standard_launch_dimensions = CalculateLaunchDimensions(
-      standard_iteration_shape, ir_emitter_context_->device_description());
+      standard_iteration_shape, ir_emitter_context_->gpu_device_info());
 
   // Calculate the launch dimensions for the case where we use tiling. We split
   // the dimension that should be sorted into tiles of size 'kTileSize'. This
@@ -1133,9 +1357,9 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   bool no_tiling =
       kTileSize < 128 ||
       kThreadsPerBlock >
-          ir_emitter_context_->device_description().threads_per_block_limit() ||
+          ir_emitter_context_->gpu_device_info().threads_per_block_limit ||
       total_shared_memory_needed >
-          ir_emitter_context_->device_description().shared_memory_per_block();
+          ir_emitter_context_->gpu_device_info().shared_memory_per_block;
 
   uint64 num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
@@ -1192,6 +1416,13 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
 
   AddThunkToThunkSequence(
       absl::make_unique<SequentialThunk>(std::move(thunks), sort));
+  if (sort->operand_count() > 1) {
+    // Emit the tuple as part of the last stage of sorting.
+    // We are currently in the block sorted.in_bounds.after.
+    b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
+    llvm_ir::EmitTuple(GetIrArray(*sort, *sort),
+                       ConstructIrArrayForOutputs(*sort), &b_);
+  }
   return Status::OK();
 }
 
@@ -1212,8 +1443,6 @@ Status IrEmitterUnnested::HandleCollectivePermute(HloInstruction* hlo) {
       GetAllocationSlice(*hlo->operand(0)), GetAllocationSlice(*hlo), hlo));
   return Status::OK();
 }
-
-namespace {}  // namespace
 
 Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
   VLOG(2) << "AllReduce; replica count: " << hlo_module_config_.replica_count()
@@ -1326,29 +1555,37 @@ Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
   return Status::OK();
 }
 
+// Describes how to access a particular subshape for an HLO.  For instance if
+// `.hlo_index` is {1} and `.gte_index` is {3, 4} then buffer for `.instr` at
+// ShapeIndex {1} (i.e. the buffer for the second tuple element of hlo) is found
+// at `.buffer_slice`[3][4].  That is, `.slice` is a void***, which we
+// dereference twice -- first at index 3, and then at index 4 -- to get the
+// address of our buffer.
+struct HloBufferSlice {
+  const HloInstruction* instr;
+  ShapeIndex hlo_index;
+
+  // The root buffer to look at.
+  BufferAllocation::Slice buffer_slice;
+
+  // Describes how to dereference starting at that buffer to get to the buffer
+  // in question.
+  ShapeIndex gte_index;
+};
+
 // Figures out how to access the buffers for all subshapes of hlo's operands and
 // for hlo itself (i.e. all the buffers produced by HLO).
 //
-// Returns a map keyed on the pair {HloInstruction, ShapeIndex}.  The value for
-// this key is a pair {Slice, ShapeIndex}, where the slice tells you the root
-// buffer to look in, and the ShapeIndex describes how to dereference starting
-// at that buffer to get to the buffer in question.
-//
-// For example, if {hlo, {1}} is mapped to {slice, {3, 4}}, then the buffer for
-// hlo at ShapeIndex {1} (i.e. the buffer for the second tuple element of hlo)
-// is found at slice[3][4].  That is, slice is a void***, which we dereference
-// twice -- first at index 3, and then at index 4 -- to get the address of our
-// buffer.
+// Returns a vector of `HloBufferSlice`s, one for each HLO subshape `hlo` needs
+// to access (including one or more for itself).
 //
 // This function conservatively assumes that we'll touch all sub-buffers of
 // every operand and of the output.
-static std::map<std::pair<const HloInstruction*, ShapeIndex>,
-                std::pair<BufferAllocation::Slice, ShapeIndex>>
-GetHloBufferSlices(const HloInstruction* hlo,
-                   const BufferAssignment& buffer_assn) {
-  std::map<std::pair<const HloInstruction*, ShapeIndex>,
-           std::pair<BufferAllocation::Slice, ShapeIndex>>
-      slices;
+static std::vector<HloBufferSlice> GetHloBufferSlices(
+    const HloInstruction* hlo, const BufferAssignment& buffer_assn) {
+  std::vector<HloBufferSlice> result;
+  absl::flat_hash_set<std::pair<const HloInstruction*, ShapeIndex>>
+      inserted_buffer_slices;
 
   // Tries to find a slice plus an array of indices i1, ..., iN such that the
   // sub-buffer for instr at index can be found at slice[i1]...[iN].
@@ -1415,13 +1652,18 @@ GetHloBufferSlices(const HloInstruction* hlo,
   auto add_slices_for = [&](const HloInstruction* instr) {
     ShapeUtil::ForEachSubshape(
         instr->shape(), [&](const Shape& /*shape*/, const ShapeIndex& index) {
-          if (slices.count({instr, index})) {
+          if (!inserted_buffer_slices.insert({instr, index}).second) {
             // HLOs can have duplicate operands; don't bother redoing work.
             return;
           }
           auto maybe_slice = find_slice_for(instr, index);
           if (maybe_slice.has_value()) {
-            slices[{instr, index}] = *maybe_slice;
+            HloBufferSlice hlo_buffer_slice;
+            hlo_buffer_slice.instr = instr;
+            hlo_buffer_slice.hlo_index = index;
+            hlo_buffer_slice.buffer_slice = maybe_slice->first;
+            hlo_buffer_slice.gte_index = maybe_slice->second;
+            result.push_back(hlo_buffer_slice);
           } else {
             VLOG(1) << "Couldn't find buffer for " << instr->ToString()
                     << " at index " << index.ToString();
@@ -1436,18 +1678,16 @@ GetHloBufferSlices(const HloInstruction* hlo,
     add_slices_for(operand);
   }
 
-  return slices;
+  return result;
 }
 
 std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
-    const HloInstruction* inst, bool implements_whole_instruction,
-    int unroll_factor) {
+    const HloInstruction* inst, bool implements_whole_instruction) {
   const BufferAssignment& buffer_assn =
       ir_emitter_context_->buffer_assignment();
 
-  std::map<std::pair<const HloInstruction*, ShapeIndex>,
-           std::pair<BufferAllocation::Slice, ShapeIndex>>
-      hlo_slices = GetHloBufferSlices(inst, buffer_assn);
+  std::vector<HloBufferSlice> hlo_slices =
+      GetHloBufferSlices(inst, buffer_assn);
 
   // Figure out which buffer allocations need to be passed as arguments to our
   // kernel.  This is simply all of the allocations referenced in hlo_slices,
@@ -1455,8 +1695,8 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   // buffer because even if the kernel itself doesn't use it, a nested
   // subcomputation within the kernel (e.g. a kMap's computation) might.
   std::unordered_set<const BufferAllocation*> buffers_needed;
-  for (const auto& kv : hlo_slices) {
-    buffers_needed.insert(kv.second.first.allocation());
+  for (const auto& hlo_buffer_slice : hlo_slices) {
+    buffers_needed.insert(hlo_buffer_slice.buffer_slice.allocation());
   }
   absl::optional<const BufferAllocation*> temp_buffer;
   for (const BufferAllocation& alloc : buffer_assn.Allocations()) {
@@ -1500,11 +1740,11 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
 
   // For each buffer our kernel might want to touch, bind it to a value derived
   // from our kernel args.
-  for (const auto& kv : hlo_slices) {
-    const HloInstruction* instr = kv.first.first;
-    const ShapeIndex& index = kv.first.second;
-    const BufferAllocation::Slice& slice = kv.second.first;
-    const ShapeIndex& gte_index = kv.second.second;
+  for (const auto& hlo_buffer_slice : hlo_slices) {
+    const HloInstruction* instr = hlo_buffer_slice.instr;
+    const ShapeIndex& index = hlo_buffer_slice.hlo_index;
+    const BufferAllocation::Slice& slice = hlo_buffer_slice.buffer_slice;
+    const ShapeIndex& gte_index = hlo_buffer_slice.gte_index;
 
     VLOG(3) << "Buffer for " << instr->ToString() << " at " << index.ToString()
             << " is found in slice " << slice.ToString() << " at GTE index "
@@ -1543,7 +1783,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
 
   return absl::make_unique<KernelThunk>(
       non_constant_buffers, std::string(kernel->getName()),
-      implements_whole_instruction ? inst : nullptr, unroll_factor);
+      implements_whole_instruction ? inst : nullptr);
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
@@ -1632,7 +1872,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
       BuildKernelThunk(hlo, /*implements_whole_instruction=*/false);
   LaunchDimensions launch_dimensions =
       CalculateLaunchDimensions(ShapeUtil::GetSubshape(hlo->shape(), index),
-                                ir_emitter_context_->device_description());
+                                ir_emitter_context_->gpu_device_info());
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 
@@ -1815,8 +2055,8 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
 
 Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
     const HloInstruction& hlo,
-    const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk) {
-  int unroll_factor = thunk->unroll_factor();
+    const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk,
+    int unroll_factor) {
   VLOG(3) << bindings_.ToString();
 
   bool multi_output = hlo.shape().IsTuple();
@@ -1827,7 +2067,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
           << ShapeUtil::HumanStringWithLayout(hlo.shape())
           << " for unroll_factor " << unroll_factor;
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      element_shape, ir_emitter_context_->device_description(), unroll_factor);
+      element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
   UpdateLaunchDimensions(launch_dimensions, thunk,
                          ir_emitter_context_->llvm_module());
   if (!multi_output) {
@@ -1911,10 +2151,10 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
     unroll_factor = ComputeMaxUnrollFactor(&hlo);
   }
 
-  std::unique_ptr<KernelThunk> kernel_thunk = BuildKernelThunk(
-      &hlo, /*implements_whole_instruction=*/true, unroll_factor);
-  Status emit_status =
-      EmitTargetElementLoopInThunk(hlo, body_emitter, kernel_thunk.get());
+  std::unique_ptr<KernelThunk> kernel_thunk =
+      BuildKernelThunk(&hlo, /*implements_whole_instruction=*/true);
+  Status emit_status = EmitTargetElementLoopInThunk(
+      hlo, body_emitter, kernel_thunk.get(), unroll_factor);
   thunk_sequence_->emplace_back(std::move(kernel_thunk));
 
   return emit_status;
@@ -3150,6 +3390,15 @@ bool IsUnrollingColumnReductionBeneficial(const HloInstruction* unnested_hlo,
   return can_be_vectorized >= cannot_be_vectorized;
 }
 
+int64 NearestPowerOfTwo(int64 v) {
+  if (v < 0) {
+    return 0;
+  }
+  int64 upper = tensorflow::NextPowerOfTwo64(v);
+  int64 lower = upper >> 1;
+  return upper - v < v - lower ? upper : lower;
+}
+
 }  // namespace
 
 ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
@@ -3174,13 +3423,21 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   }
   std::array<int64, 3> reduction_tiling =
       GetReductionTiling(reduction_dimensions, smallest_input_dtype_bits,
-                         &ir_emitter_context_->device_description());
+                         ir_emitter_context_->cuda_compute_capability());
 
   int64 num_threads_y = reduction_dimensions.is_row_reduction ? 1 : kWarpSize;
   int64 num_threads_x = [&] {
     if (reduction_dimensions.is_row_reduction) {
+      // Use 512 as default block size (threads per block) for row reductions.
+      // For multi-output fusions, reduce the block size further to decrease
+      // register pressure when multiple outputs are computed by each thread.
+      int64 fan_out =
+          unnested_hlo->IsMultiOutputFusion()
+              ? unnested_hlo->fused_expression_root()->operand_count()
+              : 1;
+      int64 max_block_size = std::max(16LL, 512LL / NearestPowerOfTwo(fan_out));
       return std::min(
-          kWarpSize * kWarpSize,
+          max_block_size,
           RoundUpToNearest(CeilOfRatio(reduction_dimensions.dimensions[2],
                                        reduction_tiling[2]),
                            kWarpSize));
@@ -3192,9 +3449,10 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
                       (reduction_tiling[2] * num_threads_x) ==
                   0;
 
-  int cc_major = 0, cc_minor = 0;
-  ir_emitter_context_->device_description().cuda_compute_capability(&cc_major,
-                                                                    &cc_minor);
+  int cc_major = 0;
+  if (ir_emitter_context_->cuda_compute_capability()) {
+    cc_major = ir_emitter_context_->cuda_compute_capability()->cc_major;
+  }
 
   int num_partial_results = 1;
   KernelMappingScheme::IndexingOrder indexing_order = [&]() {
@@ -3292,6 +3550,9 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
       reduction_info.GetKernelMappingScheme();
   LaunchDimensions launch_dimensions(mapping_scheme.GetNumberOfBlocks(),
                                      mapping_scheme.GetThreadsPerBlock());
+  VLOG(3) << "Launch dimensions of " << unnested_hlo->name()
+          << ": number of blocks: " << mapping_scheme.GetNumberOfBlocks()
+          << " - threads per block: " << mapping_scheme.GetThreadsPerBlock();
   llvm::Type* index_ty = GetIndexTypeForKernel(
       unnested_hlo, launch_dimensions.launch_bound(), &b_);
   EmitPrologueForReduction(unnested_hlo, &reduction_info, reduce_instructions,
@@ -3462,13 +3723,13 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
 Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
     HloInstruction* unnested_hlo) {
   constexpr int unroll_factor = 1;
-  std::unique_ptr<KernelThunk> kernel_thunk = BuildKernelThunk(
-      unnested_hlo, /*implements_whole_instruction=*/true, unroll_factor);
+  std::unique_ptr<KernelThunk> kernel_thunk =
+      BuildKernelThunk(unnested_hlo, /*implements_whole_instruction=*/true);
 
   TF_ASSIGN_OR_RETURN(Shape element_shape,
                       GetConsistentInputShapeForRootSlices(*unnested_hlo));
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      element_shape, ir_emitter_context_->device_description(), unroll_factor);
+      element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
 

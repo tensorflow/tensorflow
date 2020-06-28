@@ -134,6 +134,7 @@ def disable_multi_worker(method):
 
 
 def inject_functional_model_class(cls):
+  """Inject `Functional` into the hierarchy of this class if needed."""
   from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
   from tensorflow.python.keras.engine import training_v1  # pylint: disable=g-import-not-at-top
   if cls == Model or cls == training_v1.Model:
@@ -141,6 +142,10 @@ def inject_functional_model_class(cls):
 
   cls.__bases__ = tuple(inject_functional_model_class(base)
                         for base in cls.__bases__)
+  # Trigger any `__new__` class swapping that needed to happen on `Functional`
+  # but did not because functional was not in the class hierarchy.
+  cls.__new__(cls)
+
   return cls
 
 
@@ -431,7 +436,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                            'Instead, in order to instantiate and build your '
                            'model, `call` your model on real tensor data (of '
                            'the correct dtype).')
-
     super(Model, self).build(input_shape)
 
   def call(self, inputs, training=None, mask=None):
@@ -628,8 +632,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       if self.compiled_metrics is not None:
         metrics += self.compiled_metrics.metrics
 
-    all_layers = self._gather_unique_layers()
-    for l in all_layers:
+    for l in self._flatten_layers():
       metrics.extend(l._metrics)  # pylint: disable=protected-access
     return metrics
 
@@ -1016,7 +1019,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         and validation metrics values (if applicable).
 
     Raises:
-        RuntimeError: If the model was never compiled.
+        RuntimeError: 1. If the model was never compiled or,
+        2. If `model.fit` is  wrapped in `tf.function`.
+
         ValueError: In case of mismatch between the provided input data
             and what the model expects.
     """
@@ -1031,9 +1036,12 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       # Create the validation data using the training data. Only supported for
       # `Tensor` and `NumPy` input.
       (x, y, sample_weight), validation_data = (
-          data_adapter.train_validation_split((x, y, sample_weight),
-                                              validation_split=validation_split,
-                                              shuffle=False))
+          data_adapter.train_validation_split(
+              (x, y, sample_weight), validation_split=validation_split))
+
+    if validation_data:
+      val_x, val_y, val_sample_weight = (
+          data_adapter.unpack_x_y_sample_weight(validation_data))
 
     with self.distribute_strategy.scope(), \
          training_utils.RespectCompiledTrainableState(self):
@@ -1097,8 +1105,21 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
         # Run validation.
         if validation_data and self._should_eval(epoch, validation_freq):
-          val_x, val_y, val_sample_weight = (
-              data_adapter.unpack_x_y_sample_weight(validation_data))
+          # Create data_handler for evaluation and cache it.
+          if getattr(self, '_eval_data_handler', None) is None:
+            self._eval_data_handler = data_adapter.DataHandler(
+                x=val_x,
+                y=val_y,
+                sample_weight=val_sample_weight,
+                batch_size=validation_batch_size or batch_size,
+                steps_per_epoch=validation_steps,
+                initial_epoch=0,
+                epochs=1,
+                max_queue_size=max_queue_size,
+                workers=workers,
+                use_multiprocessing=use_multiprocessing,
+                model=self,
+                steps_per_execution=self._steps_per_execution)
           val_logs = self.evaluate(
               x=val_x,
               y=val_y,
@@ -1118,6 +1139,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         if self.stop_training:
           break
 
+      # If eval data_hanlder exists, delete it after all epochs are done.
+      if getattr(self, '_eval_data_handler', None) is not None:
+        del self._eval_data_handler
       callbacks.on_train_end(logs=training_logs)
       return self.history
 
@@ -1233,15 +1257,21 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
-        x: Input data. It could be: - A Numpy array (or array-like), or a list
-          of arrays (in case the model has multiple inputs). - A TensorFlow
-          tensor, or a list of tensors (in case the model has multiple inputs).
-          - A dict mapping input names to the corresponding array/tensors, if
-          the model has named inputs. - A `tf.data` dataset. - A generator or
-          `keras.utils.Sequence` instance. A more detailed description of
-          unpacking behavior for iterator types (Dataset, generator, Sequence)
-          is given in the `Unpacking behavior for iterator-like inputs` section
-          of `Model.fit`.
+        x: Input data. It could be:
+          - A Numpy array (or array-like), or a list of arrays
+            (in case the model has multiple inputs).
+          - A TensorFlow tensor, or a list of tensors
+            (in case the model has multiple inputs).
+          - A dict mapping input names to the corresponding array/tensors,
+            if the model has named inputs.
+          - A `tf.data` dataset. Should return a tuple
+            of either `(inputs, targets)` or
+            `(inputs, targets, sample_weights)`.
+          - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
+            or `(inputs, targets, sample_weights)`.
+          A more detailed description of unpacking behavior for iterator types
+          (Dataset, generator, Sequence) is given in the `Unpacking behavior
+          for iterator-like inputs` section of `Model.fit`.
         y: Target data. Like the input data `x`, it could be either Numpy
           array(s) or TensorFlow tensor(s). It should be consistent with `x`
           (you cannot have Numpy inputs and tensor targets, or inversely). If
@@ -1297,6 +1327,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         the display labels for the scalar outputs.
 
     Raises:
+        RuntimeError: If `model.evaluate` is wrapped in `tf.function`.
         ValueError: in case of invalid arguments.
     """
     _keras_api_gauge.get_cell('evaluate').set(True)
@@ -1306,20 +1337,23 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     _disallow_inside_tf_function('evaluate')
 
     with self.distribute_strategy.scope():
-      # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
-      data_handler = data_adapter.DataHandler(
-          x=x,
-          y=y,
-          sample_weight=sample_weight,
-          batch_size=batch_size,
-          steps_per_epoch=steps,
-          initial_epoch=0,
-          epochs=1,
-          max_queue_size=max_queue_size,
-          workers=workers,
-          use_multiprocessing=use_multiprocessing,
-          model=self,
-          steps_per_execution=self._steps_per_execution)
+      if getattr(self, '_eval_data_handler', None) is not None:
+        data_handler = self._eval_data_handler
+      else:
+        # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
+        data_handler = data_adapter.DataHandler(
+            x=x,
+            y=y,
+            sample_weight=sample_weight,
+            batch_size=batch_size,
+            steps_per_epoch=steps,
+            initial_epoch=0,
+            epochs=1,
+            max_queue_size=max_queue_size,
+            workers=workers,
+            use_multiprocessing=use_multiprocessing,
+            model=self,
+            steps_per_execution=self._steps_per_execution)
 
       # Container that configures and calls `tf.keras.Callback`s.
       if not isinstance(callbacks, callbacks_module.CallbackList):
@@ -1518,6 +1552,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         Numpy array(s) of predictions.
 
     Raises:
+        RuntimeError: If `model.predict` is wrapped in `tf.function`.
         ValueError: In case of mismatch between the provided
             input data and the model's expectations,
             or in case a stateful model receives a number of samples
@@ -1557,6 +1592,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       predict_function = self.make_predict_function()
       self._predict_counter.assign(0)
       callbacks.on_predict_begin()
+      batch_outputs = None
       for _, iterator in data_handler.enumerate_epochs():  # Single epoch.
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
@@ -1575,6 +1611,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                   outputs, batch_outputs)
             end_step = step + data_handler.step_increment
             callbacks.on_predict_batch_end(end_step, {'outputs': batch_outputs})
+      if batch_outputs is None:
+        raise ValueError('Expect x to be a non-empty array or dataset.')
       callbacks.on_predict_end()
     all_outputs = nest.map_structure_up_to(batch_outputs, concat, outputs)
     return tf_utils.to_numpy_or_python_type(all_outputs)
@@ -1645,6 +1683,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         the display labels for the scalar outputs.
 
     Raises:
+      RuntimeError: If `model.train_on_batch` is wrapped in `tf.function`.
       ValueError: In case of invalid user-provided arguments.
     """
     self._assert_compile_was_called()
@@ -1705,6 +1744,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         the display labels for the scalar outputs.
 
     Raises:
+        RuntimeError: If `model.test_on_batch` is wrapped in `tf.function`.
         ValueError: In case of invalid user-provided arguments.
     """
     self._assert_compile_was_called()
@@ -1739,6 +1779,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         Numpy array(s) of predictions.
 
     Raises:
+        RuntimeError: If `model.predict_on_batch` is wrapped in `tf.function`.
         ValueError: In case of mismatch between given number of inputs and
           expectations of the model.
     """
@@ -1940,7 +1981,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     save.save_model(self, filepath, overwrite, include_optimizer, save_format,
                     signatures, options)
 
-  def save_weights(self, filepath, overwrite=True, save_format=None):
+  def save_weights(self,
+                   filepath,
+                   overwrite=True,
+                   save_format=None,
+                   options=None):
     """Saves all layer weights.
 
     Either saves in HDF5 or in TensorFlow format based on the `save_format`
@@ -1993,6 +2038,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         save_format: Either 'tf' or 'h5'. A `filepath` ending in '.h5' or
             '.keras' will default to HDF5 if `save_format` is `None`. Otherwise
             `None` defaults to 'tf'.
+        options: Optional `tf.train.CheckpointOptions` object that specifies
+            options for saving weights.
 
     Raises:
         ImportError: If h5py is not available when attempting to save in HDF5
@@ -2054,7 +2101,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
              'the TensorFlow format the optimizer\'s state will not be '
              'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
             % (optimizer,))
-      self._trackable_saver.save(filepath, session=session)
+      self._trackable_saver.save(filepath, session=session, options=options)
       # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
       checkpoint_management.update_checkpoint_state_internal(
           save_dir=os.path.dirname(filepath),
@@ -2062,7 +2109,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           save_relative_paths=True,
           all_model_checkpoint_paths=[filepath])
 
-  def load_weights(self, filepath, by_name=False, skip_mismatch=False):
+  def load_weights(self,
+                   filepath,
+                   by_name=False,
+                   skip_mismatch=False,
+                   options=None):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
 
     If `by_name` is False weights are loaded based on the network's
@@ -2092,6 +2143,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         skip_mismatch: Boolean, whether to skip loading of layers where there is
             a mismatch in the number of weights, or a mismatch in the shape of
             the weight (only valid when `by_name=True`).
+        options: Optional `tf.train.CheckpointOptions` object that specifies
+            options for loading weights.
 
     Returns:
         When loading a weight file in TensorFlow format, returns the same status
@@ -2129,7 +2182,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         # The checkpoint is not readable in TensorFlow format. Try HDF5.
         save_format = 'h5'
     if save_format == 'tf':
-      status = self._trackable_saver.restore(filepath)
+      status = self._trackable_saver.restore(filepath, options)
       if by_name:
         raise NotImplementedError(
             'Weights may only be loaded based on topology into Models when '
@@ -2310,7 +2363,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   @property
   def layers(self):
-    return self._unique_sublayers()
+    return list(self._flatten_layers(include_self=False, recursive=False))
 
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.
@@ -2366,13 +2419,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     self._saved_model_inputs_spec = specs
 
-  def _get_save_spec(self, dynamic_batch=True):
-    if self._saved_model_inputs_spec is None:
-      return None
-
-    return nest.map_structure(
-        lambda t: tf_utils.get_tensor_spec(t, dynamic_batch=dynamic_batch),
-        self._saved_model_inputs_spec)
+    # Store the input shapes
+    if (self.__class__.__name__ == 'Sequential' and
+        self._build_input_shape is None):
+      self._build_input_shape = nest.map_structure(
+          lambda x: None if x is None else x.shape, specs)
 
   def _assert_weights_created(self):
     """Asserts that all the weights for the model have been created.

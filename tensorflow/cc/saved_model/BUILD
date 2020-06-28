@@ -106,6 +106,7 @@ cc_library(
     hdrs = ["loader.h"],
     deps = [
         ":constants",
+        ":loader_util",
         ":reader",
     ] + if_not_mobile([
         "//tensorflow/core:core_cpu",
@@ -130,6 +131,17 @@ cc_library(
         "//tensorflow/core/util/tensor_bundle",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
+)
+
+cc_library(
+    name = "loader_util",
+    srcs = ["loader_util.cc"],
+    hdrs = ["loader_util.h"],
+    deps = [":constants"] + if_not_mobile([
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ]),
 )
 
 tf_cc_test(

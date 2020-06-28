@@ -23,12 +23,13 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
 from tensorflow.python.platform import benchmark
@@ -57,7 +58,7 @@ class LogarithmOpTest(test.TestCase):
     matrix_batch = np.tile(matrix_batch, [2, 3, 1, 1])
     return matrix_batch
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testNonsymmetric(self):
     # 2x2 matrices
     matrix1 = np.array([[1., 2.], [3., 4.]])
@@ -71,7 +72,7 @@ class LogarithmOpTest(test.TestCase):
     # Complex batch
     self._verifyLogarithmComplex(self._makeBatch(matrix1, matrix2))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testSymmetricPositiveDefinite(self):
     # 2x2 matrices
     matrix1 = np.array([[2., 1.], [1., 2.]])
@@ -85,27 +86,27 @@ class LogarithmOpTest(test.TestCase):
     # Complex batch
     self._verifyLogarithmComplex(self._makeBatch(matrix1, matrix2))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testNonSquareMatrix(self):
     # When the logarithm of a non-square matrix is attempted we should return
     # an error
-    with self.assertRaises(ValueError):
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       gen_linalg_ops.matrix_logarithm(
           np.array([[1., 2., 3.], [3., 4., 5.]], dtype=np.complex64))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testWrongDimensions(self):
     # The input to the logarithm should be at least a 2-dimensional tensor.
     tensor3 = constant_op.constant([1., 2.], dtype=dtypes.complex64)
-    with self.assertRaises(ValueError):
+    with self.assertRaises((ValueError, errors_impl.InvalidArgumentError)):
       gen_linalg_ops.matrix_logarithm(tensor3)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testEmpty(self):
     self._verifyLogarithmComplex(np.empty([0, 2, 2], dtype=np.complex64))
     self._verifyLogarithmComplex(np.empty([2, 0, 0], dtype=np.complex64))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testRandomSmallAndLargeComplex64(self):
     np.random.seed(42)
     for batch_dims in [(), (1,), (3,), (2, 2)]:
@@ -116,7 +117,7 @@ class LogarithmOpTest(test.TestCase):
             size=np.prod(shape)).reshape(shape).astype(np.complex64)
         self._verifyLogarithmComplex(matrix)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testRandomSmallAndLargeComplex128(self):
     np.random.seed(42)
     for batch_dims in [(), (1,), (3,), (2, 2)]:
@@ -127,17 +128,21 @@ class LogarithmOpTest(test.TestCase):
             size=np.prod(shape)).reshape(shape).astype(np.complex128)
         self._verifyLogarithmComplex(matrix)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testConcurrentExecutesWithoutError(self):
-    with self.session(use_gpu=True) as sess:
-      matrix1 = math_ops.cast(
-          random_ops.random_normal([5, 5], seed=42), dtypes.complex64)
-      matrix2 = math_ops.cast(
-          random_ops.random_normal([5, 5], seed=42), dtypes.complex64)
-      logm1 = gen_linalg_ops.matrix_logarithm(matrix1)
-      logm2 = gen_linalg_ops.matrix_logarithm(matrix2)
-      logm = self.evaluate([logm1, logm2])
-      self.assertAllEqual(logm[0], logm[1])
+    matrix_shape = [5, 5]
+    seed = [42, 24]
+    matrix1 = math_ops.cast(
+        stateless_random_ops.stateless_random_normal(matrix_shape, seed=seed),
+        dtypes.complex64)
+    matrix2 = math_ops.cast(
+        stateless_random_ops.stateless_random_normal(matrix_shape, seed=seed),
+        dtypes.complex64)
+    self.assertAllEqual(matrix1, matrix2)
+    logm1 = gen_linalg_ops.matrix_logarithm(matrix1)
+    logm2 = gen_linalg_ops.matrix_logarithm(matrix2)
+    logm = self.evaluate([logm1, logm2])
+    self.assertAllEqual(logm[0], logm[1])
 
 
 class MatrixLogarithmBenchmark(test.Benchmark):

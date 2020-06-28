@@ -31,6 +31,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/IR/OpBase.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
@@ -98,6 +99,30 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
     }
   }];
 }
+
+def TF_CollectivePermuteOp : TF_Op<"CollectivePermute", []> {
+  let summary = "An Op to permute tensors across replicated TPU instances.";
+
+  let description = [{
+Each instance supplies its own input.
+
+For example, suppose there are 4 TPU instances: `[A, B, C, D]`. Passing
+source_target_pairs=`[[0,1],[1,2],[2,3],[3,0]]` gets the outputs:
+`[D, A, B, C]`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
+    I32Tensor:$source_target_pairs
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 
 def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Permute input tensor from `src_format` to `dst_format`";
@@ -188,7 +213,6 @@ else_branch: A function that takes 'inputs' and returns a list of
 
     FlatSymbolRefAttr:$then_branch,
     FlatSymbolRefAttr:$else_branch,
-    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
     BoolAttr:$is_stateless
@@ -201,6 +225,64 @@ else_branch: A function that takes 'inputs' and returns a list of
   TF_DerivedOperandTypeAttr Tcond = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
+def TF_YieldOp : TF_Op<"Yield",
+      [Terminator, ParentOneOf<["IfRegionOp", "WhileRegionOp"]>]> {
+  let summary = "Yield operation";
+
+  let description = [{
+    The "yield" operation represents a return operation within the conditional
+    and body of structured control flow (e.g., if and while). The operation
+    takes a variable number of operands and produces no results. The number and
+    types of inputs must match the signature of the operation that contains the
+    region.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+}
+
+def TF_IfRegionOp : TF_Op<"IfRegion",
+      [SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "output = cond ? then_branch output : else_branch output";
+
+  let description = [{
+"output = cond ? then_branch output : else_branch output"
+
+cond: A Tensor. If the tensor is a scalar of non-boolean type, the
+    scalar is converted to a boolean according to the
+    following rule: if the scalar is a numerical value, non-zero means
+    True and zero means False; if the scalar is a string, non-empty
+    means True and empty means False. If the tensor is not a scalar,
+    being empty means False and being non-empty means True.
+then_branch: A region that computes the outputs of the op if cond = true.
+    It returns a list of tensors using tf.yield (as the terminator). The
+    types of these returned tensors is same as that of the else_branch
+else_branch: A region that computes the outputs of the op if cond = false.
+    It returns a list of tensors using tf.yield (as the terminator). The
+    types of these returned tensors is same as that of the then_branch
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$cond,
+
+    // Used to map StatelessIf and If op defined in TensorFlow to a common op.
+    BoolAttr:$is_stateless
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tcond = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let regions = (region SizedRegion<1>:$then_branch, SizedRegion<1>:$else_branch);
 
   let verifier = [{
     return Verify(*this);
@@ -273,6 +355,41 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
       return getAttrOfType<SymbolRefAttr>("f");
     }
   }];
+}
+
+def TF_ParseExampleOp : TF_Op<"ParseExample",
+                               [NoSideEffect,
+                                AttrSizedResultSegments,
+                                AttrSizedOperandSegments]> {
+
+  let summary =
+    "Transforms a vector of tf.Example protos (as strings) into typed tensors.";
+
+  let arguments = (ins
+    TF_StrTensor:$serialized,
+    TF_StrTensor:$names,
+    Variadic<TF_StrTensor>:$sparse_keys,
+    Variadic<TF_StrTensor>:$dense_keys,
+    Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_defaults,
+
+    TF_ShapeAttrArray:$dense_shapes,
+    I32ElementsAttr:$result_segment_sizes,
+    I32ElementsAttr:$operand_segment_sizes
+  );
+
+  let results = (outs
+    Variadic<I64Tensor>:$sparse_indices,                    // len(sparse_types)
+    Variadic<TensorOf<[F32, I64, TF_Str]>>:$sparse_values,  // len(sparse_types)
+    Variadic<I64Tensor>:$sparse_shapes,                     // len(sparse_types)
+    Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_values    // len(Tdense)
+  );
+
+  TF_DerivedOperandSizeAttr Nsparse = TF_DerivedOperandSizeAttr<2>;
+  TF_DerivedOperandSizeAttr Ndense = TF_DerivedOperandSizeAttr<3>;
+  TF_DerivedOperandTypeListAttr Tdense = TF_DerivedOperandTypeListAttr<4>;
+  TF_DerivedResultTypeListAttr sparse_types = TF_DerivedResultTypeListAttr<1>;
+
+  let verifier = ?;
 }
 
 def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
@@ -379,6 +496,7 @@ Inserts a placeholder for a tensor that will be always fed.
 
 def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]> {
   let summary = "Placeholder op";
+
   let description = [{
     A placeholder op that passes through input when its output is not fed.
   }];
@@ -475,7 +593,7 @@ output = input; While (Cond(output)) { output = Body(output) }
 
 input: A list of input tensors whose types are T.
 output: A list of output tensors whose types are T.
-cond: A function takes 'input' and returns a tensor.  If the tensor is
+cond: A function that takes 'input' and returns a tensor.  If the tensor is
     a scalar of non-boolean, the scalar is converted to a boolean
     according to the following rule: if the scalar is a numerical
     value, non-zero means True and zero means False; if the scalar is
@@ -509,6 +627,55 @@ body: A function that takes a list of tensors and returns another
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TL_WhileRegionOp : TF_Op<"WhileRegion",
+      [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "while operation";
+  let description = [{
+  The tf.WhileRegion op represents a while loop using 2 regions and a set of
+  iteration variables. The iteration variables maintained by this Op have the
+  same types as the inputs. The Op executes a while loop described by the
+  following pseudo code:
+
+  ```
+     func WhileRegionOp(inputs) {
+       iteration_vars = inputs;
+       while (cond(iteration_vars)) {
+           iteration_vars = body(iteration_vars);
+       }
+       return iteration_vars;
+     }
+  ```
+
+  `cond` is the condition region and `body` is the body region. Both these
+  regions accept the current value of the iteration variables as inputs. The
+  condition region returns a tensor<i1> which, if false, will exit the loop.
+  The body region computes new values of the iteration variables. The iteration
+  variables are initialized to the Op input, and the results of the
+  tf.WhileRegion op are the final values of the iteration variables.
+
+  This implies that the operand and result types for tf.WhileRegion should be
+  the same. Note that the condition and body regions can implicitly capture
+  loop invariant values directly.
+  }];
+
+  let arguments = (ins
+    Variadic<AnyTensor>:$input,
+
+    // Used to map StatelessWhile and While op defined in TensorFlow to a common
+    // op.
+    DefaultValuedAttr<BoolAttr, "false">:$is_stateless,
+    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
+  );
+  let results = (outs Variadic<AnyTensor>:$output);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+
+  let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_TensorListReserveOp : TF_TensorListInitOp<"TensorListReserve"> {
@@ -721,9 +888,6 @@ def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
 An op which shards the input based on the given sharding attribute.
   }];
 
-  let description = [{
-  }];
-
   let arguments = (ins
     TF_Tensor:$input,
 
@@ -739,9 +903,6 @@ An op which shards the input based on the given sharding attribute.
 
 def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
   let summary = "Fetches multiple values from infeed as an XLA tuple.";
-
-  let description = [{
-  }];
 
   let arguments = (ins
     OptionalAttr<StrAttr>:$_XlaSharding
@@ -784,9 +945,6 @@ Formats a string template using a list of tensors, pretty-printing tensor summar
 def TF_BatchDatasetV2Op : TF_Op<"BatchDatasetV2", [NoSideEffect]> {
   let summary = [{
 Creates a dataset that batches `batch_size` elements from `input_dataset`.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -925,6 +1083,48 @@ operation create / operate on a copy of `x`.
 
   let results = (outs
     TF_Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_BesselI0eOp : TF_Op<"BesselI0e", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the Bessel i0e function of `x` element-wise.";
+
+  let description = [{
+Exponentially scaled modified Bessel function of order 0 defined as
+`bessel_i0e(x) = exp(-abs(x)) bessel_i0(x)`.
+
+This function is faster and numerically stabler than `bessel_i0(x)`.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_BesselI1eOp : TF_Op<"BesselI1e", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the Bessel i1e function of `x` element-wise.";
+
+  let description = [{
+Exponentially scaled modified Bessel function of order 0 defined as
+`bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
+
+This function is faster and numerically stabler than `bessel_i1(x)`.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

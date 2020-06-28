@@ -1,4 +1,4 @@
-// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=false" %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=false" %s | FileCheck %s
 // RUN: tf-opt "-xla-legalize-tf=allow-partial-conversion legalize-chlo=true" -verify-diagnostics %s
 // This test runs twice:
 //   1. Through FileCheck with chlo legalization disabled since verifying
@@ -420,7 +420,7 @@ func @fusedBatchNormGradV3_Training_NCHW(%arg0: tensor<8x8x8x8xf32>, %arg1: tens
 // CHECK-LABEL: func @biasAdd_NHWC
 func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK: %[[ARG0_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[ARG0_SHAPE]])
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
   // CHECK: %[[ARG1_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
   // CHECK-SAME:   {broadcast_dimensions = dense<3> : tensor<1xi64>}
   // CHECK: %[[RESULT:.+]] = xla_hlo.add %arg0, %[[ARG1_BCAST]]
@@ -431,7 +431,7 @@ func @biasAdd_NHWC(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tens
 // CHECK-LABEL: func @biasAdd_NCHW
 func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tensor<1x32x10x32xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK: %[[ARG0_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[ARG0_SHAPE]])
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
   // CHECK: %[[ARG1_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
   // CHECK-SAME:   {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK: %[[RESULT:.+]] = xla_hlo.add %arg0, %[[ARG1_BCAST]]
@@ -442,7 +442,7 @@ func @biasAdd_NCHW(%arg0: tensor<1x32x10x32xi32>, %arg1: tensor<32xi32>) -> tens
 // CHECK-LABEL: func @biasAdd_dynamic
 func @biasAdd_dynamic(%arg0: tensor<?x?x?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?x?x?xi32> {
   // CHECK: %[[ARG0_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK: %[[ARG0_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[ARG0_SHAPE]])
+  // CHECK: %[[ARG0_EXTENTS:.+]] = shape.to_extent_tensor %[[ARG0_SHAPE]]
   // CHECK: %[[ARG1_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg1, %[[ARG0_EXTENTS]])
   // CHECK-SAME:   {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK: %[[RESULT:.+]] = xla_hlo.add %arg0, %[[ARG1_BCAST]]
@@ -505,8 +505,8 @@ func @floordiv_broadcast_i32(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32>) -> te
   // CHECK-DAG: [[DIV1:%.+]] = xla_chlo.broadcast_divide %arg0, %arg1 {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"(%arg0)
   // CHECK-DAG: [[ABS2:%.+]] = "xla_hlo.abs"(%arg1)
-  // CHECK-DAG: [[ZEROS3:%.+]] = xla_hlo.constant dense<1>
-  // CHECK-DAG: [[SUB:%.+]] = xla_chlo.broadcast_subtract [[ABS2]], [[ZEROS3]]
+  // CHECK-DAG: [[ONES:%.+]] = xla_hlo.constant dense<1>
+  // CHECK-DAG: [[SUB:%.+]] = xla_chlo.broadcast_subtract [[ABS2]], [[ONES]]
   // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[ABS1]], [[SUB]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-DAG: [[NEG:%.+]] = "xla_hlo.negate"([[ADD]])
   // CHECK-DAG: [[ABS3:%.+]] = "xla_hlo.abs"(%arg1)
@@ -527,8 +527,8 @@ func @floordiv_reverse_broadcast_i32(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32
   // CHECK-DAG: [[DIV1:%.+]] = xla_chlo.broadcast_divide %arg0, %arg1 {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"(%arg0)
   // CHECK-DAG: [[ABS2:%.+]] = "xla_hlo.abs"(%arg1)
-  // CHECK-DAG: [[ZEROS3:%.+]] = xla_hlo.constant dense<1>
-  // CHECK-DAG: [[SUB:%.+]] = xla_chlo.broadcast_subtract [[ABS2]], [[ZEROS3]]
+  // CHECK-DAG: [[ONES:%.+]] = xla_hlo.constant dense<1>
+  // CHECK-DAG: [[SUB:%.+]] = xla_chlo.broadcast_subtract [[ABS2]], [[ONES]]
   // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[ABS1]], [[SUB]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-DAG: [[NEG:%.+]] = "xla_hlo.negate"([[ADD]])
   // CHECK-DAG: [[ABS3:%.+]] = "xla_hlo.abs"(%arg1)
@@ -571,7 +571,22 @@ func @floordiv_f16_broadcast(%arg0: tensor<2x3xf16>, %arg1: tensor<3xf16>) -> te
 
 // CHECK-LABEL: func @floordiv_dynamic
 func @floordiv_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?xi32> {
-  // CHECK: tf.FloorDiv
+  // CHECK-DAG: [[ZEROS1:%.+]] = xla_hlo.constant dense<0>
+  // CHECK-DAG: [[CMP1:%.+]] = xla_chlo.broadcast_compare %arg0, [[ZEROS1]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[ZEROS2:%.+]] = xla_hlo.constant dense<0>
+  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZEROS2]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[CMP1]], [[CMP2]] {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "EQ"}
+  // CHECK-DAG: [[DIV1:%.+]] = xla_chlo.broadcast_divide %arg0, %arg1 {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"(%arg0)
+  // CHECK-DAG: [[ABS2:%.+]] = "xla_hlo.abs"(%arg1)
+  // CHECK-DAG: [[ONES:%.+]] = xla_hlo.constant dense<1>
+  // CHECK-DAG: [[SUB:%.+]] = xla_chlo.broadcast_subtract [[ABS2]], [[ONES]]
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[ABS1]], [[SUB]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-DAG: [[NEG:%.+]] = "xla_hlo.negate"([[ADD]])
+  // CHECK-DAG: [[ABS3:%.+]] = "xla_hlo.abs"(%arg1)
+  // CHECK-DAG: [[DIV2:%.+]] = xla_chlo.broadcast_divide [[NEG]], [[ABS3]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-DAG: [[SELECT:%.+]] = "xla_hlo.select"([[CMP3]], [[DIV1]], [[DIV2]])
+  // CHECK: return [[SELECT]]
   %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<?x?xi32>, tensor<?xi32>) -> tensor<?x?xi32>
   return %0: tensor<?x?xi32>
 }
@@ -589,8 +604,8 @@ func @floormod_broadcast_numerator(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32>)
   // CHECK-DAG: [[ZL:%.+]] = xla_hlo.constant dense<0>
   // CHECK-DAG: [[CMP1:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZL]] {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "NE"}
   // CHECK-DAG: [[ZR:%.+]] = xla_hlo.constant dense<0>
-  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZR:%.+]] {comparison_direction = "LT"}
-  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[REM:%.+]], [[ZR]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZR]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZR]] {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "LT"}
   // CHECK-DAG: [[CMP4:%.+]] = xla_chlo.broadcast_compare [[CMP2]], [[CMP3]] {comparison_direction = "NE"}
   // CHECK-DAG: [[AND:%.+]] = xla_chlo.broadcast_and [[CMP1]], [[CMP4]]
   // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add %arg1, [[REM]]
@@ -606,8 +621,8 @@ func @floormod_broadcast_denominator(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32
   // CHECK-DAG: [[ZL:%.+]] = xla_hlo.constant dense<0>
   // CHECK-DAG: [[CMP1:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZL]] {comparison_direction = "NE"}
   // CHECK-DAG: [[ZR:%.+]] = xla_hlo.constant dense<0>
-  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZR:%.+]] {comparison_direction = "LT"}
-  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[REM:%.+]], [[ZR]] {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZR]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZR]] {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "LT"}
   // CHECK-DAG: [[CMP4:%.+]] = xla_chlo.broadcast_compare [[CMP2]], [[CMP3]] {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "NE"}
   // CHECK-DAG: [[AND:%.+]] = xla_chlo.broadcast_and [[CMP1]], [[CMP4]]
   // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add %arg1, [[REM]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
@@ -619,7 +634,17 @@ func @floormod_broadcast_denominator(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32
 
 // CHECK-LABEL: func @floormod_dynamic
 func @floormod_dynamic(%arg0: tensor<?x?xi32>, %arg1: tensor<?xi32>) -> tensor<?x?xi32> {
-  // CHECK: tf.FloorMod
+  // CHECK-DAG: [[REM:%.+]] = xla_chlo.broadcast_remainder %arg0, %arg1 {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-DAG: [[ZL:%.+]] = xla_hlo.constant dense<0>
+  // CHECK-DAG: [[CMP1:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZL]] {comparison_direction = "NE"}
+  // CHECK-DAG: [[ZR:%.+]] = xla_hlo.constant dense<0>
+  // CHECK-DAG: [[CMP2:%.+]] = xla_chlo.broadcast_compare %arg1, [[ZR]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP3:%.+]] = xla_chlo.broadcast_compare [[REM]], [[ZR]] {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "LT"}
+  // CHECK-DAG: [[CMP4:%.+]] = xla_chlo.broadcast_compare [[CMP2]], [[CMP3]] {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "NE"}
+  // CHECK-DAG: [[AND:%.+]] = xla_chlo.broadcast_and [[CMP1]], [[CMP4]]
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add %arg1, [[REM]] {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-DAG: [[SELECT:%.+]] = "xla_hlo.select"([[AND]], [[ADD]], [[REM]])
+  // CHECK-NEXT: return [[SELECT]]
   %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<?x?xi32>, tensor<?xi32>) -> tensor<?x?xi32>
   return %0: tensor<?x?xi32>
 }
@@ -789,6 +814,13 @@ func @preventgradient(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   return %0: tensor<1xi32>
 }
 
+// CHECK-LABEL: func @checkNumerics
+func @checkNumerics(%arg0: tensor<1xf32>) -> tensor<1xf32> {
+  // CHECK-NEXT:  return %arg0 : tensor<1xf32>
+  %0 = "tf.CheckNumerics"(%arg0) {message = "check numerics"} : (tensor<1xf32>) -> tensor<1xf32>
+  return %0: tensor<1xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // InfeedDequeueTuple legalization
 //===----------------------------------------------------------------------===//
@@ -820,7 +852,19 @@ func @infeed_dequeue_tuple() -> (tensor<3xi32>, tensor<4xf32>) {
 func @infeed_dequeue_tuple_sharding() -> tensor<8xi32> {
   // CHECK: "xla_hlo.infeed"
   // An additional sharding is added at the end to account for token result.
-  // CHECK-SAME: xla_hlo.sharding = "type: TUPLE\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0A"
+  // Proto debug string:
+  //   type: TUPLE
+  //   tuple_shardings {
+  //     type: MAXIMAL
+  //     tile_assignment_dimensions: 1
+  //     tile_assignment_devices: 0
+  //   }
+  //   tuple_shardings {
+  //     type: MAXIMAL
+  //     tile_assignment_dimensions: 1
+  //     tile_assignment_devices: 0
+  //   }
+  // CHECK-SAME: xla_hlo.sharding = "\08\02*\08\08\01\1A\01\01\22\01\00*\08\08\01\1A\01\01\22\01\00"
   %0 = "tf.InfeedDequeueTuple"() {_XlaSharding = "\08\02*\08\08\01\1A\01\01\22\01\00"} : () -> tensor<8xi32>
   return %0 : tensor<8xi32>
 }
@@ -1052,7 +1096,6 @@ func @max_pool_grad_valid(%orig_input: tensor<10x24x24x64xf32>, %orig_output: te
   // CHECK: "xla_hlo.return"(%[[SELECT_RESULT]]) : (tensor<f32>) -> ()
   // CHECK: }) {window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>, window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64>} : (tensor<10x24x24x64xf32>, tensor<10x12x12x64xf32>, tensor<f32>) -> tensor<10x24x24x64xf32>
   // CHECK: return %[[RESULT]] : tensor<10x24x24x64xf32>
-  // CHECK: }
   %result = "tf.MaxPoolGrad"(%orig_input, %orig_output, %grad) {
      data_format = "NHWC",
      ksize = [1, 2, 2, 1],
@@ -1076,7 +1119,6 @@ func @max_pool_3d_grad_valid(%orig_input: tensor<10x8x24x24x64xf32>, %orig_outpu
   // CHECK: "xla_hlo.return"(%[[SELECT_RESULT]]) : (tensor<f32>) -> ()
   // CHECK: }) {window_dimensions = dense<[1, 1, 2, 2, 1]> : tensor<5xi64>, window_strides = dense<[1, 1, 2, 2, 1]> : tensor<5xi64>} : (tensor<10x8x24x24x64xf32>, tensor<10x8x12x12x64xf32>, tensor<f32>) -> tensor<10x8x24x24x64xf32>
   // CHECK: return %[[RESULT]] : tensor<10x8x24x24x64xf32>
-  // CHECK: }
   %result = "tf.MaxPool3DGrad"(%orig_input, %orig_output, %grad) {data_format = "NDHWC", ksize = [1, 1, 2, 2, 1], padding = "VALID", strides = [1, 1, 2, 2, 1]} : (tensor<10x8x24x24x64xf32>, tensor<10x8x12x12x64xf32>, tensor<10x8x12x12x64xf32>) -> tensor<10x8x24x24x64xf32>
   return %result : tensor<10x8x24x24x64xf32>
 }
@@ -1408,7 +1450,7 @@ func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: %[[CASTED_MAX:.*]] = "xla_hlo.convert"(%[[MAX]]) : (tensor<2xf32>) -> tensor<2xf32>
 
   // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[RESULT_SHAPE]]) : (!shape.shape) -> tensor<2xindex>
+  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]] : tensor<2xindex>
   // CHECK: %[[BCAST_MAX:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[CASTED_MAX]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK: %[[SHIFTED_INP:.*]] = xla_hlo.subtract %[[ARG0]], %[[BCAST_MAX]]
   // CHECK: %[[EXP:.*]] = "xla_hlo.exponential"(%[[SHIFTED_INP]])
@@ -1423,7 +1465,7 @@ func @simple_softmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: %[[CASTED_SUM:.*]] = "xla_hlo.convert"(%[[SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
 
   // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[RESULT_SHAPE]]) : (!shape.shape) -> tensor<2xindex>
+  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]] : tensor<2xindex>
   // CHECK: %[[BCAST_SUM:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[CASTED_SUM]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK: %[[RESULT:.*]] = xla_hlo.divide %[[EXP]], %[[BCAST_SUM]]
   // CHECK: return %[[RESULT]]
@@ -1480,7 +1522,7 @@ func @simple_logsoftmax(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: %[[CASTED_SUM:.*]] = "xla_hlo.convert"(%[[SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
   // CHECK: %[[LOG:.*]] = "xla_hlo.log"(%[[CASTED_SUM]]) : (tensor<2xf32>) -> tensor<2xf32>
   // CHECK: %[[RESULT_SHAPE:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK: %[[RESULT_EXTENTS:.+]] = "shape.to_extent_tensor"(%[[RESULT_SHAPE]]) : (!shape.shape) -> tensor<2xindex>
+  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]] : tensor<2xindex>
   // CHECK: %[[BCAST_SUM:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[LOG]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK: %[[RESULT:.*]] = xla_hlo.subtract {{.*}}, %[[BCAST_SUM]]
   // CHECK: return %[[RESULT]]
@@ -1499,6 +1541,43 @@ func @rfft_1D(%arg0: tensor<8xf32>) -> tensor<8xcomplex<f32>> {
   // CHECK: "xla_hlo.fft"(%arg0) {fft_length = dense<8> : tensor<1xi64>, fft_type = "RFFT"} : (tensor<8xf32>
   %0 = "tf.RFFT"(%arg0, %fftlength) : (tensor<8xf32>, tensor<1xi32>) -> tensor<8xcomplex<f32>>
   return %0 : tensor<8xcomplex<f32>>
+}
+
+//===----------------------------------------------------------------------===//
+// Shape op legalization.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @shape_1D
+func @shape_1D(%arg0: tensor<?xf32>) -> tensor<1xi32> {
+  // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK: [[TENSOR:%.+]] = shape.to_extent_tensor [[SHAPE]]
+  // CHECK: [[CAST:%.+]] = index_cast [[TENSOR]]
+  %0 = "tf.Shape"(%arg0) : (tensor<?xf32>) -> tensor<1xi32>
+
+  // CHECK: return [[CAST]]
+  return %0 : tensor<1xi32>
+}
+
+// CHECK-LABEL: func @shape_2D
+func @shape_2D(%arg0: tensor<?x?xf32>) -> tensor<2xi32> {
+  // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK: [[TENSOR:%.+]] = shape.to_extent_tensor [[SHAPE]]
+  // CHECK: [[CAST:%.+]] = index_cast [[TENSOR]]
+  %0 = "tf.Shape"(%arg0) : (tensor<?x?xf32>) -> tensor<2xi32>
+
+  // CHECK: return [[CAST]]
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: func @shape_rankless
+func @shape_rankless(%arg0: tensor<*xf32>) -> tensor<?xi32> {
+  // CHECK: [[SHAPE:%.+]] = shape.shape_of %arg0
+  // CHECK: [[TENSOR:%.+]] = shape.to_extent_tensor [[SHAPE]]
+  // CHECK: [[CAST:%.+]] = index_cast [[TENSOR]]
+  %0 = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi32>
+
+  // CHECK: return [[CAST]]
+  return %0 : tensor<?xi32>
 }
 
 //===----------------------------------------------------------------------===//
@@ -1784,15 +1863,40 @@ func @neg_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // CHECK-LABEL: @sigmoid
 func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK-DAG: [[R0:%.+]] = xla_hlo.constant dense<5.000000e-01> : tensor<f32>
-  // CHECK-DAG: [[R1:%.+]] = "xla_hlo.broadcast"([[R0]]) {broadcast_sizes = dense<2> : tensor<1xi64>} : (tensor<f32>) -> tensor<2xf32>
-  // CHECK-DAG: [[R2:%.+]] =  xla_hlo.multiply %arg0, [[R1]] : tensor<2xf32>
-  // CHECK-DAG: [[R3:%.+]] =  "xla_hlo.tanh"([[R2]]) : (tensor<2xf32>) -> tensor<2xf32>
-  // CHECK-DAG: [[R4:%.+]] =  xla_hlo.multiply [[R3]], [[R1]] : tensor<2xf32>
-  // CHECK-DAG: [[R5:%.+]] =  xla_hlo.add [[R4]], [[R1]] : tensor<2xf32>
+  // CHECK-DAG: [[SCALAR:%.+]] = xla_hlo.constant dense<5.000000e-01> : tensor<f32>
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0 : tensor<2xf32>
+  // CHECK-DAG: [[SHAPE_VAL:%.+]] = shape.to_extent_tensor [[SHAPE]] : tensor<1xindex>
+  // CHECK-DAG: [[HALF:%.+]] = "xla_hlo.dynamic_broadcast_in_dim"([[SCALAR]], [[SHAPE_VAL]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>, tensor<1xindex>) -> tensor<2xf32>
+  // CHECK-DAG: [[R1:%.+]] =  xla_hlo.multiply %arg0, [[HALF]] : tensor<2xf32>
+  // CHECK-DAG: [[R2:%.+]] =  "xla_hlo.tanh"([[R1]]) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-DAG: [[R3:%.+]] =  xla_hlo.multiply [[R2]], [[HALF]] : tensor<2xf32>
+  // CHECK-DAG: [[R4:%.+]] =  xla_hlo.add [[R3]], [[HALF]] : tensor<2xf32>
   %0 = "tf.Sigmoid"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
+
+// CHECK-LABEL: @sigmoid_complex
+func @sigmoid_complex(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
+  // CHECK: [[R0:%.+]] = xla_hlo.constant dense<(5.000000e-01,0.000000e+00)> : tensor<complex<f32>>
+  // CHECK-NOT: tf.Sigmoid
+  %0 = "tf.Sigmoid"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  return %0 : tensor<2xcomplex<f32>>
+}
+
+// CHECK-LABEL: @sigmoid_unranked
+func @sigmoid_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK-DAG: [[SCALAR:%.+]] = xla_hlo.constant dense<5.000000e-01> : tensor<f32>
+  // CHECK-DAG: [[SHAPE:%.+]] = shape.shape_of %arg0 : tensor<*xf32>
+  // CHECK-DAG: [[SHAPE_VAL:%.+]] = shape.to_extent_tensor [[SHAPE]] : tensor<?xindex>
+  // CHECK-DAG: [[HALF:%.+]] = "xla_hlo.dynamic_broadcast_in_dim"([[SCALAR]], [[SHAPE_VAL]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>, tensor<?xindex>) -> tensor<*xf32>
+  // CHECK-DAG: [[R1:%.+]] =  xla_hlo.multiply %arg0, [[HALF]] : tensor<*xf32>
+  // CHECK-DAG: [[R2:%.+]] =  "xla_hlo.tanh"([[R1]]) : (tensor<*xf32>) -> tensor<*xf32>
+  // CHECK-DAG: [[R3:%.+]] =  xla_hlo.multiply [[R2]], [[HALF]] : tensor<*xf32>
+  // CHECK-DAG: [[R4:%.+]] =  xla_hlo.add [[R3]], [[HALF]] : tensor<*xf32>
+  %0 = "tf.Sigmoid"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 
 // CHECK-LABEL: @sigmoid_grad
 func @sigmoid_grad(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
@@ -1803,6 +1907,17 @@ func @sigmoid_grad(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> 
   // CHECK: return [[MUL1]]
   %0 = "tf.SigmoidGrad"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: @sigmoid_grad_complex
+func @sigmoid_grad_complex(%arg0: tensor<2xcomplex<f32>>, %arg1: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
+  // CHECK-DAG: [[MUL0:%.+]] =  xla_hlo.multiply %arg1, %arg0 : tensor<2xcomplex<f32>>
+  // CHECK-DAG: [[ONE:%.+]] = xla_hlo.constant dense<(1.000000e+00,0.000000e+00)> : tensor<2xcomplex<f32>>
+  // CHECK-DAG: [[SUB:%.+]] =  xla_hlo.subtract [[ONE]], %arg0 : tensor<2xcomplex<f32>>
+  // CHECK-DAG: [[MUL1:%.+]] =  xla_hlo.multiply [[MUL0]], [[SUB]] : tensor<2xcomplex<f32>>
+  // CHECK: return [[MUL1]]
+  %0 = "tf.SigmoidGrad"(%arg0, %arg1) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  return %0 : tensor<2xcomplex<f32>>
 }
 
 // CHECK-LABEL: @sin
@@ -2119,6 +2234,18 @@ func @simple_strided_slice(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
   return %output : tensor<3x2xf32>
 }
 
+// CHECK-LABEL: dynamic_strided_slice
+func @dynamic_strided_slice(%input: tensor<?x8xf32>) -> tensor<?x2xf32> {
+  %begin = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[3, 7]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: "tf.StridedSlice"
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<?x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x2xf32>
+  return %output : tensor<?x2xf32>
+}
+
 // CHECK-LABEL: strided_slice_negative_indices
 func @strided_slice_negative_indices(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
   %begin = "tf.Const"() {value = dense<[-1, -2]> : tensor<2xi32>} : () -> (tensor<2xi32>)
@@ -2136,6 +2263,18 @@ func @strided_slice_negative_indices(%input: tensor<4x8xf32>) -> tensor<3x2xf32>
   %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
       : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x2xf32>
   return %output : tensor<3x2xf32>
+}
+
+// CHECK-LABEL: dynamic_strided_slice_negative_indices
+func @dynamic_strided_slice_negative_indices(%input: tensor<?x8xf32>) -> tensor<?x2xf32> {
+  %begin = "tf.Const"() {value = dense<[-1, -2]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %end = "tf.Const"() {value = dense<[-4, -8]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[-1, -3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+
+  // CHECK: tf.StridedSlice
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<?x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<?x2xf32>
+  return %output : tensor<?x2xf32>
 }
 
 // CHECK-LABEL: strided_slice_range_clamping
@@ -2661,8 +2800,8 @@ func @any_dynamic(%input: tensor<4x?xi1>) -> tensor<4x1xi1> {
 
 // CHECK-LABEL: func @tile_by_reshape
 func @tile_by_reshape(%arg0: tensor<4x8xf32>) -> tensor<28x24xf32> {
-  // CHECK: %[[BROADCASTED:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<4x8xf32>) -> tensor<4x7x8x3xf32>
-  // CHECK: %[[RESULT:.*]] = "xla_hlo.reshape"(%[[BROADCASTED]]) : (tensor<4x7x8x3xf32>) -> tensor<28x24xf32>
+  // CHECK: %[[BROADCASTED:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 3]> : tensor<2xi64>} : (tensor<4x8xf32>) -> tensor<7x4x3x8xf32>
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.reshape"(%[[BROADCASTED]]) : (tensor<7x4x3x8xf32>) -> tensor<28x24xf32>
   // CHECK: return %[[RESULT]] : tensor<28x24xf32>
   %multiples = "tf.Const"() { value = dense<[7,3]> : tensor<2xi64> } : () -> tensor<2xi64>
   %0 = "tf.Tile"(%arg0, %multiples) : (tensor<4x8xf32>, tensor<2xi64>) -> tensor<28x24xf32>
@@ -2774,6 +2913,50 @@ func @range(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<5xf32> {
   // CHECK: xla_chlo.broadcast_add [[MUL]], [[START]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
   %3 = "tf.Range"(%arg0, %1, %arg1) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<5xf32>
   return %3 : tensor<5xf32>
+}
+
+// CHECK-LABEL: func @range_dynamic
+// CHECK-SAME: [[START:%.*]]: tensor<f32>, [[DELTA:%.*]]: tensor<f32>
+func @range_dynamic(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<?xf32> {
+  // CHECK-DAG: [[SUB:%.+]] = xla_hlo.subtract %arg1, %arg0
+  // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"([[SUB]])
+  // CHECK-DAG: [[CONVERT1:%.+]] = "xla_hlo.convert"([[ABS1]])
+  // CHECK-DAG: [[CONVERT2:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[DIV:%.+]] = xla_hlo.divide [[CONVERT1]], [[CONVERT2]]
+  // CHECK-DAG: [[CEIL:%.+]] = "xla_hlo.ceil"([[DIV]])
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"([[CEIL]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[CONVERT3]])
+  // CHECK-DAG: [[IOTA:%.+]] = "xla_hlo.dynamic_iota"([[RESHAPE]]) {iota_dimension = 0 : i64}
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"(%arg0)
+  // CHECK-DAG: [[CONVERT4:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[MUL:%.+]] = xla_chlo.broadcast_multiply [[IOTA]], [[CONVERT4]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[MUL]], [[CONVERT3]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  %2 = "tf.Range"(%arg0, %arg1, %arg2) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+
+  // CHECK: return [[ADD]]
+  return %2 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @range_int_dynamic
+// CHECK-SAME: [[START:%.*]]: tensor<i32>, [[DELTA:%.*]]: tensor<i32>
+func @range_int_dynamic(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?xi32> {
+  // CHECK-DAG: [[SUB:%.+]] = xla_hlo.subtract %arg1, %arg0
+  // CHECK-DAG: [[ABS1:%.+]] = "xla_hlo.abs"([[SUB]])
+  // CHECK-DAG: [[CONVERT1:%.+]] = "xla_hlo.convert"([[ABS1]])
+  // CHECK-DAG: [[CONVERT2:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[DIV:%.+]] = xla_hlo.divide [[CONVERT1]], [[CONVERT2]]
+  // CHECK-DAG: [[CEIL:%.+]] = "xla_hlo.ceil"([[DIV]])
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"([[CEIL]])
+  // CHECK-DAG: [[RESHAPE:%.+]] = "xla_hlo.reshape"([[CONVERT3]])
+  // CHECK-DAG: [[IOTA:%.+]] = "xla_hlo.dynamic_iota"([[RESHAPE]]) {iota_dimension = 0 : i64}
+  // CHECK-DAG: [[CONVERT3:%.+]] = "xla_hlo.convert"(%arg0)
+  // CHECK-DAG: [[CONVERT4:%.+]] = "xla_hlo.convert"(%arg2)
+  // CHECK-DAG: [[MUL:%.+]] = xla_chlo.broadcast_multiply [[IOTA]], [[CONVERT4]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  // CHECK-DAG: [[ADD:%.+]] = xla_chlo.broadcast_add [[MUL]], [[CONVERT3]] {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+  %2 = "tf.Range"(%arg0, %arg1, %arg2) {Tidx = "tfdtype$DT_FLOAT", device = "", name = "range"} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+
+  // CHECK: return [[ADD]]
+  return %2 : tensor<?xi32>
 }
 
 // CHECK-LABEL: func @linspace_static
@@ -3625,42 +3808,6 @@ func @random_shuffle_3D(%input: tensor<4x?x16xf32>) -> tensor<4x?x16xf32> {
 }
 
 //===----------------------------------------------------------------------===//
-// tf.VariableShape legalization
-//===----------------------------------------------------------------------===//
-
-// CHECK-LABLE: @variable_shape32
-func @variable_shape32(%input: tensor<!tf.resource<tensor<2x4x8xf32>>>) -> tensor<3xi32> {
-  // CHECK: [[CST:%.*]] = xla_hlo.constant dense<[2, 4, 8]> : tensor<3xi32>
-  // CHECK: [[CST_CAST:%.*]] = tensor_cast [[CST]]
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<2x4x8xf32>>>) -> (tensor<3xi32>)
-  // CHECK: return [[CST_CAST]]
-  return %0: tensor<3xi32>
-}
-
-// CHECK-LABLE: @variable_shape64
-func @variable_shape64(%input: tensor<!tf.resource<tensor<2x4x8xf32>>>) -> tensor<3xi64> {
-  // CHECK: [[CST:%.*]] = xla_hlo.constant dense<[2, 4, 8]> : tensor<3xi64>
-  // CHECK: [[CST_CAST:%.*]] = tensor_cast [[CST]]
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<2x4x8xf32>>>) -> (tensor<3xi64>)
-  // CHECK: return [[CST_CAST]]
-  return %0: tensor<3xi64>
-}
-
-// CHECK-LABEL: @variable_shape_unknown_resource
-func @variable_shape_unknown_resource(%input: tensor<!tf.resource>) -> tensor<?xi32> {
-  // CHECK: tf.VariableShape
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource>) -> (tensor<?xi32>)
-  return %0: tensor<?xi32>
-}
-
-// CHECK-LABEL: @variable_shape_unknown_resource_shape
-func @variable_shape_unknown_resource_shape(%input: tensor<!tf.resource<tensor<?x?xf32>>>) -> tensor<2xi32> {
-  // CHECK: tf.VariableShape
-  %0 = "tf.VariableShape"(%input) : (tensor<!tf.resource<tensor<?x?xf32>>>) -> (tensor<2xi32>)
-  return %0: tensor<2xi32>
-}
-
-//===----------------------------------------------------------------------===//
 // tf.AvgPool legalization
 //===----------------------------------------------------------------------===//
 
@@ -3687,6 +3834,260 @@ func @avgpool_same_padding(%arg0: tensor<2x13x25x7xf32>) -> tensor<2x4x7x7xf32> 
   // CHECK: tf.AvgPool
   %0 = "tf.AvgPool"(%arg0) {data_format = "NHWC", ksize = [1, 2, 3, 1], padding = "SAME", strides = [1, 4, 4, 1]} : (tensor<2x13x25x7xf32>) -> tensor<2x4x7x7xf32>
   return %0 : tensor<2x4x7x7xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// AvgPoolGrad op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL:   func @avgpool_grad_valid_padding(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<10x12x16x64xf32>) -> tensor<10x24x32x64xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[DIVISOR:.*]] = xla_hlo.constant dense<4.000000e+00> : tensor<f32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_chlo.broadcast_divide %[[OUT_GRAD]], %[[DIVISOR]]
+// CHECK_SAME:        broadcast_dimensions = dense<[]>
+// CHECK_SAME:        -> tensor<10x12x16x64xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        interior_padding = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        -> tensor<10x25x33x64xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 2, 2, 1]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<10x24x32x64xf32>
+// CHECK:           return %[[RESULT]] : tensor<10x24x32x64xf32>
+func @avgpool_grad_valid_padding(%grad: tensor<10x12x16x64xf32>) -> tensor<10x24x32x64xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[10, 24, 32, 64]> : tensor<4xi32>} : () -> (tensor<4xi32>)
+  %result = "tf.AvgPoolGrad"(%orig_input_shape, %grad) {
+     data_format = "NHWC",
+     ksize = [1, 2, 2, 1],
+     padding = "VALID",
+     strides = [1, 2, 2, 1]
+  } : (tensor<4xi32>, tensor<10x12x16x64xf32>) -> tensor<10x24x32x64xf32>
+  return %result : tensor<10x24x32x64xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_3d_grad_valid_padding(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<10x8x12x16x64xf32>) -> tensor<10x8x24x32x64xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[DIVISOR:.*]] = xla_hlo.constant dense<4.000000e+00> : tensor<f32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_chlo.broadcast_divide %[[OUT_GRAD]], %[[DIVISOR]] {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<10x8x12x16x64xf32>, tensor<f32>) -> tensor<10x8x12x16x64xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 0, 1, 1, 0]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 0, 1, 1, 0]>
+// CHECK-SAME:        interior_padding = dense<[0, 0, 1, 1, 0]>
+// CHECK-SAME:        -> tensor<10x8x25x33x64xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 2, 2, 1]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<10x8x24x32x64xf32>
+// CHECK:           return %[[RESULT]] : tensor<10x8x24x32x64xf32>
+func @avgpool_3d_grad_valid_padding(%grad: tensor<10x8x12x16x64xf32>) -> tensor<10x8x24x32x64xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[10, 8, 24, 32, 64]> : tensor<5xi32>} : () -> (tensor<5xi32>)
+  %result = "tf.AvgPool3DGrad"(%orig_input_shape, %grad) {
+    data_format = "NDHWC",
+    ksize = [1, 1, 2, 2, 1],
+    padding = "VALID",
+    strides = [1, 1, 2, 2, 1]} : (tensor<5xi32>, tensor<10x8x12x16x64xf32>) -> tensor<10x8x24x32x64xf32>
+  return %result : tensor<10x8x24x32x64xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_grad_same_padding(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x4x7x9xf32>) -> tensor<2x13x25x9xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[ALL_ONES:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<2x13x25x9xf32>
+// CHECK:           %[[DIVISOR:.*]] = "xla_hlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM1:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM1]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        padding = dense<{{\[\[}}0, 0], [0, 1], [1, 1], [0, 0]]>
+// CHECK-SAME:        window_dimensions = dense<[1, 2, 3, 1]>
+// CHECK-SAME:        window_strides = dense<[1, 4, 4, 1]>
+// CHECK-SAME:        -> tensor<2x4x7x9xf32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_hlo.divide %[[OUT_GRAD]], %[[DIVISOR]] : tensor<2x4x7x9xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 0, 1, 0]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        interior_padding = dense<[0, 3, 3, 0]>
+// CHECK-SAME:        -> tensor<2x14x27x9xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG3:.*]]: tensor<f32>, %[[ARG4:.*]]: tensor<f32>):
+// CHECK:             %[[SUM2:.*]] = xla_hlo.add %[[ARG3]], %[[ARG4]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM2]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 2, 3, 1]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<2x13x25x9xf32>
+// CHECK:           return %[[RESULT]] : tensor<2x13x25x9xf32>
+func @avgpool_grad_same_padding(%grad: tensor<2x4x7x9xf32>) -> tensor<2x13x25x9xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[2, 13, 25, 9]> : tensor<4xi32>} : () -> (tensor<4xi32>)
+  %result = "tf.AvgPoolGrad"(%orig_input_shape, %grad) {
+     data_format = "NHWC",
+     ksize = [1, 2, 3, 1],
+     padding = "SAME",
+     strides = [1, 4, 4, 1]
+  } : (tensor<4xi32>, tensor<2x4x7x9xf32>) -> tensor<2x13x25x9xf32>
+  return %result : tensor<2x13x25x9xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_3d_grad_same_padding(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x8x4x7x9xf32>) -> tensor<2x8x13x25x9xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[ALL_ONES:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<2x8x13x25x9xf32>
+// CHECK:           %[[DIVISOR:.*]] = "xla_hlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM1:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM1]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        padding = dense<{{\[\[}}0, 0], [0, 0], [0, 1], [1, 1], [0, 0]]>
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 2, 3, 1]>
+// CHECK-SAME:        window_strides = dense<[1, 1, 4, 4, 1]>
+// CHECK-SAME:        -> tensor<2x8x4x7x9xf32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_hlo.divide %[[OUT_GRAD]], %[[DIVISOR]] : tensor<2x8x4x7x9xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 0, 0, 1, 0]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 0, 1, 1, 0]>
+// CHECK-SAME:        interior_padding = dense<[0, 0, 3, 3, 0]>
+// CHECK-SAME:        -> tensor<2x8x14x27x9xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG3:.*]]: tensor<f32>, %[[ARG4:.*]]: tensor<f32>):
+// CHECK:             %[[SUM2:.*]] = xla_hlo.add %[[ARG3]], %[[ARG4]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM2]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 2, 3, 1]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<2x8x13x25x9xf32>
+// CHECK:           return %[[RESULT]] : tensor<2x8x13x25x9xf32>
+func @avgpool_3d_grad_same_padding(%grad: tensor<2x8x4x7x9xf32>) -> tensor<2x8x13x25x9xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[2, 8, 13, 25, 9]> : tensor<5xi32>} : () -> (tensor<5xi32>)
+  %result = "tf.AvgPool3DGrad"(%orig_input_shape, %grad) {
+    data_format = "NDHWC",
+    ksize = [1, 1, 2, 3, 1],
+    padding = "SAME",
+    strides = [1, 1, 4, 4, 1]} : (tensor<5xi32>, tensor<2x8x4x7x9xf32>) -> tensor<2x8x13x25x9xf32>
+  return %result : tensor<2x8x13x25x9xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_grad_nchw_format(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x9x4x7xf32>) -> tensor<2x9x13x25xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[ALL_ONES:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<2x9x13x25xf32>
+// CHECK:           %[[DIVISOR:.*]] = "xla_hlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM1:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM1]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        padding = dense<{{\[\[}}0, 0], [0, 0], [0, 1], [1, 1]]>
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 2, 3]>
+// CHECK-SAME:        window_strides = dense<[1, 1, 4, 4]>
+// CHECK-SAME:        -> tensor<2x9x4x7xf32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_hlo.divide %[[OUT_GRAD]], %[[DIVISOR]] : tensor<2x9x4x7xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 0, 0, 1]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 0, 1, 1]>
+// CHECK-SAME:        interior_padding = dense<[0, 0, 3, 3]>
+// CHECK-SAME:        -> tensor<2x9x14x27xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG3:.*]]: tensor<f32>, %[[ARG4:.*]]: tensor<f32>):
+// CHECK:             %[[SUM2:.*]] = xla_hlo.add %[[ARG3]], %[[ARG4]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM2]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 2, 3]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<2x9x13x25xf32>
+// CHECK:           return %[[RESULT]] : tensor<2x9x13x25xf32>
+func @avgpool_grad_nchw_format(%grad: tensor<2x9x4x7xf32>) -> tensor<2x9x13x25xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[2, 9, 13, 25]> : tensor<4xi32>} : () -> (tensor<4xi32>)
+  %result = "tf.AvgPoolGrad"(%orig_input_shape, %grad) {
+     data_format = "NCHW",
+     ksize = [1, 1, 2, 3],
+     padding = "SAME",
+     strides = [1, 1, 4, 4]
+  } : (tensor<4xi32>, tensor<2x9x4x7xf32>) -> tensor<2x9x13x25xf32>
+  return %result : tensor<2x9x13x25xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_3d_grad_ncdwh_format(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<2x9x8x4x7xf32>) -> tensor<2x9x8x13x25xf32> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[ALL_ONES:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<2x9x8x13x25xf32>
+// CHECK:           %[[DIVISOR:.*]] = "xla_hlo.reduce_window"(%[[ALL_ONES]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM1:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM1]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        padding = dense<{{\[\[}}0, 0], [0, 0], [0, 0], [0, 1], [1, 1]]>
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 1, 2, 3]>
+// CHECK-SAME:        window_strides = dense<[1, 1, 1, 4, 4]>
+// CHECK-SAME:        -> tensor<2x9x8x4x7xf32>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_hlo.divide %[[OUT_GRAD]], %[[DIVISOR]] : tensor<2x9x8x4x7xf32>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 0, 0, 0, 1]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 0, 0, 1, 1]>
+// CHECK-SAME:        interior_padding = dense<[0, 0, 0, 3, 3]>
+// CHECK-SAME:        -> tensor<2x9x8x14x27xf32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT]], %[[ZERO]]) ( {
+// CHECK:           ^bb0(%[[ARG3:.*]]: tensor<f32>, %[[ARG4:.*]]: tensor<f32>):
+// CHECK:             %[[SUM2:.*]] = xla_hlo.add %[[ARG3]], %[[ARG4]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM2]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 1, 1, 2, 3]>
+// CHECK-SAME:        window_strides = dense<1> : tensor<5xi64>
+// CHECK-SAME:        -> tensor<2x9x8x13x25xf32>
+// CHECK:           return %[[RESULT]] : tensor<2x9x8x13x25xf32>
+func @avgpool_3d_grad_ncdwh_format(%grad: tensor<2x9x8x4x7xf32>) -> tensor<2x9x8x13x25xf32> {
+  %orig_input_shape = "tf.Const"() {value = dense<[2, 9, 8, 13, 25]> : tensor<5xi32>} : () -> (tensor<5xi32>)
+  %result = "tf.AvgPool3DGrad"(%orig_input_shape, %grad) {
+    data_format = "NCDHW",
+    ksize = [1, 1, 1, 2, 3],
+    padding = "SAME",
+    strides = [1, 1, 1, 4, 4]} : (tensor<5xi32>, tensor<2x9x8x4x7xf32>) -> tensor<2x9x8x13x25xf32>
+  return %result : tensor<2x9x8x13x25xf32>
+}
+
+// CHECK-LABEL:   func @avgpool_grad_bf16(
+// CHECK-SAME:      %[[OUT_GRAD:.*]]: tensor<10x12x16x64xbf16>) -> tensor<10x24x32x64xbf16> {
+// CHECK:           %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<bf16>
+// CHECK:           %[[DIVISOR:.*]] = xla_hlo.constant dense<4.000000e+00> : tensor<bf16>
+// CHECK:           %[[OUT_GRAD_DIVIDED:.*]] = xla_chlo.broadcast_divide %[[OUT_GRAD]], %[[DIVISOR]]
+// CHECK-SAME:        broadcast_dimensions = dense<[]>
+// CHECK-SAME:        -> tensor<10x12x16x64xbf16>
+// CHECK:           %[[REDUCE_WINDOW_INPUT:.*]] = "xla_hlo.pad"(%[[OUT_GRAD_DIVIDED]], %[[ZERO]])
+// CHECK-SAME:        edge_padding_high = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        edge_padding_low = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        interior_padding = dense<[0, 1, 1, 0]>
+// CHECK-SAME:        -> tensor<10x25x33x64xbf16>
+// CHECK:           %[[REDUCE_WINDOW_INPUT_CONVERTED:.*]] = "xla_hlo.convert"(%[[REDUCE_WINDOW_INPUT]]) : (tensor<10x25x33x64xbf16>) -> tensor<10x25x33x64xf32>
+// CHECK:           %[[ZERO_F32:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           %[[RESULT:.*]] = "xla_hlo.reduce_window"(%[[REDUCE_WINDOW_INPUT_CONVERTED]], %[[ZERO_F32]]) ( {
+// CHECK:           ^bb0(%[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<f32>):
+// CHECK:             %[[SUM:.*]] = xla_hlo.add %[[ARG1]], %[[ARG2]] : tensor<f32>
+// CHECK:             "xla_hlo.return"(%[[SUM]]) : (tensor<f32>) -> ()
+// CHECK:           })
+// CHECK-SAME:        window_dimensions = dense<[1, 2, 2, 1]>
+// CHECK-SAME:        window_strides = dense<1>
+// CHECK-SAME:        -> tensor<10x24x32x64xf32>
+// CHECK:           %[[RESULT_CONVERTED:.*]] = "xla_hlo.convert"(%[[RESULT]]) : (tensor<10x24x32x64xf32>) -> tensor<10x24x32x64xbf16>
+// CHECK:           return %[[RESULT_CONVERTED]] : tensor<10x24x32x64xbf16>
+func @avgpool_grad_bf16(%grad: tensor<10x12x16x64xbf16>) -> tensor<10x24x32x64xbf16> {
+  %orig_input_shape = "tf.Const"() {value = dense<[10, 24, 32, 64]> : tensor<4xi32>} : () -> (tensor<4xi32>)
+  %result = "tf.AvgPoolGrad"(%orig_input_shape, %grad) {
+     data_format = "NHWC",
+     ksize = [1, 2, 2, 1],
+     padding = "VALID",
+     strides = [1, 2, 2, 1]
+  } : (tensor<4xi32>, tensor<10x12x16x64xbf16>) -> tensor<10x24x32x64xbf16>
+  return %result : tensor<10x24x32x64xbf16>
 }
 
 // CHECK-LABEL: xla_sharding
@@ -3822,4 +4223,88 @@ func @qr(%arg0: tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x7
   // CHECK-NOT: "tf.Qr"
   %0:2 = "tf.Qr"(%arg0) {full_matrices = false} : (tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>)
   return %0#0, %0#1 : tensor<500x100x75xf32>, tensor<500x75x75xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.Softplus legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @softplus_f16
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xf16>)
+func @softplus_f16(%arg0: tensor<8x16xf16>) -> tensor<8x16xf16> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<1.220700e-04> : tensor<f16>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<f16>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf16>) -> tensor<8x16xf16>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xf16>
+  return %0 : tensor<8x16xf16>
+}
+
+// CHECK-LABEL: func @softplus_bf16
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xbf16>)
+func @softplus_bf16(%arg0: tensor<8x16xbf16>) -> tensor<8x16xbf16> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<7.812500e-03> : tensor<bf16>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<bf16>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xbf16>) -> tensor<8x16xbf16>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xbf16>
+  return %0 : tensor<8x16xbf16>
+}
+
+// CHECK-LABEL: func @softplus_f32
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xf32>)
+func @softplus_f32(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<1.1920929E-7> : tensor<f32>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<f32>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}
+
+// CHECK-LABEL: func @softplus_f64
+// CHECK-SAME: ([[FEATURES:%.*]]: tensor<8x16xf64>)
+func @softplus_f64(%arg0: tensor<8x16xf64>) -> tensor<8x16xf64> {
+  // CHECK-DAG: [[FEATURES_EXP:%.*]] = "xla_hlo.exponential"([[FEATURES]])
+  // CHECK-DAG: [[EPSILON:%.*]] = xla_hlo.constant dense<2.2204460492503131E-16> : tensor<f64>
+  // CHECK-DAG: [[EPSILON_LOG:%.*]] = "xla_hlo.log"([[EPSILON]])
+  // CHECK-DAG: [[TWO:%.*]] = xla_hlo.constant dense<2.000000e+00> : tensor<f64>
+  // CHECK:     [[THRESHOLD:%.*]] = xla_chlo.broadcast_add [[EPSILON_LOG]], [[TWO]]
+  // CHECK:     [[NEG_THRESHOLD:%.*]] = "xla_hlo.negate"([[THRESHOLD]])
+  // CHECK-DAG: [[COMPARE_GT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[NEG_THRESHOLD]] {comparison_direction = "GT"}
+  // CHECK-DAG: [[COMPARE_LT:%.*]] = xla_chlo.broadcast_compare [[FEATURES]], [[THRESHOLD]] {comparison_direction = "LT"}
+  // CHECK-DAG: [[FEATURES_EXP_LOG:%.*]] = "xla_hlo.log_plus_one"([[FEATURES_EXP]])
+  // CHECK:     [[ELSE_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_LT]], [[FEATURES_EXP]], [[FEATURES_EXP_LOG]])
+  // CHECK:     [[ENTRY_SELECT:%.*]] = "xla_hlo.select"([[COMPARE_GT]], [[FEATURES]], [[ELSE_SELECT]])
+  %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf64>) -> tensor<8x16xf64>
+
+  // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xf64>
+  return %0 : tensor<8x16xf64>
 }

@@ -192,6 +192,7 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
       # Compile model.
       model.compile(**saving_utils.compile_args_from_training_config(
           training_config, custom_objects))
+      saving_utils.try_build_compiled_arguments(model)
 
       # Set optimizer weights.
       if 'optimizer_weights' in f:
@@ -876,7 +877,7 @@ def _legacy_weights(layer):
       non_trainable_weights.
   """
   weights = layer.trainable_weights + layer.non_trainable_weights
-  if any([not isinstance(w, variables_module.Variable) for w in weights]):
+  if any(not isinstance(w, variables_module.Variable) for w in weights):
     raise NotImplementedError(
         'Save or restore weights that is not an instance of `tf.Variable` is '
         'not supported in h5, use `save_format=\'tf\'` instead. Got a model '

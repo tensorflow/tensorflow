@@ -21,9 +21,11 @@ limitations under the License.
 #include <cmath>
 
 #include "structmember.h"  // NOLINT // For PyMemberDef
+#include "pybind11/pybind11.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
@@ -177,6 +180,15 @@ int ConvertDeviceName(PyObject* obj, const char** dst) {
   return 1;
 }
 
+void RaiseExceptionTypeFromTFStatus(TF_Status* status) {
+  TF_Code code = TF_GetCode(status);
+  PyObject* exception = tensorflow::PyExceptionRegistry::Lookup(code);
+  PyErr_SetObject(exception,
+                  pybind11::make_tuple(pybind11::none(), pybind11::none(),
+                                       TF_Message(status))
+                      .ptr());
+}
+
 }  // namespace
 
 namespace tensorflow {
@@ -300,7 +312,9 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
       strstr(device_name, "/device:CPU:0") != nullptr) {
     handle = make_safe(TFE_TensorHandleCopyToDevice(handle.get(), ctx,
                                                     device_name, status.get()));
-    if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_RuntimeError)) {
+    const TF_Code code = TF_GetCode(status.get());
+    if (code != TF_OK) {
+      RaiseExceptionTypeFromTFStatus(status.get());
       return nullptr;
     }
   }
@@ -501,7 +515,9 @@ static PyObject* EagerTensor_datatype_enum(EagerTensor* self) {
 static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   auto handle = self->handle;
   int n = TFE_TensorHandleNumDims(handle, &self->status);
-  if (MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
+  TF_Code code = TF_GetCode(&self->status);
+  if (code != TF_OK) {
+    RaiseExceptionTypeFromTFStatus(&self->status);
     // Cleanup self->status before returning.
     self->status.status = tensorflow::Status::OK();
     return nullptr;
@@ -511,13 +527,18 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   for (int i = 0; i < n; ++i) {
     PyObject* dim =
         PyLong_FromLongLong(TFE_TensorHandleDim(handle, i, &self->status));
-    if (MaybeRaiseExceptionFromTFStatus(&self->status, nullptr) ||
-        dim == nullptr || PyTuple_SetItem(shape, i, dim) != 0) {
+    code = TF_GetCode(&self->status);
+    if (code != TF_OK || dim == nullptr ||
+        PyTuple_SetItem(shape, i, dim) != 0) {
+      if (code != TF_OK) {
+        RaiseExceptionTypeFromTFStatus(&self->status);
+      } else {
+        PyErr_SetString(PyExc_RuntimeError, "Error while creating shape");
+      }
       // Cleanup self->status before returning.
       self->status.status = tensorflow::Status::OK();
       Py_DECREF(shape);
       if (dim != nullptr) Py_DECREF(dim);
-      PyErr_SetString(PyExc_RuntimeError, "Error while creating shape");
       return nullptr;
     }
   }

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -54,7 +55,7 @@ static Type GetQuantizedType(Builder builder, Type input_type,
   } else if (min.size() == max.size()) {
     auto shape = input_type.dyn_cast<ShapedType>();
     if (!shape || shape.getRank() <= quant_dim ||
-        min.size() != shape.getDimSize(quant_dim)) {
+        static_cast<int64_t>(min.size()) != shape.getDimSize(quant_dim)) {
       return {};
     }
     // TODO(b/141508873): the quantization dim is set to the last dimension.
@@ -75,7 +76,8 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor) {
   if (auto qtype = ele_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
     ArrayRef<double> scales = qtype.getScales();
     // Broadcasting hasn't been implemented yet.
-    if (scales.size() != factor_values.getNumElements()) return {};
+    if (static_cast<int64_t>(scales.size()) != factor_values.getNumElements())
+      return {};
     SmallVector<double, 4> new_scales;
     new_scales.reserve(scales.size());
     auto scales_iter = scales.begin();
@@ -269,7 +271,7 @@ Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
                                              bool narrow_range) {
   Builder builder(attr.getContext());
   auto shape = attr.getType().cast<ShapedType>().getShape();
-  if (shape.size() <= quant_dim) return {};
+  if (static_cast<int>(shape.size()) <= quant_dim) return {};
   // `symmetric` can only be used when it is `signed` and `narrow_range`.
   if (symmetric && (!is_signed || !narrow_range)) return {};
 
@@ -334,7 +336,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
     const std::vector<quant::QuantizedType>& op_types) {
   if (op_types.empty()) return {};
 
-  int axis_size = 1;
+  size_t axis_size = 1;
   int32_t quant_dim = -1;
   Type expressed_type;
   // Requires all the op types are valid UniformQuantizedTypes or
@@ -368,7 +370,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
         scales[index_scale.index()] *= index_scale.value();
       }
     } else if (auto type = op_type.dyn_cast<quant::UniformQuantizedType>()) {
-      for (int index = 0; index != axis_size; ++index) {
+      for (int index = 0, e = axis_size; index != e; ++index) {
         scales[index] *= type.getScale();
       }
     }
@@ -435,6 +437,16 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
                              OpQuantSpecGetter op_quant_spec_getter) {
   llvm::SmallVector<quant::StatisticsOp, 16> all_stats_ops;
   llvm::DenseSet<Operation*> redundant_stats_ops;
+
+  // Step 0: remove the quant::StatisticsOp which are used by the tfl.quantize
+  // op in case it overrides the information from training FakeQuant ops.
+  func.walk([&](quant::QuantizeCastOp q) {
+    auto input_op = q.arg().getDefiningOp();
+    if (auto stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(input_op)) {
+      q.setOperand(stats.arg());
+      if (stats.use_empty()) stats.erase();
+    }
+  });
 
   // Step 1: forward pass: propagate any value scales which are not produces
   // by `SameOperandsAndResultsScale`. Additionally, remove the value scales

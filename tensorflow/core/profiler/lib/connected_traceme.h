@@ -25,41 +25,48 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+enum class ContextType : int {
+  kGeneric,
+  kTfExecutor,
+  kSharedBatchScheduler,
+  kPjRt,
+};
+
 /*
  * TraceMeProducer and TraceMeConsumer are used to correlate TraceMe events on
  * different threads. TraceMeProducer generates the context information to be
  * passed to TraceMeConsumer, which consists of the context id and optionally
- * the context name. They may be provided by the user. Then, the events of the
+ * the context type. They may be provided by the user. Then, the events of the
  * same context information can be correlated during the analysis.
  *
  * Example Usages:
- * (1) Using the user-provided context name and id. The user is responsible for
- *     providing the same context name and id to TraceMeProducer and
+ * (1) Using the user-provided context type and id. The user is responsible for
+ *     providing the same context type and id to TraceMeProducer and
  *     TraceMeConsumer.
  * [Producer Thread]
  * // user_context_id is provided by the user.
  * TraceMeProducer producer(
  *     [&] { return TraceMeEncode("op_dispatch", {{"op_type", "matmul"}}); },
- *     "executor_context", user_context_id);
+ *     ContextType::kTfExecutor, user_context_id);
  * [Consumer Thread]
  * // user_context_id is provided by the user.
  * TraceMeConsumer consumer(
- *     [&] { return "op_execute"; }, user_context_id, "executor_context");
+ *     [&] { return "op_execute"; }, ContextType::kTfExecutor, user_context_id);
  *
- * (2) Using the user-provided context name and generic id. The user is
+ * (2) Using the user-provided context type and generic id. The user is
  *     responsible for passing the TraceMeProducer's context id to
- *     TraceMeConsumer as well as providing the same context name to
+ *     TraceMeConsumer as well as providing the same context type to
  *     TraceMeProducer and TraceMeConsumer.
  * [Producer Thread]
  * TraceMeProducer producer(
  *     [&] { return TraceMeEncode("op_dispatch", {{"op_type", "matmul"}}); },
- *     "executor_context");
+ *     ContextType::kTfExecutor);
  * context_id = producer.GetContextId();
  * // Pass context_id to the consumer thread.
  * [Consumer Thread]
  * // context_id is passed from the producer thread.
  * TraceMeConsumer consumer(
- *     [&] { return "op_execute"; }, context_id, "executor_context");
+ *     [&] { return "op_execute"; }, ContextType::kTfExecutor, context_id);
  *
  * (3) Using the generic context information. The user is responsible for
  *     passing the TraceMeProducer's context id to TraceMeConsumer.
@@ -75,18 +82,15 @@ namespace profiler {
 class TraceMeProducer {
  public:
   template <typename NameT>
-  explicit TraceMeProducer(NameT name, absl::string_view context_name = "",
+  explicit TraceMeProducer(NameT name,
+                           ContextType context_type = ContextType::kGeneric,
                            absl::optional<uint64> context_id = absl::nullopt,
                            int level = 2)
       : trace_me_(name, level) {
     trace_me_.AppendMetadata([&] {
       context_id_ =
           context_id.has_value() ? *context_id : TraceMe::NewActivityId();
-      if (context_name.empty()) {
-        return TraceMeEncode({{"$p", context_id_}});
-      } else {
-        return TraceMeEncode({{"$pn", context_name}, {"$p", context_id_}});
-      }
+      return TraceMeEncode({{"_pt", context_type}, {"_p", context_id_}});
     });
   }
 
@@ -100,17 +104,17 @@ class TraceMeProducer {
 class TraceMeConsumer {
  public:
   template <typename NameT>
-  TraceMeConsumer(NameT name, uint64 context_id,
-                  absl::string_view context_name = "", int level = 2)
+  TraceMeConsumer(NameT name, ContextType context_type, uint64 context_id,
+                  int level = 2)
       : trace_me_(name, level) {
     trace_me_.AppendMetadata([&] {
-      if (context_name.empty()) {
-        return TraceMeEncode({{"$c", context_id}});
-      } else {
-        return TraceMeEncode({{"$cn", context_name}, {"$c", context_id}});
-      }
+      return TraceMeEncode({{"_ct", context_type}, {"_c", context_id}});
     });
   }
+
+  template <typename NameT>
+  TraceMeConsumer(NameT name, uint64 context_id, int level = 2)
+      : TraceMeConsumer(name, ContextType::kGeneric, context_id, level) {}
 
  private:
   TraceMe trace_me_;
