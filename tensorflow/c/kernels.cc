@@ -281,11 +281,14 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
   tensorflow::Tensor tensor_temp;  
   TF_Tensor* tf_tensor_temp; 
   s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape, &tensor_temp);
-  if (s.ok()){ 
-    tf_tensor_temp = TF_TensorFromTensor(tensor_temp, &s); 
+  if (!s.ok()){ 
+  	::tensorflow::Set_TF_Status_from_Status(status, s); 
+  	return nullptr; 
   }
-  if (s.ok()){ 
+  tf_tensor_temp = TF_TensorFromTensor(tensor_temp, &s); 
+  if (!s.ok()){ 
     ::tensorflow::Set_TF_Status_from_Status(status, s); 
-    return tf_tensor_temp; 
+    return nullptr; 
   }  
+  return tf_tensor_temp; 
 }
