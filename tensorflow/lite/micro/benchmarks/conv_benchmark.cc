@@ -53,19 +53,14 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
   // There is 1 output at index 3 in the tensors array.
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  // There are no temporaries.
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(conv_params);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TfLiteStatus prepare_status = registration->prepare(&context, &node);

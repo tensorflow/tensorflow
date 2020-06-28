@@ -53,7 +53,7 @@ void PruneGraph(GraphOp graph) {
 
   while (!ops_to_visit.empty()) {
     Operation* op = ops_to_visit.pop_back_val();
-    if (auto island_op = llvm::dyn_cast<IslandOp>(op)) {
+    if (llvm::isa<IslandOp>(op)) {
       // Visit island and island inner ops operands.
       op->walk([&](Operation* inner_op) { visit_op(inner_op); });
       continue;

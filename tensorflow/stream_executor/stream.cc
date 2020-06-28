@@ -285,7 +285,12 @@ Stream::~Stream() {
 
 port::Status Stream::RefreshStatus() {
   port::Status status = parent_->GetStatus(this);
-  CheckStatus(status);
+  // We should not put the stream in an error state, just because the GetStatus
+  // method is unimplemented.
+  if (status != port::Status(port::error::UNIMPLEMENTED,
+                             "GetStatus is not supported on this executor.")) {
+    CheckStatus(status);
+  }
   return status;
 }
 

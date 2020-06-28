@@ -45,12 +45,6 @@ class LiftVariablesPass
   ::tensorflow::Session* session_;
 };
 
-// Creates as pass that creates GlobalTensorOp for each variable from function
-// arguments and converts the function arguments to the corresponding saved
-// model arguments.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesPass(
-    ::tensorflow::Session* session);
-
 }  // namespace tf_saved_model
 }  // namespace mlir
 

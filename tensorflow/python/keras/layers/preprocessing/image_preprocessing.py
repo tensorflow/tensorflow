@@ -1306,6 +1306,18 @@ class _RandomGenerator(stateful_random_ops.Generator):
   numbers.
   """
 
+  # TODO(b/157995497): Temporarily use primary variable handle inside cross
+  # replica context.
+  @property
+  def state(self):
+    """The internal state of the RNG."""
+    state_var = self._state_var
+    try:
+      _ = getattr(state_var, 'handle')
+      return state_var
+    except ValueError:
+      return state_var.values[0]
+
   def _create_variable(self, *args, **kwargs):
     # This function does the same thing as the base class's namesake, except
     # that it skips the distribution-strategy check. When we are inside a

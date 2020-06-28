@@ -80,10 +80,11 @@ llvm::Value* VectorSupportLibrary::Sub(llvm::Value* lhs, llvm::Value* rhs) {
   return b()->CreateFSub(lhs, rhs);
 }
 
-llvm::Value* VectorSupportLibrary::Max(llvm::Value* lhs, llvm::Value* rhs) {
+llvm::Value* VectorSupportLibrary::Max(llvm::Value* lhs, llvm::Value* rhs,
+                                       bool enable_fast_min_max) {
   AssertCorrectTypes({lhs, rhs});
   if (scalar_type_->isFloatingPointTy()) {
-    return llvm_ir::EmitFloatMax(lhs, rhs, b_);
+    return llvm_ir::EmitFloatMax(lhs, rhs, b_, enable_fast_min_max);
   } else {
     LOG(FATAL) << "Max for integers is unimplemented";
   }

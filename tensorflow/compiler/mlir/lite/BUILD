@@ -150,6 +150,7 @@ gentbl(
     td_srcs = [
         ":tensorflow_lite_ops_td_files",
         "@llvm-project//mlir:StdOpsTdFiles",
+        "utils/utils.td",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
     ],
 )
@@ -314,7 +315,6 @@ tf_cc_test(
 cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
-        "transforms/device_index_selector.cc",
         "transforms/dilated_conv.cc",
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_lower_static_tensor_list.inc",
@@ -380,6 +380,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        "convert_type",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -410,6 +411,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        "convert_type",
         ":tensorflow_lite",
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
@@ -672,6 +674,7 @@ cc_library(
         "utils/convert_type.h",
     ],
     deps = [
+        ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:protos_all_cc",
@@ -787,7 +790,9 @@ tf_cc_binary(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
@@ -840,7 +845,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
+        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/core:core_cpu_base",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
@@ -867,6 +875,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:decode_constant_pass",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",

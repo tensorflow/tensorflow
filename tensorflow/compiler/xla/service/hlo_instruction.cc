@@ -833,6 +833,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -1615,6 +1616,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -1993,6 +1995,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -2440,6 +2443,7 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -2854,6 +2858,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleBatchNormInference(this);
     case HloOpcode::kBatchNormGrad:
       return visitor->HandleBatchNormGrad(this);
+    case HloOpcode::kLogistic:
+      return visitor->HandleLogistic(this);
     case HloOpcode::kSign:
       return visitor->HandleSign(this);
     case HloOpcode::kConstant:
@@ -3906,6 +3912,10 @@ const Shape& HloInstruction::outfeed_shape() const {
 
 const string& HloInstruction::outfeed_config() const {
   return Cast<HloOutfeedInstruction>(this)->outfeed_config();
+}
+
+void HloInstruction::set_outfeed_config(const string& config) {
+  return Cast<HloOutfeedInstruction>(this)->set_outfeed_config(config);
 }
 
 const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {

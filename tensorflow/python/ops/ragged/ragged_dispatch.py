@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_bitwise_ops
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
@@ -510,6 +511,7 @@ _RAGGED_DISPATCH_OPS = [
      ['data', 'segment_ids']),
     (math_ops.unsorted_segment_sqrt_n, ragged_math_ops.segment_sqrt_n,
      ['data', 'segment_ids']),
+    (string_ops.string_format, ragged_string_ops.string_format, ['[inputs]']),
     (string_ops.reduce_join_v2, ragged_string_ops.reduce_join, ['inputs']),
     (math_ops.reduce_sum, ragged_math_ops.reduce_sum, ['input_tensor']),
     (math_ops.reduce_prod, ragged_math_ops.reduce_prod, ['input_tensor']),
@@ -549,7 +551,7 @@ def register_dispatchers():
     RaggedDispatcher(original_op, ragged_op, args).register(original_op)
 
 
-def _ragged_op_signature(op, ragged_args):
+def _ragged_op_signature(op, ragged_args, ragged_varargs=False):
   """Returns a signature for the given op, marking ragged args in bold."""
   op_name = tf_export.get_canonical_name_for_symbol(op)
   argspec = tf_inspect.getfullargspec(op)
@@ -566,7 +568,10 @@ def _ragged_op_signature(op, ragged_args):
 
   # Add varargs and keyword args
   if argspec.varargs:
-    arg_names.append('*' + argspec.varargs)
+    if ragged_varargs:
+      arg_names.append('***' + argspec.varargs + '**')
+    else:
+      arg_names.append('*' + argspec.varargs)
   if argspec.varkw:
     arg_names.append('**' + argspec.varkw)
 
@@ -597,6 +602,8 @@ def ragged_op_list(tf_version=1):
       arginfos = _get_arg_infos(op, ragged_args)
       ragged_args = [arginfo.position for arginfo in arginfos]
       lines.append(_ragged_op_signature(op, ragged_args))
+  lines.append(
+      _ragged_op_signature(logging_ops.print_v2, [], ragged_varargs=True))
   return ('\n\n### Additional ops that support `RaggedTensor`\n\n'
           'Arguments that accept `RaggedTensor`s are marked in **bold**.\n\n' +
           '\n'.join(sorted(lines)) + 'n')

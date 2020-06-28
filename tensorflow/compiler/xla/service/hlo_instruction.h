@@ -595,7 +595,7 @@ class HloInstruction {
   // Creates a compare op, performing the comparison specified in direction.
   static std::unique_ptr<HloInstruction> CreateCompare(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      ComparisonDirection direction);
+      Comparison::Direction direction);
 
   static std::unique_ptr<HloInstruction> CreateTriangularSolve(
       const Shape& shape, HloInstruction* a, HloInstruction* b,
@@ -1754,6 +1754,9 @@ class HloInstruction {
 
   // Returns the config for the Outfeed instruction.
   const string& outfeed_config() const;
+
+  // Delegates to HloOutfeedInstruction::set_outfeed_config.
+  void set_outfeed_config(const string& config);
 
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const;

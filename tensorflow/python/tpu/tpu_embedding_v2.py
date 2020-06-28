@@ -132,7 +132,7 @@ class TPUEmbedding(tracking.AutoTrackable):
   First lets look at the `TPUStrategy` mode. Initial setup looks like:
 
   ```python
-  strategy = tf.distribute.experimental.TPUStrategy(...)
+  strategy = tf.distribute.TPUStrategy(...)
   with strategy.scope():
     embedding = tf.tpu.experimental.embedding.TPUEmbedding(
         feature_config=feature_config,
@@ -234,7 +234,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     """Creates the TPUEmbedding mid level API object.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(
           feature_config=tf.tpu.experimental.embedding.FeatureConfig(
@@ -265,7 +265,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       Adam or Adagrad).
     """
     self._strategy = distribution_strategy_context.get_strategy()
-    self._using_tpu = isinstance(self._strategy, tpu_strategy.TPUStrategy)
+    self._using_tpu = isinstance(self._strategy, (tpu_strategy.TPUStrategy,
+                                                  tpu_strategy.TPUStrategyV2))
     self._pipeline_execution_with_tensor_core = (
         pipeline_execution_with_tensor_core)
 
@@ -512,7 +513,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     ensure you understand the effect of applying a zero gradient.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
@@ -603,7 +604,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     `(batch_size, max_sequence_length, dim)` instead.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
@@ -1024,11 +1025,8 @@ class TPUEmbedding(tracking.AutoTrackable):
   def _raise_error_for_inputs_not_on_cpu(self, features):
     """Checks all tensors in features to see are placed on the CPU."""
 
-    # expand_composites here is important, we need to check the device of each
-    # underlying tensor.
-    for path, input_tensor in nest.flatten_with_joined_string_paths(
-        features, expand_composites=True):
-      spec = tf_device.DeviceSpec.from_string(input_tensor.device)
+    def check_device(path, device_string):
+      spec = tf_device.DeviceSpec.from_string(device_string)
       if spec.device_type == "TPU":
         raise ValueError(
             "Received input tensor {} which is on a TPU input device {}. Input "
@@ -1037,7 +1035,18 @@ class TPUEmbedding(tracking.AutoTrackable):
             "setting the 'experimental_prefetch_to_device' option of the "
             "dataset distribution function. See the documentation of the "
             "enqueue method for an example.".format(
-                path, input_tensor.device))
+                path, device_string))
+
+    # expand_composites here is important, we need to check the device of each
+    # underlying tensor.
+    for path, input_tensor in nest.flatten_with_joined_string_paths(
+        features, expand_composites=True):
+      if (input_tensor.op.type == "Identity" and
+          input_tensor.op.inputs[0].op.type == "TPUReplicatedInput"):
+        for tensor in input_tensor.op.inputs[0].op.inputs:
+          check_device(path, tensor.device)
+      else:
+        check_device(path, input_tensor.device)
 
   def enqueue(self, features, weights=None, training=True, name=None):
     """Enqueues id tensors for embedding lookup.
@@ -1046,13 +1055,13 @@ class TPUEmbedding(tracking.AutoTrackable):
     embedding tables. We expect that the batch size of each of the tensors in
     features matches the per core batch size. This will automatically happen if
     your input dataset is batched to the global batch size and you use
-    `tf.distribute.experimental.TPUStrategy`'s `experimental_distribute_dataset`
+    `tf.distribute.TPUStrategy`'s `experimental_distribute_dataset`
     or if you use `experimental_distribute_datasets_from_function` and batch
     to the per core batch size computed by the context passed to your input
     function.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 

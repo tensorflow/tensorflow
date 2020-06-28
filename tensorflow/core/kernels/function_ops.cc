@@ -267,11 +267,11 @@ class SymbolicGradientOp : public AsyncOpKernel {
     FunctionLibraryRuntime::Options opts;
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
+    opts.collective_executor = ctx->collective_executor();
     opts.runner = ctx->runner();
     opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
     opts.stats_collector = ctx->stats_collector();
     opts.step_container = ctx->step_container();
-    opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {

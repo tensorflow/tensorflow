@@ -37,6 +37,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import special_math_ops
 
 # TODO(phawkins): provide wrappers for all XLA operators. Currently the missing
 # ops include:
@@ -103,8 +104,8 @@ sign = _unary_op(math_ops.sign)
 tanh = _unary_op(math_ops.tanh)
 
 # Bessel
-bessel_i0e = _unary_op(math_ops.bessel_i0e)
-bessel_i1e = _unary_op(math_ops.bessel_i1e)
+bessel_i0e = _unary_op(special_math_ops.bessel_i0e)
+bessel_i1e = _unary_op(special_math_ops.bessel_i1e)
 
 # Binary operators
 

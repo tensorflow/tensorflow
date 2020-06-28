@@ -59,8 +59,9 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
       const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                          const tflite::gpu::Tensor<Linear, T>& biases,
+                          CLContext* context);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
@@ -68,9 +69,6 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
 
   absl::Status BindArguments();
   int3 GetGridSize() const;
-
-  Buffer weights_;
-  LinearStorage biases_;
 
   int src_channels_;
   int dst_channels_;
@@ -80,29 +78,58 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvolutionTransposed3x3Thin::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+absl::Status ConvolutionTransposed3x3Thin::UploadData(
+    const tflite::gpu::Tensor<OHWI, T>& weights,
+    const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
   const int src_depth = DivideRoundUp(src_channels_, 4);
   const int dst_depth = DivideRoundUp(dst_channels_, 4);
   const int kernel_x = 3;  //  This operation support only 3x3 kernel
   const int kernel_y = 3;
   const int flt4_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
 
-  const int flt4_size = definition_.precision == CalculationsPrecision::F32
-                            ? sizeof(float4)
-                            : sizeof(half4);
+  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
 
-  if (definition_.GetDataType() == DataType::FLOAT32) {
+  BufferDescriptor desc;
+  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+  desc.element_size = 4;
+  desc.memory_type = MemoryType::CONSTANT;
+
+  Buffer weights_buffer;
+  if (f32_weights) {
     std::vector<float4> gpu_data(flt4_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(flt4_size * flt4_count, gpu_data.data(),
-                                context, &weights_);
+    for (int i = 0; i < dst_depth; ++i) {
+      float4 bias_value(0.0f);
+      for (int c = 0; c < 4; ++c) {
+        int ch = i * 4 + c;
+        bias_value[c] = ch < weights.shape.o ? biases.data[ch] : 0.0f;
+      }
+      gpu_data.push_back(bias_value);
+    }
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(float4) * gpu_data.size(),
+                                         gpu_data.data(), context,
+                                         &weights_buffer));
   } else {
     std::vector<half4> gpu_data(flt4_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(flt4_size * flt4_count, gpu_data.data(),
-                                context, &weights_);
+    for (int i = 0; i < dst_depth; ++i) {
+      half4 bias_value(0.0f);
+      for (int c = 0; c < 4; ++c) {
+        int ch = i * 4 + c;
+        bias_value[c] = ch < weights.shape.o ? biases.data[ch] : 0.0f;
+      }
+      gpu_data.push_back(bias_value);
+    }
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(half4) * gpu_data.size(),
+                                         gpu_data.data(), context,
+                                         &weights_buffer));
   }
+
+  args_.AddObject("weights", AccessType::READ,
+                  absl::make_unique<Buffer>(std::move(weights_buffer)),
+                  absl::make_unique<BufferDescriptor>(desc));
+
+  return absl::OkStatus();
 }
 
 template <DataType S, typename T>

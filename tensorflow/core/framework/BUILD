@@ -719,6 +719,7 @@ tf_cuda_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/util:__pkg__",
+        "//tensorflow/security/fuzzing:__subpackages__",
     ],
     deps = [
         ":allocation_description_proto_cc",

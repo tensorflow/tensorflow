@@ -528,6 +528,26 @@ func @PadStridedSliceNewAxisMask2(%arg0: tensor<4x64x64x1xf32>) -> tensor<1x4x64
   return %1 : tensor<1x4x64x64xf32>
 }
 
+// CHECK-LABEL: @StridedSliceRewriteMasks
+func @StridedSliceRewriteMasks(%arg0: tensor<8x4x16x2xf32>) -> tensor<8x4x16x1xf32> {
+  %cst = "tf.Const"() {device = "", value = dense<[1, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %cst_0 = "tf.Const"() {device = "", value = dense<[1, 0, 0]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %cst_1 = "tf.Const"() {device = "", value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
+
+  // CHECK: %[[CST:.*]] = constant dense<[1, 0, 0, 1]> : tensor<4xi32>
+  // CHECK: %[[CST0:.*]] = constant dense<[1, 0, 0, 0]> : tensor<4xi32>
+  // CHECK: %[[CST1:.*]] = constant dense<1> : tensor<4xi32>
+  // CHECK: %[[RESULT:.*]] = "tf.StridedSlice"(%arg0, %[[CST]], %[[CST0]], %[[CST1]])
+  // CHECK-SAME: begin_mask = 7 : i64
+  // CHECK-SAME: ellipsis_mask = 0 : i64
+  // CHECK-SAME: end_mask = 14 : i64
+  // CHECK-SAME: new_axis_mask = 0 : i64
+  // CHECK-SAME: shrink_axis_mask = 0 : i64
+
+  %0 = "tf.StridedSlice"(%arg0, %cst, %cst_0, %cst_1) {begin_mask = 1 : i64, device = "", ellipsis_mask = 2 : i64, end_mask = 4 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<8x4x16x2xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<8x4x16x1xf32>
+  return %0 : tensor<8x4x16x1xf32>
+}
+
 // CHECK-LABEL: @MatrixSetDiagV2Conversion
 func @MatrixSetDiagV2Conversion(%arg0: tensor<3x3xi32>, %arg1: tensor<3xi32>) -> tensor<3x3xi32> {
   %cst = constant dense<0> : tensor<i32>

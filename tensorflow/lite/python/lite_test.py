@@ -59,16 +59,6 @@ from tensorflow.python.training.training_util import write_graph
 class LiteTest(test_util.TensorFlowTestCase):
   """Base class of all the tests in this module."""
 
-  def setUp(self):
-    self._original_use_experimental_new_converter = (
-        lite._USE_EXPERIMENTAL_NEW_CONVERTER)
-    super(LiteTest, self).setUp()
-
-  def tearDown(self):
-    super(LiteTest, self).tearDown()
-    lite._USE_EXPERIMENTAL_NEW_CONVERTER = (
-        self._original_use_experimental_new_converter)
-
 
 class TestModels(LiteTest):
 
@@ -435,7 +425,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Test None after 1st dimension.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -666,8 +655,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                                                   [out_tensor])
     log_dir = self.get_temp_dir()
     converter.conversion_summary_dir = log_dir
-    # Conversion logs will only be generated when the mlir converter is enabled.
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -881,9 +868,22 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
   @parameterized.named_parameters(
-      ('EnableMlirConverter', True),  # enable mlir
-      ('DisableMlirConverter', False))  # disable mlir
-  def testCalibrateAndQuantizeBuiltinInt8(self, enable_mlir):
+      # Quantize model to Int8: with enable mlir
+      ('UseTfliteBuiltinsIntEnableMLIR',
+       [lite.OpsSet.TFLITE_BUILTINS_INT8], True),
+      # Quantize model to Int8: with disable mlir
+      ('UseTfliteBuiltinsIntDisableMLIR',
+       [lite.OpsSet.TFLITE_BUILTINS_INT8], False),
+      # Quantize model to Int16: with disable mlir
+      ('UseTfliteBuiltinsInt16DisableMLIR',
+       [lite.OpsSet.\
+       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
+       False),
+      ('UseTfliteBuiltinsInt16EnableMLIR',
+       [lite.OpsSet.\
+       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
+       True))
+  def testCalibrateAndQuantizeBuiltinInt(self, supported_ops, enable_mlir):
     with ops.Graph().as_default():
       inp, output, calibration_gen = self._getCalibrationQuantizeModel()
       sess = session.Session()
@@ -899,9 +899,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.experimental_new_converter = enable_mlir
-    quantized_converter.target_spec.supported_ops = [
-        lite.OpsSet.TFLITE_BUILTINS_INT8
-    ]
+    quantized_converter.target_spec.supported_ops = supported_ops
     quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
@@ -1379,7 +1377,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -1786,7 +1783,6 @@ class FromSavedModelTest(TestModels):
                       'If you encountered a problem')
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
     self.assertIn(optout_message, log.getvalue())
@@ -2374,8 +2370,6 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     # Convert model.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    # Only disable this path in MLIR conversion for toco compatibility.
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.

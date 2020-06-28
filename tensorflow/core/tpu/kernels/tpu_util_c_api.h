@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_UTIL_C_API_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_UTIL_C_API_H_
 
+#include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 typedef struct SE_Status SE_Status;
@@ -30,6 +31,18 @@ void TpuCompile_ToTpuShapeRepresentation(
     bool use_fast_memory, TpuSerializedProto* serialized_tensor_shape,
     SE_Status* status);
 
+// XLA compilation cannot be cancelled. To avoid hanging the TF worker will exit
+// when cancellation is requested for an XLA compile op. Some tests require this
+// behavior to be disabled, and we test for this condition with the following
+// flag function.
+bool TpuCompile_ShouldTpuCompileOpIgnoreCancellation();
+
 }  // extern "C"
+
+struct TfTpu_UtilApiFn {
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompile_IsTpuCompilationEnabled);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ToTpuShapeRepresentation);
+};
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_UTIL_C_API_H_

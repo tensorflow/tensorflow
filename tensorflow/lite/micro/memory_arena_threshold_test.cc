@@ -31,7 +31,7 @@ namespace {
 // Ensure memory doesn't expand more that 3%:
 constexpr float kAllocationThreshold = 0.03;
 constexpr float kAllocationTailMiscCeiling = 1024;
-const bool kIs64BitSystem = sizeof(void*) == 8;
+const bool kIs64BitSystem = (sizeof(void*) == 8);
 
 constexpr int kKeywordModelTensorArenaSize = 22 * 1024;
 uint8_t keyword_model_tensor_arena[kKeywordModelTensorArenaSize];
@@ -41,9 +41,17 @@ constexpr int kKeywordModelNodeAndRegistrationCount = 15;
 
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
+//
+// Run this test with '--copt=-DTF_LITE_MICRO_OPTIMIZED_RUNTIME' to get
+// optimized memory runtime values:
+#ifdef TF_LITE_STATIC_MEMORY
+constexpr int kKeywordModelTotalSize = 18080;
+constexpr int kKeywordModelTailSize = 17408;
+#else
 constexpr int kKeywordModelTotalSize = 21040;
-constexpr int kKeywordModelHeadSize = 672;
 constexpr int kKeywordModelTailSize = 20368;
+#endif
+constexpr int kKeywordModelHeadSize = 672;
 constexpr int kKeywordModelTfLiteTensorVariableBufferDataSize = 10240;
 constexpr int kKeywordModelTfLiteTensorQuantizationDataSize = 1728;
 constexpr int kKeywordModelOpRuntimeDataSize = 148;
@@ -56,9 +64,14 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
+#ifdef TF_LITE_STATIC_MEMORY
+constexpr int kTestConvModelTotalSize = 10784;
+constexpr int kTestConvModelTailSize = 3040;
+#else
 constexpr int kTestConvModelTotalSize = 11680;
-constexpr int kTestConvModelHeadSize = 7744;
 constexpr int kTestConvModelTailSize = 3936;
+#endif
+constexpr int kTestConvModelHeadSize = 7744;
 constexpr int kTestConvModelTfLiteTensorQuantizationDataSize = 768;
 constexpr int kTestConvModelOpRuntimeDataSize = 136;
 
@@ -81,7 +94,7 @@ void EnsureAllocatedSizeThreshold(const char* allocation_type, size_t actual,
     TF_LITE_MICRO_EXPECT_NEAR(actual, expected, kAllocationThreshold);
     if (actual != expected) {
       TF_LITE_REPORT_ERROR(micro_test::reporter,
-                           "%s threshold failed: %ld != %ld", allocation_type,
+                           "%s threshold failed: %d != %d", allocation_type,
                            actual, expected);
     }
   } else {
@@ -159,7 +172,7 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TestKeywordModelMemoryThreshold) {
   tflite::AllOpsResolver all_ops_resolver;
   tflite::RecordingMicroInterpreter interpreter(
-      tflite::GetModel(g_keyword_scrambled_model_data), &all_ops_resolver,
+      tflite::GetModel(g_keyword_scrambled_model_data), all_ops_resolver,
       keyword_model_tensor_arena, kKeywordModelTensorArenaSize,
       micro_test::reporter);
 
@@ -185,7 +198,7 @@ TF_LITE_MICRO_TEST(TestKeywordModelMemoryThreshold) {
 TF_LITE_MICRO_TEST(TestConvModelMemoryThreshold) {
   tflite::AllOpsResolver all_ops_resolver;
   tflite::RecordingMicroInterpreter interpreter(
-      tflite::GetModel(kTestConvModelData), &all_ops_resolver,
+      tflite::GetModel(kTestConvModelData), all_ops_resolver,
       test_conv_tensor_arena, kTestConvModelArenaSize, micro_test::reporter);
 
   interpreter.AllocateTensors();

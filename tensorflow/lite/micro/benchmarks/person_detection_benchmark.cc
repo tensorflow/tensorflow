@@ -27,10 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-// Create an area of memory to use for input, output, and intermediate arrays.
-constexpr int tensor_arena_size = 73 * 1024;
-uint8_t tensor_arena[tensor_arena_size];
-
 /*
  * Person Detection benchmark.  Evaluates runtime performance of the visual
  * wakewords person detection model.  This is the same model found in
@@ -40,24 +36,28 @@ uint8_t tensor_arena[tensor_arena_size];
 namespace {
 
 // Create an area of memory to use for input, output, and intermediate arrays.
+// Align arena to 16 bytes to avoid alignment warnings on certain platforms.
 constexpr int tensor_arena_size = 95 * 1024;
-uint8_t tensor_arena[tensor_arena_size];
+alignas(16) uint8_t tensor_arena[tensor_arena_size];
 
-// NOLINTNEXTLINE
-MicroBenchmarkRunner<uint8_t> runner(g_person_detect_model_data, tensor_arena,
-                                     tensor_arena_size, 0);
+MicroBenchmarkRunner<uint8_t>& GetBenchmarkRunner() {
+  // NOLINTNEXTLINE
+  static MicroBenchmarkRunner<uint8_t> runner(
+      g_person_detect_model_data, tensor_arena, tensor_arena_size, 0);
+  return runner;
+}
 
 void PersonDetectionTenIerationsWithPerson() {
   // TODO(b/152644476): Add a way to run more than a single deterministic input.
   for (int i = 0; i < 10; i++) {
-    runner.RunSingleIterationCustomInput(g_person_data);
+    GetBenchmarkRunner().RunSingleIterationCustomInput(g_person_data);
   }
 }
 
 void PersonDetectionTenIerationsWithoutPerson() {
   // TODO(b/152644476): Add a way to run more than a single deterministic input.
   for (int i = 0; i < 10; i++) {
-    runner.RunSingleIterationCustomInput(g_no_person_data);
+    GetBenchmarkRunner().RunSingleIterationCustomInput(g_no_person_data);
   }
 }
 
@@ -65,7 +65,8 @@ void PersonDetectionTenIerationsWithoutPerson() {
 
 TF_LITE_MICRO_BENCHMARKS_BEGIN
 
-TF_LITE_MICRO_BENCHMARK(runner.RunSingleIterationCustomInput(g_person_data));
+TF_LITE_MICRO_BENCHMARK(
+    GetBenchmarkRunner().RunSingleIterationCustomInput(g_person_data));
 TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithPerson());
 TF_LITE_MICRO_BENCHMARK(PersonDetectionTenIerationsWithoutPerson());
 

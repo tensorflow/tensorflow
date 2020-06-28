@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import nn_ops
@@ -267,6 +268,9 @@ class PoolingTest(xla_test.XLATestCase):
         expected=[1, 3, 9, 11])
 
   # Average pooling
+  @test_util.disable_mlir_bridge("TODO(b/159812644): AvgPool TF to HLO lowering"
+                                 " doesn't support all paddings and data "
+                                 "formats")
   def testAvgPoolValidPadding(self):
     expected_output = [7, 8, 9]
     self._VerifyValues(
@@ -277,6 +281,9 @@ class PoolingTest(xla_test.XLATestCase):
         padding="VALID",
         expected=expected_output)
 
+  @test_util.disable_mlir_bridge("TODO(b/159812644): AvgPool TF to HLO lowering"
+                                 " doesn't support all paddings and data "
+                                 "formats")
   def testAvgPoolSamePadding(self):
     expected_output = [7., 8., 9., 11.5, 12.5, 13.5]
     self._VerifyValues(
@@ -542,11 +549,19 @@ class PoolGradTest(xla_test.XLATestCase):
         padding="SAME",
         pool_grad_grad_func=pool_grad_grad_func)
 
+  @test_util.disable_mlir_bridge("TODO(b/159845178): Implement support for "
+                                 "MaxPoolGradGrad op in MLIR-based bridge")
   def testMaxPool(self):
     self._TestPooling(
         nn_ops.max_pool,
         gen_nn_ops.max_pool_grad,
         pool_grad_grad_func=gen_nn_ops.max_pool_grad_grad)
+
+  # TODO(b/159845178): Remove this once MLIR bridge supports MaxPoolGradGrad
+  # (then `testMaxPool` test will be sufficient)
+  def testMaxPoolNoGradGrad(self):
+    self._TestPooling(
+        nn_ops.max_pool, gen_nn_ops.max_pool_grad, pool_grad_grad_func=None)
 
   def testAvgPool(self):
     # Wrapper around AvgPoolGrad that ignores extra arguments needed by

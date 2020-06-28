@@ -28,6 +28,7 @@ struct LowerLHLOToGPUOptions {
   llvm::ArrayRef<unsigned> unroll_factors = {};
   bool collapse_parallel_loops = true;
   bool rewrite_signature = true;
+  bool use_approximations = false;
 };
 
 Status LowerLHLOToGPU(mlir::ModuleOp module,
