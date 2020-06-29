@@ -233,8 +233,8 @@ the future.
 
 The GPU delegate already supports
 [float16 quantized](https://www.tensorflow.org/lite/performance/post_training_float16_quant)
-models. There is experimental support on Android to run 8-bit quantized as well.
-This includes all flavors of quantization, including:
+models. There is experimental support on Android and iOS to run 8-bit quantized
+as well. This includes all flavors of quantization, including:
 
 *   Models trained with
     [Quantization-aware training](https://www.tensorflow.org/lite/convert/quantization)
