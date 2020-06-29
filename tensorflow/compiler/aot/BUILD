@@ -71,9 +71,14 @@ cc_library(
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
         "//tensorflow/core:regexp_internal",
-    ] + if_llvm_aarch64_available([
+    ] + select({
+        "//tensorflow:linux_s390x": [
+            "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+        ],
+        "//conditions:default": [
+        ],
+    }) + if_llvm_aarch64_available([
         "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )
@@ -114,8 +119,13 @@ cc_library(
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
-    ] + if_llvm_aarch64_available([
+    ] + select({
+        "//tensorflow:linux_s390x": [
+            "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+        ],
+        "//conditions:default": [
+        ],
+    }) + if_llvm_aarch64_available([
         "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )
