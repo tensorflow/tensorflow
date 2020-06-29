@@ -101,21 +101,22 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul) {
   /* Want to test simple MatMul example: 
 
     [ [0,0] ,   *   [ [0,0] ,   =   [ [0,0],
-      [0,0] ]         [0,0] ]         [0,0]]
+      [0,0] ]         [0,0] ]         [0,0] ]
 
   */
   // Build an abstract input tensor.  
   float vals [] = {0.0f,0.0f,0.0f,0.0f};
   TFE_Context* eager_ctx = TF_ExecutionContextGetTFEContext(ctx);
   TFE_TensorHandle* t = TestMatrixTensorHandleWithInput(eager_ctx, vals);
-
+  TFE_TensorHandle* expected_tensor = TestMatrixTensorHandleWithInput(eager_ctx, vals); // 2x2 matrix of zeros as expected result
+  
   TF_AbstractTensor* at =
-      TF_CreateAbstractTensorFromEagerTensor(t, status.get());
+      TF_CreateAbstractTensorFromEagerTensor(t, status.get()); //get abstract tensor
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build an abstract operation.
   auto* op = TF_NewAbstractOp(ctx);
-  TF_AbstractOpSetOpType(op, "MatMul", status.get()); //correct syntax to specify matrix multiply for tensors?
+  TF_AbstractOpSetOpType(op, "MatMul", status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build inputs and outputs.
@@ -139,13 +140,14 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul) {
       TF_AbstractTensorGetEagerTensor(result, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
   TF_Tensor* result_tensor = TFE_TensorHandleResolve(result_t, status.get());
-  TF_Tensor* t_tensor = TFE_TensorHandleResolve(t, status.get()); //Is this the best way to get the TF_Tensor from t?
+  
+  TF_Tensor* zero_tensor = TFE_TensorHandleResolve(expected_tensor, status.get()); 
   float* result_value = static_cast<float*>(TF_TensorData(result_tensor));
-  float* t_value = static_cast<float*>(TF_TensorData(t_tensor));
-  EXPECT_EQ(*result_value, *t_value);
+  float* zero_value = static_cast<float*>(TF_TensorData(zero_tensor));
+  EXPECT_EQ(*result_value, *zero_value);
 
   TF_DeleteTensor(result_tensor);
-  TF_DeleteTensor(t_tensor);
+  TF_DeleteTensor(zero_tensor);
   TF_DeleteAbstractTensor(result);
   TF_DeleteOutputList(o);
   TF_DeleteExecutionContext(ctx);
