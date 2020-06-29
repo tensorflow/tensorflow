@@ -203,7 +203,6 @@ cc_library(
         ":cl_program",
         ":opencl_wrapper",
         ":util",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:flt_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
     ],
