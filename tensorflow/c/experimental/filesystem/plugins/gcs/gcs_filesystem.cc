@@ -292,9 +292,9 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
   ParseGCSPath(path, false, &bucket, &object, status);
   if (TF_GetCode(status) != TF_OK) return;
 
-  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
   file->plugin_file = new tf_random_access_file::GCSFile(
-      {std::move(bucket), std::move(object), gcs_client});
+      {std::move(bucket), std::move(object), &gcs_file->gcs_client});
   TF_SetStatus(status, TF_OK, "");
 }
 
