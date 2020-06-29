@@ -107,9 +107,25 @@ struct OpData {
   int active_candidate_idx;
   int decoded_boxes_idx;
   int scores_idx;
+  int score_buffer_idx;
+  int keep_scores_idx;
+  int scores_after_regular_non_max_suppression_idx;
+  int sorted_values_idx;
+  int keep_indices_idx;
+  int sorted_indices_idx;
+  int buffer_idx;
+  int selected_idx;
   uint8_t* active_box_candidate;
   float* decoded_boxes;
   float* scores;
+  float* score_buffer;
+  float* keep_scores;
+  float* scores_after_regular_non_max_suppression;
+  float* sorted_values;
+  int* keep_indices;
+  int* sorted_indices;
+  int* buffer;
+  int* selected;
 };
 
 TfLiteStatus AllocateOutDimensions(TfLiteContext* context, TfLiteIntArray** dims,
@@ -187,15 +203,35 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_anchors), 2);
 
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 4);
+  const int num_boxes = input_box_encodings->dims->data[1];
+  const int num_classes = op_data->num_classes;
 
-  context->RequestScratchBufferInArena(context, input_box_encodings->dims->data[1],
+  // Scratch tensors
+  context->RequestScratchBufferInArena(context, num_boxes,
                                        &op_data->active_candidate_idx);
-  context->RequestScratchBufferInArena(context, input_box_encodings->dims->data[1]*kNumCoordBox * sizeof(float),
+  context->RequestScratchBufferInArena(context, num_boxes * kNumCoordBox * sizeof(float),
                                        &op_data->decoded_boxes_idx);
   context->RequestScratchBufferInArena(context,
                                        input_class_predictions->dims->data[1] * input_class_predictions->dims->data[2] *
                                        sizeof(float),
                                        &op_data->scores_idx);
+
+  // Additional buffers
+  context->RequestScratchBufferInArena(context, num_boxes * sizeof(float), &op_data->scores_idx);
+  context->RequestScratchBufferInArena(context, num_boxes * sizeof(float), &op_data->keep_scores_idx);
+  context->RequestScratchBufferInArena(context, op_data->max_detections * num_boxes * sizeof(float),
+                                       &op_data->scores_after_regular_non_max_suppression_idx);
+  context->RequestScratchBufferInArena(context, op_data->max_detections * num_boxes * sizeof(float),
+                                       &op_data->sorted_values_idx);
+  context->RequestScratchBufferInArena(context, num_boxes * sizeof(int), &op_data->keep_indices_idx);
+  context->RequestScratchBufferInArena(context, op_data->max_detections * num_boxes * sizeof(int),
+                                       &op_data->sorted_indices_idx);
+  int buffer_size = std::max(num_classes, op_data->max_detections);
+  context->RequestScratchBufferInArena(context, buffer_size * num_boxes * sizeof(int),
+                                       &op_data->buffer_idx);
+  buffer_size = std::min(num_boxes, op_data->max_detections);
+  context->RequestScratchBufferInArena(context, buffer_size * num_boxes * sizeof(int),
+                                       &op_data->selected_idx);
 
   // number of detected boxes
   const int num_detected_boxes =
@@ -357,16 +393,35 @@ void DecreasingPartialArgSort(const float* values, int num_values,
       [&values](const int i, const int j) { return values[i] > values[j]; });
 }
 
-void SelectDetectionsAboveScoreThreshold(const std::vector<float>& values,
-                                         const float threshold,
-                                         std::vector<float>* keep_values,
-                                         std::vector<int>* keep_indices) {
-  for (int i = 0; i < values.size(); i++) {
+void DecreasingPartialArgSort2(const float* values, int num_values,
+                               int num_to_sort, int* indices, int* ind) {
+
+  std::iota(ind, ind + num_values, 0);
+  std::partial_sort(
+      ind, ind + num_to_sort, ind + num_values,
+      [&values](const int i, const int j) { return values[i] > values[j]; });
+
+  std::iota(indices, indices + num_values, 0);
+
+  std::partial_sort(
+      indices, indices + num_to_sort, indices + num_values,
+      [&values](const int i, const int j) { return values[i] > values[j]; });
+
+}
+
+int SelectDetectionsAboveScoreThreshold(const float* values,
+                                        int size,
+                                        const float threshold,
+                                        float* keep_values,
+                                        int* keep_indices) {
+  int counter = 0;
+  for (int i = 0; i < size; i++) {
     if (values[i] >= threshold) {
-      keep_values->emplace_back(values[i]);
-      keep_indices->emplace_back(i);
+      keep_values[counter++] = values[i];
+      keep_indices[i] = i;
     }
   }
+  return counter;
 }
 
 bool ValidateBoxes(const float* decoded_boxes, const int num_boxes) {
@@ -405,7 +460,7 @@ float ComputeIntersectionOverUnion(const float* decoded_boxes,
 // Complexity is O(N^2) pairwise comparison between boxes
 TfLiteStatus NonMaxSuppressionSingleClassHelper(
     TfLiteContext* context, TfLiteNode* node, OpData* op_data,
-    const std::vector<float>& scores, std::vector<int>* selected,
+    const float* scores, int* selected, int* selected_size,
     int max_detections) {
 
   const TfLiteTensor* input_box_encodings =
@@ -425,32 +480,30 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
   TF_LITE_ENSURE(context, ValidateBoxes(op_data->decoded_boxes, num_boxes));
 
   // threshold scores
-  std::vector<int> keep_indices;
-  // TODO (chowdhery): Remove the dynamic allocation and replace it
-  // with temporaries, esp for std::vector<float>
-  std::vector<float> keep_scores;
-  SelectDetectionsAboveScoreThreshold(
-      scores, non_max_suppression_score_threshold, &keep_scores, &keep_indices);
+  int* keep_indices = op_data->keep_indices;
+  float* keep_scores = op_data->keep_scores;
+  int num_scores_kept = SelectDetectionsAboveScoreThreshold(
+      scores, num_boxes, non_max_suppression_score_threshold, keep_scores, keep_indices);
 
-  int num_scores_kept = keep_scores.size();
-  std::vector<int> sorted_indices;
-  sorted_indices.resize(num_scores_kept);
-  DecreasingPartialArgSort(keep_scores.data(), num_scores_kept, num_scores_kept,
-                           sorted_indices.data());
+  int* sorted_indices = op_data->sorted_indices;
+
+  DecreasingPartialArgSort(keep_scores, num_scores_kept, num_scores_kept,
+                            sorted_indices);
+
   const int num_boxes_kept = num_scores_kept;
   const int output_size = std::min(num_boxes_kept, max_detections);
-  selected->clear();
+  *selected_size = 0;
 
   int num_active_candidate = num_boxes_kept;
   uint8_t* active_box_candidate = op_data->active_box_candidate;
+
   for (int row = 0; row < num_boxes_kept; row++) {
     active_box_candidate[row] = 1;
   }
-
   for (int i = 0; i < num_boxes_kept; ++i) {
-    if (num_active_candidate == 0 || selected->size() >= output_size) break;
+    if (num_active_candidate == 0 || *selected_size >= output_size) break;
     if (active_box_candidate[i] == 1) {
-      selected->push_back(keep_indices[sorted_indices[i]]);
+      selected[(*selected_size)++] = keep_indices[sorted_indices[i]];
       active_box_candidate[i] = 0;
       num_active_candidate--;
     } else {
@@ -469,6 +522,7 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
       }
     }
   }
+
   return kTfLiteOk;
 }
 
@@ -507,18 +561,14 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
   TF_LITE_ENSURE(context, num_detections_per_class > 0);
 
   // For each class, perform non-max suppression.
-  std::vector<float> class_scores(num_boxes);
-
-  std::vector<int> box_indices_after_regular_non_max_suppression(
-      num_boxes + max_detections);
-  std::vector<float> scores_after_regular_non_max_suppression(num_boxes +
-                                                              max_detections);
+  float* class_scores =  op_data->score_buffer;
+  int* box_indices_after_regular_non_max_suppression = op_data->buffer;
+  float* scores_after_regular_non_max_suppression =
+      op_data->scores_after_regular_non_max_suppression;
 
   int size_of_sorted_indices = 0;
-  std::vector<int> sorted_indices;
-  sorted_indices.resize(num_boxes + max_detections);
-  std::vector<float> sorted_values;
-  sorted_values.resize(max_detections);
+  int* sorted_indices = op_data->sorted_indices;
+  float* sorted_values = op_data->sorted_values;
 
   for (int col = 0; col < num_classes; col++) {
     for (int row = 0; row < num_boxes; row++) {
@@ -527,13 +577,16 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
           *(scores + row * num_classes_with_background + col + label_offset);
     }
     // Perform non-maximal suppression on single class
-    std::vector<int> selected;
+    int selected_size = 0;
+    int* selected = op_data->selected;
     TF_LITE_ENSURE_STATUS(NonMaxSuppressionSingleClassHelper(
-        context, node, op_data, class_scores, &selected,
+        context, node, op_data, class_scores, selected, &selected_size,
         num_detections_per_class));
     // Add selected indices from non-max suppression of boxes in this class
     int output_index = size_of_sorted_indices;
-    for (const auto& selected_index : selected) {
+    for (int i = 0; i < selected_size; i++) {
+      int selected_index = selected[i];
+
       box_indices_after_regular_non_max_suppression[output_index] =
           (selected_index * num_classes_with_background + col + label_offset);
       scores_after_regular_non_max_suppression[output_index] =
@@ -543,9 +596,9 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
     // Sort the max scores among the selected indices
     // Get the indices for top scores
     int num_indices_to_sort = std::min(output_index, max_detections);
-    DecreasingPartialArgSort(scores_after_regular_non_max_suppression.data(),
+    DecreasingPartialArgSort(scores_after_regular_non_max_suppression,
                              output_index, num_indices_to_sort,
-                             sorted_indices.data());
+                             sorted_indices);
 
     // Copy values to temporary vectors
     for (int row = 0; row < num_indices_to_sort; row++) {
@@ -590,8 +643,7 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
     }
   }
   GetTensorData<float>(num_detections)[0] = size_of_sorted_indices;
-  box_indices_after_regular_non_max_suppression.clear();
-  scores_after_regular_non_max_suppression.clear();
+
   return kTfLiteOk;
 }
 
@@ -631,32 +683,33 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
   TF_LITE_ENSURE(context, (max_categories_per_anchor > 0));
   const int num_categories_per_anchor =
       std::min(max_categories_per_anchor, num_classes);
-  std::vector<float> max_scores;
-  max_scores.resize(num_boxes);
-  std::vector<int> sorted_class_indices;
-  sorted_class_indices.resize(num_boxes * num_classes);
+  float* max_scores = op_data->score_buffer;
+  int* sorted_class_indices = op_data->buffer;
   for (int row = 0; row < num_boxes; row++) {
     const float* box_scores =
         scores + row * num_classes_with_background + label_offset;
-    int* class_indices = sorted_class_indices.data() + row * num_classes;
+    int* class_indices = sorted_class_indices + row * num_classes;
     DecreasingPartialArgSort(box_scores, num_classes, num_categories_per_anchor,
                              class_indices);
     max_scores[row] = box_scores[class_indices[0]];
   }
 
   // Perform non-maximal suppression on max scores
-  std::vector<int> selected;
+  int selected_size = 0;
+  int* selected = op_data->selected;
   TF_LITE_ENSURE_STATUS(NonMaxSuppressionSingleClassHelper(
-      context, node, op_data, max_scores, &selected, op_data->max_detections));
+      context, node, op_data, max_scores, selected, &selected_size, op_data->max_detections));
 
   // Allocate output tensors
   int output_box_index = 0;
 
-  for (const auto& selected_index : selected) {
+  for (int i = 0; i < selected_size; i++) {
+    int selected_index = selected[i];
+
     const float* box_scores =
         scores + selected_index * num_classes_with_background + label_offset;
     const int* class_indices =
-        sorted_class_indices.data() + selected_index * num_classes;
+        sorted_class_indices + selected_index * num_classes;
 
     for (int col = 0; col < num_categories_per_anchor; ++col) {
       int box_offset = num_categories_per_anchor * output_box_index + col;
@@ -750,6 +803,22 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   op_data->decoded_boxes = reinterpret_cast<float*>(raw);
   raw = context->GetScratchBuffer(context, op_data->scores_idx);
   op_data->scores = reinterpret_cast<float*>(raw);
+  raw = context->GetScratchBuffer(context, op_data->score_buffer_idx);
+  op_data->score_buffer = reinterpret_cast<float*>(raw);
+  raw = context->GetScratchBuffer(context, op_data->keep_scores_idx);
+  op_data->keep_scores = reinterpret_cast<float*>(raw);
+  raw = context->GetScratchBuffer(context, op_data->scores_after_regular_non_max_suppression_idx);
+  op_data->scores_after_regular_non_max_suppression = reinterpret_cast<float*>(raw);
+  raw = context->GetScratchBuffer(context, op_data->sorted_values_idx);
+  op_data->sorted_values = reinterpret_cast<float*>(raw);
+  raw = context->GetScratchBuffer(context, op_data->keep_indices_idx);
+  op_data->keep_indices = reinterpret_cast<int*>(raw);
+  raw = context->GetScratchBuffer(context, op_data->sorted_indices_idx);
+  op_data->sorted_indices = reinterpret_cast<int*>(raw);
+  raw = context->GetScratchBuffer(context, op_data->buffer_idx);
+  op_data->buffer = reinterpret_cast<int*>(raw);
+  raw = context->GetScratchBuffer(context, op_data->selected_idx);
+  op_data->selected = reinterpret_cast<int*>(raw);
 
   // These two functions correspond to two blocks in the Object Detection model.
   // In future, we would like to break the custom op in two blocks, which is
