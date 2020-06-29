@@ -99,7 +99,7 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         }
         const auto& prop =
             properties.GetOutputProperties(reduce_indices.node->name());
-        int prop_size = prop.size();
+        const int prop_size = prop.size();
         if (prop_size <= reduce_indices.port_id) {
           continue;
         }

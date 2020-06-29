@@ -934,6 +934,7 @@ tf_xla_py_test(
     name = "pooling_ops_test",
     size = "medium",
     srcs = ["pooling_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 10,
     tags = [
@@ -953,6 +954,7 @@ tf_xla_py_test(
     name = "pooling_ops_3d_test",
     size = "medium",
     srcs = ["pooling_ops_3d_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 10,
     tags = [

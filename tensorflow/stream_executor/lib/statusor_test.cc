@@ -413,6 +413,26 @@ TEST(StatusOr, TestPointerValueConst) {
   EXPECT_EQ(&kI, thing.ValueOrDie());
 }
 
+TEST(StatusOr, TestArrowOperator) {
+  StatusOr<std::unique_ptr<int>> uptr = ReturnUniquePtr();
+  EXPECT_EQ(*uptr->get(), 0);
+}
+
+TEST(StatusOr, TestArrowOperatorNotOk) {
+  StatusOr<Base1> error(Status(tensorflow::error::CANCELLED, "cancelled"));
+  EXPECT_DEATH(error->pad_++, "cancelled");
+}
+
+TEST(StatusOr, TestStarOperator) {
+  StatusOr<std::unique_ptr<int>> uptr = ReturnUniquePtr();
+  EXPECT_EQ(**uptr, 0);
+}
+
+TEST(StatusOr, TestStarOperatorDeath) {
+  StatusOr<Base1> error(Status(tensorflow::error::CANCELLED, "cancelled"));
+  EXPECT_DEATH(*error, "cancelled");
+}
+
 // NOTE(tucker): StatusOr does not support this kind
 // of resize op.
 // TEST(StatusOr, StatusOrVectorOfUniquePointerCanResize) {

@@ -24,10 +24,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_config_c_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/core/tpu/tpu_library_loader.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 namespace tensorflow {
@@ -36,7 +36,7 @@ namespace {
 Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
                                 tpu::TpuMeshStateInterface** state) {
   if (!rmgr->Lookup(rmgr->default_container(),
-                    tpu::kTpuMeshCommonStateResourceName, state)
+                    tpu::kTpuMeshStateInterfaceResourceName, state)
            .ok()) {
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
@@ -96,16 +96,16 @@ void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
 
   auto* rmgr = GetTPUConfigResourceMgr();
   OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuMeshStateInterface>(
-                          rmgr, tpu::kTpuMeshCommonStateResourceName));
+                          rmgr, tpu::kTpuMeshStateInterfaceResourceName));
 
   tpu::ConfigApiFn()->ConfigureDistributedTpuOp_DoWorkFn(
       num_devices_per_host.size(), num_devices_per_host.data(),
       &host_config_output_size, &host_config_output, status);
 
   auto* tpu_mesh = tpu::TpuMeshStateInterface::Create();
-  OP_REQUIRES_OK(ctx,
-                 rmgr->Create(rmgr->default_container(),
-                              tpu::kTpuMeshCommonStateResourceName, tpu_mesh));
+  OP_REQUIRES_OK(
+      ctx, rmgr->Create(rmgr->default_container(),
+                        tpu::kTpuMeshStateInterfaceResourceName, tpu_mesh));
 
   Tensor* ctx_output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &ctx_output));
@@ -174,9 +174,10 @@ void WaitForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, GetTpuMeshStateInterface(rmgr, &mesh_state));
   core::ScopedUnref mesh_state_unref(mesh_state);
 
+  auto* mesh_common_state = mesh_state->mesh_common_state();
   tpu::ConfigApiFn()->WaitForDistributedTpuOp_DoWorkFn(
       num_hosts, num_devices_per_host,
-      const_cast<const int32_t**>(mapping_arg.data()), mesh_state,
+      const_cast<const int32_t**>(mapping_arg.data()), mesh_common_state,
       &tpu_topology_output_size, &tpu_topology_output, status);
 
   Tensor* ctx_output;
@@ -198,7 +199,7 @@ void ShutdownDistributedTpuOp::Compute(OpKernelContext* ctx) {
   TF_Status* status = TF_NewStatus();
   OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuMeshStateInterface>(
                           GetTPUConfigResourceMgr(),
-                          tpu::kTpuMeshCommonStateResourceName));
+                          tpu::kTpuMeshStateInterfaceResourceName));
   tpu::ConfigApiFn()->ShutdownDistributedTpuOp_DoWorkFn(status);
   OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
   TF_DeleteStatus(status);
@@ -210,11 +211,24 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "InitializeHostForDistributedTpuOp";
   XLA_SCOPED_LOGGING_TIMER("InitializeHostForDistributedTpuOp");
 
+  auto* rmgr = GetTPUConfigResourceMgr();
   auto tpu_host_config = ctx->input(0).scalar<tstring>()();
 
   size_t device_id_output_size;
   int32_t* device_id_output;
   TF_Status* status = TF_NewStatus();
+
+  bool is_master_worker =
+      tpu::ConfigApiFn()->TpuConfigurationApi_HasTPUPodStateFn();
+  if (!is_master_worker) {
+    // Reset the mesh interface if we are not the master.
+    OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuMeshStateInterface>(
+                            rmgr, tpu::kTpuMeshStateInterfaceResourceName));
+    auto* mesh_state_interface = tpu::TpuMeshStateInterface::Create();
+    OP_REQUIRES_OK(ctx, rmgr->Create(rmgr->default_container(),
+                                     tpu::kTpuMeshStateInterfaceResourceName,
+                                     mesh_state_interface));
+  }
 
   tpu::ConfigApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(
       tpu_host_config.size(), tpu_host_config.data(),

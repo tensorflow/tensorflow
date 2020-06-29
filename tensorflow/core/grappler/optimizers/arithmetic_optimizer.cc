@@ -598,7 +598,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     std::deque<InputAndShape> add_ops;
 
     // Prepare leaf AddN nodes for inputs of equal shape
-    for (int i = 0; i < shapes.size(); ++i) {
+    for (int i = 0, iter_limit = shapes.size(); i < iter_limit; ++i) {
       const auto node_name = leaf_node_name(i);
       const auto& inputs = shape_sig_to_inputs[ShapeSignature(shapes[i])];
       add_ops.push_back(AddInputsOfSymbolicallyEqualShape(*group.root_node,
@@ -750,7 +750,8 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
         ctx().node_map->AddOutput(new_add_node->name(), new_outer_node->name());
 
         // Hoist non-shared factors up into the new AddN node.
-        for (int i = 0; i < unique_factors.size(); ++i) {
+        for (int i = 0, iter_limit = unique_factors.size(); i < iter_limit;
+             ++i) {
           const string& unique_factor_i = unique_factors[i];
           new_add_node->set_input(i, unique_factor_i);
           ctx().node_map->AddOutput(unique_factor_i, new_add_node->name());
@@ -1190,7 +1191,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
     if (a.size() != b.size()) {
       return false;
     }
-    for (int i = 0; i < a.size(); ++i) {
+    for (int i = 0, iter_limit = a.size(); i < iter_limit; ++i) {
       if (a[b[i]] != i) {
         return false;
       }
@@ -1199,7 +1200,7 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
   }
 
   bool IsIdentityPermutation(const std::vector<int64>& perm) {
-    for (int64 i = 0; i < perm.size(); ++i) {
+    for (int64 i = 0, iter_limit = perm.size(); i < iter_limit; ++i) {
       if (i != perm[i]) {
         return false;
       }
@@ -1500,7 +1501,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     for (int i = start; i < end; ++i) {
       unique_inputs.insert(node.input(i));
     }
-    return unique_inputs.size() == n;
+    int unique_input_size = unique_inputs.size();
+    return unique_input_size == n;
   }
 
   // Returns the length of the common unary chain of ops that can be
@@ -1915,15 +1917,22 @@ class LogSoftmaxStage : public ArithmeticOptimizerStage {
 //      ^                                  |
 //      |                                  |
 //    input                      input  ---+
-class RemoveRedundantReshape : public ArithmeticOptimizerStage {
+//
+// Additionally,  Reshape and BroadcastTo nodes where the
+// input and target shapes are equal are bypassed.
+//
+class RemoveRedundantReshapeOrBroadcastTo : public ArithmeticOptimizerStage {
  public:
-  explicit RemoveRedundantReshape(const GraphOptimizerContext& ctx,
-                                  const ArithmeticOptimizerContext& ctx_ext)
-      : ArithmeticOptimizerStage("RemoveRedundantReshape", ctx, ctx_ext) {}
-  ~RemoveRedundantReshape() override = default;
+  explicit RemoveRedundantReshapeOrBroadcastTo(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveRedundantReshapeOrBroadcastTo", ctx,
+                                 ctx_ext) {}
+  ~RemoveRedundantReshapeOrBroadcastTo() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsReshape(*node) && !IsInPreserveSet(*node);
+    return (IsReshape(*node) || IsBroadcastTo(*node)) &&
+           !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -1931,7 +1940,8 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &input));
 
     // 1. Bypass reshape followed by reshape.
-    if (IsReshape(*input) && !HasControlInputs(*input)) {
+    if (IsReshape(*node) && IsReshape(*input)) {
+      ForwardControlDependencies(node, {input});
       node->set_input(0, input->input(0));
       ctx().node_map->UpdateInput(node->name(), input->name(), input->input(0));
       *simplified_node_name = node->name();
@@ -1942,7 +1952,7 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
     // 2. If the reshape is a no-op, forward its input to its consumers, unless
     // it anchors a control dependency since we want to make sure that control
     // dependency is triggered.
-    if (ReshapeIsIdentity(*node) && !HasControlInputs(*node)) {
+    if (InputMatchesTargetShape(*node) && !HasControlInputs(*node)) {
       *simplified_node_name = node->input(0);
       return Status::OK();
     }
@@ -1952,7 +1962,7 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
 
  private:
   // Returns whether `reshape` is an identity op.
-  bool ReshapeIsIdentity(const NodeDef& reshape) {
+  bool InputMatchesTargetShape(const NodeDef& reshape) {
     const OpInfo::TensorProperties* reshape_props;
     const OpInfo::TensorProperties* input_props;
 
@@ -3248,14 +3258,15 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
                                      slice_begin_vec.size(), ") and size (",
                                      slice_size_vec.size(), ") vectors.");
     }
+    int slice_begin_vec_size = slice_begin_vec.size();
     if (!pack_output_shape.unknown_rank() &&
-        slice_begin_vec.size() != pack_output_shape.dims()) {
+        slice_begin_vec_size != pack_output_shape.dims()) {
       return Status::OK();
     }
-    if (pack_axis >= slice_begin_vec.size()) {
+    if (pack_axis >= slice_begin_vec_size) {
       return errors::InvalidArgument(
           "Input to node ", node->name(), " had pack_axis ", pack_axis,
-          " but rank was ", slice_begin_vec.size(), ".");
+          " but rank was ", slice_begin_vec_size, ".");
     }
 
     *slice_start_value = slice_begin_vec[pack_axis];
@@ -3264,7 +3275,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
       return Status::OK();
     }
 
-    for (size_t i = 0; i < slice_begin_vec.size(); ++i) {
+    for (int i = 0; i < slice_begin_vec_size; ++i) {
       if (i != pack_axis) {
         if (slice_begin_vec[i] != 0 ||
             !(slice_size_vec[i] == -1 ||
@@ -3352,7 +3363,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
     int begin_index = -1;
     int64 begin_value = 0;
-    for (int i = 0; i < slice_begin_vec.size(); ++i) {
+    for (int i = 0, iter_limit = slice_begin_vec.size(); i < iter_limit; ++i) {
       const int64 v = slice_begin_vec[i];
       if (v != 0) {
         if (begin_index != -1) {
@@ -3366,7 +3377,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
 
     int end_index = -1;
     int64 end_value = 0;
-    for (int i = 0; i < slice_end_vec.size(); ++i) {
+    for (int i = 0, iter_limit = slice_begin_vec.size(); i < iter_limit; ++i) {
       const int64 v = slice_end_vec[i];
       if (v != pack_output_shape.dim_size(i)) {
         if (end_index != -1) {
@@ -3670,7 +3681,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.remove_redundant_cast)
     pipeline.AddStage<RemoveRedundantCastStage>(ctx, ctx_ext);
   if (options_.remove_redundant_reshape)
-    pipeline.AddStage<RemoveRedundantReshape>(ctx, ctx_ext);
+    pipeline.AddStage<RemoveRedundantReshapeOrBroadcastTo>(ctx, ctx_ext);
   if (options_.remove_negation)
     pipeline.AddStage<RemoveNegationStage>(ctx, ctx_ext);
   if (options_.replace_mul_with_square)

@@ -107,15 +107,31 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_library_loader",
+    name = "tpu_api",
+    srcs = ["tpu_api.cc"],
+    hdrs = ["tpu_api.h"],
+    deps = [
+        ":libtftpu_header",
+        ":tpu_config_c_api",
+        "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_mesh_state_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_node_context_c_api_hdrs",
+    ],
+)
+
+cc_library(
+    name = "tpu_api_dlsym_initializer",
     srcs = if_windows(
-        ["tpu_library_loader_windows.cc"],
-        otherwise = ["tpu_library_loader.cc"],
+        ["tpu_api_dlsym_initializer_windows.cc"],
+        otherwise = ["tpu_api_dlsym_initializer.cc"],
     ),
-    hdrs = ["tpu_library_loader.h"],
+    hdrs = ["tpu_api_dlsym_initializer.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
+        ":tpu_api",
         ":tpu_config_c_api",
         ":tpu_library_init_fns",
         "//tensorflow/core/platform:errors",
@@ -125,12 +141,27 @@ cc_library(
         "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:tpu_node_context_c_api_hdrs",
-        "//tensorflow/stream_executor/tpu:tpu_platform_hdrs",
-    ],
+    ] + select({
+        "//tensorflow:oss": [
+            "//tensorflow/stream_executor/tpu:tpu_executor_base",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
     name = "tpu_library_init_fns",
     hdrs = ["tpu_library_init_fns.inc"],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "virtual_device",
+    srcs = ["virtual_device.cc"],
+    hdrs = ["virtual_device.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )

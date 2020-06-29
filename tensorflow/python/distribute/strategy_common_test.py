@@ -26,6 +26,8 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute.collective_all_reduce_strategy import CollectiveAllReduceStrategy
+from tensorflow.python.distribute.tpu_strategy import TPUStrategy
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -37,8 +39,10 @@ class StrategyReduceTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          strategy=[strategy_combinations.multi_worker_mirrored_two_workers] +
-          strategy_combinations.strategies_minus_tpu,
+          strategy=[
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+              strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          ] + strategy_combinations.strategies_minus_tpu,
           mode=['eager']))
   def testSimpleReduce(self, strategy):
 
@@ -67,7 +71,10 @@ class StrategyReduceTest(test.TestCase, parameterized.TestCase):
 
 @combinations.generate(
     combinations.combine(
-        strategy=[strategy_combinations.multi_worker_mirrored_two_workers],
+        strategy=[
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+        ],
         mode=['eager']))
 class DistributedCollectiveAllReduceStrategyTest(
     strategy_test_lib.DistributionTestBase,
@@ -81,7 +88,7 @@ class DistributedCollectiveAllReduceStrategyTest(
       return d.shard(input_context.num_input_pipelines,
                      input_context.input_pipeline_id)
 
-    expected_sum_on_workers = [10, 35]
+    expected_sum_on_workers = {'chief': 10, 'worker': 35}
     input_iterator = iter(
         strategy.experimental_distribute_datasets_from_function(dataset_fn))
 
@@ -93,7 +100,7 @@ class DistributedCollectiveAllReduceStrategyTest(
     sum_value = math_ops.reduce_sum(result)
     self.assertEqual(
         sum_value.numpy(),
-        expected_sum_on_workers[multi_worker_test_base.get_task_index()])
+        expected_sum_on_workers[multi_worker_test_base.get_task_type()])
 
   def testReduceHostTensor(self, strategy):
     reduced = strategy.reduce(
@@ -133,6 +140,35 @@ class DistributedCollectiveAllReduceStrategyTest(
 
   # TODO(crccw): add a test that mixes device and host tensors after multi
   # worker strategy combinations can run on a fixed number of GPUs.
+
+
+class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          strategy=[strategy_combinations.multi_worker_mirrored_2x1_cpu] +
+          strategy_combinations.all_strategies,
+          mode=['eager']))
+  def testClusterResolverProperty(self, strategy):
+    # CollectiveAllReduceStrategy and TPUStrategy must have a cluster resolver.
+    # `None` otherwise.
+    resolver = strategy.cluster_resolver
+    if not isinstance(strategy, CollectiveAllReduceStrategy) and not isinstance(
+        strategy, TPUStrategy):
+      self.assertIsNone(resolver)
+      return
+
+    with strategy.scope():
+      self.assertIs(strategy.cluster_resolver, resolver)
+
+    self.assertTrue(hasattr(resolver, 'cluster_spec'))
+    self.assertTrue(hasattr(resolver, 'master'))
+    self.assertTrue(hasattr(resolver, 'num_accelerators'))
+    self.assertTrue(hasattr(resolver, 'task_id'))
+    self.assertTrue(hasattr(resolver, 'task_type'))
+    if isinstance(strategy, CollectiveAllReduceStrategy):
+      self.assertEqual(resolver.task_id, 0)
+      self.assertAllInSet(resolver.task_type, ['chief', 'worker'])
 
 
 if __name__ == '__main__':

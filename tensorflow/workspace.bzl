@@ -237,11 +237,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "d26ada177ed9b696a9447fc85d209932a032c8ffc51630cf15eea8629b29dad6",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-6b9c92fe7eff0dedb031cec38004c9c3667f3057",
+        sha256 = "6248a3e48a8c4876e04c233956f73b7d09017e29f458b368aa97f8b9092d46e0",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-7222f0b6b58759b2207e6ec3224adb246fd23349",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/6b9c92fe7eff0dedb031cec38004c9c3667f3057/eigen-6b9c92fe7eff0dedb031cec38004c9c3667f3057.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/6b9c92fe7eff0dedb031cec38004c9c3667f3057/eigen-6b9c92fe7eff0dedb031cec38004c9c3667f3057.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/7222f0b6b58759b2207e6ec3224adb246fd23349/eigen-7222f0b6b58759b2207e6ec3224adb246fd23349.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/7222f0b6b58759b2207e6ec3224adb246fd23349/eigen-7222f0b6b58759b2207e6ec3224adb246fd23349.tar.gz",
         ],
     )
 
@@ -409,12 +409,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "org_sqlite",
         build_file = clean_dep("//third_party:sqlite.BUILD"),
-        sha256 = "f3c79bc9f4162d0b06fa9fe09ee6ccd23bb99ce310b792c5145f87fbcc30efca",
-        strip_prefix = "sqlite-amalgamation-3310100",
+        sha256 = "e9cec01d4519e2d49b3810615237325263fe1feaceae390ee12b4a29bd73dbe2",
+        strip_prefix = "sqlite-amalgamation-3320300",
         system_build_file = clean_dep("//third_party/systemlibs:sqlite.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/www.sqlite.org/2020/sqlite-amalgamation-3310100.zip",
-            "https://www.sqlite.org/2020/sqlite-amalgamation-3310100.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/www.sqlite.org/2020/sqlite-amalgamation-3320300.zip",
+            "https://www.sqlite.org/2020/sqlite-amalgamation-3320300.zip",
         ],
     )
 
@@ -710,8 +710,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "7f0d7f32631648acf48bc23047635ab5e2058a1a"
-    LLVM_SHA256 = "2f1dbae231b3b8f9c67d6a4f578c8ce29f3aa2831313b34c40ff2edb4014476a"
+    LLVM_COMMIT = "1becd298b82ed2f1a8ba5e61c5ad2ce7fe32d812"
+    LLVM_SHA256 = "a8f0947748a8e576675932a85537b9d67495ef7cd4e663811ea2f96fe2c2db47"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -802,11 +802,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "nccl_archive",
         build_file = clean_dep("//third_party:nccl/archive.BUILD"),
         patch_file = clean_dep("//third_party/nccl:archive.patch"),
-        sha256 = "7ff66aca18392b162829612e02c00b123a58ec35869334f72d7e5afaf5ea4a13",
-        strip_prefix = "nccl-3701130b3c1bcdb01c14b3cb70fe52498c1e82b7",
+        sha256 = "67e15ce3d12ba9ea1e0cb239599202b0f61c146149699341043c072de388e90a",
+        strip_prefix = "nccl-5949d96f36d050e59d05872f8bbffd2549318e95",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/3701130b3c1bcdb01c14b3cb70fe52498c1e82b7.tar.gz",
-            "https://github.com/nvidia/nccl/archive/3701130b3c1bcdb01c14b3cb70fe52498c1e82b7.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/5949d96f36d050e59d05872f8bbffd2549318e95.tar.gz",
+            "https://github.com/nvidia/nccl/archive/5949d96f36d050e59d05872f8bbffd2549318e95.tar.gz",
         ],
     )
 

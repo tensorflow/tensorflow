@@ -238,11 +238,6 @@ int DataTypeSize(DataType dt) {
     TF_CALL_qint16(CASE);
     TF_CALL_quint16(CASE);
 
-    // uint32 and uint64 aren't included in TF_CALL_POD_TYPES because we
-    // don't want to define kernels for them at this stage to avoid binary
-    // bloat.
-    TF_CALL_uint32(CASE);
-    TF_CALL_uint64(CASE);
     default:
       return 0;
   }

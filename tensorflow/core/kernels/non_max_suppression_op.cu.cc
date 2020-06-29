@@ -28,11 +28,15 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
+<<<<<<< HEAD
 struct 
 #if GOOGLE_CUDA
 __align__(16) 
 #endif
 Box {
+=======
+struct __align__(16) Box {
+>>>>>>> google_upstream/master
   float x1, y1, x2, y2;
 };
 

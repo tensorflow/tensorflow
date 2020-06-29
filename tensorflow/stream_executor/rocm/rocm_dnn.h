@@ -39,7 +39,10 @@ class MIOpenCTCLossDescriptor;
 // Opaque and unique identifier for the MIOpen plugin.
 extern const PluginId kMIOpenPlugin;
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> google_upstream/master
 struct PoolingWorkspaceDescriptor {
   std::vector<int64> input_dims;
   std::vector<int64> output_dims;
@@ -49,9 +52,14 @@ struct PoolingWorkspaceDescriptor {
   std::unique_ptr<TemporaryDeviceMemory<uint8>> workspace;
   size_t workspace_size;
   bool IsSame(const dnn::BatchDescriptor& input_dimensions,
+<<<<<<< HEAD
     const dnn::BatchDescriptor& output_dimensions,
     const dnn::PoolingDescriptor& pooling_dimensions,
     int _type);
+=======
+              const dnn::BatchDescriptor& output_dimensions,
+              const dnn::PoolingDescriptor& pooling_dimensions, int _type);
+>>>>>>> google_upstream/master
 };
 
 struct PoolingWorkspaceCache {
@@ -61,6 +69,7 @@ struct PoolingWorkspaceCache {
   uint64_t timestamp = 0;
   uint64_t memory_used = 0;
   bool find(const void* p, const dnn::BatchDescriptor& input_dimensions,
+<<<<<<< HEAD
     const dnn::BatchDescriptor& output_dimensions,
     const dnn::PoolingDescriptor& pooling_dimensions,
     int _type,
@@ -78,6 +87,21 @@ private:
 };
 
 
+=======
+            const dnn::BatchDescriptor& output_dimensions,
+            const dnn::PoolingDescriptor& pooling_dimensions, int _type,
+            PoolingWorkspaceDescriptor*& pdesc);
+  void insert(const void* p, const dnn::BatchDescriptor& input_dimensions,
+              const dnn::BatchDescriptor& output_dimensions,
+              const dnn::PoolingDescriptor& pooling_dimensions, int _type,
+              std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace,
+              size_t wsp_size, hipStream_t hip_stream);
+
+ private:
+  void trim(hipStream_t hip_stream);
+};
+
+>>>>>>> google_upstream/master
 // miopen-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
 class MIOpenSupport : public dnn::DnnSupport {
@@ -911,6 +935,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator,
       std::vector<dnn::ProfileResult>* out_algorithms);
 
+<<<<<<< HEAD
   port::Status DoCtcLossImpl(
       Stream* stream, const MIOpenRnnStateTensorDescriptor& probs_desc,
       const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
@@ -940,6 +965,18 @@ class MIOpenSupport : public dnn::DnnSupport {
                       const DeviceMemory<T>& input_diff_data,
                       DeviceMemory<T>* output_diff_data,
                       ScratchAllocator* workspace_allocator = nullptr);
+=======
+  template <class T>
+  bool DoPoolBackwardImpl(Stream* stream,
+                          const dnn::PoolingDescriptor& pooling_dimensions,
+                          const dnn::BatchDescriptor& input_dimensions,
+                          const DeviceMemory<T>& input_data,
+                          const dnn::BatchDescriptor& output_dimensions,
+                          const DeviceMemory<T>& output_data,
+                          const DeviceMemory<T>& input_diff_data,
+                          DeviceMemory<T>* output_diff_data,
+                          ScratchAllocator* workspace_allocator = nullptr);
+>>>>>>> google_upstream/master
 
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenSupport);
 };

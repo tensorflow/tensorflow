@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "third_party/FP16/include/fp16.h"
+#include <fp16.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"

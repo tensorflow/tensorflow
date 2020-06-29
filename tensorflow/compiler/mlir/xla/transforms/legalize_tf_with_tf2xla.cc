@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
@@ -320,13 +321,14 @@ LogicalResult FuncLegalizer::PrepareParams() {
 }
 
 LogicalResult FuncLegalizer::Legalize() {
+  if (func_.empty()) return success();
+
   // TensorFlow functions don't use CFGs.
-  if (func_.getBlocks().size() > 1) {
+  if (!llvm::hasSingleElement(func_)) {
     emitError(func_.getLoc()) << "requires at most one block in a TF function";
     return failure();
   }
-  if (func_.getBlocks().empty()) return success();
-  Block& block = func_.getBlocks().front();
+  Block& block = func_.front();
 
   std::vector<Operation*> ops;
   ops.reserve(block.getOperations().size());

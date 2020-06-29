@@ -22,24 +22,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 namespace {
-// Return fingerprint_in_metadata if it's not empty; otherwise read input tensor
-// data to compute the fingerprint.
-std::string GuaranteedConstFingerprint(
-    const string& fingerprint_in_metadata,
-    const OpInputList& guaranteed_constants) {
-  if (fingerprint_in_metadata.empty()) {
-    uint64_t fingerprint = 0;
-    for (const auto& constant : guaranteed_constants) {
-      fingerprint = TpuCompile_CreateGuaranteedConstFingerprint(
-          fingerprint, constant.tensor_data().data(),
-          constant.tensor_data().size());
-    }
-    return std::to_string(fingerprint);
-  } else {
-    return fingerprint_in_metadata;
-  }
-}
-
 std::string CreateShapePrefix(
     const std::vector<tensorflow::TensorShape>& dynamic_shapes) {
   std::string shapes_prefix;
@@ -86,6 +68,26 @@ std::string CreateConfigPrefix(const TPUCompileMetadataProto& metadata) {
 }
 }  // namespace
 
+// Return fingerprint_in_metadata if it's not empty; otherwise read input tensor
+// data to compute the fingerprint.
+std::string GuaranteedConstFingerprint(
+    const string& fingerprint_in_metadata,
+    const OpInputList& guaranteed_constants) {
+  if (fingerprint_in_metadata.empty()) {
+    uint64_t fingerprint = 0;
+    for (const Tensor& constant : guaranteed_constants) {
+      fingerprint = TpuCompile_CreateGuaranteedConstFingerprint(
+          fingerprint, constant.tensor_data().data(),
+          constant.tensor_data().size());
+    }
+    return std::to_string(fingerprint);
+  } else {
+    return fingerprint_in_metadata;
+  }
+}
+
+// The `guaranteed_constants` must be passed as reference due to the lazy
+// evaluation of `guaranteed_const_fingerprint()` callback.
 TpuCompilationCacheKey CreateCompilationCacheKey(
     absl::string_view function_name, uint64 function_library_fingerprint,
     absl::string_view mlir_module, const OpInputList& guaranteed_constants,

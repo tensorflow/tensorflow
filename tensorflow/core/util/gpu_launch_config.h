@@ -168,6 +168,7 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
       block_size_limit);
   CHECK_EQ(err, cudaSuccess);
 #elif TENSORFLOW_USE_ROCM
+<<<<<<< HEAD
   // Earlier versions of this HIP routine incorrectly returned void.
   // TODO re-enable hipError_t error checking when HIP is fixed.
 #if TENSORFLOW_COMPILER_IS_HIP_CLANG
@@ -187,6 +188,12 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
                                     block_size_limit_uint);
   block_count = static_cast<int>(block_count_uint);
   thread_per_block = static_cast<int>(thread_per_block_uint);
+=======
+  hipError_t err = hipOccupancyMaxPotentialBlockSize(
+      &block_count, &thread_per_block, func, dynamic_shared_memory_size,
+      block_size_limit);
+  CHECK_EQ(err, hipSuccess);
+>>>>>>> google_upstream/master
 #endif
 #endif
 
@@ -216,27 +223,13 @@ GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
   cudaError_t err = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
       &block_count, func, fixed_block_size, dynamic_shared_memory_size);
   CHECK_EQ(err, cudaSuccess);
+#elif TENSORFLOW_USE_ROCM
+  hipError_t err = hipOccupancyMaxActiveBlocksPerMultiprocessor(
+      &block_count, func, fixed_block_size, dynamic_shared_memory_size);
+  CHECK_EQ(err, hipSuccess);
+#endif
   block_count = std::min(block_count * d.getNumGpuMultiProcessors(),
                          DivUp(work_element_count, fixed_block_size));
-#elif TENSORFLOW_USE_ROCM
-  // ROCM TODO re-enable this after hipOccupancyMaxActiveBlocksPerMultiprocessor
-  // is implemented
-  // hipError_t err = hipOccupancyMaxActiveBlocksPerMultiprocessor(
-  //    &block_count, &thread_per_block, func, dynamic_shared_memory_size,
-  //    block_size_limit);
-  // CHECK_EQ(err, hipSuccess);
-
-  // Apply the heuristic in GetGpuLaunchConfig(int, const Eigen::GpuDevice&)
-  // that the kernel is quite simple and will largely be memory-limited.
-  const int physical_thread_count = std::min(
-      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
-      work_element_count);
-  // Assume the kernel be simple enough that it is okay to use 1024 threads
-  // per workgroup.
-  int thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
-  block_count = std::min(DivUp(physical_thread_count, thread_per_block),
-                         d.getNumGpuMultiProcessors());
-#endif
 
   config.virtual_thread_count = work_element_count;
   config.thread_per_block = fixed_block_size;

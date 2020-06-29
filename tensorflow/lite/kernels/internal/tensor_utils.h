@@ -406,23 +406,16 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2,
 void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int16_t* output);
 
-// Element-wise in-place clipping of a quantized vector.
-// Parameters:
-//     - input:          batch vector of size n_batch * n_input; 16 bit.
+// Element-wise in-place clipping of a vector. Overloaded for float, int16_t,
+// int8_t. Parameters:
+//     - vector:         vector of size v_size.
+//     - v_size:         the size of the vector.
 //     - clipping_value: the value used for clipping.
-//     - n_batch:        the number of batches.
-//     - n_input:        the size for input and output.
-void CwiseClipping(int16_t* input, const int16_t clipping_value,
-                   int32_t n_batch, int32_t n_input);
-
-// Element-wise in-place clipping of a quantized vector.
-// Parameters:
-//     - input:          batch vector of size n_batch * n_input; 8 bit.
-//     - clipping_value: the value used for clipping.
-//     - n_batch:        the number of batches.
-//     - n_input:        the size for input and output.
-void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
-                   int32_t n_input);
+void CwiseClipping(float* vector, const int v_size, const float clipping_value);
+void CwiseClipping(int16_t* vector, const int v_size,
+                   const int16_t clipping_value);
+void CwiseClipping(int8_t* vector, const int v_size,
+                   const int8_t clipping_value);
 
 // Cwise product of two vectors.
 template <typename T>
@@ -611,10 +604,6 @@ void Sub1Vector(const int16_t* vector, int v_size, int16_t* result);
 void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
                           float* result);
 
-// Clip elements of a vector using a abs_limit value.
-void ClipVector(const float* vector, int v_size, float abs_limit,
-                float* result);
-
 // Reduce-sum on a float input vector:
 // input_vector: float pointer to input vector.
 // output_vector: float pointer to vector.
@@ -637,13 +626,13 @@ void MeanStddevNormalization(const float* input_vector, float* output_vector,
                              int v_size, int n_batch);
 
 // Saturate Add with rescale on both inputs.
-void TwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
-                           const int8_t* recurrent, int8_t recurrent_zp,
-                           int32_t input_effective_scale_a,
-                           int32_t input_effective_scale_b,
-                           int32_t recurrent_effective_scale_a,
-                           int32_t recurrent_effective_scale_b, int32_t n_batch,
-                           int32_t n_cell, int16_t* output);
+void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
+                          const int8_t* recurrent, int8_t recurrent_zp,
+                          int32_t input_effective_scale_a,
+                          int32_t input_effective_scale_b,
+                          int32_t recurrent_effective_scale_a,
+                          int32_t recurrent_effective_scale_b, int32_t n_batch,
+                          int32_t n_cell, int16_t* output);
 
 }  // namespace tensor_utils
 }  // namespace tflite

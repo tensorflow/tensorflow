@@ -69,7 +69,11 @@ using cudaError_t = int;
 #define gpuEventSynchronize hipEventSynchronize
 #define gpuEventCreate hipEventCreate
 #define gpuEventCreateWithFlags hipEventCreateWithFlags
+<<<<<<< HEAD
 #define gpuEventDisableTiming hipEventDisableTiming 
+=======
+#define gpuEventDisableTiming hipEventDisableTiming
+>>>>>>> google_upstream/master
 #define gpuDeviceSynchronize hipDeviceSynchronize
 #define gpuFree hipFree
 static std::string cudaGetErrorString(int err) { return std::to_string(err); }

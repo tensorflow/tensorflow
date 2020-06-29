@@ -197,4 +197,27 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
   }
 }
 
+mlir::xla_hlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
+    const GatherDimensionNumbers& input, mlir::Builder builder) {
+  auto offset_dims = CreateDenseIntElementsAttrFromVector(
+      llvm::SmallVector<int64, 4>{input.offset_dims().begin(),
+                                  input.offset_dims().end()},
+      builder);
+  auto collapsed_slice_dims = CreateDenseIntElementsAttrFromVector(
+      llvm::SmallVector<int64, 4>{input.collapsed_slice_dims().begin(),
+                                  input.collapsed_slice_dims().end()},
+      builder);
+  auto start_index_map = CreateDenseIntElementsAttrFromVector(
+      llvm::SmallVector<int64, 4>{input.start_index_map().begin(),
+                                  input.start_index_map().end()},
+      builder);
+
+  mlir::IntegerAttr index_vector_dim =
+      builder.getI64IntegerAttr(input.index_vector_dim());
+
+  return mlir::xla_hlo::GatherDimensionNumbers::get(
+      offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim,
+      builder.getContext());
+}
+
 }  // namespace xla

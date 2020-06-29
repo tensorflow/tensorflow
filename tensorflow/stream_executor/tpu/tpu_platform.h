@@ -38,7 +38,6 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
                           SE_Event*>;
 
   static const ::stream_executor::Platform::Id kId;
-  static constexpr char kName[] = "TPU";
 
   using Status = ::stream_executor::port::Status;
   template <typename T>
@@ -122,7 +121,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   EventMap event_map_;
 };
 
-void RegisterTpuPlatform();
+bool RegisterTpuPlatform();
 
 }  // namespace tensorflow
 

@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_COMMON_UTILS_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_COMMON_UTILS_H_
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #include "tensorflow/core/platform/logging.h"
 
@@ -29,7 +28,6 @@ namespace tensorrt {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif
-#endif
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_COMMON_UTILS_H_

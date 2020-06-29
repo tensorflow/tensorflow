@@ -629,11 +629,10 @@ class InputOptions(
   ```
 
   Attributes:
-    experimental_prefetch_to_device: Boolean. Currently only applies to
-      TPUStrategy. Defaults to True. If True, dataset elements will be
-      prefetched to accelerator device memory. When False, dataset elements are
-      prefetched to host device memory. Must be False when using TPUEmbedding
-      API.
+    experimental_prefetch_to_device: Boolean. Defaults to True. If True, dataset
+      elements will be prefetched to accelerator device memory. When False,
+      dataset elements are prefetched to host device memory. Must be False when
+      using TPUEmbedding API.
   """
 
   def __new__(cls, experimental_prefetch_to_device=True):
@@ -1217,20 +1216,85 @@ class StrategyBase(object):
     return self.run(fn, args=args, kwargs=kwargs, options=options)
 
   def reduce(self, reduce_op, value, axis):
-    """Reduce `value` across replicas.
+    """Reduce `value` across replicas and return result on current device.
+
+    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> def step_fn():
+    ...   i = tf.distribute.get_replica_context().replica_id_in_sync_group
+    ...   return tf.identity(i)
+    >>>
+    >>> per_replica_result = strategy.run(step_fn)
+    >>> total = strategy.reduce("SUM", per_replica_result, axis=None)
+    >>> total
+    <tf.Tensor: shape=(), dtype=int32, numpy=0>
+
+    To see how this would look with multiple replicas, consider the same
+    example with MirroredStrategy with 2 GPUs:
+
+    ```python
+    strategy = tf.distribute.MirroredStrategy(devices=["gpu:0", "gpu:1"])
+    def step_fn():
+      i = tf.distribute.get_replica_context().replica_id_in_sync_group
+      return tf.identity(i)
+
+    per_replica_result = strategy.run(step_fn)
+    # Check devices on which per replica result is:
+    strategy.experimental_local_results(per_replica_result)[0].device
+    # /job:localhost/replica:0/task:0/device:GPU:0
+    strategy.experimental_local_results(per_replica_result)[1].device
+    # /job:localhost/replica:0/task:0/device:GPU:1
+
+    total = strategy.reduce("SUM", per_replica_result, axis=None)
+    # Check device on which reduced result is:
+    total.device
+    # /job:localhost/replica:0/task:0/device:CPU:0
+
+    ```
+
+    This API is typically used for aggregating the results returned from
+    different replicas, for reporting etc. For example, loss computed from
+    different replicas can be averaged using this API before printing.
+
+    Note: The result is copied to the "current" device - which would typically
+    be the CPU of the worker on which the program is running. For `TPUStrategy`,
+    it is the first TPU host. For multi client `MultiWorkerMirroredStrategy`,
+    this is CPU of each worker.
+
+    There are a number of different tf.distribute APIs for reducing values
+    across replicas:
+    * `tf.distribute.ReplicaContext.all_reduce`: This differs from
+    `Strategy.reduce` in that it is for replica context and does
+    not copy the results to the host device. `all_reduce` should be typically
+    used for reductions inside the training step such as gradients.
+    * `tf.distribute.StrategyExtended.reduce_to` and
+    `tf.distribute.StrategyExtended.batch_reduce_to`: These APIs are more
+    advanced versions of `Strategy.reduce` as they allow customizing the
+    destination of the result. They are also called in cross replica context.
+
+    _What should axis be?_
 
     Given a per-replica value returned by `run`, say a
     per-example loss, the batch will be divided across all the replicas.  This
     function allows you to aggregate across replicas and optionally also across
-    batch elements.  For example, if you have a global batch size of 8 and 2
+    batch elements by specifying the axis parameter accordingly.
+
+    For example, if you have a global batch size of 8 and 2
     replicas, values for examples `[0, 1, 2, 3]` will be on replica 0 and
-    `[4, 5, 6, 7]` will be on replica 1. By default, `reduce` will just
-    aggregate across replicas, returning `[0+4, 1+5, 2+6, 3+7]`. This is useful
-    when each replica is computing a scalar or some other value that doesn't
-    have a "batch" dimension (like a gradient). More often you will want to
-    aggregate across the global batch, which you can get by specifying the batch
+    `[4, 5, 6, 7]` will be on replica 1. With `axis=None`, `reduce` will
+    aggregate only across replicas, returning `[0+4, 1+5, 2+6, 3+7]`.
+    This is useful when each replica is computing a scalar or some other value
+    that doesn't have a "batch" dimension (like a gradient or loss).
+    ```
+    strategy.reduce("sum", per_replica_result, axis=None)
+    ```
+
+    Sometimes, you will want to aggregate across both the global batch _and_
+    all replicas. You can get this behavior by specifying the batch
     dimension as the `axis`, typically `axis=0`. In this case it would return a
     scalar `0+1+2+3+4+5+6+7`.
+    ```
+    strategy.reduce("sum", per_replica_result, axis=0)
+    ```
 
     If there is a last partial batch, you will need to specify an axis so
     that the resulting shape is consistent across replicas. So if the last
@@ -1242,11 +1306,13 @@ class StrategyBase(object):
     which will weigh some values `1/8` and others `1/4`.
 
     Args:
-      reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
-        be combined.
-      value: A "per replica" value, e.g. returned by `run` to
-        be combined into a single tensor.
-      axis: Specifies the dimension to reduce along within each
+      reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
+        be combined. Allows using string representation of the enum such as
+        "SUM", "MEAN".
+      value: a `tf.distribute.DistributeValues` instance, e.g. returned by
+        `Strategy.run`, to be combined into a single tensor. It can also be a
+        regular tensor when used with `OneDeviceStrategy` or default strategy.
+      axis: specifies the dimension to reduce along within each
         replica's tensor. Should typically be set to the batch dimension, or
         `None` to only reduce across replicas (e.g. if the tensor has no batch
         dimension).
@@ -1438,6 +1504,65 @@ class StrategyBase(object):
 
   def __copy__(self):
     raise RuntimeError("Must only deepcopy DistributionStrategy.")
+
+  @property
+  def cluster_resolver(self):
+    """Returns the cluster resolver associated with this strategy.
+
+    In general, when using a multi-worker `tf.distribute` strategy such as
+    `tf.distribute.experimental.MultiWorkerMirroredStrategy` or
+    `tf.distribute.experimental.TPUStrategy()`, there is a
+    `tf.distribute.cluster_resolver.ClusterResolver` associated with the
+    strategy used, and such an instance is returned by this property.
+
+    Strategies that intend to have an associated
+    `tf.distribute.cluster_resolver.ClusterResolver` must set the
+    relevant attribute, or override this property; otherwise, `None` is returned
+    by default. Those strategies should also provide information regarding what
+    is returned by this property.
+
+    Single-worker strategies usually do not have a
+    `tf.distribute.cluster_resolver.ClusterResolver`, and in those cases this
+    property will return `None`.
+
+    The `tf.distribute.cluster_resolver.ClusterResolver` may be useful when the
+    user needs to access information such as the cluster spec, task type or task
+    id. For example,
+
+    ```python
+
+    os.environ['TF_CONFIG'] = json.dumps({
+      'cluster': {
+          'worker': ["localhost:12345", "localhost:23456"],
+          'ps': ["localhost:34567"]
+      },
+      'task': {'type': 'worker', 'index': 0}
+    })
+
+    # This implicitly uses TF_CONFIG for the cluster and current task info.
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+
+    ...
+
+    if strategy.cluster_resolver.task_type == 'worker':
+      # Perform something that's only applicable on workers. Since we set this
+      # as a worker above, this block will run on this particular instance.
+    elif strategy.cluster_resolver.task_type == 'ps':
+      # Perform something that's only applicable on parameter servers. Since we
+      # set this as a worker above, this block will not run on this particular
+      # instance.
+    ```
+
+    For more information, please see
+    `tf.distribute.cluster_resolver.ClusterResolver`'s API docstring.
+
+    Returns:
+      The cluster resolver associated with this strategy. Returns `None` if a
+      cluster resolver is not applicable or available in this strategy.
+    """
+    if hasattr(self.extended, "_cluster_resolver"):
+      return self.extended._cluster_resolver  # pylint: disable=protected-access
+    return None
 
 
 @tf_export("distribute.Strategy", v1=[])  # pylint: disable=g-missing-docstring
@@ -2689,8 +2814,15 @@ class ReplicaContext(object):
     return self._strategy
 
   @property
+  @deprecation.deprecated(None, "Please avoid relying on devices property.")
   def devices(self):
-    """The devices this replica is to be executed on, as a tuple of strings."""
+    """Returns the devices this replica is to be executed on, as a tuple of strings.
+
+    NOTE: For `tf.distribute.MirroredStrategy` and
+    `tf.distribute.experimental.MultiWorkerMirroredStrategy`, this returns a
+    nested
+    list of device strings, e.g, [["gpu:0"]].
+    """
     require_replica_context(self)
     return (device_util.current(),)
 

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import os
 
 from tensorflow.core.framework import versions_pb2
@@ -45,6 +46,7 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
@@ -53,6 +55,7 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.saving import functional_saver
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.training.tracking import tracking
@@ -136,12 +139,15 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     return obj._list_extra_dependencies_for_serialization(  # pylint: disable=protected-access
         self._serialization_cache)
 
-  def list_functions(self, obj):
+  def list_functions(self, obj, extra_functions=None):
     obj_functions = self._functions.get(obj, None)
     if obj_functions is None:
       obj_functions = obj._list_functions_for_serialization(  # pylint: disable=protected-access
           self._serialization_cache)
       self._functions[obj] = obj_functions
+    if extra_functions:
+      obj_functions = obj_functions.copy()
+      obj_functions.update(extra_functions)
     return obj_functions
 
 
@@ -177,6 +183,12 @@ class _SaveableView(object):
     self.slot_variables = slot_variables
     self.concrete_functions = []
 
+    self.saveable_objects_for_node, all_saveable_functions = (
+        self._add_saveable_objects())
+    saveable_object_functions = {
+        "__SAVEABLE_FUNCTION_{}".format(n): fn
+        for n, fn in enumerate(all_saveable_functions)}
+
     # Maps functions -> wrapped functions that capture variables
     self.wrapped_functions = wrapped_functions or {}
     # Maps names of concrete functions in the object to names of wrapped
@@ -190,7 +202,8 @@ class _SaveableView(object):
     nodes_without_functions = list(self.nodes)
     seen_function_names = set()
     for node in nodes_without_functions:
-      for function in checkpoint_view.list_functions(node).values():
+      for function in checkpoint_view.list_functions(
+          node, saveable_object_functions).values():
         if function not in self.node_ids:
           self.node_ids[function] = len(self.nodes)
           self.nodes.append(function)
@@ -208,6 +221,25 @@ class _SaveableView(object):
           if concrete_function.name not in seen_function_names:
             seen_function_names.add(concrete_function.name)
             self.concrete_functions.append(concrete_function)
+
+  def _add_saveable_objects(self):
+    """Retrieves SaveablesObjects and traces their save/restore functions."""
+    # Maps node -> local name -> (save function, restore function)
+    saveable_objects_map = object_identity.ObjectIdentityDictionary()
+    all_saveable_functions = []
+    for node in self.nodes:
+      if resource_variable_ops.is_resource_variable(node):
+        # Resource (and TPU/Mirrored) variables  are automatically revived with
+        # their saveables defined, so there is no need to trace the save
+        # and restore functions.
+        continue
+      saveable_map = saveable_object_util.trace_save_restore_functions(node)
+      if saveable_map:
+        saveable_objects_map[node] = saveable_map
+        for save_fn, restore_fn in saveable_map.values():
+          all_saveable_functions.append(save_fn)
+          all_saveable_functions.append(restore_fn)
+    return saveable_objects_map, all_saveable_functions
 
   @property
   def root(self):
@@ -232,6 +264,15 @@ class _SaveableView(object):
         child_proto = object_proto.children.add()
         child_proto.node_id = self.node_ids[ref_function]
         child_proto.local_name = local_name
+
+      if node not in self.saveable_objects_for_node:
+        continue
+
+      for local_name, (save_fn, restore_fn) in (
+          self.saveable_objects_for_node[node].items()):
+        saveable_object_proto = object_proto.saveable_objects[local_name]
+        saveable_object_proto.save_function = self.node_ids[save_fn]
+        saveable_object_proto.restore_function = self.node_ids[restore_fn]
 
   def map_resources(self):
     """Makes new resource handle ops corresponding to existing resource tensors.
@@ -605,7 +646,9 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
   # the exported graph (thus the `to_graph` argument).
   saver = functional_saver.MultiDeviceSaver(
       saveable_view.checkpoint_view.frozen_saveable_objects(
-          object_map=object_map, to_graph=exported_graph))
+          object_map=object_map, to_graph=exported_graph,
+          call_with_mapped_captures=functools.partial(
+              _call_function_with_mapped_captures, resource_map=resource_map)))
 
   with exported_graph.as_default():
     signatures = _generate_signatures(signature_functions, resource_map)
@@ -985,8 +1028,11 @@ def export_meta_graph(obj, filename, signatures=None, options=None):
   ops.dismantle_graph(exported_graph)
 
 
-def _build_meta_graph(obj, export_dir, signatures, options,
-                      meta_graph_def=None):
+def _build_meta_graph_impl(obj,
+                           export_dir,
+                           signatures,
+                           options,
+                           meta_graph_def=None):
   """Creates a MetaGraph containing the resources and functions of an object."""
   if ops.inside_function():
     raise AssertionError(
@@ -1044,3 +1090,14 @@ def _build_meta_graph(obj, export_dir, signatures, options,
         graph_debug_info.SerializeToString(deterministic=True))
 
   return meta_graph_def, exported_graph, object_saver, asset_info
+
+
+def _build_meta_graph(obj,
+                      export_dir,
+                      signatures,
+                      options,
+                      meta_graph_def=None):
+  """Creates a MetaGraph under a SaveContext."""
+  with save_context.save_context():
+    return _build_meta_graph_impl(obj, export_dir, signatures, options,
+                                  meta_graph_def)

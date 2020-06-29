@@ -53,7 +53,7 @@ struct FusedKernelMatcherPass
 };
 
 bool IsActivationFunction(Operation *op) {
-  return isa<EluOp>(op) || isa<ReluOp>(op) || isa<Relu6Op>(op);
+  return isa<EluOp, ReluOp, Relu6Op>(op);
 }
 
 // Finds and returns an activation op that uses the result of `op`. If there are

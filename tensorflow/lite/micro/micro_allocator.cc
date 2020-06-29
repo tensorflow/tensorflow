@@ -166,11 +166,12 @@ class AllocationInfoBuilder {
   //  - If there's no metadata available, offline_planner_offsets is not set
   //  - If there's metadata available, offline_planner_offsets will point to the
   //    first offset in the metadata buffer list.
-  TfLiteStatus GetOfflinePlannedOffsets(const Model* model,
-                                        int32_t** offline_planner_offsets);
+  TfLiteStatus GetOfflinePlannedOffsets(
+      const Model* model, const int32_t** offline_planner_offsets);
 
   // Add allocaiton information for the tensors.
-  TfLiteStatus AddTensors(const SubGraph* subgraph, int32_t* offline_offsets,
+  TfLiteStatus AddTensors(const SubGraph* subgraph,
+                          const int32_t* offline_offsets,
                           TfLiteTensor* runtime_tensors);
 
   // Add allocation information for the scratch buffers.
@@ -206,7 +207,7 @@ TfLiteStatus AllocationInfoBuilder::Allocate() {
 }
 
 TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
-                                               int32_t* offline_offsets,
+                                               const int32_t* offline_offsets,
                                                TfLiteTensor* runtime_tensors) {
   // Set up allocation info for all tensors.
   for (size_t i = 0; i < tensor_count_; ++i) {
@@ -299,7 +300,7 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
 // |    4    | Arena byte offset of tensor #1 or -1 to allocate at runtime     |
 // | 3+(n-1) | Arena byte offset of tensor #(n-1) or -1 to allocate at runtime |
 TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
-    const Model* model, int32_t** offline_planner_offsets) {
+    const Model* model, const int32_t** offline_planner_offsets) {
   if (model->metadata()) {
     for (size_t i = 0; i < model->metadata()->size(); ++i) {
       auto metadata = model->metadata()->Get(i);
@@ -309,9 +310,11 @@ TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
             model->buffers();
         auto* buffer = (*buffers)[metadata->buffer()];
         auto* array = buffer->data();
-        const uint32_t* metadata_buffer = (uint32_t*)array->data();
-        const size_t nbr_tensors = (size_t)metadata_buffer[2];
-        *offline_planner_offsets = (int32_t*)&metadata_buffer[3];
+        const uint32_t* metadata_buffer =
+            reinterpret_cast<const uint32_t*>(array->data());
+        const size_t nbr_tensors = static_cast<size_t>(metadata_buffer[2]);
+        *offline_planner_offsets =
+            reinterpret_cast<const int32_t*>(&metadata_buffer[3]);
 
         if (tensor_count_ != nbr_tensors) {
           TF_LITE_REPORT_ERROR(reporter_,
@@ -389,28 +392,45 @@ TfLiteStatus CommitPlan(ErrorReporter* error_reporter, MemoryPlanner* planner,
 
 namespace internal {
 
-// Allocate a TfLiteIntArray and copy the contents of a FlatBuffers Vector
-// into it.
-template <class T>
-TfLiteStatus FlatBufferIntArrayToTfLiteIntArray(
+// Handles architecture safe mapping of flatbuffer vectors to a TfLite*Array
+// struct. Matching types are required (e.g. float and TfLiteFloatArray).
+template <typename kFlatBufferVectorType, typename kTfLiteArrayType>
+TfLiteStatus FlatBufferVectorToTfLiteTypeArray(
     SimpleMemoryAllocator* allocator, ErrorReporter* error_reporter,
-    const flatbuffers::Vector<T>* flat_array, TfLiteIntArray** result) {
-  TfLiteIntArray* ret =
-      reinterpret_cast<TfLiteIntArray*>(allocator->AllocateFromTail(
-          TfLiteIntArrayGetSizeInBytes(flat_array->Length()),
-          alignof(TfLiteIntArray)));
-  if (nullptr == ret) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
-        "Failed to allocate %d bytes of memory to copy an array.",
-        TfLiteIntArrayGetSizeInBytes(flat_array->Length()));
-    return kTfLiteError;
+    const flatbuffers::Vector<kFlatBufferVectorType>* flatbuffer_array,
+    kTfLiteArrayType** result) {
+  TFLITE_DCHECK(error_reporter != nullptr);
+  TFLITE_DCHECK(flatbuffer_array != nullptr);
+  // TODO(b/159668691): Consider adding type assertion or breaking this function
+  // into multiple functions for each type. std::is_same is c++11 and has a
+  // special updated constructor in c++17 that requires a string argument.
+  if (FLATBUFFERS_LITTLEENDIAN) {
+    // On little-endian machines, TfLite*Array happens to have the same memory
+    // layout as flatbuffers:Vector<kFlatBufferVectorType>, so we can
+    // reinterpret_cast the flatbuffer vector and avoid a copy and malloc.
+    *result = const_cast<kTfLiteArrayType*>(
+        reinterpret_cast<const kTfLiteArrayType*>(flatbuffer_array));
+  } else {
+    // Big-endian architecture can not use the same memory layout as
+    // flatbuffers::Vector<kFlatBufferVectorType>. Allocate from the tail and
+    // copy values from the flatbuffer into the newly allocated chunk.
+    kTfLiteArrayType* array =
+        reinterpret_cast<kTfLiteArrayType*>(allocator->AllocateFromTail(
+            TfLiteIntArrayGetSizeInBytes(flatbuffer_array->Length()),
+            alignof(kTfLiteArrayType)));
+    if (array == nullptr) {
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
+          "Failed to allocate %d bytes of memory to copy an array.",
+          TfLiteIntArrayGetSizeInBytes(flatbuffer_array->Length()));
+      return kTfLiteError;
+    }
+    array->size = flatbuffer_array->Length();
+    for (int i = 0; i < array->size; ++i) {
+      array->data[i] = flatbuffer_array->Get(i);
+    }
+    *result = array;
   }
-  ret->size = flat_array->Length();
-  for (int64_t i = 0; i < static_cast<int64_t>(flat_array->Length()); i++) {
-    ret->data[i] = flat_array->Get(i);
-  }
-  *result = ret;
   return kTfLiteOk;
 }
 
@@ -466,27 +486,17 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
   TF_LITE_ENSURE_STATUS(BytesRequiredForTensor(
       flatbuffer_tensor, &result->bytes, &type_size, error_reporter));
 
-  // TODO(b/159043126): Cleanup endian casting by doing all endian casting in
-  // one spot:
   if (flatbuffer_tensor.shape() == nullptr) {
     // flatbuffer_tensor.shape() can return a nullptr in the case of a scalar
     // tensor.
     result->dims = const_cast<TfLiteIntArray*>(&kZeroLengthIntArray);
-  } else if (!FLATBUFFERS_LITTLEENDIAN) {
-    // Big-endian architecture. Copy and byte-swap the little-endian shape
-    // data.
-    TF_LITE_ENSURE_STATUS(FlatBufferIntArrayToTfLiteIntArray(
-        allocator, error_reporter, flatbuffer_tensor.shape(), &(result->dims)));
   } else {
-    // On little-endian machines, TfLiteIntArray happens to have the same
-    // memory layout as flatbuffers:Vector<int>, so we can reinterpret_cast the
-    // tensor shape vector and avoid a copy.
     // TFLM doesn't allow reshaping the tensor which requires dynamic memory
     // allocation so it is safe to drop the const qualifier. In the future, if
     // we really want to update the tensor shape, we can always pass in a new
-    // TfLiteIntArray - especially we have to do so if the dimension is changed.
-    result->dims = const_cast<TfLiteIntArray*>(
-        reinterpret_cast<const TfLiteIntArray*>(flatbuffer_tensor.shape()));
+    // TfLiteIntArray - especially we have to do so if the dimension is
+    TF_LITE_ENSURE_STATUS(FlatBufferVectorToTfLiteTypeArray(
+        allocator, error_reporter, flatbuffer_tensor.shape(), &(result->dims)));
   }
 
   // Copy the quantization information from the serialized data.
@@ -528,9 +538,9 @@ TfLiteStatus InitializeTfLiteTensorFromFlatbuffer(
       return kTfLiteError;
     }
 
-    // TODO(b/159043126): Check for big endian before casting flatbuffer values.
-    quantization->scale = const_cast<TfLiteFloatArray*>(
-        reinterpret_cast<const TfLiteFloatArray*>(src_quantization->scale()));
+    TF_LITE_ENSURE_STATUS(FlatBufferVectorToTfLiteTypeArray(
+        allocator, error_reporter, src_quantization->scale(),
+        &quantization->scale));
 
     quantization->zero_point->size = channels;
     int* zero_point_data = quantization->zero_point->data;
@@ -602,8 +612,9 @@ TfLiteStatus MicroAllocator::StartModelAllocation(
   TFLITE_DCHECK(subgraph != nullptr);
   model_is_allocating_ = true;
 
+  TF_LITE_ENSURE_STATUS(AllocateTfLiteTensorArray(context, subgraph));
   TF_LITE_ENSURE_STATUS(
-      InitGraphAndContextTensorData(model, context, subgraph));
+      PopulateTfLiteTensorArrayFromFlatbuffer(model, context, subgraph));
   TF_LITE_ENSURE_STATUS(
       AllocateNodeAndRegistrations(subgraph, node_and_registrations));
   TF_LITE_ENSURE_STATUS(PrepareNodeAndRegistrationDataFromFlatbuffer(
@@ -812,13 +823,13 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
                                    (void**)(&builtin_data)));
     }
 
-    // Disregard const qualifier to workaround with existing API.
-    // TODO(b/159043126): Check for big endian before casting flatbuffer values.
-    TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
-        reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
-    // TODO(b/159043126): Check for big endian before casting flatbuffer values.
-    TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
-        reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
+    TfLiteIntArray* inputs_array;
+    TF_LITE_ENSURE_STATUS(internal::FlatBufferVectorToTfLiteTypeArray(
+        memory_allocator_, error_reporter_, op->inputs(), &inputs_array));
+
+    TfLiteIntArray* outputs_array;
+    TF_LITE_ENSURE_STATUS(internal::FlatBufferVectorToTfLiteTypeArray(
+        memory_allocator_, error_reporter_, op->outputs(), &outputs_array));
 
     TfLiteNode* node = &(node_and_registrations[i].node);
     *node = {};
@@ -856,14 +867,6 @@ ErrorReporter* MicroAllocator::error_reporter() const {
   return error_reporter_;
 }
 
-TfLiteStatus MicroAllocator::InitGraphAndContextTensorData(
-    const Model* model, TfLiteContext* context, const SubGraph* subgraph) {
-  TF_LITE_ENSURE_STATUS(AllocateTfLiteTensorArray(context, subgraph));
-  TF_LITE_ENSURE_STATUS(
-      PopulateTfLiteTensorArrayFromFlatbuffer(model, context, subgraph));
-  return kTfLiteOk;
-}
-
 const SubGraph* MicroAllocator::GetSubGraphFromModel(const Model* model) {
   auto* subgraphs = model->subgraphs();
   if (subgraphs->size() != 1) {
@@ -893,7 +896,7 @@ TfLiteStatus MicroAllocator::CommitStaticMemoryPlan(const Model* model,
     TF_LITE_ENSURE_STATUS(
         builder.Init(subgraph->tensors()->size(), scratch_buffer_count_));
 
-    int32_t* offline_planner_offsets = nullptr;
+    const int32_t* offline_planner_offsets = nullptr;
     TF_LITE_ENSURE_STATUS(
         builder.GetOfflinePlannedOffsets(model, &offline_planner_offsets));
     TF_LITE_ENSURE_STATUS(builder.AddTensors(subgraph, offline_planner_offsets,

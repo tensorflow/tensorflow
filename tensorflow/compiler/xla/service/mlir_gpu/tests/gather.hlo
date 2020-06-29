@@ -1,0 +1,20 @@
+// RUN: xla-gpu-opt %s | FileCheck %s
+HloModule Gather
+
+ENTRY %Gather (x: f32[100,10], y: s64[4,6]) -> f32[4,6,10] {
+  %x = f32[100,10] parameter(0)
+  %y = s64[4,6] parameter(1)
+  ROOT %gather = f32[4,6,10]{2,1,0} gather(f32[100,10]{1,0} %x, s64[4,6]{1,0} %y),
+      collapsed_slice_dims={0}, index_vector_dim=2, offset_dims={2},
+      slice_sizes={1,10}, start_index_map={0}
+}
+
+// CHECK: func @gather(%[[ARG0:.*]]: [[TYPE0:.*]], %[[ARG1:.*]]: [[TYPE1:.*]],
+// CHECK-SAME:         %[[RESULT:.*]]: [[RTYPE:.*]]) {
+// CHECK-NEXT: "xla_lhlo.gather"(%[[ARG0]], %[[ARG1]], %[[RESULT]]) {
+// CHECK-SAME:   collapsed_slice_dims = dense<0> : tensor<1xi64>,
+// CHECK-SAME:   index_vector_dim = 2 : i64,
+// CHECK-SAME:   offset_dims = dense<2> : tensor<1xi64>,
+// CHECK-SAME:   slice_sizes = dense<[1, 10]> : tensor<2xi64>,
+// CHECK-SAME:   start_index_map = dense<0> : tensor<1xi64>
+// CHECK-SAME: } : ([[TYPE0]], [[TYPE1]], [[RTYPE]]) -> ()

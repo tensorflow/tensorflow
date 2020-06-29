@@ -90,6 +90,14 @@ class TrainingTest(keras_parameterized.TestCase):
     hist = model.fit(x=np.array([0.]), y=np.array([0.]))
     self.assertAllClose(hist.history['loss'][0], 10000)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_fit_on_empty(self):
+    model = sequential.Sequential([layers_module.Dense(1)])
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    with self.assertRaisesRegexp(
+        ValueError, 'Expect x to be a non-empty array or dataset.'):
+      model.fit(x=np.array([]), y=np.array([]))
+
   @keras_parameterized.run_all_keras_modes
   def test_run_eagerly_setting(self):
     model = sequential.Sequential([layers_module.Dense(1)])
@@ -1646,6 +1654,19 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
         'not supported by Keras automatic op wrapping'
     ):
       training_module.Model([inputs], output)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_predict_error_with_empty_x(self):
+    inputs = layers_module.Input(shape=(2,))
+    outputs = layers_module.Dense(4)(inputs)
+    model = training_module.Model(inputs=inputs, outputs=outputs)
+    model.compile(loss='mse')
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Expect x to be a non-empty array or dataset.'
+    ):
+      model.predict(np.array([]))
 
 
 class LossWeightingTest(keras_parameterized.TestCase):

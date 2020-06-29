@@ -274,3 +274,20 @@ class TestSavedModelBase(test.TestCase, parameterized.TestCase):
     tolerance = get_tolerance(distribution_for_saving,
                               distribution_for_restoring)
     self.assertAllClose(result_before_save, load_result, atol=tolerance)
+
+  def run_test_save_strategy(self, model_and_input,
+                             distribution, save_in_scope):
+    """Save a model with DS."""
+    saved_dir = os.path.join(self.get_temp_dir(), '3')
+    with distribution.scope():
+      model = model_and_input.get_model()
+      x_train, y_train, _ = model_and_input.get_data()
+      batch_size = model_and_input.get_batch_size()
+      self._train_model(model, x_train, y_train, batch_size)
+
+    if save_in_scope:
+      with distribution.scope():
+        self._save_model(model, saved_dir)
+    else:
+      self._save_model(model, saved_dir)
+    return saved_dir

@@ -31,7 +31,7 @@ namespace {
 // Ensure memory doesn't expand more that 3%:
 constexpr float kAllocationThreshold = 0.03;
 constexpr float kAllocationTailMiscCeiling = 1024;
-const bool kIs64BitSystem = sizeof(void*) == 8;
+const bool kIs64BitSystem = (sizeof(void*) == 8);
 
 constexpr int kKeywordModelTensorArenaSize = 22 * 1024;
 uint8_t keyword_model_tensor_arena[kKeywordModelTensorArenaSize];
@@ -45,8 +45,8 @@ constexpr int kKeywordModelNodeAndRegistrationCount = 15;
 // Run this test with '--copt=-DTF_LITE_MICRO_OPTIMIZED_RUNTIME' to get
 // optimized memory runtime values:
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kKeywordModelTotalSize = 18448;
-constexpr int kKeywordModelTailSize = 17776;
+constexpr int kKeywordModelTotalSize = 18080;
+constexpr int kKeywordModelTailSize = 17408;
 #else
 constexpr int kKeywordModelTotalSize = 21040;
 constexpr int kKeywordModelTailSize = 20368;
@@ -65,8 +65,8 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kTestConvModelTotalSize = 10960;
-constexpr int kTestConvModelTailSize = 3216;
+constexpr int kTestConvModelTotalSize = 10784;
+constexpr int kTestConvModelTailSize = 3040;
 #else
 constexpr int kTestConvModelTotalSize = 11680;
 constexpr int kTestConvModelTailSize = 3936;

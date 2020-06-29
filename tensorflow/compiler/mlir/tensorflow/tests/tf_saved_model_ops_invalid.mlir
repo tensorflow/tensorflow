@@ -352,3 +352,25 @@ module attributes {tf_saved_model.semantics} {
     return %0 : tensor<1xf32>
   }
 }
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{the initializer function should be exported}}
+  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  func @init() attributes {sym_visibility = "private"} {
+    return
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{the initializer function should have only one exported name}}
+  "tf_saved_model.session_initializer"() { initializer = @init } : () -> ()
+  func @init() attributes { tf_saved_model.exported_names = ["a", "b"] } {
+    return
+  }
+}

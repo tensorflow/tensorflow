@@ -27,16 +27,29 @@ namespace gpu {
 namespace cl {
 namespace {
 
-std::string GenerateConvolutionConstantCode(
-    const OperationDef& op_def, const int2& kernel_size, int src_channels,
-    int dst_channels, bool stride_correction, const CLDevice& device,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor(
-      "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
-      op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor(
-      "dst_data", WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
-      op_def.dst_tensors[0]);
+std::string GenerateConvolutionConstantCode(const OperationDef& op_def,
+                                            const int2& kernel_size,
+                                            int src_channels, int dst_channels,
+                                            bool stride_correction,
+                                            const CLDevice& device,
+                                            Arguments* args) {
+  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
+  src_desc->SetTextureAddressMode(GetFastestZeroMode(device));
+  if (op_def.IsBatchSupported()) {
+    src_desc->SetStateVar("BatchedWidth", "true");
+  }
+  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
+  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  if (op_def.IsBatchSupported()) {
+    dst_desc->SetStateVar("BatchedWidth", "true");
+  }
+  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
+  args->AddInt("stride_x");
+  args->AddInt("stride_y");
+  args->AddInt("padding_x");
+  args->AddInt("padding_y");
+  args->AddInt("dilation_x");
+  args->AddInt("dilation_y");
 
   std::string c = GetCommonDefines(op_def.precision);
 
@@ -89,33 +102,24 @@ std::string GenerateConvolutionConstantCode(
   const std::string postfixes[] = {".x", ".xy", ".xyz", ""};
 
   c += "__kernel void main_function(\n";
-  c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  c += "    __constant FLT4* filters,  \n";
-  c += "    __constant FLT4* biases";
-  c += GetArgsDeclaration(linked_operations);
-  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int2 stride,               \n";
-  c += "    int2 padding,              \n";
-  c += "    int2 dilation,             \n";
-  c += "    int4 src_size,             \n";
-  c += "    int4 dst_size              \n";
-  c += ") {\n";
+  c += "$0) {\n";
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y) return;\n";
+  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
+       "return;\n";
   if (stride_correction) {
     c += "  int start_x = " +
-         GetXStrideCorrected("X", "src_size.w", "stride.x", "padding.x") +
+         GetXStrideCorrected("X", "args.src_tensor.Batch()", "args.stride_x",
+                             "args.padding_x") +
          ";\n";
   } else {
-    c += "  int start_x = X * stride.x + padding.x;\n";
+    c += "  int start_x = X * args.stride_x + args.padding_x;\n";
   }
-  c += "  int start_y = Y * stride.y + padding.y;\n";
+  c += "  int start_y = Y * args.stride_y + args.padding_y;\n";
   c += "  ACCUM_FLT4 r[" + kOutZ + "];\n";
   c += "  for (int i = 0; i < " + kOutZ + "; ++i) {\n";
   c += "    r[i] = (ACCUM_FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
   c += "  }\n";
-  const auto address_mode = GetFastestZeroMode(device);
   int filters_counter = 0;
   for (int s = 0; s < src_depth; ++s) {
     const int ch_count = std::min(4, src_channels - s * 4);
@@ -124,27 +128,29 @@ std::string GenerateConvolutionConstantCode(
     const std::string s_type = absl::StrCat("FLT", s_count);
     const std::string s_postfix = postfixes[ch_count - 1];
     for (int ky = 0; ky < kernel_size.y; ++ky) {
-      std::string s_y = absl::StrCat("(start_y + ", ky, " * dilation.y)");
+      std::string s_y = absl::StrCat("(start_y + ", ky, " * args.dilation_y)");
       if (manual_clamp) {
         c += "  {\n";
-        c += "  bool y_out = " + s_y + " < 0 || " + s_y + " >= src_size.y;\n";
+        c += "  bool y_out = " + s_y + " < 0 || " + s_y +
+             " >= args.src_tensor.Height();\n";
       }
       for (int kx = 0; kx < kernel_size.x; ++kx) {
         c += "  {\n";
-        std::string s_x = absl::StrCat("(start_x + ", kx, " * dilation.x)");
+        std::string s_x =
+            absl::StrCat("(start_x + ", kx, " * args.dilation_x)");
         if (manual_clamp) {
-          c += "    bool x_out = " + s_x + "< 0 || " + s_x + ">= src_size.x;\n";
+          c += "    bool x_out = " + s_x + "< 0 || " + s_x +
+               ">= args.src_tensor.Width();\n";
           c += "    " + s_type + " src = x_out || y_out ?";
-          c += "(" + s_type + ")(0.0) : ";
-          c += src_tensor.ReadWHS(s_x, s_y, std::to_string(s)) + s_postfix +
-               ";\n";
+          c += "(" + s_type + ")(0.0) : args.src_tensor.Read(" + s_x + ", " +
+               s_y + ", " + std::to_string(s) + ")" + s_postfix + ";\n";
         } else {
-          c += "    " + s_type + " src = " +
-               src_tensor.ReadWHS(s_x, s_y, std::to_string(s), address_mode) +
-               s_postfix + ";\n";
+          c += "    " + s_type + " src = args.src_tensor.Read(" + s_x + ", " +
+               s_y + ", " + std::to_string(s) + ")" + s_postfix + ";\n";
         }
         for (int d = 0; d < out_z; ++d) {
-          c += "    " + s_conv + "(r[" + std::to_string(d) + "], src, filters,";
+          c += "    " + s_conv + "(r[" + std::to_string(d) +
+               "], src, args.weigths.GetPtr(),";
           c += " " + std::to_string(filters_counter) + ");\n";
           filters_counter += ch_count;
         }
@@ -158,10 +164,9 @@ std::string GenerateConvolutionConstantCode(
   for (int i = 0; i < out_z; ++i) {
     std::string s_i = std::to_string(i);
     c += "  {\n";
-    c += "    FLT4 res = TO_FLT4(r[" + s_i + "]) + biases[" + s_i + "];\n";
-    const LinkingContext context{"res", "X", "Y", s_i};
-    c += PostProcess(linked_operations, context);
-    c += "  " + dst_tensor.WriteWHS("res", "X", "Y", s_i);
+    c += "    FLT4 res = TO_FLT4(r[" + s_i + "]) + args.biases.Read(" + s_i +
+         ");\n";
+    c += "  args.dst_tensor.Write(res, X, Y, " + s_i + ");\n";
     c += "  }\n";
   }
   c += "}\n";
@@ -191,8 +196,6 @@ int GetOptimalMaxConstantSize(const DeviceInfo& info) {
 
 ConvConstants::ConvConstants(ConvConstants&& kernel)
     : GPUOperation(std::move(kernel)),
-      weights_(std::move(kernel.weights_)),
-      biases_(std::move(kernel.biases_)),
       kernel_size_(kernel.kernel_size_),
       stride_(kernel.stride_),
       padding_(kernel.padding_),
@@ -204,8 +207,6 @@ ConvConstants::ConvConstants(ConvConstants&& kernel)
 
 ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
   if (this != &kernel) {
-    weights_ = std::move(kernel.weights_);
-    biases_ = std::move(kernel.biases_);
     std::swap(kernel_size_, kernel.kernel_size_);
     std::swap(stride_, kernel.stride_);
     std::swap(padding_, kernel.padding_);
@@ -222,9 +223,15 @@ ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
 absl::Status ConvConstants::Compile(const CreationContext& creation_context) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  const auto code = GenerateConvolutionConstantCode(
+  std::string code = GenerateConvolutionConstantCode(
       definition_, kernel_size_, src_channels_, dst_channels_,
-      stride_correction, *creation_context.device, linked_operations_);
+      stride_correction, *creation_context.device, &args_);
+  std::string element_wise_code;
+  RETURN_IF_ERROR(
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                          {{"dst_tensor", element_wise_code}},
+                                          &code));
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsAdreno3xx()) {
@@ -241,20 +248,16 @@ absl::Status ConvConstants::Compile(const CreationContext& creation_context) {
 }
 
 absl::Status ConvConstants::BindArguments() {
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
-  RETURN_IF_ERROR(
-      kernel_.SetBytesAuto(int2(padding_.x * src_[0]->Batch(), padding_.y)));
-  RETURN_IF_ERROR(
-      kernel_.SetBytesAuto(int2(dilation_.x * src_[0]->Batch(), dilation_.y)));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return absl::OkStatus();
+  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
+  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
+  RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
+  RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
+  RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));
+  RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
+  RETURN_IF_ERROR(args_.SetInt("dilation_x", dilation_.x * src_[0]->Batch()));
+  RETURN_IF_ERROR(args_.SetInt("dilation_y", dilation_.y));
+  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
+  return args_.Bind(kernel_.kernel());
 }
 
 int3 ConvConstants::GetGridSize() const {
@@ -304,12 +307,18 @@ absl::Status CreateConvConstants(const CreationContext& creation_context,
   *result = ConvConstants(definition, attr);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::BUFFER;
-  create_info.data_type = definition.GetDataType();
-  create_info.aligned_size = attr.weights.shape.o;
-  RETURN_IF_ERROR(CreateLinearStorage(
-      create_info, attr.bias, creation_context.context, &result->biases_));
+
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::BUFFER;
+  desc.element_type = definition.GetDataType();
+  desc.memory_type = MemoryType::CONSTANT;
+
+  LinearStorage lt;
+  RETURN_IF_ERROR(
+      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
+  result->args_.AddObject("biases", AccessType::READ,
+                          absl::make_unique<LinearStorage>(std::move(lt)),
+                          absl::make_unique<TensorLinearDescriptor>(desc));
   return absl::OkStatus();
 }
 
