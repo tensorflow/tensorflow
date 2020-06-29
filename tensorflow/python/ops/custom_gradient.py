@@ -287,14 +287,22 @@ def get_variable_by_name(var_name):
     return None
 
 
-def get_dependent_variables(input_ops, output_ops):
-  """Finds variables involved in the subgraph b/w input_ops and output_ops."""
+def _get_dependent_variables(input_ops, output_ops):
+  """Finds variables involved in the subgraph between input_ops and output_ops.
+
+  Args:
+    input_ops: Flattened list of input ops
+    output_ops: Flattened list of output ops
+
+  Returns:
+    A list of variables
+  """
 
   # avoids the edge-case when input_ops == output_ops.
   output_ops = nest.map_structure(gen_array_ops.identity, output_ops)
   inbetween_ops = op_selector.get_backward_walk_ops(
-      seed_ops=nest.flatten(output_ops),
-      stop_at_ts=nest.flatten(input_ops),
+      seed_ops=output_ops,
+      stop_at_ts=input_ops,
       inclusive=False,
       only_differentiable=True)
   var_ops = (op for op in inbetween_ops if op.type in VAR_OP_TYPES)
@@ -332,7 +340,11 @@ def _graph_mode_decorator(f, args, kwargs):
   ])
   with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args)
+
   args = nest.flatten(args)
+  flat_result = nest.flatten(result)
+  flat_result_len = len(flat_result)
+
   after_vars = set([
       v.ref() for v in current_var_scope.global_variables() +
       current_var_scope.local_variables()
@@ -350,10 +362,10 @@ def _graph_mode_decorator(f, args, kwargs):
   # variables used that are *not* part of the inputs.
   variables_in_tape = frozenset([
       v.ref() for v in variable_watcher.watched_variables()
-  ]) - frozenset(v.ref() for v in args)
+  ])
   variables_in_subgraph = frozenset([
       v.ref()
-      for v in get_dependent_variables(input_ops=args, output_ops=result)
+      for v in _get_dependent_variables(input_ops=args, output_ops=flat_result)
   ])
   variables = list(
       [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])
@@ -369,8 +381,6 @@ def _graph_mode_decorator(f, args, kwargs):
     # User seems to intend to use variables but none were captured.
     logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
                  "no ResourceVariables were used on the forward pass.")
-  flat_result = nest.flatten(result)
-  flat_result_len = len(flat_result)
 
   all_tensors = flat_result + args + variables
 
@@ -485,8 +495,8 @@ def recompute_grad(f):
     f: function `f(*x)` that returns a `Tensor` or sequence of `Tensor` outputs.
 
   Returns:
-   A function `g` that wraps `f`, but which recomputes `f` on the backwards
-   pass of a gradient call.
+    A function `g` that wraps `f`, but which recomputes `f` on the backwards
+    pass of a gradient call.
   """
   # TODO(cdfreeman) Add is_recomputing functionality from graph mode version
 
@@ -578,8 +588,8 @@ def grad_pass_through(f):
       outputs.
 
   Returns:
-   A function `h(x)` which returns the same values as `f(x)` and whose
-   gradients are the same as those of an identity function.
+    A function `h(x)` which returns the same values as `f(x)` and whose
+    gradients are the same as those of an identity function.
   """
   @custom_gradient
   def _grad_pass_through_op(*args, **kwargs):
