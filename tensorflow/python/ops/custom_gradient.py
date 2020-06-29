@@ -312,7 +312,16 @@ def _graph_mode_decorator(f, args, kwargs):
         "The custom_gradient decorator currently supports keywords "
         "arguments only when eager execution is enabled.")
   name = "CustomGradient-%s" % ops.uid()
-  args = nest.map_structure(ops.convert_to_tensor, args)
+
+  default_graph = ops.get_default_graph()
+  def convert_arg(x):
+    x = ops.convert_to_tensor(x)
+    # If graph building, be sure to capture all inputs
+    if default_graph.building_function and x.graph != default_graph:
+      x = default_graph.capture(x)
+    return x
+
+  args = nest.map_structure(convert_arg, args)
 
   # Checking global and local variables attempts to ensure that no non-resource
   # Variables are added to the graph.
@@ -336,15 +345,15 @@ def _graph_mode_decorator(f, args, kwargs):
           "All variables used by a function wrapped with @custom_gradient must "
           "be `ResourceVariable`s. Ensure that no `variable_scope` is created "
           "with `use_resource=False`.")
+
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  inputs = args
   variables_in_tape = frozenset([
       v.ref() for v in variable_watcher.watched_variables()
-  ]) - frozenset(v.ref() for v in inputs)
+  ]) - frozenset(v.ref() for v in args)
   variables_in_subgraph = frozenset([
       v.ref()
-      for v in get_dependent_variables(input_ops=inputs, output_ops=result)
+      for v in get_dependent_variables(input_ops=args, output_ops=result)
   ])
   variables = list(
       [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])
@@ -515,7 +524,8 @@ def recompute_grad(f):
 
         def transpose(*t_args, **t_kwargs):
           """Gradient function calculation for forward mode autodiff."""
-          # Just throw an error since gradients / activations are not stored on tape for recompute.
+          # Just throw an error since gradients / activations are not stored on
+          # tape for recompute.
           raise NotImplementedError(
               "recompute_grad tried to transpose grad of {}. "
               "Consider not using recompute_grad in forward mode"
