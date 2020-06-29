@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -437,8 +437,7 @@ StatusOr<std::unique_ptr<gpu::KernelThunk>> TransformKernelToXlaThunk(
 
   // Finally, create the thunk and set the launch dimensions.
   auto thunk = absl::make_unique<gpu::KernelThunk>(
-      buffers, kernel.getName().str(), instr,
-      /*unroll_factor=*/1);
+      buffers, kernel.getName().str(), instr);
 
   // Set launch bounds.
   mlir::gpu::KernelDim3 block = launchOp.getBlockSizeOperandValues();

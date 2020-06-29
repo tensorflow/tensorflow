@@ -28,9 +28,56 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
+
+ExecutionInput::~ExecutionInput() {
+  for (auto& index : unowned_indices_) {
+    auto buffer = buffers_.mutable_element(index)->Release();
+    if (buffer) {
+      buffer->Release();
+    }
+  }
+}
+
+Status ExecutionInput::SetDynamicShape(Shape dynamic_shape) {
+  const Shape& input_shape = shape();
+  if (!ShapeUtil::DynamicShapeIsCompatible(input_shape, dynamic_shape)) {
+    return tensorflow::errors::InvalidArgument(
+        "Cannot set dynamic shape: ", input_shape.DebugString(), " vs. ",
+        dynamic_shape.DebugString());
+  }
+  dynamic_shape_ = absl::make_unique<Shape>(std::move(dynamic_shape));
+  return Status::OK();
+}
+
+void ExecutionInput::SetUnownedBuffer(const ShapeIndex& index,
+                                      MaybeOwningDeviceMemory buffer) {
+  *buffers_.mutable_element(index) = std::move(buffer);
+  unowned_indices_.insert(index);
+}
+
+xla::StatusOr<xla::ShapedBuffer> ExecutionInput::ToShapedBuffer(
+    se::DeviceMemoryAllocator* allocator, int device_ordinal) const {
+  const Shape& input_shape = shape();
+  xla::ShapedBuffer shaped_buffer(input_shape, input_shape,
+                                  allocator->platform(), device_ordinal);
+  for (const auto& index_buffer : Buffers()) {
+    const tensorflow::se::OwningDeviceMemory* mem =
+        index_buffer.second.AsOwningDeviceMemory();
+    if (mem != nullptr && (mem->allocator() != allocator ||
+                           mem->device_ordinal() != device_ordinal)) {
+      return tensorflow::errors::InvalidArgument(
+          "Device buffer at index ", index_buffer.first.ToString(),
+          " has mismatching allocator/device");
+    }
+    shaped_buffer.set_buffer(index_buffer.second.AsDeviceMemoryBase(),
+                             index_buffer.first);
+  }
+  return std::move(shaped_buffer);
+}
 
 StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,

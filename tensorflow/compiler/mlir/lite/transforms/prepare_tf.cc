@@ -584,46 +584,50 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     const int ellipsis_filled_dim_size = input_size - begin_shape[0] + 1;
 
-    llvm::APInt new_begin_mask = strided_slice_op.begin_mask();
-    llvm::APInt new_end_mask = strided_slice_op.end_mask();
+    int64_t begin_mask = strided_slice_op.begin_mask().getSExtValue();
+    int64_t end_mask = strided_slice_op.end_mask().getSExtValue();
+    int64_t new_begin_mask = 0;
+    int64_t new_end_mask = 0;
 
     SmallVector<int32_t, 4> padded_begin;
     SmallVector<int32_t, 4> padded_end;
     SmallVector<int32_t, 4> padded_stride;
 
     // Before the ellipsis.
-    uint64_t index = 1;
-    int count = 0;
-
-    while (index < ellipsis_mask) {
-      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(count));
-      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(count));
-      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(count));
-      index <<= 1;
-      count++;
+    int index = 0;
+    int new_index = 0;
+    while (((ellipsis_mask >> index) & 1) == 0) {
+      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
+      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
+      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
+      if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
+      if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
+      ++index;
+      ++new_index;
     }
 
     // Ellipsis.
-    for (int i = 0; i < ellipsis_filled_dim_size; ++i) {
-      new_begin_mask |= ellipsis_mask;
-      new_end_mask |= ellipsis_mask;
+    for (; new_index < index + ellipsis_filled_dim_size; ++new_index) {
+      new_begin_mask |= (1 << new_index);
+      new_end_mask |= (1 << new_index);
 
       // Mimic the begin/end/strides mask behavior.
       padded_begin.push_back(0);
       padded_end.push_back(0);
       padded_stride.push_back(1);
-
-      ellipsis_mask <<= 1;
     }
 
     // Account for ellipsis mask.
-    count++;
+    ++index;
 
     // After the ellipsis.
-    for (; count < begin_shape[0]; ++count) {
-      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(count));
-      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(count));
-      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(count));
+    for (; index < begin_shape[0]; ++index) {
+      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
+      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
+      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
+
+      if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
+      if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
     }
 
     auto attribute_type = rewriter.getIntegerType(64);
@@ -645,7 +649,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
         end_op.getResult(), stride_op.getResult(),
         rewriter.getIntegerAttr(attribute_type, new_begin_mask),
         rewriter.getIntegerAttr(attribute_type, new_end_mask),
-        rewriter.getI64IntegerAttr(0),
+        /*ellipsis_maks=*/rewriter.getI64IntegerAttr(0),
         rewriter.getIntegerAttr(attribute_type,
                                 strided_slice_op.new_axis_mask()),
         rewriter.getIntegerAttr(attribute_type,
@@ -655,9 +659,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    // TODO(renjieliu): Consider expand the transformation for shrink
-    // mask as well.
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
+
+    // TODO(renjieliu): Consider expand the transformation for shrink mask as
+    // well.
+    if (strided_slice_op.shrink_axis_mask().getZExtValue()) return failure();
 
     // Handle new axis mask.
     uint64_t new_axis_mask = strided_slice_op.new_axis_mask().getZExtValue();

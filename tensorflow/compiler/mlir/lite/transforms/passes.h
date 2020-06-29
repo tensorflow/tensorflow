@@ -91,9 +91,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
 // Verifies runtime constraints.
 std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();
 
-// Creates function pass to select device index/fold tf.DeviceIndex.
-std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass();
-
 }  // namespace TFL
 
 }  // namespace mlir

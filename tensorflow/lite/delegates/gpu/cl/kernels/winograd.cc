@@ -378,14 +378,15 @@ absl::Status Winograd4x4To36::UploadBt(CLContext* context) {
     bt_aligned.data[y * 8 + 7] = 0.0f;
   }
 
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::TEXTURE_2D;
-  create_info.data_type = definition_.GetDataType();
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition_.GetDataType();
 
   LinearStorage lt;
-  RETURN_IF_ERROR(CreateLinearStorage(create_info, bt_aligned, context, &lt));
+  RETURN_IF_ERROR(CreateLinearStorage(desc, bt_aligned, context, &lt));
   args_.AddObject("bt", AccessType::READ,
-                  absl::make_unique<LinearStorage>(std::move(lt)));
+                  absl::make_unique<LinearStorage>(std::move(lt)),
+                  absl::make_unique<TensorLinearDescriptor>(desc));
   return absl::OkStatus();
 }
 
@@ -492,13 +493,14 @@ absl::Status Winograd36To4x4::UploadAt(CLContext* context) {
     at_aligned.data[y * 8 + 7] = 0.0f;
   }
 
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::TEXTURE_2D;
-  create_info.data_type = definition_.GetDataType();
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition_.GetDataType();
   LinearStorage lt;
-  RETURN_IF_ERROR(CreateLinearStorage(create_info, at_aligned, context, &lt));
+  RETURN_IF_ERROR(CreateLinearStorage(desc, at_aligned, context, &lt));
   args_.AddObject("at", AccessType::READ,
-                  absl::make_unique<LinearStorage>(std::move(lt)));
+                  absl::make_unique<LinearStorage>(std::move(lt)),
+                  absl::make_unique<TensorLinearDescriptor>(desc));
   return absl::OkStatus();
 }
 
@@ -550,14 +552,15 @@ absl::Status CreateWinograd36To4x4(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
     Winograd36To4x4* result) {
   *result = Winograd36To4x4(definition);
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::TEXTURE_2D;
-  create_info.data_type = definition.GetDataType();
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition.GetDataType();
   LinearStorage lt;
   RETURN_IF_ERROR(
-      CreateLinearStorage(create_info, biases, creation_context.context, &lt));
+      CreateLinearStorage(desc, biases, creation_context.context, &lt));
   result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)));
+                          absl::make_unique<LinearStorage>(std::move(lt)),
+                          absl::make_unique<TensorLinearDescriptor>(desc));
   return result->UploadAt(creation_context.context);
 }
 

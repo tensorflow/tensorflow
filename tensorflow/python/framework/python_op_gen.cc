@@ -295,7 +295,8 @@ string GenEagerPythonOp::Code() {
   // from the end of params_no_default_, and adding params_no_default_.
   attrs_.reserve(params_no_default_.size() - op_def_.input_arg_size() +
                  params_with_default_.size());
-  for (int i = op_def_.input_arg_size(), iter_limit = params_no_default_.size(); i < iter_limit; ++i) {
+  for (int i = op_def_.input_arg_size(), iter_limit = params_no_default_.size();
+       i < iter_limit; ++i) {
     attrs_.push_back(params_no_default_[i].GetName());
   }
   for (const auto& p : params_with_default_) {
@@ -981,9 +982,9 @@ void GenEagerPythonOp::AddRawOpExport(const string& parameters) {
                      function_name_, "))\n");
 }
 
-string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
-                    const std::vector<string>& hidden_ops,
-                    const string& source_file_name = "") {
+string GetPythonOpsImpl(const OpList& ops, const ApiDefMap& api_defs,
+                        const std::vector<string>& hidden_ops,
+                        const string& source_file_name = "") {
   string result;
   // Header
   // TODO(josh11b): Mention the library for which wrappers are being generated.
@@ -1069,11 +1070,17 @@ from tensorflow.python.util.tf_export import tf_export
 
 }  // namespace
 
+string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
+                    const std::vector<string>& hidden_ops,
+                    const string& source_file_name) {
+  return GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name);
+}
+
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,
                     const std::vector<string>& hidden_ops,
                     const string& source_file_name) {
   printf("%s",
-         GetPythonOps(ops, api_defs, hidden_ops, source_file_name).c_str());
+         GetPythonOpsImpl(ops, api_defs, hidden_ops, source_file_name).c_str());
 }
 
 string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
@@ -1081,7 +1088,7 @@ string GetPythonWrappers(const char* op_list_buf, size_t op_list_len) {
   ops.ParseFromArray(op_list_buf, op_list_len);
 
   ApiDefMap api_def_map(ops);
-  return GetPythonOps(ops, api_def_map, {});
+  return GetPythonOpsImpl(ops, api_def_map, {});
 }
 
 }  // namespace tensorflow

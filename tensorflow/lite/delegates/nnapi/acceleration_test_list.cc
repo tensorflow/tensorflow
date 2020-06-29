@@ -60,6 +60,10 @@ FloatActivationsOpTest/Elu,30
 FloatActivationsOpTest/HardSwish
 QuantizedActivationsOpTest/HardSwish
 QuantizedActivationsOpTest/HardSwishBias
+QuantizedActivationsOpTest/Relu*
+QuantizedActivationsOpTest/PRelu,29
+QuantizedActivationsOpTest/PReluSameShapes,29
+QuantizedActivationsOpTest/PReluInt8.+,30
 
 # add_test
 FloatAddOpModel/.+
@@ -145,6 +149,7 @@ ConvolutionOpTest/ConvolutionOpTest/.+/\d+
 
 # dequantize_test
 DequantizeOpTest/Uint8
+DequantizeOpTest/Int8,30
 
 # depth_to_space_test
 DepthToSpaceOpModel/Float32
@@ -190,6 +195,7 @@ QuantizedFullyConnectedOpTest/SimpleTestQuantizedOutputMultiplierGreaterThan1Uin
 QuantizedFullyConnectedOpTest/SimpleTestQuantizedOutputMultiplierGreaterThan1Int8/\d+,29
 HybridFullyConnectedOpTest/SimpleTestQuantizedUint8,29
 HybridFullyConnectedOpTest/SimpleTestQuantizedInt8,29
+HybridAsymmetricInputFullyConnectedOpTest.SimpleTestQuantizedUint8,29
 FloatFullyConnectedOpTest/FloatFullyConnectedOpTest/SimpleTest4DInput/\d+
 QuantizedFullyConnectedOpTest/QuantizedFullyConnectedOpTest/SimpleTest4dInputQuantizedUint8/\d+
 QuantizedFullyConnectedOpTest/QuantizedFullyConnectedOpTest/SimpleTest4dInputQuantizedOutputMultiplierGreaterThan1Uint8/\d+,29
@@ -207,6 +213,7 @@ FloatGatherOpTest/LastAxis,29
 TypesGatherOpTest/Float32Int32,29
 TypesGatherOpTest/Int32Int32,29
 TypesGatherOpTest/Uint8Int32,29
+TypesGatherOpTest/Int8Int32,29
 
 # hashtable_lookup_test
 # All test excepted the string one should be accelerated
@@ -286,13 +293,18 @@ QuantizedLstmTest/BasicQuantizedLstmTest/29
 
 # quantize_test
 QuantizeOpTest/UINT8,29
+QuantizeOpTest/INT8,30
+
+# rank
 
 # reduce_test
 -Dynamic.+(Mean|Sum|Prod|Max|Min)OpTest/.+
 -ConstUint8(Mean|Sum)OpTest/.+
+-ConstInt8MeanOpTest.NonSpecialAxisNonSameScale
+-ConstInt8MeanOpTest.QuantizedDifferentScale
 ConstUint8(Max|Min)OpTest/.+,29
 ConstUint8(Mean)OpTest/.+
-Constint8(Mean|Max|Min)OpTest/.+
+ConstInt8(Mean|Max|Min)OpTest/.+,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/NotKeepDims,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/KeepDims,29
 ConstFloat(Mean|Any)OpTest/NotKeepDims

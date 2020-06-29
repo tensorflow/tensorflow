@@ -53,8 +53,8 @@ struct ReplicateToIslandPass
 
 // Returns whether op requires `_xla_replica_id` attribute.
 bool RequiresReplicaIDAttribute(Operation* op) {
-  return llvm::isa<TF::EnqueueTPUEmbeddingSparseTensorBatchOp>(op) ||
-         llvm::isa<TF::EnqueueTPUEmbeddingRaggedTensorBatchOp>(op);
+  return llvm::isa<TF::EnqueueTPUEmbeddingSparseTensorBatchOp,
+                   TF::EnqueueTPUEmbeddingRaggedTensorBatchOp>(op);
 }
 
 // Adds integer attribute that represents replica id for replicated ops that

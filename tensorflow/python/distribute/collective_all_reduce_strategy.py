@@ -138,6 +138,18 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
     """
     return super(CollectiveAllReduceStrategy, self).scope()
 
+  @property
+  def cluster_resolver(self):
+    """Returns the cluster resolver associated with this strategy.
+
+    As a multi-worker strategy,
+    `tf.distribute.experimental.MultiWorkerMirroredStrategy` provides the
+    associated `tf.distribute.cluster_resolver.ClusterResolver`. If the user
+    provides one in `__init__`, that instance is returned; if the user does
+    not, a default `TFConfigClusterResolver` is provided.
+    """
+    return self.extended._cluster_resolver  # pylint: disable=protected-access
+
 
 @tf_export(v1=["distribute.experimental.MultiWorkerMirroredStrategy"])  # pylint: disable=missing-docstring
 class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
@@ -346,9 +358,6 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     )
     super(CollectiveAllReduceExtended, self)._initialize_single_worker(
         local_devices)
-    host_device = device_util.get_host_for_device(self._worker_device)
-    self._input_workers = input_lib.InputWorkers(
-        [(host_device, self.worker_devices)])
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.
@@ -365,6 +374,20 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         "communication = %s", cluster_spec.as_dict(), task_type,
         task_id, self._num_workers, local_devices,
         self._communication)
+
+  def _input_workers_with_options(self, options=None):
+    host_device = device_util.get_host_for_device(self._worker_device)
+    if not options or options.experimental_prefetch_to_device:
+      return input_lib.InputWorkers([(host_device, self.worker_devices)])
+    else:
+      return input_lib.InputWorkers([(
+          host_device,
+          [device_util.get_host_for_device(worker) for worker in
+           self.worker_devices])])
+
+  @property
+  def _input_workers(self):
+    return self._input_workers_with_options()
 
   def _get_variable_creator_initial_value(self,
                                           replica_id,
@@ -429,7 +452,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     input_context = self._make_input_context()
     return input_lib.get_distributed_dataset(
         dataset,
-        self._input_workers,
+        self._input_workers_with_options(options),
         self._container_strategy(),
         split_batch_by=self._num_replicas_in_sync,
         input_context=input_context)
@@ -439,7 +462,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     input_context = self._make_input_context()
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn=dataset_fn,
-        input_workers=self._input_workers,
+        input_workers=self._input_workers_with_options(options),
         input_contexts=[input_context],
         strategy=self._container_strategy())
 

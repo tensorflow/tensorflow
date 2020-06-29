@@ -52,7 +52,8 @@ class SummaryScalarOp : public OpKernel {
     Summary s;
     for (int i = 0; i < Ttags.size(); i++) {
       Summary::Value* v = s.add_value();
-      v->set_tag(string(Ttags(i)));  // NOLINT
+      const tstring& Ttags_i = Ttags(i);
+      v->set_tag(Ttags_i.data(), Ttags_i.size());
       v->set_simple_value(float(Tvalues(i)));
     }
 
@@ -102,7 +103,8 @@ class SummaryHistoOp : public OpKernel {
 
     Summary s;
     Summary::Value* v = s.add_value();
-    v->set_tag(string(tags.scalar<tstring>()()));  // NOLINT
+    const tstring& tags0 = tags.scalar<tstring>()();
+    v->set_tag(tags0.data(), tags0.size());
     histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */);
 
     Tensor* summary_tensor = nullptr;

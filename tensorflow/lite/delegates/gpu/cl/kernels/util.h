@@ -36,11 +36,6 @@ namespace cl {
 
 std::string GetCommonDefines(CalculationsPrecision precision);
 
-enum class TextureAddressMode {
-  DONT_CARE,  // translated to CLK_ADDRESS_NONE
-  ZERO,       // translated to CLK_ADDRESS_CLAMP
-};
-
 struct WHSPoint {
   std::string w_name;
   std::string h_name;

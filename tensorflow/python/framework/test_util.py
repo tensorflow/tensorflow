@@ -1933,6 +1933,9 @@ class TensorFlowTestCase(googletest.TestCase):
       # disable it here.
       pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
 
+    if is_mlir_bridge_enabled():
+      context.context().enable_mlir_bridge = True
+
     self._threads = []
     self._tempdir = None
     self._cached_session = None

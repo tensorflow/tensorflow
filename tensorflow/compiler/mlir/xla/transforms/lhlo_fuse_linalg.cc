@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -44,7 +45,7 @@ class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
     auto func = getFunction();
 
     // TODO(pifon): Remove assumption that the function has a single block.
-    if (func.getBlocks().size() != 1) {
+    if (!llvm::hasSingleElement(func)) {
       emitError(func.getLoc(), "The function needs to have a single block.");
       signalPassFailure();
       return;
@@ -58,7 +59,7 @@ class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
     for (auto func_arg : func.getArguments()) {
       result_buffers.insert(func_arg);
     }
-    for (auto& block : func.getBlocks()) {
+    for (auto& block : func) {
       auto returnOp = mlir::dyn_cast<mlir::ReturnOp>(block.getTerminator());
       if (!returnOp) continue;
       for (auto operand : returnOp.getOperands()) {

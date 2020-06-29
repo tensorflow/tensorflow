@@ -440,7 +440,7 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
   };
   for (FuncOp func : funcs) {
     for (auto& op : func.front().getOperations()) {
-      if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+      if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
         op.replaceAllUsesWith(op.getOperands());
         continue;
       }
@@ -759,7 +759,7 @@ LogicalResult HandlePartitionedCallOp(
     return it->getSecond().accumulate_on_write;
   };
   FuncOp lowered_callee = callee;
-  if (callee.getVisibility() != SymbolTable::Visibility::Private) {
+  if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
     lowered_callee.setVisibility(SymbolTable::Visibility::Private);
