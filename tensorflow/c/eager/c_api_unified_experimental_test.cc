@@ -109,10 +109,9 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul) {
   float vals [] = {0.0f,0.0f,0.0f,0.0f};
   TFE_Context* eager_ctx = TF_ExecutionContextGetTFEContext(ctx);
   TFE_TensorHandle* t = TestMatrixTensorHandleWithInput(eager_ctx, vals);
-  TFE_TensorHandle* expected_tensor = TestMatrixTensorHandleWithInput(eager_ctx, vals); // 2x2 matrix of zeros as expected result
   
   TF_AbstractTensor* at =
-      TF_CreateAbstractTensorFromEagerTensor(t, status.get()); //get abstract tensor
+      TF_CreateAbstractTensorFromEagerTensor(t, status.get()); // get abstract tensor
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build an abstract operation.
@@ -146,7 +145,7 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul) {
   float result_data[4] = {0};
   memcpy(&result_data[0], TF_TensorData(result_tensor), TF_TensorByteSize(result_tensor));
 
-  int data_len = 4; //length of result_data
+  int data_len = 4; // length of result_data
   for(int i = 0; i < data_len; i++){
       EXPECT_EQ(result_data[i], 0);
   }
@@ -182,7 +181,7 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul2) {
   TFE_TensorHandle* t1 = TestMatrixTensorHandleWithInput(eager_ctx, vals1);
   
   TF_AbstractTensor* at1 =
-      TF_CreateAbstractTensorFromEagerTensor(t1, status.get()); //get abstract tensor
+      TF_CreateAbstractTensorFromEagerTensor(t1, status.get()); // get abstract tensor
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build 2nd Matrix.
@@ -190,12 +189,9 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul2) {
   TFE_TensorHandle* t2 = TestMatrixTensorHandleWithInput(eager_ctx, vals2);
   
   TF_AbstractTensor* at2 =
-      TF_CreateAbstractTensorFromEagerTensor(t2, status.get()); //get abstract tensor
+      TF_CreateAbstractTensorFromEagerTensor(t2, status.get()); // get abstract tensor
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
-  // Build expected result
-  float e_vals [] = {19.0f,22.0f,43.0f,50.0f};
- 
   // Build an abstract operation.
   auto* op = TF_NewAbstractOp(ctx);
   TF_AbstractOpSetOpType(op, "MatMul", status.get());
@@ -229,7 +225,10 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul2) {
   float result_data[4] = {0};
   memcpy(&result_data[0], TF_TensorData(result_tensor), TF_TensorByteSize(result_tensor));
 
-  int data_len = 4; //length of e_vals
+  // Build expected result & verify.
+  float e_vals [] = {19.0f,22.0f,43.0f,50.0f};
+
+  int data_len = 4; // length of e_vals
   for(int i = 0; i < data_len; i++){ 
     EXPECT_EQ(result_data[i], e_vals[i]);
   }
