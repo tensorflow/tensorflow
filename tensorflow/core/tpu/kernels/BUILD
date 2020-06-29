@@ -197,18 +197,30 @@ cc_library(
 
 cc_library(
     name = "tpu_compilation_cache_lookup",
-    srcs = ["tpu_compilation_cache_lookup.cc"],
     hdrs = [
         "tpu_compilation_cache_lookup.h",
     ],
     deps = [
         ":tpu_compilation_cache_entry",
-        ":tpu_compilation_cache_external",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_proto_cc",
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
+    name = "tpu_compilation_cache_local_lookup",
+    srcs = ["tpu_compilation_cache_local_lookup.cc"],
+    hdrs = ["tpu_compilation_cache_local_lookup.h"],
+    deps = [
+        ":tpu_compilation_cache_entry",
+        ":tpu_compilation_cache_external",
+        ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_lookup",
+        ":tpu_compilation_cache_proto_cc",
+        "//tensorflow/core/platform:status",
     ],
 )
 
