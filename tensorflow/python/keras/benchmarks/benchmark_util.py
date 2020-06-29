@@ -21,7 +21,6 @@ import timeit
 import numpy as np
 
 from tensorflow.python.keras import callbacks
-from tensorflow.python.keras.benchmarks import distribution_util
 
 
 class TimerCallBack(callbacks.Callback):
@@ -104,26 +103,19 @@ def measure_performance(model_fn,
   avg_epoch_time_list, wall_time_list, exp_per_sec_list = [], [], []
   total_num_examples = epoch * num_examples
 
-  strategy = distribution_util.get_distribution_strategy(
-      distribution_strategy=distribution_strategy,
-      num_gpus=num_gpus)
-
   for _ in range(run_iters):
     timer = timeit.default_timer
     t0 = timer()
-    # Init the distribution strategy scope for each iteration.
-    strategy_scope = distribution_util.get_strategy_scope(strategy)
-    with strategy_scope:
-      model = model_fn()
-      build_time = timer() - t0
+    model = model_fn()
+    build_time = timer() - t0
 
-      t1 = timer()
-      model.compile(
-          optimizer=optimizer,
-          loss=loss,
-          metrics=metrics,
-      )
-      compile_time = timer() - t1
+    t1 = timer()
+    model.compile(
+        optimizer=optimizer,
+        loss=loss,
+        metrics=metrics,
+    )
+    compile_time = timer() - t1
     # Run one warm up epoch.
     model.fit(x=x, y=y, batch_size=batch_size, epochs=1)
     cbk = TimerCallBack()
