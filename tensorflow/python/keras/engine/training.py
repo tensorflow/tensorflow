@@ -436,7 +436,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                            'Instead, in order to instantiate and build your '
                            'model, `call` your model on real tensor data (of '
                            'the correct dtype).')
-
     super(Model, self).build(input_shape)
 
   def call(self, inputs, training=None, mask=None):
@@ -1024,7 +1023,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         2. If `model.fit` is  wrapped in `tf.function`.
 
         ValueError: In case of mismatch between the provided input data
-            and what the model expects.
+            and what the model expects or when the input data is empty.
     """
     _keras_api_gauge.get_cell('fit').set(True)
     # Legacy graph support is contained in `training_v1.Model`.
@@ -1084,6 +1083,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       # happen after `callbacks.on_train_begin`.
       data_handler._initial_epoch = (  # pylint: disable=protected-access
           self._maybe_load_initial_epoch_from_ckpt(initial_epoch))
+      logs = None
       for epoch, iterator in data_handler.enumerate_epochs():
         self.reset_metrics()
         callbacks.on_epoch_begin(epoch)
@@ -1102,6 +1102,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               logs = tmp_logs  # No error, now safe to assign to logs.
               end_step = step + data_handler.step_increment
               callbacks.on_train_batch_end(end_step, logs)
+
+        if logs is None:
+          raise ValueError('Expect x to be a non-empty array or dataset.')
         epoch_logs = copy.copy(logs)
 
         # Run validation.
@@ -1593,6 +1596,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       predict_function = self.make_predict_function()
       self._predict_counter.assign(0)
       callbacks.on_predict_begin()
+      batch_outputs = None
       for _, iterator in data_handler.enumerate_epochs():  # Single epoch.
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
@@ -1611,6 +1615,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                   outputs, batch_outputs)
             end_step = step + data_handler.step_increment
             callbacks.on_predict_batch_end(end_step, {'outputs': batch_outputs})
+      if batch_outputs is None:
+        raise ValueError('Expect x to be a non-empty array or dataset.')
       callbacks.on_predict_end()
     all_outputs = nest.map_structure_up_to(batch_outputs, concat, outputs)
     return tf_utils.to_numpy_or_python_type(all_outputs)
@@ -1979,7 +1985,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     save.save_model(self, filepath, overwrite, include_optimizer, save_format,
                     signatures, options)
 
-  def save_weights(self, filepath, overwrite=True, save_format=None):
+  def save_weights(self,
+                   filepath,
+                   overwrite=True,
+                   save_format=None,
+                   options=None):
     """Saves all layer weights.
 
     Either saves in HDF5 or in TensorFlow format based on the `save_format`
@@ -2032,6 +2042,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         save_format: Either 'tf' or 'h5'. A `filepath` ending in '.h5' or
             '.keras' will default to HDF5 if `save_format` is `None`. Otherwise
             `None` defaults to 'tf'.
+        options: Optional `tf.train.CheckpointOptions` object that specifies
+            options for saving weights.
 
     Raises:
         ImportError: If h5py is not available when attempting to save in HDF5
@@ -2093,7 +2105,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
              'the TensorFlow format the optimizer\'s state will not be '
              'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
             % (optimizer,))
-      self._trackable_saver.save(filepath, session=session)
+      self._trackable_saver.save(filepath, session=session, options=options)
       # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
       checkpoint_management.update_checkpoint_state_internal(
           save_dir=os.path.dirname(filepath),
@@ -2410,6 +2422,12 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     specs = nest.pack_sequence_as(inputs, specs)
 
     self._saved_model_inputs_spec = specs
+
+    # Store the input shapes
+    if (self.__class__.__name__ == 'Sequential' and
+        self._build_input_shape is None):
+      self._build_input_shape = nest.map_structure(
+          lambda x: None if x is None else x.shape, specs)
 
   def _assert_weights_created(self):
     """Asserts that all the weights for the model have been created.

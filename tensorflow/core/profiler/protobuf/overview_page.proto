@@ -49,6 +49,12 @@ message OverviewPageAnalysis {
   double device_tf_op_percent = 12;
   // Host trace level.
   uint32 host_trace_level = 13;
+  // Percentage of TF-op execution time on the host (excluding the idle time)
+  // that are in eager mode.
+  double host_op_time_eager_percent = 14;
+  // Percentage of TF-op execution time on the device (excluding the idle time)
+  // that are in eager mode.
+  double device_op_time_eager_percent = 15;
 }
 
 // Overview result for a performance tip to users.
@@ -87,8 +93,11 @@ message OverviewPageRecommendation {
   // A statement for output that recommends the next steps for investigating the
   // bottleneck.
   string output_statement = 9;
+  // A statement that recommends the next steps for investigating eager-mode
+  // related bottleneck (it is a html so that it can link to other tools/docs.)
+  string eager_statement_html = 12;
   // A statement that recommends the next steps for investigating tf-function
-  // related bottleneck (it is a html so that it can link to other tools/docs.
+  // related bottleneck (it is a html so that it can link to other tools/docs.)
   string tf_function_statement_html = 10;
   // A list of tips for improving host performance.
   repeated OverviewPageTip host_tips = 3;

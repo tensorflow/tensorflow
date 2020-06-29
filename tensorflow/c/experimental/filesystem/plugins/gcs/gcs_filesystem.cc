@@ -12,12 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_filesystem.h"
+
 #include <stdlib.h>
 #include <string.h>
 
-#include "absl/strings/string_view.h"
 #include "google/cloud/storage/client.h"
-#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/env.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_helper.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for GCS environments.
@@ -36,8 +38,8 @@ static inline void TF_SetStatusFromGCSStatus(
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
 
-static void ParseGCSPath(absl::string_view fname, bool object_empty_ok,
-                         char** bucket, char** object, TF_Status* status) {
+void ParseGCSPath(const std::string& fname, bool object_empty_ok,
+                  std::string* bucket, std::string* object, TF_Status* status) {
   size_t scheme_end = fname.find("://") + 2;
   if (fname.substr(0, scheme_end + 1) != "gs://") {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
@@ -46,33 +48,19 @@ static void ParseGCSPath(absl::string_view fname, bool object_empty_ok,
   }
 
   size_t bucket_end = fname.find("/", scheme_end + 1);
-  if (bucket_end == absl::string_view::npos) {
+  if (bucket_end == std::string::npos) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "GCS path doesn't contain a bucket name.");
     return;
   }
-  absl::string_view bucket_view =
-      fname.substr(scheme_end + 1, bucket_end - scheme_end - 1);
-  *bucket =
-      static_cast<char*>(plugin_memory_allocate(bucket_view.length() + 1));
-  memcpy(*bucket, bucket_view.data(), bucket_view.length());
-  (*bucket)[bucket_view.length()] = '\0';
 
-  absl::string_view object_view = fname.substr(bucket_end + 1);
-  if (object_view.empty()) {
-    if (object_empty_ok) {
-      *object = nullptr;
-      return;
-    } else {
-      TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                   "GCS path doesn't contain an object name.");
-      return;
-    }
+  *bucket = fname.substr(scheme_end + 1, bucket_end - scheme_end - 1);
+  *object = fname.substr(bucket_end + 1);
+
+  if (object->empty() && !object_empty_ok) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "GCS path doesn't contain an object name.");
   }
-  *object =
-      static_cast<char*>(plugin_memory_allocate(object_view.length() + 1));
-  // object_view.data() is a null-terminated string_view because fname is.
-  strcpy(*object, object_view.data());
 }
 
 // SECTION 1. Implementation for `TF_RandomAccessFile`
@@ -86,6 +74,18 @@ namespace tf_random_access_file {
 // SECTION 2. Implementation for `TF_WritableFile`
 // ----------------------------------------------------------------------------
 namespace tf_writable_file {
+typedef struct GCSFile {
+  const std::string bucket;
+  const std::string object;
+  gcs::Client* gcs_client;  // not owned
+  TempFile outfile;
+  bool sync_need;
+} GCSFile;
+
+static void Cleanup(TF_WritableFile* file) {
+  auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
+  delete gcs_file;
+}
 
 // TODO(vnvo2409): Implement later
 
@@ -104,7 +104,7 @@ namespace tf_read_only_memory_region {
 namespace tf_gcs_filesystem {
 
 // TODO(vnvo2409): Add lazy-loading and customizing parameters.
-static void Init(TF_Filesystem* filesystem, TF_Status* status) {
+void Init(TF_Filesystem* filesystem, TF_Status* status) {
   google::cloud::StatusOr<gcs::Client> client =
       gcs::Client::CreateDefaultClient();
   if (!client) {
@@ -117,7 +117,51 @@ static void Init(TF_Filesystem* filesystem, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
 }
 
+void Cleanup(TF_Filesystem* filesystem) {
+  plugin_memory_free(filesystem->plugin_filesystem);
+}
+
 // TODO(vnvo2409): Implement later
+
+void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
+                     TF_WritableFile* file, TF_Status* status) {
+  std::string bucket, object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+  char* temp_file_name = TF_GetTempFileName("");
+  file->plugin_file = new tf_writable_file::GCSFile(
+      {std::move(bucket), std::move(object), gcs_client,
+       TempFile(temp_file_name, std::ios::binary | std::ios::out), true});
+  // We are responsible for freeing the pointer returned by TF_GetTempFileName
+  free(temp_file_name);
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_WritableFile* file, TF_Status* status) {
+  std::string bucket, object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto gcs_client = static_cast<gcs::Client*>(filesystem->plugin_filesystem);
+  char* temp_file_name = TF_GetTempFileName("");
+
+  auto gcs_status = gcs_client->DownloadToFile(bucket, object, temp_file_name);
+  TF_SetStatusFromGCSStatus(gcs_status, status);
+  auto status_code = TF_GetCode(status);
+  if (status_code != TF_OK && status_code != TF_NOT_FOUND) {
+    return;
+  }
+  // If this file does not exist on server, we will need to sync it.
+  bool sync_need = (status_code == TF_NOT_FOUND);
+  file->plugin_file = new tf_writable_file::GCSFile(
+      {std::move(bucket), std::move(object), gcs_client,
+       TempFile(temp_file_name, std::ios::binary | std::ios::app), sync_need});
+  free(temp_file_name);
+  TF_SetStatus(status, TF_OK, "");
+}
 
 }  // namespace tf_gcs_filesystem
 
@@ -126,9 +170,17 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
   TF_SetFilesystemVersionMetadata(ops);
   ops->scheme = strdup(uri);
 
+  ops->writable_file_ops = static_cast<TF_WritableFileOps*>(
+      plugin_memory_allocate(TF_WRITABLE_FILE_OPS_SIZE));
+  ops->writable_file_ops->cleanup = tf_writable_file::Cleanup;
+
   ops->filesystem_ops = static_cast<TF_FilesystemOps*>(
       plugin_memory_allocate(TF_FILESYSTEM_OPS_SIZE));
   ops->filesystem_ops->init = tf_gcs_filesystem::Init;
+  ops->filesystem_ops->cleanup = tf_gcs_filesystem::Cleanup;
+  ops->filesystem_ops->new_writable_file = tf_gcs_filesystem::NewWritableFile;
+  ops->filesystem_ops->new_appendable_file =
+      tf_gcs_filesystem::NewAppendableFile;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {

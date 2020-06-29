@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
@@ -39,18 +41,43 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
-
+namespace {
 using mlir::MLIRContext;
 using mlir::ModuleOp;
+using mlir::Operation;
 using mlir::OwningModuleRef;
 using stream_executor::port::StatusOr;
+
+bool IsControlFlowV1Op(Operation* op) {
+  return mlir::isa<mlir::tf_executor::SwitchOp, mlir::tf_executor::MergeOp,
+                   mlir::tf_executor::EnterOp, mlir::tf_executor::ExitOp,
+                   mlir::tf_executor::NextIterationSinkOp,
+                   mlir::tf_executor::NextIterationSourceOp>(op);
+}
+
+mlir::LogicalResult IsValidGraph(mlir::ModuleOp module) {
+  auto result = module.walk([&](Operation* op) {
+    return IsControlFlowV1Op(op) ? mlir::WalkResult::interrupt()
+                                 : mlir::WalkResult::advance();
+  });
+  if (result.wasInterrupted()) {
+    module.emitError(
+        "The graph has Control Flow V1 ops. TFLite converter doesn't support "
+        "Control Flow V1 ops. Consider using Control Flow V2 ops instead. See "
+        "https://www.tensorflow.org/api_docs/python/tf/compat/v1/"
+        "enable_control_flow_v2.");
+    return mlir::failure();
+  }
+  return mlir::success();
+}
+}  // namespace
 
 StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     const std::string& input_filename, bool input_mlir,
     bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
-    absl::string_view debug_info_file, absl::string_view input_arrays,
-    absl::string_view input_dtypes, absl::string_view input_shapes,
-    absl::string_view output_arrays, bool prune_unused_nodes,
+    const GraphImportConfig& specs, absl::string_view debug_info_file,
+    absl::string_view input_arrays, absl::string_view input_dtypes,
+    absl::string_view input_shapes, absl::string_view output_arrays,
     llvm::SourceMgr* source_mgr, MLIRContext* context) {
   // Set up the input file.
   std::string error_message;
@@ -85,15 +112,15 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
         file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, /*control_output_arrays=*/"",
-        prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-        /*graph_as_function=*/false, /*upgrade_legacy=*/true,
+        specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+        /*graph_as_function=*/false, specs.upgrade_legacy,
         /*enable_shape_inference=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, /*control_output_arrays=*/"",
-      prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-      /*graph_as_function=*/false, /*upgrade_legacy=*/true,
+      specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+      /*graph_as_function=*/false, specs.upgrade_legacy,
       /*enable_shape_inference=*/false, context);
 }
 
@@ -104,7 +131,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::PassManager* pass_manager) {
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
-  if (failed(pass_manager->run(module))) {
+
+  if (failed(IsValidGraph(module)) || failed(pass_manager->run(module))) {
     return statusHandler.ConsumeStatus();
   }
 

@@ -179,6 +179,7 @@ class CLDevice {
   bool SupportsFP32RTN() const;
   bool SupportsFP16RTN() const;
   bool IsCL20OrHigher() const;
+  bool SupportsSubGroupWithSize(int sub_group_size) const;
   bool IsAdreno() const;
   bool IsAdreno3xx() const;
   bool IsAdreno4xx() const;

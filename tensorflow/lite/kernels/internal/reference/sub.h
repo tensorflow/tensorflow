@@ -260,6 +260,45 @@ inline void BroadcastSubSlow(const ArithmeticParams& params,
   NDOpsHelper<N>(output_desc, sub_func);
 }
 
+template <int N = 5>
+void BroadcastSubSlow(const ArithmeticParams& params,
+                      const RuntimeShape& input1_shape,
+                      const int64_t* input1_data,
+                      const RuntimeShape& input2_shape,
+                      const int64_t* input2_data,
+                      const RuntimeShape& output_shape, int64_t* output_data) {
+  ruy::profiler::ScopeLabel label("BroadcastSubSlow/int64");
+  TFLITE_DCHECK_LE(input1_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(input2_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(output_shape.DimensionsCount(), N);
+  NdArrayDesc<N> desc1;
+  NdArrayDesc<N> desc2;
+  NdArrayDesc<N> output_desc;
+  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
+                                      &desc2);
+  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, output_shape), &output_desc);
+
+  // In Tensorflow, the dimensions are canonically named (batch_number, row,
+  // col, channel), with extents (batches, height, width, depth), with the
+  // trailing dimension changing most rapidly (channels has the smallest stride,
+  // typically 1 element).
+  //
+  // In generated C code, we store arrays with the dimensions reversed. The
+  // first dimension has smallest stride.
+  //
+  // We name our variables by their Tensorflow convention, but generate C code
+  // nesting loops such that the innermost loop has the smallest stride for the
+  // best cache behavior.
+  auto sub_func = [&](int indexes[N]) {
+    output_data[SubscriptToIndex(output_desc, indexes)] =
+        ActivationFunctionWithMinMax(
+            input1_data[SubscriptToIndex(desc1, indexes)] -
+                input2_data[SubscriptToIndex(desc2, indexes)],
+            params.int64_activation_min, params.int64_activation_max);
+  };
+  NDOpsHelper<N>(output_desc, sub_func);
+}
+
 template <typename T, int N = 5>
 void BroadcastSubSlow(const ArithmeticParams& params,
                       const RuntimeShape& input1_shape, const T* input1_data,
@@ -434,39 +473,41 @@ void Sub(const ArithmeticParams& params, const RuntimeShape& input1_shape,
   }
 }
 
-inline void SubWithActivation(const ArithmeticParams& params,
-                              const RuntimeShape& input1_shape,
-                              const int32* input1_data,
-                              const RuntimeShape& input2_shape,
-                              const int32* input2_data,
-                              const RuntimeShape& output_shape,
-                              int32* output_data) {
+inline void SetActivationMinMax(const ArithmeticParams& params,
+                                int32* activation_min, int32* activation_max) {
+  *activation_min = params.quantized_activation_min;
+  *activation_max = params.quantized_activation_max;
+}
+
+inline void SetActivationMinMax(const ArithmeticParams& params,
+                                float* activation_min, float* activation_max) {
+  *activation_min = params.float_activation_min;
+  *activation_max = params.float_activation_max;
+}
+
+inline void SetActivationMinMax(const ArithmeticParams& params,
+                                int64_t* activation_min,
+                                int64_t* activation_max) {
+  *activation_min = params.int64_activation_min;
+  *activation_max = params.int64_activation_max;
+}
+
+template <typename T>
+inline void SubWithActivation(
+    const ArithmeticParams& params, const RuntimeShape& input1_shape,
+    const T* input1_data, const RuntimeShape& input2_shape,
+    const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("SubWithActivation");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
+  T activation_min, activation_max;
+  SetActivationMinMax(params, &activation_min, &activation_max);
+
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], params.quantized_activation_min,
-        params.quantized_activation_max);
+        input1_data[i] - input2_data[i], activation_min, activation_max);
   }
 }
-
-inline void SubWithActivation(const ArithmeticParams& params,
-                              const RuntimeShape& input1_shape,
-                              const float* input1_data,
-                              const RuntimeShape& input2_shape,
-                              const float* input2_data,
-                              const RuntimeShape& output_shape,
-                              float* output_data) {
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], params.float_activation_min,
-        params.float_activation_max);
-  }
-}
-
 
 }  // namespace reference_ops
 }  // namespace tflite

@@ -234,9 +234,9 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithInvalidPriority) {
     SessionOptions opts =
         MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-1, 2}});
 #else
-    // Priority outside the range (-1, 0) for NVidia GPUs
+    // Priority outside the range (-2, 0) for NVidia GPUs
     SessionOptions opts =
-        MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-2, 0}});
+        MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-3, 0}});
 #endif
     std::vector<std::unique_ptr<Device>> devices;
     Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
@@ -249,9 +249,7 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithInvalidPriority) {
         " virtual device 0 on GPU# 0");
 #else
     ExpectErrorMessageSubstr(
-        status,
-        "Priority -2 is outside the range of supported priorities [-1,0] for"
-        " virtual device 0 on GPU# 0");
+        status, "Priority -3 is outside the range of supported priorities");
 #endif
   }
   {
@@ -259,7 +257,7 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithInvalidPriority) {
     // Priority outside the range (0, 2) for AMD GPUs
     SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, 3}});
 #else
-    // Priority outside the range (-1, 0) for NVidia GPUs
+    // Priority outside the range (-2, 0) for NVidia GPUs
     SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, 1}});
 #endif
     std::vector<std::unique_ptr<Device>> devices;
@@ -273,9 +271,7 @@ TEST_F(GPUDeviceTest, SingleVirtualDeviceWithInvalidPriority) {
         " virtual device 0 on GPU# 0");
 #else
     ExpectErrorMessageSubstr(
-        status,
-        "Priority 1 is outside the range of supported priorities [-1,0] for"
-        " virtual device 0 on GPU# 0");
+        status, "Priority 1 is outside the range of supported priorities");
 #endif
   }
 }
@@ -296,7 +292,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevices) {
   // Valid range for priority values on AMD GPUs in (0,2)
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, 1}});
 #else
-  // Valid range for priority values on NVidia GPUs in (-1, 0)
+  // Valid range for priority values on NVidia GPUs in (-2, 0)
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, -1}});
 #endif
   std::vector<std::unique_ptr<Device>> devices;
@@ -347,7 +343,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithPriority) {
     // Valid range for priority values on AMD GPUs in (0,2)
     SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{2, 1}});
 #else
-    // Valid range for priority values on NVidia GPUs in (-1, 0)
+    // Valid range for priority values on NVidia GPUs in (-2, 0)
     SessionOptions opts =
         MakeSessionOptions("0", 0, 1, {{123, 456}}, {{-1, 0}});
 #endif

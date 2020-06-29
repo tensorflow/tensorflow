@@ -17,9 +17,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/c/experimental/saved_model/core/ops/owned_eager_context.h"
-#include "tensorflow/c/experimental/saved_model/core/ops/owned_tensor.h"
-#include "tensorflow/c/experimental/saved_model/core/ops/owned_tensor_handle.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,10 +29,10 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-AbstractTensorHandlePtr CreateScalarTensorHandle(EagerContext* context,
-                                                 float value) {
+ImmediateTensorHandlePtr CreateScalarTensorHandle(EagerContext* context,
+                                                  float value) {
   AbstractTensorPtr tensor(context->CreateFloatScalar(value));
-  AbstractTensorHandlePtr handle(context->CreateLocalHandle(tensor.get()));
+  ImmediateTensorHandlePtr handle(context->CreateLocalHandle(tensor.get()));
   return handle;
 }
 
@@ -62,7 +61,7 @@ class VariableOpsTest : public ::testing::Test {
 // Sanity check for variable creation
 TEST_F(VariableOpsTest, CreateVariableSuccessful) {
   // Create a DT_Resource TensorHandle that points to a scalar DT_FLOAT tensor
-  AbstractTensorHandlePtr handle;
+  ImmediateTensorHandlePtr handle;
   TF_EXPECT_OK(internal::CreateUninitializedResourceVariable(
       context(), DT_FLOAT, {}, &handle));
   // The created TensorHandle should be a DT_Resource
@@ -72,7 +71,7 @@ TEST_F(VariableOpsTest, CreateVariableSuccessful) {
 // Sanity check for variable destruction
 TEST_F(VariableOpsTest, DestroyVariableSuccessful) {
   // Create a DT_Resource TensorHandle that points to a scalar DT_FLOAT tensor
-  AbstractTensorHandlePtr handle;
+  ImmediateTensorHandlePtr handle;
   TF_EXPECT_OK(internal::CreateUninitializedResourceVariable(
       context(), DT_FLOAT, {}, &handle));
 
@@ -83,18 +82,18 @@ TEST_F(VariableOpsTest, DestroyVariableSuccessful) {
 // Sanity check for handle assignment and reading
 TEST_F(VariableOpsTest, AssignVariableAndReadSuccessful) {
   // Create a DT_Resource TensorHandle that points to a scalar DT_FLOAT tensor
-  AbstractTensorHandlePtr variable;
+  ImmediateTensorHandlePtr variable;
   TF_EXPECT_OK(internal::CreateUninitializedResourceVariable(
       context(), DT_FLOAT, {}, &variable));
 
   // Create a Scalar float TensorHandle with value 42, and assign it to
   // the variable.
-  AbstractTensorHandlePtr my_value = CreateScalarTensorHandle(context(), 42.0);
+  ImmediateTensorHandlePtr my_value = CreateScalarTensorHandle(context(), 42.0);
   TF_EXPECT_OK(internal::AssignVariable(context(), variable.get(), DT_FLOAT,
                                         my_value.get()));
 
   // Read back the value from the variable, and check that it is 42.
-  AbstractTensorHandlePtr read_value_handle;
+  ImmediateTensorHandlePtr read_value_handle;
   TF_EXPECT_OK(internal::ReadVariable(context(), variable.get(), DT_FLOAT,
                                       &read_value_handle));
   Status status;

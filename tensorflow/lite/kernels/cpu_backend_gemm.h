@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_ruy.h"
 
-#ifndef TFLITE_WITH_RUY_ONLY
+#ifndef TFLITE_WITH_RUY
 #include "tensorflow/lite/kernels/cpu_backend_gemm_eigen.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_gemmlowp.h"
 #endif
@@ -42,7 +42,7 @@ template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
 struct GemmImpl : detail::GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar,
                                            DstScalar, quantization_flavor> {};
 
-#ifndef TFLITE_WITH_RUY_ONLY
+#ifndef TFLITE_WITH_RUY
 
 /* Specializations using gemmlowp */
 
@@ -82,7 +82,7 @@ template <>
 struct GemmImpl<float, float, float, float, QuantizationFlavor::kFloatingPoint>
     : detail::GemmImplUsingEigen {};
 
-#endif  // not TFLITE_WITH_RUY_ONLY
+#endif  // not TFLITE_WITH_RUY
 
 /* Public entry point */
 

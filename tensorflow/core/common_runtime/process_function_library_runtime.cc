@@ -1356,11 +1356,22 @@ void ProcessFunctionLibraryRuntime::Run(
       // "Index"s of _Arg nodes are unique when all arguments are local Tensors.
       for (const auto& it : comp_data.arg_indices) {
         if (it.sub_index >= 0) {
-          return errors::InvalidArgument("Got unexpected sub_index ",
-                                         it.sub_index, " for argument ",
-                                         it.index);
+          const Tensor& t = args[it.index];
+          if (t.dtype() != DT_RESOURCE) {
+            return errors::InvalidArgument("Got unexpected sub_index ",
+                                           it.sub_index, " for argument ",
+                                           it.index);
+          }
+          const auto& handles = t.flat<ResourceHandle>();
+          if (it.sub_index >= handles.size()) {
+            return errors::InvalidArgument(
+                "Sub_index ", it.sub_index, "is out of range [0,",
+                handles.size(), ") for argument ", it.index);
+          }
+          comp_args->args.push_back(Tensor(handles(it.sub_index)));
+        } else {
+          comp_args->args.push_back(args[it.index]);
         }
-        comp_args->args.push_back(args[it.index]);
       }
       return Status::OK();
     };

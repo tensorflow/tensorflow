@@ -83,11 +83,12 @@ void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2,
 void NeonCwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
                   int n_input, int16_t* output);
 
-void NeonCwiseClipping(int16_t* input, const int16_t clipping_value,
-                       int32_t n_batch, int32_t n_input);
-
-void NeonCwiseClipping(int8_t* input, const int8_t clipping_value,
-                       int32_t n_batch, int32_t n_input);
+void NeonCwiseClipping(float* vector, const int v_size,
+                       const float clipping_value);
+void NeonCwiseClipping(int16_t* vector, const int v_size,
+                       const int16_t clipping_value);
+void NeonCwiseClipping(int8_t* vector, const int v_size,
+                       const int8_t clipping_value);
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
@@ -132,10 +133,6 @@ float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
 void NeonSub1Vector(const float* vector, int v_size, float* result);
 
 void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result);
-
-// Clip elements of a vector using a abs_limit value.
-void NeonClipVector(const float* vector, int v_size, float abs_limit,
-                    float* result);
 
 // Multiply all elements of vector with a scalar.
 void NeonVectorScalarMultiply(const int8_t* vector, int v_size, float scale,

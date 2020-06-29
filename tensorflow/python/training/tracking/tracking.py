@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import functools
 import weakref
 
@@ -242,6 +243,18 @@ class CapturableResource(base.Trackable):
       with ops.device(self._resource_device):
         self._resource_handle = self._create_resource()
     return self._resource_handle
+
+  def _map_resources(self):
+    """For implementing `Trackable`."""
+    new_obj = copy.copy(self)
+    # pylint: disable=protected-access
+    with ops.device(self._resource_device):
+      new_resource = new_obj._create_resource()
+    new_obj._resource_handle = new_resource
+    # pylint: enable=protected-access
+    obj_map = {self: new_obj}
+    resource_map = {self.resource_handle: new_resource}
+    return obj_map, resource_map
 
   def _list_functions_for_serialization(self, unused_functions):
     @def_function.function(input_signature=[], autograph=False)

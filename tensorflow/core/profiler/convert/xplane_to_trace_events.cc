@@ -91,6 +91,9 @@ void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
           xevent.ForEachStat([&](const XStatVisitor& stat) {
             if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;
             if (IsInternalStat(stat.Type())) return;
+            if (stat.Type() == StatType::kStepName) {
+              event->set_name(stat.ToString());
+            }
             args[std::string(stat.Name())] = stat.ToString();
           });
         });

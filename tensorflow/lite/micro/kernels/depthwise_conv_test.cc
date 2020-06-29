@@ -38,11 +38,10 @@ constexpr int kOutputTensorIndex = 3;
 // The tensors parameter contains both the input tensors as well as a
 // preallocated output tensor into which the output is stored.
 template <typename T>
-TfLiteStatus ValidateDepthwiseConvGoldens(const T* expected_output_data,
-                                          int output_length,
-                                          TfLiteFusedActivation activation,
-                                          float tolerance, int tensors_size,
-                                          TfLiteTensor* tensors) {
+TfLiteStatus ValidateDepthwiseConvGoldens(
+    const T* expected_output_data, int output_length,
+    TfLiteDepthwiseConvParams* conv_params, float tolerance, int tensors_size,
+    TfLiteTensor* tensors) {
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
@@ -54,16 +53,13 @@ TfLiteStatus ValidateDepthwiseConvGoldens(const T* expected_output_data,
   int input_depth = tensors[0].dims->data[3];
   int output_depth = tensors[1].dims->data[3];
   int depth_mul = output_depth / input_depth;
-  TfLiteDepthwiseConvParams builtin_data;
-  builtin_data.padding = kTfLitePaddingValid;
-  builtin_data.activation = activation;
-  builtin_data.stride_height = 1;
-  builtin_data.stride_width = 1;
-  builtin_data.dilation_height_factor = 1;
-  builtin_data.dilation_width_factor = 1;
-  builtin_data.depth_multiplier = depth_mul;
 
-  const char* init_data = reinterpret_cast<const char*>(&builtin_data);
+  conv_params->padding = kTfLitePaddingValid;
+  conv_params->stride_height = 1;
+  conv_params->stride_width = 1;
+  conv_params->depth_multiplier = depth_mul;
+
+  const char* init_data = reinterpret_cast<const char*>(conv_params);
   size_t init_data_size = 0;
   void* user_data = nullptr;
   if (registration->init) {
@@ -73,18 +69,14 @@ TfLiteStatus ValidateDepthwiseConvGoldens(const T* expected_output_data,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
+  node.builtin_data = reinterpret_cast<void*>(conv_params);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_ENSURE_OK(context, registration->prepare(&context, &node));
   }
@@ -109,7 +101,7 @@ void TestDepthwiseConvFloat(const int* input_dims_data, const float* input_data,
                             const float* bias_data,
                             const float* expected_output_data,
                             const int* output_dims_data,
-                            TfLiteFusedActivation activation,
+                            TfLiteDepthwiseConvParams* conv_params,
                             float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* filter_dims = IntArrayFromInts(filter_dims_data);
@@ -128,7 +120,7 @@ void TestDepthwiseConvFloat(const int* input_dims_data, const float* input_data,
   };
 
   ValidateDepthwiseConvGoldens(expected_output_data, output_dims_count,
-                               activation, 1e-5, tensors_size, tensors);
+                               conv_params, 1e-5, tensors_size, tensors);
 }
 
 void TestDepthwiseConvQuantizedPerLayer(
@@ -139,7 +131,7 @@ void TestDepthwiseConvQuantizedPerLayer(
     const int* bias_dims_data, const float* bias_data, int32_t* bias_quantized,
     const float* golden, uint8_t* golden_quantized, const int* output_dims_data,
     uint8_t* output_data, float output_scale, int output_zero_point,
-    TfLiteFusedActivation activation) {
+    TfLiteDepthwiseConvParams* conv_params) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* filter_dims = IntArrayFromInts(filter_dims_data);
   TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_data);
@@ -178,7 +170,7 @@ void TestDepthwiseConvQuantizedPerLayer(
 
   AsymmetricQuantize(golden, golden_quantized, output_dims_count, output_scale,
                      output_zero_point);
-  ValidateDepthwiseConvGoldens(golden_quantized, output_dims_count, activation,
+  ValidateDepthwiseConvGoldens(golden_quantized, output_dims_count, conv_params,
                                1.0, tensors_size, tensors);
 }
 
@@ -191,7 +183,7 @@ void TestDepthwiseConvQuantizedPerChannel(
     const int* output_dims_data, const float* expected_output_data,
     int8_t* expected_output_data_quantized, int8_t* output_data,
     float output_scale, int output_zero_point,
-    TfLiteFusedActivation activation) {
+    TfLiteDepthwiseConvParams* conv_params) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* filter_dims = IntArrayFromInts(filter_dims_data);
   TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_data);
@@ -246,7 +238,7 @@ void TestDepthwiseConvQuantizedPerChannel(
 
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, ValidateDepthwiseConvGoldens(expected_output_data_quantized,
-                                              output_dims_count, activation,
+                                              output_dims_count, conv_params,
                                               1.0, tensors_size, tensors));
 }
 
@@ -273,9 +265,15 @@ TF_LITE_MICRO_TEST(SimpleTest) {
   const int output_shape[] = {4, 1, 2, 1, 4};
   const int output_dims_count = 8;
   float output_data[output_dims_count];
+
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
+
   tflite::testing::TestDepthwiseConvFloat(
       input_shape, input_values, filter_shape, filter_values, bias_shape,
-      bias_values, golden, output_shape, kTfLiteActNone, output_data);
+      bias_values, golden, output_shape, &conv_params, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleTestQuantized) {
@@ -308,12 +306,64 @@ TF_LITE_MICRO_TEST(SimpleTestQuantized) {
   uint8_t golden_quantized[output_elements];
   uint8_t output_data[output_elements];
 
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
+
   tflite::testing::TestDepthwiseConvQuantizedPerLayer(
       input_shape, input_values, input_quantized, input_scale, input_zero_point,
       filter_shape, filter_values, filter_quantized, filter_scale,
       filter_zero_point, bias_shape, bias_values, bias_quantized, golden,
       golden_quantized, output_shape, output_data, output_scale,
-      output_zero_point, kTfLiteActNone);
+      output_zero_point, &conv_params);
+}
+
+TF_LITE_MICRO_TEST(SimpleTestDilatedQuantized) {
+  const int input_elements = 48;
+  const int input_shape[] = {4, 1, 4, 6, 2};
+  const float input_values[] = {1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2,   // h = 0
+                                3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4,   // h = 1
+                                1, 2, 3, 4, 5, 6, 2, 6, 2, 4, 4, 2,   // h = 2
+                                3, 2, 6, 5, 1, 4, 1, 2, 1, 4, 6, 3};  // h = 3
+  const int filter_elements = 16;
+  const int filter_shape[] = {4, 1, 2, 2, 4};
+  const float filter_values[] = {1, 2, 3, 4, -9, 10,  -11, 12,
+                                 5, 6, 7, 8, 13, -14, 15,  -16};
+  const int bias_elements = 4;
+  const int bias_shape[] = {4, 1, 1, 1, 4};
+  const int output_elements = 24;
+  const float bias_values[] = {1, 2, 3, 4};
+  const float golden[] = {
+      15, 2,  88, -48, 25, 14, 72, 0,  61, -2,  56, 48,  // h = 0
+      -4, 52, 12, 48,  11, 70, 63, 40, 51, -30, 41, 48   // h = 1
+  };
+  const int output_shape[] = {4, 1, 2, 3, 4};
+
+  const float input_scale = 0.5f;
+  const int input_zero_point = 128;
+  const float filter_scale = 0.5f;
+  const int filter_zero_point = 128;
+  const float output_scale = 1.0f;
+  const int output_zero_point = 128;
+
+  uint8_t input_quantized[input_elements];
+  uint8_t filter_quantized[filter_elements];
+  int32_t bias_quantized[bias_elements];
+  uint8_t golden_quantized[output_elements];
+  uint8_t output_data[output_elements];
+
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 3;
+  conv_params.dilation_height_factor = 2;
+
+  tflite::testing::TestDepthwiseConvQuantizedPerLayer(
+      input_shape, input_values, input_quantized, input_scale, input_zero_point,
+      filter_shape, filter_values, filter_quantized, filter_scale,
+      filter_zero_point, bias_shape, bias_values, bias_quantized, golden,
+      golden_quantized, output_shape, output_data, output_scale,
+      output_zero_point, &conv_params);
 }
 
 TF_LITE_MICRO_TEST(SimpleTestRelu) {
@@ -333,9 +383,14 @@ TF_LITE_MICRO_TEST(SimpleTestRelu) {
   const float golden_relu[] = {71, 0, 99, 0, 91, 0, 127, 0};
   float output_data[output_dims_count];
 
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActRelu;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
+
   tflite::testing::TestDepthwiseConvFloat(
       input_shape, input_values, filter_shape, filter_values, bias_shape,
-      bias_values, golden_relu, output_shape, kTfLiteActRelu, output_data);
+      bias_values, golden_relu, output_shape, &conv_params, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleTestReluQuantized) {
@@ -351,7 +406,6 @@ TF_LITE_MICRO_TEST(SimpleTestReluQuantized) {
   const int output_elements = 8;
   const float bias_values[] = {1, 2, 3, 4};
   const int output_shape[] = {4, 1, 2, 1, 4};
-  const int output_dims_count = 8;
   const float golden_relu[] = {71, 0, 99, 0, 91, 0, 127, 0};
 
   const float input_scale = 0.5f;
@@ -367,15 +421,20 @@ TF_LITE_MICRO_TEST(SimpleTestReluQuantized) {
   uint8_t golden_quantized[output_elements];
   uint8_t output_data[output_elements];
 
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActRelu;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
+
   tflite::testing::TestDepthwiseConvQuantizedPerLayer(
       input_shape, input_values, input_quantized, input_scale, input_zero_point,
       filter_shape, filter_values, filter_quantized, filter_scale,
       filter_zero_point, bias_shape, bias_values, bias_quantized, golden_relu,
       golden_quantized, output_shape, output_data, output_scale,
-      output_zero_point, kTfLiteActRelu);
+      output_zero_point, &conv_params);
 }
 
-TF_LITE_MICRO_TEST(SimpleTestOptimizedFilterWidth) {
+TF_LITE_MICRO_TEST(SimpleTestQuantizedOptimizedFilterWidth) {
   const int input_elements = 12;
   const float input_values[] = {1, 2, 7, 8, 3, 4, 9, 10, 5, 6, 11, 12};
   const int filter_elements = 16;
@@ -405,12 +464,17 @@ TF_LITE_MICRO_TEST(SimpleTestOptimizedFilterWidth) {
   uint8_t golden_quantized[output_dims_count];
   uint8_t output_data[output_dims_count];
 
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
+
   tflite::testing::TestDepthwiseConvQuantizedPerLayer(
       input_shape, input_values, input_quantized, input_scale, input_zero_point,
       filter_shape, filter_values, filter_quantized, filter_scale,
       filter_zero_point, bias_shape, bias_values, bias_quantized, goldens,
       golden_quantized, output_shape, output_data, output_scale,
-      output_zero_point, kTfLiteActNone);
+      output_zero_point, &conv_params);
 }
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {
@@ -444,11 +508,16 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {
   int zero_points[bias_elements + 1];
   float scales[bias_elements + 1];
 
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
+
   tflite::testing::TestDepthwiseConvQuantizedPerChannel(
       input_shape, input_values, input_quantized, input_scale, input_zero_point,
       filter_shape, filter_values, filter_quantized, bias_shape, bias_values,
       bias_quantized, output_shape, golden, golden_quantized, output_data,
-      output_scale, output_zero_point, kTfLiteActNone);
+      output_scale, output_zero_point, &conv_params);
 }
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannelDepthMultiplier1) {
@@ -484,11 +553,16 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannelDepthMultiplier1) {
   int zero_points[bias_elements + 1];
   float scales[bias_elements + 1];
 
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
+
   tflite::testing::TestDepthwiseConvQuantizedPerChannel(
       input_shape, input_values, input_quantized, input_scale, input_zero_point,
       filter_shape, filter_values, filter_quantized, bias_shape, bias_values,
       bias_quantized, output_shape, golden, golden_quantized, output_data,
-      output_scale, output_zero_point, kTfLiteActNone);
+      output_scale, output_zero_point, &conv_params);
 }
 
 TF_LITE_MICRO_TEST(TestQuantizedPerChannelDepthMultiplier1Relu6) {
@@ -523,15 +597,62 @@ TF_LITE_MICRO_TEST(TestQuantizedPerChannelDepthMultiplier1Relu6) {
   int zero_points[bias_elements + 1];
   float scales[bias_elements + 1];
 
-  tflite::testing::TestDepthwiseConvFloat(
-      input_shape, input_values, filter_shape, filter_values, bias_shape,
-      bias_values, golden, output_shape, kTfLiteActRelu6, output_float);
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActRelu6;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
 
   tflite::testing::TestDepthwiseConvQuantizedPerChannel(
       input_shape, input_values, input_quantized, input_scale, input_zero_point,
       filter_shape, filter_values, filter_quantized, bias_shape, bias_values,
       bias_quantized, output_shape, golden, golden_quantized, output_data,
-      output_scale, output_zero_point, kTfLiteActRelu6);
+      output_scale, output_zero_point, &conv_params);
+}
+
+TF_LITE_MICRO_TEST(SimpleTestDilatedQuantizedPerChannel) {
+  const int input_elements = 48;
+  const int input_shape[] = {4, 1, 4, 6, 2};
+  const float input_values[] = {1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2,   // h = 0
+                                3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4,   // h = 1
+                                1, 2, 3, 4, 5, 6, 2, 6, 2, 4, 4, 2,   // h = 2
+                                3, 2, 6, 5, 1, 4, 1, 2, 1, 4, 6, 3};  // h = 3
+  const int filter_elements = 16;
+  const int filter_shape[] = {4, 1, 2, 2, 4};
+  const float filter_values[] = {1, 2, 3, 4, -9, 10,  -11, 12,
+                                 5, 6, 7, 8, 13, -14, 15,  -16};
+  const int bias_elements = 4;
+  const int bias_shape[] = {4, 1, 1, 1, 4};
+  const int output_elements = 24;
+  const float bias_values[] = {1, 2, 3, 4};
+  const float golden[] = {
+      15, 2,  88, -48, 25, 14, 72, 0,  61, -2,  56, 48,  // h = 0
+      -4, 52, 12, 48,  11, 70, 63, 40, 51, -30, 41, 48   // h = 1
+  };
+  const int output_shape[] = {4, 1, 2, 3, 4};
+  int8_t output_data[output_elements];
+
+  const float input_scale = 0.5;
+  const float output_scale = 1.0f;
+  const int input_zero_point = 0;
+  const int output_zero_point = 0;
+
+  int8_t input_quantized[input_elements];
+  int8_t filter_quantized[filter_elements];
+  int32_t bias_quantized[bias_elements];
+  int8_t golden_quantized[output_elements];
+  int zero_points[bias_elements + 1];
+  float scales[bias_elements + 1];
+
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 3;
+  conv_params.dilation_height_factor = 2;
+
+  tflite::testing::TestDepthwiseConvQuantizedPerChannel(
+      input_shape, input_values, input_quantized, input_scale, input_zero_point,
+      filter_shape, filter_values, filter_quantized, bias_shape, bias_values,
+      bias_quantized, output_shape, golden, golden_quantized, output_data,
+      output_scale, output_zero_point, &conv_params);
 }
 
 TF_LITE_MICRO_TEST(TestQuantizedPerChannelCompareWithFloat) {
@@ -562,15 +683,20 @@ TF_LITE_MICRO_TEST(TestQuantizedPerChannelCompareWithFloat) {
   const int input_zero_point = 0;
   const int output_zero_point = 0;
 
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
+
   tflite::testing::TestDepthwiseConvQuantizedPerChannel(
       input_dims, input_data, input_quantized, input_scale, input_zero_point,
       filter_dims, filter_data, filter_quantized, bias_dims, bias_data,
       bias_quantized, output_dims, golden, golden_quantized, output_data,
-      output_scale, output_zero_point, kTfLiteActNone);
+      output_scale, output_zero_point, &conv_params);
 
   tflite::testing::TestDepthwiseConvFloat(
       input_dims, input_data, filter_dims, filter_data, bias_dims, bias_data,
-      golden, output_dims, kTfLiteActNone, output_float);
+      golden, output_dims, &conv_params, output_float);
 }
 
 TF_LITE_MICRO_TEST(FilterDimsNotMatchingAffineQuantization) {
@@ -640,22 +766,27 @@ TF_LITE_MICRO_TEST(FilterDimsNotMatchingAffineQuantization) {
       output_tensor,
   };
 
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
+
   // Set filter quant to mismatched dimension.
   TfLiteAffineQuantization* quant = reinterpret_cast<TfLiteAffineQuantization*>(
       filter_tensor.quantization.params);
   quant->scale->size = 2;
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteError, tflite::testing::ValidateDepthwiseConvGoldens(
-                        golden_quantized, output_size, kTfLiteActNone, 1e-5,
-                        tensors_size, tensors));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError,
+                          tflite::testing::ValidateDepthwiseConvGoldens(
+                              golden_quantized, output_size, &conv_params, 1e-5,
+                              tensors_size, tensors));
 
   // Set scale back to correct dimension, and make zero point array too short.
   quant->scale->size = filter_shape[0];
   quant->zero_point->size = 2;
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteError, tflite::testing::ValidateDepthwiseConvGoldens(
-                        golden_quantized, output_size, kTfLiteActNone, 1e-5,
-                        tensors_size, tensors));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError,
+                          tflite::testing::ValidateDepthwiseConvGoldens(
+                              golden_quantized, output_size, &conv_params, 1e-5,
+                              tensors_size, tensors));
 }
 
 TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
@@ -747,9 +878,14 @@ TF_LITE_MICRO_TEST(PerChannelBroadcastQuantizationParams) {
   tflite::AsymmetricQuantize(golden, golden_quantized, output_dims_count,
                              output_scale, 0);
 
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
+
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, tflite::testing::ValidateDepthwiseConvGoldens(
-                     golden_quantized, output_dims_count, kTfLiteActNone, 1e-5,
+                     golden_quantized, output_dims_count, &conv_params, 1e-5,
                      tensors_size, tensors));
 }
 
@@ -895,8 +1031,12 @@ TF_LITE_MICRO_TEST(Int8Input32x4Filter32x4ShouldMatchGolden) {
   // Errors due to quantization should not exceed 1.
   constexpr int kQuantizationTolerance = 1;
 
+  TfLiteDepthwiseConvParams conv_params;
+  conv_params.activation = kTfLiteActNone;
+  conv_params.dilation_width_factor = 1;
+  conv_params.dilation_height_factor = 1;
   TfLiteStatus status = tflite::testing::ValidateDepthwiseConvGoldens(
-      golden_quantized, output_elements, kTfLiteActNone, kQuantizationTolerance,
+      golden_quantized, output_elements, &conv_params, kQuantizationTolerance,
       kTensorsSize, tensors);
 }
 

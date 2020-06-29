@@ -53,7 +53,8 @@ class TpuCompileOpKernelCommon {
 
   virtual ~TpuCompileOpKernelCommon() = default;
 
-  virtual void Compute(OpKernelContext* ctx) = 0;
+  void Compute(OpKernelContext* ctx);
+  virtual Status ComputeInternal(OpKernelContext* ctx) = 0;
 
   // Computes shapes for each argument. Uses both the static shape from the
   // metadata, and the dynamic shapes where the static shape is not

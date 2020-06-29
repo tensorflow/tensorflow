@@ -46,7 +46,10 @@ def set_tf_options():
 # This function needs to take a "create_module_fn", as opposed to just the
 # module itself, because the creation of the module has to be delayed until
 # after absl and tensorflow have run various initialization steps.
-def do_test(signature_def_map, show_debug_info=False):
+def do_test(signature_def_map,
+            init_op=None,
+            canonicalize=False,
+            show_debug_info=False):
   """Runs test.
 
   1. Performs absl and tf "main"-like initialization that must run before almost
@@ -61,6 +64,9 @@ def do_test(signature_def_map, show_debug_info=False):
   Args:
     signature_def_map: A map from string key to signature_def. The key will be
       used as function name in the resulting MLIR.
+    init_op: The initializer op for the saved model. If set, it will generate a
+      initializer graph in the resulting MLIR.
+    canonicalize: If true, canonicalizer will be run on the resulting MLIR.
     show_debug_info: If true, shows debug locations in the resulting MLIR.
   """
 
@@ -84,6 +90,7 @@ def do_test(signature_def_map, show_debug_info=False):
     builder.add_meta_graph_and_variables(
         sess, [tf.saved_model.tag_constants.SERVING],
         signature_def_map,
+        main_op=init_op,
         strip_default_attrs=True)
     builder.save()
 
@@ -97,6 +104,9 @@ def do_test(signature_def_map, show_debug_info=False):
     mlir = pywrap_mlir.experimental_run_pass_pipeline(mlir,
                                                       'tf-standard-pipeline',
                                                       show_debug_info)
+    if canonicalize:
+      mlir = pywrap_mlir.experimental_run_pass_pipeline(mlir, 'canonicalize',
+                                                        show_debug_info)
     print(mlir)
 
   app.run(app_main)

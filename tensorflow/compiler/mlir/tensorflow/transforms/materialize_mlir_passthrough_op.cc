@@ -71,7 +71,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
       return;
     }
     Region &body = main.getBody();
-    if (body.getBlocks().size() != 1) {
+    if (!llvm::hasSingleElement(body)) {
       op->emitError() << "MLIR Opaque Op expects a main() entry point with a "
                          "single block\n";
       return;

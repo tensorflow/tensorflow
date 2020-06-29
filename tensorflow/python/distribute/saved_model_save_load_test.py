@@ -70,6 +70,20 @@ class SavedModelKerasModelTest(test_base.TestSavedModelBase):
                                                  distribution_for_restoring,
                                                  save_in_scope)
 
+  @combinations.generate(
+      combinations.times(test_base.simple_models_with_strategies(),
+                         combinations.combine(save_in_scope=[True, False])))
+  def test_no_variable_device_placement(self, model_and_input, distribution,
+                                        save_in_scope):
+    saved_dir = self.run_test_save_strategy(model_and_input, distribution,
+                                            save_in_scope)
+    func = saved_model.load(saved_dir)
+    concrete_function = func.signatures[test_base._DEFAULT_FUNCTION_KEY]
+    for f in concrete_function.graph.as_graph_def().library.function:
+      for n in f.node_def:
+        if n.op == 'ReadVariableOp':
+          self.assertEmpty(n.device)
+
 
 class SavedModelTFModuleTest(test_base.TestSavedModelBase):
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_split.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/dot_as_convolution_util.h"
@@ -216,6 +217,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLogistic:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
@@ -1293,6 +1295,79 @@ StatusOr<bool> ProcessShardingInstruction(HloModule* module) {
   return changed;
 }
 
+// If a while contains a channel instruction on device D, check that any other
+// instructions with a device assignment are on D. Further, annotate the root
+// instruction of the while body to ensure that HLO partitioning will keep the
+// entire while instruction on D.
+Status CheckAndUpdateDeviceAssignmentsInWhileBody(
+    HloInstruction* while_instruction) {
+  auto bad_status = [](HloInstruction* instruction, int64 device,
+                       HloInstruction* channel_instruction,
+                       int64 correct_device) {
+    return FailedPrecondition(
+        "Instruction: %s is on device: %d, which conflicts with device: %d "
+        "of channel instruction: %s",
+        instruction->name(), device, correct_device,
+        channel_instruction->name());
+  };
+
+  CHECK_EQ(while_instruction->opcode(), HloOpcode::kWhile);
+  HloComputation* while_body = while_instruction->while_body();
+  // Maps a device number to an instruction in the while_body with that
+  // device assignment.
+  std::map<int64, HloInstruction*> devices_to_instructions;
+  absl::optional<int64> unique_device = absl::nullopt;
+  HloInstruction* channel_instruction = nullptr;
+
+  for (HloInstruction* instruction : while_body->instructions()) {
+    if (instruction->sharding_unique_device()) {
+      auto opcode = instruction->opcode();
+      int64 device = *instruction->sharding_unique_device();
+      if (unique_device.has_value()) {
+        if (*unique_device != device) {
+          return bad_status(instruction, device, channel_instruction,
+                            *unique_device);
+        }
+      } else if (opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
+                 // Cross-replica AllReduces don't have a channel_id, and we
+                 // don't enforce any invariant about their device assignment.
+                 (opcode == HloOpcode::kAllReduce &&
+                  instruction->channel_id())) {
+        channel_instruction = instruction;
+        unique_device = device;
+        if (!devices_to_instructions.empty()) {
+          for (auto it = devices_to_instructions.begin();
+               it != devices_to_instructions.end(); ++it) {
+            if (*unique_device != it->first) {
+              return bad_status(it->second, it->first, channel_instruction,
+                                *unique_device);
+            }
+          }
+        }
+      } else {
+        devices_to_instructions[device] = instruction;
+      }
+    }
+  }
+
+  if (unique_device.has_value()) {
+    auto while_device = while_instruction->sharding_unique_device();
+    if (while_device.has_value() && *unique_device != *while_device) {
+      return bad_status(while_instruction, *while_device, channel_instruction,
+                        *unique_device);
+    }
+    auto body_root = while_body->root_instruction();
+    auto root_device = body_root->sharding_unique_device();
+    if (!root_device.has_value()) {
+      body_root->set_device_sharding(*unique_device);
+    } else if (*unique_device != *root_device) {
+      return bad_status(body_root, *root_device, channel_instruction,
+                        *unique_device);
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 /*static*/ Status ShardingPropagation::NormalizeDomain(
@@ -1378,6 +1453,15 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
         }
       };
 
+  for (auto computation : module->computations()) {
+    for (auto instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kWhile) {
+        TF_RETURN_IF_ERROR(
+            CheckAndUpdateDeviceAssignmentsInWhileBody(instruction));
+      }
+    }
+  }
+
   // Populate computation_map in order to associate while bodies to their
   // while instructions.
   for (auto computation : module->computations()) {
@@ -1403,12 +1487,12 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
             inst->set_sharding(sharded_inst->sharding());
           }
         }
-      }
-      if (instruction->opcode() == HloOpcode::kWhile) {
-        computation_map[instruction->while_body()] = instruction;
-      } else if (instruction->opcode() == HloOpcode::kConditional) {
-        for (HloComputation* c : instruction->called_computations()) {
-          computation_map[c] = instruction;
+        if (instruction->opcode() == HloOpcode::kWhile) {
+          computation_map[instruction->while_body()] = instruction;
+        } else {
+          for (HloComputation* c : instruction->called_computations()) {
+            computation_map[c] = instruction;
+          }
         }
       }
     }

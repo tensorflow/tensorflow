@@ -42,11 +42,12 @@ std::string GetStridedSliceCode(const OperationDef& op_def, bool alignedx4,
   args->AddInt("stride_z");
   args->AddInt("stride_b");
 
-  const std::string dst_batch = op_def.IsBatchSupported() ? "B" : "";
+  const std::string batch_id =
+      op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
-  if (op_def.IsBatchSupported()) {
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
@@ -62,11 +63,10 @@ std::string GetStridedSliceCode(const OperationDef& op_def, bool alignedx4,
   c += "  } \n";
   c += "  int s_x = X * args.stride_x + args.offset_x;\n";
   c += "  int s_y = Y * args.stride_y + args.offset_y;\n";
-  if (op_def.IsBatchSupported()) {
-    c += "  int s_b = B * args.stride_b + args.offset_b;\n";
+  if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int s_b = " + batch_id + " * args.stride_b + args.offset_b;\n";
     c += "  args.src_tensor.SetBatchRef(s_b);\n";
   }
-  const std::string src_batch = op_def.IsBatchSupported() ? "s_b" : "";
   if (alignedx4) {
     c += "  int s_z = Z + args.offset_z;\n";
     c += "  FLT4 result = args.src_tensor.Read(s_x, s_y, s_z);\n";

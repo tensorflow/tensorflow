@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -44,6 +45,7 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training.saving import checkpoint_options
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.training.tracking import tracking
@@ -144,6 +146,18 @@ class Loader(object):
     # captures.
     self._setup_functions_structures()
     self._setup_functions_captures()
+
+    self._create_saveable_object_factories()
+
+  def _create_saveable_object_factories(self):
+    for node_id, proto in enumerate(self._proto.nodes):
+      node = self.get(node_id)
+      node._self_saveable_object_factories = {}  # pylint: disable=protected-access
+      for name, saveable_object_proto in proto.saveable_objects.items():
+        node._self_saveable_object_factories[name] = (  # pylint: disable=protected-access
+            saveable_object_util.restored_saved_object_factory(
+                self.get(saveable_object_proto.save_function),
+                self.get(saveable_object_proto.restore_function)))
 
   def _load_edges(self):
     """Adds edges from objects to other objects and functions."""
@@ -614,8 +628,16 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader):
     ckpt_options = checkpoint_options.CheckpointOptions(
         experimental_io_device=options.experimental_io_device)
     with ops.init_scope():
-      loader = loader_cls(object_graph_proto, saved_model_proto, export_dir,
-                          ckpt_options)
+      try:
+        loader = loader_cls(object_graph_proto, saved_model_proto, export_dir,
+                            ckpt_options)
+      except errors.NotFoundError as err:
+        raise FileNotFoundError(
+            str(err) + "\n If trying to load on a different device from the "
+            "computational device, consider using setting the "
+            "`experimental_io_device` option on tf.saved_model.LoadOptions "
+            "to the io_device such as '/job:localhost'."
+        )
       root = loader.get(0)
       if isinstance(loader, Loader):
         root.graph_debug_info = loader.adjust_debug_info_func_names(debug_info)

@@ -487,7 +487,7 @@ struct XlaHloFusion : public mlir::PassWrapper<XlaHloFusion, FunctionPass> {
     }
 
     // process each block and do fusion within a block.
-    for (Block& block : func.getBlocks()) {
+    for (Block& block : func) {
       SmallVector<Operation*, 4> op_list;
       for (Operation& op : block) {
         op_list.push_back(&op);
