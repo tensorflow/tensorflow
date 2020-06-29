@@ -4343,7 +4343,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   // registered.
   allowUnknownOperations();
 
-  for (auto hook : *TensorFlowDialect::additional_operation_hooks_) {
+  for (const auto &hook : *TensorFlowDialect::additional_operation_hooks_) {
     hook(*this);
   }
 }
