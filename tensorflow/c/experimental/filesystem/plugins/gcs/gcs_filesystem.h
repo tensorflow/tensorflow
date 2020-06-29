@@ -22,9 +22,17 @@
 void ParseGCSPath(const std::string& fname, bool object_empty_ok,
                   std::string* bucket, std::string* object, TF_Status* status);
 
+namespace tf_random_access_file {
+void Cleanup(TF_RandomAccessFile* file);
+int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
+             char* buffer, TF_Status* status);
+}  // namespace tf_random_access_file
+
 namespace tf_gcs_filesystem {
 void Init(TF_Filesystem* filesystem, TF_Status* status);
 void Cleanup(TF_Filesystem* filesystem);
+void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
+                         TF_RandomAccessFile* file, TF_Status* status);
 void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
                      TF_WritableFile* file, TF_Status* status);
 void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
