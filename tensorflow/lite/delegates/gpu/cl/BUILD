@@ -460,6 +460,7 @@ cc_library(
     srcs = ["tensor.cc"],
     hdrs = ["tensor.h"],
     deps = [
+        ":buffer",
         ":cl_command_queue",
         ":cl_context",
         ":cl_device",
