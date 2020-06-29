@@ -180,7 +180,11 @@ absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
   }
   if (descriptor_.HasAxis(Axis::WIDTH)) {
     resources->ints.push_back({"width", Width()});
+    resources->ints.push_back({"width_div2", Width() / 2});
+    resources->ints.push_back({"width_div4", Width() / 4});
     resources->ints.push_back({"width_batched", Width() * Batch()});
+    resources->ints.push_back({"width_batched_div2", Width() * Batch() / 2});
+    resources->ints.push_back({"width_batched_div4", Width() * Batch() / 4});
   }
   if (descriptor_.HasAxis(Axis::HEIGHT)) {
     resources->ints.push_back({"height", Height()});
