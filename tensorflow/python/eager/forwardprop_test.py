@@ -286,9 +286,6 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     )
 
   def testJVPFunctionRaisesError(self):
-    context.ensure_initialized()
-    ctx = context.context()
-
     sum_outputs = (constant_op.constant(6.),)
 
     with self.assertRaisesRegexp(ValueError, r".*was expected to be of shape*"):
