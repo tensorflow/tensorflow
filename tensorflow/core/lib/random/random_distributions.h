@@ -44,20 +44,6 @@ PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x);
 // Helper function to convert two 32-bit integers to a double between [0..1).
 PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1);
 
-// Helper function to tell the suitable Distribution samples length
-// on different platforms.
-template <class Generator, typename T>
-PHILOX_DEVICE_INLINE constexpr int PlatformResultElementCount() {
-#ifdef __CUDA_ARCH__
-  return Generator::kResultElementCount;
-#else
-  // Set the number to be Eigen packet size of type at least, so computations
-  // can be vectorized using SIMD on CPU.
-  constexpr int kVectorLength = Eigen::internal::packet_traits<T>::size;
-  return std::max(kVectorLength, Generator::kResultElementCount);
-#endif  // __CUDA_ARCH__
-}
-
 // Helper function to format distribution result in vectorization path,
 // it creates Eigen::Tensor and reuses packet feature with SIMD.
 // This function can only work on CPU
@@ -120,13 +106,15 @@ PHILOX_DEVICE_INLINE Int SignedAdd(Int a,
 //              actual returned sample type.
 //   RealType: the data type of the real numbers that will be returned by the
 //             distribution. This could be either float or double for now.
+//   IsVec: mark this UniformDistribution can be vectorized or not by SIMD on
+//          CPU. Note this should always be false on GPU.
 // This class is meant to be implemented through specialization. The default
 // is not defined by design.
-template <class Generator, typename RealType>
+template <class Generator, typename RealType, bool IsVec = false>
 class UniformDistribution;
 
-template <class Generator>
-class UniformDistribution<Generator, Eigen::half> {
+template <class Generator, bool IsVec>
+class UniformDistribution<Generator, Eigen::half, IsVec> {
  public:
   // The number of elements that will be returned.
   static constexpr int kResultElementCount = Generator::kResultElementCount;
@@ -149,12 +137,17 @@ class UniformDistribution<Generator, Eigen::half> {
   }
 };
 
-template <class Generator>
-class UniformDistribution<Generator, bfloat16> {
+template <class Generator, bool IsVec>
+class UniformDistribution<Generator, bfloat16, IsVec> {
  public:
   // The number of elements that will be returned.
+  // Set the number to be Eigen packet size of type at least, so computations
+  // can be vectorized using SIMD on CPU.
+  static constexpr int kVectorLength = std::max(
+      static_cast<const int>(Eigen::internal::packet_traits<bfloat16>::size),
+      Generator::kResultElementCount);
   static constexpr int kResultElementCount =
-      PlatformResultElementCount<Generator, bfloat16>();
+      IsVec ? kVectorLength : Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
   static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
@@ -168,6 +161,7 @@ class UniformDistribution<Generator, bfloat16> {
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
 #ifdef __CUDA_ARCH__
+    static_assert(!IsVec, "Can't vectorize Distribution on GPU");
     typename Generator::ResultType sample = (*gen)();
     ResultType result;
     for (int i = 0; i < kResultElementCount; ++i) {
@@ -175,18 +169,23 @@ class UniformDistribution<Generator, bfloat16> {
     }
     return result;
 #else
-    return VectorizedFormat<UniformDistribution<Generator, bfloat16>,
+    return VectorizedFormat<UniformDistribution<Generator, bfloat16, IsVec>,
                             Generator>(gen, InternalUint16ToBfloat16);
 #endif  // __CUDA_ARCH__
   }
 };
 
-template <class Generator>
-class UniformDistribution<Generator, float> {
+template <class Generator, bool IsVec>
+class UniformDistribution<Generator, float, IsVec> {
  public:
   // The number of elements that will be returned.
+  // Set the number to be Eigen packet size of type at least, so computations
+  // can be vectorized using SIMD on CPU.
+  static constexpr int kVectorLength = std::max(
+      static_cast<const int>(Eigen::internal::packet_traits<float>::size),
+      Generator::kResultElementCount);
   static constexpr int kResultElementCount =
-      PlatformResultElementCount<Generator, float>();
+      IsVec ? kVectorLength : Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
   static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
@@ -200,6 +199,7 @@ class UniformDistribution<Generator, float> {
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
 #ifdef __CUDA_ARCH__
+    static_assert(!IsVec, "Can't vectorize Distribution on GPU");
     typename Generator::ResultType sample = (*gen)();
     ResultType result;
     for (int i = 0; i < kResultElementCount; ++i) {
@@ -207,14 +207,14 @@ class UniformDistribution<Generator, float> {
     }
     return result;
 #else
-    return VectorizedFormat<UniformDistribution<Generator, float>, Generator>(
-        gen, InternalUint32ToFloat);
+    return VectorizedFormat<UniformDistribution<Generator, float, IsVec>,
+                            Generator>(gen, InternalUint32ToFloat);
 #endif  // __CUDA_ARCH__
   }
 };
 
-template <class Generator>
-class UniformDistribution<Generator, double> {
+template <class Generator, bool IsVec>
+class UniformDistribution<Generator, double, IsVec> {
  public:
   // The number of elements that will be returned.
   static constexpr int kResultElementCount = Generator::kResultElementCount / 2;
@@ -237,8 +237,8 @@ class UniformDistribution<Generator, double> {
   }
 };
 
-template <class Generator>
-class UniformDistribution<Generator, int32> {
+template <class Generator, bool IsVec>
+class UniformDistribution<Generator, int32, IsVec> {
  public:
   // The number of elements that will be returned.
   static constexpr int kResultElementCount = Generator::kResultElementCount;
@@ -272,8 +272,8 @@ class UniformDistribution<Generator, int32> {
   uint32 range_;
 };
 
-template <class Generator>
-class UniformDistribution<Generator, int64> {
+template <class Generator, bool IsVec>
+class UniformDistribution<Generator, int64, IsVec> {
  public:
   // The number of elements that will be returned.
   static constexpr int kResultElementCount = Generator::kResultElementCount / 2;
