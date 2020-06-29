@@ -40,7 +40,7 @@ struct BufferDescriptor : public GPUObjectDescriptor {
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
 
-  GPUResources GetGPUResources(AccessType access_type) const override;
+  GPUResources GetGPUResources() const override;
   absl::Status PerformReadSelector(const std::vector<std::string>& args,
                                    std::string* result) const;
   absl::Status PerformGetPtrSelector(
@@ -77,7 +77,8 @@ class Buffer : public GPUObject {
   template <typename T>
   absl::Status ReadData(CLCommandQueue* queue, std::vector<T>* result) const;
 
-  GPUResourcesWithValue GetGPUResources(AccessType access_type) const override;
+  absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                               GPUResourcesWithValue* resources) const override;
 
  private:
   void Release();

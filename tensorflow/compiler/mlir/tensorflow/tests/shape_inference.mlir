@@ -442,8 +442,29 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
       tf_device.return %2 : tensor<1x8x2xf32>
     // CHECK: () -> tensor<1x8x2xf32>
     }) {device = "/device:CPU:0"} : () -> tensor<*xf32>
+    // CHECK: "tf.Cast"(%{{.*}}) {Truncate = false} : (tensor<1x8x2xf32>) -> tensor<*xf32>
     // CHECK: (tensor<i32>, tensor<1x8x2xf32>) -> (tensor<1x8x1xf32>, tensor<1x8x1xf32>)
     %3:2 = "tf.Split"(%0, %1) {device = ""} : (tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+    %4 = addf %1, %1 : tensor<*xf32>
     return %3#0, %3#1 : tensor<*xf32>, tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<1xi32>
+  func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<*xi32> {
+   // CHECK: %[[RESULT:.*]] = tensor_cast
+   // CHECK-SAME: tensor<1xi32> to tensor<1xi32>
+   // CHECK: return %[[RESULT]] : tensor<1xi32>
+    %1 = tensor_cast %arg0 : tensor<1xi32> to tensor<*xi32>
+    return %1 : tensor<*xi32>
+  }
+
+  // CHECK-LABEL: operand_pack_unranked
+  // Verify fix: this only verifies that shape inference runs and completes on
+  // this input, rather than refining any shapes.
+  func @operand_pack_unranked(%arg0: tensor<*xf32>) -> () {
+   // CHECK: tf.Pack
+   %outputs_0 = "tf.Pack"(%arg0) {axis = 0 : i64, device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+   %outputs_2 = "tf.TensorSliceDataset"(%outputs_0) {device = "", output_shapes = [#tf.shape<>]} : (tensor<*xf32>) -> tensor<!tf.variant>
+   return
   }
 }

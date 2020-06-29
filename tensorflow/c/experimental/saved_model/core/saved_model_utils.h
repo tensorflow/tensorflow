@@ -21,7 +21,9 @@ limitations under the License.
 
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 
 namespace tensorflow {
 namespace internal {
@@ -32,6 +34,14 @@ namespace internal {
 Status TensorProtoToConstant(ImmediateExecutionContext* ctx,
                              const TensorProto& proto,
                              std::unique_ptr<Constant>* output);
+
+// Creates a tensorflow::Variable from a SavedVariable. This is similar to the
+// logic in:
+// https://github.com/tensorflow/tensorflow/blob/516608035f85cec8b126712b0ff8407220206b22/tensorflow/python/saved_model/load.py#L407
+// Note that the caller **must assign a value** to the loaded variable.
+Status LoadSavedVariable(ImmediateExecutionContext* ctx,
+                         const SavedVariable& variable,
+                         std::unique_ptr<Variable>* output);
 
 }  // namespace internal
 }  // namespace tensorflow

@@ -34,7 +34,6 @@ namespace tensorflow {
 // Abstract interface to an operation.
 class ImmediateExecutionOperation : public AbstractOperation {
  public:
-  static constexpr AbstractOperationKind kKind = kImmediateExecution;
   virtual void Clear() = 0;
 
   virtual const tensorflow::OpDef* OpDef() const = 0;
@@ -45,8 +44,14 @@ class ImmediateExecutionOperation : public AbstractOperation {
   // Experimental
   virtual Status SetUseXla(bool enable) = 0;
 
+  // For LLVM style RTTI.
+  static bool classof(const AbstractOperation* ptr) {
+    return ptr->getKind() == kEager || ptr->getKind() == kTfrt;
+  }
+
  protected:
-  ImmediateExecutionOperation() : AbstractOperation(kKind) {}
+  explicit ImmediateExecutionOperation(AbstractOperationKind kind)
+      : AbstractOperation(kind) {}
   ~ImmediateExecutionOperation() override {}
 };
 

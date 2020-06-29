@@ -699,7 +699,7 @@ def _ones(shape, dtype):
   if as_dtype == dtypes.string:
     return None
 
-  if not context.context().executing_eagerly():
+  if not context.executing_eagerly():
     return array_ops.ones(shape, dtype)
 
   if as_dtype.is_bool:

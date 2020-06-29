@@ -30,7 +30,6 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@com_github_googlecloudplatform_google_cloud_cpp//:storage_client",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -50,7 +49,6 @@ tf_cc_test(
         "gcs_filesystem.cc",
         "gcs_filesystem_test.cc",
     ],
-    local_defines = ["TF_GCS_FILESYSTEM_TEST"],
     tags = [
         "manual",
         "notap",

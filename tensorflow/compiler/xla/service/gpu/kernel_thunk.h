@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -48,14 +48,12 @@ class KernelThunk : public Thunk {
   //
   // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
   KernelThunk(absl::Span<const BufferAllocation* const> args,
-              const string& kernel_name, const HloInstruction* hlo_instruction,
-              int unroll_factor);
+              const string& kernel_name, const HloInstruction* hlo_instruction);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
 
   const string& kernel_name() const { return kernel_name_; }
-  int unroll_factor() const { return unroll_factor_; }
   void SetLaunchDimensions(const LaunchDimensions& launch_dims);
 
   Status Initialize(const GpuExecutable& executable,
@@ -68,10 +66,6 @@ class KernelThunk : public Thunk {
 
   // Entry kernel name for the computation.
   const string kernel_name_;
-
-  // The number of times this kernel should be unrolled. This works as a
-  // multiplier on the number of elements produced by a GPU thread.
-  const int unroll_factor_;
 
   // The thread and block dimension used to launch the kernel.
   // Will be set by IrEmitterUnnested.

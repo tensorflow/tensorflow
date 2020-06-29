@@ -64,7 +64,7 @@ void CopyTensorSegments(const std::vector<Array*>& input_arrays,
   // Copy the data from input_arrays to concatenated_array_buffer.
   T* dest_ptr = concatenated_array_buffer.data();
   for (int s = 0; s < total_copy_steps; s++) {
-    for (int i = 0; i < input_arrays.size(); i++) {
+    for (size_t i = 0; i < input_arrays.size(); i++) {
       std::copy(src_ptr[i], src_ptr[i] + array_copy_size[i], dest_ptr);
       src_ptr[i] += array_copy_size[i];
       dest_ptr += array_copy_size[i];

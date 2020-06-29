@@ -240,6 +240,11 @@ class TensorHandle : public ImmediateExecutionTensorHandle,
   // index.
   Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
 
+  // For LLVM style RTTI.
+  static bool classof(const AbstractTensorHandle* ptr) {
+    return ptr->getKind() == kEager;
+  }
+
  private:
   friend class PackedTensorHandleTest;
 

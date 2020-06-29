@@ -137,7 +137,7 @@ class HloCompareInstruction : public HloInstruction {
   explicit HloCompareInstruction(const Shape& shape, HloInstruction* lhs,
                                  HloInstruction* rhs,
                                  ComparisonDirection direction);
-  ComparisonDirection direction() const { return direction_; }
+  ComparisonDirection direction() const { return compare_.GetDirection(); }
   HloInstructionProto ToProto() const override;
 
  private:
@@ -151,7 +151,7 @@ class HloCompareInstruction : public HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  ComparisonDirection direction_;
+  Comparison compare_;
 };
 
 class HloTriangularSolveInstruction : public HloInstruction {

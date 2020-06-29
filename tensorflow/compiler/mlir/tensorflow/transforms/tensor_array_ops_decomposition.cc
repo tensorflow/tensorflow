@@ -440,7 +440,7 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
   };
   for (FuncOp func : funcs) {
     for (auto& op : func.front().getOperations()) {
-      if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+      if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
         op.replaceAllUsesWith(op.getOperands());
         continue;
       }

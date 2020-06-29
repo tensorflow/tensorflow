@@ -37,6 +37,66 @@ namespace builtin {
 
 namespace {
 
+// TODO(b/159066113): This is the exact same function as UpdateLstmCellFloat in
+// kernels/lstm_eval.cc, make that public and remove this.
+void UpdateLstmCellFloat(int n_batch, int n_cell, float* cell_state,
+                         const float* input_gate, float* forget_gate,
+                         const float* cell_gate, bool use_cifg, float clip) {
+  tensor_utils::VectorVectorCwiseProduct(forget_gate, cell_state,
+                                         n_batch * n_cell, cell_state);
+
+  if (use_cifg) {
+    // With CIFG, input_gate = 1-forget_gate. Use the forget_gate array as
+    // scratch, as input_gate array is not allocated in this case. (Be careful
+    // not to write to the scratch before reading the forget gate data.)
+    float* scratch = forget_gate;
+    tensor_utils::Sub1Vector(forget_gate, n_batch * n_cell, scratch);
+    tensor_utils::VectorVectorCwiseProductAccumulate(
+        cell_gate, scratch, n_batch * n_cell, cell_state);
+  } else {
+    tensor_utils::VectorVectorCwiseProductAccumulate(
+        cell_gate, input_gate, n_batch * n_cell, cell_state);
+  }
+  if (clip > 0.0f) {
+    tensor_utils::CwiseClipping(cell_state, n_batch * n_cell, clip);
+  }
+}
+
+void CalculateLstmOutputFloat(
+    int n_batch, int n_cell, int n_output, const float* cell_state,
+    const float* output_gate, TfLiteFusedActivation activation,
+    const float* projection_weights, const float* projection_bias,
+    const float proj_clip, float* output_state, float* scratch, Logger* logger,
+    const std::vector<int>& intermediate_tensor_indexes,
+    ErrorReporter* error_reporter) {
+  tensor_utils::ApplyActivationToVector(cell_state, n_batch * n_cell,
+                                        activation, scratch);
+  tensor_utils::VectorVectorCwiseProduct(output_gate, scratch, n_batch * n_cell,
+                                         scratch);
+
+  logger->LogTensorValue(intermediate_tensor_indexes[4], scratch,
+                         n_cell * n_batch, error_reporter);
+
+  const bool use_projection = (projection_weights != nullptr);
+  const bool use_projection_bias = (projection_bias != nullptr);
+
+  if (use_projection) {
+    if (use_projection_bias) {
+      tensor_utils::VectorBatchVectorAssign(projection_bias, n_output, n_batch,
+                                            output_state);
+    } else {
+      std::fill_n(output_state, n_batch * n_output, 0.0f);
+    }
+    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+        projection_weights, n_output, n_cell, scratch, n_batch, output_state);
+    if (proj_clip > 0.0f) {
+      tensor_utils::CwiseClipping(output_state, n_batch * n_output, proj_clip);
+    }
+  } else {
+    std::copy_n(scratch, n_batch * n_output, output_state);
+  }
+}
+
 inline void LstmStepWithAuxInput(
     const float* input_ptr, const float* input_to_input_weights_ptr,
     const float* input_to_forget_weights_ptr,
@@ -195,8 +255,6 @@ inline void LstmStepWithAuxInput(
                                      forget_gate_scratch);
 
   // For each batch and cell: update the cell.
-  tensor_utils::VectorVectorCwiseProduct(forget_gate_scratch, cell_state_ptr,
-                                         n_batch * n_cell, cell_state_ptr);
   if (use_layer_norm) {
     logger->LogTensorValue(intermediate_tensor_indexes[2], cell_gate_scratch,
                            n_cell * n_batch, error_reporter);
@@ -210,21 +268,10 @@ inline void LstmStepWithAuxInput(
   }
   tensor_utils::ApplyActivationToVector(cell_gate_scratch, n_batch * n_cell,
                                         params->activation, cell_gate_scratch);
-  if (use_cifg) {
-    tensor_utils::Sub1Vector(forget_gate_scratch, n_batch * n_cell,
-                             forget_gate_scratch);
-    tensor_utils::VectorVectorCwiseProductAccumulate(
-        cell_gate_scratch, forget_gate_scratch, n_batch * n_cell,
-        cell_state_ptr);
-  } else {
-    tensor_utils::VectorVectorCwiseProductAccumulate(
-        cell_gate_scratch, input_gate_scratch, n_batch * n_cell,
-        cell_state_ptr);
-  }
-  if (params->cell_clip > 0.0) {
-    tensor_utils::CwiseClipping(cell_state_ptr, n_batch * n_cell,
-                                params->cell_clip);
-  }
+
+  UpdateLstmCellFloat(n_batch, n_cell, cell_state_ptr, input_gate_scratch,
+                      forget_gate_scratch, cell_gate_scratch, use_cifg,
+                      params->cell_clip);
 
   // For each batch and cell: update the output gate.
   if (use_peephole) {
@@ -245,35 +292,13 @@ inline void LstmStepWithAuxInput(
   }
   tensor_utils::ApplySigmoidToVector(output_gate_scratch, n_batch * n_cell,
                                      output_gate_scratch);
-  tensor_utils::ApplyActivationToVector(cell_state_ptr, n_batch * n_cell,
-                                        params->activation, cell_gate_scratch);
-  tensor_utils::VectorVectorCwiseProduct(output_gate_scratch, cell_gate_scratch,
-                                         n_batch * n_cell, output_gate_scratch);
 
-  logger->LogTensorValue(intermediate_tensor_indexes[4], output_gate_scratch,
-                         n_cell * n_batch, error_reporter);
+  CalculateLstmOutputFloat(n_batch, n_cell, n_output, cell_state_ptr,
+                           output_gate_scratch, params->activation,
+                           projection_weights_ptr, projection_bias_ptr,
+                           params->proj_clip, output_state_ptr, scratch2,
+                           logger, intermediate_tensor_indexes, error_reporter);
 
-  const bool use_projection_weight = (projection_weights_ptr != nullptr);
-  const bool use_projection_bias = (projection_bias_ptr != nullptr);
-
-  // For each batch: update output_state.
-  if (use_projection_weight) {
-    if (use_projection_bias) {
-      tensor_utils::VectorBatchVectorAssign(projection_bias_ptr, n_output,
-                                            n_batch, output_state_ptr);
-    } else {
-      std::fill_n(output_state_ptr, n_batch * n_output, 0.0f);
-    }
-    tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-        projection_weights_ptr, n_output, n_cell, output_gate_scratch, n_batch,
-        output_state_ptr);
-    if (params->proj_clip > 0.0) {
-      tensor_utils::CwiseClipping(output_state_ptr, n_batch * n_output,
-                                  params->proj_clip);
-    }
-  } else {
-    std::copy_n(output_gate_scratch, n_batch * n_output, output_state_ptr);
-  }
   // Copy output_state to the output. Note that the output batch rows may not be
   // contiguous (output_batch_leading_dim != n_output).
   for (int b = 0; b < n_batch; b++) {

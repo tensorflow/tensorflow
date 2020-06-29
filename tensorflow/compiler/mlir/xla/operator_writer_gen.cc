@@ -47,7 +47,11 @@ static std::string GetDefaultAttrExport(
                              storage_type.endswith("FloatAttr") ||
                              storage_type.endswith("IntegerAttr") ||
                              storage_type.endswith("StringAttr"))) {
-    return "Convert" + attr.getReturnType().str();
+    // The return type may contains qualified namespaces. Split to remove them.
+    std::pair<StringRef, StringRef> splits = attr.getReturnType().rsplit("::");
+    StringRef symbol = splits.second;
+    if (symbol.empty()) symbol = splits.first;
+    return "Convert" + symbol.str();
   }
   return "Convert_" + named_attr.name.str();
 }

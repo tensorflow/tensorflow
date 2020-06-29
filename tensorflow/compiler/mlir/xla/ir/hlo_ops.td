@@ -212,6 +212,10 @@ def HLO_Log1pOp: HLO_UnaryElementwiseOp<"log_plus_one",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_Log1pOp;
 
+def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_LogisticOp;
+
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
     BASE_HLO_NotOp;

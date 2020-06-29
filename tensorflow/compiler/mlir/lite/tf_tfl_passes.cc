@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 
+#include "llvm/ADT/Optional.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 
 namespace mlir {
@@ -54,7 +56,8 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 }
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
-                                mlir::OpPassManager* pass_manager) {
+                                mlir::OpPassManager* pass_manager,
+                                llvm::Optional<tensorflow::Session*> session) {
   mlir::TF::StandardPipelineOptions standard_pipeline_options;
   standard_pipeline_options.enable_inliner = false;
   standard_pipeline_options.form_clusters = pass_config.form_clusters;
@@ -64,6 +67,22 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   if (pass_config.shape_inference) {
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
+
+  if (session.hasValue()) {
+    // Add a pass that converts reference variables to resource variables.
+    pass_manager->addPass(
+        mlir::TF::
+            CreateConvertReadonlyReferenceVariablesToResourceVariablesPass());
+
+    // Add a pass that promotes resource variable to the function arguments.
+    pass_manager->addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
+
+    // Add a pass that creates global tensors and converts the function
+    // arguments to the tf_saved_model.bound_input arguments.
+    pass_manager->addPass(
+        mlir::tf_saved_model::CreateLiftVariablesPass(session.getValue()));
+  }
+
   // Keep this pass after the shape inference pass, which couldn't do shape
   // inference for non-tf ops.
   if (!pass_config.quant_specs.serialized_quant_stats.empty()) {

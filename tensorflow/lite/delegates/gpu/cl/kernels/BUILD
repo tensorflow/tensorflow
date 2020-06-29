@@ -331,6 +331,7 @@ cc_library(
     deps = [
         ":util",
         "//tensorflow/lite/delegates/gpu:spi",
+        "//tensorflow/lite/delegates/gpu/cl:arguments",
         "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
         "//tensorflow/lite/delegates/gpu/cl:cl_errors",
         "//tensorflow/lite/delegates/gpu/cl:environment",

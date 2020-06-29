@@ -4578,7 +4578,7 @@ def non_max_suppression_padded(boxes,
     sorted_input: a boolean indicating whether the input boxes and scores
       are sorted in descending order by the score.
     canonicalized_coordinates: if box coordinates are given as
-    `[y_min, x_min, y_max, x_max]`, settign to True eliminate redundant
+    `[y_min, x_min, y_max, x_max]`, setting to True eliminate redundant
      computation to canonicalize box coordinates.
     tile_size: an integer representing the number of boxes in a tile, i.e.,
       the maximum number of boxes per image that can be used to suppress other
@@ -4586,8 +4586,8 @@ def non_max_suppression_padded(boxes,
       potentially more redundant work.
   Returns:
     idx: a tensor with a shape of [..., num_boxes] representing the
-      indices selected by non-max suppression. The leadign dimensions
-      are the batch dimensions of the input boxes. All numbers are are within
+      indices selected by non-max suppression. The leading dimensions
+      are the batch dimensions of the input boxes. All numbers are within
       [0, num_boxes). For each image (i.e., idx[i]), only the first num_valid[i]
       indices (i.e., idx[i][:num_valid[i]]) are valid.
     num_valid: a tensor of rank 0 or higher with a shape of [...]
@@ -4689,7 +4689,11 @@ def non_max_suppression_padded_v2(boxes,
 
   Args:
     boxes: a tensor of rank 2 or higher with a shape of [..., num_boxes, 4].
-      Dimensions except the last two are batch dimensions.
+      Dimensions except the last two are batch dimensions. The last dimension
+      represents box coordinates, given as [y_1, x_1, y_2, x_2]. The coordinates
+      on each dimension can be given in any order
+      (see also `canonicalized_coordinates`) but must describe a box with
+      a positive area.
     scores: a tensor of rank 1 or higher with a shape of [..., num_boxes].
     max_output_size: a scalar integer `Tensor` representing the maximum number
       of boxes to be selected by non max suppression.
@@ -4703,7 +4707,7 @@ def non_max_suppression_padded_v2(boxes,
     sorted_input: a boolean indicating whether the input boxes and scores
       are sorted in descending order by the score.
     canonicalized_coordinates: if box coordinates are given as
-    `[y_min, x_min, y_max, x_max]`, settign to True eliminate redundant
+    `[y_min, x_min, y_max, x_max]`, setting to True eliminate redundant
      computation to canonicalize box coordinates.
     tile_size: an integer representing the number of boxes in a tile, i.e.,
       the maximum number of boxes per image that can be used to suppress other
@@ -4711,8 +4715,8 @@ def non_max_suppression_padded_v2(boxes,
       potentially more redundant work.
   Returns:
     idx: a tensor with a shape of [..., num_boxes] representing the
-      indices selected by non-max suppression. The leadign dimensions
-      are the batch dimensions of the input boxes. All numbers are are within
+      indices selected by non-max suppression. The leading dimensions
+      are the batch dimensions of the input boxes. All numbers are within
       [0, num_boxes). For each image (i.e., idx[i]), only the first num_valid[i]
       indices (i.e., idx[i][:num_valid[i]]) are valid.
     num_valid: a tensor of rank 0 or higher with a shape of [...]

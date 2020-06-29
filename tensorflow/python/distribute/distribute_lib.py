@@ -629,11 +629,10 @@ class InputOptions(
   ```
 
   Attributes:
-    experimental_prefetch_to_device: Boolean. Currently only applies to
-      TPUStrategy. Defaults to True. If True, dataset elements will be
-      prefetched to accelerator device memory. When False, dataset elements are
-      prefetched to host device memory. Must be False when using TPUEmbedding
-      API.
+    experimental_prefetch_to_device: Boolean. Defaults to True. If True, dataset
+      elements will be prefetched to accelerator device memory. When False,
+      dataset elements are prefetched to host device memory. Must be False when
+      using TPUEmbedding API.
   """
 
   def __new__(cls, experimental_prefetch_to_device=True):
@@ -2815,8 +2814,15 @@ class ReplicaContext(object):
     return self._strategy
 
   @property
+  @deprecation.deprecated(None, "Please avoid relying on devices property.")
   def devices(self):
-    """The devices this replica is to be executed on, as a tuple of strings."""
+    """Returns the devices this replica is to be executed on, as a tuple of strings.
+
+    NOTE: For `tf.distribute.MirroredStrategy` and
+    `tf.distribute.experimental.MultiWorkerMirroredStrategy`, this returns a
+    nested
+    list of device strings, e.g, [["gpu:0"]].
+    """
     require_replica_context(self)
     return (device_util.current(),)
 

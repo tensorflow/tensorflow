@@ -1324,7 +1324,8 @@ Status VerifyHloStructure(HloModule* module) {
               "Operand %d (%s) of instruction %s is in a different "
               "computation: %s vs %s",
               i, operand->name(), instruction->name(),
-              operand->parent()->name(), instruction->parent()->name());
+              operand->parent() ? operand->parent()->name() : "(null)",
+              instruction->parent()->name());
         }
       }
     }

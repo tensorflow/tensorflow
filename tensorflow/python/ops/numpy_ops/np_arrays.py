@@ -67,6 +67,7 @@ class NdarraySpec(type_spec.BatchableTypeSpec):
       raise ValueError('NdarraySpec.__init__ was expecting a tf.TypeSpec, '
                        'but got a {} instead.'.format(type(data_spec)))
     self._data_spec = data_spec
+    self._hash = None
 
   @property
   def _component_specs(self):
@@ -86,6 +87,11 @@ class NdarraySpec(type_spec.BatchableTypeSpec):
 
   def _unbatch(self):
     return NdarraySpec(self._data_spec._unbatch())  # pylint: disable=protected-access
+
+  def __hash__(self):
+    if self._hash is None:
+      self._hash = hash((type(self), self._data_spec))
+    return self._hash
 
 
 class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name

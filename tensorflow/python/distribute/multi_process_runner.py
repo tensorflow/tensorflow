@@ -138,7 +138,7 @@ class MultiProcessRunner(object):
                     "worker2.example.com:2222"],
          "ps": ["ps0.example.com:2222",
                 "ps1.example.com:2222"]}
-      rpc_layer: RPC layer to use. Default value is 'grpc+loas'.
+      rpc_layer: RPC layer to use. Default value is 'grpc'.
       max_run_time: If set, child processes is forced to exit at approximately
         this many seconds after `start` is called. We achieve this through
         `signal.alarm()` api. Note that this is best effort at Python level
@@ -184,7 +184,7 @@ class MultiProcessRunner(object):
 
     self._proc_func = proc_func
     self._cluster_spec = cluster_spec
-    self._rpc_layer = rpc_layer
+    self._rpc_layer = rpc_layer or 'grpc'
     self._max_run_time = max_run_time
     self._grpc_fail_fast = grpc_fail_fast
     self._stream_stdout = stream_stdout
@@ -487,12 +487,6 @@ class MultiProcessRunner(object):
       logging.info('%s-%d exit code: %s', task_type, task_id, p.exitcode)
 
     process_statuses = self._queue_to_list(self._process_status_queue)
-    if not self._all_forced_terminated and len(
-        process_statuses) != self._outstanding_subprocess_count:
-      raise UnexpectedSubprocessExitError(
-          'Missing status(es) from %d subprocess(es). See logs for details.' %
-          (self._outstanding_subprocess_count - len(process_statuses)),
-          self._get_mpr_result(process_statuses))
     for process_status in process_statuses:
       assert isinstance(process_status, _ProcessStatusInfo)
       if not process_status.is_successful:
@@ -500,12 +494,12 @@ class MultiProcessRunner(object):
 
     # Checking all the processes that are expected to exit properly.
     for (task_type, task_id), p in self._processes.items():
-      if self._dependence_on_chief and task_type != 'chief':
+      if self._dependence_on_chief and chief and task_type != 'chief':
         # If _dependence_on_chief, other processes may have been
         # forced-terminated, which is expected.
         continue
       # Successfully exiting process has exit code 0.
-      if p.exitcode > 0:
+      if p.exitcode is None or p.exitcode > 0:
         raise UnexpectedSubprocessExitError(
             'Subprocess %s-%d exited with exit code %d. See logs for details.' %
             (task_type, task_id, p.exitcode),
@@ -717,9 +711,10 @@ class MultiProcessPoolRunner(object):
     self._runner = None
 
   def __del__(self):
-    self._reset()
+    self.shutdown()
 
-  def _reset(self):
+  def shutdown(self):
+    """Shuts down the worker pool."""
     for conn in self._conn.values():
       conn.close()
     self._conn = {}
@@ -771,42 +766,36 @@ class MultiProcessPoolRunner(object):
     Returns:
       A list of return values.
     """
+    # TODO(b/150264776): skip in OSS until it's implemented.
+    multi_process_lib.Process()
     if self._runner is None:
       self._start()
 
-    # Since we start the processes as daemon they're going to be killed by
-    # SIGTERM when the program exits. We only turn on streaming during run() to
-    # avoid printing the stacktrace caused by the SIGTERM.
-    self._runner._stream_stdout = True  # pylint: disable=protected-access
+    proc_func = dill.dumps(proc_func, dill.HIGHEST_PROTOCOL)
+    for conn in self._conn.values():
+      conn.send((proc_func, args or [], kwargs or {}))
 
-    try:
-      proc_func = dill.dumps(proc_func, dill.HIGHEST_PROTOCOL)
-      for conn in self._conn.values():
-        conn.send((proc_func, args or [], kwargs or {}))
+    process_statuses = []
+    for (task_type, task_id), conn in self._conn.items():
+      logging.info('Waiting for the result from %s-%d', task_type, task_id)
+      try:
+        process_statuses.append(conn.recv())
+      except EOFError:
+        # This shouldn't happen due to exceptions in proc_func. This usually
+        # means bugs in the runner.
+        self.shutdown()
+        raise RuntimeError('Unexpected EOF. Worker process may have died. '
+                           'Please report a bug')
 
-      process_statuses = []
-      for (task_type, task_id), conn in self._conn.items():
-        logging.info('Waiting for the result from %s-%d', task_type, task_id)
-        try:
-          process_statuses.append(conn.recv())
-        except EOFError:
-          # This shouldn't happen due to exceptions in proc_func. This usually
-          # means bugs in the runner.
-          self._reset()
-          raise RuntimeError('Unexpected EOF. Worker process may have died. '
-                             'Please report a bug')
+    return_values = []
+    for process_status in process_statuses:
+      assert isinstance(process_status, _ProcessStatusInfo)
+      if not process_status.is_successful:
+        six.reraise(*process_status.exc_info)
+      if process_status.return_value is not None:
+        return_values.append(process_status.return_value)
 
-      return_values = []
-      for process_status in process_statuses:
-        assert isinstance(process_status, _ProcessStatusInfo)
-        if not process_status.is_successful:
-          six.reraise(*process_status.exc_info)
-        if process_status.return_value is not None:
-          return_values.append(process_status.return_value)
-
-      return return_values
-    finally:
-      self._runner._stream_stdout = False  # pylint: disable=protected-access
+    return return_values
 
 
 def _pool_runner_worker(initializer, conn):
@@ -849,17 +838,24 @@ def _run_contained(proc_func, args, kwargs):
 
   Returns:
     a _ProcessStatusInfo.
+
   """
+  is_successful = False
+  return_value = None
+  exc_info = None
   try:
     return_value = proc_func(*args, **kwargs)
     is_successful = True
-    exc_info = None
+    return _ProcessStatusInfo(
+        is_successful=is_successful,
+        exc_info=exc_info,
+        return_value=return_value)
+
+  # If `proc_func` ends up exiting with `sys.exit()`, the `SystemExit` is not
+  # handled here.
   except Exception:  # pylint: disable=broad-except
-    return_value = None
-    is_successful = False
     exc_info = sys.exc_info()
-  finally:
-    return _ProcessStatusInfo(  # pylint: disable=lost-exception
+    return _ProcessStatusInfo(
         is_successful=is_successful,
         exc_info=exc_info,
         return_value=return_value)

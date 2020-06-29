@@ -1225,6 +1225,11 @@ class IndexedCaseTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
 class ExecuteFnForDeviceTest(test_util.TensorFlowTestCase):
 
+  # The same test can run with and without XLA compilation.
+  # In non-XLA gpu case, it exercises gpu branch.
+  # In XLA gpu cases, it exercises the default case.
+  # This test is to test the non-XLA case so that we disable XLA.
+  @test_util.disable_xla("xla has different execution branch")
   def testCommonCases(self):
 
     def cpu_fn(x):

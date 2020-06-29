@@ -1,10 +1,7 @@
 # Description: StreamExecutor Interface for TPUs
 
 package(
-    default_visibility = [
-        "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
-        "//tensorflow/core/tpu:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow/core/tpu:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -38,6 +35,7 @@ cc_library(
     deps = [
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
     ],
 )
@@ -51,7 +49,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/stream_executor:stream",
+        "//tensorflow/stream_executor:device_memory",
         "@com_google_absl//absl/container:inlined_vector",
     ],
 )
@@ -64,7 +62,16 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_executor",
+    name = "device_memory_base_helper",
+    hdrs = ["device_memory_base_helper.h"],
+    deps = [
+        ":tpu_executor_c_api_hdrs",
+        "//tensorflow/stream_executor:device_memory",
+    ],
+)
+
+cc_library(
+    name = "tpu_executor_base",
     srcs = [
         "tpu_executor.cc",
         "tpu_platform.cc",
@@ -76,7 +83,7 @@ cc_library(
         "tpu_timer.h",
     ],
     deps = [
-        ":c_api_conversions",
+        ":device_memory_base_helper",
         ":status_helper",
         ":tpu_executor_c_api_hdrs",
         ":tpu_executor_interface",
@@ -86,9 +93,19 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/stream_executor:stream",
+        "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_executor",
+    srcs = ["tpu_platform_registration.cc"],
+    deps = [
+        ":tpu_executor_base",
+        "//tensorflow/stream_executor/platform",
     ],
     alwayslink = True,
 )
@@ -121,6 +138,7 @@ cc_library(
     srcs = ["tpu_transfer_manager_registration.cc"],
     deps = [
         ":tpu_executor",
+        ":tpu_executor_base",
         ":tpu_transfer_manager_base",
         "//tensorflow/compiler/xla/service:transfer_manager",
     ],
@@ -134,7 +152,7 @@ cc_library(
         ":c_api_conversions",
         ":proto_helper",
         ":status_helper",
-        ":tpu_executor",
+        ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -142,7 +160,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/stream_executor:stream",
+        "//tensorflow/stream_executor",
     ],
 )
 
@@ -168,17 +186,6 @@ cc_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/stream_executor:multi_platform_manager",
         "//tensorflow/stream_executor:stream_executor_headers",
-        "//tensorflow/stream_executor:stream_executor_pimpl",
-    ],
-)
-
-cc_library(
-    name = "tpu_stream_interface",
-    hdrs = ["tpu_stream_interface.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/stream_executor:device_memory",
-        "//tensorflow/stream_executor:stream_executor_internal",
     ],
 )
 
@@ -188,8 +195,16 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_platform_interface",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/stream_executor:stream_executor_internal",
-        "//tensorflow/stream_executor:stream_header",
+        "//tensorflow/stream_executor:stream_executor_headers",
+        "//tensorflow/stream_executor/lib",
+    ],
+)
+
+cc_library(
+    name = "tpu_stream_interface",
+    hdrs = ["tpu_stream_interface.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/stream_executor:stream_executor_headers",
     ],
 )

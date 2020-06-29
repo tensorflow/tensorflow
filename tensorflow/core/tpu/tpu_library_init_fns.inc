@@ -11,6 +11,7 @@ tensorflow::Status SetTpuConfigStructFns(void* library_handle) {
   TFTPU_SET_FN(config_fn, DisconnectDistributedTpuChipsOp_DoWork);
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_FreeCharArray);
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_FreeInt32Array);
+  TFTPU_SET_FN(config_fn, TpuConfigurationApi_HasTPUPodState);
 
   return tensorflow::Status::OK();
 }
@@ -148,6 +149,7 @@ tensorflow::Status SetTpuUtilStructFns(void* library_handle) {
   auto* util_fn = tensorflow::tpu::UtilApiFn();
 
   TFTPU_SET_FN(util_fn, TpuCompile_IsTpuCompilationEnabled);
+  TFTPU_SET_FN(util_fn, TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
   TFTPU_SET_FN(util_fn, TpuCompile_ToTpuShapeRepresentation);
 
   return tensorflow::Status::OK();

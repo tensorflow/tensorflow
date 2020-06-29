@@ -16,14 +16,13 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_ABSTRACT_TENSOR_HANDLE_H_
 
 #include <memory>
-
 namespace tensorflow {
 
 // Abstract interface to a Tensor handle in either tracing or immediate
 // execution mode.
 class AbstractTensorHandle {
  protected:
-  enum AbstractTensorHandleKind { kTracing, kImmediateExecution };
+  enum AbstractTensorHandleKind { kGraph, kMlir, kEager, kTfrt };
   explicit AbstractTensorHandle(AbstractTensorHandleKind kind) : kind_(kind) {}
   virtual ~AbstractTensorHandle() {}
 

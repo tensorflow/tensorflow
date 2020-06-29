@@ -27,7 +27,7 @@ def _gen_kernel_cubin_impl(ctx):
         filename = "%s.%s.cubin" % (name, arch)
         cubin = ctx.actions.declare_file(filename)
         ctx.actions.run(
-            inputs = [ctx.file.mlir_op],
+            inputs = [ctx.file.mlir_op, ctx.file._tfso],
             outputs = [cubin],
             executable = ctx.executable._tool,
             arguments = cmd_args + [
@@ -49,6 +49,11 @@ _gen_kernel_cubin_rule = rule(
         "same_shape": attr.string(),
         "unroll_factors": attr.string(),
         "gpu_archs": attr.string_list(mandatory = True),
+        "_tfso": attr.label(
+            default = Label("//tensorflow:libtensorflow_framework.so.2"),
+            cfg = "host",
+            allow_single_file = True,
+        ),
         "_tool": attr.label(
             executable = True,
             default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_cubin"),

@@ -45,10 +45,34 @@ using OutsideClusterMap =
     llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<Operation*, 8>, 8>;
 
 // This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-// annotation from a TPU cluster.  Each outside compilation cluster is moved to
-// a parallel_execute region.  The TPU cluster is also moved to a
-// parallel_execute region.
-// TODO(b/154363171): Add example tranformations.
+// annotation from a TPU cluster. Each outside compilation cluster is moved to
+// a parallel_execute region. The TPU cluster is also moved to a
+// parallel_execute region. Communication ops between device and host are
+// added to pass inputs/outputs to/from the outside compiled region.
+//
+// A simple example:
+//   "tf_device.cluster"() ( {
+//     "tf.A"()
+//     "tf.B"() {_xla_outside_compilation = "cluster1"}
+//     "tf.C"()
+//     tf_device.return
+//   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+//
+// Would become the following ops (unimportant attribute, type are omitted):
+//   "tf_device.parallel_execute"() ( {
+//     "tf_device.launch"() ( {
+//       "tf.B()
+//       tf_device.return
+//     })
+//     tf_device.return
+//   }, {
+//     "tf_device.cluster"( {
+//       "tf.A"()
+//       "tf.C"()
+//       tf_device.return
+//     })
+//    tf_device.return
+//  })
 
 struct TPUExtractOutsideCompilation
     : public PassWrapper<TPUExtractOutsideCompilation,

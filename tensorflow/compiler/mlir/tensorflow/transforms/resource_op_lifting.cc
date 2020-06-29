@@ -140,7 +140,7 @@ struct ResourceOpLiftingPass
 // such nodes to carry information.
 void RemoveIdentity(Block* block) {
   for (auto& op : llvm::make_early_inc_range(*block)) {
-    if (isa<TF::IdentityOp>(&op) || isa<TF::IdentityNOp>(&op)) {
+    if (isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
       op.replaceAllUsesWith(op.getOperands());
       op.erase();
     }

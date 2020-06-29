@@ -888,6 +888,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kFloor:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLogistic:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kPopulationCount:

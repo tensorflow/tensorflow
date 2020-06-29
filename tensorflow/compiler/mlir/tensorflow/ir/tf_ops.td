@@ -31,6 +31,7 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/IR/OpBase.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
@@ -230,7 +231,8 @@ else_branch: A function that takes 'inputs' and returns a list of
   }];
 }
 
-def TF_YieldOp : TF_Op<"Yield", [Terminator]> {
+def TF_YieldOp : TF_Op<"Yield",
+      [Terminator, ParentOneOf<["IfRegionOp", "WhileRegionOp"]>]> {
   let summary = "Yield operation";
 
   let description = [{
@@ -242,10 +244,6 @@ def TF_YieldOp : TF_Op<"Yield", [Terminator]> {
   }];
 
   let arguments = (ins Variadic<AnyType>:$operands);
-
-  let verifier = [{
-    return Verify(*this);
-  }];
 }
 
 def TF_IfRegionOp : TF_Op<"IfRegion",
@@ -595,7 +593,7 @@ output = input; While (Cond(output)) { output = Body(output) }
 
 input: A list of input tensors whose types are T.
 output: A list of output tensors whose types are T.
-cond: A function takes 'input' and returns a tensor.  If the tensor is
+cond: A function that takes 'input' and returns a tensor.  If the tensor is
     a scalar of non-boolean, the scalar is converted to a boolean
     according to the following rule: if the scalar is a numerical
     value, non-zero means True and zero means False; if the scalar is
@@ -629,6 +627,55 @@ body: A function that takes a list of tensors and returns another
   let verifier = [{
     return Verify(*this);
   }];
+}
+
+def TL_WhileRegionOp : TF_Op<"WhileRegion",
+      [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
+       SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "while operation";
+  let description = [{
+  The tf.WhileRegion op represents a while loop using 2 regions and a set of
+  iteration variables. The iteration variables maintained by this Op have the
+  same types as the inputs. The Op executes a while loop described by the
+  following pseudo code:
+
+  ```
+     func WhileRegionOp(inputs) {
+       iteration_vars = inputs;
+       while (cond(iteration_vars)) {
+           iteration_vars = body(iteration_vars);
+       }
+       return iteration_vars;
+     }
+  ```
+
+  `cond` is the condition region and `body` is the body region. Both these
+  regions accept the current value of the iteration variables as inputs. The
+  condition region returns a tensor<i1> which, if false, will exit the loop.
+  The body region computes new values of the iteration variables. The iteration
+  variables are initialized to the Op input, and the results of the
+  tf.WhileRegion op are the final values of the iteration variables.
+
+  This implies that the operand and result types for tf.WhileRegion should be
+  the same. Note that the condition and body regions can implicitly capture
+  loop invariant values directly.
+  }];
+
+  let arguments = (ins
+    Variadic<AnyTensor>:$input,
+
+    // Used to map StatelessWhile and While op defined in TensorFlow to a common
+    // op.
+    DefaultValuedAttr<BoolAttr, "false">:$is_stateless,
+    DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
+  );
+  let results = (outs Variadic<AnyTensor>:$output);
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+
+  let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_TensorListReserveOp : TF_TensorListInitOp<"TensorListReserve"> {

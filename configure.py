@@ -480,7 +480,7 @@ def check_bazel_version(min_version, max_version):
   """
   if which('bazel') is None:
     print('Cannot find bazel. Please install bazel.')
-    sys.exit(0)
+    sys.exit(1)
 
   stderr = open(os.devnull, 'wb')
   curr_version = run_shell(['bazel', '--version'],
