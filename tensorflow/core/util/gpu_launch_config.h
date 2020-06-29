@@ -168,7 +168,6 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
       block_size_limit);
   CHECK_EQ(err, cudaSuccess);
 #elif TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
   // Earlier versions of this HIP routine incorrectly returned void.
   // TODO re-enable hipError_t error checking when HIP is fixed.
 #if TENSORFLOW_COMPILER_IS_HIP_CLANG
@@ -188,12 +187,6 @@ GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
                                     block_size_limit_uint);
   block_count = static_cast<int>(block_count_uint);
   thread_per_block = static_cast<int>(thread_per_block_uint);
-=======
-  hipError_t err = hipOccupancyMaxPotentialBlockSize(
-      &block_count, &thread_per_block, func, dynamic_shared_memory_size,
-      block_size_limit);
-  CHECK_EQ(err, hipSuccess);
->>>>>>> google_upstream/master
 #endif
 #endif
 

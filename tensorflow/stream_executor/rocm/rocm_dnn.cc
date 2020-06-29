@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/strings/str_cat.h"
+#include "third_party/eigen3/Eigen/Core"
 #include "rocm/include/miopen/miopen.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/util/env_var.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/scratch_allocator.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
-#include "third_party/eigen3/Eigen/Core"
 
 namespace {
 
@@ -255,124 +255,6 @@ namespace wrap {
 #endif
 
 // clang-format off
-<<<<<<< HEAD
-#define MIOPEN_DNN_ROUTINE_EACH(__macro)                   \
-  __macro(miopenBatchNormalizationBackward)                \
-  __macro(miopenBatchNormalizationForwardInference)        \
-  __macro(miopenBatchNormalizationForwardTraining)         \
-  __macro(miopenGetConvolutionForwardOutputDim)            \
-  __macro(miopenGetConvolutionNdForwardOutputDim)          \
-  __macro(miopenFindConvolutionForwardAlgorithm)           \
-  __macro(miopenCreateTensorDescriptor)                    \
-  __macro(miopenDestroyTensorDescriptor)                   \
-  __macro(miopenSetNdPoolingDescriptor)                    \
-  __macro(miopenSetPoolingIndexType)                       \
-  __macro(miopenSetLRNDescriptor)                          \
-  __macro(miopenLRNGetWorkSpaceSize)                       \
-  __macro(miopenCreateConvolutionDescriptor)               \
-  __macro(miopenCreatePoolingDescriptor)                   \
-  __macro(miopenDestroyPoolingDescriptor)                  \
-  __macro(miopenCreateDropoutDescriptor)                   \
-  __macro(miopenDestroyDropoutDescriptor)                  \
-  __macro(miopenCreateLRNDescriptor)                       \
-  __macro(miopenDestroyLRNDescriptor)                      \
-  __macro(miopenDestroyConvolutionDescriptor)              \
-  __macro(miopenCreateWithStream)                          \
-  __macro(miopenDestroy)                                   \
-  __macro(miopenSetStream)                                 \
-  __macro(miopenSetAllocator)                              \
-  __macro(miopenActivationForward)                         \
-  __macro(miopenConvolutionForward)                        \
-  __macro(miopenConvolutionBackwardBias)                   \
-  __macro(miopenConvolutionForwardGetWorkSpaceSize)        \
-  __macro(miopenInitConvolutionDescriptor)                 \
-  __macro(miopenInitConvolutionNdDescriptor)               \
-  __macro(miopenGetConvolutionDescriptor)                  \
-  __macro(miopenGetConvolutionNdDescriptor)                \
-  __macro(miopenSetConvolutionGroupCount)                  \
-  __macro(miopenSet4dTensorDescriptor)                     \
-  __macro(miopenGetTensorDescriptor)                       \
-  __macro(miopenSetTensorDescriptor)                       \
-  __macro(miopenGetTensorDescriptorSize)                   \
-  __macro(miopenPoolingForward)                            \
-  __macro(miopenPoolingGetWorkSpaceSizeV2)                 \
-  __macro(miopenPoolingBackward)                           \
-  __macro(miopenDropoutForward)                            \
-  __macro(miopenDropoutBackward)                           \
-  __macro(miopenDropoutGetStatesSize)                      \
-  __macro(miopenRestoreDropoutDescriptor)                  \
-  __macro(miopenSetDropoutDescriptor)                      \
-  __macro(miopenLRNForward)                                \
-  __macro(miopenLRNBackward)                               \
-  __macro(miopenOpTensor)                                  \
-  __macro(miopenConvolutionBackwardData)                   \
-  __macro(miopenConvolutionBackwardWeights)                \
-  __macro(miopenConvolutionBackwardWeightsGetWorkSpaceSize)\
-  __macro(miopenFindConvolutionBackwardDataAlgorithm)      \
-  __macro(miopenFindConvolutionBackwardWeightsAlgorithm)   \
-  __macro(miopenConvolutionBackwardDataGetWorkSpaceSize)   \
-  __macro(miopenCreateRNNDescriptor)                       \
-  __macro(miopenSetRNNDescriptor)                          \
-  __macro(miopenDestroyRNNDescriptor)                      \
-  __macro(miopenGetRNNParamsSize)                          \
-  __macro(miopenGetRNNLayerParam)                          \
-  __macro(miopenGetRNNLayerBias)                           \
-  __macro(miopenGetRNNWorkspaceSize)                       \
-  __macro(miopenGetRNNTrainingReserveSize)                 \
-  __macro(miopenRNNForwardInference)                       \
-  __macro(miopenRNNForwardTraining)                        \
-  __macro(miopenRNNBackwardData)                           \
-  __macro(miopenRNNBackwardWeights)                        \
-  __macro(miopenGetRNNLayerParamOffset)                    \
-  __macro(miopenGetRNNLayerParamSize)                      \
-  __macro(miopenGetRNNLayerBiasOffset)                     \
-  __macro(miopenGetRNNLayerBiasSize)                       \
-  __macro(miopenGetRNNParamsDescriptor)                    \
-  __macro(miopenCreateActivationDescriptor)                \
-  __macro(miopenSetActivationDescriptor)                   \
-  __macro(miopenGetActivationDescriptor)                   \
-  __macro(miopenDestroyActivationDescriptor)               \
-  __macro(miopenCreateFusionPlan)                          \
-  __macro(miopenCreateOpConvForward)                       \
-  __macro(miopenCreateOpBiasForward)                       \
-  __macro(miopenCreateOpActivationForward)                 \
-  __macro(miopenCreateOpActivationBackward)                \
-  __macro(miopenCreateOpBatchNormInference)                \
-  __macro(miopenCreateOpBatchNormForward)                  \
-  __macro(miopenCreateOpBatchNormBackward)                 \
-  __macro(miopenCompileFusionPlan)                         \
-  __macro(miopenFusionPlanGetOp)                           \
-  __macro(miopenCreateOperatorArgs)                        \
-  __macro(miopenSetOpArgsConvForward)                      \
-  __macro(miopenSetOpArgsBiasForward)                      \
-  __macro(miopenSetOpArgsActivForward)                     \
-  __macro(miopenSetOpArgsActivBackward)                    \
-  __macro(miopenSetOpArgsBatchNormInference)               \
-  __macro(miopenSetOpArgsBatchNormForward)                 \
-  __macro(miopenSetOpArgsBatchNormBackward)                \
-  __macro(miopenExecuteFusionPlan)                         \
-  __macro(miopenDestroyOperatorArgs)                       \
-  __macro(miopenDestroyFusionPlan)			   \
-  __macro(miopenConvolutionForwardGetSolutionCount)			\
-  __macro(miopenConvolutionForwardGetSolution)				\
-  __macro(miopenConvolutionForwardGetSolutionWorkspaceSize)		\
-  __macro(miopenConvolutionForwardCompileSolution)			\
-  __macro(miopenConvolutionForwardImmediate)				\
-  __macro(miopenConvolutionBackwardDataGetSolutionCount)		\
-  __macro(miopenConvolutionBackwardDataGetSolution)			\
-  __macro(miopenConvolutionBackwardDataGetSolutionWorkspaceSize)	\
-  __macro(miopenConvolutionBackwardDataCompileSolution)			\
-  __macro(miopenConvolutionBackwardDataImmediate)			\
-  __macro(miopenConvolutionBackwardWeightsGetSolutionCount)		\
-  __macro(miopenConvolutionBackwardWeightsGetSolution)			\
-  __macro(miopenConvolutionBackwardWeightsGetSolutionWorkspaceSize)	\
-  __macro(miopenConvolutionBackwardWeightsCompileSolution)		\
-  __macro(miopenConvolutionBackwardWeightsImmediate)			\
-  __macro(miopenCreateCTCLossDescriptor)				\
-  __macro(miopenSetCTCLossDescriptor)					\
-  __macro(miopenGetCTCLossWorkspaceSize)				\
-  __macro(miopenCTCLoss)						\
-=======
 #define MIOPEN_DNN_ROUTINE_EACH(__macro)                             \
   __macro(miopenBatchNormalizationBackward)                          \
   __macro(miopenBatchNormalizationForwardInference)                  \
@@ -389,6 +271,8 @@ namespace wrap {
   __macro(miopenCreateConvolutionDescriptor)                         \
   __macro(miopenCreatePoolingDescriptor)                             \
   __macro(miopenDestroyPoolingDescriptor)                            \
+  __macro(miopenCreateDropoutDescriptor)                             \
+  __macro(miopenDestroyDropoutDescriptor)                            \
   __macro(miopenCreateLRNDescriptor)                                 \
   __macro(miopenDestroyLRNDescriptor)                                \
   __macro(miopenDestroyConvolutionDescriptor)                        \
@@ -412,6 +296,11 @@ namespace wrap {
   __macro(miopenPoolingForward)                                      \
   __macro(miopenPoolingGetWorkSpaceSizeV2)                           \
   __macro(miopenPoolingBackward)                                     \
+  __macro(miopenDropoutForward)                                      \
+  __macro(miopenDropoutBackward)                                     \
+  __macro(miopenDropoutGetStatesSize)                                \
+  __macro(miopenRestoreDropoutDescriptor)                            \
+  __macro(miopenSetDropoutDescriptor)                                \
   __macro(miopenLRNForward)                                          \
   __macro(miopenLRNBackward)                                         \
   __macro(miopenOpTensor)                                            \
@@ -482,7 +371,6 @@ namespace wrap {
   __macro(miopenSetCTCLossDescriptor)                                \
   __macro(miopenGetCTCLossWorkspaceSize)                             \
   __macro(miopenCTCLoss)                                             \
->>>>>>> google_upstream/master
   __macro(miopenDestroyCTCLossDescriptor)
 // clang-format on
 
@@ -727,15 +615,9 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
                                  &use_immediate_mode_);
 
   bool enable_pooling_cache = false;
-<<<<<<< HEAD
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false, &enable_pooling_cache);
-  if(enable_pooling_cache)
-    m_pooling_cache_allowed = true;
-=======
   tensorflow::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
                                  &enable_pooling_cache);
   if (enable_pooling_cache) m_pooling_cache_allowed = true;
->>>>>>> google_upstream/master
 }
 
 port::Status MIOpenSupport::Init() {
@@ -4382,33 +4264,6 @@ bool MIOpenSupport::DoPoolForward(
   return false;
 }
 
-<<<<<<< HEAD
-bool PoolingWorkspaceDescriptor::IsSame(const dnn::BatchDescriptor& input_dimensions,
-  const dnn::BatchDescriptor& output_dimensions,
-  const dnn::PoolingDescriptor& pooling_dimensions,
-  int _type)
-{
-  return dtype==_type
-    && input_dims==input_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX)
-    && output_dims==output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX)
-    && op.mode()==pooling_dimensions.mode()
-    && op.window()==pooling_dimensions.window()
-    && op.padding()==pooling_dimensions.padding()
-    && op.strides()==pooling_dimensions.strides();
-}
-
-bool PoolingWorkspaceCache::find(const void* p, const dnn::BatchDescriptor& input_dimensions,
-  const dnn::BatchDescriptor& output_dimensions,
-  const dnn::PoolingDescriptor& pooling_dimensions,
-  int _type,
-  PoolingWorkspaceDescriptor*& pdesc) {
-  pdesc=0;
-  auto it = cache.find(p); 
-  if(it==cache.end()) {
-    return false;
-  }
-  if(!it->second.IsSame(input_dimensions, output_dimensions, pooling_dimensions, _type)) {
-=======
 bool PoolingWorkspaceDescriptor::IsSame(
     const dnn::BatchDescriptor& input_dimensions,
     const dnn::BatchDescriptor& output_dimensions,
@@ -4436,27 +4291,12 @@ bool PoolingWorkspaceCache::find(
   }
   if (!it->second.IsSame(input_dimensions, output_dimensions,
                          pooling_dimensions, _type)) {
->>>>>>> google_upstream/master
     return false;
   }
   pdesc = &it->second;
   return true;
 }
 
-<<<<<<< HEAD
-void PoolingWorkspaceCache::insert(const void* p,
-    const dnn::BatchDescriptor& input_dimensions,
-    const dnn::BatchDescriptor& output_dimensions,
-    const dnn::PoolingDescriptor& pooling_dimensions,
-    int _type,
-    std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace,
-    size_t wsp_size,
-    hipStream_t hip_stream) {
-
-  PoolingWorkspaceDescriptor* desc = 0;
-  auto it = cache.find(p); 
-  if(it!=cache.end()) {
-=======
 void PoolingWorkspaceCache::insert(
     const void* p, const dnn::BatchDescriptor& input_dimensions,
     const dnn::BatchDescriptor& output_dimensions,
@@ -4466,28 +4306,18 @@ void PoolingWorkspaceCache::insert(
   PoolingWorkspaceDescriptor* desc = 0;
   auto it = cache.find(p);
   if (it != cache.end()) {
->>>>>>> google_upstream/master
     // replacing an entry with the same pointer but different attributes
     // (if everything matches, the caller is expected to reuse the entry)
     desc = &it->second;
     hipStreamSynchronize(hip_stream);
     memory_used -= desc->workspace_size;
-<<<<<<< HEAD
-  }
-  else {
-=======
   } else {
->>>>>>> google_upstream/master
     cache[p] = PoolingWorkspaceDescriptor();
     desc = &cache[p];
   }
   desc->input_dims = input_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
-<<<<<<< HEAD
-  desc->output_dims = output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
-=======
   desc->output_dims =
       output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
->>>>>>> google_upstream/master
   desc->op = pooling_dimensions;
   desc->dtype = _type;
   desc->timestamp = timestamp;
@@ -4498,30 +4328,6 @@ void PoolingWorkspaceCache::insert(
   trim(hip_stream);
 }
 
-<<<<<<< HEAD
-
-void PoolingWorkspaceCache::trim(hipStream_t hip_stream) {
-  if(memory_used < memory_budget && cache.size() < trim_size)
-    return;
-  bool must_sync = true;
-  while(true) {
-    int new_size = cache.size() - (cache.size() >> 2); 
-    std::vector<const void*> old_entries;
-    for(auto& x: cache)
-      if(x.second.timestamp + new_size < timestamp)
-        old_entries.push_back(x.first);
-    if(old_entries.empty())
-      break;
-    if(must_sync)
-      hipStreamSynchronize(hip_stream);
-    must_sync = true;
-    for(auto x: old_entries) {
-      memory_used -= cache[x].workspace_size;
-      cache.erase(x);
-    }
-    if(memory_used < memory_budget || cache.size() < 10)
-      break;
-=======
 void PoolingWorkspaceCache::trim(hipStream_t hip_stream) {
   if (memory_used < memory_budget && cache.size() < trim_size) return;
   bool must_sync = true;
@@ -4539,7 +4345,6 @@ void PoolingWorkspaceCache::trim(hipStream_t hip_stream) {
       cache.erase(x);
     }
     if (memory_used < memory_budget || cache.size() < 10) break;
->>>>>>> google_upstream/master
   }
 }
 
@@ -4561,15 +4366,9 @@ bool MIOpenSupport::DoPoolForward(
 
   bool do_backward = false;
   uint8* workspace = 0;
-<<<<<<< HEAD
-  size_t workspace_size = 0; 
-  std::unique_ptr<TemporaryDeviceMemory<uint8>> wsp_mem;
-  if(m_pooling_cache_enabled) {
-=======
   size_t workspace_size = 0;
   std::unique_ptr<TemporaryDeviceMemory<uint8>> wsp_mem;
   if (m_pooling_cache_enabled) {
->>>>>>> google_upstream/master
     do_backward = true;
     auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
         pooling_desc.handle(), dest_desc.handle(), &workspace_size);
@@ -4579,30 +4378,6 @@ bool MIOpenSupport::DoPoolForward(
           << ToString(status);
       return false;
     }
-<<<<<<< HEAD
-    if(workspace_size!=0) {
-      PoolingWorkspaceDescriptor* pdesc = 0;
-      bool cache_hit = m_pooling_cache_allowed && m_pooling_cache.find(input_data.opaque(), input_dimensions,
-        output_dimensions,
-        pooling_dimensions,
-        miopenFloat, 
-        pdesc);
-      if(cache_hit) {
-        // reusing the same buffer
-        workspace = reinterpret_cast<uint8*>(pdesc->workspace->mutable_device_memory()->opaque());
-      }
-      else {
-        wsp_mem = stream->AllocateTemporaryArray<uint8>(workspace_size)
-              .ConsumeValueOrDie();
-        workspace = reinterpret_cast<uint8*>(wsp_mem->mutable_device_memory()->opaque());
-        m_pooling_cache.insert(input_data.opaque(),
-          input_dimensions,
-          output_dimensions,
-          pooling_dimensions,
-          miopenFloat, 
-          wsp_mem, workspace_size,
-          AsGpuStreamValue(stream));
-=======
     if (workspace_size != 0) {
       PoolingWorkspaceDescriptor* pdesc = 0;
       bool cache_hit =
@@ -4623,7 +4398,6 @@ bool MIOpenSupport::DoPoolForward(
                                output_dimensions, pooling_dimensions,
                                miopenFloat, wsp_mem, workspace_size,
                                AsGpuStreamValue(stream));
->>>>>>> google_upstream/master
       }
     }
   }
@@ -4676,34 +4450,20 @@ bool MIOpenSupport::DoPoolBackwardImpl(
     const dnn::BatchDescriptor& input_dimensions,
     const DeviceMemory<T>& input_data,
     const dnn::BatchDescriptor& output_dimensions,
-<<<<<<< HEAD
-    const DeviceMemory<T>& output_data,
-    const DeviceMemory<T>& input_diff_data,
-    DeviceMemory<T>* output_diff_data,
-    ScratchAllocator* workspace_allocator) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-  if(m_pooling_cache_allowed)
-    m_pooling_cache_enabled = true;
-=======
     const DeviceMemory<T>& output_data, const DeviceMemory<T>& input_diff_data,
     DeviceMemory<T>* output_diff_data, ScratchAllocator* workspace_allocator) {
   auto miopen = miopen_->GetHandle(parent_, stream);
   if (m_pooling_cache_allowed) m_pooling_cache_enabled = true;
->>>>>>> google_upstream/master
   // Alpha is the scaling factor for input.
   float alpha = 1.0;
   // Beta is the scaling factor for output.
   float beta = 0.0;
 
-<<<<<<< HEAD
-  auto type = std::is_same<T,float>::value ? miopenFloat : (std::is_same<T,Eigen::half>::value ? miopenHalf : (miopenDataType_t)-1);
-=======
   auto type =
       std::is_same<T, float>::value
           ? miopenFloat
           : (std::is_same<T, Eigen::half>::value ? miopenHalf
                                                  : (miopenDataType_t)-1);
->>>>>>> google_upstream/master
 
   ScopedTensorDescriptor src_desc{input_dimensions, type};
   ScopedTensorDescriptor dest_desc{output_dimensions, type};
@@ -4725,19 +4485,6 @@ bool MIOpenSupport::DoPoolBackwardImpl(
 
   // Allocate the workspace.
   if (workspace_size_in_bytes > 0) {
-<<<<<<< HEAD
-    bool cache_hit = m_pooling_cache_allowed && m_pooling_cache.find(input_data.opaque(), input_dimensions,
-      output_dimensions,
-      pooling_dimensions,
-      type, 
-      pdesc);
-    if(cache_hit) {
-      assert(pdesc != 0);
-      workspace_ptr = reinterpret_cast<uint8*>(pdesc->workspace->mutable_device_memory()->opaque());
-      VLOG(1) << "Pooling cache hit";
-    }
-    else {
-=======
     bool cache_hit = m_pooling_cache_allowed &&
                      m_pooling_cache.find(input_data.opaque(), input_dimensions,
                                           output_dimensions, pooling_dimensions,
@@ -4748,7 +4495,6 @@ bool MIOpenSupport::DoPoolBackwardImpl(
           pdesc->workspace->mutable_device_memory()->opaque());
       VLOG(1) << "Pooling cache hit";
     } else {
->>>>>>> google_upstream/master
       VLOG(1) << "Pooling cache miss";
       assert(workspace_allocator);
       auto allocated =
@@ -4764,18 +4510,10 @@ bool MIOpenSupport::DoPoolBackwardImpl(
       std::vector<int64> dims64 =
           output_dimensions.full_dims(dnn::DataLayout::kBatchDepthYX);
       // miopen does not use strides and must have 4D tensor.
-<<<<<<< HEAD
-      //std::vector<int> dims(pooling_dimensions.ndims() + 2);
-
-      dest2_size = sizeof(T);
-      for(auto& x: dims64)
-         dest2_size *= x;
-=======
       // std::vector<int> dims(pooling_dimensions.ndims() + 2);
 
       dest2_size = sizeof(T);
       for (auto& x : dims64) dest2_size *= x;
->>>>>>> google_upstream/master
 
       if (dest2_size > 0) {
         assert(workspace_allocator);
@@ -4804,11 +4542,7 @@ bool MIOpenSupport::DoPoolBackwardImpl(
     }
   }
   status = wrap::miopenPoolingBackward(
-<<<<<<< HEAD
-     miopen.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
-=======
       miopen.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
->>>>>>> google_upstream/master
       output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
       src_desc.handle(), input_data.opaque(), &beta, src_desc.handle(),
       output_diff_data->opaque(), workspace_ptr);
@@ -4844,21 +4578,12 @@ bool MIOpenSupport::DoPoolBackward(
     const DeviceMemory<float>& input_diff_data,
     DeviceMemory<float>* output_diff_data,
     ScratchAllocator* workspace_allocator) {
-<<<<<<< HEAD
-  return DoPoolBackwardImpl(stream, pooling_dimensions,
-    input_dimensions, input_data, output_dimensions, output_data,
-    input_diff_data, output_diff_data, workspace_allocator);
-}
-
-
-=======
   return DoPoolBackwardImpl(stream, pooling_dimensions, input_dimensions,
                             input_data, output_dimensions, output_data,
                             input_diff_data, output_diff_data,
                             workspace_allocator);
 }
 
->>>>>>> google_upstream/master
 bool MIOpenSupport::DoPoolBackward(
     Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
     const dnn::BatchDescriptor& input_dimensions,
@@ -4868,16 +4593,10 @@ bool MIOpenSupport::DoPoolBackward(
     const DeviceMemory<Eigen::half>& input_diff_data,
     DeviceMemory<Eigen::half>* output_diff_data,
     ScratchAllocator* workspace_allocator) {
-<<<<<<< HEAD
-  return DoPoolBackwardImpl(stream, pooling_dimensions,
-    input_dimensions, input_data, output_dimensions, output_data,
-    input_diff_data, output_diff_data, workspace_allocator);
-=======
   return DoPoolBackwardImpl(stream, pooling_dimensions, input_dimensions,
                             input_data, output_dimensions, output_data,
                             input_diff_data, output_diff_data,
                             workspace_allocator);
->>>>>>> google_upstream/master
 }
 
 bool MIOpenSupport::DoNormalizeWithDimensions(

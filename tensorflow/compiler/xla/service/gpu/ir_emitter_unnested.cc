@@ -1541,17 +1541,6 @@ Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
   return Status::OK();
 }
 
-<<<<<<< HEAD
-struct HloPtrAndShapeComparator {
-  bool operator()(
-      const std::pair<const HloInstruction*, ShapeIndex>& lhs,
-      const std::pair<const HloInstruction*, ShapeIndex>& rhs) const {
-    if (lhs.first != rhs.first)
-      return HloPtrComparator()(lhs.first, rhs.first);
-    else
-      return lhs.second < rhs.second;
-  }
-=======
 // Describes how to access a particular subshape for an HLO.  For instance if
 // `.hlo_index` is {1} and `.gte_index` is {3, 4} then buffer for `.instr` at
 // ShapeIndex {1} (i.e. the buffer for the second tuple element of hlo) is found
@@ -1568,7 +1557,6 @@ struct HloBufferSlice {
   // Describes how to dereference starting at that buffer to get to the buffer
   // in question.
   ShapeIndex gte_index;
->>>>>>> google_upstream/master
 };
 
 // Figures out how to access the buffers for all subshapes of hlo's operands and
@@ -1579,23 +1567,11 @@ struct HloBufferSlice {
 //
 // This function conservatively assumes that we'll touch all sub-buffers of
 // every operand and of the output.
-<<<<<<< HEAD
-static std::map<std::pair<const HloInstruction*, ShapeIndex>,
-                std::pair<BufferAllocation::Slice, ShapeIndex>,
-                HloPtrAndShapeComparator>
-GetHloBufferSlices(const HloInstruction* hlo,
-                   const BufferAssignment& buffer_assn) {
-  std::map<std::pair<const HloInstruction*, ShapeIndex>,
-           std::pair<BufferAllocation::Slice, ShapeIndex>,
-           HloPtrAndShapeComparator>
-      slices;
-=======
 static std::vector<HloBufferSlice> GetHloBufferSlices(
     const HloInstruction* hlo, const BufferAssignment& buffer_assn) {
   std::vector<HloBufferSlice> result;
   absl::flat_hash_set<std::pair<const HloInstruction*, ShapeIndex>>
       inserted_buffer_slices;
->>>>>>> google_upstream/master
 
   // Tries to find a slice plus an array of indices i1, ..., iN such that the
   // sub-buffer for instr at index can be found at slice[i1]...[iN].
@@ -1696,12 +1672,8 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   const BufferAssignment& buffer_assn =
       ir_emitter_context_->buffer_assignment();
 
-<<<<<<< HEAD
-  auto hlo_slices = GetHloBufferSlices(inst, buffer_assn);
-=======
   std::vector<HloBufferSlice> hlo_slices =
       GetHloBufferSlices(inst, buffer_assn);
->>>>>>> google_upstream/master
 
   // Figure out which buffer allocations need to be passed as arguments to our
   // kernel.  This is simply all of the allocations referenced in hlo_slices,

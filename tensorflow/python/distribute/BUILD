@@ -1612,43 +1612,6 @@ distribute_py_test(
 )
 
 distribute_py_test(
-<<<<<<< HEAD
-    name = "keras_save_load_test",
-    size = "large",
-    srcs = ["keras_save_load_test.py"],
-    full_precision = True,
-    main = "keras_save_load_test.py",
-    shard_count = 7,
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":saved_model_test_base",
-        "//tensorflow/python/keras/saving",
-    ],
-)
-
-distribute_py_test(
-    name = "saved_model_mixed_api_test",
-    size = "large",
-    srcs = ["saved_model_mixed_api_test.py"],
-    full_precision = True,
-    main = "saved_model_mixed_api_test.py",
-    shard_count = 7,
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":saved_model_test_base",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras/saving",
-    ],
-)
-
-distribute_py_test(
-=======
->>>>>>> google_upstream/master
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
