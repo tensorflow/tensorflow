@@ -88,8 +88,8 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // properties we expect. It should be the same as the input tensor.
   TfLiteTensor* output = interpreter.output(0);
   TF_LITE_MICRO_EXPECT_EQ(2, output->dims->size);
-  TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
-  TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[1]);
+  TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[0]);
+  TF_LITE_MICRO_EXPECT_EQ(1, output->dims->data[1]);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteFloat32, output->type);
 
   // Obtain the output value from the tensor

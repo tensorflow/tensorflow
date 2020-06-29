@@ -91,6 +91,16 @@ static LogicalResult Verify(SessionInitializerOp session_initializer) {
     return session_initializer.emitOpError()
            << "the initializer function should have no output";
 
+  auto exported_names = GetExportedNames(init_func_op);
+
+  if (exported_names.empty())
+    return session_initializer.emitOpError()
+           << "the initializer function should be exported";
+
+  if (exported_names.size() != 1)
+    return session_initializer.emitOpError()
+           << "the initializer function should have only one exported names";
+
   return success();
 }
 
@@ -232,22 +242,19 @@ static LogicalResult VerifySavedModelModule(
   for (auto func : module.getOps<FuncOp>()) {
     const bool is_exported = IsExported(func);
 
-    if (is_exported && func.getVisibility() != FuncOp::Visibility::Public) {
+    if (is_exported && !func.isPublic()) {
       return func.emitError()
              << "exported function @" << func.getName() << " should be public";
     }
 
-    if (!is_exported && func.getVisibility() == FuncOp::Visibility::Public) {
+    if (!is_exported && func.isPublic()) {
       return func.emitError() << "non-exported function @" << func.getName()
                               << " should be private";
     }
 
-    if (HasAnyTfSavedModelArgAttr(func)) {
-      if (!is_exported) {
-        return func.emitError()
-               << "can only apply 'tf_saved_model' argument attributes "
-                  "to exported functions";
-      }
+    if (!is_exported && HasAnyTfSavedModelArgAttr(func)) {
+      return func.emitError() << "can only apply 'tf_saved_model' argument "
+                                 "attributes to exported functions";
     }
   }
 
@@ -430,6 +437,17 @@ class OptimizeSessionInitializerPattern
 void SessionInitializerOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<OptimizeSessionInitializerPattern>(context);
+}
+
+llvm::Optional<StringRef> GetSessionInitializerExportedName(ModuleOp op) {
+  auto session_initializer_op = GetSessionInitializerOp(op);
+  if (!session_initializer_op) return llvm::None;
+
+  SymbolTable symbol_table(op);
+  auto init_func_op =
+      symbol_table.lookup<mlir::FuncOp>(session_initializer_op.initializer());
+  auto exported_names = GetExportedNames(init_func_op);
+  return exported_names[0];
 }
 
 }  // namespace tf_saved_model

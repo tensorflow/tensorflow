@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_C_API_H_
 
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
-#include "tensorflow/core/tpu/kernels/tpu_ops_common_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 

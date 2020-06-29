@@ -115,7 +115,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info,
                        const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
-  size_t num_args = args.size();
+  const int num_args = args.size();
   rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
@@ -131,7 +131,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
                        const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
-  size_t num_args = args.size();
+  const int num_args = args.size();
   rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
@@ -198,7 +198,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
       last_use[indices[i]] = i;
     }
     can_move.resize(indices.size());
-    for (size_t i = 0; i < indices.size(); ++i) {
+    for (int i = 0, iter_limit = indices.size(); i < iter_limit; ++i) {
       can_move[i] = last_use[indices[i]] == i;
     }
   }
@@ -278,11 +278,12 @@ class CallFrameBase : public CallFrameInterface {
 
   // Callee methods.
   Status SetRetval(int index, const Tensor& val) override {
-    if (index < retvals_.size() && val.dtype() == ret_types_[index] &&
+    const int retvals_size = retvals_.size();
+    if (index < retvals_size && val.dtype() == ret_types_[index] &&
         !retvals_[index]) {
       retvals_[index] = val;
       return Status::OK();
-    } else if (index >= retvals_.size()) {
+    } else if (index >= retvals_size) {
       return errors::InvalidArgument("Return value ", index,
                                      " is out of range.");
     } else if (val.dtype() != ret_types_[index]) {
@@ -317,10 +318,12 @@ class OwnedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, const Tensor** val) override {
-    if (index < args_.size()) {
+    const int args_size = args_.size();
+    const int captured_inputs_size = captured_inputs_->size();
+    if (index < args_size) {
       *val = &args_[index];
       return Status::OK();
-    } else if (index < args_.size() + captured_inputs_->size()) {
+    } else if (index < args_size + captured_inputs_size) {
       *val = &(*captured_inputs_)[index - args_.size()];
       return Status::OK();
     } else {
@@ -336,7 +339,7 @@ class OwnedArgsCallFrame : public CallFrameBase {
     *val = std::move(args_[index]);
   }
   bool CanConsumeArg(int index) const override {
-    return index >= 0 && index < args_.size();
+    return index >= 0 && index < static_cast<int>(args_.size());
   }
 
  private:
@@ -359,11 +362,13 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, const Tensor** val) override {
-    if (index < args_.size()) {
+    const int args_size = args_.size();
+    const int captured_inputs_size = captured_inputs_->size();
+    if (index < args_size) {
       *val = &args_[index];
       return Status::OK();
-    } else if (index < args_.size() + captured_inputs_->size()) {
-      *val = &(*captured_inputs_)[index - args_.size()];
+    } else if (index < args_size + captured_inputs_size) {
+      *val = &(*captured_inputs_)[index - args_size];
       return Status::OK();
     } else {
       return errors::InvalidArgument("Argument ", index, " is out of range.");
@@ -571,6 +576,9 @@ Status CapturedFunction::Instantiate(
   DCHECK(lib->device() != nullptr);
   inst_opts.target = lib->device()->name();
 
+  // Maps from a CompositeDevice name to underlying physical device names.
+  absl::flat_hash_map<string, std::vector<string>> composite_devices;
+
   if (inst_opts.is_multi_device_function) {
     // Compute devices of non-captured inputs.
     //
@@ -596,9 +604,29 @@ Status CapturedFunction::Instantiate(
       const auto& input = captured_inputs_[i];
       DataType dtype = input.dtype();
       if (dtype == DT_RESOURCE) {
-        const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
-        inst_opts.input_devices.push_back(handle.device());
-        const auto& dtypes_and_shapes = handle.dtypes_and_shapes();
+        const auto& handles = input.flat<ResourceHandle>();
+        const ResourceHandle& handle0 = handles(0);
+        string composite_device;
+        auto iter = fdef->arg_attr().find(num_non_captured_inputs + i);
+        if (iter != fdef->arg_attr().end()) {
+          auto arg_attr = iter->second.attr().find("_composite_device");
+          if (arg_attr != iter->second.attr().end()) {
+            composite_device = arg_attr->second.s();
+          }
+        }
+        if (!composite_device.empty()) {
+          if (composite_devices.find(composite_device) ==
+              composite_devices.end()) {
+            for (int i = 0; i < handles.size(); ++i) {
+              composite_devices[composite_device].push_back(
+                  handles(i).device());
+            }
+          }
+          inst_opts.input_devices.push_back(composite_device);
+        } else {
+          inst_opts.input_devices.push_back(handle0.device());
+        }
+        const auto& dtypes_and_shapes = handle0.dtypes_and_shapes();
         // Set dtypes and shapes for resource variable inputs.
         if (!dtypes_and_shapes.empty()) {
           input_resource_variable_dtypes_and_shapes[num_non_captured_inputs +
@@ -613,7 +641,12 @@ Status CapturedFunction::Instantiate(
       }
     }
 
-    for (size_t i = 0; i < fdef->signature().output_arg_size(); ++i) {
+    for (const auto& it : composite_devices) {
+      inst_opts.composite_devices[it.first] = &it.second;
+    }
+
+    for (int i = 0, iter_limit = fdef->signature().output_arg_size();
+         i < iter_limit; ++i) {
       inst_opts.output_devices.push_back(inst_opts.target);
     }
 

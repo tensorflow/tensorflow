@@ -22,6 +22,7 @@ import collections
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -50,6 +51,19 @@ class ArrayTest(test.TestCase):
                                   dtype=dtypes.float32)).astype(np.bool_)
     self.assertIs(a.dtype.type, np.bool_)
     self.assertAllEqual([False, True], a)
+
+  def testConstructor(self):
+    t = constant_op.constant([[1], [1]])
+    a = np_arrays.ndarray(shape=(2, 1), buffer=t)
+    self.assertAllEqual(t, a)
+    self.assertEqual(dtypes.float64, a.dtype)
+
+    a = np_arrays.ndarray(shape=(2, 1), dtype=dtypes.int32, buffer=t)
+    self.assertAllEqual(t, a)
+    self.assertEqual(dtypes.int32, a.dtype)
+
+    with self.assertRaises(ValueError):  # bad shape
+      _ = np_arrays.ndarray((2, 2), buffer=t)
 
   def testNeg(self):
     a = t2a(ops.convert_to_tensor(value=[1.0, 2.0]))

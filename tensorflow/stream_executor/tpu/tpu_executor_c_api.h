@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/tpu/kernels/tpu_ops_common_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 
 typedef struct SE_Platform SE_Platform;

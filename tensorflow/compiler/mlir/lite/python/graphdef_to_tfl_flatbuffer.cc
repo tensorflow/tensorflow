@@ -18,6 +18,7 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
+#include "llvm/ADT/None.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
@@ -90,7 +91,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.lower_tensor_list_ops = true;
 
   return internal::ConvertMLIRToTFLiteFlatBuffer(toco_flags, std::move(module),
-                                                 pass_config, result);
+                                                 pass_config, result,
+                                                 /*session=*/llvm::None);
 }
 
 }  // namespace tensorflow

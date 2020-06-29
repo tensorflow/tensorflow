@@ -84,15 +84,18 @@ upper_tabs:
         path: /lite/convert/quantization
       - title: "Convert RNN models"
         path: /lite/convert/rnn
-      - title: "1.x compatibility"
-        path: /lite/convert/1x_compatibility
       - title: "Add metadata"
         path: /lite/convert/metadata
-        status: experimental
+      - title: "Composite operation fusion"
+        path: /lite/convert/operation_fusion
+      - title: "1.x compatibility"
+        path: /lite/convert/1x_compatibility
 
       - heading: "Inference"
       - title: "Overview"
         path: /lite/guide/inference
+      - title: "Integrate models with metadata"
+        path: /lite/guide/codegen
       - title: "Custom operators"
         path: /lite/guide/ops_custom
       - title: "Operator versions"
@@ -102,11 +105,10 @@ upper_tabs:
       - title: "Select operators from TensorFlow"
         path: /lite/guide/ops_select
         status: experimental
+      - title: "Process input and output data"
+        path: /lite/guide/lite_support
       - title: "List of hosted models"
         path: /lite/guide/hosted_models
-      - title: "Generate code from metadata"
-        path: /lite/guide/codegen
-        status: experimental
 
       - heading: "Performance"
       - title: "Best practices"

@@ -34,12 +34,12 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
 namespace builtin {
 namespace add {
-
 // This file has three implementation of Add.
 enum KernelType {
   kReference,
@@ -323,9 +323,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                       EvalAddQuantized<kernel_type>(context, node, params, data,
                                                     input1, input2, output));
   } else {
-    context->ReportError(context,
-                         "Inputs and outputs not all float|uint8|int16 types.");
-    return kTfLiteError;
+    TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Add");
   }
 
   return kTfLiteOk;

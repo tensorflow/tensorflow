@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -57,7 +58,8 @@ Status CreateUninitializedResourceVariable(ImmediateExecutionContext* ctx,
   TF_RETURN_IF_ERROR(varhandle_op->Execute(
       absl::MakeSpan(&var_handle, num_retvals), &num_retvals));
   AbstractTensorHandlePtr owned_var_handle(var_handle);
-  if (owned_var_handle->getKind() != ImmediateExecutionTensorHandle::kKind) {
+  if (!tensorflow::isa<ImmediateExecutionTensorHandle>(
+          owned_var_handle.get())) {
     return errors::Internal("Unexpected tensor handle kind.");
   }
   handle->reset(reinterpret_cast<ImmediateExecutionTensorHandle*>(
@@ -92,7 +94,7 @@ Status ReadVariable(ImmediateExecutionContext* ctx,
   TF_RETURN_IF_ERROR(
       read_op->Execute(absl::MakeSpan(&value, num_retvals), &num_retvals));
   AbstractTensorHandlePtr owned_value(value);
-  if (owned_value->getKind() != ImmediateExecutionTensorHandle::kKind) {
+  if (!tensorflow::isa<ImmediateExecutionTensorHandle>(owned_value.get())) {
     return errors::Internal("Unexpected tensor handle kind.");
   }
   output->reset(

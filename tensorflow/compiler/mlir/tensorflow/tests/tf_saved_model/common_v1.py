@@ -95,15 +95,13 @@ def do_test(signature_def_map,
     builder.save()
 
     logging.info('Saved model to: %s', save_model_path)
+    # TODO(b/153507667): Set the following boolean flag once the hoisting
+    #                    variables logic from SavedModel importer is removed.
+    lift_variables = False
     mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir(
         save_model_path, ','.join([tf.saved_model.tag_constants.SERVING]),
-        show_debug_info)
-    # We don't strictly need this, but it serves as a handy sanity check
-    # for that API, which is otherwise a bit annoying to test.
-    # The canonicalization shouldn't affect these tests in any way.
-    mlir = pywrap_mlir.experimental_run_pass_pipeline(mlir,
-                                                      'tf-standard-pipeline',
-                                                      show_debug_info)
+        lift_variables, show_debug_info)
+
     if canonicalize:
       mlir = pywrap_mlir.experimental_run_pass_pipeline(mlir, 'canonicalize',
                                                         show_debug_info)

@@ -493,15 +493,10 @@ def _QrGrad(op, dq, dr):
   if (r.shape.ndims is None or r.shape.as_list()[-2] is None or
       r.shape.as_list()[-1] is None):
     raise NotImplementedError("QrGrad not implemented with dynamic shapes.")
-  if r.shape.dims[-2].value != r.shape.dims[-1].value:
+  if (r.shape.dims[-2].value > r.shape.dims[-1].value and
+      q.shape.dims[-2].value == q.shape.dims[-1].value):
     raise NotImplementedError("QrGrad not implemented when ncols > nrows "
-                              "or full_matrices is true and ncols != nrows.")
-
-  qdq = math_ops.matmul(q, dq, adjoint_a=True)
-  qdq_ = qdq - _linalg.adjoint(qdq)
-  rdr = math_ops.matmul(r, dr, adjoint_b=True)
-  rdr_ = rdr - _linalg.adjoint(rdr)
-  tril = array_ops.matrix_band_part(qdq_ + rdr_, -1, 0)
+                              "and full_matrices is true.")
 
   def _TriangularSolve(x, r):
     """Equiv to matmul(x, adjoint(matrix_inverse(r))) if r is upper-tri."""
@@ -509,9 +504,37 @@ def _QrGrad(op, dq, dr):
         linalg_ops.matrix_triangular_solve(
             r, _linalg.adjoint(x), lower=False, adjoint=False))
 
-  grad_a = math_ops.matmul(q, dr + _TriangularSolve(tril, r))
-  grad_b = _TriangularSolve(dq - math_ops.matmul(q, qdq), r)
-  return grad_a + grad_b
+  def _QrGradSquareAndDeepMatrices(q, r, dq, dr):
+    """Gradient for matrix orders num_rows >= num_cols
+
+    and full_matrices is false.
+    """
+    qdq = math_ops.matmul(q, dq, adjoint_a=True)
+    qdq_ = qdq - _linalg.adjoint(qdq)
+    rdr = math_ops.matmul(r, dr, adjoint_b=True)
+    rdr_ = rdr - _linalg.adjoint(rdr)
+    tril = array_ops.matrix_band_part(qdq_ + rdr_, -1, 0)
+
+    grad_a = math_ops.matmul(q, dr + _TriangularSolve(tril, r))
+    grad_b = _TriangularSolve(dq - math_ops.matmul(q, qdq), r)
+    return grad_a + grad_b
+
+  num_rows, num_cols = q.shape.dims[-2].value, r.shape.dims[-1]
+
+  if num_rows >= num_cols:
+    return _QrGradSquareAndDeepMatrices(q, r, dq, dr)
+
+  # Partition a = [x, y], r = [u, v] and reduce to the square case
+  a = op.inputs[0]
+  y = a[..., :, num_rows:]
+  u = r[..., :, :num_rows]
+  dv = dr[..., :, num_rows:]
+  du = dr[..., :, :num_rows]
+  dy = math_ops.matmul(q, dv)
+  dx = _QrGradSquareAndDeepMatrices(q, u,
+                                    dq + math_ops.matmul(y, dv, adjoint_b=True),
+                                    du)
+  return array_ops.concat([dx, dy], axis=-1)
 
 
 @ops.RegisterGradient("MatrixSolve")

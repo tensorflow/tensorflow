@@ -54,9 +54,17 @@ class DepthwiseConvolution : public GPUOperation {
       const CreationContext& creation_context, const OperationDef& definition,
       const DepthwiseConvolution2DAttributes& attr,
       DepthwiseConvolution* result);
+  friend absl::Status CreateDepthwiseConvolution(
+      const CreationContext& creation_context, const OperationDef& definition,
+      const DepthwiseConvolution3DAttributes& attr,
+      DepthwiseConvolution* result);
   DepthwiseConvolution(const OperationDef& definition,
                        const DepthwiseConvolution2DAttributes& attr,
                        bool weights_are_buffer);
+  DepthwiseConvolution(const OperationDef& definition,
+                       const DepthwiseConvolution3DAttributes& attr,
+                       bool weights_are_buffer);
+
   template <DataType T>
   absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                              CLContext* context);
@@ -65,20 +73,23 @@ class DepthwiseConvolution : public GPUOperation {
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
+  template <DataType T>
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights,
+                             CLContext* context);
+
+  template <DataType S, typename T>
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
+                            absl::Span<T> dst);
+
   absl::Status BindArguments();
   int3 GetGridSize() const;
 
   bool weights_are_buffer_;
-  Texture2D weights_tex2d_;
-  Buffer weights_buf_;
-  cl_mem weights_;
 
-  LinearStorage biases_;
-
-  int2 kernel_size_;
-  int2 stride_;
-  int2 padding_;
-  int2 dilation_;
+  int4 kernel_size_;
+  int4 stride_;
+  int4 padding_;
+  int4 dilation_;
   int channel_multiplier_;
 
   CLKernel kernel_;
@@ -89,26 +100,28 @@ template <DataType T>
 absl::Status DepthwiseConvolution::UploadWeights(
     const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int dst_channels = weights.shape.i * weights.shape.o;
-  const int dst_depth = DivideRoundUp(dst_channels, 4);
+  const int dst_slices = DivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
-  const int elements_count = kernel_x * kernel_y * dst_depth;
+  const int elements_count = kernel_x * kernel_y * dst_slices;
 
   const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
   const int float4_size = fp32_weights ? 16 : 8;
 
+  Texture2D weights_tex2d;
+  Buffer weights_buf;
   if (fp32_weights) {
     std::vector<float4> gpu_data(elements_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
     if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
-                                           &weights_buf_));
+                                           &weights_buf));
     } else {
       RETURN_IF_ERROR(CreateTexture2DRGBA(
-          definition_.GetDataType(), kernel_x * kernel_y, dst_depth,
-          gpu_data.data(), context, &weights_tex2d_));
+          definition_.GetDataType(), kernel_x * kernel_y, dst_slices,
+          gpu_data.data(), context, &weights_tex2d));
     }
   } else {
     std::vector<half4> gpu_data(elements_count);
@@ -116,18 +129,27 @@ absl::Status DepthwiseConvolution::UploadWeights(
     if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
-                                           &weights_buf_));
+                                           &weights_buf));
     } else {
       RETURN_IF_ERROR(CreateTexture2DRGBA(
-          definition_.GetDataType(), kernel_x * kernel_y, dst_depth,
-          gpu_data.data(), context, &weights_tex2d_));
+          definition_.GetDataType(), kernel_x * kernel_y, dst_slices,
+          gpu_data.data(), context, &weights_tex2d));
     }
   }
 
   if (weights_are_buffer_) {
-    weights_ = weights_buf_.GetMemoryPtr();
+    BufferDescriptor desc;
+    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.element_size = 4;
+    args_.AddObject("weights", AccessType::READ,
+                    absl::make_unique<Buffer>(std::move(weights_buf)),
+                    absl::make_unique<BufferDescriptor>(desc));
   } else {
-    weights_ = weights_tex2d_.GetMemoryPtr();
+    Texture2DDescriptor desc;
+    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    args_.AddObject("weights", AccessType::READ,
+                    absl::make_unique<Texture2D>(std::move(weights_tex2d)),
+                    absl::make_unique<Texture2DDescriptor>(desc));
   }
 
   return absl::OkStatus();
@@ -157,6 +179,98 @@ void DepthwiseConvolution::RearrangeWeightsData(
           }
         }
         dst[counter++] = filter_val;
+      }
+    }
+  }
+}
+
+template <DataType T>
+absl::Status DepthwiseConvolution::UploadWeights(
+    const tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
+  const int dst_channels = weights.shape.i * weights.shape.o;
+  const int dst_slices = DivideRoundUp(dst_channels, 4);
+  const int kernel_x = weights.shape.w;
+  const int kernel_y = weights.shape.h;
+  const int kernel_z = weights.shape.d;
+
+  const int elements_count = kernel_x * kernel_y * kernel_z * dst_slices;
+
+  const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int float4_size = fp32_weights ? 16 : 8;
+
+  Texture2D weights_tex2d;
+  Buffer weights_buf;
+  if (fp32_weights) {
+    std::vector<float4> gpu_data(elements_count);
+    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
+    if (weights_are_buffer_) {
+      RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
+                                           gpu_data.data(), context,
+                                           &weights_buf));
+    } else {
+      RETURN_IF_ERROR(CreateTexture2DRGBA(
+          definition_.GetDataType(), kernel_x * kernel_y * kernel_z, dst_slices,
+          gpu_data.data(), context, &weights_tex2d));
+    }
+  } else {
+    std::vector<half4> gpu_data(elements_count);
+    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
+    if (weights_are_buffer_) {
+      RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
+                                           gpu_data.data(), context,
+                                           &weights_buf));
+    } else {
+      RETURN_IF_ERROR(CreateTexture2DRGBA(
+          definition_.GetDataType(), kernel_x * kernel_y * kernel_z, dst_slices,
+          gpu_data.data(), context, &weights_tex2d));
+    }
+  }
+
+  if (weights_are_buffer_) {
+    BufferDescriptor desc;
+    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.element_size = 4;
+    args_.AddObject("weights", AccessType::READ,
+                    absl::make_unique<Buffer>(std::move(weights_buf)),
+                    absl::make_unique<BufferDescriptor>(desc));
+  } else {
+    Texture2DDescriptor desc;
+    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    args_.AddObject("weights", AccessType::READ,
+                    absl::make_unique<Texture2D>(std::move(weights_tex2d)),
+                    absl::make_unique<Texture2DDescriptor>(desc));
+  }
+
+  return absl::OkStatus();
+}
+
+template <DataType S, typename T>
+void DepthwiseConvolution::RearrangeWeightsData(
+    const tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst) {
+  const int dst_channels = weights.shape.i * weights.shape.o;
+  const int dst_slices = DivideRoundUp(dst_channels, 4);
+  const int kernel_x = weights.shape.w;
+  const int kernel_y = weights.shape.h;
+  const int kernel_z = weights.shape.d;
+
+  int counter = 0;
+  for (int d = 0; d < dst_slices; ++d) {
+    for (int z = 0; z < kernel_z; ++z) {
+      for (int y = 0; y < kernel_y; ++y) {
+        for (int x = 0; x < kernel_x; ++x) {
+          T filter_val;
+          for (int i = 0; i < 4; ++i) {
+            const int d_ch = d * 4 + i;
+            if (d_ch < dst_channels) {
+              const int f_index = weights.shape.LinearIndex(
+                  {d_ch % weights.shape.o, y, x, z, d_ch / weights.shape.o});
+              filter_val[i] = weights.data[f_index];
+            } else {
+              filter_val[i] = 0.0f;
+            }
+          }
+          dst[counter++] = filter_val;
+        }
       }
     }
   }

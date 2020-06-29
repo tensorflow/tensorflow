@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/tpu/tpu_library_loader.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
@@ -100,7 +100,7 @@ TpuPlatform::GetUncachedExecutor(
     return status.status();
   }
   return std::make_unique<stream_executor::StreamExecutor>(
-      this, absl::make_unique<tensorflow::TpuExecutor>(this, executor),
+      this, std::make_unique<tensorflow::TpuExecutor>(this, executor),
       config.ordinal);
 }
 
@@ -109,7 +109,7 @@ TpuPlatform::GetUncachedExecutor(
 }
 
 const std::string& TpuPlatform::Name() const {
-  static std::string* name = new std::string(kName);
+  static std::string* name = new std::string("TPU");
   return *name;
 }
 
@@ -122,7 +122,7 @@ bool TpuPlatform::ShouldRegisterTpuDeviceToDeviceCopy() {
       ->TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopyFn(platform_);
 }
 
-void RegisterTpuPlatform() {
+bool RegisterTpuPlatform() {
   static bool tpu_platform_registered = false;
   if (!tpu_platform_registered) {
     tensorflow::tpu_registered_platform = new tensorflow::TpuPlatform();
@@ -132,14 +132,7 @@ void RegisterTpuPlatform() {
         std::move(platform)));
     tpu_platform_registered = true;
   }
+  return true;
 }
-
-REGISTER_MODULE_INITIALIZER(tpu_platform, RegisterTpuPlatform());
-
-// Note that module initialization sequencing is not supported in the
-// open-source project, so this will be a no-op there.
-REGISTER_MODULE_INITIALIZER_SEQUENCE(tpu_platform, multi_platform_manager);
-REGISTER_MODULE_INITIALIZER_SEQUENCE(multi_platform_manager_listener,
-                                     tpu_platform);
 
 }  // namespace tensorflow

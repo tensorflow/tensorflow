@@ -495,7 +495,7 @@ TEST_F(OpSetsTest, TfSelectOnly) {
   EXPECT_THAT(
       ImportExport(
           {"Add", "AdjustHue", "RandomUniform", "UnrollAndFold", "Assert"}),
-      ElementsAre("custom:AdjustHue", "custom:FlexAdd", "custom:FlexAssert",
+      ElementsAre("custom:FlexAdd", "custom:FlexAdjustHue", "custom:FlexAssert",
                   "custom:FlexRandomUniform", "custom:UnrollAndFold"));
 }
 
@@ -512,7 +512,7 @@ TEST_F(OpSetsTest, BuiltinsAndTfSelect) {
   EXPECT_THAT(
       ImportExport(
           {"Add", "AdjustHue", "RandomUniform", "UnrollAndFold", "Assert"}),
-      ElementsAre("builtin:ADD", "custom:AdjustHue", "custom:FlexAssert",
+      ElementsAre("builtin:ADD", "custom:FlexAdjustHue", "custom:FlexAssert",
                   "custom:FlexRandomUniform", "custom:UnrollAndFold"));
 }
 

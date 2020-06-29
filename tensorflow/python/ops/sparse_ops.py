@@ -120,7 +120,7 @@ def from_dense(tensor, name=None):
   with ops.name_scope(name, "dense_to_sparse"):
     tensor = ops.convert_to_tensor(tensor)
     indices = array_ops.where_v2(
-        math_ops.not_equal(tensor, array_ops.constant(0, tensor.dtype)))
+        math_ops.not_equal(tensor, array_ops.zeros_like(tensor)))
     values = array_ops.gather_nd(tensor, indices)
     shape = array_ops.shape(tensor, out_type=dtypes.int64)
     return sparse_tensor.SparseTensor(indices, values, shape)
@@ -1238,21 +1238,24 @@ def sparse_reduce_max_v2(
   if keepdims is None:
     keepdims = False
 
-  # reduction_axes is the deprecated name for axis.
-  reduction_axes = None
-
   if output_is_sparse:
     output_ind, output_val, output_shape = (
         gen_sparse_ops.sparse_reduce_max_sparse(
-            sp_input.indices, sp_input.values, sp_input.dense_shape,
-            math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims,
+            sp_input.indices,
+            sp_input.values,
+            sp_input.dense_shape,
+            math_ops._ReductionDims(sp_input, axis),
+            keepdims,
             name=name))
 
     return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
   return gen_sparse_ops.sparse_reduce_max(
-      sp_input.indices, sp_input.values, sp_input.dense_shape,
-      math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims,
+      sp_input.indices,
+      sp_input.values,
+      sp_input.dense_shape,
+      math_ops._ReductionDims(sp_input, axis),
+      keepdims,
       name=name)
 
 
@@ -1319,12 +1322,14 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
   """
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "reduction_axes",
+                                                reduction_axes)
   if keepdims is None:
     keepdims = False
 
   return gen_sparse_ops.sparse_reduce_max(
       sp_input.indices, sp_input.values, sp_input.dense_shape,
-      math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims)
+      math_ops._ReductionDims(sp_input, axis), keepdims)
 
 
 @tf_export(v1=["sparse.reduce_max_sparse", "sparse_reduce_max_sparse"])
@@ -1367,13 +1372,15 @@ def sparse_reduce_max_sparse(sp_input,
   """
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "reduction_axes",
+                                                reduction_axes)
   if keepdims is None:
     keepdims = False
 
   output_ind, output_val, output_shape = (
       gen_sparse_ops.sparse_reduce_max_sparse(
           sp_input.indices, sp_input.values, sp_input.dense_shape,
-          math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims))
+          math_ops._ReductionDims(sp_input, axis), keepdims))
 
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
@@ -1428,20 +1435,23 @@ def sparse_reduce_sum_v2(
   if keepdims is None:
     keepdims = False
 
-  # reduction_axes is the deprecated name for axis.
-  reduction_axes = None
-
   if output_is_sparse:
     output_ind, output_val, output_shape = (
         gen_sparse_ops.sparse_reduce_sum_sparse(
-            sp_input.indices, sp_input.values, sp_input.dense_shape,
-            math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims,
+            sp_input.indices,
+            sp_input.values,
+            sp_input.dense_shape,
+            math_ops._ReductionDims(sp_input, axis),
+            keepdims,
             name=name))
     return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
   return gen_sparse_ops.sparse_reduce_sum(
-      sp_input.indices, sp_input.values, sp_input.dense_shape,
-      math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims,
+      sp_input.indices,
+      sp_input.values,
+      sp_input.dense_shape,
+      math_ops._ReductionDims(sp_input, axis),
+      keepdims,
       name=name)
 
 
@@ -1495,12 +1505,14 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
   """
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "reduction_axes",
+                                                reduction_axes)
   if keepdims is None:
     keepdims = False
 
   return gen_sparse_ops.sparse_reduce_sum(
       sp_input.indices, sp_input.values, sp_input.dense_shape,
-      math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims)
+      math_ops._ReductionDims(sp_input, axis), keepdims)
 
 
 @tf_export(v1=["sparse.reduce_sum_sparse", "sparse_reduce_sum_sparse"])
@@ -1543,13 +1555,15 @@ def sparse_reduce_sum_sparse(sp_input,
   """
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
+  axis = deprecation.deprecated_argument_lookup("axis", axis, "reduction_axes",
+                                                reduction_axes)
   if keepdims is None:
     keepdims = False
 
   output_ind, output_val, output_shape = (
       gen_sparse_ops.sparse_reduce_sum_sparse(
           sp_input.indices, sp_input.values, sp_input.dense_shape,
-          math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims))
+          math_ops._ReductionDims(sp_input, axis), keepdims))
 
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 

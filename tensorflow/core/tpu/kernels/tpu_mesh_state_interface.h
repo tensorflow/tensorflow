@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
-#include "tensorflow/core/tpu/tpu_library_loader.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 
@@ -29,7 +29,7 @@ class TpuMeshCommonState;
 
 namespace tpu {
 
-const char kTpuMeshCommonStateResourceName[] = "tpu_mesh_common_state";
+const char kTpuMeshStateInterfaceResourceName[] = "tpu_mesh_common_state";
 
 class TpuMeshStateInterface : public tensorflow::ResourceBase {
  public:

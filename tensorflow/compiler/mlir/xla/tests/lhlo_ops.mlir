@@ -964,23 +964,3 @@ func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
   }) : (memref<16x16xf32>, memref<16x16xf16>, tuple<memref<16x16xf32>, memref<16x16xf16>>) -> ()
   return
 }
-
-// -----
-
-// CHECK-LABEL: func @tuple_select_memrefs
-func @tuple_select_memrefs(%pred: memref<20xi1>, %true_values: memref<20xf32>,
-                           %false_values: memref<20xf32>, %arg_out: memref<20xf32>) -> () {
-  "xla_lhlo.tuple_select"(%pred, %true_values, %false_values, %arg_out)
-      : (memref<20xi1>, memref<20xf32>, memref<20xf32>, memref<20xf32>) -> ()
-  return
-}
-
-// -----
-
-func @tuple_select_memrefs(%pred: memref<10xi1>, %true_values: memref<20xf32>,
-                           %false_values: memref<20xf32>, %arg_out: memref<20xf32>) -> () {
-  // expected-error@+1{{requires the same shape for all operands}}
-  "xla_lhlo.tuple_select"(%pred, %true_values, %false_values, %arg_out)
-      : (memref<10xi1>, memref<20xf32>, memref<20xf32>, memref<20xf32>) -> ()
-  return
-}

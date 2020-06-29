@@ -55,9 +55,12 @@ inline void GetActivationMinMax(FusedActivationFunctionType ac,
   }
 }
 
-inline float ActivationFunctionWithMinMax(float x, float output_activation_min,
-                                          float output_activation_max) {
-  return std::min(std::max(x, output_activation_min), output_activation_max);
+template <typename T>
+inline T ActivationFunctionWithMinMax(T x, T output_activation_min,
+                                      T output_activation_max) {
+  using std::max;
+  using std::min;
+  return min(max(x, output_activation_min), output_activation_max);
 }
 
 // Legacy function, left for compatibility only.
@@ -408,6 +411,23 @@ SaturatingRoundingMultiplyByPOTParam(
     gemmlowp::FixedPoint<tRawType, tIntegerBits> a, int exponent) {
   return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
       SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
+}
+
+// Convert int32 multiplier to int16 with rounding.
+inline void DownScaleInt32ToInt16Multiplier(int32_t multiplier_int32,
+                                            int16_t* multiplier_int16) {
+  TFLITE_DCHECK_GE(multiplier_int32, 0);
+  static constexpr int32_t kRoundingOffset = 1 << 15;
+  if (multiplier_int32 >=
+      std::numeric_limits<int32_t>::max() - kRoundingOffset) {
+    *multiplier_int16 = std::numeric_limits<int16_t>::max();
+    return;
+  }
+  const int32_t result = (multiplier_int32 + kRoundingOffset) >> 16;
+  TFLITE_DCHECK_LE(result << 16, multiplier_int32 + kRoundingOffset);
+  TFLITE_DCHECK_GT(result << 16, multiplier_int32 - kRoundingOffset);
+  *multiplier_int16 = result;
+  TFLITE_DCHECK_EQ(*multiplier_int16, result);
 }
 
 // Minimum output bits to accommodate log of maximum input range.  It actually

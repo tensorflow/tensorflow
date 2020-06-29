@@ -50,7 +50,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 349> a = {{
+  static std::array<OpIndexInfo, 348> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -222,7 +222,6 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"PlaceholderWithDefault"},
       {"PopulationCount"},
       {"PreventGradient"},
-      {"Qr"},
       {"QuantizeAndDequantize"},
       {"QuantizeAndDequantizeV2"},
       {"QuantizeAndDequantizeV3"},

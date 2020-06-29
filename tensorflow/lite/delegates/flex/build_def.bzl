@@ -138,7 +138,8 @@ def tflite_flex_jni_library(
             name = "%s_tensorflow_lib" % name,
             srcs = if_mobile([
                 "//tensorflow/core:portable_op_registrations_and_gradients",
-                "//tensorflow/core/kernels:android_all_ops",
+                "//tensorflow/core/kernels:android_core_ops",
+                "//tensorflow/core/kernels:android_extended_ops",
             ]) + [CUSTOM_KERNEL_HEADER.header],
             copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
             defines = [
@@ -165,6 +166,7 @@ def tflite_flex_jni_library(
                 "@gemmlowp",
                 "//tensorflow/core:protos_all_cc",
                 "//tensorflow/core:portable_tensorflow_lib_lite",
+                "//tensorflow/core/platform:strong_hash",
             ],
             alwayslink = 1,
         )

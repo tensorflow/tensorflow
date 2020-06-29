@@ -25,6 +25,7 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_4DBy4D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -65,6 +66,7 @@ TEST(Prelu, 4DBy4DBroadcastChannels) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_4DBy4DBroadcastWidth) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -85,6 +87,7 @@ TEST(Prelu, DISABLED_4DBy4DBroadcastWidth) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_4DBy4DBroadcastHeight) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -105,6 +108,7 @@ TEST(Prelu, DISABLED_4DBy4DBroadcastHeight) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_4DBy4DBroadcastBatch) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -125,6 +129,7 @@ TEST(Prelu, DISABLED_4DBy4DBroadcastBatch) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_4DBy4DBroadcastHeightWidthChannels) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -145,6 +150,7 @@ TEST(Prelu, DISABLED_4DBy4DBroadcastHeightWidthChannels) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_4DBy3D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -165,6 +171,7 @@ TEST(Prelu, DISABLED_4DBy3D) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_4DBy2D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -205,6 +212,7 @@ TEST(Prelu, 4DBy1D) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_4DBy0D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -225,6 +233,7 @@ TEST(Prelu, DISABLED_4DBy0D) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_3DBy3D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -263,6 +272,7 @@ TEST(Prelu, 3DBy3DBroadcastChannels) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_3DBy3DBroadcastWidth) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -282,6 +292,7 @@ TEST(Prelu, DISABLED_3DBy3DBroadcastWidth) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_3DBy3DBroadcastBatch) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -301,6 +312,7 @@ TEST(Prelu, DISABLED_3DBy3DBroadcastBatch) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_3DBy3DBroadcastWidthChannels) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -320,6 +332,7 @@ TEST(Prelu, DISABLED_3DBy3DBroadcastWidthChannels) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_3DBy2D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -358,6 +371,7 @@ TEST(Prelu, 3DBy1D) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_3DBy0D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -377,6 +391,7 @@ TEST(Prelu, DISABLED_3DBy0D) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_2DBy2D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -413,6 +428,7 @@ TEST(Prelu, 2DBy2DBroadcastChannels) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_2DBy2DBroadcastBatch) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -449,6 +465,7 @@ TEST(Prelu, 2DBy1D) {
       .Test(xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_2DBy0D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -482,6 +499,7 @@ TEST(Prelu, 1DBy1D) {
       xnnpack_delegate.get());
 }
 
+// TODO(b/159727692)
 TEST(Prelu, DISABLED_1DBy0D) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),

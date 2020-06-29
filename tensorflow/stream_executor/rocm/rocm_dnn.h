@@ -39,7 +39,6 @@ class MIOpenCTCLossDescriptor;
 // Opaque and unique identifier for the MIOpen plugin.
 extern const PluginId kMIOpenPlugin;
 
-
 struct PoolingWorkspaceDescriptor {
   std::vector<int64> input_dims;
   std::vector<int64> output_dims;
@@ -49,9 +48,8 @@ struct PoolingWorkspaceDescriptor {
   std::unique_ptr<TemporaryDeviceMemory<uint8>> workspace;
   size_t workspace_size;
   bool IsSame(const dnn::BatchDescriptor& input_dimensions,
-    const dnn::BatchDescriptor& output_dimensions,
-    const dnn::PoolingDescriptor& pooling_dimensions,
-    int _type);
+              const dnn::BatchDescriptor& output_dimensions,
+              const dnn::PoolingDescriptor& pooling_dimensions, int _type);
 };
 
 struct PoolingWorkspaceCache {
@@ -61,22 +59,18 @@ struct PoolingWorkspaceCache {
   uint64_t timestamp = 0;
   uint64_t memory_used = 0;
   bool find(const void* p, const dnn::BatchDescriptor& input_dimensions,
-    const dnn::BatchDescriptor& output_dimensions,
-    const dnn::PoolingDescriptor& pooling_dimensions,
-    int _type,
-    PoolingWorkspaceDescriptor*& pdesc);
-  void insert(const void* p,
-    const dnn::BatchDescriptor& input_dimensions,
-    const dnn::BatchDescriptor& output_dimensions,
-    const dnn::PoolingDescriptor& pooling_dimensions,
-    int _type,
-    std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace,
-    size_t wsp_size,
-    hipStream_t hip_stream);
-private:
+            const dnn::BatchDescriptor& output_dimensions,
+            const dnn::PoolingDescriptor& pooling_dimensions, int _type,
+            PoolingWorkspaceDescriptor*& pdesc);
+  void insert(const void* p, const dnn::BatchDescriptor& input_dimensions,
+              const dnn::BatchDescriptor& output_dimensions,
+              const dnn::PoolingDescriptor& pooling_dimensions, int _type,
+              std::unique_ptr<TemporaryDeviceMemory<uint8>>& workspace,
+              size_t wsp_size, hipStream_t hip_stream);
+
+ private:
   void trim(hipStream_t hip_stream);
 };
-
 
 // miopen-library based DNN support. For details on overridden interface
 // functions, see dnn.h.
@@ -889,6 +883,25 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
       DeviceMemory<uint8>* scratch_memory) override;
 
+  port::Status DoCtcLossImpl(
+      Stream* stream, const MIOpenRnnStateTensorDescriptor& probs_desc,
+      const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
+      const MIOpenRnnStateTensorDescriptor& grads_desc,
+      DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
+      DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id);
+
+  port::Status DoPrepareForCtcLoss(
+      Stream* stream, dnn::DataType element_type,
+      const dnn::RnnStateTensorDescriptor& probs_desc,
+      const dnn::RnnStateTensorDescriptor& grads_desc,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
+      ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
+      int* ctc_loss_algo_id) override;
+
   bool GetMIOpenConvolveAlgorithmsImmediateMode(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -911,35 +924,16 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator,
       std::vector<dnn::ProfileResult>* out_algorithms);
 
-  port::Status DoCtcLossImpl(
-      Stream* stream, const MIOpenRnnStateTensorDescriptor& probs_desc,
-      const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
-      absl::Span<const int> labels_lengths_data,
-      absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
-      const MIOpenRnnStateTensorDescriptor& grads_desc,
-      DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
-      DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id);
-
-  port::Status DoPrepareForCtcLoss(
-      Stream* stream, dnn::DataType element_type,
-      const dnn::RnnStateTensorDescriptor& probs_desc,
-      const dnn::RnnStateTensorDescriptor& grads_desc,
-      absl::Span<const int> labels_data,
-      absl::Span<const int> labels_lengths_data,
-      absl::Span<const int> input_lengths_data,
-      ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
-      int* ctc_loss_algo_id) override;
-
   template <class T>
   bool DoPoolBackwardImpl(Stream* stream,
-                      const dnn::PoolingDescriptor& pooling_dimensions,
-                      const dnn::BatchDescriptor& input_dimensions,
-                      const DeviceMemory<T>& input_data,
-                      const dnn::BatchDescriptor& output_dimensions,
-                      const DeviceMemory<T>& output_data,
-                      const DeviceMemory<T>& input_diff_data,
-                      DeviceMemory<T>* output_diff_data,
-                      ScratchAllocator* workspace_allocator = nullptr);
+                          const dnn::PoolingDescriptor& pooling_dimensions,
+                          const dnn::BatchDescriptor& input_dimensions,
+                          const DeviceMemory<T>& input_data,
+                          const dnn::BatchDescriptor& output_dimensions,
+                          const DeviceMemory<T>& output_data,
+                          const DeviceMemory<T>& input_diff_data,
+                          DeviceMemory<T>* output_diff_data,
+                          ScratchAllocator* workspace_allocator = nullptr);
 
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenSupport);
 };

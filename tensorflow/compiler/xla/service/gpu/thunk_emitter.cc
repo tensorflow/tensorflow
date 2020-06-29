@@ -291,7 +291,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
   }
 
   if (void* call_target = CustomCallTargetRegistry::Global()->Lookup(
-          custom_call->custom_call_target(), platform()->Name())) {
+          custom_call->custom_call_target(), std::string(platform_name()))) {
     auto get_slices_for_instr = [&](const HloInstruction* instr) {
       ShapeTree<BufferAllocation::Slice> slices(instr->shape());
       slices.ForEachMutableElement(
