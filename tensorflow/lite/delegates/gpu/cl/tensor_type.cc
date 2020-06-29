@@ -391,9 +391,10 @@ absl::Status TensorDescriptor::PerformGetPtrWithSliceOffsetSelector(
 
 absl::Status TensorDescriptor::PerformGetWHOffsetSelector(
     const std::vector<std::string>& args, std::string* result) const {
-  if (storage_type != TensorStorageType::BUFFER) {
+  if (storage_type != TensorStorageType::BUFFER &&
+      storage_type != TensorStorageType::IMAGE_BUFFER) {
     return absl::InvalidArgumentError(
-        "GetWHOffset selector can be used only with BUFFER");
+        "GetWHOffset selector can be used only with BUFFER/IMAGE_BUFFER");
   }
   if (args.size() != 2) {
     return absl::NotFoundError(absl::StrCat(
