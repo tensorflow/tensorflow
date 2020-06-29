@@ -750,9 +750,10 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   void DecodeBmpV2(OpKernelContext* context, StringPiece input) {
-    OP_REQUIRES(context, channels_ == 0 || channels_ == 3,
-                errors::InvalidArgument(
-                    "`channels` must be 0 or 3 for BMP, but got ", channels_));
+    OP_REQUIRES(
+        context, channels_ != 1,
+        errors::InvalidArgument(
+            "`channels` must be 0, 3 or 4 for BMP, but got ", channels_));
 
     OP_REQUIRES(context, (32 <= input.size()),
                 errors::InvalidArgument("Incomplete bmp content, requires at "
@@ -770,9 +771,9 @@ class DecodeImageV2Op : public OpKernel {
     int32 height_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 22)));
     const int32 height = ByteSwapInt32ForBigEndian(height_);
-    int32 bpp_ = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 28)));
-    const int32 bpp = ByteSwapInt32ForBigEndian(bpp_);
+    int16 bpp_ = internal::SubtleMustCopy(
+        *(reinterpret_cast<const int16*>(img_bytes + 28)));
+    const int16 bpp = le16toh(bpp_);
 
     if (channels_) {
       OP_REQUIRES(context, (channels_ == bpp / 8),
