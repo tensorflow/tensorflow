@@ -561,10 +561,10 @@ string GenPythonOp::Code() {
   // from the end of args_no_default, and adding args_no_default.
   attrs_.reserve(params_no_default.size() - op_def_.input_arg_size() +
                  params_with_default.size());
-  for (int i = op_def_.input_arg_size(); i < params_no_default.size(); ++i) {
+  for (int i = op_def_.input_arg_size(), iter_limit = params_no_default.size(); i < iter_limit; ++i) {
     attrs_.push_back(params_no_default[i].GetName());
   }
-  for (int i = 0; i < params_with_default.size(); ++i) {
+  for (int i = 0, iter_limit = params_with_default.size(); i < iter_limit; ++i) {
     attrs_.push_back(params_with_default[i].GetName());
   }
 

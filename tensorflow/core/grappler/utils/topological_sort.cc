@@ -81,7 +81,8 @@ Status ComputeTopologicalOrder(
     int ready_node = (*ready_nodes)[front];
     for (int fanout : graph_view.GetFanout(ready_node)) {
       ++num_ready_inputs[fanout];
-      if (num_ready_inputs[fanout] == graph_view.GetFanin(fanout).size()) {
+      int graph_view_GetFanin_fanout_size = graph_view.GetFanin(fanout).size();
+      if (num_ready_inputs[fanout] == graph_view_GetFanin_fanout_size) {
         ready_nodes->push_back(fanout);
         ++back;
       }
@@ -95,7 +96,8 @@ Status ComputeTopologicalOrder(
                  "at node = "
               << graph.node(back).DebugString();
       for (int i = 0; i < graph_view.num_nodes(); ++i) {
-        if (num_ready_inputs[i] != graph_view.GetFanin(i).size()) {
+        int graph_view_GetFanin_i_size = graph_view.GetFanin(i).size();
+        if (num_ready_inputs[i] != graph_view_GetFanin_i_size) {
           VLOG(1) << "Node not ready: " << graph.node(i).DebugString();
         }
       }

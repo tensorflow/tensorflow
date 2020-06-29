@@ -1469,9 +1469,10 @@ Costs OpLevelCostEstimator::PredictEinsum(const OpContext& op_context) const {
   found_unknown_shapes = a_input_shape_unknown || b_input_shape_unknown ||
                          (a_input.shape().dim_size() < matrix_rank) ||
                          (b_input.shape().dim_size() < matrix_rank);
-
-  if (a_input_str.size() != a_input_shape.dim_size() ||
-      b_input_str.size() != b_input_shape.dim_size()) {
+  int a_input_str_size = a_input_str.size();
+  int b_input_str_size = b_input_str.size();
+  if (a_input_str_size != a_input_shape.dim_size() ||
+      b_input_str_size != b_input_shape.dim_size()) {
     VLOG(1) << "Missing accurate estimator for op: " << op_info.op()
             << ", equation subscripts don't match tensor rank.";
     return PredictCostOfAnUnknownOp(op_context);
@@ -1513,7 +1514,7 @@ Costs OpLevelCostEstimator::PredictEinsum(const OpContext& op_context) const {
   n_dim.set_size(1);
   k_dim.set_size(1);
 
-  for (int i_idx = 0; i_idx < a_input_str.size(); ++i_idx) {
+  for (int i_idx = 0, iter_limit = a_input_str.size(); i_idx < iter_limit; ++i_idx) {
     if (b_input_str.find(a_input_str[i_idx]) == std::string::npos) {
       if (rhs_str.find(a_input_str[i_idx]) == std::string::npos) {
         VLOG(1) << "Missing accurate estimator for op: " << op_info.op();
@@ -1533,7 +1534,7 @@ Costs OpLevelCostEstimator::PredictEinsum(const OpContext& op_context) const {
     *(a_matrix_shape->add_dim()) = a_input_shape.dim(i_idx);
     *(b_matrix_shape->add_dim()) = a_input_shape.dim(i_idx);
   }
-  for (int i_idx = 0; i_idx < b_input_str.size(); ++i_idx) {
+  for (int i_idx = 0, iter_limit = b_input_str.size(); i_idx < iter_limit; ++i_idx) {
     if (a_input_str.find(b_input_str[i_idx]) == std::string::npos) {
       if (rhs_str.find(b_input_str[i_idx]) == std::string::npos) {
         VLOG(1) << "Missing accurate estimator for op: " << op_info.op();

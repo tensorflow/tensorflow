@@ -357,7 +357,7 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
     }
     permutation->swap(inv_perm);
   }
-  for (std::size_t n = 0; n + 1 < permutation->size(); ++n) {
+  for (int n = 0, iter_limit = permutation->size(); n + 1 < iter_limit; ++n) {
     while (n != (*permutation)[n]) {
       std::size_t r = (*permutation)[n];
       graph->mutable_node()->SwapElements(n, r);
