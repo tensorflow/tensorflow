@@ -170,6 +170,7 @@ cc_library(
     hdrs = ["tpu_computation_placer.h"],
     deps = [
         ":tpu_executor",
+        ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:computation_placer",
