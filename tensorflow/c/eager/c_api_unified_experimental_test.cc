@@ -87,7 +87,7 @@ TEST_P(UnifiedCAPI, TestBasicEager) {
 }
 
 
-//MatMul Test
+// MatMul Test
 TEST_P(UnifiedCAPI, TestBasicEagerMatMul) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -104,6 +104,7 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul) {
       [0,0] ]         [0,0] ]         [0,0] ]
 
   */
+
   // Build an abstract input tensor.  
   float vals [] = {0.0f,0.0f,0.0f,0.0f};
   TFE_Context* eager_ctx = TF_ExecutionContextGetTFEContext(ctx);
@@ -141,20 +142,23 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
   TF_Tensor* result_tensor = TFE_TensorHandleResolve(result_t, status.get());
   
-  TF_Tensor* zero_tensor = TFE_TensorHandleResolve(expected_tensor, status.get()); 
-  float* result_value = static_cast<float*>(TF_TensorData(result_tensor));
-  float* zero_value = static_cast<float*>(TF_TensorData(zero_tensor));
-  EXPECT_EQ(*result_value, *zero_value);
+  // Copy Tensor data into an array. 
+  float result_data[4] = {0};
+  memcpy(&result_data[0], TF_TensorData(result_tensor), TF_TensorByteSize(result_tensor));
+
+  int data_len = 4; //length of result_data
+  for(int i = 0; i < data_len; i++){
+      EXPECT_EQ(result_data[i], 0);
+  }
 
   TF_DeleteTensor(result_tensor);
-  TF_DeleteTensor(zero_tensor);
   TF_DeleteAbstractTensor(result);
   TF_DeleteOutputList(o);
   TF_DeleteExecutionContext(ctx);
 }
 
 
-//MatMul Test 2 
+// MatMul Test 2 
 TEST_P(UnifiedCAPI, TestBasicEagerMatMul2) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -171,7 +175,7 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul2) {
       [3,4] ]         [7,8] ]         [43,50] ]
 
   */
-  
+
   // Build 1st Matrix.  
   float vals1 [] = {1.0f,2.0f,3.0f,4.0f};
   TFE_Context* eager_ctx = TF_ExecutionContextGetTFEContext(ctx);
@@ -183,7 +187,6 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul2) {
 
   // Build 2nd Matrix.
   float vals2 [] = {5.0f,6.0f,7.0f,8.0f};
-  //TFE_Context* eager_ctx2 = TF_ExecutionContextGetTFEContext(ctx);
   TFE_TensorHandle* t2 = TestMatrixTensorHandleWithInput(eager_ctx, vals2);
   
   TF_AbstractTensor* at2 =
@@ -192,8 +195,7 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul2) {
 
   // Build expected result
   float e_vals [] = {19.0f,22.0f,43.0f,50.0f};
-  TFE_TensorHandle* expected_tensor = TestMatrixTensorHandleWithInput(eager_ctx, e_vals); // 2x2 matrix of expected result
-
+ 
   // Build an abstract operation.
   auto* op = TF_NewAbstractOp(ctx);
   TF_AbstractOpSetOpType(op, "MatMul", status.get());
@@ -220,15 +222,19 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul2) {
   TFE_TensorHandle* result_t =
       TF_AbstractTensorGetEagerTensor(result, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-  TF_Tensor* result_tensor = TFE_TensorHandleResolve(result_t, status.get());
   
-  TF_Tensor* expected_val_tensor = TFE_TensorHandleResolve(expected_tensor, status.get()); 
-  float* result_value = static_cast<float*>(TF_TensorData(result_tensor));
-  float* expected_value = static_cast<float*>(TF_TensorData(expected_val_tensor));
-  EXPECT_EQ(*result_value, *expected_value);
+  TF_Tensor* result_tensor = TFE_TensorHandleResolve(result_t, status.get());
+
+  // Copy Tensor data into array.
+  float result_data[4] = {0};
+  memcpy(&result_data[0], TF_TensorData(result_tensor), TF_TensorByteSize(result_tensor));
+
+  int data_len = 4; //length of e_vals
+  for(int i = 0; i < data_len; i++){ 
+    EXPECT_EQ(result_data[i], e_vals[i]);
+  }
 
   TF_DeleteTensor(result_tensor);
-  TF_DeleteTensor(expected_val_tensor);
   TF_DeleteAbstractTensor(result);
   TF_DeleteOutputList(o);
   TF_DeleteExecutionContext(ctx);

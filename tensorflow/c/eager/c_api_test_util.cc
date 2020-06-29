@@ -90,7 +90,7 @@ TFE_TensorHandle* TestMatrixTensorHandle(TFE_Context* ctx) {
 
 TFE_TensorHandle* TestMatrixTensorHandleWithInput(TFE_Context* ctx, float data[]) {
   int64_t dims[] = {2, 2};
-  //float data[] = vals;
+ 
   TF_Status* status = TF_NewStatus();
   TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0],
                                         sizeof(dims) / sizeof(int64_t), status);
