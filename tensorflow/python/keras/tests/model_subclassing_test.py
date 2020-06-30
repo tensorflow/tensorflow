@@ -37,7 +37,6 @@ from tensorflow.python.keras.tests import model_subclassing_test_util as model_u
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import data_structures
@@ -361,7 +360,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
         self.isdep = keras.layers.Dense(1)
         self.notdep = data_structures.NoDependency(keras.layers.Dense(2))
         self.notdep_var = data_structures.NoDependency(
-            resource_variable_ops.ResourceVariable(1., name='notdep_var'))
+            variables_lib.Variable(1., name='notdep_var'))
 
     m = Foo()
     self.assertEqual([m.isdep, m.notdep], m.layers)
@@ -376,9 +375,8 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
       def __init__(self):
         super(ExtraVar, self).__init__()
         self.dense = keras.layers.Dense(1)
-        self.var = resource_variable_ops.ResourceVariable(1.)
-        self.not_trainable_var = resource_variable_ops.ResourceVariable(
-            2., trainable=False)
+        self.var = variables_lib.Variable(1.)
+        self.not_trainable_var = variables_lib.Variable(2., trainable=False)
 
       def call(self, inputs):
         return self.dense(inputs + self.var)

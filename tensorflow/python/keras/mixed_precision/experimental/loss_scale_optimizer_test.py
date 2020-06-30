@@ -37,7 +37,6 @@ from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
@@ -158,8 +157,8 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
   def testDynamicLossScale(self, strategy_fn):
     strategy = strategy_fn()
     learning_rate = 2.
-    expected_gradient = resource_variable_ops.ResourceVariable(
-        learning_rate / strategy.num_replicas_in_sync)
+    expected_gradient = variables.Variable(learning_rate /
+                                           strategy.num_replicas_in_sync)
     with strategy.scope():
       var = variables.Variable([5.0])
       opt = gradient_descent.SGD(learning_rate)

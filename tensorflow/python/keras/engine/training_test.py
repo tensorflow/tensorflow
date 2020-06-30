@@ -52,7 +52,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
@@ -823,8 +822,8 @@ class TrainingTest(keras_parameterized.TestCase):
 
       def __init__(self):
         super(LayerWithWeightSharedLayers, self).__init__()
-        shared_trainable_var = resource_variable_ops.ResourceVariable(1.)
-        shared_non_trainable_var = resource_variable_ops.ResourceVariable(
+        shared_trainable_var = variables_lib.Variable(1.)
+        shared_non_trainable_var = variables_lib.Variable(
             1., trainable=False)
         self.layer1 = AddWeightLayer(shared_trainable_var,
                                      shared_non_trainable_var)

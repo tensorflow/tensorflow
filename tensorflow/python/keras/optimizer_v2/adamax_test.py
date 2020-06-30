@@ -29,7 +29,6 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import adamax
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -91,8 +90,8 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([4.0, 5.0, 6.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np)
-        var1 = resource_variable_ops.ResourceVariable(var1_np)
+        var0 = variables.Variable(var0_np)
+        var1 = variables.Variable(var1_np)
 
         grads0_np_indices = np.array([0, 1], dtype=np.int32)
         grads0 = ops.IndexedSlices(
@@ -186,10 +185,8 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
 
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
@@ -234,10 +231,8 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
 
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
@@ -357,8 +352,8 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
 
   def testSlotsUniqueEager(self):
     with context.eager_mode():
-      v1 = resource_variable_ops.ResourceVariable(1.)
-      v2 = resource_variable_ops.ResourceVariable(1.)
+      v1 = variables.Variable(1.)
+      v2 = variables.Variable(1.)
       opt = adamax.Adamax(1.)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
       # There should be iteration, and two unique slot variables for v1 and v2.

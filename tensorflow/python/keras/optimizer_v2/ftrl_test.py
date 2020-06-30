@@ -26,7 +26,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import ftrl
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
@@ -40,8 +39,8 @@ class FtrlOptimizerTest(test.TestCase):
     for dtype in [dtypes.float32]:
       with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         if use_resource:
-          var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
-          var1 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
+          var0 = variables.Variable([0.0, 0.0], dtype=dtype)
+          var1 = variables.Variable([0.0, 0.0], dtype=dtype)
         else:
           var0 = variables.Variable([0.0, 0.0], dtype=dtype)
           var1 = variables.Variable([0.0, 0.0], dtype=dtype)
@@ -109,7 +108,7 @@ class FtrlOptimizerTest(test.TestCase):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with ops.Graph().as_default(), self.cached_session(use_gpu=True):
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
         def loss():
