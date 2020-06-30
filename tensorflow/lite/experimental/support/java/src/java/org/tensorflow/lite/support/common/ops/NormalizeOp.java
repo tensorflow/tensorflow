@@ -141,11 +141,11 @@ public class NormalizeOp implements TensorOperator {
     SupportPreconditions.checkArgument(
         numChannels == 1 || (shape.length != 0 && shape[shape.length - 1] == numChannels),
         "Number of means (stddevs) is not same with number of channels (size of last axis).");
-    // TODO(136750944): Eliminate the array copy here.
-    float[] values = input.getFloatArray();
+    int flatSize = input.getFlatSize();    
+    float[] values = new float[flatSize];
     int j = 0;
-    for (int i = 0; i < values.length; i++) {
-      values[i] = (values[i] - mean[j]) / stddev[j];
+    for (int i = 0; i < flatSize; i++) {
+      values[i] = (input.getFloatValue(i) - mean[j]) / stddev[j];
       j = (j + 1) % numChannels;
     }
     TensorBuffer output;
