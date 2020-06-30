@@ -1667,6 +1667,26 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
     ):
       model.predict(np.array([]))
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_on_batch_error_inconsistent_batch_size(self):
+    input_node1 = layers_module.Input(shape=(5,))
+    input_node2 = layers_module.Input(shape=(5,))
+    output_node = layers_module.Concatenate()([input_node1, input_node2])
+    output_node = layers_module.Dense(4)(output_node)
+    model = training_module.Model([input_node1, input_node2], output_node)
+    model.compile(loss='mse')
+
+    with self.assertRaisesRegexp(ValueError, 'Data cardinality is ambiguous'):
+      model.train_on_batch([np.ones((10, 5)), np.ones((10, 5))],
+                           np.ones((11, 4)))
+
+    with self.assertRaisesRegexp(ValueError, 'Data cardinality is ambiguous'):
+      model.test_on_batch([np.ones((10, 5)), np.ones((10, 5))],
+                          np.ones((11, 4)))
+
+    with self.assertRaisesRegexp(ValueError, 'Data cardinality is ambiguous'):
+      model.predict_on_batch([np.ones((10, 5)), np.ones((11, 5))])
+
 
 class LossWeightingTest(keras_parameterized.TestCase):
 
