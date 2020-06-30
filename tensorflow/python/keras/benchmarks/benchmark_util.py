@@ -22,6 +22,7 @@ import numpy as np
 
 import tensorflow as tf
 
+
 class TimerCallBack(tf.keras.callbacks.Callback):
   """Callback for logging time in each epoch or batch."""
 
