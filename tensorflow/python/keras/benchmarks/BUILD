@@ -80,4 +80,7 @@ py_test(
 py_library(
     name = "benchmark_util",
     srcs = ["benchmark_util.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
