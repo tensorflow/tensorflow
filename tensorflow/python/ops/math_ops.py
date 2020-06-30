@@ -1828,18 +1828,18 @@ def _ReductionDims(x, axis):  # pylint: disable=invalid-name
   if axis is not None:
     return axis
   else:
-    x_rank = None
+    # Fast path: avoid creating Rank and Range ops if ndims is known.
     if isinstance(x, ops.Tensor):
-      x_rank = x.shape.rank
+      rank = x.shape.rank
+      if rank is not None:
+        return constant_op.constant(np.arange(rank, dtype=np.int32))
     elif (isinstance(x, sparse_tensor.SparseTensor) and
           x.dense_shape.shape.is_fully_defined()):
-      x_rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
-    # Fast path: avoid creating Rank and Range ops if ndims is known.
-    if x_rank:
-      return constant_op.constant(np.arange(x_rank, dtype=np.int32))
-    else:
-      # Otherwise, we rely on Range and Rank to do the right thing at run-time.
-      return range(0, array_ops.rank(x))
+      rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
+      return constant_op.constant(np.arange(rank, dtype=np.int32))
+
+    # Otherwise, we rely on Range and Rank to do the right thing at run-time.
+    return range(0, array_ops.rank(x))
 
 
 def _has_fully_defined_shape(tensor):
@@ -1870,8 +1870,8 @@ def reduce_sum_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -1920,8 +1920,8 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -1997,8 +1997,8 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2193,8 +2193,8 @@ def reduce_mean_v1(input_tensor,
   Reduces `input_tensor` along the dimensions given in `axis` by computing the
   mean of elements across the dimensions in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a tensor with a single
   element is returned.
@@ -2255,8 +2255,8 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
   Reduces `input_tensor` along the dimensions given in `axis` by computing the
   mean of elements across the dimensions in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions are retained
+  with length 1.
 
   If `axis` is None, all dimensions are reduced, and a tensor with a single
   element is returned.
@@ -2314,8 +2314,8 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2375,8 +2375,8 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2469,8 +2469,8 @@ def reduce_prod_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2515,8 +2515,8 @@ def reduce_min_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2553,8 +2553,8 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2602,8 +2602,8 @@ def reduce_max_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2640,8 +2640,8 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2707,8 +2707,8 @@ def reduce_all_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2754,8 +2754,8 @@ def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2807,8 +2807,8 @@ def reduce_any_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2854,8 +2854,8 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2907,8 +2907,8 @@ def reduce_logsumexp_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2956,8 +2956,8 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  of the entries in `axis`, which must be unique. If `keepdims` is true, the
-  reduced dimensions are retained with length 1.
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.

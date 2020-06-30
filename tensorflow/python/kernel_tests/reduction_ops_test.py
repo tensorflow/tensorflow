@@ -25,7 +25,6 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -340,14 +339,6 @@ class SumReductionTest(BaseReductionTest):
     with self.assertRaisesWithPredicateMatch(ValueError,
                                              ".*must be at most rank 1.*"):
       math_ops.reduce_sum(c_unknown, reduction_axes)
-
-  def testInvalidRepeatedReductionIndices(self):
-    reduction_axes = constant_op.constant([0, 0])
-    c = constant_op.constant([1.0, 2.0])
-    with self.assertRaisesWithPredicateMatch(
-        errors.InvalidArgumentError,
-        ".*Axes contains duplicate dimension: 0.*"):
-      self.evaluate(math_ops.reduce_sum(c, reduction_axes))
 
   # Int64??
 
