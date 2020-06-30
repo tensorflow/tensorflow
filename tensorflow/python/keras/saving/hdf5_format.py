@@ -67,7 +67,8 @@ def check_lockfile(filepath):
   lockfile_path = filepath + ".lock"
   return gfile.Exists(lockfile_path)
 
-def save_model_to_hdf5(model, filepath, overwrite=True, lockfile=True, include_optimizer=True):
+def save_model_to_hdf5(model, filepath, overwrite=True, \
+                       lockfile=True, include_optimizer=True):
   """Saves a model to a HDF5 file.
 
   The saved model contains:
@@ -87,7 +88,9 @@ def save_model_to_hdf5(model, filepath, overwrite=True, lockfile=True, include_o
       overwrite: Whether we should overwrite any existing
           model at the target location, or instead
           ask the user with a manual prompt.
-      lockfile: Create a lockfile before saving the model file to prevent from reading, while saving is not done.
+      lockfile: Create a lockfile before saving the model 
+          file to prevent from reading, while saving 
+          is not done.
       include_optimizer: If True, save optimizer's state together.
 
   Raises:
