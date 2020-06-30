@@ -59,25 +59,33 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
     return Status::OK();
   }
 
+  string fixed_prefix = pattern.substr(0, pattern.find_first_of("*?[\\"));
   string eval_pattern = pattern;
+  auto protocol_pos = fixed_prefix.find("://");
+  string protocol = "";
+  if (protocol_pos != string::npos) {
+    protocol = pattern.substr(0, protocol_pos + 3);
+    eval_pattern = pattern.substr(protocol_pos + 3);
+  }
   bool is_directory = pattern[pattern.size() - 1] == '/';
 #ifdef PLATFORM_WINDOWS
   is_directory = is_directory || pattern[pattern.size() - 1] == '\\';
 #endif
-  if (!io::IsAbsolutePath(pattern)) {
-    eval_pattern = io::JoinPath(".", pattern);
+  string base_dir(io::Dirname(fixed_prefix));
+  if (base_dir.empty()) {
+    eval_pattern = io::JoinPath(".", eval_pattern);
   }
   std::vector<string> dirs;
   if (!is_directory) {
-    dirs.push_back(eval_pattern);
+    dirs.push_back(strings::StrCat(protocol, eval_pattern));
   }
   StringPiece dir(io::Dirname(eval_pattern));
   while (!dir.empty() && dir != "/") {
-    dirs.push_back(string(dir));
+    dirs.push_back(strings::StrCat(protocol, dir));
     dir = io::Dirname(dir);
   }
   if (dir == "/") {
-    dirs.push_back(string(dir));
+    dirs.push_back(strings::StrCat(protocol, dir));
   }
   std::reverse(dirs.begin(), dirs.end());
   // Setup a BFS to explore everything under dir.
