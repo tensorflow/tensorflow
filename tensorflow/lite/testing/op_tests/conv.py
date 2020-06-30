@@ -51,7 +51,7 @@ def make_conv_tests(options):
           "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
           "constant_filter": [True, False],
           "channel_multiplier": [1, 2],
-          "fully_quantize": [False],
+          "fully_quantize": [True],
           "quantize_mode_16x8": [True],
           "dynamic_range_quantize": [False],
       },

@@ -57,7 +57,7 @@ def make_concat_tests(options):
       "axis": [1],
       "type": [tf.float32],
       "fully_quantize": [False],
-      "quantize_mode_16x8": [True],
+      "quantize_mode_16x8": [False],
       "dynamic_range_quantize": [True],
   }]
 
