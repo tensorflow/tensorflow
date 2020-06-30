@@ -1384,6 +1384,19 @@ class TrainingTest(keras_parameterized.TestCase):
     x, y = np.ones((10, 2)), np.ones((10, 2))
     model.fit(x, y)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_custom_params_with_subclassed_model(self):
+    class MyModel(training_module.Model):
+      def train_step(model, data, test_param):
+        self.assertEqual(test_param, 1)
+        return {}
+    inputs = input_layer.Input(shape=(32,))
+    outputs = layers_module.Dense(1)(inputs)
+    model = MyModel(inputs, outputs)
+    model.compile('sgd', 'mse')
+    x, y = np.ones((10, 2)), np.ones((10, 2))
+    model.fit(x, y, test_param=1)
+
   @keras_parameterized.run_all_keras_modes
   @testing_utils.enable_v2_dtype_behavior
   def test_regularizer_of_different_dtype(self):
@@ -3578,7 +3591,7 @@ class TestFunctionTracing(keras_parameterized.TestCase):
       model.fit(x, y, epochs=10, batch_size=5, validation_data=(x, y))
 
     new_func_graph = 'INFO:absl:Creating new FuncGraph for Python function'
-    self.assertEqual(sum(new_func_graph in log for log in logs.output), 9)
+    self.assertEqual(sum(new_func_graph in log for log in logs.output), 0)
 
 
 if __name__ == '__main__':

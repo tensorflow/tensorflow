@@ -713,7 +713,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def run_eagerly(self, value):
     self._run_eagerly = value
 
-  def train_step(self, data):
+  def train_step(self, data, **kwargs):
     """The logic for one training step.
 
     This method can be overridden to support custom training logic.
@@ -759,7 +759,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
     return {m.name: m.result() for m in self.metrics}
 
-  def make_train_function(self):
+  def make_train_function(self, **kwargs):
     """Creates a function that executes one step of training.
 
     This method can be overridden to support custom training logic.
@@ -786,7 +786,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       """Runs a single training step."""
 
       def run_step(data):
-        outputs = model.train_step(data)
+        outputs = model.train_step(data, **kwargs)
         # Ensure counter is updated only if `train_step` succeeds.
         with ops.control_dependencies(_minimum_control_deps(outputs)):
           model._train_counter.assign_add(1)  # pylint: disable=protected-access
@@ -841,7 +841,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           validation_freq=1,
           max_queue_size=10,
           workers=1,
-          use_multiprocessing=False):
+          use_multiprocessing=False,
+          **kwargs):
     """Trains the model for a fixed number of epochs (iterations on a dataset).
 
     Arguments:
@@ -1074,7 +1075,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             steps=data_handler.inferred_steps)
 
       self.stop_training = False
-      train_function = self.make_train_function()
+      train_function = self.make_train_function(**kwargs)
       self._train_counter.assign(0)
       callbacks.on_train_begin()
       training_logs = None
@@ -1149,7 +1150,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       callbacks.on_train_end(logs=training_logs)
       return self.history
 
-  def test_step(self, data):
+  def test_step(self, data, **kwargs):
     """The logic for one evaluation step.
 
     This method can be overridden to support custom evaluation logic.
@@ -1183,7 +1184,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
     return {m.name: m.result() for m in self.metrics}
 
-  def make_test_function(self):
+  def make_test_function(self, **kwargs):
     """Creates a function that executes one step of evaluation.
 
     This method can be overridden to support custom evaluation logic.
@@ -1209,7 +1210,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       """Runs a single evaluation step."""
 
       def run_step(data):
-        outputs = model.test_step(data)
+        outputs = model.test_step(data, **kwargs)
         # Ensure counter is updated only if `test_step` succeeds.
         with ops.control_dependencies(_minimum_control_deps(outputs)):
           model._test_counter.assign_add(1)  # pylint: disable=protected-access
@@ -1255,7 +1256,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                max_queue_size=10,
                workers=1,
                use_multiprocessing=False,
-               return_dict=False):
+               return_dict=False,
+               **kwargs):
     """Returns the loss value & metrics values for the model in test mode.
 
     Computation is done in batches (see the `batch_size` arg.)
@@ -1371,7 +1373,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             steps=data_handler.inferred_steps)
 
       logs = {}
-      test_function = self.make_test_function()
+      test_function = self.make_test_function(**kwargs)
       self._test_counter.assign(0)
       callbacks.on_test_begin()
       for _, iterator in data_handler.enumerate_epochs():  # Single epoch.
@@ -1649,7 +1651,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                      sample_weight=None,
                      class_weight=None,
                      reset_metrics=True,
-                     return_dict=False):
+                     return_dict=False,
+                     **kwargs):
     """Runs a single gradient update on a single batch of data.
 
     Arguments:
@@ -1698,7 +1701,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
                                                     y, sample_weight,
                                                     class_weight)
-      train_function = self.make_train_function()
+      train_function = self.make_train_function(**kwargs)
       logs = train_function(iterator)
 
     if reset_metrics:
