@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 
 package(
     default_visibility = [":friends"],
@@ -16,7 +17,7 @@ cc_library(
     name = "gpu_binary_creator",
     srcs = ["gpu_binary_creator.cc"],
     hdrs = ["gpu_binary_creator.h"],
-    copts = if_cuda(["-DGOOGLE_CUDA=1"]),
+    copts = if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -29,6 +30,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TargetNVVMIR",
+        "@llvm-project//mlir:TargetROCDLIR",
         "@llvm-project//mlir:Transforms",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/hlo",
@@ -44,7 +46,11 @@ cc_library(
         "//tensorflow/compiler/xla/service/mlir_gpu:kernel_lowering",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
-    ] + if_cuda(["//tensorflow/stream_executor/gpu:asm_compiler"]),
+    ] + if_cuda([
+        "//tensorflow/stream_executor/gpu:asm_compiler",
+    ]) + if_rocm([
+        "//tensorflow/core/platform:rocm_rocdl_path",
+    ]),
 )
 
 tf_cc_binary(
