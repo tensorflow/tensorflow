@@ -180,9 +180,9 @@ public final class BoundingBoxUtil {
       case BOUNDARIES:
         return convertFromBoundaries(values, coordinateType, height, width);
       case UPPER_LEFT:
+        return convertFromUpperLeft(values, coordinateType, height, width);
       case CENTER:
-        // TODO(b/150824448): convertFrom{UpperLeft, Center}
-        throw new IllegalArgumentException("BoundingBox.Type " + type + " is not yet supported.");
+        return convertFromCenter(values, coordinateType, height, width);
     }
     throw new IllegalArgumentException("Cannot recognize BoundingBox.Type " + type);
   }
@@ -194,6 +194,42 @@ public final class BoundingBoxUtil {
           values[0] * width, values[1] * height, values[2] * width, values[3] * height);
     } else {
       return new RectF(values[0], values[1], values[2], values[3]);
+    }
+  }
+
+  private static RectF convertFromUpperLeft(
+      float[] values, CoordinateType coordinateType, int height, int width) {
+    if (coordinateType == CoordinateType.PIXEL) {
+      float left = values[0];
+      float top = values[1];
+      float w = values[2];
+      float h = values[3];
+
+      return new RectF(
+        left, top, left+w, top+h);
+    } else {
+      return new RectF(
+        values[0] * width, values[1] * height, (float) width, (float) height);
+    }
+  }
+
+  private static RectF convertFromCenter(
+      float[] values, CoordinateType coordinateType, int height, int width) {
+    if (coordinateType == CoordinateType.PIXEL) {
+      float centerX = values[0];
+      float centerY = values[1];
+      float w = values[2];
+      float h = values[3];
+
+      float left = centerX - w/2;
+      float top = centerY - h/2;
+      float right = centerX + w/2;
+      float bottom = centerX + h/2;
+
+      return new RectF(
+        left, top, right, bottom);
+    } else {
+      throw new IllegalArgumentException("BoundingBox.Type Center is not supported with CoordinateType CoordinateType.RATIO");
     }
   }
 
