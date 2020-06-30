@@ -152,7 +152,7 @@ def save_model_to_hdf5(model, filepath, overwrite=True, \
       f.close()
 
       # remove lock file
-      if (lockfile == True):
+      if lockfile:
         gfile.Remove(lockfile_path)
 
 
