@@ -511,6 +511,12 @@ inline void LstmStepFloat(
   float* cell_gate_scratch = scratch2;
   float* output_gate_scratch = scratch3;
 
+  const bool is_input_all_zeros =
+      tensor_utils::IsZeroVector(input_ptr, n_batch * n_input);
+  const bool is_aux_input_all_zeros =
+      (aux_input_ptr == nullptr ||
+       tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_aux_input));
+
   // Initialize scratch buffers with bias for regular lstm or initialize with
   // zero for layer norm lstm.
   if (use_layer_norm) {
@@ -535,7 +541,7 @@ inline void LstmStepFloat(
 
   // For each batch and cell: compute input_weight * input.
   // Skip if input is all zeros.
-  if (!tensor_utils::IsZeroVector(input_ptr, n_batch * n_input)) {
+  if (!is_input_all_zeros) {
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           input_to_input_weights_ptr, n_cell, n_input, input_ptr, n_batch,
@@ -555,8 +561,7 @@ inline void LstmStepFloat(
 
   // For each batch and cell: compute aux_input_weight * aux_input.
   // Skip if auxiliary input is not available or all zeros.
-  if (aux_input_ptr != nullptr &&
-      !tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_aux_input)) {
+  if (!is_aux_input_all_zeros) {
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           aux_input_to_input_weights_ptr, n_cell, n_aux_input, aux_input_ptr,
@@ -807,28 +812,6 @@ inline void LstmStepHybrid(
   float* cell_gate_scratch = scratch2;
   float* output_gate_scratch = scratch3;
 
-  // Initialize scratch buffers with bias for regular lstm or initialize with
-  // zero for layer norm lstm.
-  if (use_layer_norm) {
-    if (!use_cifg) {
-      std::fill_n(input_gate_scratch, n_cell * n_batch, 0.0f);
-    }
-    std::fill_n(forget_gate_scratch, n_cell * n_batch, 0.0f);
-    std::fill_n(cell_gate_scratch, n_cell * n_batch, 0.0f);
-    std::fill_n(output_gate_scratch, n_cell * n_batch, 0.0f);
-  } else {
-    if (!use_cifg) {
-      tensor_utils::VectorBatchVectorAssign(input_gate_bias_ptr, n_cell,
-                                            n_batch, input_gate_scratch);
-    }
-    tensor_utils::VectorBatchVectorAssign(forget_gate_bias_ptr, n_cell, n_batch,
-                                          forget_gate_scratch);
-    tensor_utils::VectorBatchVectorAssign(cell_gate_bias_ptr, n_cell, n_batch,
-                                          cell_gate_scratch);
-    tensor_utils::VectorBatchVectorAssign(output_gate_bias_ptr, n_cell, n_batch,
-                                          output_gate_scratch);
-  }
-
   int32_t* input_to_input_row_sums = nullptr;
   int32_t* input_to_forget_row_sums = nullptr;
   int32_t* input_to_cell_row_sums = nullptr;
@@ -896,10 +879,53 @@ inline void LstmStepHybrid(
     }
   }
 
-  if (!tensor_utils::IsZeroVector(input_ptr, n_batch * n_input)) {
+  const bool is_input_all_zeros =
+      tensor_utils::IsZeroVector(input_ptr, n_batch * n_input);
+  const bool is_aux_input_all_zeros =
+      (aux_input_ptr == nullptr ||
+       tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_aux_input));
+  const bool is_output_state_all_zeros =
+      tensor_utils::IsZeroVector(output_state_ptr, n_batch * n_output);
+
+  if (!is_input_all_zeros) {
     tensor_utils::BatchQuantizeFloats(input_ptr, n_batch, n_input,
                                       quantized_input_ptr, input_sf, input_zp,
                                       asymmetric_quantize_inputs);
+  }
+  if (!is_aux_input_all_zeros) {
+    tensor_utils::BatchQuantizeFloats(aux_input_ptr, n_batch, n_aux_input,
+                                      quantized_aux_input_ptr, aux_input_sf,
+                                      aux_input_zp, asymmetric_quantize_inputs);
+  }
+  if (!is_output_state_all_zeros) {
+    tensor_utils::BatchQuantizeFloats(
+        output_state_ptr, n_batch, n_output, quantized_output_state_ptr,
+        output_state_sf, output_state_zp, asymmetric_quantize_inputs);
+  }
+
+  // Initialize scratch buffers with bias for regular lstm or initialize with
+  // zero for layer norm lstm.
+  if (use_layer_norm) {
+    if (!use_cifg) {
+      std::fill_n(input_gate_scratch, n_cell * n_batch, 0.0f);
+    }
+    std::fill_n(forget_gate_scratch, n_cell * n_batch, 0.0f);
+    std::fill_n(cell_gate_scratch, n_cell * n_batch, 0.0f);
+    std::fill_n(output_gate_scratch, n_cell * n_batch, 0.0f);
+  } else {
+    if (!use_cifg) {
+      tensor_utils::VectorBatchVectorAssign(input_gate_bias_ptr, n_cell,
+                                            n_batch, input_gate_scratch);
+    }
+    tensor_utils::VectorBatchVectorAssign(forget_gate_bias_ptr, n_cell, n_batch,
+                                          forget_gate_scratch);
+    tensor_utils::VectorBatchVectorAssign(cell_gate_bias_ptr, n_cell, n_batch,
+                                          cell_gate_scratch);
+    tensor_utils::VectorBatchVectorAssign(output_gate_bias_ptr, n_cell, n_batch,
+                                          output_gate_scratch);
+  }
+
+  if (!is_input_all_zeros) {
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           input_to_input_weights_ptr, n_cell, n_input, quantized_input_ptr,
@@ -933,12 +959,7 @@ inline void LstmStepHybrid(
 
   // For each batch and cell: compute aux_input_weight * aux_input.
   // Skip if auxiliary input is not available or all zeros.
-  if (aux_input_ptr != nullptr &&
-      !tensor_utils::IsZeroVector(aux_input_ptr, n_batch * n_aux_input)) {
-    tensor_utils::BatchQuantizeFloats(aux_input_ptr, n_batch, n_aux_input,
-                                      quantized_aux_input_ptr, aux_input_sf,
-                                      aux_input_zp, asymmetric_quantize_inputs);
-
+  if (!is_aux_input_all_zeros) {
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           aux_input_to_input_weights_ptr, n_cell, n_aux_input,
@@ -973,11 +994,7 @@ inline void LstmStepHybrid(
         context);
   }
 
-  if (!tensor_utils::IsZeroVector(output_state_ptr, n_batch * n_output)) {
-    // Save quantization and matmul computation for all zero input.
-    tensor_utils::BatchQuantizeFloats(
-        output_state_ptr, n_batch, n_output, quantized_output_state_ptr,
-        output_state_sf, output_state_zp, asymmetric_quantize_inputs);
+  if (!is_output_state_all_zeros) {
     // For each batch and cell: compute recurrent_weight * output_state.
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
