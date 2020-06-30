@@ -95,6 +95,5 @@ Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
   }
   return Status::OK();
 }
-
 }  // namespace tpu
 }  // namespace tensorflow

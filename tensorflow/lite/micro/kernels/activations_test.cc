@@ -60,12 +60,10 @@ void TestReluFloat(const int* input_dims_data, const float* input_data,
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = nullptr;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -116,12 +114,10 @@ void TestRelu6Float(const int* input_dims_data, const float* input_data,
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = nullptr;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -177,12 +173,10 @@ void TestReluUint8(const int* input_dims_data, const float* input_data,
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = nullptr;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -242,12 +236,10 @@ void TestRelu6Uint8(const int* input_dims_data, const float* input_data,
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = nullptr;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -306,12 +298,10 @@ void TestReluInt8(const int* input_dims_data, const float* input_data,
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = nullptr;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -372,12 +362,10 @@ void TestRelu6Int8(const int* input_dims_data, const float* input_data,
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = nullptr;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }

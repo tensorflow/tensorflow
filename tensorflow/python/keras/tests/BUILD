@@ -6,6 +6,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
     default_visibility = [
@@ -113,21 +114,6 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "eager_benchmarks_test",
-    srcs = ["eager_benchmarks_test.py"],
-    python_version = "PY3",
-    deps = [
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:training_lib",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:profiler",
-        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -359,6 +345,21 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "serialization_util_test",
+    size = "small",
+    srcs = ["serialization_util_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+    ],
+)
+
+tf_py_test(
     name = "temporal_sample_weights_correctness_test",
     srcs = ["temporal_sample_weights_correctness_test.py"],
     python_version = "PY3",
@@ -462,6 +463,32 @@ tf_py_test(
         "//tensorflow/python/keras/layers:core",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:graph_view",
+        "//tensorflow/python/training/tracking:util",
+    ],
+)
+
+tf_xla_py_test(
+    name = "tracking_util_xla_test",
+    srcs = ["tracking_util_xla_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_windows",
+        "nomac",
+        "notsan",  # b/74395663
+    ],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:checkpoint_management",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/keras:metrics",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:util",
     ],
 )

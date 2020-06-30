@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
@@ -32,9 +33,8 @@ namespace {
 // activities within one memory allocator captured in host trace.
 TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
   XSpace space;
-  XPlane* host_plane = space.add_planes();
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
   XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(1);
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
@@ -85,11 +85,11 @@ TEST(ConvertXPlaneToMemoryProfile, OneAllocatorMultiActivitiesTest) {
                 {StatType::kRegionType, "temp"},
                 {StatType::kTensorShapes, "[1, 2]"}});
 
+  tensorflow::profiler::GroupTfEvents(&space, nullptr);
   MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
   EXPECT_EQ(memory_profile.memory_profile_per_allocator().size(), 1);
   EXPECT_EQ(memory_profile.num_hosts(), 1);
   EXPECT_EQ(memory_profile.memory_ids_size(), 1);
-  EXPECT_EQ(memory_profile.step_count().size(), 1);
   EXPECT_EQ(memory_profile.memory_profile_per_allocator().begin()->first,
             "GPU_0_bfc");
   const auto& allocator_memory_profile =

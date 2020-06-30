@@ -56,6 +56,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import monitored_session
@@ -1787,6 +1788,28 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(imported2.f(rt, 1), [[2, 3], [4]])
     self.assertAllEqual(imported2.f(rt, 2), [[3, 4], [5]])
     self.assertAllEqual(imported2.f(rt, 3), [[4, 5], [6]])
+
+  def test_accepts_io_device(self, cycles):
+    options = load_options.LoadOptions()
+    self.assertIsNone(options.experimental_io_device)
+    options = load_options.LoadOptions(experimental_io_device="/job:localhost")
+    self.assertEqual("/job:localhost", options.experimental_io_device)
+
+  def test_load_custom_saveable_object(self, cycles):
+    root = tracking.AutoTrackable()
+    root.table = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
+    root.table.insert("foo", 15)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    root.lookup = lookup
+
+    imported = cycle(root, cycles)
+    self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
+    self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

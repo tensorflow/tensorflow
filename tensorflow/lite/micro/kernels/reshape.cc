@@ -61,7 +61,7 @@ TfLiteStatus ReshapeOutput(TfLiteContext* context, TfLiteNode* node) {
     num_output_elements *= output_shape->data[stretch_dim];
   }
 
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_EQ(context, num_input_elements, num_output_elements);
   return kTfLiteOk;
 }

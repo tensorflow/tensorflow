@@ -14,6 +14,10 @@ EMSCRIPTEN_LINKOPTS = [
     "-s TOTAL_MEMORY=134217728",
 ]
 
+exports_files([
+    "xnnpack_delegate.h",
+])
+
 cc_library(
     name = "xnnpack_delegate",
     srcs = ["xnnpack_delegate.cc"],
@@ -21,12 +25,13 @@ cc_library(
     linkstatic = True,
     deps = [
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "@FP16",
-        "@XNNPACK",
+        "@XNNPACK//:xnnpack_f32",
     ],
 )
 
@@ -47,6 +52,7 @@ cc_library(
     linkstatic = True,
     deps = [
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
@@ -169,6 +175,23 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "prelu_tester",
+    testonly = 1,
+    srcs = ["prelu_tester.cc"],
+    hdrs = ["prelu_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -318,7 +341,6 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
-    tags = ["nomsan"],  # b/145129478
     deps = [
         ":depthwise_conv_2d_tester",
         ":test_main",
@@ -516,6 +538,21 @@ cc_test(
     }),
     deps = [
         ":pad_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "prelu_test",
+    srcs = ["prelu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":prelu_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",

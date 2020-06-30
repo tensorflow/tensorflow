@@ -59,6 +59,7 @@ from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 try:
@@ -88,6 +89,14 @@ class TrainingTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     hist = model.fit(x=np.array([0.]), y=np.array([0.]))
     self.assertAllClose(hist.history['loss'][0], 10000)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_fit_on_empty(self):
+    model = sequential.Sequential([layers_module.Dense(1)])
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    with self.assertRaisesRegexp(
+        ValueError, 'Expect x to be a non-empty array or dataset.'):
+      model.fit(x=np.array([]), y=np.array([]))
 
   @keras_parameterized.run_all_keras_modes
   def test_run_eagerly_setting(self):
@@ -1563,10 +1572,7 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(layer.v), 1.)
 
   @keras_parameterized.run_all_keras_modes(
-      always_skip_v1=True,
-      # TODO(kaftan): this is failing with KerasTensors
-      # in a way that seems orthogonal to what the code is testing
-      skip_keras_tensors=True)
+      always_skip_v1=True)
   @parameterized.named_parameters(
       ('numpy_array', 'numpy_array'),
       ('dataset_array', 'dataset_array'),
@@ -1648,6 +1654,19 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
         'not supported by Keras automatic op wrapping'
     ):
       training_module.Model([inputs], output)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_predict_error_with_empty_x(self):
+    inputs = layers_module.Input(shape=(2,))
+    outputs = layers_module.Dense(4)(inputs)
+    model = training_module.Model(inputs=inputs, outputs=outputs)
+    model.compile(loss='mse')
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Expect x to be a non-empty array or dataset.'
+    ):
+      model.predict(np.array([]))
 
 
 class LossWeightingTest(keras_parameterized.TestCase):
@@ -3539,6 +3558,27 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     model.fit(x, y, batch_size=2, epochs=1)
     self.assertAllEqual(self.evaluate(bn.moving_mean), np.zeros((10,)))
     self.assertAllEqual(self.evaluate(bn.moving_variance), np.ones((10,)))
+
+
+class TestFunctionTracing(keras_parameterized.TestCase):
+
+  @keras_parameterized.run_all_keras_modes(
+      always_skip_v1=True, always_skip_eager=True)
+  def test_no_tracing_between_epoch(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    model = sequential.Sequential([layers_module.Dense(4, activation='relu')])
+    model.compile(loss='mse', optimizer='rmsprop')
+    x = np.random.random((10, 6))
+    y = np.random.random((10, 4))
+
+    logging.set_verbosity(1)
+    with self.assertLogs(level=1) as logs:
+      model.fit(x, y, epochs=10, batch_size=5, validation_data=(x, y))
+
+    new_func_graph = 'INFO:absl:Creating new FuncGraph for Python function'
+    self.assertEqual(sum(new_func_graph in log for log in logs.output), 9)
 
 
 if __name__ == '__main__':

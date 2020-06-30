@@ -84,7 +84,8 @@ PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
 }
 
 StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyal(
-    const pybind11::object& argument, Device* device, bool force_copy) {
+    const pybind11::object& argument, Device* device, bool force_copy,
+    PjRtBuffer::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
     TF_RET_CHECK(!pjrt_client_->local_devices().empty());
     device = pjrt_client_->local_devices().front();
@@ -111,9 +112,9 @@ StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyal(
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(
-        buffer, PjRtBuffer::FromHostBuffer(c->buf_ptr, c->shape, force_copy,
-                                           std::move(py_buffer_ref),
-                                           pjrt_client_.get(), device));
+        buffer, PjRtBuffer::FromHostBuffer(
+                    c->buf_ptr, c->shape, host_buffer_semantics,
+                    std::move(py_buffer_ref), pjrt_client_.get(), device));
   }
   auto traceback = Traceback::Get();
   return std::make_unique<PyBuffer>(shared_from_this(), std::move(buffer),

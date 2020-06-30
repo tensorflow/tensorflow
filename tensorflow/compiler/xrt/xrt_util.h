@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/backend.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
@@ -68,6 +70,25 @@ xla::DebugOptions BuildXlaDebugOptions(const xla::DebugOptions& ref_options);
 // op argument.
 xla::StatusOr<std::vector<InputCoords>> GetComputationInputs(
     OpKernelContext* context, const char* input_name);
+
+bool InputShapeMatches(const xla::Shape& parameter_shape,
+                       const xla::Shape& input_shape);
+
+xla::StatusOr<std::vector<RefPtr<XRTTupleAllocation>>> GetInputTupleAllocations(
+    const std::vector<InputCoords>& input_coords,
+    XRTMemoryManager::WorkingSet* working_set, xla::Backend* backend,
+    int64 num_input_shapes,
+    const std::function<xla::Shape(int64)>& shape_getter, bool release_inputs);
+
+Status RebuildOutputAliases(
+    const RefPtr<XRTTupleAllocation>& output_tuple,
+    absl::Span<const RefPtr<XRTTupleAllocation>> input_tuples,
+    const xla::HloInputOutputAliasConfig& input_output_alias);
+
+xla::StatusOr<std::vector<xla::ExecutionInput>> GetArgumentsBuffers(
+    const xla::HloInputOutputAliasConfig& input_output_alias,
+    absl::Span<const RefPtr<XRTTupleAllocation>> input_tuples,
+    const std::vector<bool>& input_is_dynamic, bool release_inputs);
 
 // Create the XRT execute output tensor given the computation result
 // (output_tuple). The return_exploded_tuple tells whether a tuple result should

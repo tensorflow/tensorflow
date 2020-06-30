@@ -27,6 +27,7 @@ from __future__ import print_function
 
 import json
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import serialization
 
@@ -66,4 +67,6 @@ def _decode_helper(obj):
       return tensor_shape.TensorShape(obj['items'])
     elif obj['class_name'] == '__tuple__':
       return tuple(_decode_helper(i) for i in obj['items'])
+    elif obj['class_name'] == 'DType':
+      return dtypes.as_dtype(obj['dtype'])
   return obj

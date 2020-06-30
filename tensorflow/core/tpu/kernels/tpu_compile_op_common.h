@@ -33,9 +33,9 @@ namespace tensorflow {
 namespace tpu {
 
 // Abstract base class for TpuCompileOpKernel implementation.
-class TPUCompileOpKernelCommon {
+class TpuCompileOpKernelCommon {
  public:
-  TPUCompileOpKernelCommon(const std::string& mlir_module,
+  TpuCompileOpKernelCommon(const std::string& mlir_module,
                            const tpu::TPUCompileMetadataProto metadata,
                            int num_computations)
       : metadata_(metadata),
@@ -43,7 +43,7 @@ class TPUCompileOpKernelCommon {
         mlir_module_(mlir_module),
         num_computations_(num_computations) {}
 
-  TPUCompileOpKernelCommon(const NameAttrList& function,
+  TpuCompileOpKernelCommon(const NameAttrList& function,
                            const tpu::TPUCompileMetadataProto metadata,
                            int num_computations)
       : metadata_(metadata),
@@ -51,9 +51,10 @@ class TPUCompileOpKernelCommon {
         function_(function),
         num_computations_(num_computations) {}
 
-  virtual ~TPUCompileOpKernelCommon() = default;
+  virtual ~TpuCompileOpKernelCommon() = default;
 
-  virtual void Compute(OpKernelContext* ctx) = 0;
+  void Compute(OpKernelContext* ctx);
+  virtual Status ComputeInternal(OpKernelContext* ctx) = 0;
 
   // Computes shapes for each argument. Uses both the static shape from the
   // metadata, and the dynamic shapes where the static shape is not
@@ -153,8 +154,7 @@ class TPUCompileOpKernelCommon {
   int num_computations_;
 
  private:
-  TPUCompileOpKernelCommon(const TPUCompileOpKernelCommon&) = delete;
-  TPUCompileOpKernelCommon& operator=(const TPUCompileOpKernelCommon&) = delete;
+  TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileOpKernelCommon);
 };
 
 }  // namespace tpu

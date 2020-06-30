@@ -298,6 +298,13 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Experimental features
+config_setting(
+    name = "stackdriver_support",
+    define_values = {"stackdriver_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # Crosses between platforms and file system libraries not supported on those
 # platforms due to limitations in nested select() statements.
 config_setting(
@@ -457,6 +464,13 @@ config_setting(
 config_setting(
     name = "with_mlir_support",
     values = {"define": "with_mlir_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+# This flag enables experimental TPU support
+config_setting(
+    name = "with_tpu_support",
+    values = {"define": "with_tpu_support=true"},
     visibility = ["//visibility:public"],
 )
 

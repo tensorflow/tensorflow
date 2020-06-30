@@ -54,13 +54,13 @@ void CreateStatMetadata(XPlane* plane) {
 }
 
 // Returns event type if it is a KernelLaunch or KernelExecute event.
-absl::optional<int64> GetKernelEventType(const XPlaneVisitor& visitor,
+absl::optional<int64> GetKernelEventType(bool is_host_plane,
+                                         const XPlaneVisitor& visitor,
                                          const XEvent& event) {
   for (const auto& stat : event.stats()) {
     if (visitor.GetStatType(stat) == StatType::kCorrelationId) {
-      // TODO(b/149095099): avoid string comparison.
-      return visitor.Name() == kHostThreads ? HostEventType::kKernelLaunch
-                                            : HostEventType::kKernelExecute;
+      return is_host_plane ? HostEventType::kKernelLaunch
+                           : HostEventType::kKernelExecute;
     }
   }
   return absl::nullopt;
@@ -72,14 +72,15 @@ bool IsTfOpEvent(const XPlaneVisitor& visitor, const XEvent& event) {
   return tf_op.category == Category::kTensorFlow;
 }
 
-int64 GetEventType(const XPlaneVisitor& visitor, const XEvent& event) {
+int64 GetEventType(bool is_host_plane, const XPlaneVisitor& visitor,
+                   const XEvent& event) {
   if (absl::optional<int64> event_type = visitor.GetEventType(event)) {
     return *event_type;
   } else if (absl::optional<int64> kernel_event_type =
-                 GetKernelEventType(visitor, event)) {
+                 GetKernelEventType(is_host_plane, visitor, event)) {
     // KernelLaunch and KernelExecute event types are not supported by
     // XPlaneVisitor and should be checked separately.
-    // TODO(148346217): Make XPlaneVisitor support KernelLaunch and
+    // TODO(b/148346217): Make XPlaneVisitor support KernelLaunch and
     // KernelExecute event types.
     return *kernel_event_type;
   } else if (IsTfOpEvent(visitor, event)) {
@@ -138,12 +139,25 @@ bool HasFunctionRun(EventNode* event_node) {
   return false;
 }
 
+bool IsImplicitRootEvent(const XEventVisitor& event) {
+  static const auto* const kImplicitRootEvents = new absl::flat_hash_set<int64>{
+      HostEventType::kFunctionRun, HostEventType::kSessionRun,
+      HostEventType::kRunGraph, HostEventType::kExecutorStateProcess};
+  return event.Type().has_value() &&
+         kImplicitRootEvents->contains(*event.Type());
+}
+
 void ProcessRootEvent(int64 group_id, EventNode* root_event,
                       EventGroupNameMap* event_group_name_map) {
   root_event->PropagateGroupId(group_id);
   std::string group_name = root_event->GetGroupName();
   // TODO(jihochoi): change event name instead.
-  root_event->AddStepName(group_name);
+  if (!IsImplicitRootEvent(root_event->GetEventVisitor())) {
+    // Add the `step_name` stat for the user-defined root events only. When an
+    // XEvent is converted to a trace event, the trace event name is set to the
+    // `step_name` stat's value if present.
+    root_event->AddStepName(group_name);
+  }
   event_group_name_map->emplace(group_id, std::move(group_name));
 }
 
@@ -335,6 +349,8 @@ std::string EventNode::GetGroupName() const {
   if (absl::optional<XStatVisitor> stat =
           GetContextStat(StatType::kGraphType)) {
     absl::StrAppend(&name, stat->StrOrRefValue(), " ");
+  } else if (!(IsImplicitRootEvent(visitor_))) {
+    absl::StrAppend(&name, GetEventVisitor().Name(), " ");
   }
   int64 step_num = group_id_.value_or(0);
   if (absl::optional<XStatVisitor> stat = GetContextStat(StatType::kIterNum)) {
@@ -396,6 +412,8 @@ bool EventNode::StartsBefore(const EventNode& other) const {
 void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
                                      XPlane* plane,
                                      ContextGroupMap* context_groups) {
+  // TODO(b/149095099): avoid string comparison.
+  bool is_host_plane = (visitor.Name() == kHostThreadsPlaneName);
   for (auto& line : *plane->mutable_lines()) {
     std::vector<EventNode*> parent_nodes;
     for (auto& event : *line.mutable_events()) {
@@ -418,7 +436,7 @@ void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
       }
       parent_nodes.push_back(cur_node.get());
       // event_node_map_ keeps cur_node alive.
-      event_node_map_[GetEventType(visitor, event)].push_back(
+      event_node_map_[GetEventType(is_host_plane, visitor, event)].push_back(
           std::move(cur_node));
     }
   }
@@ -632,10 +650,7 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
        {StatType::kStepId, StatType::kIterNum}},
       {HostEventType::kKernelLaunch,
        HostEventType::kKernelExecute,
-       {StatType::kCorrelationId}},
-      {HostEventType::kLocalExecutableExecuteOnLocalDevice,
-       HostEventType::kLocalExecutableExecute,
-       {StatType::kRunId}}};
+       {StatType::kCorrelationId}}};
   return connect_info_list;
 }
 

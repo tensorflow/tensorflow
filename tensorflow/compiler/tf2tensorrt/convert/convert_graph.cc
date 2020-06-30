@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/logger_registry.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
@@ -52,8 +53,7 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 namespace tensorflow {
@@ -276,8 +276,9 @@ Status GetEngineInfo(const Graph* g,
   if (segment_devices.size() == 1) {
     info->device = *segment_devices.begin();
   } else if (segment_devices.size() > 1) {
-    LOG(WARNING) << "Detected multiple (" << segment_devices.size()
-                 << ") devices for the segment. Picking first one to continue.";
+    LOG_WARNING_WITH_PREFIX
+        << "Detected multiple (" << segment_devices.size()
+        << ") devices for the segment. Picking first one to continue.";
     info->device = *segment_devices.begin();
   } else {
     TfGpuId tf_gpu_id;
@@ -663,7 +664,7 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
       StrAppend(&msg, engine.device, "': ");
       for (auto d : devices) StrAppend(&msg, d->name(), ", ");
       StrAppend(&msg, ". Will get the allocator from first one.");
-      LOG(WARNING) << msg;
+      LOG_WARNING_WITH_PREFIX << msg;
     }
     AllocatorAttributes alloc_attr;
     cuda_device_id = devices[0]->tensorflow_gpu_device_info()->gpu_id;
@@ -671,8 +672,8 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
     VLOG(1) << "Using allocator " << dev_allocator->Name()
             << " and cuda_device_id " << cuda_device_id;
   } else {
-    LOG(WARNING) << "Cluster is set but device '" << engine.device
-                 << "' is not found in the cluster";
+    LOG_WARNING_WITH_PREFIX << "Cluster is set but device '" << engine.device
+                            << "' is not found in the cluster";
   }
   return std::make_pair(cuda_device_id, dev_allocator);
 }
@@ -770,8 +771,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     Status status = GetEngineInfo(&graph, static_graph_properties, curr_segment,
                                   node_map, reverse_topo_order, &curr_engine);
     if (!status.ok()) {
-      LOG(WARNING) << "Failed to get engine info for segment " << t << ": "
-                   << status;
+      LOG_WARNING_WITH_PREFIX << "Failed to get engine info for segment " << t
+                              << ": " << status;
       continue;
     }
     curr_engine.precision_mode = params.precision_mode;
@@ -784,8 +785,9 @@ Status ConvertAfterShapes(const ConversionParams& params) {
                                             &graph, curr_engine.engine_name);
 
     if (!status.ok()) {
-      LOG(WARNING) << "Failed to register segment graphdef to the library " << t
-                   << ": " << status;
+      LOG_WARNING_WITH_PREFIX
+          << "Failed to register segment graphdef to the library " << t << ": "
+          << status;
       continue;
     }
 
@@ -836,7 +838,8 @@ Status ConvertAfterShapes(const ConversionParams& params) {
       alloc.reset(new TRTDeviceAllocator(device_alloc.second));
     } else {
       // Setting allocator as nullptr should get revert to the cudamalloc
-      LOG(WARNING) << "Can't identify the cuda device. Running on device 0 ";
+      LOG_WARNING_WITH_PREFIX
+          << "Can't identify the cuda device. Running on device 0 ";
     }
     cudaSetDevice(cuda_device_id);
     auto status =
@@ -850,9 +853,9 @@ Status ConvertAfterShapes(const ConversionParams& params) {
       LOG(INFO) << "Replaced " << msg << ".";
     } else {
       // Graph is not modified.
-      LOG(WARNING) << "Cannot replace " << msg
-                   << " reason: " << status.error_message()
-                   << " (keeping original segment).";
+      LOG_WARNING_WITH_PREFIX << "Cannot replace " << msg
+                              << " reason: " << status.error_message()
+                              << " (keeping original segment).";
     }
     if (VLOG_IS_ON(1)) {
       msg = "Segment consists of nodes: ";
@@ -880,5 +883,4 @@ Status ConvertAfterShapes(const ConversionParams& params) {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

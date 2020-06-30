@@ -59,9 +59,13 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 
-// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
-// buffers if necessary.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();
+/// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
+/// buffers if necessary. If `results_escape_functions` is set to true,
+/// allocated buffers for function results will be returned and escape the
+/// function. Otherwise, the signature is rewritten with extra arguments for the
+/// buffers that are to be used for results.
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
+    bool results_escape_functions = false);
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass();
@@ -114,19 +118,8 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
 namespace xla {
 
-/// Moves alloc nodes (and their associated dealloc nodes - if any) into the
-/// right positions. If there is no associated dealloc node for a given alloc
-/// node, this pass will automatically insert a proper dealloc node in the right
-/// place. The intended use case of this pass is to store SSA values into
-/// buffers using load/store operations. For this purpose, you need to know
-/// proper positions to place the required allocs and deallocs.
-/// 1) Note that the function signatures and all types for which buffers should
-/// be allocated need to be converted in advance.
-/// 2) All required alloc nodes have the be inserted in advance.
-/// 3) Note that the current implementation does not support loops.
-/// Refer to the class mlir::xla::BufferAssignmentLegalizer for more
-/// information.
-std::unique_ptr<OperationPass<FuncOp>> createBufferAssignmentPass();
+/// Lowers the standard TanhOp to an approximation that does not use intrinsics.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTanhToApproximationPass();
 
 }  // namespace xla
 }  // namespace mlir

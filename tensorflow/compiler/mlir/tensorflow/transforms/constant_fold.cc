@@ -49,8 +49,7 @@ LogicalResult ConstantFoldFallbackHook(
   }
 
   // Do not execute function calls.
-  if (llvm::isa<TF::WhileOp>(inst) || llvm::isa<TF::IfOp>(inst) ||
-      llvm::isa<CallOpInterface>(inst)) {
+  if (llvm::isa<TF::WhileOp, TF::IfOp, CallOpInterface>(inst)) {
     return failure();
   }
 

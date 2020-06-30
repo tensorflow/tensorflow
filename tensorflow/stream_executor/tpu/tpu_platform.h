@@ -38,7 +38,6 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
                           SE_Event*>;
 
   static const ::stream_executor::Platform::Id kId;
-  static constexpr char kName[] = "TPU";
 
   using Status = ::stream_executor::port::Status;
   template <typename T>
@@ -60,9 +59,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   bool ShouldRegisterTpuDeviceToDeviceCopy() override;
 
-  bool Initialized() const override {
-    return TpuPlatform_Initialized(platform_);
-  }
+  bool Initialized() const override;
 
   Status Initialize(
       const std::map<std::string, std::string>& platform_options) override;
@@ -123,6 +120,8 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   StreamMap stream_map_;
   EventMap event_map_;
 };
+
+bool RegisterTpuPlatform();
 
 }  // namespace tensorflow
 

@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -223,12 +224,12 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
               << " callback api events and " << num_activity_events_
               << " activity events. " << ReportDroppedEvents();
     uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
-    XPlaneBuilder host_plane(GetOrCreatePlane(space, kCuptiDriverApiPlaneName));
-    host_plane.SetId(kCuptiDriverApiPlaneId);
+    XPlaneBuilder host_plane(
+        FindOrAddMutablePlaneWithName(space, kCuptiDriverApiPlaneName));
     for (int device_ordinal = 0; device_ordinal < num_gpus_; ++device_ordinal) {
-      std::string name = absl::StrCat(kGpuPlanePrefix, device_ordinal);
-      XPlaneBuilder device_plane(GetOrCreatePlane(space, name));
-      device_plane.SetId(kGpuPlaneBaseId + device_ordinal);
+      std::string name = GpuPlaneName(device_ordinal);
+      XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
+      device_plane.SetId(device_ordinal);
       per_device_collector_[device_ordinal].Flush(start_gpu_ns_, end_gpu_ns,
                                                   &device_plane, &host_plane);
       per_device_collector_[device_ordinal].GetDeviceCapabilities(
@@ -240,7 +241,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   std::string ReportDroppedEvents() {
     absl::MutexLock lock(&mutex_);
     string result;
-    for (const auto dropped : dropped_events_) {
+    for (const auto& dropped : dropped_events_) {
       absl::StrAppend(&result, " ", dropped.second, " events dropped because ",
                       dropped.first, ";");
     }
@@ -485,7 +486,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         // Times 2 because HBM is DDR memory; it gets two data bits per each
         // data lane.
         auto memory_bandwidth =
-            2ULL * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
+            uint64{2} * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
         device_plane->AddStatValue(
             *device_plane->GetOrCreateStatMetadata(
                 GetStatTypeStr(StatType::kDevCapMemoryBandwidth)),
@@ -611,8 +612,11 @@ Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY2);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
 
+// CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
 #if CUDA_VERSION < 10000
   if (!trace_concurrent_kernels) options_.cupti_finalize = true;
+#elif CUDA_VERSION >= 11000
+  options_.cupti_finalize = true;
 #endif
 
   CuptiTracerCollectorOptions collector_options;

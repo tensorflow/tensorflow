@@ -264,6 +264,17 @@ class BASE_HLO_Log1pOp {
   }];
 }
 
+class BASE_HLO_LogisticOp {
+  string summary = "Logistic operator";
+
+  string description = [{
+    Returns `logistic(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_NegOp {
   string summary = "Negation operator";
 
@@ -1096,6 +1107,15 @@ class BASE_HLO_ReshapeOp {
 
     See https://www.tensorflow.org/xla/operation_semantics#reshape.
   }];
+}
+
+class ScatterDimensionNumbers<Dialect dialect> : StructAttr<
+    "ScatterDimensionNumbers", dialect, [
+      StructFieldAttr<"update_window_dims", I64ElementsAttr>,
+      StructFieldAttr<"inserted_window_dims", I64ElementsAttr>,
+      StructFieldAttr<"scatter_dims_to_operand_dims", I64ElementsAttr>,
+      StructFieldAttr<"index_vector_dim", I64Attr>]> {
+  let description = "Structure of dimension information for scatter";
 }
 
 class BASE_HLO_ScatterOp {

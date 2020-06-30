@@ -114,14 +114,12 @@ Optional<SmallVector<Type, 4>> InferShapeForFunctionReturnType(FuncOp func) {
 
 // Returns if the shape inference pass supports an op outside the TF dialect.
 bool IsSupportedNonTFOp(Operation* op) {
-  return isa<ReturnOp>(op) || isa<tf_device::ReturnOp>(op) ||
-         isa<tf_executor::EnterOp>(op) || isa<tf_executor::ExitOp>(op) ||
-         isa<tf_executor::FetchOp>(op) || isa<tf_executor::GraphOp>(op) ||
-         isa<tf_executor::IslandOp>(op) || isa<tf_executor::LoopCondOp>(op) ||
-         isa<tf_executor::MergeOp>(op) ||
-         isa<tf_executor::NextIterationSinkOp>(op) ||
-         isa<tf_executor::SwitchNOp>(op) || isa<tf_executor::SwitchOp>(op) ||
-         isa<tf_executor::YieldOp>(op);
+  return isa<ReturnOp, tf_device::ReturnOp, tf_executor::EnterOp,
+             tf_executor::ExitOp, tf_executor::FetchOp, tf_executor::GraphOp,
+             tf_executor::IslandOp, tf_executor::LoopCondOp,
+             tf_executor::MergeOp, tf_executor::NextIterationSinkOp,
+             tf_executor::SwitchNOp, tf_executor::SwitchOp,
+             tf_executor::YieldOp>(op);
 }
 
 // Returns whether a cast back would need to be inserted, e.g., whether the
@@ -165,59 +163,6 @@ Optional<tensorflow::PartialTensorShape> GetShapeFromMlirType(Type t) {
   return None;
 }
 
-// Passes the operand shapes/types to the op's results.
-bool InferShapeForPassThroughOps(OperandRange pass_through_operands,
-                                 Operation* op, Dialect* tf_dialect) {
-  bool changed = false;
-  for (auto entry : zip(pass_through_operands, op->getResults())) {
-    Type operand_type = std::get<0>(entry).getType();
-    Value result = std::get<1>(entry);
-    if (result.getType() == operand_type) continue;
-    // Pass through nodes may remove ref types, don't consider that as
-    // refinement.
-    // TODO(jpienaar): There could be refinement in addition to this, so
-    // refine this.
-    if (operand_type.cast<TensorType>()
-            .getElementType()
-            .isa<TF::TensorFlowRefType>() &&
-        !result.getType()
-             .cast<TensorType>()
-             .getElementType()
-             .isa<TF::TensorFlowRefType>())
-      continue;
-    AddCastBackForUnsupportedNonTFUses(op, result, tf_dialect,
-                                       result.getType());
-    result.setType(operand_type);
-    changed = true;
-  }
-  return changed;
-}
-
-// Infers shape for necessary ops that are not in the TF dialect.
-bool InferShapeForNonTFDialectOperation(Operation* op, Dialect* tf_dialect) {
-  if (auto graph_op = dyn_cast<tf_executor::GraphOp>(op)) {
-    return InferShapeForPassThroughOps(graph_op.GetFetch().fetches(), op,
-                                       tf_dialect);
-  }
-  if (auto island_op = dyn_cast<tf_executor::IslandOp>(op)) {
-    return InferShapeForPassThroughOps(island_op.GetYield().fetches(), op,
-                                       tf_dialect);
-  }
-  if (auto iter_sink = dyn_cast<tf_executor::NextIterationSinkOp>(op)) {
-    auto iter_source = cast<tf_executor::NextIterationSourceOp>(
-        iter_sink.token().getDefiningOp());
-    return InferShapeForPassThroughOps(
-        iter_sink.getOperands().drop_front().take_front(), iter_source,
-        tf_dialect);
-  }
-  // TODO(b/155227679): Use OpInterface instead of hard-coding for TensorCastOp.
-  if (auto tensor_cast = dyn_cast<TensorCastOp>(op)) {
-    return InferShapeForPassThroughOps(
-        tensor_cast.getOperation()->getOperands(), op, tf_dialect);
-  }
-  return false;
-}
-
 // Gets the subtype's shape and data type for `type`. Templated to support both
 // ResourceType and VariantType.
 template <typename T>
@@ -255,32 +200,6 @@ GetSubtypes(Type type) {
   auto subclasses = GetSubtypesHelper<TF::ResourceType>(type);
   if (subclasses) return subclasses;
   return GetSubtypesHelper<TF::VariantType>(type);
-}
-
-// Makes result types match the operand types (the i-th result type will
-// match the i-th operand type). Returns true if anything is changed.
-bool PassThroughOperandTypes(OperandRange operands, ResultRange results) {
-  bool changed = false;
-  for (auto entry : zip(operands, results)) {
-    Type operand_type = std::get<0>(entry).getType();
-    Type result_type = std::get<1>(entry).getType();
-    if (operand_type == result_type) continue;
-    // Pass through nodes may remove ref types, don't consider that as
-    // refinement.
-    // TODO(jpienaar): There could be refinement in addition to this, so
-    // refine this.
-    if (operand_type.cast<TensorType>()
-            .getElementType()
-            .isa<TF::TensorFlowRefType>() &&
-        !result_type.cast<TensorType>()
-             .getElementType()
-             .isa<TF::TensorFlowRefType>())
-      continue;
-
-    std::get<1>(entry).setType(operand_type);
-    changed = true;
-  }
-  return changed;
 }
 
 // Returns whether type can be further refined.
@@ -450,7 +369,8 @@ LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
   // Note: this focusses only on the trivial pack op case and this could be
   // generalized.
   if (auto pack_op = dyn_cast<TF::PackOp>(op)) {
-    if (pack_op.getType().cast<TensorType>().getRank() != 1) return failure();
+    auto type = pack_op.getType().cast<TensorType>();
+    if (!type.hasRank() || type.getRank() != 1) return failure();
     if (port.size() != 2) return failure();
     assert(port[0] == 0);
     ValuePort req(pack_op.getOperand(port[1]));
@@ -486,7 +406,8 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
   // Note: this focusses only on the trivial pack op case and this could be
   // generalized.
   if (auto pack_op = dyn_cast<TF::PackOp>(op)) {
-    if (pack_op.getType().cast<TensorType>().getRank() != 1) return nullptr;
+    TensorType type = pack_op.getType().cast<TensorType>();
+    if (!type.hasRank() || type.getRank() != 1) return nullptr;
     if (port.size() != 2 || port[0] != 0) return nullptr;
     ValuePort op_port(op->getOperand(port[1]));
     return values(op_port);
@@ -596,6 +517,19 @@ class ShapeInference {
   // Returns whether it was able to compute constant values.
   LogicalResult TryToFold(Operation* op);
 
+  // Makes result types match the operand types (the i-th result type will
+  // match the i-th operand type). Returns true if anything is changed.
+  bool RefineTypeForPassThroughOperands(Operation* op, OperandRange operands,
+                                        ResultRange results);
+
+  // Makes result type's shape match the corresponding operand's shape.
+  // Returns whether any change was made.
+  bool RefineShapeForPassThroughOps(Operation* op);
+
+  // Infers shape for necessary ops that are not in the TF dialect. Returns
+  // whether any result type changed.
+  bool InferShapeForNonTFDialectOperation(Operation* op);
+
  private:
   // Mapping between ValuePort (which corresponds to an OpResult or smaller,
   // e.g., first element of OpResult produced) to an Attribute if the ValuePort
@@ -680,6 +614,97 @@ ShapeHandle ShapeInference::ComputeOutputAsShape(OpResult result,
   return ic->MakeShape(dims);
 }
 
+bool ShapeInference::RefineTypeForPassThroughOperands(Operation* op,
+                                                      OperandRange operands,
+                                                      ResultRange results) {
+  bool changed = false;
+  for (auto entry : zip(operands, results)) {
+    Type operand_type = std::get<0>(entry).getType();
+    Value result = std::get<1>(entry);
+    TensorType result_type = result.getType().cast<TensorType>();
+    if (operand_type == result_type) continue;
+    // Pass through nodes may remove ref types, don't consider that as
+    // refinement.
+    // TODO(jpienaar): There could be refinement in addition to this, so
+    // refine this.
+    if (operand_type.cast<TensorType>()
+            .getElementType()
+            .isa<TF::TensorFlowRefType>() &&
+        !result_type.cast<TensorType>()
+             .getElementType()
+             .isa<TF::TensorFlowRefType>())
+      continue;
+
+    std::get<1>(entry).setType(operand_type);
+    AddCastBackForUnsupportedNonTFUses(op, result, tf_dialect_, result_type);
+    changed = true;
+  }
+  return changed;
+}
+
+bool ShapeInference::RefineShapeForPassThroughOps(Operation* op) {
+  auto is_allowed_dtype = [](Type t) {
+    // Skip if element type is not in standard or TF dialect.
+    // TODO(jpienaar): The tf.Cast op, which is uniformly inserted at the
+    // moment, cannot handle arbirary types (e.g., it can't handle quantized
+    // types). This restriction can be relaxed if not only tf.Cast is used.
+    auto kind = t.getKind();
+    return (kind >= Type::FIRST_STANDARD_TYPE &&
+            kind < Type::LAST_STANDARD_TYPE) ||
+           (kind >= Type::FIRST_TENSORFLOW_TYPE &&
+            kind < Type::LAST_TENSORFLOW_TYPE);
+  };
+
+  bool changed = false;
+  for (auto entry : zip(op->getOperands(), op->getResults())) {
+    TensorType operand_type = std::get<0>(entry).getType().cast<TensorType>();
+    Value result = std::get<1>(entry);
+    TensorType result_type = result.getType().cast<TensorType>();
+    if (operand_type == result_type) continue;
+    if (!operand_type.hasRank()) continue;
+    if (result_type.hasRank() &&
+        result_type.getShape() == operand_type.getShape())
+      continue;
+    if (!is_allowed_dtype(operand_type.getElementType()) ||
+        !is_allowed_dtype(result_type.getElementType())) {
+      continue;
+    }
+
+    result.setType(RankedTensorType::get(operand_type.getShape(),
+                                         result_type.getElementType()));
+    AddCastBackForUnsupportedNonTFUses(op, result, tf_dialect_, result_type);
+    changed = true;
+  }
+  return changed;
+}
+
+bool ShapeInference::InferShapeForNonTFDialectOperation(Operation* op) {
+  if (auto graph_op = dyn_cast<tf_executor::GraphOp>(op)) {
+    return RefineTypeForPassThroughOperands(
+        graph_op.GetFetch(), graph_op.GetFetch().fetches(), op->getResults());
+  }
+  if (auto island_op = dyn_cast<tf_executor::IslandOp>(op)) {
+    return RefineTypeForPassThroughOperands(
+        island_op.GetYield(), island_op.GetYield().fetches(), op->getResults());
+  }
+  if (auto iter_sink = dyn_cast<tf_executor::NextIterationSinkOp>(op)) {
+    auto iter_source = cast<tf_executor::NextIterationSourceOp>(
+        iter_sink.token().getDefiningOp());
+    return RefineTypeForPassThroughOperands(
+        op, iter_sink.getOperands().drop_front().take_front(),
+        iter_source.getResults());
+  }
+  if (auto launch_op = dyn_cast<tf_device::LaunchOp>(op)) {
+    auto terminator = launch_op.GetBody().getTerminator();
+    return RefineTypeForPassThroughOperands(op, terminator->getOperands(),
+                                            op->getResults());
+  }
+  if (op->hasTrait<OpTrait::SameOperandsAndResultShape>()) {
+    return RefineShapeForPassThroughOps(op);
+  }
+  return false;
+}
+
 bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   LLVM_DEBUG(op->print(llvm::dbgs() << "InferShapeForSingleOperation for ");
              llvm::dbgs() << "\n");
@@ -689,7 +714,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   // to make sure they are preserved in the output.
   if (isa<TF::IdentityOp>(op) || isa<TF::IdentityNOp>(op) ||
       isa<TF::ZerosLikeOp>(op) || isa<TF::WhileOp>(op)) {
-    return PassThroughOperandTypes(op->getOperands(), op->getResults());
+    return RefineTypeForPassThroughOperands(op, op->getOperands(),
+                                            op->getResults());
   }
 
   // If no result for this op needs shape inference, we have a fast-path return.
@@ -1117,7 +1143,7 @@ LogicalResult ShapeInference::InferShapeUntilFixPoint(Region* region,
       }
 
       if (op->getDialect() != tf_dialect_) {
-        changed |= InferShapeForNonTFDialectOperation(op, tf_dialect_);
+        changed |= InferShapeForNonTFDialectOperation(op);
         return;
       }
 

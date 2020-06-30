@@ -254,14 +254,10 @@ py::object TFE_Py_ExecuteCancelable_wrapper(
 }
 
 static py::object TF_ListPhysicalDevices() {
-  tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
   std::vector<string> devices;
   tensorflow::Status s =
       tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
-  tensorflow::Set_TF_Status_from_Status(status.get(), s);
-  if (!s.ok()) {
-    return py::none();
-  }
+  MaybeRaiseRegisteredFromStatus(s);
   PyObject* result = PyList_New(devices.size());
   int i = 0;
   for (auto& dev : devices) {
@@ -460,6 +456,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   });
   m.def("TFE_ContextClearCaches", [](py::handle& o) {
     TFE_ContextClearCaches(tensorflow::InputTFE_Context(o));
+  });
+  m.def("TFE_GetContextId", [](py::handle& ctx) {
+    return TFE_GetContextId(tensorflow::InputTFE_Context(ctx));
   });
   m.def("TFE_ContextGetDevicePlacementPolicy", [](py::handle& ctx) {
     return TFE_ContextGetDevicePlacementPolicy(

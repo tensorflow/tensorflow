@@ -77,7 +77,8 @@ class BatchTask {
 template <typename TaskType>
 class Batch {
  public:
-  Batch() = default;
+  Batch();
+  explicit Batch(uint64 traceme_context_id);
   virtual ~Batch();  // Blocks until the batch is closed.
 
   // Appends 'task' to the batch. After calling AddTask(), the newly-added task
@@ -113,6 +114,9 @@ class Batch {
   // Marks the batch as closed. Dies if called more than once.
   void Close();
 
+  // Returns the TraceMe context id of this batch.
+  uint64 traceme_context_id() const;
+
  private:
   mutable mutex mu_;
 
@@ -124,6 +128,9 @@ class Batch {
 
   // Whether the batch has been closed.
   Notification closed_;
+
+  // The TracMe context id.
+  const uint64 traceme_context_id_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Batch);
 };
@@ -186,6 +193,13 @@ class BatchScheduler {
 
 //////////
 // Implementation details follow. API users need not read.
+
+template <typename TaskType>
+Batch<TaskType>::Batch() : Batch(0) {}
+
+template <typename TaskType>
+Batch<TaskType>::Batch(uint64 traceme_context_id)
+    : traceme_context_id_(traceme_context_id) {}
 
 template <typename TaskType>
 Batch<TaskType>::~Batch() {
@@ -273,6 +287,11 @@ void Batch<TaskType>::WaitUntilClosed() const {
 template <typename TaskType>
 void Batch<TaskType>::Close() {
   closed_.Notify();
+}
+
+template <typename TaskType>
+uint64 Batch<TaskType>::traceme_context_id() const {
+  return traceme_context_id_;
 }
 
 }  // namespace serving

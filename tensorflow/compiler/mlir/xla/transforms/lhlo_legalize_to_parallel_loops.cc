@@ -711,7 +711,7 @@ struct LhloLegalizeToParallelLoops
     target.addIllegalOp<xla_lhlo::ReduceOp, xla_lhlo::ReduceWindowOp,
                         xla_lhlo::SelectAndScatterOp>();
 
-    if (failed(applyPartialConversion(func, target, patterns, nullptr))) {
+    if (failed(applyPartialConversion(func, target, patterns))) {
       signalPassFailure();
     }
   }

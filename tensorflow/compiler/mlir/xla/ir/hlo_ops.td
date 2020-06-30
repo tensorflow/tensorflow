@@ -212,6 +212,10 @@ def HLO_Log1pOp: HLO_UnaryElementwiseOp<"log_plus_one",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_Log1pOp;
 
+def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_LogisticOp;
+
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
     BASE_HLO_NotOp;
@@ -929,8 +933,6 @@ def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]>, BASE_HLO_ConvOp {
   );
 
   let results = (outs HLO_Tensor);
-
-  let hasCanonicalizer = 1;
 }
 
 def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CopyOp {
@@ -1112,21 +1114,13 @@ def HLO_DynamicReshapeOp: HLO_Op<"dynamic_reshape", [NoSideEffect]> {
   let hasCustomHLOConverter = 1;
 }
 
-def ScatterDimensionNumbers : StructAttr<"ScatterDimensionNumbers", HLO_Dialect,
-      [StructFieldAttr<"update_window_dims", I64ElementsAttr>,
-      StructFieldAttr<"inserted_window_dims", I64ElementsAttr>,
-      StructFieldAttr<"scatter_dims_to_operand_dims", I64ElementsAttr>,
-      StructFieldAttr<"index_vector_dim", I64Attr>]> {
-  let description = "Structure of dimension information for scatter";
-}
-
 def HLO_ScatterOp: HLO_Op<"scatter", [RecursiveSideEffects]>,
       BASE_HLO_ScatterOp {
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$scatter_indices,
     HLO_Tensor:$updates,
-    ScatterDimensionNumbers:$scatter_dimension_numbers,
+    ScatterDimensionNumbers<HLO_Dialect>:$scatter_dimension_numbers,
     DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
     DefaultValuedAttr<BoolAttr, "false">:$unique_indices
   );

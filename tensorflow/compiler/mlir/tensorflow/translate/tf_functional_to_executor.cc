@@ -46,13 +46,13 @@ struct FunctionalToExecutorDialectConversion
 }  // end anonymous namespace
 
 void FunctionalToExecutorDialectConversion::runOnFunction() {
-  if (getFunction().getBlocks().size() != 1) {
+  if (!llvm::hasSingleElement(getFunction())) {
     LLVM_DEBUG(llvm::dbgs() << "Expect single block function, skip conversion "
                                "to tf_executor dialect\n");
     return;
   }
   auto loc = getFunction().getLoc();
-  mlir::Block& body = getFunction().getBody().front();
+  mlir::Block& body = getFunction().front();
   // Find region of interest and ReturnOp.
   auto copy_range = body.without_terminator();
   if (copy_range.begin() != copy_range.end() &&

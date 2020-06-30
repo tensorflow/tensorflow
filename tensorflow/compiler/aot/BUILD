@@ -69,6 +69,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "//tensorflow/core:regexp_internal",

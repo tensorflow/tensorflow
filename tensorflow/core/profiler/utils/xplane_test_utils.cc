@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -43,6 +44,15 @@ class XStatValueVisitor {
 };
 
 }  // namespace
+
+XPlane* GetOrCreateHostXPlane(XSpace* space) {
+  return FindOrAddMutablePlaneWithName(space, kHostThreadsPlaneName);
+}
+
+XPlane* GetOrCreateGpuXPlane(XSpace* space, int32 device_ordinal) {
+  std::string name = GpuPlaneName(device_ordinal);
+  return FindOrAddMutablePlaneWithName(space, name);
+}
 
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
