@@ -23,14 +23,13 @@ import tensorflow as tf
 
 from tensorflow.python.keras.benchmarks import benchmark_util
 from tensorflow.python.platform import benchmark
-from tensorflow.python.platform import test
 
 _MAX_FEATURE = 20000
 _MAX_LEN = 200
 
 
 class KerasExamplesBenchmark(
-    six.with_metaclass(benchmark.ParameterizedBenchmark, test.Benchmark)):
+    six.with_metaclass(benchmark.ParameterizedBenchmark, tf.test.Benchmark)):
 
   """Required Arguments for measure_performance:
       x: Input data, it could be Numpy or load from tfds.    
@@ -43,8 +42,8 @@ class KerasExamplesBenchmark(
   """
 
   """The parameters of each benchmark is a tuple:
-     (suffix_of_benchmark, batch_size, run_iters).
-     suffix_of_benchmark: The suffix of the benchmark test name with
+     (benchmark_name_suffix, batch_size, run_iters).
+     benchmark_name_suffix: The suffix of the benchmark test name with
      convention `{bs}_{batch_size}`.
      batch_size: Integer. Number of samples per gradient update.
      run_iters: Integer. Number of iterations to run the 
@@ -88,4 +87,4 @@ class KerasExamplesBenchmark(
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()
