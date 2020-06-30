@@ -35,7 +35,7 @@ from tensorflow.python.keras import models
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 
@@ -47,8 +47,7 @@ class TestModel(keras.Model):
     """A test class with one dense layer and number of outputs as a variable."""
     super(TestModel, self).__init__()
     self.layer1 = keras.layers.Dense(n_outputs)
-    self.n_outputs = resource_variable_ops.ResourceVariable(
-        n_outputs, trainable=trainable)
+    self.n_outputs = variables.Variable(n_outputs, trainable=trainable)
 
   def call(self, x):
     return self.layer1(x)

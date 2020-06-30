@@ -1538,6 +1538,20 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
       self.assertIsInstance(converted, ops.Tensor)
       self.assertEqual(converted.dtype, replica_local.dtype)
 
+  @combinations.generate(combinations.combine(
+      distribution=[
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.tpu_strategy,
+          strategy_combinations.tpu_strategy_packed_var,
+      ], mode=["eager"]))
+  def testValueInCrossReplicaContext(self, distribution):
+    value_list, replica_local = _make_replica_local(
+        variable_scope.VariableAggregation.ONLY_FIRST_REPLICA, distribution)
+
+    self.assertIsInstance(replica_local.value(), ops.Tensor)
+    self.assertEqual(self.evaluate(replica_local.value()),
+                     self.evaluate(value_list[0].value()))
+
   @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveAndRestoreReplicaLocalSumOneGraph(self, distribution):
     with self.cached_session() as sess:

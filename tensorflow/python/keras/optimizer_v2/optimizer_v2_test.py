@@ -54,7 +54,6 @@ from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -74,8 +73,8 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testBasic(self):
     for dtype in _DATA_TYPES:
       with test_util.use_gpu():
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
         sgd = gradient_descent.SGD(3.0)
 
@@ -95,8 +94,8 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testAdaptiveLearningRate(self):
     for dtype in _DATA_TYPES:
       with self.test_session():
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
 
         def loss():
           return 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
@@ -163,8 +162,8 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testNoGradients(self):
     for dtype in _DATA_TYPES:
       with test_util.use_gpu():
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0  # pylint: disable=cell-var-from-loop
         sgd_op = gradient_descent.SGD(3.0)
         with self.assertRaisesRegexp(ValueError, 'No gradients'):
@@ -175,8 +174,8 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testNoGradientsForAnyVariables_Minimize(self):
     for dtype in _DATA_TYPES:
       with test_util.use_gpu():
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: constant_op.constant(5.0)
 
         sgd_op = gradient_descent.SGD(3.0)
@@ -188,8 +187,8 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testNoGradientsForAnyVariables_ApplyGradients(self):
     for dtype in _DATA_TYPES:
       with test_util.use_gpu():
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         sgd_op = gradient_descent.SGD(3.0)
         with self.assertRaisesRegexp(ValueError,
                                      'No gradients provided for any variable'):
@@ -199,15 +198,15 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testGradientsAsVariables(self):
     for i, dtype in enumerate(_DATA_TYPES):
       with test_util.use_gpu():
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
 
         sgd = gradient_descent.SGD(3.0)
         grads_and_vars = sgd._compute_gradients(loss, [var0, var1])
         # Convert gradients to tf.Variables
         converted_grads = [
-            resource_variable_ops.ResourceVariable(
+            variables.Variable(
                 array_ops.zeros([2], dtype), name='c_%d_%d' % (i, j))
             for j, gv in enumerate(grads_and_vars)
         ]
@@ -337,7 +336,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testGradClipValue(self):
     with test_util.use_gpu():
-      var = resource_variable_ops.ResourceVariable([1.0, 2.0])
+      var = variables.Variable([1.0, 2.0])
       loss = lambda: 3 * var
       opt = gradient_descent.SGD(learning_rate=1.0, clipvalue=1.0)
       opt_op = opt.minimize(loss, [var])
@@ -348,7 +347,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testGradClipNorm(self):
     with test_util.use_gpu():
-      var = resource_variable_ops.ResourceVariable([1.0])
+      var = variables.Variable([1.0])
       loss = lambda: 3 * var
       opt = gradient_descent.SGD(learning_rate=1.0, clipnorm=1.0)
       opt_op = opt.minimize(loss, [var])
@@ -370,15 +369,13 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testWeights(self):
     with test_util.use_gpu():
       opt1 = adam.Adam(learning_rate=1.0)
-      var1 = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                    dtype=dtypes.float32)
+      var1 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
       loss1 = lambda: 3 * var1
       opt_op_1 = opt1.minimize(loss1, [var1])
       self.evaluate(variables.global_variables_initializer())
       config = opt1.get_config()
       opt2 = adam.Adam.from_config(config)
-      var2 = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                    dtype=dtypes.float32)
+      var2 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
       loss2 = lambda: 3 * var2
       opt_op_2 = opt2.minimize(loss2, [var2])
       weights = opt1.get_weights()
@@ -391,10 +388,8 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(1, self.evaluate(opt1.iterations))
       self.assertEqual(1, self.evaluate(opt2.iterations))
 
-      var3 = resource_variable_ops.ResourceVariable([1.0, 2.0, 3.0],
-                                                    dtype=dtypes.float32)
-      var4 = resource_variable_ops.ResourceVariable([4.0, 5.0, 6.0],
-                                                    dtype=dtypes.float32)
+      var3 = variables.Variable([1.0, 2.0, 3.0], dtype=dtypes.float32)
+      var4 = variables.Variable([4.0, 5.0, 6.0], dtype=dtypes.float32)
       loss3 = lambda: 3 * var3 + 5 * var4
       opt_op_3 = opt1.minimize(loss3, [var3, var4])
 
@@ -405,10 +400,8 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
         opt2.set_weights(weights)
 
       # Assert set_weights and variables get updated to same value.
-      var5 = resource_variable_ops.ResourceVariable([1.0, 2.0, 3.0],
-                                                    dtype=dtypes.float32)
-      var6 = resource_variable_ops.ResourceVariable([4.0, 5.0, 6.0],
-                                                    dtype=dtypes.float32)
+      var5 = variables.Variable([1.0, 2.0, 3.0], dtype=dtypes.float32)
+      var6 = variables.Variable([4.0, 5.0, 6.0], dtype=dtypes.float32)
       loss4 = lambda: 3 * var5 + 5 * var6
       opt_op_4 = opt2.minimize(loss4, [var5, var6])
       self.evaluate(variables.global_variables_initializer())
@@ -421,8 +414,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testGettingHyperParameters(self):
     with self.test_session():
       opt = adam.Adam(learning_rate=1.0)
-      var = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                   dtype=dtypes.float32)
+      var = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
       loss = lambda: 3 * var
       opt_op = opt.minimize(loss, [var])
       self.evaluate(variables.global_variables_initializer())
@@ -446,16 +438,14 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testGettingHyperParametersWithLrInConstructor(self):
     with self.test_session():
       opt = gradient_descent.SGD(lr=3.0)
-      var = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                   dtype=dtypes.float32)
+      var = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
       loss = lambda: 3 * var
       opt_op = opt.minimize(loss, [var])
       self.evaluate(variables.global_variables_initializer())
       self.evaluate(opt_op)
 
-      self.assertIsInstance(opt.lr, resource_variable_ops.ResourceVariable)
-      self.assertIsInstance(opt.learning_rate,
-                            resource_variable_ops.ResourceVariable)
+      self.assertIsInstance(opt.lr, variables.Variable)
+      self.assertIsInstance(opt.learning_rate, variables.Variable)
 
       lr = self.evaluate(opt.lr)
       self.assertEqual(3.0, lr)
@@ -546,8 +536,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
     global_step = training_util.get_or_create_global_step()
     opt = adam.Adam(learning_rate=1.0)
     opt.iterations = global_step
-    var = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                 dtype=dtypes.float32)
+    var = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
     self.evaluate(variables.global_variables_initializer())
     init_step_value = self.evaluate(global_step)
     loss = lambda: 3 * var
@@ -629,7 +618,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testAggregationTrue(self):
     # Test that experimental_aggregate_gradients=True works without distributed
     # strategy.
-    var = resource_variable_ops.ResourceVariable([1., 2.])
+    var = variables.Variable([1., 2.])
     opt = gradient_descent.SGD(3.0)
 
     self.evaluate(variables.global_variables_initializer())
@@ -644,7 +633,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def testAggregationFalse(self):
     # Test that experimental_aggregate_gradients=False works without distributed
     # strategy.
-    var = resource_variable_ops.ResourceVariable([1., 2.])
+    var = variables.Variable([1., 2.])
     opt = gradient_descent.SGD(3.0)
 
     self.evaluate(variables.global_variables_initializer())
@@ -853,8 +842,7 @@ class OptimizerWithFunctionTest(test.TestCase):
 
   def testBasic(self):
     with context.eager_mode():
-      var = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                   dtype=dtypes.float32)
+      var = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
       loss = lambda: 3 * var
       opt = adam.Adam(learning_rate=1.0)
 

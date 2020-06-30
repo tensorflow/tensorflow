@@ -25,7 +25,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import nadam
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -85,8 +84,8 @@ class NadamOptimizerTest(test.TestCase):
         var1_np = np.array([3.0, 3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np)
-        var1 = resource_variable_ops.ResourceVariable(var1_np)
+        var0 = variables.Variable(var0_np)
+        var1 = variables.Variable(var1_np)
         grads0_np_indices = np.array([0, 2], dtype=np.int32)
         grads0 = ops.IndexedSlices(
             constant_op.constant(grads0_np[grads0_np_indices]),
@@ -132,8 +131,8 @@ class NadamOptimizerTest(test.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np)
-        var1 = resource_variable_ops.ResourceVariable(var1_np)
+        var0 = variables.Variable(var0_np)
+        var1 = variables.Variable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
         opt = nadam.Nadam()

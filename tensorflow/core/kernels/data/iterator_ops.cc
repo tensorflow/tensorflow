@@ -331,6 +331,12 @@ class IteratorVariantSerializer {
     data.reserve(num_tensors);
     for (int i = 0; i < num_tensors; ++i) {
       auto* w = serialized_vec(i).get<IteratorStateVariant>();
+      if (!w) {
+        return errors::Internal(
+            "Cannot initialize an iterator from tensor ",
+            serialized_vec(i).DebugString(),
+            ". Expected a variant tensor of type IteratorStateVariant");
+      }
       data.push_back(w->GetData());
     }
     reader_ = absl::make_unique<VariantTensorDataReader>(data);
@@ -349,6 +355,10 @@ class IteratorVariantSerializer {
     }
     int64 size = variants_.size();
     for (int64 i = 0; i < size; ++i) {
+      if (variants_[i].GetData() == nullptr) {
+        return errors::Internal(
+            "Cannot serialize an empty IteratorStateVariant");
+      }
       serialized->vec<Variant>()(i) = variants_[i];
     }
     return Status::OK();

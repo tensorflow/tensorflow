@@ -62,7 +62,7 @@ void UpdateLstmCellFloat(int n_batch, int n_cell, float* cell_state,
   }
 }
 
-void CalculateLstmOutputFloat(
+void CalculateLstmOutputCalibration(
     int n_batch, int n_cell, int n_output, const float* cell_state,
     const float* output_gate, TfLiteFusedActivation activation,
     const float* projection_weights, const float* projection_bias,
@@ -97,7 +97,7 @@ void CalculateLstmOutputFloat(
   }
 }
 
-inline void LstmStepWithAuxInput(
+inline void LstmStepCalibration(
     const float* input_ptr, const float* input_to_input_weights_ptr,
     const float* input_to_forget_weights_ptr,
     const float* input_to_cell_weights_ptr,
@@ -126,17 +126,18 @@ inline void LstmStepWithAuxInput(
     float* scratch1, float* scratch2, float* scratch3, float* output_ptr,
     Logger* logger, const std::vector<int>& intermediate_tensor_indexes,
     ErrorReporter* error_reporter) {
-  // Make named scratch buffers for the different gates.
-  float* input_gate_scratch = scratch0;
-  float* forget_gate_scratch = scratch1;
-  float* cell_gate_scratch = scratch2;
-  float* output_gate_scratch = scratch3;
-
+  ruy::profiler::ScopeLabel label("LstmStepCalibration");
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weights_ptr != nullptr);
   const bool use_layer_norm = (forget_layer_norm_coefficients_ptr != nullptr);
+
+  // Make named scratch buffers for the different gates.
+  float* input_gate_scratch = scratch0;
+  float* forget_gate_scratch = scratch1;
+  float* cell_gate_scratch = scratch2;
+  float* output_gate_scratch = scratch3;
 
   // Initialize scratch buffers with bias for regular lstm or initialize with
   // zero for layer norm lstm.
@@ -177,7 +178,8 @@ inline void LstmStepWithAuxInput(
       input_to_output_weights_ptr, n_cell, n_input, input_ptr, n_batch,
       output_gate_scratch);
 
-  // If auxiliary input is available then compute aux_input_weight * aux_input
+  // For each batch and cell: compute aux_input_weight * aux_input.
+  // Skip if auxiliary input is not available.
   if (aux_input_ptr != nullptr) {
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
@@ -293,11 +295,11 @@ inline void LstmStepWithAuxInput(
   tensor_utils::ApplySigmoidToVector(output_gate_scratch, n_batch * n_cell,
                                      output_gate_scratch);
 
-  CalculateLstmOutputFloat(n_batch, n_cell, n_output, cell_state_ptr,
-                           output_gate_scratch, params->activation,
-                           projection_weights_ptr, projection_bias_ptr,
-                           params->proj_clip, output_state_ptr, scratch2,
-                           logger, intermediate_tensor_indexes, error_reporter);
+  CalculateLstmOutputCalibration(
+      n_batch, n_cell, n_output, cell_state_ptr, output_gate_scratch,
+      params->activation, projection_weights_ptr, projection_bias_ptr,
+      params->proj_clip, output_state_ptr, scratch2, logger,
+      intermediate_tensor_indexes, error_reporter);
 
   // Copy output_state to the output. Note that the output batch rows may not be
   // contiguous (output_batch_leading_dim != n_output).
@@ -307,7 +309,7 @@ inline void LstmStepWithAuxInput(
   }
 }
 
-TfLiteStatus EvalFloat(
+TfLiteStatus EvalCalibration(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
     const TfLiteTensor* input_to_forget_weights,
     const TfLiteTensor* input_to_cell_weights,
@@ -392,7 +394,7 @@ TfLiteStatus EvalFloat(
       float* output_ptr_time =
           GetTensorData<float>(output) + t_rel * output_step + output_offset;
 
-      LstmStepWithAuxInput(
+      LstmStepCalibration(
           input_ptr, GetTensorData<float>(input_to_input_weights),
           GetTensorData<float>(input_to_forget_weights),
           GetTensorData<float>(input_to_cell_weights),
@@ -454,7 +456,7 @@ TfLiteStatus EvalFloat(
         float* cell_gate_scratch_ptr = cell_gate_scratch + b * n_cell;
         float* output_gate_scratch_ptr = output_gate_scratch + b * n_cell;
 
-        LstmStepWithAuxInput(
+        LstmStepCalibration(
             input_ptr, GetTensorData<float>(input_to_input_weights),
             GetTensorData<float>(input_to_forget_weights),
             GetTensorData<float>(input_to_cell_weights),
@@ -587,7 +589,7 @@ TfLiteStatus lstm_eval(TfLiteContext* context, TfLiteNode* node, Logger* logger,
 
   switch (input_to_output_weights->type) {
     case kTfLiteFloat32: {
-      return EvalFloat(
+      return EvalCalibration(
           input, input_to_input_weights, input_to_forget_weights,
           input_to_cell_weights, input_to_output_weights,
           recurrent_to_input_weights, recurrent_to_forget_weights,

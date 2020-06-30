@@ -31,7 +31,9 @@ limitations under the License.
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 namespace tensorflow {
 namespace {
@@ -454,11 +456,20 @@ class DecodeImageV2Op : public OpKernel {
 
   // Helper for decoding BMP.
   inline int32 ByteSwapInt32ForBigEndian(int32 x) {
-#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-    return le32toh(x);
-#else
-    return x;
-#endif
+    if (!port::kLittleEndian) {
+      return BYTE_SWAP_32(x);
+    } else {
+      return x;
+    }
+  }
+
+  // Helper for decoding BMP.
+  inline int16 ByteSwapInt16ForBigEndian(int16 x) {
+    if (!port::kLittleEndian) {
+      return BYTE_SWAP_16(x);
+    } else {
+      return x;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -773,7 +784,7 @@ class DecodeImageV2Op : public OpKernel {
     const int32 height = ByteSwapInt32ForBigEndian(height_);
     int16 bpp_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int16*>(img_bytes + 28)));
-    const int16 bpp = le16toh(bpp_);
+    const int16 bpp = ByteSwapInt16ForBigEndian(bpp_);
 
     if (channels_) {
       OP_REQUIRES(context, (channels_ == bpp / 8),
