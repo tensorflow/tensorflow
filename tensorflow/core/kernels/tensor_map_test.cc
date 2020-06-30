@@ -119,21 +119,23 @@ TEST(TensorMapTest, Copy) {
   test::ExpectTensorEqual<int32>(tm.find(k)->second, tmc.find(k)->second);
 }
 
-/*TEST(TensorMapTest, EncodeDecode) {
+TEST(TensorMapTest, EncodeDecode) {
   TensorMap tm;
   TensorKey k = Tensor(11);
   Tensor v = Tensor(22);
   tm.insert(k,v);
-  VariantTensorData* data;
-  TensorMap tmc = Decode(Encode(data));
-
+  VariantTensorData data;
+  tm.Encode(&data);
+  TensorMap tmc;
+  tmc.Decode(data);
+  
   EXPECT_EQ(tm.dtype(), tmc.dtype());
   EXPECT_EQ(tm.size(), tmc.size());
   EXPECT_NE(tm.find(k), tm.tensors().end());
   EXPECT_NE(tmc.find(k), tmc.tensors().end());
   EXPECT_EQ(tm.find(k)->first, tmc.find(k)->first);
   test::ExpectTensorEqual<int32>(tm.find(k)->second, tmc.find(k)->second);
-}*/
+}
 }  // namespace
 
 }  // namespace tensorflow

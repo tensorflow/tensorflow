@@ -37,6 +37,7 @@ void TensorMap::Encode(VariantTensorData* data) const {
       *data->add_tensors() = k;
       *data->add_tensors() = v;
     }
+    map_it++;
   }
   string metadata;
   // TODO(b/118838800): Add a proto for storing the metadata.
