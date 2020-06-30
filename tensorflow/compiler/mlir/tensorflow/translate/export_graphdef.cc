@@ -42,7 +42,6 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
@@ -129,7 +128,7 @@ class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
 Status HasSingleGraphSingleOpIslandsFunctions(mlir::ModuleOp module) {
   Status status = Status::OK();
   module.walk([&](mlir::FuncOp function) {
-    if (function.getBlocks().size() != 1) {
+    if (!llvm::hasSingleElement(function)) {
       status = errors::FailedPrecondition(
           kInvalidExecutorGraphMsg,
           "only single block functions are supported.");
@@ -281,6 +280,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   return node_def;
 }
 
+// TODO(b/160014479): Support exporting function result attributes as optional
+// attributes.
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     mlir::FuncOp function, Value operand, unsigned index,
     llvm::StringRef name) {

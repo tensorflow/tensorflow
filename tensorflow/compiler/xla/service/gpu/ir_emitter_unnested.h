@@ -66,6 +66,10 @@ class IrEmitterUnnested : public IrEmitter,
     llvm::Value* lane_id;
   };
 
+  absl::string_view platform_name() const override {
+    return ir_emitter_context_->platform_name();
+  }
+
   // A function object to generate code to process one element in a tile.
   //
   // index: the index for the first output element of the current thread.
@@ -132,10 +136,11 @@ class IrEmitterUnnested : public IrEmitter,
       const llvm_ir::ElementGenerator& body_emitter) override;
 
   // Same as `EmitTargetElementLoop`, but in given `thunk` rather than
-  // `LastThunk()`.
+  // `LastThunk()`. The kernel implementation will be unrolled if
+  // `unroll_factor` is greater than one.
   Status EmitTargetElementLoopInThunk(
       const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter,
-      KernelThunk* thunk);
+      KernelThunk* thunk, int unroll_factor);
 
   // Emits LLVM global variables corresponding to constant instructions.
   Status EmitConstantGlobals();
@@ -145,6 +150,98 @@ class IrEmitterUnnested : public IrEmitter,
   void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) override {
     thunk_sequence_->emplace_back(std::move(thunk));
   }
+
+  // Input = {static array, dynamic_dim0, dynamic_dim1}
+  // Output = {dynamic array(with dynamic dimension meta data at the end)}
+  // For a tensor with static dimension [2][<=5] and dynamic dimension [2][3]
+  // (`_` stands for padding)
+  // Input = {{1,2,3,_,_,4,5,6_,_}, 2, 3}
+  // Output = {{1,2,3,4,5,6,_,_,_,_,2,3}}
+
+  // pseudo code for padToStatic on a 2d array
+  //   ```
+  // void padToStatic(int** input, int** output, int thread_per_block,
+  //                  int meta_data_offset, int max_num_element,
+  //                  int static_dim0_size, int static_dim1_size) {
+  //   int* source_array = input[0];
+  //   int* dest_array = output[0];
+
+  //   // extract the dynamic dimension from the source array's metadata
+  //   int* dyn_dim0_size = source_array + meta_data_offset;
+  //   int* dyn_dim1_size = source_array + meta_data_offset + sizeof(int);
+
+  //   // only one thread need to store the dynamic index
+  //   int thread_id = GetThreadId();
+  //   int block_id = GetBlockId();
+  //   if (thread_id == 0 && block_id == 0) {
+  //     *output[1] = *dyn_dim0_size;
+  //     *output[2] = *dyn_dim1_size;
+  //   }
+
+  //   int dyn_element_total = 1;
+  //   dyn_element_total *= *dyn_dim0_size;
+  //   dyn_element_total *= *dyn_dim1_size;
+  //   linear_index = block_id * thread_per_block + thread_id;
+  //   if (linear_index < max_num_element) {
+  //     Index static_index =
+  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
+  //     if (linerized_index < dyn_element_total) {
+  //       Index dyn_index =
+  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
+  //       dest_array[dyn_index.dim0][dyn_index.dim1] =
+  //           source_array[static_index.dim0][static_index.dim1];
+  //     }
+  //   }
+  //   return;
+  // }
+  //   ```
+  Status HandlePadToStatic(HloInstruction* pad_to_static);
+
+  // Input = {dynamic array(with dynamic dimension meta data at the end)}
+  // Output = {static array, dynamic_dim0, dynamic_dim1}
+  // For a tensor with static dimension [2][<=5] and dynamic dimension [2][3]
+  // (`_` stands for padding)
+  // Input = {{1,2,3,4,5,6,_,_,_,_,2,3}}
+  // Output = {{1,2,3,_,_,4,5,6_,_}, 2, 3}
+
+  // pseudo code for sliceToDynamic on a 2d array
+  //   ```
+  // void sliceToDynamic(int** input, int** output, int thread_per_block,
+  //                  int meta_data_offset, int max_num_element,
+  //                  int static_dim0_size, int static_dim1_size) {
+  //   int* source_array = input[0];
+  //   int* dest_array = output[0];
+
+  //   // calculate the location where metadata needs to be inserted
+  //   int* dyn_dim0_size = dest_array + meta_data_offset;
+  //   int* dyn_dim1_size = dest_array + meta_data_offset + sizeof(int);
+
+  //   // only one thread need to store the dynamic index
+  //   int thread_id = GetThreadId();
+  //   int block_id = GetBlockId();
+  //   if (thread_id == 0 && block_id == 0) {
+  //     *dyn_dim0_size = *output[1];
+  //     *dyn_dim1_size = *output[2];
+  //   }
+
+  //   int dyn_element_total = 1;
+  //   dyn_element_total *= *dyn_dim0_size;
+  //   dyn_element_total *= *dyn_dim1_size;
+  //   linear_index = block_id * thread_per_block + thread_id;
+  //   if (linear_index < max_num_element) {
+  //     Index static_index =
+  //         delinerized(linerized_index, static_dim0_size, static_dim1_size);
+  //     if (linerized_index < dyn_element_total) {
+  //       Index dyn_index =
+  //           delinerized(linerized_index, *dyn_dim0_size, *dyn_dim1_size);
+  //       dest_array[static_index.dim0][static_index.dim1] =
+  //           source_array[dyn_index.dim0][dyn_index.dim1];
+  //     }
+  //   }
+  //   return;
+  // }
+  //   ```
+  Status HandleSliceToDynamic(HloInstruction* slice_to_dynamic);
 
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
@@ -160,10 +257,6 @@ class IrEmitterUnnested : public IrEmitter,
   int64 ByteSizeOf(const Shape& shape) const override {
     return llvm_ir::ByteSizeOf(
         shape, ir_emitter_context_->llvm_module()->getDataLayout());
-  }
-
-  const se::Platform* platform() const override {
-    return ir_emitter_context_->platform();
   }
 
   // Builds the prototype of the IR kernel for `inst` and adds it to the module.
@@ -397,13 +490,11 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Returns a KernelThunk that invokes the kernel emitted for `inst`. The
   // caller needs to make sure `inst` outlives the lifetime of the returned
-  // Thunk object. The kernel implementation will be unrolled if unroll_factor
-  // is greater than one. 'implements_whole_instruction' specifies whether
-  // this KernelThunk implements the whole 'inst' HloInstruction. In some
-  // cases 'inst' will be implemented by a sequence of Thunks.
+  // Thunk object. 'implements_whole_instruction' specifies whether this
+  // KernelThunk implements the whole 'inst' HloInstruction. In some cases
+  // 'inst' will be implemented by a sequence of Thunks.
   std::unique_ptr<KernelThunk> BuildKernelThunk(
-      const HloInstruction* inst, bool implements_whole_instruction,
-      int unroll_factor = 1);
+      const HloInstruction* inst, bool implements_whole_instruction);
 
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.

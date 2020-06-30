@@ -21,6 +21,8 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
@@ -95,7 +97,7 @@ std::string ExperimentalConvertSavedModelToMlir(
 
 std::string ExperimentalConvertSavedModelV1ToMlir(
     const std::string &saved_model_path, const std::string &tags,
-    bool show_debug_info, TF_Status *status) {
+    bool lift_variables, bool show_debug_info, TF_Status *status) {
   // Load the saved model into a SavedModelBundle.
 
   std::unordered_set<string> tag_set =
@@ -118,7 +120,27 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
     return "// error";
   }
 
-  return MlirModuleToString(*module_or.ConsumeValueOrDie(), show_debug_info);
+  // Run the tf standard pipeline by default and then, run passes that lift
+  // variables if the flag is set on the module.
+  mlir::OwningModuleRef module = module_or.ConsumeValueOrDie();
+  mlir::PassManager pm(&context);
+  std::string error;
+  llvm::raw_string_ostream error_stream(error);
+
+  mlir::TF::StandardPipelineOptions tf_options;
+  mlir::TF::CreateTFStandardPipeline(pm, tf_options);
+  if (lift_variables) {
+    pm.addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
+    pm.addPass(
+        mlir::tf_saved_model::CreateLiftVariablesPass(bundle.GetSession()));
+  }
+
+  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
+  if (failed(pm.run(*module))) {
+    Set_TF_Status_from_Status(status, diagnostic_handler.ConsumeStatus());
+    return "// error";
+  }
+  return MlirModuleToString(*module, show_debug_info);
 }
 
 std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,

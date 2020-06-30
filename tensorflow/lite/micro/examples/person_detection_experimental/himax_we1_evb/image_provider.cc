@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/examples/person_detection_experimental/image_provider.h"
 
-#include "tensorflow/lite/micro/examples/person_detection_experimental/model_settings.h"
-
 #include "hx_drv_tflm.h"
+#include "tensorflow/lite/micro/examples/person_detection_experimental/model_settings.h"
 
 hx_drv_sensor_image_config_t g_pimg_config;
 

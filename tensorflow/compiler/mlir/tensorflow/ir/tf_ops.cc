@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -67,6 +68,17 @@ limitations under the License.
 
 namespace mlir {
 namespace TF {
+
+// Propagates underscore and device attributes from src to dst.
+// TODO(b/158769932): This should be a general feature instead post some policy
+// discussion.
+static void PropagateAttributes(Operation *src, Operation *dst) {
+  auto device = mlir::Identifier::get("device", src->getContext());
+  for (auto named_attr : src->getAttrs()) {
+    if (*named_attr.first.begin() == '_' || named_attr.first == device)
+      dst->setAttr(named_attr.first, named_attr.second);
+  }
+}
 
 //===----------------------------------------------------------------------===//
 // TF op helper functions
@@ -684,6 +696,154 @@ void BatchMatMulV2Op::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// BatchToSpaceOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(BatchToSpaceOp op) {
+  // Op already has a constraint that block_size >= 2.
+  int64_t block_size = op.block_size().getSExtValue();
+
+  llvm::SmallVector<int64_t, 4> input_shape(4, ShapedType::kDynamicSize);
+  auto input_type = op.input().getType().cast<TensorType>();
+  if (input_type.hasRank()) {
+    if (input_type.getRank() != 4)
+      return op.emitOpError()
+             << "requires input to be a 4D tensor, but got " << input_type;
+
+    int64_t input_batch = input_type.getDimSize(0);
+    if (input_batch != ShapedType::kDynamicSize &&
+        input_batch % (block_size * block_size) != 0) {
+      return op.emitOpError()
+             << "requires input batch (dimension 0) to be evenly divisible "
+                "by (block_size * block_size), but got input batch "
+             << input_batch << " and block_size " << block_size;
+    }
+
+    input_shape.assign(input_type.getShape().begin(),
+                       input_type.getShape().end());
+  }
+
+  auto crops_type = op.crops().getType().cast<TensorType>();
+  if (crops_type.hasRank()) {
+    if (crops_type.getRank() != 2)
+      return op.emitOpError()
+             << "requires crops to be a 2D tensor, but got " << crops_type;
+
+    auto dim_of_size = [&](int64_t dim, int64_t size) {
+      if (crops_type.isDynamicDim(dim)) return true;
+      return crops_type.getDimSize(dim) == size;
+    };
+    if (!dim_of_size(0, 2) || !dim_of_size(1, 2))
+      return op.emitOpError()
+             << "requires crops to be a tensor<2x2>, but got " << crops_type;
+  }
+
+  DenseIntElementsAttr crops_attr;
+  // Crops are defined as [[crop_top, crop_bottom], [crop_left, crop_right]],
+  // and flattened as [crop_top, crop_bottom, crop_left, crop_right]
+  llvm::SmallVector<int64_t, 4> crops_values;
+  if (matchPattern(op.crops(), m_Constant(&crops_attr))) {
+    assert(crops_attr.getNumElements() == 4 &&
+           "tf.BatchToSpace crops must have 4 elements");
+
+    auto crops_range = crops_attr.getIntValues();
+    for (const auto &crops_value : crops_range) {
+      int64_t crops_value_int = crops_value.getSExtValue();
+      if (crops_value_int < 0)
+        return op.emitOpError()
+               << "requires all crop values to be nonnegative, but got "
+               << crops_attr;
+
+      crops_values.push_back(crops_value_int);
+    }
+  }
+
+  auto output_type = op.output().getType().cast<TensorType>();
+  if (output_type.hasRank()) {
+    if (output_type.getRank() != 4)
+      return op.emitOpError()
+             << "requires output to be a 4D tensor, but got " << output_type;
+
+    auto static_dims = [](int64_t dim_a, int64_t dim_b) {
+      return dim_a != ShapedType::kDynamicSize &&
+             dim_b != ShapedType::kDynamicSize;
+    };
+
+    auto output_shape = output_type.getShape();
+
+    // output batch = input batch / (block_size * block_size).
+    int64_t input_batch = input_shape[0];
+    int64_t output_batch = output_shape[0];
+    if (static_dims(input_batch, output_batch) &&
+        (output_batch * block_size * block_size) != input_batch)
+      return op.emitOpError()
+             << "requires output batch (dimension 0) to be equal to input "
+                "batch (dimension 0) / (block_size * block_size), but got "
+                "output batch "
+             << output_batch << ", input batch " << input_batch
+             << ", and block_size " << block_size;
+
+    auto check_spatial_dim = [&](int64_t spatial_dim_index,
+                                 llvm::StringRef dim_name,
+                                 llvm::StringRef crop_a_name,
+                                 llvm::StringRef crop_b_name) -> LogicalResult {
+      int64_t input_dim = input_shape[spatial_dim_index];
+      int64_t output_dim = output_shape[spatial_dim_index];
+      if (!static_dims(input_dim, output_dim)) return success();
+
+      int64_t input_dim_pad = input_dim * block_size;
+      // If crops are unknown, the maximum output spatial dim size is input
+      // spatial dim size * block_size, as crops can be minimum 0.
+      if (crops_values.empty() && output_dim > input_dim * block_size)
+        return op.emitOpError()
+               << "requires output " << dim_name << " (dimension "
+               << spatial_dim_index << ") to be less than or equal to input "
+               << dim_name << " (dimension " << spatial_dim_index
+               << ") * block_size, but got output " << dim_name << " "
+               << output_dim << ", input " << dim_name << " " << input_dim
+               << ", and block_size " << block_size;
+
+      if (!crops_values.empty()) {
+        // output spatial dim = input spatial dim * block_size - crops.
+        int64_t crop_a = crops_values[2 * (spatial_dim_index - 1)];
+        int64_t crop_b = crops_values[2 * (spatial_dim_index - 1) + 1];
+        if (output_dim != input_dim_pad - crop_a - crop_b)
+          return op.emitOpError()
+                 << "requires output " << dim_name << " (dimension "
+                 << spatial_dim_index << ") to be equal to input " << dim_name
+                 << " (dimension " << spatial_dim_index << ") * block_size - "
+                 << crop_a_name << " - " << crop_b_name << ", but got output "
+                 << dim_name << " " << output_dim << ", input " << dim_name
+                 << " " << input_dim << ", " << crop_a_name << " " << crop_a
+                 << ", " << crop_b_name << " " << crop_b << ", and block_size "
+                 << block_size;
+      }
+
+      return success();
+    };
+
+    if (failed(check_spatial_dim(1, "height", "crop_top", "crop_bottom")) ||
+        failed(check_spatial_dim(2, "width", "crop_left", "crop_right")))
+      return failure();
+
+    int64_t input_depth = input_shape[3];
+    int64_t output_depth = output_shape[3];
+    if (static_dims(input_depth, output_depth) && output_depth != input_depth)
+      return op.emitOpError()
+             << "requires output depth (dimension 3) to be equal to input "
+                "depth (dimension 3), but got output depth "
+             << output_depth << " and input depth " << input_depth;
+  }
+
+  return success();
+}
+
+void BatchToSpaceOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchToSpaceToBatchToSpaceND>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // BiasAddOp
 //===----------------------------------------------------------------------===//
 
@@ -786,11 +946,49 @@ static LogicalResult Verify(BroadcastToOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// CastOp
+// CaseOp
 //===----------------------------------------------------------------------===//
 
+class FoldConstantCaseOp : public OpRewritePattern<TF::CaseOp> {
+ public:
+  explicit FoldConstantCaseOp(MLIRContext *context)
+      : OpRewritePattern<TF::CaseOp>(context) {}
+  LogicalResult matchAndRewrite(TF::CaseOp op,
+                                PatternRewriter &rewriter) const override;
+};
+
+LogicalResult FoldConstantCaseOp::matchAndRewrite(
+    TF::CaseOp op, PatternRewriter &rewriter) const {
+  // Extract the constant cond value.
+  DenseIntElementsAttr branch;
+  if (!matchPattern(op.branch_index(), m_Constant(&branch))) return failure();
+
+  // Only attempt to fold scalar valued case statements.
+  // TODO(jpienaar): This can be removed if CaseOp's verifier covers it.
+  if (!branch.getType().cast<RankedTensorType>().getShape().empty())
+    return failure();
+
+  int index = *branch.getValues<int>().begin();
+  // TODO(jpienaar): This can be removed if CaseOp's verifier covers it.
+  if (index >= op.branches().size()) return failure();
+
+  auto func = op.branches()[index].cast<SymbolRefAttr>();
+  auto empty = rewriter.getStringAttr("");
+  auto call_op = rewriter.create<PartitionedCallOp>(
+      op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
+      /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
+  PropagateAttributes(op.getOperation(), call_op);
+  rewriter.replaceOp(op, call_op.getResults());
+  return success();
+}
+
+void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<FoldConstantCaseOp>(context);
+}
+
 //===----------------------------------------------------------------------===//
-// LeakyReluOp
+// CastOp
 //===----------------------------------------------------------------------===//
 
 OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
@@ -821,6 +1019,11 @@ static LogicalResult Verify(OpT op) {
 
   return VerifyTypesCompatibility(values,
                                   /*mask_one_dim=*/true, op.getOperation());
+}
+
+void ConcatOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<ConvertToConcatV2>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1901,21 +2104,6 @@ static LogicalResult Verify(IfOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// YieldOp
-//===----------------------------------------------------------------------===//
-
-static LogicalResult Verify(YieldOp op) {
-  auto parent = op.getParentOp();
-  // A YieldOp should be contained within an IfRegion op
-  // (and WhileRegion in future)
-  if (!isa<IfRegionOp>(parent))
-    op.emitError() << " expects parent op "
-                   << "'" << IfRegionOp::getOperationName() << "' but got '"
-                   << parent->getName().getStringRef() << "'";
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // IfRegionOp
 //===----------------------------------------------------------------------===//
 
@@ -1926,8 +2114,10 @@ LogicalResult VerifyRegionResults(Operation *op, Region &region,
   YieldOp yield = cast<YieldOp>(region.front().getTerminator());
   unsigned expected_num_results = op->getNumResults();
   if (yield.getNumOperands() != expected_num_results)
-    return op->emitError(region_name + " region should have " +
-                         Twine(expected_num_results) + " results");
+    return op->emitOpError()
+           << region_name + " should have same number (" << expected_num_results
+           << ") of results as " << op_name << " but has "
+           << yield.getNumOperands() << " results";
 
   for (int idx : llvm::seq<int>(0, expected_num_results)) {
     auto op_result_type = op->getResult(idx).getType().cast<TensorType>();
@@ -2018,6 +2208,32 @@ void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void ReadVariableOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<ReadVariableOfCast>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// VarIsInitializedOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// Erase VarIsInitializedOp operations with no uses. This op has side effect on
+/// resources (read-only), but can still be deleted if it has zero uses.
+struct EraseDeadVarIsInitializedOp
+    : public OpRewritePattern<VarIsInitializedOp> {
+  using OpRewritePattern<VarIsInitializedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(VarIsInitializedOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!op.use_empty()) return failure();
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+}  // end anonymous namespace.
+
+void VarIsInitializedOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *context) {
+  patterns.insert<EraseDeadVarIsInitializedOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3984,6 +4200,81 @@ static LogicalResult Verify(WhileOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// WhileRegionOp
+//===----------------------------------------------------------------------===//
+static LogicalResult Verify(WhileRegionOp op) {
+  // Verify that the condition generates a single tensor<i1> result.
+  YieldOp yield = cast<YieldOp>(op.cond().front().getTerminator());
+  if (yield.getNumOperands() != 1)
+    return op.emitOpError()
+           << "condition should have a single tensor<i1> result";
+
+  auto cond_type = yield.getOperand(0).getType().dyn_cast<RankedTensorType>();
+  if (!cond_type || !cond_type.getShape().equals({}) ||
+      !cond_type.getElementType().isInteger(/*width=*/1))
+    return op.emitOpError()
+           << "condition should have a single tensor<i1> result";
+
+  // The body result types should match while op result types.
+  if (failed(VerifyRegionResults(op, op.body(), "body"))) return failure();
+
+  // Both condition and body should have same number and type of operands as
+  // the WhileRegion inputs.
+  const int num_inputs = op.getNumOperands();
+  auto block_inputs_match_op_inputs = [&](Region &region,
+                                          StringRef name) -> LogicalResult {
+    Block &block = region.front();
+    if (block.getNumArguments() != num_inputs)
+      return op.emitOpError()
+             << name << " should have same number of inputs (" << num_inputs
+             << ") as " << WhileRegionOp::getOperationName() << " but has "
+             << block.getNumArguments() << " inputs";
+
+    for (auto types_idx : llvm::enumerate(
+             llvm::zip(op.getOperandTypes(), block.getArgumentTypes()))) {
+      auto op_input_type = std::get<0>(types_idx.value());
+      auto block_input_type = std::get<1>(types_idx.value());
+      if (!AreCastCompatible({block_input_type, op_input_type}))
+        return op.emitOpError(llvm::formatv(
+            "{0} input type {1} is incompatible with {2} "
+            "input type {3} at index {4}",
+            name, block_input_type, WhileRegionOp::getOperationName(),
+            op_input_type, types_idx.index()));
+    }
+    return success();
+  };
+
+  if (failed(block_inputs_match_op_inputs(op.cond(), "condition")) ||
+      failed(block_inputs_match_op_inputs(op.body(), "body")))
+    return failure();
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// WhileRegionOp LoopLikeOpInterface
+//===----------------------------------------------------------------------===//
+
+Region &WhileRegionOp::getLoopBody() { return body(); }
+
+bool WhileRegionOp::isDefinedOutsideOfLoop(Value value) {
+  // If the Op defining the value exists and the defining op is outside the
+  // scope of this WhileRegion, then we can infer that its defined outside.
+  // The defining Op is outside the scope of this WhileRegion if this
+  // WhileRegionOp is not an ancestor of the defining op in the parent chain.
+  Operation *def_op = value.getDefiningOp();
+  return def_op && !getOperation()->isAncestor(def_op);
+}
+
+LogicalResult WhileRegionOp::moveOutOfLoop(
+    llvm::ArrayRef<mlir::Operation *> ops) {
+  // Move the hoisted value to just before the while.
+  Operation *while_op = this->getOperation();
+  for (auto op : ops) op->moveBefore(while_op);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // XdivyOp
 //===----------------------------------------------------------------------===//
 
@@ -4010,6 +4301,16 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   //===--------------------------------------------------------------------===//
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
+
+  // Defines the legality of inlinining 'src' region into the 'dest' region
+  // attached to a TF operation
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &valueMapping) const final {
+    // Allow inlining in regions attached to region based control flow
+    // operations only if the src region is a single block region
+    return isa<IfRegionOp, WhileRegionOp>(dest->getParentOp()) &&
+           llvm::hasSingleElement(*src);
+  }
 
   // Defines the legality of inlining TF operations.
   bool isLegalToInline(Operation *, Region *,
@@ -4046,6 +4347,10 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.cc.inc"
 
+std::vector<TensorFlowDialect::AdditionalOpFunction>
+    *TensorFlowDialect::additional_operation_hooks_ =
+        new std::vector<TensorFlowDialect::AdditionalOpFunction>();
+
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context) {
   addOperations<
@@ -4063,6 +4368,10 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   // Support unknown operations because not all TensorFlow operations are
   // registered.
   allowUnknownOperations();
+
+  for (const auto &hook : *TensorFlowDialect::additional_operation_hooks_) {
+    hook(*this);
+  }
 }
 
 namespace {

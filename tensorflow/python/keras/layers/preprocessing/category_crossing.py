@@ -142,8 +142,8 @@ class CategoryCrossing(Layer):
   def _preprocess_input(self, inp):
     if isinstance(inp, (list, tuple, np.ndarray)):
       inp = ops.convert_to_tensor(inp)
-      if inp.shape.rank == 1:
-        inp = array_ops.expand_dims(inp, axis=-1)
+    if inp.shape.rank == 1:
+      inp = array_ops.expand_dims(inp, axis=-1)
     return inp
 
   def call(self, inputs):
@@ -188,15 +188,13 @@ class CategoryCrossing(Layer):
   def compute_output_signature(self, input_spec):
     input_shapes = [x.shape for x in input_spec]
     output_shape = self.compute_output_shape(input_shapes)
-    if any([
+    if any(
         isinstance(inp_spec, ragged_tensor.RaggedTensorSpec)
-        for inp_spec in input_spec
-    ]):
+        for inp_spec in input_spec):
       return tensor_spec.TensorSpec(shape=output_shape, dtype=dtypes.string)
-    elif any([
+    elif any(
         isinstance(inp_spec, sparse_tensor.SparseTensorSpec)
-        for inp_spec in input_spec
-    ]):
+        for inp_spec in input_spec):
       return sparse_tensor.SparseTensorSpec(
           shape=output_shape, dtype=dtypes.string)
     return tensor_spec.TensorSpec(shape=output_shape, dtype=dtypes.string)

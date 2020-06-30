@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/micro/debug_log.h"
+
 #include "hx_drv_tflm.h"
 
 extern "C" void DebugLog(const char* s) {

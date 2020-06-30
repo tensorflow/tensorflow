@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import os
 import tempfile
 
@@ -27,9 +28,9 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -38,11 +39,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.layers import core
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -114,12 +116,19 @@ def _events_from_logdir(test_case, logdir):
 class DistributionTestBase(test.TestCase):
   """Some tests that should work with any DistributionStrategy."""
 
+  def _create_variable_like_keras_dense_layer(self, name, shape, dtype):
+    initializer = functools.partial(
+        init_ops_v2.GlorotUniform(), shape, dtype=dtype)
+    return variables.Variable(
+        initial_value=initializer, name=name, trainable=True)
+
   def _test_minimize_loss_eager(self, d):
     with d.scope():
-      l = core.Dense(1, use_bias=False)
-
+      kernel = self._create_variable_like_keras_dense_layer(
+          name="kernel", shape=(1, 1), dtype=dtypes.float32)
       def loss(x):
-        y = array_ops.reshape(l(x), []) - array_ops.identity(1.)
+        y = array_ops.reshape(
+            gen_math_ops.mat_mul(x, kernel), []) - array_ops.identity(1.)
         return y * y
       # TODO(isaprykin): Extract implicit_grad+get_filtered_grad_fn into a
       # common `implicit_grad` function and put it in DistributionStrategy.
@@ -173,10 +182,12 @@ class DistributionTestBase(test.TestCase):
          ops.Graph().as_default(), \
          self.cached_session(config=config) as sess, \
          d.scope():
-      l = core.Dense(1, use_bias=False)
+      kernel = self._create_variable_like_keras_dense_layer(
+          name="kernel", shape=(1, 1), dtype=dtypes.float32)
 
       def loss(x):
-        y = array_ops.reshape(l(x), []) - array_ops.identity(1.)
+        y = array_ops.reshape(
+            gen_math_ops.mat_mul(x, kernel), []) - array_ops.identity(1.)
         return y * y
 
       grad_fn = backprop.implicit_grad(loss)
@@ -348,7 +359,8 @@ class DistributionTestBase(test.TestCase):
     for expected_value in expected_values:
       next_element = iterator.get_next()
       computed_value = evaluate(
-          [values.select_replica(r, next_element) for r in range(len(devices))])
+          [distribute_utils.select_replica(r, next_element) for r in
+           range(len(devices))])
       if ignore_order:
         self.assertCountEqual(expected_value, computed_value)
       else:
@@ -357,7 +369,8 @@ class DistributionTestBase(test.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
       evaluate(
-          [values.select_replica(r, next_element) for r in range(len(devices))])
+          [distribute_utils.select_replica(r, next_element) for r in
+           range(len(devices))])
 
     # After re-initializing the iterator, should be able to iterate again.
     if test_reinitialize:
@@ -366,7 +379,8 @@ class DistributionTestBase(test.TestCase):
       for expected_value in expected_values:
         next_element = iterator.get_next()
         computed_value = evaluate([
-            values.select_replica(r, next_element) for r in range(len(devices))
+            distribute_utils.select_replica(r, next_element) for r in
+            range(len(devices))
         ])
         if ignore_order:
           self.assertCountEqual(expected_value, computed_value)

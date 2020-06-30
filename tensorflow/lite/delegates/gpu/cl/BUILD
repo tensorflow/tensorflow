@@ -43,10 +43,13 @@ cc_library(
     srcs = ["arguments.cc"],
     hdrs = ["arguments.h"],
     deps = [
+        ":cl_device",
         ":gpu_object",
         ":opencl_wrapper",
+        ":tensor_type",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:access_type",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
@@ -65,6 +68,7 @@ cc_test(
     deps = [
         ":arguments",
         ":gpu_object",
+        ":tensor_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
@@ -78,8 +82,10 @@ cc_library(
     deps = [
         ":cl_command_queue",
         ":cl_context",
+        ":gpu_object",
         ":opencl_wrapper",
         ":util",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -197,7 +203,6 @@ cc_library(
         ":cl_program",
         ":opencl_wrapper",
         ":util",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:flt_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
     ],
@@ -326,6 +331,7 @@ cc_library(
 
 cc_library(
     name = "gpu_object",
+    srcs = ["gpu_object.cc"],
     hdrs = ["gpu_object.h"],
     deps = [
         ":opencl_wrapper",
@@ -453,6 +459,7 @@ cc_library(
     srcs = ["tensor.cc"],
     hdrs = ["tensor.h"],
     deps = [
+        ":buffer",
         ":cl_command_queue",
         ":cl_context",
         ":cl_device",
@@ -519,6 +526,7 @@ cc_library(
     deps = [
         ":cl_command_queue",
         ":cl_context",
+        ":gpu_object",
         ":opencl_wrapper",
         ":tensor_type",
         ":util",

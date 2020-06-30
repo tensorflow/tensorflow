@@ -39,6 +39,9 @@ mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
 StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
                                                     mlir::Builder builder);
 
+mlir::xla_hlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
+    const GatherDimensionNumbers& input, mlir::Builder builder);
+
 template <typename TypeT>
 static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& shape,
                                                 mlir::Builder builder) {

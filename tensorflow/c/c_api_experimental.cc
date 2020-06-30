@@ -624,7 +624,7 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
 
   const int num_inputs = input_shapes->num_items;
   NodeDef node_def;
-  tensorflow::AbstractOperationInterface* op = tensorflow::unwrap(tfe_op);
+  tensorflow::ImmediateExecutionOperation* op = tensorflow::unwrap(tfe_op);
   node_def.set_name(op->Name());
   node_def.set_op(op->Name());
   for (int i = 0; i < num_inputs; ++i) {

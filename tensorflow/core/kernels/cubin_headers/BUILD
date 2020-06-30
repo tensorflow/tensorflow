@@ -30,9 +30,12 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "tanh",
+    same_shape = "0,1",
     tile_size = "256",
     types = [
+        "f16",
         "f32",
         "f64",
     ],
+    unroll_factors = "4",
 )

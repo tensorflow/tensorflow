@@ -130,9 +130,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   int PlatformDeviceCount() override { return 1; }
 
-  bool DeviceMemoryUsage(int64 *free, int64 *total) const override {
-    return false;
-  }
+  bool DeviceMemoryUsage(int64 *free, int64 *total) const override;
 
   port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {

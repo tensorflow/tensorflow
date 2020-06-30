@@ -468,7 +468,8 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
         // with "gradients/" or contains "/gradients/".
         return absl::StartsWith(node.name(),
                                 recomputation_targets_name_scope) ||
-               node.name().find("/" + recomputation_targets_name_scope) != -1;
+               static_cast<int>(node.name().find(
+                   "/" + recomputation_targets_name_scope)) != -1;
       };
 
   if (optimization_level == RewriterConfig::RECOMPUTATION_HEURISTICS ||

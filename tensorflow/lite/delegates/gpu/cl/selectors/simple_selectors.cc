@@ -105,8 +105,10 @@ absl::Status SelectConcat(const ConcatAttributes& attr,
       *ptr = absl::make_unique<ConcatZ>(std::move(operation));
       return absl::OkStatus();
     }
-    case Axis::WIDTH:
-    case Axis::HEIGHT: {
+    case Axis::BATCH:
+    case Axis::DEPTH:
+    case Axis::HEIGHT:
+    case Axis::WIDTH: {
       ConcatXY operation = CreateConcatXY(op_def, attr, channels.size());
       *ptr = absl::make_unique<ConcatXY>(std::move(operation));
       return absl::OkStatus();

@@ -44,18 +44,14 @@ void TestComparison(tflite::BuiltinOperator op, TfLiteTensor* tensors,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   const int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  const int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = nullptr;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -78,9 +74,9 @@ void TestComparisonFloat(tflite::BuiltinOperator op, int* input1_dims_data,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
 
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims, "input1_tensor"),
-      CreateFloatTensor(input2_data, input2_dims, "input2_tensor"),
-      CreateBoolTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input1_data, input1_dims),
+      CreateFloatTensor(input2_data, input2_dims),
+      CreateBoolTensor(output_data, output_dims),
   };
 
   TestComparison(op, tensors, expected_output_data, output_data);
@@ -95,9 +91,9 @@ void TestComparisonBool(tflite::BuiltinOperator op, int* input1_dims_data,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
 
   TfLiteTensor tensors[tensors_size] = {
-      CreateBoolTensor(input1_data, input1_dims, "input1_tensor"),
-      CreateBoolTensor(input2_data, input2_dims, "input2_tensor"),
-      CreateBoolTensor(output_data, output_dims, "output_tensor"),
+      CreateBoolTensor(input1_data, input1_dims),
+      CreateBoolTensor(input2_data, input2_dims),
+      CreateBoolTensor(output_data, output_dims),
   };
 
   TestComparison(op, tensors, expected_output_data, output_data);
@@ -112,9 +108,9 @@ void TestComparisonInt(tflite::BuiltinOperator op, int* input1_dims_data,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
 
   TfLiteTensor tensors[tensors_size] = {
-      CreateInt32Tensor(input1_data, input1_dims, "input1_tensor"),
-      CreateInt32Tensor(input2_data, input2_dims, "input2_tensor"),
-      CreateBoolTensor(output_data, output_dims, "output_tensor"),
+      CreateInt32Tensor(input1_data, input1_dims),
+      CreateInt32Tensor(input2_data, input2_dims),
+      CreateBoolTensor(output_data, output_dims),
   };
 
   TestComparison(op, tensors, expected_output_data, output_data);
@@ -135,10 +131,10 @@ void TestComparisonQuantizedUInt8(tflite::BuiltinOperator op,
 
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input1_data, input1_quantized, input1_dims,
-                            input1_scale, input1_zero_point, "input1_tensor"),
+                            input1_scale, input1_zero_point),
       CreateQuantizedTensor(input2_data, input2_quantized, input2_dims,
-                            input2_scale, input2_zero_point, "input2_tensor"),
-      CreateBoolTensor(output_data, output_dims, "output_tensor"),
+                            input2_scale, input2_zero_point),
+      CreateBoolTensor(output_data, output_dims),
   };
 
   TestComparison(op, tensors, expected_output_data, output_data);
@@ -159,10 +155,10 @@ void TestComparisonQuantizedInt8(tflite::BuiltinOperator op,
 
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input1_data, input1_quantized, input1_dims,
-                            input1_scale, input1_zero_point, "input1_tensor"),
+                            input1_scale, input1_zero_point),
       CreateQuantizedTensor(input2_data, input2_quantized, input2_dims,
-                            input2_scale, input2_zero_point, "input2_tensor"),
-      CreateBoolTensor(output_data, output_dims, "output_tensor"),
+                            input2_scale, input2_zero_point),
+      CreateBoolTensor(output_data, output_dims),
   };
 
   TestComparison(op, tensors, expected_output_data, output_data);

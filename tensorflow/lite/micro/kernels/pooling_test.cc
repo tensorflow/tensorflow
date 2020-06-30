@@ -42,8 +42,8 @@ void TestAveragePoolingFloat(std::initializer_list<int> input_dims_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TfLiteContext context;
@@ -66,18 +66,14 @@ void TestAveragePoolingFloat(std::initializer_list<int> input_dims_data,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -114,10 +110,8 @@ void TestAveragePoolingQuantized(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_dims, input_min, input_max),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
 
   TfLiteContext context;
@@ -140,18 +134,14 @@ void TestAveragePoolingQuantized(
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -183,8 +173,8 @@ void TestMaxPoolFloat(std::initializer_list<int> input_dims_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TfLiteContext context;
@@ -211,18 +201,14 @@ void TestMaxPoolFloat(std::initializer_list<int> input_dims_data,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -257,10 +243,8 @@ void TestMaxPoolQuantized(std::initializer_list<int> input_dims_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_dims, input_min, input_max),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
 
   TfLiteContext context;
@@ -287,18 +271,14 @@ void TestMaxPoolQuantized(std::initializer_list<int> input_dims_data,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -421,7 +401,8 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride1Stride2Relu) {
       kTfLitePaddingValid, kTfLiteActRelu, output_data);
 }
 
-TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride2Stride1Relu1) {
+TF_LITE_MICRO_TEST(
+    SimpleAveragePoolTestInt8PaddingValidStride2Stride1ReluN1To1) {
   using tflite::testing::F2QS;
 
   const float input_min = -15.9375;
@@ -443,7 +424,7 @@ TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride2Stride1Relu1) {
        F2QS(-0.25, output_min, output_max), F2QS(0.75, output_min, output_max)},
       {4, 1, 1, 2, 1},         // Output shape
       output_min, output_max,  // output quantization range
-      kTfLitePaddingValid, kTfLiteActRelu1, output_data);
+      kTfLitePaddingValid, kTfLiteActReluN1To1, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleAveragePoolTestInt8PaddingValidStride2Relu6) {
@@ -536,7 +517,7 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu) {
                                     output_data);
 }
 
-TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu1) {
+TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatReluN1To1) {
   float output_data[2];
   tflite::testing::TestMaxPoolFloat({4, 1, 2, 4, 1},  // Input shape
                                     {
@@ -552,7 +533,7 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu1) {
                                         0.7,
                                     },
                                     {4, 1, 1, 2, 1},  // Output shape
-                                    kTfLitePaddingValid, kTfLiteActRelu1,
+                                    kTfLitePaddingValid, kTfLiteActReluN1To1,
                                     output_data);
 
   tflite::testing::TestMaxPoolFloat({4, 1, 2, 4, 1},  // Input shape
@@ -569,7 +550,7 @@ TF_LITE_MICRO_TEST(SimpleMaxPoolTestFloatRelu1) {
                                         1.0,
                                     },
                                     {4, 1, 1, 2, 1},  // Output shape
-                                    kTfLitePaddingValid, kTfLiteActRelu1,
+                                    kTfLitePaddingValid, kTfLiteActReluN1To1,
                                     output_data);
 }
 
@@ -717,7 +698,7 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu) {
       kTfLitePaddingValid, kTfLiteActRelu, output_data);
 }
 
-TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu1) {
+TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActReluN1To1) {
   using tflite::testing::F2Q;
 
   uint8_t output_data[2];
@@ -747,7 +728,7 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu1) {
       {// Output values
        F2Q(-1.0, output_min, output_max), F2Q(1.0, output_min, output_max)},
       output_min, output_max, {4, 1, 1, 2, 1},  // Output shape
-      kTfLitePaddingValid, kTfLiteActRelu1, output_data);
+      kTfLitePaddingValid, kTfLiteActReluN1To1, output_data);
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu6) {
@@ -948,7 +929,7 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu) {
       kTfLitePaddingValid, kTfLiteActRelu, output_data);
 }
 
-TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu1) {
+TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActReluN1To1) {
   using tflite::testing::F2QS;
 
   int8_t output_data[2];
@@ -978,7 +959,7 @@ TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu1) {
       {// Output values
        F2QS(-1.0, output_min, output_max), F2QS(1.0, output_min, output_max)},
       output_min, output_max, {4, 1, 1, 2, 1},  // Output shape
-      kTfLitePaddingValid, kTfLiteActRelu1, output_data);
+      kTfLitePaddingValid, kTfLiteActReluN1To1, output_data);
 }
 
 TF_LITE_MICRO_TEST(MaxPoolTestUInt8ActRelu6) {

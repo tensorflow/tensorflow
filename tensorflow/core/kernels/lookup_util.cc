@@ -132,7 +132,8 @@ class TextFileLineIterator
     std::vector<string> tokens;
     if (!ignore_split_) {
       tokens = str_util::Split(line, delimiter_);
-      if (std::max(key_index_, value_index_) >= tokens.size()) {
+      if (static_cast<size_t>(std::max(key_index_, value_index_)) >=
+          tokens.size()) {
         status_ = errors::InvalidArgument(
             "Invalid number of columns in ", filename_, " line ", next_id_,
             " (", line, ") : expected ", std::max(key_index_, value_index_),

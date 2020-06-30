@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-batch-matmul-to-tf-einsum | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -tf-batch-matmul-to-tf-einsum | FileCheck %s
 
 func @test_batch_matmul_to_einsum(%arg0: tensor<1x2x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<1x2x4xf32> {
   // CHECK-LABEL: test_batch_matmul_to_einsum

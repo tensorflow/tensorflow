@@ -35,12 +35,10 @@ namespace gpu {
 
 KernelThunk::KernelThunk(absl::Span<const BufferAllocation* const> args,
                          const string& kernel_name,
-                         const HloInstruction* hlo_instruction,
-                         int unroll_factor)
+                         const HloInstruction* hlo_instruction)
     : Thunk(Kind::kKernel, hlo_instruction),
       args_(args.begin(), args.end()),
-      kernel_name_(kernel_name),
-      unroll_factor_(unroll_factor) {}
+      kernel_name_(kernel_name) {}
 
 Status KernelThunk::Initialize(const GpuExecutable& executable,
                                se::StreamExecutor* executor) {

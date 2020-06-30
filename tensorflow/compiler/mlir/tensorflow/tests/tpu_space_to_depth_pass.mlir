@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tf-tpu-space-to-depth-pass | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -split-input-file -tf-tpu-space-to-depth-pass | FileCheck %s
 
 // Tests for space to depth host and device transform.
 

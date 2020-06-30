@@ -257,15 +257,18 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size,
                DimensionConstraint constraint) {
-        if ((hlo->custom_call_target() != "SliceToDynamic" &&
-             hlo->custom_call_target() != "Sharding") ||
-            absl::StartsWith(hlo->custom_call_target(), "Resize")) {
-          return Unimplemented(
-              "CustomCall is not supported to have a dynamic dimension");
+        // Resize custom call should propagate dynamic batch (0) and channel (3)
+        // dimensions.
+        if (hlo->custom_call_target() == "SliceToDynamic" ||
+            hlo->custom_call_target() == "Sharding" ||
+            (absl::StartsWith(hlo->custom_call_target(), "Resize") &&
+             (dimension == 0 || dimension == 3))) {
+          parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
+          return Status::OK();
         }
-
-        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size, constraint);
-        return Status::OK();
+        return Unimplemented(
+            "CustomCall \"%s\" is not supported to have a dynamic dimension",
+            hlo->custom_call_target());
       });
 }
 

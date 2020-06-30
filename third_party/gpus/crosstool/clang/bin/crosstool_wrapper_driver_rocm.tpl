@@ -121,6 +121,23 @@ def GetHipccOptions(argv):
   return ''
 
 
+def system(cmd):
+  """Invokes cmd with os.system().
+
+  Args:
+    cmd: The command.
+
+  Returns:
+    The exit code if the process exited with exit() or -signal
+    if the process was terminated by a signal.
+  """
+  retv = os.system(cmd)
+  if os.WIFEXITED(retv):
+    return os.WEXITSTATUS(retv)
+  else:
+    return -os.WTERMSIG(retv)
+
+
 def InvokeHipcc(argv, log=False):
   """Call hipcc with arguments assembled from argv.
 
@@ -215,7 +232,7 @@ def InvokeHipcc(argv, log=False):
         + cmd
   if log: Log(cmd)
   if VERBOSE: print(cmd)
-  return os.system(cmd)
+  return system(cmd)
 
 
 def main():

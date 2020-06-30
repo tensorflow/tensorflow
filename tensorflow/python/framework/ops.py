@@ -183,16 +183,8 @@ def _override_helper(clazz_object, operator, func):
     func: the function that replaces the overridden operator.
 
   Raises:
-    ValueError: If operator has already been overwritten,
-      or if operator is not allowed to be overwritten.
+    ValueError: If operator is not allowed to be overwritten.
   """
-  existing = getattr(clazz_object, operator, None)
-  if existing is not None:
-    # Check to see if this is a default method-wrapper or slot wrapper which
-    # will be true for the comparison operators.
-    if not isinstance(existing, type(object.__lt__)):
-      raise ValueError("operator %s cannot be overwritten again on class %s." %
-                       (operator, clazz_object))
   if operator not in Tensor.OVERLOADABLE_OPERATORS:
     raise ValueError("Overriding %s is disallowed" % operator)
   setattr(clazz_object, operator, func)
@@ -1330,13 +1322,17 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
 
   This function converts Python objects of various types to `Tensor`
   objects. It accepts `Tensor` objects, numpy arrays, Python lists,
-  and Python scalars. For example:
+  and Python scalars.
 
+  For example:
+
+  >>> import numpy as np
   >>> def my_func(arg):
   ...   arg = tf.convert_to_tensor(arg, dtype=tf.float32)
   ...   return arg
 
   >>> # The following calls are equivalent.
+  ...
   >>> value_1 = my_func(tf.constant([[1.0, 2.0], [3.0, 4.0]]))
   >>> print(value_1)
   tf.Tensor(
@@ -6415,9 +6411,7 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
   Returns:
     `name_scope*` context manager.
   """
-  ctx = context.context()
-  in_eager_mode = ctx.executing_eagerly()
-  if not in_eager_mode:
+  if not context.executing_eagerly():
     return internal_name_scope_v1(name, default_name, values)
 
   if skip_on_eager:

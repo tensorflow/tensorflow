@@ -22,15 +22,17 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 
 using tensorflow::string;
-using tensorflow::internal::OutputList;
-using tensorflow::internal::unwrap;
 
 namespace tensorflow {
-namespace internal {
-typedef absl::flat_hash_map<std::string, FactoryFunction> FactoriesMap;
+namespace tracing {
+typedef absl::flat_hash_map<std::string, tracing::FactoryFunction> FactoriesMap;
 
 static FactoriesMap& GetFactories() {
   static FactoriesMap* factories = new FactoriesMap;
@@ -48,8 +50,8 @@ void RegisterTracingEngineFactory(const string& name, FactoryFunction factory) {
 
 void SetDefaultTracingEngine(const char* name) { default_factory = name; }
 
-static ExecutionContext* CreateTracingExecutionContext(const char* fn_name,
-                                                       TF_Status* s) {
+static TracingContext* CreateTracingExecutionContext(const char* fn_name,
+                                                     TF_Status* s) {
   auto entry = GetFactories().find(default_factory);
   if (entry != GetFactories().end()) return entry->second(fn_name, s);
   string msg = absl::StrCat(
@@ -70,7 +72,7 @@ static ExecutionContext* CreateTracingExecutionContext(const char* fn_name,
   return nullptr;
 }
 
-}  // end namespace internal
+}  // end namespace tracing
 }  // end namespace tensorflow
 
 // =============================================================================
@@ -83,43 +85,77 @@ static ExecutionContext* CreateTracingExecutionContext(const char* fn_name,
 //
 // =============================================================================
 
+using tensorflow::AbstractFunction;
+using tensorflow::AbstractTensorHandle;
+using tensorflow::DataType;
+using tensorflow::dyn_cast;
+using tensorflow::OutputList;
+using tensorflow::Status;
+using tensorflow::unwrap;
+using tensorflow::wrap;
+using tensorflow::tracing::CreateTracingExecutionContext;
+using tensorflow::tracing::SetDefaultTracingEngine;
+using tensorflow::tracing::TracingContext;
+using tensorflow::tracing::TracingOperation;
+using tensorflow::tracing::TracingTensorHandle;
+
 void TF_SetTracingImplementation(const char* name) {
-  tensorflow::internal::SetDefaultTracingEngine(name);
+  SetDefaultTracingEngine(name);
 }
 
 // Creates a new TensorFlow function, it is an execution context attached to a
 // given tracing context.
 TF_ExecutionContext* TF_CreateFunction(const char* fn_name, TF_Status* s) {
-  return wrap(tensorflow::internal::CreateTracingExecutionContext(fn_name, s));
+  return wrap(CreateTracingExecutionContext(fn_name, s));
 }
 
 TF_AbstractFunction* TF_FinalizeFunction(TF_ExecutionContext* ctx,
                                          TF_OutputList* outputs, TF_Status* s) {
-  auto* func = wrap(unwrap(ctx)->Finalize(unwrap(outputs), s));
+  AbstractFunction* func;
+  TracingContext* tracing_ctx = dyn_cast<TracingContext>(unwrap(ctx));
+  if (!tracing_ctx) {
+    Set_TF_Status_from_Status(
+        s, tensorflow::errors::InvalidArgument(
+               "Only TracingContext can be converted into a function."));
+    return nullptr;
+  }
+  Set_TF_Status_from_Status(s, tracing_ctx->Finalize(unwrap(outputs), &func));
   TF_DeleteExecutionContext(ctx);
-  return func;
+  return wrap(func);
 }
 
 TF_AbstractTensor* TF_AddFunctionParameter(TF_ExecutionContext* func,
                                            TF_DataType dtype, TF_Status* s) {
-  return wrap(unwrap(func)->AddParameter(dtype, s));
+  TracingTensorHandle* t;
+  TracingContext* tracing_ctx = dyn_cast<TracingContext>(unwrap(func));
+  if (!tracing_ctx) {
+    Set_TF_Status_from_Status(
+        s, tensorflow::errors::InvalidArgument(
+               "TF_AddFunctionParameter must be called on a TracingContext."));
+    return nullptr;
+  }
+  Set_TF_Status_from_Status(
+      s, tracing_ctx->AddParameter(static_cast<DataType>(dtype), &t));
+  return wrap(t);
 }
 
-void TF_DeleteExecutionContext(TF_ExecutionContext* c) { delete unwrap(c); }
+void TF_DeleteExecutionContext(TF_ExecutionContext* c) { unwrap(c)->Release(); }
 
 TF_AbstractOp* TF_NewAbstractOp(TF_ExecutionContext* c) {
-  return wrap(unwrap(c)->CreateOperation());
+  return wrap((unwrap(c)->CreateOperation()));
 }
 
-void TF_DeleteAbstractOp(TF_AbstractOp* op) { delete unwrap(op); }
+void TF_DeleteAbstractOp(TF_AbstractOp* op) { unwrap(op)->Release(); }
 
-void TF_DeleteAbstractTensor(TF_AbstractTensor* t) { delete unwrap(t); }
+void TF_DeleteAbstractTensor(TF_AbstractTensor* t) { unwrap(t)->Release(); }
 
 TF_OutputList* TF_NewOutputList() { return wrap(new OutputList); }
 void TF_DeleteOutputList(TF_OutputList* o) { delete unwrap(o); }
 void TF_OutputListSetNumOutputs(TF_OutputList* o, int num_outputs,
                                 TF_Status* s) {
   unwrap(o)->expected_num_outputs = num_outputs;
+  unwrap(o)->outputs.clear();
+  unwrap(o)->outputs.resize(num_outputs);
 }
 int TF_OutputListNumOutputs(TF_OutputList* o) {
   return unwrap(o)->outputs.size();
@@ -134,24 +170,46 @@ void TF_OutputListPushBack(TF_OutputList* o, TF_AbstractTensor* tensor,
 
 void TF_AbstractOpSetOpType(TF_AbstractOp* op, const char* const op_type,
                             TF_Status* s) {
-  unwrap(op)->SetOpType(op_type, s);
+  Set_TF_Status_from_Status(s, unwrap(op)->Reset(op_type,
+                                                 /*raw_device_name=*/nullptr));
 }
 
 void TF_AbstractOpSetOpName(TF_AbstractOp* op, const char* const op_name,
                             TF_Status* s) {
-  unwrap(op)->SetOpName(op_name, s);
+  TracingOperation* tracing_op = dyn_cast<TracingOperation>(unwrap(op));
+  if (!tracing_op) {
+    Set_TF_Status_from_Status(
+        s, tensorflow::errors::InvalidArgument(
+               "TF_AbstractOpSetOpName must be called on a TracingOperation."));
+    return;
+  }
+  Set_TF_Status_from_Status(s, tracing_op->SetOpName(op_name));
 }
 
 void TF_AbstractOpSetAttrType(TF_AbstractOp* op, const char* const attr_name,
                               TF_DataType value, TF_Status* s) {
-  unwrap(op)->SetAttrType(attr_name, value, s);
+  Status status =
+      unwrap(op)->SetAttrType(attr_name, static_cast<DataType>(value));
+  TF_SetStatus(s, static_cast<TF_Code>(status.code()),
+               status.error_message().c_str());
 }
 
 void TF_ExecuteOperation(TF_AbstractOp* op, int num_inputs,
                          TF_AbstractTensor* const* inputs, TF_OutputList* o,
-                         TF_ExecutionContext* ctx, TF_Status* s) {
-  unwrap(ctx)->ExecuteOperation(unwrap(op), num_inputs, &unwrap(*inputs),
-                                unwrap(o), s);
+                         TF_Status* s) {
+  for (int i = 0; i < num_inputs; i++) {
+    Set_TF_Status_from_Status(s, unwrap(op)->AddInput(unwrap(inputs[i])));
+    if (TF_GetCode(s) != TF_OK) {
+      return;
+    }
+  }
+  int num_outputs = unwrap(o)->expected_num_outputs;
+  Set_TF_Status_from_Status(
+      s, unwrap(op)->Execute(
+             absl::MakeSpan(reinterpret_cast<AbstractTensorHandle**>(
+                                unwrap(o)->outputs.data()),
+                            unwrap(o)->outputs.size()),
+             &num_outputs));
 }
 
 void TF_DeleteAbstractFunction(TF_AbstractFunction* func) {
@@ -161,5 +219,5 @@ void TF_DeleteAbstractFunction(TF_AbstractFunction* func) {
 void TF_ExecutionContextRegisterFunction(TF_ExecutionContext* ctx,
                                          TF_AbstractFunction* func,
                                          TF_Status* s) {
-  unwrap(ctx)->RegisterFunction(unwrap(func), s);
+  Set_TF_Status_from_Status(s, unwrap(ctx)->RegisterFunction(unwrap(func)));
 }

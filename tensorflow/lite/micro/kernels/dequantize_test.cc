@@ -48,18 +48,14 @@ void ValidateDequantizeGoldens(TfLiteTensor* tensors, int tensors_size,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -90,8 +86,8 @@ void TestDequantizeToFloat(const int* input_dims_data, const float* input_data,
   const int tensors_size = 2;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims, scale,
-                            zero_point, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+                            zero_point),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   ValidateDequantizeGoldens(tensors, tensors_size, expected_output_data,
@@ -113,8 +109,8 @@ void TestDequantizeToInt32(const int* input_dims_data, const float* input_data,
   const int tensors_size = 2;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
-      CreateInt32Tensor(output_data, output_dims, "output_tensor"),
+                            input_scale, input_zero_point),
+      CreateInt32Tensor(output_data, output_dims),
   };
 
   TfLiteQuantizationParams output_quant;

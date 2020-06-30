@@ -51,7 +51,6 @@ class TestGraphDebugInfo(object):
 
     # load the model and convert
     converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_path)
-    converter.experimental_new_converter = True
     converter.convert()
 
 # pylint: disable=line-too-long
