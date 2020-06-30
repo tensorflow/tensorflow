@@ -1781,9 +1781,11 @@ bool ConstantFolding::IsZeros(const NodeDef& node) const {
   return false;
 }
 
+// Replace an operation with Identity.
 void ConstantFolding::ReplaceOperationWithIdentity(
     int input_to_forward, const GraphProperties& properties, NodeDef* node,
     GraphDef* graph) {
+  if (input_to_forward < 0 || input_to_forward >= node->input_size()) return;
   const DataType dtype = GetDataTypeFromNodeOrProps(*node, properties);
   if (dtype == DT_INVALID) return;
 
@@ -1833,6 +1835,26 @@ void ConstantFolding::ReplaceOperationWithSnapshot(
     node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
     node->set_input(i, ctrl_dep);
   }
+  graph_modified_ = true;
+}
+
+// Replace a node with NoOp. Change all inputs to control dependencies.
+// If the node has non-control outputs, no change will be performed.
+void ConstantFolding::ReplaceOperationWithNoOp(NodeDef* node, GraphDef* graph) {
+  if (HasRegularOutputs(*node, *node_map_)) return;
+  node->set_op("NoOp");
+  node->clear_attr();
+  // Change all inputs to control dependencies.
+  for (int i = 0; i < node->input_size(); ++i) {
+    if (IsControlInput(node->input(i))) {
+      break;
+    }
+    const string ctrl_dep =
+        AddControlDependency(node->input(i), graph, node_map_.get());
+    node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
+    node->set_input(i, ctrl_dep);
+  }
+  DedupControlInputs(node);
   graph_modified_ = true;
 }
 
@@ -2036,6 +2058,8 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
   SET_AND_RETURN_IF_MODIFIED(SimplifyCase(optimized_graph, node));
   SET_AND_RETURN_IF_MODIFIED(
       SimplifySelect(*properties, optimized_graph, node));
+  RETURN_IF_MODIFIED(
+      RemoveRedundantVariableUpdates(*properties, optimized_graph, node));
 
   graph_modified_ = graph_modified_cached;
   return Status::OK();
@@ -2458,6 +2482,51 @@ bool ConstantFolding::SimplifySelect(const GraphProperties& properties,
   node->mutable_input()->SwapElements(0, live_input_idx);
   DedupControlInputs(node);
   return true;
+}
+
+void ConstantFolding::RemoveRedundantVariableUpdates(
+    const GraphProperties& properties, GraphDef* optimized_graph,
+    NodeDef* node) {
+  static const absl::flat_hash_set<string>* kVariableReadOps =
+      new absl::flat_hash_set<string>{"AssignAddVariableOp",
+                                      "AssignSubVariableOp",
+                                      "AssignAdd",
+                                      "AssignSub",
+                                      "ScatterAdd",
+                                      "ScatterSub",
+                                      "ScatterMul",
+                                      "ScatterDiv",
+                                      "ScatterNdAdd",
+                                      "ScatterNdSub",
+                                      "ScatterNdMul",
+                                      "ScatterNdDiv",
+                                      "ResourceScatterAdd",
+                                      "ResourceScatterSub",
+                                      "ResourceScatterMul",
+                                      "ResourceScatterDiv",
+                                      "ResourceScatterNdAdd",
+                                      "ResourceScatterNdSub",
+                                      "ResourceScatterNdMul",
+                                      "ResourceScatterNdDiv"};
+  if (kVariableReadOps == nullptr ||
+      kVariableReadOps->find(node->op()) == kVariableReadOps->end())
+    return;
+  const int value_index = absl::StrContains(node->op(), "Scatter") ? 2 : 1;
+  const NodeDef* delta_node = node_map_->GetNode(node->input(value_index));
+  if (delta_node == nullptr) return;
+  const bool is_add_or_sub = absl::StrContains(node->op(), "Add") ||
+                             absl::StrContains(node->op(), "Sub");
+  if ((is_add_or_sub && IsZeros(*delta_node)) ||
+      (!is_add_or_sub && IsOnes(*delta_node))) {
+    VLOG(1) << "Removing redundant variable update: " << node->DebugString();
+    if (absl::StrContains(node->op(), "Variable") ||
+        absl::StrContains(node->op(), "Resource")) {
+      ReplaceOperationWithNoOp(node, optimized_graph);
+    } else {
+      ReplaceOperationWithIdentity(0 /* input_to_forward */, properties, node,
+                                   optimized_graph);
+    }
+  }
 }
 
 bool ConstantFolding::MoveConstantsPastEnter(GraphDef* optimized_graph,
