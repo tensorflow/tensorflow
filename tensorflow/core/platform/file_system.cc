@@ -308,7 +308,7 @@ StringPiece FileSystem::Basename(StringPiece path) const {
 StringPiece FileSystem::Extension(StringPiece path) const {
   StringPiece basename = this->Basename(path);
 
-  int pos = basename.rfind('.');
+  size_t pos = basename.rfind('.');
   if (pos == StringPiece::npos) {
     return StringPiece(path.data() + path.size(), 0);
   } else {

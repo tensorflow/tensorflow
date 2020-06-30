@@ -41,14 +41,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
@@ -151,7 +150,7 @@ def NASNet(
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -795,5 +794,7 @@ def decode_predictions(preds, top=5):
 
 
 preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
-    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+    mode='',
+    ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF,
+    error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
 decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

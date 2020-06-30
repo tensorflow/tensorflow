@@ -609,6 +609,7 @@ PyObject* InterpreterWrapper::GetTensor(int i) const {
       size_t size_of_type;
       if (GetSizeOfType(nullptr, tensor->type, &size_of_type) != kTfLiteOk) {
         PyErr_SetString(PyExc_ValueError, "Unknown tensor type.");
+        free(data);
         return nullptr;
       }
       sparse_buffer_dims[0] = tensor->bytes / size_of_type;
@@ -702,6 +703,12 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
 PyObject* InterpreterWrapper::ResetVariableTensors() {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_CHECK(interpreter_->ResetVariableTensors());
+  Py_RETURN_NONE;
+}
+
+PyObject* InterpreterWrapper::SetNumThreads(int num_threads) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  interpreter_->SetNumThreads(num_threads);
   Py_RETURN_NONE;
 }
 

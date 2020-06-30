@@ -788,7 +788,6 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -840,7 +839,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss_py38",  #TODO(b/151449908)
         "no_windows",
     ],
     deps = [
@@ -1401,7 +1399,6 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )

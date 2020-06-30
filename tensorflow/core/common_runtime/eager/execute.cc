@@ -365,8 +365,12 @@ Status GetOrCreateKernelAndDevice(
   Device* device = absl::get<Device*>(op->Device());
 
   Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
+  /// Include soft placement policy in cache key since the placement strategy
+  // can change and thus affect which kernel is picked.
+  cache_key = FingerprintCat128(cache_key, ctx.AllowSoftPlacement());
 
   std::vector<Device*> input_dev_ptrs;
+  absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_variable_dtypes_and_shapes;
   // We can eliminate some overhead by running simple functions using regular
@@ -410,6 +414,13 @@ Status GetOrCreateKernelAndDevice(
       Device* input_device;
       TF_RETURN_IF_ERROR(GetDeviceForInput(ctx, input, &input_device));
       input_dev_ptrs.push_back(input_device);
+      CompositeDevice* composite_device = nullptr;
+      if (ctx.FindCompositeDeviceFromName(input_device->name(),
+                                          &composite_device)
+              .ok()) {
+        composite_devices[input_device->name()] =
+            composite_device->underlying_devices();
+      }
       cache_key =
           FingerprintCat128(cache_key, Fingerprint128(input_device->name()));
 
@@ -421,13 +432,12 @@ Status GetOrCreateKernelAndDevice(
         // looking it up in ResourceMgr, which is slow). So we just get
         // resource_dtypes_and_shapes for all DT_RESOURCE inputs. If
         // resource_dtypes_and_shapes is not empty, take the first element.
-        TensorHandle::ResourceHandleInfo resource_handle_info;
-        TF_RETURN_IF_ERROR(input->GetResourceHandleInfo(&resource_handle_info));
-        std::vector<DtypeAndPartialTensorShape>* resource_dtypes_and_shapes =
-            &resource_handle_info.dtypes_and_shapes;
-        if (!resource_dtypes_and_shapes->empty()) {
+        std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;
+        TF_RETURN_IF_ERROR(input->GetResourceHandleDtypesAndShapes(
+            &resource_dtypes_and_shapes));
+        if (!resource_dtypes_and_shapes.empty()) {
           const DtypeAndPartialTensorShape& dtype_and_shape =
-              resource_dtypes_and_shapes->at(0);
+              resource_dtypes_and_shapes.at(0);
           input_resource_variable_dtypes_and_shapes[i] = dtype_and_shape;
 
           // Add _Arg index, dtype and shape to "cache_key".
@@ -466,10 +476,11 @@ Status GetOrCreateKernelAndDevice(
           SupportedDeviceTypesForNode(*device_type_list, ndef, &supported_devs,
                                       &ctx.HostCPU()->parsed_name()));
       if (supported_devs.empty()) {
-        return errors::NotFound("Could not find valid device for node.\nNode:",
-                                FormatNodeDefForError(ndef),
-                                "\nAll kernels registered for op ", ndef.op(),
-                                " :\n", KernelsRegisteredForOp(ndef.op()));
+        return errors::NotFound(
+            "Could not find device for node: ",
+            errors::FormatNodeNameForError(ndef.name()), " = ", ndef.op(), "[",
+            SummarizeAttrs(ndef), "]", "\nAll kernels registered for op ",
+            ndef.op(), ":\n", KernelsRegisteredForOp(ndef.op()));
       }
       TF_RETURN_IF_ERROR(ctx.SelectDevice(op->GetDeviceParsedName(),
                                           supported_devs, DT_INVALID, &device));
@@ -479,13 +490,6 @@ Status GetOrCreateKernelAndDevice(
       DVLOG(4) << "Available kernels for " << op->Name() << "are "
                << KernelsRegisteredForOp(op->Name());
       op->SetDevice(device);
-    }
-    if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
-      string msg = strings::StrCat("Executing op ", ndef.op(), " in device ",
-                                   DeviceNameOrUnspecified(device));
-      if (!logging::LogToListeners(msg)) {
-        LOG(INFO) << msg;
-      }
     }
 
     FunctionLibraryRuntime* flr =
@@ -520,6 +524,7 @@ Status GetOrCreateKernelAndDevice(
 #endif  // IS_MOBILE_PLATFORM
       kernel.reset(new KernelAndDeviceFunc(
           flr, ctx.pflr(), std::move(input_dev_ptrs),
+          std::move(composite_devices),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
           [&ctx](const int64 step_id) { return ctx.CreateRendezvous(step_id); },
@@ -532,7 +537,8 @@ Status GetOrCreateKernelAndDevice(
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU()));
     }
 
-    TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector));
+    TF_RETURN_IF_ERROR(
+        kernel->Init({ctx.LogDevicePlacement()}, ndef, graph_collector));
 
     if (op->is_function()) {
       ctx.AddKernelToCache(cache_key, kernel.get());
@@ -597,6 +603,14 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
   int num_outputs = kernel->num_outputs();
   TF_RETURN_IF_ERROR(ValidateInputTypeAndPlacement(&ctx, op, kernel));
+
+  if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
+                                 kernel->device()->name());
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
+  }
 
   GraphCollector* graph_collector = nullptr;
   if (ctx.ShouldStoreGraphs()) {
@@ -680,13 +694,8 @@ Status StoreResourceDtypesAndShapes(const eager::Operation& remote_op,
     TF_RETURN_IF_ERROR(attr_slice.Find("dtype", &dtype));
     const AttrValue* shape;
     TF_RETURN_IF_ERROR(attr_slice.Find("shape", &shape));
-    TensorHandle::ResourceHandleInfo resource_handle_info = {
-        {DtypeAndPartialTensorShape{dtype->type(), shape->shape()}}, {}};
-    // "allowed_devices" is set only when the output represents a
-    // per-replica/partitioned resource variable.
-    TryGetNodeAttr(attr_slice, "allowed_devices",
-                   &resource_handle_info.allowed_devices);
-    retvals[0]->SetResourceHandleInfo(std::move(resource_handle_info));
+    retvals[0]->SetResourceHandleDtypeAndShape(
+        {DtypeAndPartialTensorShape{dtype->type(), shape->shape()}});
   }
   return Status::OK();
 }
@@ -769,9 +778,15 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         }
       }
       auto* input_handle = remote_op->add_op_inputs()->mutable_remote_handle();
+      // For a multi-device function, a remote RunComponentFunction request is
+      // not sent through StreamingEnqueueAsync. It could arrive at a remote
+      // worker before a remote execution request which produces an input of the
+      // component function. So we wait until the remote input is ready before
+      // serializing it.
+      const bool wait_until_ready = op->is_function();
       TF_RETURN_IF_ERROR(ctx.RemoteMgr()->SerializeRemoteTensorHandle(
-          input, input_handle, input_device, *input_device_name,
-          serialize_resource_dtype_and_shape));
+          input, wait_until_ready, input_handle, input_device,
+          *input_device_name, serialize_resource_dtype_and_shape));
       if (!input_handle->resource_dtypes_and_shapes().empty()) {
         TF_RETURN_IF_ERROR(
             input->AddResourceShapeMirror(op_device, input_handle->op_id(),
@@ -832,6 +847,16 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       ctx.GetContextViewId(), eager_client.get(),
       op->MutableAttrs()->BuildNodeDef(), op->EagerContext().FuncLibDef(),
       op->Inputs(), {retvals, num_outputs}));
+
+  if (op->EagerContext().LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat(
+        "Executing op ", op->Name(), " on task ",
+        DeviceNameUtils::ParsedNameToString(op->GetDeviceParsedName()));
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
+  }
+
   Status s = executor.AddOrExecute(std::move(node));
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
@@ -844,168 +869,6 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   return s;
 }
 #endif  // IS_MOBILE_PLATFORM
-
-// These ops are not pinnable since they generate data. It can be slower to
-// generate and then copy the data instead of just generating the data on the
-// device directly.
-bool IsPinnableOp(const string& op_type) {
-  static const gtl::FlatSet<string>* unpinnable_ops = new gtl::FlatSet<string>({
-      "RandomUniform",
-      "RandomUniformInt",
-      "RandomStandardNormal",
-      "StatelessRandomUniform",
-      "StatelessRandomUniformInt",
-      "StatelessRandomUniformFullInt",
-      "StatelessRandomNormal",
-  });
-
-  // XRT ops refer to per-device handles that are not safe to move between
-  // devices.
-  return unpinnable_ops->find(op_type) == unpinnable_ops->end() &&
-         !absl::StartsWith(op_type, "XRT");
-}
-
-// The Op device may be updated if:
-// - A resource touching input is specified: all resource-touching ops run in
-// the device the resource is, regardless of anything else that has been
-// specified. This is identical to the graph mode behavior.
-//
-// - All op inputs are on the CPU, small (<64 elements) and integers
-// (int32/int64). This can be disabled by setting the environment variable
-// "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
-//
-// TODO(b/154234908): Unify placement logic.
-Status MaybeUpdateOpDevice(EagerOperation* op) {
-  // If operation was already placed on a custom device, use it.
-  if (VariantDeviceIsCustom(op->Device())) {
-    return Status::OK();
-  }
-
-  // If all the inputs are on the same custom device, use that custom
-  // device. Otherwise, it is an error to have a custom device as an input.
-  if (!op->Inputs().empty()) {
-    // We keep track of what we've seen with devices instead of booleans to be
-    // able to provide a meaningful error message below.
-    VariantDevice first = op->Inputs()[0]->device();
-    VariantDevice different = first;  // A different input device, if any.
-    VariantDevice custom = first;     // The first custom device seen, or an
-                                      // arbitrary non-custom device otherwise.
-    for (size_t i = 1; first == different && i < op->Inputs().size(); ++i) {
-      VariantDevice device = op->Inputs()[i]->device();
-      if (device != first) {
-        different = device;
-      }
-      if (!VariantDeviceIsCustom(custom) && VariantDeviceIsCustom(device)) {
-        custom = device;
-      }
-      if (different != first && VariantDeviceIsCustom(custom)) {
-        return errors::InvalidArgument(absl::StrCat(
-            "If an operation has one of its inputs in a custom device, then "
-            "all inputs should be on that same device. Operation ",
-            op->Name(), " has one input in custom device ",
-            VariantDeviceName(custom),
-            " and at least one input in a different device ",
-            VariantDeviceName(custom == first ? different : first)));
-      }
-    }
-    if (different == first && VariantDeviceIsCustom(custom)) {
-      op->SetDevice(first);
-      return Status::OK();
-    }
-  }
-
-  if (op->colocation_exempt()) {
-    return Status::OK();
-  }
-  EagerContext& ctx = op->EagerContext();
-  bool all_inputs_eligible_for_cpu_pinning =
-      ctx.PinSmallOpsToCPU() && !op->is_function() && IsPinnableOp(op->Name());
-  Device* op_device = op->Device() == kVariantDeviceNull
-                          ? ctx.HostCPU()
-                          : absl::get<Device*>(op->Device());
-  for (int i = 0; i < op->Inputs().size(); ++i) {
-    TensorHandle* tensor_handle = op->Inputs()[i];
-    if (tensor_handle->dtype == DT_RESOURCE) {
-      Device* resource_device = tensor_handle->resource_device();
-      DVLOG(2) << "for op " << op->Name() << " input " << i << " "
-               << DataTypeString(tensor_handle->dtype)
-               << " input device = " << resource_device->name()
-               << ", op device = " << op_device->name();
-      // We check for `op->Device() == nullptr` because it can be later
-      // interpreted as unspecified device and a different device can
-      // be selected based on device priority. If any input to an op
-      // is a resource we must pin it to prevent different device selection.
-      // TODO(iga): null device can mean "unspecified" or "CPU". Clean this up.
-      if (resource_device != op_device || op->Device() == kVariantDeviceNull) {
-        std::vector<string> allowed_devices;
-        TF_RETURN_IF_ERROR(
-            tensor_handle->GetResourceAllowedDevices(&allowed_devices));
-        if (!allowed_devices.empty()) {
-          // TODO(b/145922293): Support allowed_devices specified in wildcard
-          // patterns.
-          if (std::find(allowed_devices.begin(), allowed_devices.end(),
-                        op->DeviceName()) != allowed_devices.end()) {
-            TF_RETURN_IF_ERROR(ctx.FindDeviceFromName(op->DeviceName().c_str(),
-                                                      &resource_device));
-          }
-        }
-        DVLOG(1) << (resource_device != op_device ? "Changing " : "Setting ")
-                 << "device of operation " << op->Name() << " to "
-                 << resource_device->name() << " because input #" << i
-                 << " is a resource in this device.";
-        op->SetDevice(resource_device);
-      }
-      all_inputs_eligible_for_cpu_pinning = false;
-      // No point in looking at other inputs. If there are other resources,
-      // they must have the same device and we already declared the op to be
-      // ineligible for CPU pinning.
-      break;
-    } else if (all_inputs_eligible_for_cpu_pinning) {
-      auto input_device_variant = tensor_handle->DeviceOrHostCPU(ctx);
-      if (VariantDeviceIsCustom(input_device_variant)) {
-        all_inputs_eligible_for_cpu_pinning = false;
-        continue;
-      }
-      Device* input_device = absl::get<Device*>(input_device_variant);
-      DVLOG(2) << "for op " << op->Name() << " input " << i << " "
-               << DataTypeString(tensor_handle->dtype)
-               << " input device = " << input_device->name()
-               << ", op device = " << op_device->name();
-
-      // Input is on CPU.
-      if (input_device != ctx.HostCPU()) {
-        all_inputs_eligible_for_cpu_pinning = false;
-        continue;
-      }
-
-      if (tensor_handle->dtype != DataType::DT_INT32 &&
-          tensor_handle->dtype != DataType::DT_INT64) {
-        all_inputs_eligible_for_cpu_pinning = false;
-        continue;
-      }
-
-      int64 num_elements;
-      TF_RETURN_IF_ERROR(tensor_handle->NumElements(&num_elements));
-      if (num_elements > 64) {
-        all_inputs_eligible_for_cpu_pinning = false;
-      }
-    }
-  }
-
-  // Ops without inputs are usually ops that generate a tensor in some way and
-  // usually require being present on whatever device they are scheduled on
-  // - for e.g. VarHandleOp or _Recv).
-  // TODO(nareshmodi): Is it possible there is no int32/int64 CPU kernel for
-  // an op, but there is a GPU kernel?
-  if (!op->Inputs().empty() && all_inputs_eligible_for_cpu_pinning) {
-    DVLOG(1) << "Forcing op " << op->Name()
-             << " to be on the CPU since all input tensors have an "
-                "int32/int64 dtype, and are small (less than 64 elements).";
-    op->SetDevice(ctx.HostCPU());
-  }
-
-  return Status::OK();
-}
 
 Status GetKernelOutputs(std::vector<Tensor>* outputs, int num_outputs,
                         TensorHandle** retvals, EagerContext* ctx,
@@ -1069,8 +932,6 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
       [&] { return absl::StrCat("EagerExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
 
-  TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
-
   if (VariantDeviceIsCustom(op->Device())) {
     return absl::get<CustomDevice*>(op->Device())
         ->Execute(op, retvals, num_retvals);
@@ -1091,15 +952,6 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
       op = out_op.get();
     }
     return EagerLocalExecute(op, retvals, num_retvals);
-  }
-
-  if (op->EagerContext().LogDevicePlacement() || VLOG_IS_ON(1)) {
-    string msg = strings::StrCat(
-        "Executing op ", op->Name(), " on task ",
-        DeviceNameUtils::ParsedNameToString(op->GetDeviceParsedName()));
-    if (!logging::LogToListeners(msg)) {
-      LOG(INFO) << msg;
-    }
   }
 
 #if defined(IS_MOBILE_PLATFORM)
@@ -1402,6 +1254,14 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
     return;
   }
 
+  if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
+    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
+                                 kernel->device()->name());
+    if (!logging::LogToListeners(msg)) {
+      LOG(INFO) << msg;
+    }
+  }
+
   GraphCollector* graph_collector = nullptr;
   if (ctx.ShouldStoreGraphs()) {
     graph_collector = ctx.GetGraphCollector();
@@ -1414,7 +1274,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
   EagerKernelExecuteAsync(
       &ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
       graph_collector, op->GetCancellationManager(), retvals, num_outputs,
-      [op, num_outputs, &retvals, done = std::move(done)](const Status& s) {
+      [op, num_outputs, retvals, done = std::move(done)](const Status& s) {
         op->Clear();
         // Since the operation failed, we need to Unref any outputs if they were
         // allocated.

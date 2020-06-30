@@ -19,8 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import atexit
 import collections
+import contextlib
 import enum  # pylint: disable=g-bad-import-order
+import gzip
 import inspect
 import os
 from typing import List, Sequence, Tuple, Union
@@ -50,6 +53,10 @@ xla_platform_names = {
     'cpu': 'Host',
     'gpu': 'CUDA',
 }
+
+
+def _interpreter_backend_factory():
+  return _xla.get_interpreter_client()
 
 
 def _cpu_backend_factory():
@@ -85,6 +92,7 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
+    ('interpreter', _interpreter_backend_factory),
     ('cpu', _cpu_backend_factory),
     ('gpu', _gpu_backend_factory),
 ])
@@ -261,44 +269,6 @@ class ProgramShape(object):
 """
 
 
-class Buffer(object):
-  """Represents a handle to data owned by XLA.
-
-  The referent is ready for use in executing a local, compiled
-  Computation. On XLA platforms involving a device (e.g. GPU), this
-  means the referent is in device memory.
-  """
-
-  @staticmethod
-  def from_pyval(pyval, device=None, backend=None, force_copy=False):
-    """Copies the `pyval` to a freshly allocated on-device buffer."""
-    backend = backend or get_local_backend()
-    return backend.buffer_from_pyval(pyval, device, force_copy=force_copy)
-
-  # Buffer is not an instantiable type and exists only for its static methods.
-  # The underlying buffer objects are C++ object with the following
-  # API:
-  # def shape(self) -> Shape:
-  # def device(self) -> int:
-  # def delete(self):
-  # def is_deleted(self) -> bool:
-  # def block_host_until_ready(self):
-  #    """Blocks the calling thread until the buffer is ready on device."""
-  # def copy_to_host_async(self):
-  #    """Requests a copy of the buffer to the host.
-  #
-  #       Does not block waiting for the copy. Values fetched are available via
-  #       `to_py()`; the purpose of `copy_to_host_async` is to prefetch values
-  #       for subsequent `to_py()` calls, especially when requesting many values
-  #       at once.
-  #    """
-  # def to_py(self):
-  #    """Returns the value of the buffer as a Python tuple tree of ndarrays."""
-  #
-  # TODO(phawkins): remove Buffer and its static methods completely, have
-  # clients call methods on Backend to create buffers.
-
-
 def shape_from_pyval(pyval):
   """Returns a Shape that describes a tuple-tree of Numpy arrays."""
 
@@ -309,43 +279,6 @@ def shape_from_pyval(pyval):
       return Shape.array_shape(pyval.dtype, np.shape(pyval))
 
   return convert(pyval)
-
-
-def transfer_to_infeed(value, device=None):
-  """Transfers the given value into the XLA infeed queue.
-
-  XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
-  a totally ordered stream of values. This is dequeued from XLA computations via
-  the Infeed() operation.
-
-  Args:
-    value: the value that the caller would like to enqueue into the XLA infeed
-      queue
-    device: the device to infeed the value to. Each device has a distinct infeed
-      queue.
-  """
-  # TODO(phawkins): support non-default backends.
-  backend = get_local_backend()
-  device = device or backend.local_devices()[0]
-  device.transfer_to_infeed(value)
-
-
-def transfer_from_outfeed(shape, device=None):
-  """Transfers a literal of the given shape from `device`'s outfeed.
-
-  Args:
-    shape: The shape of the value to transfer from outfeed.
-    device: The device from which to transfer the outfeed value. Each device has
-      a distinct outfeed queue..
-
-  Returns:
-    The literal value that is produced from the outfeed queue.
-  """
-  # TODO(phawkins): support non-default backends.
-  backend = get_local_backend()
-  device = device or backend.local_devices()[0]
-  return device.transfer_from_outfeed(
-      shape.with_major_to_minor_layout_if_absent())
 
 
 DeviceAssignment = _xla.DeviceAssignment
@@ -371,17 +304,18 @@ def computation_count():
 Device = _xla.Device
 CompileOptions = _xla.CompileOptions
 
+HostBufferSemantics = _xla.HostBufferSemantics
 
 # An Executable is a C++ class that duck types with the following API:
 # class Executable(object):
 #   def local_devices(self) -> [Device]:
-#   def Execute(self, arguments : [Buffer]) -> Buffer:
+#   def execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
 #
-#   def SizeOfGeneratedCodeInBytes(self) -> int:
+#   def size_of_generated_code_in_bytes(self) -> int:
 #     """Return generated binary size, or -1 if not known."""
 #
-#   def ExecuteOnLocalDevices(self, arguments: [[Buffer]]) -> [Buffer]:
+#   def execute_on_local_devices(self, arguments: [[Buffer]]) -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
 #
 #     Args:
@@ -404,7 +338,7 @@ def execute_with_python_values(executable, arguments, backend):
     return backend.buffer_from_pyval(arg, device=executable.local_devices()[0])
 
   arguments = [put(arg) for arg in arguments]
-  outputs = executable.Execute(arguments)
+  outputs = executable.execute(arguments)
   return [x.to_py() for x in outputs]
 
 
@@ -434,7 +368,7 @@ def execute_with_python_values_replicated(executable, arguments, backend):
     flat_arg_buffers = flat_arg_buffers[len(replica_args):]
   return [[x.to_py()
            for x in xs]
-          for xs in executable.ExecuteOnLocalDevices(arg_buffers)]
+          for xs in executable.execute_on_local_devices(arg_buffers)]
 
 
 class PaddingType(enum.Enum):
@@ -476,6 +410,9 @@ def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 XlaBuilder = _xla.XlaBuilder
 XlaComputation = _xla.XlaComputation
 FftType = _xla.FftType
+Client = _xla.Client
+Buffer = _xla.Buffer
+Executable = _xla.Executable
 
 
 def register_custom_call_target(name, fn, platform='cpu'):
@@ -731,3 +668,27 @@ def make_replica_groups(replica_groups):
         _make_replica_group_proto(group) for group in replica_groups
     ]
   return replica_groups_protos
+
+
+Traceback = _xla.Traceback
+
+
+@contextlib.contextmanager
+def tracebacks(enabled=True):
+  """Context manager that enables or disables traceback collection."""
+  saved = Traceback.enabled
+  Traceback.enabled = enabled
+  try:
+    yield
+  finally:
+    Traceback.enabled = saved
+
+
+def heap_profile(client: Client) -> str:
+  """Returns a gzipped pprof protocol buffer containing a heap profile."""
+  return gzip.compress(client.heap_profile())
+
+
+# Perform one last garbage collection of deferred Python references. This is
+# mostly to keep ASAN happy.
+atexit.register(_xla.collect_garbage)

@@ -1,3 +1,24 @@
+/*******************************************************************************
+ * Copyright (c) 2020 Cadence Design Systems, Inc.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining
+ * a copy of this software and associated documentation files (the
+ * "Software"), to use this Software with Cadence processor cores only and
+ * not with any other processors and platforms, subject to
+ * the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+ * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+ * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ ******************************************************************************/
+
 /* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xtensa_tf_micro_common.h"
 
 namespace tflite {
 namespace ops {
@@ -29,29 +51,32 @@ namespace micro {
 namespace activations {
 namespace {
 
-// TODO(b/141176180): This code is currently a strict subset of the portable
-// implementation (softmax.cc one directory up). When TFLM implements
-// registrations for selective types (e.g. compile without float support), this
-// can be removed. Otherwise, any HiFi specific optimizations should land here.
+struct OpData {
+  int32_t input_multiplier;
+  int32_t input_left_shift;
+  int32_t diff_min;
+  int scratch_tensor_index;
+};
 
-// This size will work for both the hotword (1) and ambient music (0):
-static SoftmaxParams kStaticOpData;
+}  // namespace
 
 TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
                                     const TfLiteTensor* input,
                                     TfLiteTensor* output,
                                     const TfLiteSoftmaxParams* params,
-                                    SoftmaxParams* op_data) {
+                                    OpData* op_data) {
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
       if (output->type == kTfLiteInt16) {
-        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point,
+                          std::numeric_limits<int16_t>::min());
         // NOTE: Current int16 softmax output does not require symmetric scaling
         // - so no need to verify scale here.
       } else {
-        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point,
+                          std::numeric_limits<int8_t>::min());
         TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
       }
     }
@@ -71,28 +96,15 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
-                              TfLiteTensor* output,
-                              const SoftmaxParams& op_params) {
-  switch (output->type) {
-    case kTfLiteInt16:
-      tflite::reference_ops::Softmax(
-          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int16_t>(output));
-      return kTfLiteOk;
-    case kTfLiteInt8:
-      tflite::reference_ops::Softmax(
-          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int8_t>(output));
-      return kTfLiteOk;
-    default:
-      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                         TfLiteTypeGetName(output->type), output->type);
-      return kTfLiteError;
+void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  void* data = nullptr;
+  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
+      kTfLiteError) {
+    return nullptr;
   }
+  return data;
 }
-
-}  // namespace
 
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = static_cast<TfLiteSoftmaxParams*>(node->builtin_data);
@@ -103,36 +115,70 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
-  // TODO(b/132070898): Use statically slotted SoftmaxParams structures until a
-  // scratch memory API is ready.
-  SoftmaxParams* op_params = &kStaticOpData;
-  node->user_data = op_params;
+  TFLITE_DCHECK(node->user_data != nullptr);
+  OpData* op_data = static_cast<OpData*>(node->user_data);
+
+  const RuntimeShape& input_shape = GetTensorShape(input);
+  const RuntimeShape& output_shape = GetTensorShape(output);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+  int scratch_size =
+      xa_nn_get_softmax_scratch_size(PREC_SYM8S, PREC_SYM8S, depth);
+
+  const TfLiteStatus scratch_status = context->RequestScratchBufferInArena(
+      context, scratch_size, &(op_data->scratch_tensor_index));
+  TF_LITE_ENSURE_OK(context, scratch_status);
+  // Allocate an array to precompute exponents over all int8 inputs, applying
+  // the scale and beta before calculating exp. It is mandatory to apply beta
+  // and scale here, since each softmax op may have different beta and scale
+  // values. Beta and scale will remain constant for a given softmax op.
 
   TF_LITE_ENSURE_STATUS(
-      CalculateSoftmaxOpData(context, input, output, params, op_params));
+      CalculateSoftmaxOpData(context, input, output, params, op_data));
 
   return kTfLiteOk;
 }
 
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
-  auto* op_params = static_cast<SoftmaxParams*>(node->user_data);
+  auto* op_data = static_cast<OpData*>(node->user_data);
 
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
 
-  switch (input->type) {
-    case kTfLiteInt8:
-      return SoftmaxQuantized(context, input, output, *op_params);
-    default:
-      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                         TfLiteTypeGetName(input->type), input->type);
-      return kTfLiteError;
+  if (input->type == kTfLiteInt8 && output->type == kTfLiteInt16) {
+    const RuntimeShape& input_shape = GetTensorShape(input);
+    const int8_t* input_data = GetTensorData<int8_t>(input);
+    const RuntimeShape& output_shape = GetTensorShape(output);
+    int16* output_data = GetTensorData<int16>(output);
+    const int trailing_dim = input_shape.DimensionsCount() - 1;
+    const int outer_size =
+        MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+    const int depth =
+        MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+
+    void* p_scratch = static_cast<void*>(
+        context->GetScratchBuffer(context, op_data->scratch_tensor_index));
+    TFLITE_DCHECK(p_scratch != nullptr);
+
+    for (int i = 0; i < outer_size; ++i) {
+      int err = xa_nn_vec_softmax_asym8s_16(
+          &output_data[i * depth], &input_data[i * depth], op_data->diff_min,
+          op_data->input_left_shift, op_data->input_multiplier, depth,
+          p_scratch);
+      CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_vec_softmax_asym8s_16 failed");
+    }
+    return kTfLiteOk;
+  } else {
+    TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                       TfLiteTypeGetName(input->type), input->type);
+    return kTfLiteError;
   }
 }
 }  // namespace activations
 
 TfLiteRegistration* Register_SOFTMAX() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
+  static TfLiteRegistration r = {/*init=*/activations::SoftmaxInit,
                                  /*free=*/nullptr,
                                  /*prepare=*/activations::SoftmaxPrepare,
                                  /*invoke=*/activations::SoftmaxEval,

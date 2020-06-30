@@ -116,6 +116,7 @@ cc_library(
         ":status",
         ":tensor",
         "@com_google_absl//absl/strings",
+        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
@@ -199,6 +200,29 @@ cc_library(
         ":shape",
         ":status",
         "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_library(
+    name = "quantization_util",
+    srcs = ["quantization_util.cc"],
+    hdrs = ["quantization_util.h"],
+    deps = [
+        ":status",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:types",
+    ],
+)
+
+cc_test(
+    name = "quantization_util_test",
+    srcs = ["quantization_util_test.cc"],
+    deps = [
+        ":quantization_util",
+        "//tensorflow/lite:util",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

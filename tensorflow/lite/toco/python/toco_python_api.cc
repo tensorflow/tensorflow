@@ -41,14 +41,15 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_tooling.h"
 #include "tensorflow/lite/toco/toco_types.h"
 #include "tensorflow/lite/toco/tooling_util.h"
+#include "tensorflow/lite/toco/types.pb.h"
 
 namespace toco {
 
 void PopulateConversionLogHelper(const toco::ModelFlags& model_flags,
                                  toco::TocoFlags* toco_flags,
-                                 const string& input_contents_txt,
-                                 const string& output_file_contents_txt,
-                                 const string& error_message,
+                                 const std::string& input_contents_txt,
+                                 const std::string& output_file_contents_txt,
+                                 const std::string& error_message,
                                  GraphVizDumpOptions* dump_options) {
   // Make sure the graphviz file will be dumped under the same folder.
   dump_options->dump_graphviz = toco_flags->conversion_summary_dir();
@@ -166,7 +167,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
     dump_options.dump_graphviz_video = toco_flags.dump_graphviz_include_video();
   }
 
-  string output_file_contents_txt;
+  std::string output_file_contents_txt;
   tensorflow::Status status;
   int64 arithmetic_ops_count;
 
@@ -220,7 +221,7 @@ PyObject* TocoGetPotentiallySupportedOps() {
   std::vector<std::string> supported_ops = toco::GetPotentiallySupportedOps();
   PyObject* list = PyList_New(supported_ops.size());
   for (size_t i = 0; i < supported_ops.size(); ++i) {
-    const string& op = supported_ops[i];
+    const std::string& op = supported_ops[i];
     PyObject* op_dict = PyDict_New();
     PyDict_SetItemString(op_dict, "op", PyUnicode_FromString(op.c_str()));
     PyList_SetItem(list, i, op_dict);
@@ -228,7 +229,8 @@ PyObject* TocoGetPotentiallySupportedOps() {
   return list;
 }
 
-PyObject* MlirQuantizeModel(PyObject* data, bool fully_quantize) {
+PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
+                            bool fully_quantize, int inference_type) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -248,10 +250,26 @@ PyObject* MlirQuantizeModel(PyObject* data, bool fully_quantize) {
   auto tflite_model = absl::make_unique<tflite::ModelT>();
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
+  tflite::TensorType inference_tensor_type;
+  switch (inference_type) {
+    case toco::IODataType::QUANTIZED_INT16:
+      inference_tensor_type = tflite::TensorType_INT16;
+      break;
+    case toco::IODataType::QUANTIZED_UINT8:
+      inference_tensor_type = tflite::TensorType_UINT8;
+      break;
+    case toco::IODataType::INT8:
+      inference_tensor_type = tflite::TensorType_INT8;
+      break;
+    default:
+      return nullptr;
+  }
+  tflite::TensorType inference_io_type =
+      fully_quantize ? inference_tensor_type : tflite::TensorType_FLOAT32;
   flatbuffers::FlatBufferBuilder builder;
   auto status = mlir::lite::QuantizeModel(
-      *tflite_model, tflite::TensorType::TensorType_FLOAT32,
-      tflite::TensorType::TensorType_FLOAT32, {}, fully_quantize, &builder,
+      *tflite_model, inference_io_type, inference_io_type,
+      inference_tensor_type, {}, disable_per_channel, fully_quantize, &builder,
       error_reporter.get());
 
   if (status != kTfLiteOk) {

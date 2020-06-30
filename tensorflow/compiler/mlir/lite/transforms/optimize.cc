@@ -36,12 +36,14 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -204,6 +206,16 @@ DenseElementsAttr GetShape(Value output_val) {
           {static_cast<int>(shape.size())},
           mlir::IntegerType::get(32, output_val.getContext())),
       llvm::makeArrayRef(shape));
+}
+
+static Type GetShapeStrippedType(TypeAttr type_attr) {
+  auto type = type_attr.getValue();
+  auto shaped_type = type.dyn_cast<ShapedType>();
+  if (shaped_type) {
+    return shaped_type.getElementType();
+  } else {
+    return type;
+  }
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
@@ -641,8 +653,8 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
   LogicalResult matchAndRewrite(TFL::TransposeOp transpose_op,
                                 PatternRewriter &rewriter) const override {
-    auto input_type = transpose_op.x().getType().cast<ShapedType>();
-    auto output_type = transpose_op.y().getType().cast<ShapedType>();
+    auto input_type = transpose_op.input().getType().cast<ShapedType>();
+    auto output_type = transpose_op.output().getType().cast<ShapedType>();
     // It's possible to know if the transformation is safe only if the input
     // & output shapes are fully known and permutation is a constant.
     if (!input_type.hasStaticShape() || !output_type.hasStaticShape())
@@ -691,7 +703,8 @@ struct ConvertTrivialTransposeOpToReshapeOp
     auto new_shape = rewriter.create<TF::ConstOp>(loc, new_shape_attr);
 
     rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
-        transpose_op, transpose_op.y().getType(), transpose_op.x(), new_shape);
+        transpose_op, transpose_op.output().getType(), transpose_op.input(),
+        new_shape);
 
     return success();
   }

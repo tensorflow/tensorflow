@@ -26,12 +26,15 @@ namespace mlir {
 namespace lite {
 
 // Quantize the `input_model` and write the result to a flatbuffer `builder`.
-// The `input_type` and `output_type` can be float32/qint8/int8.
+// The `input_type`, `output_type` and `inference_type` can be
+// float32/qint8/int8/int16.
 // Return partially quantized model if `fully_quantize` is false.
 TfLiteStatus QuantizeModel(
     const tflite::ModelT& input_model, const tflite::TensorType& input_type,
     const tflite::TensorType& output_type,
-    const std::unordered_set<std::string>& operator_names, bool fully_quantize,
+    const tflite::TensorType& inference_type,
+    const std::unordered_set<std::string>& operator_names,
+    bool disable_per_channel, bool fully_quantize,
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter);
 }  // namespace lite

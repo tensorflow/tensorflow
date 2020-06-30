@@ -30,7 +30,7 @@ cc_library(
     hdrs = ["op_or_arg_name_mapper.h"],
     deps = [
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -42,7 +42,7 @@ cc_library(
         ":init_mlir",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
@@ -77,10 +77,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tfjs:tensorflow_js_passes",
-        "//tensorflow/compiler/mlir/tfrt:lower_tf_to_tfd_alwayslink",
-        "//tensorflow/compiler/mlir/tfrt:runtime_fallback_opdefs_alwayslink",
-        "//tensorflow/compiler/mlir/tfrt:tf_legalize_to_tfrt",
-        "//tensorflow/compiler/mlir/tfrt:tf_to_corert",
     ],
 )
 
@@ -90,7 +86,7 @@ cc_library(
     hdrs = ["init_mlir.h"],
     deps = [
         "//tensorflow/core:lib",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -106,8 +102,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:core_cpu",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
     ],
     alwayslink = 1,
@@ -152,14 +149,13 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow:translate_registration",
         "//tensorflow/compiler/mlir/tensorflow:translate_tf_dialect_op",
-        "//tensorflow/compiler/mlir/tfrt:compatibility_analysis",
         "//tensorflow/compiler/mlir/xla:xla_mlir_translate",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

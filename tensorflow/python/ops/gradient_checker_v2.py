@@ -28,7 +28,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
@@ -217,14 +216,8 @@ def _compute_numeric_jacobian(f, y_size, y_dtype, xs, param, delta):
     and "x_size" columns where "x_size" is the number of elements in xs[param]
     and "y_size" is the number of elements in the result.
   """
-  # bfloat16 doesn't have enough bits to represent high precision numbers such
-  # as delta. Convert to float32 here. Since numeric_jacobian is expected to
-  # be the groundtruth to compare against, it shouldn't lose any information.
   x_shape = xs[param].shape
   x_dtype = xs[param].dtype
-  if y_dtype == dtypes.bfloat16:
-    f = lambda *xs: math_ops.cast(f(*xs), dtypes.float32)
-    y_dtype = dtypes.float32
 
   # To compute the jacobian, we treat x and y as one-dimensional vectors
   x_size = _product(x_shape) * (2 if x_dtype.is_complex else 1)
@@ -292,10 +285,10 @@ def _compute_gradient_list(f, xs, delta):
   xs_shapes = [x.shape for x in xs]
   f_temp = _prepare(f, xs_dtypes, xs_shapes)
   y = f_temp(*xs)
-  return zip(*[
+  return tuple(zip(*[
       _compute_gradient(f, y.shape, dtypes.as_dtype(y.dtype), xs, i, delta)
       for i in range(len(xs))
-  ])
+  ]))
 
 
 @tf_export("test.compute_gradient", v1=[])

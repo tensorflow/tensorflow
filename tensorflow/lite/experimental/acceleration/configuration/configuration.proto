@@ -1,0 +1,217 @@
+// Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This schema defines how to configure TFLite for delegation. These
+// definitions can be used in multiple ways: as output of a compatibility list,
+// in benchmarking tools and to decouple delegate instantiation from code.
+//
+// The schema is work-in-progress, covering the most broadly used delegates and
+// options.
+
+syntax = "proto2";
+
+package tflite.proto;
+
+// ExecutionPreference is used to match accelerators against the preferences of
+// the current application or usecase. Some of the values here can appear both
+// in the compatibility list and as input, some only as input.
+//
+// These are separate from NNAPIExecutionPreference - the compatibility list
+// design doesn't assume a one-to-one mapping between which usecases
+// compatibility list entries have been developed for and what settings are used
+// for NNAPI.
+enum ExecutionPreference {
+  // Match any selected preference. Whitelist (semantically - value is same as
+  // on input).
+  ANY = 0;
+  // Match low latency preference. Both compatibility list and input.
+  LOW_LATENCY = 1;
+  // Math low power preference. Both compatibility list and input.
+  LOW_POWER = 2;
+  // Never accelerate. Can be used for input to compatibility list or for
+  // standalone Acceleration configuration.
+  FORCE_CPU = 3;
+}
+
+// TFLite delegate to use.
+enum Delegate {
+  NONE = 0;
+  NNAPI = 1;
+  GPU = 2;
+  HEXAGON = 3;
+  XNNPACK = 4;
+  // TODO(b/157893534): Support exposing edgetpu tflite delegate creation
+  // options.
+  EDGETPU = 5;
+}
+
+enum NNAPIExecutionPreference {
+  // Undefined.
+  UNDEFINED = 0;
+  // Prefer executing in a way that minimizes battery drain.
+  NNAPI_LOW_POWER = 1;
+  // Prefer returning a single answer as fast as possible, even if this causes
+  // more power consumption.
+  NNAPI_FAST_SINGLE_ANSWER = 2;
+  // Prefer maximizing the throughput of successive frames, for example when
+  // processing successive frames coming from the camera.
+  NNAPI_SUSTAINED_SPEED = 3;
+}
+
+enum NNAPIExecutionPriority {
+  NNAPI_PRIORITY_UNDEFINED = 0;
+  NNAPI_PRIORITY_LOW = 1;
+  NNAPI_PRIORITY_MEDIUM = 2;
+  NNAPI_PRIORITY_HIGH = 3;
+}
+
+// One possible acceleration configuration.
+message ComputeSettings {
+  // Which preference to use this accelerator for.
+  optional ExecutionPreference preference = 1;
+  // How to configure TFLite
+  optional TFLiteSettings tflite_settings = 2;
+  // Identifiers to use for instrumentation and telemetry.
+  optional string model_namespace_for_statistics = 3;
+  optional string model_identifier_for_statistics = 4;
+}
+
+// NNAPI delegate settings.
+message NNAPISettings {
+  // Which instance (NNAPI accelerator) to use. One driver may provide several
+  // accelerators (though a driver may also hide several back-ends behind one
+  // name, at the choice of the driver vendor).
+  // Note that driver introspection is only available in Android Q and later.
+  optional string accelerator_name = 1;
+
+  // NNAPI model compilation caching settings to be passed to
+  // tflite::StatefulNnApiDelegate
+  optional string cache_directory = 2;
+  optional string model_token = 3;
+
+  // NNAPI execution preference to pass. See
+  // https://developer.android.com/ndk/reference/group/neural-networks.html
+  optional NNAPIExecutionPreference execution_preference = 4;
+
+  // Number of instances to cache for the same model (for input size
+  // changes). This is mandatory for getting reasonable performance in that
+  // case.
+  optional int32 no_of_nnapi_instances_to_cache = 5;
+
+  // Whether to automatically fall back to TFLite CPU path.
+  optional FallbackSettings fallback_settings = 6;
+
+  // Whether to allow use of NNAPI CPU (nnapi-reference accelerator) on Android
+  // 10+ when an accelerator name is not specified. The NNAPI CPU typically
+  // performs less well than the TfLite built-in kernels; but allowing allows a
+  // model to be partially accelerated which may be a win.
+  optional bool allow_nnapi_cpu_on_android_10_plus = 7;
+
+  optional NNAPIExecutionPriority execution_priority = 8;
+}
+
+// Which GPU backend to select. Default behaviour on Android is to try OpenCL
+// and if it's not available fall back to OpenGL.
+enum GPUBackend {
+  UNSET = 0;
+  OPENCL = 1;
+  OPENGL = 2;
+  // Not yet supported.
+  // VULKAN = 3;
+  // METAL = 4;
+}
+
+// GPU Delegate settings.
+//
+// See
+// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/gpu/delegate.h
+message GPUSettings {
+  optional bool is_precision_loss_allowed = 1;
+  optional bool enable_quantized_inference = 2 [default = true];
+  optional GPUBackend force_backend = 3;
+  // TODO(b/152019007): add remaining options.
+}
+
+// Hexagon Delegate settings.
+//
+// See
+// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/hexagon/hexagon_delegate.h
+message HexagonSettings {
+  optional int32 debug_level = 1;
+  optional int32 powersave_level = 2;
+  optional bool print_graph_profile = 3;
+  optional bool print_graph_debug = 4;
+}
+
+// XNNPack Delegate settings.
+//
+// See
+// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h
+message XNNPackSettings {
+  optional int32 num_threads = 1;
+}
+
+message CPUSettings {
+  optional int32 num_threads = 1;
+}
+
+// How to configure TFLite.
+message TFLiteSettings {
+  // Which delegate to use.
+  optional Delegate delegate = 1;
+
+  // How to configure the chosen delegate.
+  // (In principle we would like to use 'oneof', but flatc turns that into an
+  // nested anonymous table rather than a union. See
+  // https://github.com/google/flatbuffers/issues/4628).
+  optional NNAPISettings nnapi_settings = 2;
+  optional GPUSettings gpu_settings = 3;
+  optional HexagonSettings hexagon_settings = 4;
+  optional XNNPackSettings xnnpack_settings = 5;
+
+  // How to configure CPU execution.
+  optional CPUSettings cpu_settings = 6;
+
+  // Shared delegation settings.
+  optional int32 max_delegated_partitions = 7;
+}
+
+// Whether to automatically fallback to TFLite CPU path on delegation errors.
+//
+// Typically fallback is enabled in production use but disabled in tests and
+// benchmarks to ensure they test the intended path.
+message FallbackSettings {
+  // Whether to allow automatically falling back to TfLite CPU path on
+  // compilation failure. Default is not allowing automatic fallback.
+  //
+  // This is useful in naive production usecases where the caller would prefer
+  // for the model to run even if it's not accelerated. More advanced users will
+  // implement fallback themselves; e.g., by using a different model on CPU.
+  //
+  // Note that compilation errors may occur either at initial
+  // ModifyGraphWithDelegate() time, or when calling AllocateTensors() after
+  // resizing.
+  optional bool allow_automatic_fallback_on_compilation_error = 7;
+  // Whether to allow automatically falling back to TfLite CPU path on
+  // execution error. Default is not allowing automatic fallback.
+  //
+  // Experimental, use with care (only when you have complete control over the
+  // client code).
+  //
+  // The caveat above for compilation error holds.  Additionally, execution-time
+  // errors are harder to handle automatically as they require invalidating the
+  // TfLite interpreter which most client code has not been designed to deal
+  // with.
+  optional bool allow_automatic_fallback_on_execution_error = 8;
+}

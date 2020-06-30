@@ -35,10 +35,14 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
@@ -97,7 +101,7 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   }
 }
 
-Status KernelAndDeviceOp::Init(const NodeDef& ndef,
+Status KernelAndDeviceOp::Init(const Context& ctx, const NodeDef& ndef,
                                GraphCollector* graph_collector) {
   OpKernel* k = nullptr;
   if (flr_ == nullptr) {
@@ -129,7 +133,8 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
   return Status::OK();
 }
 
-Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
+Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
+                                            const NodeDef& ndef,
                                             GraphCollector* graph_collector) {
   const OpDef* op_def = nullptr;
   const FunctionDef* function_def;
@@ -158,6 +163,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
   for (const Device* device : input_devices_) {
     options.input_devices.push_back(device->name());
   }
+  options.composite_devices = composite_devices_;
   options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
 
   const auto& it = ndef.attr().find("executor_type");
@@ -206,14 +212,16 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
       ->mutable_optimizer_options()
       ->set_do_function_inlining(true);
 
+  options.config_proto.set_log_device_placement(ctx.log_device_placement);
+
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->IsCrossProcess(handle_, &is_cross_process_);
 }
 
-Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
+Status KernelAndDeviceFunc::Init(const Context& ctx, const NodeDef& ndef,
                                  GraphCollector* graph_collector) {
-  TF_RETURN_IF_ERROR(InstantiateFunc(ndef, graph_collector));
+  TF_RETURN_IF_ERROR(InstantiateFunc(ctx, ndef, graph_collector));
   return pflr_->GetOutputDevices(handle_, &output_devices_);
 }
 
@@ -233,7 +241,6 @@ Status KernelAndDeviceOp::Run(
     std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
   OpKernelContext::Params params;
-  params.is_eager = true;
   params.device = device_;
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = inputs.GetTensorValues();
@@ -280,6 +287,8 @@ Status KernelAndDeviceOp::Run(
   OpKernelContext context(&params);
 
   {
+    port::ScopedFlushDenormal flush;
+    port::ScopedSetRound round(FE_TONEAREST);
     // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
     // time on device of the OpKernel.
     profiler::AnnotatedTraceMe activity(
@@ -374,16 +383,17 @@ void KernelAndDeviceFunc::RunAsync(
 
   outputs->clear();
 
-  profiler::TraceMe* activity = new profiler::TraceMe(
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish.
       [&] {
-        return absl::StrCat("FunctionRun#name=", name(), ",id=", opts->step_id,
-                            "#");
+        return profiler::TraceMeEncode(
+            "FunctionRun", {{"id", opts->step_id}, {"_r", 1} /*root_event*/});
       },
+      profiler::ContextType::kTfExecutor, opts->step_id,
       profiler::TraceMeLevel::kInfo);
   pflr_->Run(*opts, handle_, inputs, outputs,
-             [opts, rendezvous, local_cm, step_container, this, activity,
+             [opts, rendezvous, local_cm, step_container, this,
               done = std::move(done)](const Status& s) {
-               delete activity;
                rendezvous->Unref();
                if (step_container == nullptr) {
                  this->step_container_.CleanUp();
@@ -425,7 +435,9 @@ Device* KernelAndDeviceOp::InputDevice(int i) const {
 }
 
 Device* KernelAndDeviceFunc::InputDevice(int i) const {
-  if (input_dtypes_[i] == DT_RESOURCE) {
+  if ((input_dtypes_[i] == DT_RESOURCE) &&
+      (composite_devices_.find(input_devices_[i]->name()) ==
+       composite_devices_.end())) {
     return host_cpu_device_;
   } else {
     return input_devices_[i];

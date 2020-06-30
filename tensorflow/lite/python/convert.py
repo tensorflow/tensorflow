@@ -94,6 +94,20 @@ class OpsSet(enum.Enum):
   # quantized implementations.
   TFLITE_BUILTINS_INT8 = "TFLITE_BUILTINS_INT8"
 
+  # Convert model using only TensorFlow Lite operations with quantized int8
+  # weights, int16 activations and int64 bias.
+  # Specifying this will throw an error for operations that do not yet have
+  # quantized implementations.
+  # This quantization mode may be used in models for super-resolution,
+  # audio signal processing or image de-noising. It improves accuracy
+  # significantly, but only slightly increases the model size.
+  # WARNING: These ops are currently experimental and have not yet been
+  # finalized.
+  # They are only compatible with CPU execution, and have not been optimized for
+  # production.
+  EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = \
+    "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
+
   def __str__(self):
     return self.value
 
@@ -108,18 +122,29 @@ class ConverterError(Exception):
   pass
 
 
-def mlir_quantize(input_data_str):
+def mlir_quantize(input_data_str,
+                  disable_per_channel=False,
+                  fully_quantize=False,
+                  inference_type=_types_pb2.INT8):
   """Quantize `input_data_str` with calibration results.
 
   Args:
     input_data_str: Input data in serialized form (e.g. a TFLITE model with
-                    calibration results).
+      calibration results).
+    disable_per_channel: Bool indicating whether to do per-channel or per-tensor
+      quantization
+    fully_quantize: Bool indicating whether to fully quantize the model. Besides
+      model body, the input/output will be quantized as well.
+    inference_type: Data type for the activations. The default value is int8.
 
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
     inputs and outputs.
   """
-  return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str)
+  return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str,
+                                                      disable_per_channel,
+                                                      fully_quantize,
+                                                      inference_type)
 
 
 def mlir_sparsify(input_data_str):
@@ -163,9 +188,10 @@ def toco_convert_protos(model_flags_str,
     RuntimeError: When conversion fails, an exception is raised with the error
       message embedded.
   """
-  # TODO(aselle): When toco does not use fatal errors for failure, we can
-  # switch this on.
-  if not _toco_from_proto_bin:
+  # Historically, TOCO conversion failures would trigger a crash, so we would
+  # attempt to run the converter out-of-process. The MLIR conversion pipeline
+  # surfaces errors instead, and can be safely run in-process.
+  if enable_mlir_converter or not _toco_from_proto_bin:
     try:
       model_str = wrap_toco.wrapped_toco_convert(model_flags_str,
                                                  toco_flags_str, input_data_str,

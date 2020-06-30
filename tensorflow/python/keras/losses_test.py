@@ -125,8 +125,10 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
         backend.eval(output_from_softmax),
         atol=1e-5)
 
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  @combinations.generate(combinations.combine(mode=['graph']))
   def test_sparse_categorical_crossentropy_loss_with_unknown_rank_tensor(self):
+    # This test only runs in graph because the TF op layer is not supported yet
+    # for sparse ops.
     t = backend.placeholder()
     p = backend.placeholder()
     o = losses.sparse_categorical_crossentropy(t, p)

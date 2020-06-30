@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -95,6 +96,7 @@ static void RegisterDialects() {
     mlir::registerDialect<mlir::TF::TensorFlowDialect>();
     mlir::registerDialect<mlir::StandardOpsDialect>();
     mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
+    mlir::registerDialect<mlir::shape::ShapeDialect>();
     return true;
   }();
   (void)init_once;
@@ -162,11 +164,6 @@ Status ConvertGraphDefToXlaViaMlir(
   FakeDevice device(attr);
   device_set.AddDevice(&device);
   AddDevicesToOp(*module, &device_set);
-
-  if (failed(mlir::TF::MarkFunctionVisibilityUsingEntryFunctionSpecification(
-          *module))) {
-    return errors::Internal("Problem with mark function visibility");
-  }
 
   TF_RETURN_IF_ERROR(mlir::TF::RunBridgeWithStandardPipeline(
       *module, /*enable_logging=*/VLOG_IS_ON(1), /*enable_inliner=*/true));

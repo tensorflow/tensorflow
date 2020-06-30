@@ -80,6 +80,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
     }
     applyDelegates(options);
+    if (options.useXNNPACK != null) {
+      useXNNPACK(
+          interpreterHandle, errorHandle, options.useXNNPACK.booleanValue(), options.numThreads);
+    }
     allocateTensors(interpreterHandle, errorHandle);
     this.isMemoryAllocated = true;
   }
@@ -324,6 +328,11 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return outputTensor;
   }
 
+  /** Gets the number of ops in the execution plan. */
+  int getExecutionPlanLength() {
+    return getExecutionPlanLength(interpreterHandle);
+  }
+
   private void applyDelegates(Interpreter.Options options) {
     // First apply the flex delegate if necessary. This ensures the graph is fully resolved before
     // applying other delegates.
@@ -419,6 +428,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native int getOutputCount(long interpreterHandle);
 
+  private static native int getExecutionPlanLength(long interpreterHandle);
+
   private static native String[] getInputNames(long interpreterHandle);
 
   private static native String[] getOutputNames(long interpreterHandle);
@@ -430,6 +441,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native void allowFp16PrecisionForFp32(long interpreterHandle, boolean allow);
 
   private static native void allowBufferHandleOutput(long interpreterHandle, boolean allow);
+
+  private static native void useXNNPACK(
+      long interpreterHandle, long errorHandle, boolean state, int numThreads);
 
   private static native long createErrorReporter(int size);
 

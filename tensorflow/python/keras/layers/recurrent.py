@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import numpy as np
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -45,9 +43,15 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
+
+try:
+  from collections import abc as collections_abc  # pylint: disable=g-import-not-at-top
+except ImportError:  # For Python 2
+  import collections as collections_abc  # pylint: disable=g-import-not-at-top
 
 
 RECURRENT_DROPOUT_WARNING_MSG = (
@@ -828,7 +832,7 @@ class RNN(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if (isinstance(inputs, collections.Sequence)
+    if (isinstance(inputs, collections_abc.Sequence)
         and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.
@@ -1096,18 +1100,30 @@ class DropoutRNNCellMixin(object):
   """
 
   def __init__(self, *args, **kwargs):
-    # Note that the following two masks will be used in "graph function" mode,
-    # e.g. these masks are symbolic tensors. In eager mode, the `eager_*_mask`
-    # tensors will be generated differently than in the "graph function" case,
-    # and they will be cached.
-    # Also note that in graph mode, we still cache those masks only because the
-    # RNN could be created with `unroll=True`. In that case, the `cell.call()`
-    # function will be invoked multiple times, and we want to ensure same mask
-    # is used every time.
+    self._create_non_trackable_mask_cache()
+    super(DropoutRNNCellMixin, self).__init__(*args, **kwargs)
+
+  @trackable.no_automatic_dependency_tracking
+  def _create_non_trackable_mask_cache(self):
+    """Create the cache for dropout and recurrent dropout mask.
+
+    Note that the following two masks will be used in "graph function" mode,
+    e.g. these masks are symbolic tensors. In eager mode, the `eager_*_mask`
+    tensors will be generated differently than in the "graph function" case,
+    and they will be cached.
+
+    Also note that in graph mode, we still cache those masks only because the
+    RNN could be created with `unroll=True`. In that case, the `cell.call()`
+    function will be invoked multiple times, and we want to ensure same mask
+    is used every time.
+
+    Also the caches are created without tracking. Since they are not picklable
+    by python when deepcopy, we don't want layer._obj_reference_counts_dict
+    to track it by default.
+    """
     self._dropout_mask_cache = K.ContextValueCache(self._create_dropout_mask)
     self._recurrent_dropout_mask_cache = K.ContextValueCache(
         self._create_recurrent_dropout_mask)
-    super(DropoutRNNCellMixin, self).__init__(*args, **kwargs)
 
   def reset_dropout_mask(self):
     """Reset the cached dropout masks if any.
@@ -1186,6 +1202,21 @@ class DropoutRNNCellMixin(object):
       return None
     init_kwargs = dict(inputs=inputs, training=training, count=count)
     return self._recurrent_dropout_mask_cache.setdefault(kwargs=init_kwargs)
+
+  def __getstate__(self):
+    # Used for deepcopy. The caching can't be pickled by python, since it will
+    # contain tensor and graph.
+    state = super(DropoutRNNCellMixin, self).__getstate__()
+    state.pop('_dropout_mask_cache', None)
+    state.pop('_recurrent_dropout_mask_cache', None)
+    return state
+
+  def __setstate__(self, state):
+    state['_dropout_mask_cache'] = K.ContextValueCache(
+        self._create_dropout_mask)
+    state['_recurrent_dropout_mask_cache'] = K.ContextValueCache(
+        self._create_recurrent_dropout_mask)
+    super(DropoutRNNCellMixin, self).__setstate__(state)
 
 
 @keras_export('keras.layers.SimpleRNNCell')
@@ -2525,6 +2556,47 @@ class PeepholeLSTMCell(LSTMCell):
   output = layer(input)
   ```
   """
+
+  @deprecation.deprecated(
+      None, 'Please use tensorflow_addons.rnn.PeepholeLSTMCell instead')
+  def __init__(self,
+               units,
+               activation='tanh',
+               recurrent_activation='hard_sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               unit_forget_bias=True,
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               dropout=0.,
+               recurrent_dropout=0.,
+               implementation=1,
+               **kwargs):
+    super(PeepholeLSTMCell, self).__init__(
+        units=units,
+        activation=activation,
+        recurrent_activation=recurrent_activation,
+        use_bias=use_bias,
+        kernel_initializer=kernel_initializer,
+        recurrent_initializer=recurrent_initializer,
+        bias_initializer=bias_initializer,
+        unit_forget_bias=unit_forget_bias,
+        kernel_regularizer=kernel_regularizer,
+        recurrent_regularizer=recurrent_regularizer,
+        bias_regularizer=bias_regularizer,
+        kernel_constraint=kernel_constraint,
+        recurrent_constraint=recurrent_constraint,
+        bias_constraint=bias_constraint,
+        dropout=dropout,
+        recurrent_dropout=recurrent_dropout,
+        implementation=implementation,
+        **kwargs)
 
   def build(self, input_shape):
     super(PeepholeLSTMCell, self).build(input_shape)

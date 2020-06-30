@@ -1,10 +1,13 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cc_test_mkl", "tf_kernel_library")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cc_test_mkl", "tf_copts", "tf_cuda_cc_test", "tf_kernel_library")
 
 # Platform specific build config
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
+)
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "mkl_deps",
 )
 
 package(
@@ -533,7 +536,7 @@ tf_cuda_cc_test(
     srcs = ["memory_optimizer_test.cc"],
     tags = [
         "no_cuda_on_cpu_tap",  # Do not re-enable again without actually testing.
-        "no_windows",  # TODO(b/155443997)
+        "no_windows",  # b/56402646
     ],
     deps = [
         ":gpu_swapping_kernels",
@@ -581,9 +584,6 @@ cc_library(
 tf_cuda_cc_test(
     name = "layout_optimizer_test",
     srcs = ["layout_optimizer_test.cc"],
-    tags = [
-        "no_windows",  # TODO(b/155443997)
-    ],
     deps = [
         ":layout_optimizer",
         "//tensorflow/cc:cc_ops",
@@ -613,6 +613,7 @@ cc_library(
         "auto_mixed_precision.h",
         "auto_mixed_precision_lists.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":custom_graph_optimizer_registry",
@@ -630,7 +631,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:virtual_placer",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-    ],
+    ] + mkl_deps(),
 )
 
 tf_cuda_cc_test(
@@ -1065,8 +1066,10 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:graph_view",
         "@com_google_absl//absl/strings",

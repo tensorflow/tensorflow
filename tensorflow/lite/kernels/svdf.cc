@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -54,7 +55,7 @@ constexpr int kWeightsFeatureTensor = 1;
 constexpr int kWeightsTimeTensor = 2;
 constexpr int kBiasTensor = 3;
 // This is a variable tensor, and will be modified by this op.
-constexpr int kInputActivationStateTensor = 4;
+constexpr int kStateTensor = 4;
 
 // Output tensor.
 constexpr int kOutputTensor = 0;
@@ -107,14 +108,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, bias->dims->data[0], num_units);
   }
 
-  const TfLiteTensor* activation_state =
-      GetInput(context, node, kInputActivationStateTensor);
+  const TfLiteTensor* state = GetInput(context, node, kStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Check the shape of input state tensors.
-  TF_LITE_ENSURE_EQ(context, NumDimensions(activation_state), 2);
-  TF_LITE_ENSURE_EQ(context, SizeOfDimension(activation_state, 0), batch_size);
-  TF_LITE_ENSURE_EQ(context, SizeOfDimension(activation_state, 1),
+  TF_LITE_ENSURE_EQ(context, NumDimensions(state), 2);
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(state, 0), batch_size);
+  TF_LITE_ENSURE_EQ(context, SizeOfDimension(state, 1),
                     memory_size * num_filters);
 
   // Resize output.
@@ -184,7 +184,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
 
     // Used to store dequantized weights_time matrix for hybrid computation of
-    // matmul(activation_state, weights_time), which occurs in floating point.
+    // matmul(state, weights_time), which occurs in floating point.
     node->temporaries->data[3] = scratch_tensor_index + 3;
     TfLiteTensor* float_weights_time = GetTemporary(context, node, /*index=*/3);
     float_weights_time->type = kTfLiteFloat32;
@@ -239,8 +239,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         reinterpret_cast<TfLiteAffineQuantization*>(input->quantization.params);
     auto* weights_feature_params = reinterpret_cast<TfLiteAffineQuantization*>(
         weights_feature->quantization.params);
-    auto* state_params = reinterpret_cast<TfLiteAffineQuantization*>(
-        activation_state->quantization.params);
+    auto* state_params =
+        reinterpret_cast<TfLiteAffineQuantization*>(state->quantization.params);
     auto* weight_time_params = reinterpret_cast<TfLiteAffineQuantization*>(
         weights_time->quantization.params);
     auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
@@ -272,15 +272,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* scratch = GetTemporary(context, node, /*index=*/0);
 
-  TfLiteTensor* activation_state =
-      GetVariableInput(context, node, kInputActivationStateTensor);
+  TfLiteTensor* state = GetVariableInput(context, node, kStateTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   switch (weights_feature->type) {
     case kTfLiteFloat32: {
       reference_ops::EvalFloatSVDF(context, node, input, weights_feature,
-                                   weights_time, bias, params, scratch,
-                                   activation_state, output);
+                                   weights_time, bias, params, scratch, state,
+                                   output);
       return kTfLiteOk;
       break;
     }
@@ -315,8 +314,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
         reference_ops::EvalHybridSVDF(
             context, node, input, weights_feature, float_weights_time, bias,
-            params, scratch, scaling_factors, input_quantized, activation_state,
-            output, zero_points, row_sums, &op_data->compute_row_sums);
+            params, scratch, scaling_factors, input_quantized, state, output,
+            zero_points, row_sums, &op_data->compute_row_sums);
         return kTfLiteOk;
       } else {
         auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
@@ -330,10 +329,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActRelu);
         reference_ops::EvalIntegerSVDF(
             context, node, input, weights_feature, weights_time, bias, params,
-            activation_state, output, scratch, output_temp,
-            op_data->effective_scale_1_a, op_data->effective_scale_1_b,
-            op_data->effective_scale_2_a, op_data->effective_scale_2_b,
-            input_params->zero_point->data[0],
+            state, output, scratch, output_temp, op_data->effective_scale_1_a,
+            op_data->effective_scale_1_b, op_data->effective_scale_2_a,
+            op_data->effective_scale_2_b, input_params->zero_point->data[0],
             output_params->zero_point->data[0]);
         return kTfLiteOk;
       }

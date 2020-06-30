@@ -303,7 +303,7 @@ void MakeCheckOpValueString(std::ostream* os, const char& v) {
   if (v >= 32 && v <= 126) {
     (*os) << "'" << v << "'";
   } else {
-    (*os) << "char value " << static_cast<short>(v);
+    (*os) << "char value " << static_cast<int16>(v);
   }
 }
 
@@ -312,7 +312,7 @@ void MakeCheckOpValueString(std::ostream* os, const signed char& v) {
   if (v >= 32 && v <= 126) {
     (*os) << "'" << v << "'";
   } else {
-    (*os) << "signed char value " << static_cast<short>(v);
+    (*os) << "signed char value " << static_cast<int16>(v);
   }
 }
 
@@ -321,13 +321,13 @@ void MakeCheckOpValueString(std::ostream* os, const unsigned char& v) {
   if (v >= 32 && v <= 126) {
     (*os) << "'" << v << "'";
   } else {
-    (*os) << "unsigned char value " << static_cast<unsigned short>(v);
+    (*os) << "unsigned char value " << static_cast<uint16>(v);
   }
 }
 
 #if LANG_CXX11
 template <>
-void MakeCheckOpValueString(std::ostream* os, const std::nullptr_t& p) {
+void MakeCheckOpValueString(std::ostream* os, const std::nullptr_t& v) {
   (*os) << "nullptr";
 }
 #endif
@@ -365,7 +365,8 @@ bool LogEveryNState::ShouldLog(int n) {
 }
 
 bool LogFirstNState::ShouldLog(int n) {
-  const uint32 counter_value = counter_.load(std::memory_order_relaxed);
+  const int counter_value =
+      static_cast<int>(counter_.load(std::memory_order_relaxed));
   if (counter_value < n) {
     counter_.store(counter_value + 1, std::memory_order_relaxed);
     return true;

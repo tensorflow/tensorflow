@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -28,6 +29,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
+
+static constexpr char kCastOutputTypeAttrName[] = "DstT";
 
 class IONamePrefixes {
  public:
@@ -86,6 +89,10 @@ inline bool HasStaticShape(const nvinfer1::Dims& dims) {
   return true;
 }
 
+inline bool HasStaticShape(std::vector<int> dims) {
+  return !absl::c_any_of(dims, [](int i) { return i < 0; });
+}
+
 template <typename TensorShapeType>
 inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
                                            bool ignore_first_dim) {
@@ -105,6 +112,9 @@ Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
 Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
                             bool use_implicit_batch, int batch_size,
                             TensorShape& shape);
+
+Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type);
+Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type);
 
 // Returns a string that includes compile time TensorRT library version
 // information {Maj, Min, Patch}.

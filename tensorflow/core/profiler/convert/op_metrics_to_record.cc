@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
 
+#include <iterator>
 #include <tuple>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -35,8 +37,8 @@ std::vector<const OpMetrics*> SortedOpMetricsDb(const OpMetricsDb& metrics_db,
     return std::make_tuple(a->self_time_ps(), b->name()) >
            std::make_tuple(b->self_time_ps(), a->name());
   };
-
-  if (max_records != -1 && result.size() > max_records) {
+  int result_size = result.size();
+  if (max_records != -1 && result_size > max_records) {
     absl::c_partial_sort(result, result.begin() + max_records, comp);
     result.resize(max_records);
   } else {

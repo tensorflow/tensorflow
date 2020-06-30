@@ -223,6 +223,10 @@ string HloModule::ToString(const HloPrintOptions& options) const {
     TF_CHECK_OK(schedule().Verify());
     s << ", is_scheduled=true";
   }
+  std::string serialized_aliasing = input_output_alias_config().ToShortString();
+  if (!serialized_aliasing.empty()) {
+    s << absl::StrFormat(", input_output_alias={ %s }", serialized_aliasing);
+  }
   s << "\n\n";
   const auto& computations = options.canonicalize_computations()
                                  ? MakeComputationSorted()
@@ -420,6 +424,8 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
     if (execution_options->num_partitions() > 0) {
       module_config.set_num_partitions(execution_options->num_partitions());
     }
+    module_config.set_use_spmd_partitioning(
+        execution_options->use_spmd_partitioning());
     if (execution_options->has_device_assignment()) {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
                           DeviceAssignment::Deserialize(

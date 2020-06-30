@@ -58,6 +58,9 @@ class GraphOptimizer {
     // If true all functions will be inlined with a single device function
     // body placer strategy.
     bool inline_with_single_device_body_placer = false;
+
+    // If true, the _noinline attribute on functions and callers is ignored.
+    bool ignore_noinline = false;
   };
 
   explicit GraphOptimizer(const OptimizerOptions& opts);
@@ -81,7 +84,8 @@ class GraphOptimizer {
       const NodePredicate& cf_consider_fn = nullptr,
       bool inline_multi_device_functions = false,
       bool inline_impl_selection_group_functions = false,
-      bool inline_with_single_device_body_placer = false);
+      bool inline_with_single_device_body_placer = false,
+      bool ignore_noinline = false);
 
   const OptimizerOptions& options() { return opts_; }
 

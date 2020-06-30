@@ -165,7 +165,7 @@ class FileIO(object):
     self._read_buf.seek(offset)
 
   def readline(self):
-    r"""Reads the next line from the file. Leaves the '\n' at the end."""
+    r"""Reads the next line, keeping \n. At EOF, returns ''."""
     self._preread_check()
     return self._prepare_value(self._read_buf.readline())
 
@@ -736,6 +736,15 @@ def walk_v2(top, topdown=True, onerror=None):
     `(dirname, [subdirname, subdirname, ...], [filename, filename, ...])`.
     Each item is a string.
   """
+
+  def _make_full_path(parent, item):
+    # Since `os.path.join` discards paths before one that starts with the path
+    # separator (https://docs.python.org/3/library/os.path.html#os.path.join),
+    # we have to manually handle that case as `/` is a valid character on GCS.
+    if item[0] == os.sep:
+      return "".join([os.path.join(parent, ""), item])
+    return os.path.join(parent, item)
+
   top = compat.as_str_any(top)
   try:
     listing = list_directory(top)
@@ -748,7 +757,7 @@ def walk_v2(top, topdown=True, onerror=None):
   files = []
   subdirs = []
   for item in listing:
-    full_path = os.path.join(top, item)
+    full_path = _make_full_path(top, item)
     if is_directory(full_path):
       subdirs.append(item)
     else:
@@ -760,7 +769,8 @@ def walk_v2(top, topdown=True, onerror=None):
     yield here
 
   for subdir in subdirs:
-    for subitem in walk_v2(os.path.join(top, subdir), topdown, onerror=onerror):
+    for subitem in walk_v2(
+        _make_full_path(top, subdir), topdown, onerror=onerror):
       yield subitem
 
   if not topdown:

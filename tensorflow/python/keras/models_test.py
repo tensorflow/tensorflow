@@ -35,7 +35,7 @@ from tensorflow.python.keras import models
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 
@@ -47,8 +47,7 @@ class TestModel(keras.Model):
     """A test class with one dense layer and number of outputs as a variable."""
     super(TestModel, self).__init__()
     self.layer1 = keras.layers.Dense(n_outputs)
-    self.n_outputs = resource_variable_ops.ResourceVariable(
-        n_outputs, trainable=trainable)
+    self.n_outputs = variables.Variable(n_outputs, trainable=trainable)
 
   def call(self, x):
     return self.layer1(x)
@@ -122,7 +121,7 @@ class TestModelCloning(keras_parameterized.TestCase):
         isinstance(new_model._layers[0], keras.layers.InputLayer),
         add_input_layer)
     self.assertEqual(new_model._is_graph_network, model._is_graph_network)
-    if input_shape:
+    if input_shape and not ops.executing_eagerly_outside_functions():
       # update ops from batch norm needs to be included
       self.assertGreaterEqual(len(new_model.updates), 2)
 
@@ -173,7 +172,8 @@ class TestModelCloning(keras_parameterized.TestCase):
 
     # With placeholder creation
     new_model = clone_fn(model)
-    self.assertGreaterEqual(len(new_model.updates), 2)
+    if not ops.executing_eagerly_outside_functions():
+      self.assertGreaterEqual(len(new_model.updates), 2)
     new_model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',
@@ -185,7 +185,8 @@ class TestModelCloning(keras_parameterized.TestCase):
     input_b = keras.Input(shape=(4,), name='b')
     new_model = keras.models.clone_model(
         model, input_tensors=[input_a, input_b])
-    self.assertLen(new_model.updates, 2)
+    if not ops.executing_eagerly_outside_functions():
+      self.assertLen(new_model.updates, 2)
     new_model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',

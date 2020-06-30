@@ -36,6 +36,7 @@ from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.converters import logical_expressions
 from tensorflow.python.autograph.converters import return_statements
 from tensorflow.python.autograph.converters import slices
+from tensorflow.python.autograph.converters import variables
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
@@ -59,11 +60,7 @@ class AutoGraphTranspiler(transpiler.FunctionTranspiler):
   def get_transformed_name(self, node):
     return 'tf__' + super(AutoGraphTranspiler, self).get_transformed_name(node)
 
-  def transform_ast(self, node, ctx):
-    # TODO(mdan): Insert list_comprehensions somewhere.
-    unsupported_features_checker.verify(node)
-
-    # Run initial analysis.
+  def initial_analysis(self, node, ctx):
     graphs = cfg.build(node)
     node = qual_names.resolve(node)
     node = activity.resolve(node, ctx, None)
@@ -74,6 +71,11 @@ class AutoGraphTranspiler(transpiler.FunctionTranspiler):
             anno.Static.DEFINITIONS: anno.Static.ORIG_DEFINITIONS,
         },
     )
+    return node
+
+  def transform_ast(self, node, ctx):
+    unsupported_features_checker.verify(node)
+    node = self.initial_analysis(node, ctx)
 
     node = functions.transform(node, ctx)
     node = directives.transform(node, ctx)
@@ -92,6 +94,7 @@ class AutoGraphTranspiler(transpiler.FunctionTranspiler):
     node = control_flow.transform(node, ctx)
     node = conditional_expressions.transform(node, ctx)
     node = logical_expressions.transform(node, ctx)
+    node = variables.transform(node, ctx)
     return node
 
 
@@ -112,7 +115,7 @@ def convert(entity, program_ctx):
                      'expose a __code__ object. If this is a @tf.function,'
                      ' try passing f.python_function instead.')
 
-  _create_custom_vars(program_ctx)
+  create_custom_vars(program_ctx)
   transformed, module, source_map = _TRANSPILER.transform_function(
       entity, program_ctx.options, program_ctx, custom_vars)
 
@@ -246,7 +249,8 @@ def cache_whitelisted(entity, options):
 
 
 # TODO(mdan): Move into core or replace with an actual importable module.
-def _create_custom_vars(program_ctx):
+# Visible for testing.
+def create_custom_vars(program_ctx):
   """Adds namespace references to the module that exposes the api itself."""
   global custom_vars
   if custom_vars is None:

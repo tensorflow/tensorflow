@@ -76,7 +76,7 @@ def save_model(model,
 
   Note that the model weights may have different scoped names after being
   loaded. Scoped names include the model/layer names, such as
-  "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+  `"dense_1/kernel:0"`. It is recommended that you use the layer properties to
   access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
   _SavedModel serialization_
@@ -135,7 +135,7 @@ def save_model(model,
 
 
 @keras_export('keras.models.load_model')
-def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
+def load_model(filepath, custom_objects=None, compile=True, options=None):  # pylint: disable=redefined-builtin
   """Loads a model saved via `model.save()`.
 
   Usage:
@@ -162,6 +162,8 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
           considered during deserialization.
       compile: Boolean, whether to compile the model
           after loading.
+      options: Optional `tf.saved_model.LoadOptions` object that specifies
+        options for loading from SavedModel.
 
   Returns:
       A Keras model instance. If the original model was compiled, and saved with
@@ -182,7 +184,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
     filepath = path_to_string(filepath)
     if isinstance(filepath, six.string_types):
       loader_impl.parse_saved_model(filepath)
-      return saved_model_load.load(filepath, compile)
+      return saved_model_load.load(filepath, compile, options)
 
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '

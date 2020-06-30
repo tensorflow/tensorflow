@@ -4,8 +4,8 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     default_visibility = [
-        "//learning/tfx/autotfx:__subpackages__",
         "//tensorflow:internal",
+        "//tensorflow:structured_tensor_whitelist",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

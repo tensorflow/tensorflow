@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/manifest_checking_test.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -67,7 +68,7 @@ namespace xla {
 //  )
 //
 // For a more detailed example, see "../tests/sample_text_test.cc".
-class HloTestBase : public ::testing::Test {
+class HloTestBase : public ManifestCheckingTest {
  public:
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug
@@ -99,6 +100,10 @@ class HloTestBase : public ::testing::Test {
                                    HloModule* module);
 
   static PrecisionConfig DefaultPrecisionConfig(int operands);
+
+  // Sets most fath math options to be enabled to model the fast math flags
+  // generally used for CPU:AOT compilation.
+  static void SetAotFastMathDebugOptions(DebugOptions* options);
 
  protected:
   // This uses the interpreter backend as the reference backend and

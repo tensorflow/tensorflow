@@ -67,6 +67,7 @@ class LocallyConnected1D(Layer):
           any `dilation_rate` value != 1.
       padding: Currently only supports `"valid"` (case-insensitive).
           `"same"` may be supported in the future.
+          `"valid"` means no padding.
       data_format: A string,
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.
@@ -375,6 +376,7 @@ class LocallyConnected2D(Layer):
           all spatial dimensions.
       padding: Currently only support `"valid"` (case-insensitive).
           `"same"` will be supported in future.
+          `"valid"` means no padding.
       data_format: A string,
           one of `channels_last` (default) or `channels_first`.
           The ordering of the dimensions in the inputs.

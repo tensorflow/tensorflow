@@ -27,20 +27,8 @@ import numpy as np
 # pylint: disable=g-import-not-at-top
 if not __file__.endswith('tflite_runtime/interpreter.py'):
   # This file is part of tensorflow package.
-  from tensorflow.python.util.lazy_loader import LazyLoader
+  from tensorflow.lite.python.interpreter_wrapper import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export
-
-  # Lazy load since some of the performance benchmark skylark rules
-  # break dependencies. Must use double quotes to match code internal rewrite
-  # rule.
-  # pylint: disable=g-inconsistent-quotes
-  _interpreter_wrapper = LazyLoader(
-      "_interpreter_wrapper", globals(),
-      "tensorflow.lite.python.interpreter_wrapper."
-      '_pywrap_tensorflow_interpreter_wrapper')
-  # pylint: enable=g-inconsistent-quotes
-
-  del LazyLoader
 else:
   # This file is part of tflite_runtime package.
   from tflite_runtime import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
@@ -184,7 +172,8 @@ class Interpreter(object):
   def __init__(self,
                model_path=None,
                model_content=None,
-               experimental_delegates=None):
+               experimental_delegates=None,
+               num_threads=None):
     """Constructor.
 
     Args:
@@ -193,6 +182,10 @@ class Interpreter(object):
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
           objects returned by lite.load_delegate().
+      num_threads: Sets the number of threads used by the interpreter and
+        available to CPU kernels. If not set, the interpreter will use an
+        implementation-dependent default number of threads. Currently,
+        only a subset of kernels, such as conv, support multi-threading.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -217,6 +210,13 @@ class Interpreter(object):
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
+
+    if num_threads is not None:
+      if not isinstance(num_threads, int):
+        raise ValueError('type of num_threads should be int')
+      if num_threads < 1:
+        raise ValueError('num_threads should >= 1')
+      self._interpreter.SetNumThreads(num_threads)
 
     # Each delegate is a wrapper that owns the delegates that have been loaded
     # as plugins. The interpreter wrapper will be using them, but we need to

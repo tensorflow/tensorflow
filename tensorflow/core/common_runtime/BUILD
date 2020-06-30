@@ -243,6 +243,7 @@ filegroup(
         "memory_types.h",
         "mkl_cpu_allocator.h",
         "mkl_layout_pass.h",
+        "mkl_tfconversion_pass.h",
         "optimization_registry.h",
         "partitioning_utils.h",
         "placer.h",
@@ -581,8 +582,9 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:annotated_traceme",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
-        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/memory",
     ],
     alwayslink = 1,
@@ -1028,9 +1030,13 @@ cc_library(
 cc_library(
     name = "mkl_layout_pass",
     srcs = ["mkl_layout_pass.cc"],
-    hdrs = ["mkl_layout_pass.h"],
+    hdrs = [
+        "mkl_layout_pass.h",
+        "//tensorflow/core/graph:mkl_graph_util_header",
+    ],
     copts = tf_copts(),
     deps = [
+        ":function",
         ":optimization_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1043,9 +1049,13 @@ cc_library(
 cc_library(
     name = "mkl_tfconversion_pass",
     srcs = ["mkl_tfconversion_pass.cc"],
-    hdrs = ["mkl_tfconversion_pass.h"],
+    hdrs = [
+        "mkl_tfconversion_pass.h",
+        "//tensorflow/core/graph:mkl_graph_util_header",
+    ],
     copts = tf_copts(),
     deps = [
+        ":function",
         ":optimization_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1212,6 +1222,7 @@ cc_library(
         ":propagator_debug_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:hash",
         "//tensorflow/core/profiler/lib:traceme",
     ],
 )
@@ -1351,6 +1362,7 @@ cc_library(
     hdrs = ["replicate_per_replica_nodes.h"],
     copts = tf_copts(),
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -1685,9 +1697,10 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
     alwayslink = 1,
@@ -2285,7 +2298,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/kernels:cwise_op",
-    ] + if_mkl([":mkl_array_ops_op_lib"]),
+    ] + if_mkl(["//tensorflow/core:mkl_array_ops_op_lib"]),
 )
 
 tf_cc_test(
@@ -2510,10 +2523,12 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 

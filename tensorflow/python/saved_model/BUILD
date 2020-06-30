@@ -2,6 +2,8 @@
 # TensorFlow SavedModel.
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
@@ -280,6 +282,15 @@ py_library(
 )
 
 py_library(
+    name = "save_context",
+    srcs = [
+        "save_context.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
     name = "save",
     srcs = [
         "save.py",
@@ -291,6 +302,7 @@ py_library(
         ":function_serialization",
         ":nested_structure_coder",
         ":revived_types",
+        ":save_context",
         ":save_options",
         ":signature_constants",
         ":signature_def_utils",
@@ -346,6 +358,7 @@ py_library(
     deps = [
         ":constants",
         ":function_deserialization",
+        ":load_options",
         ":load_v1_in_v2",
         ":loader",
         ":nested_structure_coder",
@@ -361,6 +374,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/training/tracking",
         "//tensorflow/python/training/tracking:base",
@@ -516,6 +530,13 @@ py_library(
     srcs = ["save_options.py"],
     deps = [
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "load_options",
+    srcs = ["load_options.py"],
+    deps = [
     ],
 )
 

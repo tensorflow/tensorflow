@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.types import core
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -260,8 +261,12 @@ def _check_quantized(values):
 
 def _generate_isinstance_check(expected_types):
   def inner(values):
-    _ = [_check_failed(v) for v in nest.flatten(values)
-         if not isinstance(v, expected_types)]
+    for v in nest.flatten(values):
+      if not (isinstance(v, expected_types) or
+              (isinstance(v, np.ndarray) and
+               issubclass(v.dtype.type, expected_types))):
+        _check_failed(v)
+
   return inner
 
 _check_int = _generate_isinstance_check(
@@ -520,7 +525,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
     if nparray.size * nparray.itemsize >= (1 << 31):
       raise ValueError(
           "Cannot create a tensor proto whose content is larger than 2GB.")
-    tensor_proto.tensor_content = nparray.tostring()
+    tensor_proto.tensor_content = nparray.tobytes()
     return tensor_proto
 
   # If we were not given values as a numpy array, compute the proto_values
@@ -1005,7 +1010,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
     `True` if `x` is a tensor or "tensor-like", `False` if not.
   """
   return (isinstance(x, internal.NativeObject) or
-          ops.is_dense_tensor_like(x) or
+          isinstance(x, core.Tensor) or
           getattr(x, "is_tensor_like", False))
 
 

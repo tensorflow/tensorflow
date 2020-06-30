@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 
+#include <string>
+
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -33,13 +39,16 @@ const absl::string_view kTracedXla = "traced-xla";
 const absl::string_view kNotTracedNonXla = "notTraced-nonXla";
 const absl::string_view kNotTracedXla = "notTraced-xla";
 
+constexpr double kMaxError = 0.001;
+
 TfFunctionDb ConvertXSpaceToTfFunctionDb(const XSpace& space) {
   TfFunctionDb result;
-  const XPlane* host_plane = FindPlaneWithName(space, kHostThreads);
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   if (host_plane) {
     XPlaneVisitor plane = CreateTfXPlaneVisitor(host_plane);
     plane.ForEachLine([&result](const XLineVisitor& line) {
-      CombineTfFunctionDb(ConvertHostThreadsXLineToTfFunctionDb(line), &result);
+      TfFunctionDb tf_function_db = ConvertHostThreadsXLineToTfFunctionDb(line);
+      CombineTfFunctionDb(tf_function_db, &result);
     });
   }
   return result;
@@ -48,7 +57,7 @@ TfFunctionDb ConvertXSpaceToTfFunctionDb(const XSpace& space) {
 TEST(ConvertXPlaneToTfFunctions, CombineTwoThreads) {
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.SetName(kHostThreadsPlaneName);
   host_plane_builder.ReserveLines(2);
   std::string kFunctionName = "decrement";
 
@@ -75,6 +84,8 @@ TEST(ConvertXPlaneToTfFunctions, CombineTwoThreads) {
       tf_function_db.tf_functions().at(kFunctionName);
   EXPECT_EQ(tf_function.total_tracing_count(), 4);
   EXPECT_EQ(tf_function.compiler(), MIXED_COMPILER);
+  EXPECT_NEAR(tf_function.expensive_call_percent(), 90, kMaxError);
+
   const auto& metrics = tf_function.metrics();
   EXPECT_EQ(metrics.size(), 2);
   EXPECT_EQ(metrics.count(TRACED_MODE), 1);
@@ -90,7 +101,7 @@ TEST(ConvertXPlaneToTfFunctions, CombineTwoThreads) {
 TEST(ConvertXPlaneToTfFunctions, NestedFunctions) {
   XSpace space;
   XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.SetName(kHostThreadsPlaneName);
   host_plane_builder.ReserveLines(1);
   std::string kOuterFunctionName = "outer";
   std::string kInnerFunctionName = "inner";
@@ -108,6 +119,7 @@ TEST(ConvertXPlaneToTfFunctions, NestedFunctions) {
       tf_function_db.tf_functions().at(kOuterFunctionName);
   EXPECT_EQ(outer.total_tracing_count(), 1);
   EXPECT_EQ(outer.compiler(), OTHER_COMPILER);
+  EXPECT_NEAR(outer.expensive_call_percent(), 100, kMaxError);
   const auto& outer_metrics = outer.metrics();
   EXPECT_EQ(outer_metrics.size(), 1);
   EXPECT_EQ(outer_metrics.count(TRACED_MODE), 1);
@@ -118,6 +130,7 @@ TEST(ConvertXPlaneToTfFunctions, NestedFunctions) {
       tf_function_db.tf_functions().at(kInnerFunctionName);
   EXPECT_EQ(inner.total_tracing_count(), 0);
   EXPECT_EQ(inner.compiler(), XLA_COMPILER);
+  EXPECT_NEAR(inner.expensive_call_percent(), 0, kMaxError);
   const auto& inner_metrics = inner.metrics();
   EXPECT_EQ(inner_metrics.size(), 1);
   EXPECT_EQ(inner_metrics.count(NOT_TRACED_MODE), 1);
@@ -128,8 +141,7 @@ TEST(ConvertXPlaneToTfFunctions, NestedFunctions) {
 
 TEST(ConvertXPlaneToTfFunctions, EagerPlusConcrete) {
   XSpace space;
-  XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
   host_plane_builder.ReserveLines(2);
   std::string kEagerFunctionName = "i_am_eager";
   std::string kConcreteFunctionName = "i_am_concrete";
@@ -148,6 +160,7 @@ TEST(ConvertXPlaneToTfFunctions, EagerPlusConcrete) {
       tf_function_db.tf_functions().at(kEagerFunctionName);
   EXPECT_EQ(eager.total_tracing_count(), 0);
   EXPECT_EQ(eager.compiler(), INVALID_COMPILER);
+  EXPECT_NEAR(eager.expensive_call_percent(), 100, kMaxError);
   const auto& eager_metrics = eager.metrics();
   EXPECT_EQ(eager_metrics.size(), 1);
   EXPECT_EQ(eager_metrics.count(EAGER_MODE), 1);
@@ -158,6 +171,7 @@ TEST(ConvertXPlaneToTfFunctions, EagerPlusConcrete) {
       tf_function_db.tf_functions().at(kConcreteFunctionName);
   EXPECT_EQ(concrete.total_tracing_count(), 0);
   EXPECT_EQ(concrete.compiler(), INVALID_COMPILER);
+  EXPECT_NEAR(concrete.expensive_call_percent(), 0, kMaxError);
   const auto& concrete_metrics = concrete.metrics();
   EXPECT_EQ(concrete_metrics.size(), 1);
   EXPECT_EQ(concrete_metrics.count(CONCRETE_MODE), 1);

@@ -159,7 +159,6 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertFalse(config.get_soft_device_placement())
 
-    @def_function.function
     def mod():
       with ops.device('/device:GPU:0'):
         a = constant_op.constant(1.0)
@@ -172,8 +171,10 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         config.get_soft_device_placement(),
         context.context().soft_device_placement)
 
-    # Since soft placement is enabled, the mod operation should work with CPU
+    # Since soft placement is enabled, the mod operation should fallback to CPU
+    # with pure eager execution as well as functions
     mod()
+    def_function.function(mod)()
 
     config.set_soft_device_placement(False)
     self.assertEqual(config.get_soft_device_placement(), False)
@@ -182,8 +183,11 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
         context.context().soft_device_placement)
 
     # Since soft placement is disabled, the mod operation should fail on GPU
+    # with pure eager execution as well as functions
     with self.assertRaises(errors.InvalidArgumentError):
       mod()
+    with self.assertRaises(errors.InvalidArgumentError):
+      def_function.function(mod)()
 
   @reset_eager
   def testLogDevicePlacement(self):
@@ -203,12 +207,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     context.ensure_initialized()
 
-    with self.assertRaises(RuntimeError):
-      context.set_log_device_placement(True)
-
-    # If the setting the device placement is a no-op, do not throw a runtime
-    # exception.
-    context.set_log_device_placement(False)
+    # Changing the device placement should not throw an exception
+    context.set_log_device_placement(True)
 
   @reset_eager
   def testEnableMlirBridge(self):
@@ -481,6 +481,49 @@ class DeviceTest(test.TestCase):
       with ops.device('/device:GPU:' + str(len(gpus))):
         a = constant_op.constant(1.0)
         self.evaluate(a)
+
+  @reset_eager
+  def testDeviceDetails(self):
+    (cpu,) = config.list_physical_devices('CPU')
+    details = config.get_device_details(cpu)
+    self.assertEqual(details, {})
+
+    if not test_util.is_gpu_available():
+      return
+
+    gpus = config.list_physical_devices('GPU')
+    details = config.get_device_details(gpus[0])
+    self.assertIsInstance(details['device_name'], str)
+    self.assertNotEmpty(details['device_name'])
+    if test.is_built_with_rocm():
+      # AMD GPUs do not have a compute capability
+      self.assertNotIn('compute_capability', details)
+    else:
+      cc = details['compute_capability']
+      self.assertIsInstance(cc, tuple)
+      major, minor = cc
+      self.assertGreater(major, 0)
+      self.assertGreaterEqual(minor, 0)
+
+    # Test GPU returned from get_visible_devices
+    if len(gpus) > 2:
+      config.set_visible_devices(gpus[1], 'GPU')
+      (visible_gpu,) = config.get_visible_devices('GPU')
+      details = config.get_device_details(visible_gpu)
+      self.assertIsInstance(details['device_name'], str)
+
+  @reset_eager
+  def testDeviceDetailsErrors(self):
+    logical_devices = config.list_logical_devices()
+    with self.assertRaisesRegexp(ValueError,
+                                 'must be a tf.config.PhysicalDevice'):
+      config.get_device_details(logical_devices[0])
+
+    phys_dev = context.PhysicalDevice('/physical_device:CPU:100', 'CPU')
+    with self.assertRaisesRegexp(
+        ValueError, 'The PhysicalDevice must be one obtained from '
+        'calling `tf.config.list_physical_devices`'):
+      config.get_device_details(phys_dev)
 
   @test_util.run_gpu_only
   @reset_eager

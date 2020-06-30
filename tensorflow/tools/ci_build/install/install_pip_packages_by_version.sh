@@ -26,6 +26,7 @@ if [[ ! -x "$(which "${PIP}")" ]]; then
 fi
 
 PACKAGES=(
+  "auditwheel"
   "wheel"
   "setuptools"
   "virtualenv"
@@ -56,6 +57,8 @@ PACKAGES=(
   "tb-nightly"
   "argparse"
   "dm-tree"
+  "dill"
+  "tblib"
 )
 
 # tf.mock require the following for python2:

@@ -852,6 +852,8 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
                               TFE_CancellationManager* cancellation_manager,
                               TFE_OutputTensorHandles* outputs,
                               TF_Status* out_status) {
+  tensorflow::profiler::TraceMe activity(
+      "TFE_Py_ExecuteCancelable", tensorflow::profiler::TraceMeLevel::kInfo);
   TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
   auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
   if (!out_status->status.ok()) return;
@@ -2006,7 +2008,7 @@ bool ListContainsNone(PyObject* list) {
 
 static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
-    tensorflow::AbstractTensorHandleInterface* handle =
+    tensorflow::ImmediateExecutionTensorHandle* handle =
         tensorflow::unwrap(EagerTensor_Handle(tensor));
     tensorflow::int64 id = PyEagerTensor_ID(tensor);
     tensorflow::DataType dtype =
@@ -3867,7 +3869,7 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
                                        bool include_tensor_ranks_only,
                                        EncodeResult* result) {
   if (EagerTensor_CheckExact(arg)) {
-    tensorflow::AbstractTensorHandleInterface* handle =
+    tensorflow::ImmediateExecutionTensorHandle* handle =
         tensorflow::unwrap(EagerTensor_Handle(arg));
 
     absl::StrAppend(&result->str, kDType,

@@ -41,9 +41,9 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _setup_files(self, inputs, linebreak='\n', compression_type=None):
     filenames = []
-    for i, ip in enumerate(inputs):
+    for i, file_rows in enumerate(inputs):
       fn = os.path.join(self.get_temp_dir(), 'temp_%d.csv' % i)
-      contents = linebreak.join(ip).encode('utf-8')
+      contents = linebreak.join(file_rows).encode('utf-8')
       if compression_type is None:
         with open(fn, 'wb') as f:
           f.write(contents)
@@ -414,6 +414,47 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         record_defaults=record_defaults,
         select_cols=[0])
 
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withExcludeCol(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_output=[['1'], ['5']],
+        record_defaults=record_defaults,
+        exclude_cols=[1, 2])
+
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withSelectandExcludeCol(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Either select_cols or exclude_cols should be empty',
+        record_defaults=record_defaults,
+        select_cols=[0],
+        exclude_cols=[1, 2])
+
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withExcludeColandRecordDefaultsTooLow(self):
+    record_defaults = [['']]
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Expect 1 fields but have more in record',
+        record_defaults=record_defaults,
+        exclude_cols=[0])
+
+  @combinations.generate(test_base.v2_only_combinations())
+  def testCsvDataset_withExcludeColandRecordDefaultsTooHigh(self):
+    record_defaults = [['']] * 3
+    inputs = [['1,2,3', '5,6,7']]
+    self._test_dataset(
+        inputs,
+        expected_err_re='Expect 3 fields but have 2 in record',
+        record_defaults=record_defaults,
+        exclude_cols=[0])
+
   @combinations.generate(test_base.default_test_combinations())
   def testCsvDataset_withMultipleNewLines(self):
     # In this case, we expect it to behave differently from
@@ -580,6 +621,13 @@ class CsvDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           inputs, [[0, 0, 0, 0], [1, 1, 1, 0], [0, 2, 2, 2]],
           record_defaults=record_defaults)
 
+  def testCsvDataset_immutableParams(self):
+    inputs = [['a,b,c', '1,2,3', '4,5,6']]
+    filenames = self._setup_files(inputs)
+    select_cols = ['a', 'c']
+    _ = readers.make_csv_dataset(
+        filenames, batch_size=1, select_columns=select_cols)
+    self.assertAllEqual(select_cols, ['a', 'c'])
 
 if __name__ == '__main__':
   test.main()

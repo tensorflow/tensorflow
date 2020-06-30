@@ -1186,7 +1186,7 @@ def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-nam
   if ops.inside_function():
     logging.warn("Cannot enable trace inside a tf.function.")
     return
-  if not context.context().executing_eagerly():
+  if not context.executing_eagerly():
     logging.warn("Must enable trace in eager mode.")
     return
 
@@ -1231,7 +1231,7 @@ def trace_export(name, step=None, profiler_outdir=None):
   if ops.inside_function():
     logging.warn("Cannot export trace inside a tf.function.")
     return
-  if not context.context().executing_eagerly():
+  if not context.executing_eagerly():
     logging.warn("Can only export trace while executing eagerly.")
     return
 

@@ -114,6 +114,7 @@ void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
                    bool always_collect_stats) {
   opts->rendezvous = ctx->rendezvous();
   opts->cancellation_manager = ctx->cancellation_manager();
+  opts->collective_executor = ctx->collective_executor();
   if (always_collect_stats) {
     opts->stats_collector = ctx->stats_collector();
   }
@@ -923,6 +924,38 @@ class FakeParamOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_CPU), FakeParamOp);
 REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_GPU), FakeParamOp);
+
+// DeviceIndexOP returns the current device index.
+class DeviceIndexOp : public OpKernel {
+ public:
+  explicit DeviceIndexOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("device_names", &device_names_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* device_name_t;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output(0, TensorShape({}), &device_name_t));
+    DeviceNameUtils::ParsedName parsed_name;
+    int index = device_names_.size();
+    if (DeviceNameUtils::ParseFullName(ctx->device()->name(), &parsed_name) &&
+        parsed_name.has_type) {
+      auto it = absl::c_find(device_names_, parsed_name.type);
+      if (it != device_names_.end()) {
+        index = it - device_names_.begin();
+      }
+    }
+    device_name_t->scalar<int32>()() = index;
+  }
+
+ private:
+  PersistentTensor value_handle_;
+  std::vector<string> device_names_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("DeviceIndex").Device(DEVICE_CPU), DeviceIndexOp);
+REGISTER_KERNEL_BUILDER(
+    Name("DeviceIndex").Device(DEVICE_GPU).HostMemory("index"), DeviceIndexOp);
 
 }  // namespace
 }  // namespace tensorflow

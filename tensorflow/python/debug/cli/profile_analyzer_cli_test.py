@@ -70,7 +70,7 @@ def _assert_no_lines_match(pattern, lines):
         "%s matched at least one line in %s." % (pattern, str(lines)))
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("Requires tf.Session")
 class ProfileAnalyzerListProfileTest(test_util.TensorFlowTestCase):
 
   def testNodeInfoEmpty(self):
@@ -322,7 +322,7 @@ class ProfileAnalyzerListProfileTest(test_util.TensorFlowTestCase):
     _assert_at_least_one_line_matches(r"Device Total.*0\.009ms", prof_output)
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("Requires tf.Session")
 class ProfileAnalyzerPrintSourceTest(test_util.TensorFlowTestCase):
 
   def setUp(self):

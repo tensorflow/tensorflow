@@ -797,23 +797,27 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     const auto* fused_batch_norm_node_def = fused_batch_norm.node();
     if (!IsFusedBatchNorm(*fused_batch_norm_node_def)) return false;
 
-    // We fuse FusedBatchNorm only on GPU, because on CPU we fuse it with
-    // contraction (MatMul or Conv2D node).
+#ifndef ENABLE_MKLDNN_V1
+    // We fuse FusedBatchNorm on GPU or MKL CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
+#endif
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");
+#ifndef ENABLE_MKLDNN_V1
     if (t_dtype != DT_FLOAT && t_dtype != DT_HALF) return false;
+#else
+    if (t_dtype != DT_FLOAT && t_dtype != DT_BFLOAT16) return false;
+#endif
 
     // Get the FusedBatchNorm training mode.
     bool is_training;
     if (!GetNodeAttr(*fused_batch_norm_node_def, kIsTraining, &is_training)
              .ok())
       return false;
-
     // In training mode we rely on cuDNN for computing FusedBatchNorm with side
     // inputs and activation, and it has its own limitations. In inference mode
     // we have a custom CUDA kernel that doesn't not have these constraints.
-    if (is_training) {
+    if (is_training && NodeIsOnGpu(fused_batch_norm_node_def)) {
       // cuDNN only supports NHWC data layout.
       string data_format;
       if (!GetNodeAttr(*fused_batch_norm_node_def, kDataFormat, &data_format)
@@ -865,6 +869,12 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 
   // Input to a Relu can be an Add node with FusedBatchNorm as one of the inputs
   if (IsAdd(*relu_fanin_0_node_def)) {
+    // Currently no CPU implementation for "FusedBatchNorm + SideInput +
+    // <Activation>""
+#ifdef ENABLE_MKLDNN_V1
+    return false;
+#endif
+
     // Check that only Relu node consumes the output of an Add node.
     if (HasControlFaninOrFanout(*relu_fanin_0_node_view) ||
         !HasAtMostOneFanoutAtPort0(*relu_fanin_0_node_view) ||
@@ -946,12 +956,17 @@ void CopyFusedBatchNormAttributes(const NodeDef& fused_batch_norm,
   (*attr)["is_training"] = src_attr.at("is_training");
   (*attr)["data_format"] = src_attr.at("data_format");
   (*attr)["epsilon"] = src_attr.at("epsilon");
+  (*attr)["exponential_avg_factor"] = src_attr.at("exponential_avg_factor");
 
   // FusedBatchNormV2 and V3 have an extra type parameter.
   if (fused_batch_norm.op() != "FusedBatchNorm") {
-    (*attr)["U"] = src_attr.at("U");
+    SetAttrValue(src_attr.at("U"), &(*attr)["U"]);
   } else {
-    (*attr)["U"] = src_attr.at("T");
+#ifndef ENABLE_MKLDNN_V1
+    SetAttrValue(src_attr.at("T"), &(*attr)["U"]);
+#else
+    SetAttrValue(DT_FLOAT, &(*attr)["U"]);
+#endif
   }
 }
 
@@ -1578,7 +1593,8 @@ bool IsConv2DWithAdd(const RemapperContext& ctx, int node_index) {
 // shapes:
 //   (1) Splitting FusedBatchNorm into primitives.
 //   (2) Fusing side input and/or activation into FusedBatchNorm.
-//   (3) INTEL_MKL specific: Conv2D -> Add or Conv2D -> BiasAdd -> Add.
+//   (3) Fusing Conv2D biasadd and relu on GPU
+//   (4) INTEL_MKL specific: Conv2D -> Add or Conv2D -> BiasAdd -> Add.
 bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
   // Candidate for a FusedBatchNorm splitting.
   const auto* node_view = ctx.graph_view.GetNode(node_index);
@@ -1590,6 +1606,31 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     bool is_training = true;
     if (!TryGetNodeAttr(*node_def, kIsTraining, &is_training)) return false;
     if (is_training) return false;
+
+    return true;
+  };
+
+  const auto is_relu_biasadd_conv2d_candidate = [&]() -> bool {
+    if (!IsRelu(*node_def)) return false;
+    if (GetDataTypeFromAttr(*node_def, "T") != DT_FLOAT) return false;
+
+    if (node_view->NumRegularFanins() < 1) return false;
+    const auto& relu_fanin_0 = node_view->GetRegularFanin(0);
+    const auto* relu_fanin_0_node_view = relu_fanin_0.node_view();
+    const auto* relu_fanin_0_node_def = relu_fanin_0_node_view->node();
+
+    if (!IsBiasAdd(*relu_fanin_0_node_def)) return false;
+    if (GetDataTypeFromAttr(*relu_fanin_0_node_def, "T") != DT_FLOAT)
+      return false;
+
+    if (relu_fanin_0_node_view->NumRegularFanins() < 1) return false;
+
+    const auto& biasadd_fanin_0 = relu_fanin_0_node_view->GetRegularFanin(0);
+    const auto* biasadd_fanin_0_node_def = biasadd_fanin_0.node_view()->node();
+
+    if (!IsConv2D(*biasadd_fanin_0_node_def)) return false;
+    if (GetDataTypeFromAttr(*biasadd_fanin_0_node_def, "T") != DT_FLOAT)
+      return false;
 
     return true;
   };
@@ -1628,7 +1669,8 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
   return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
          IsConv2DWithAdd(ctx, node_index);
 #else
-  return is_batch_norm_candidate() || is_batch_norm_fusion_candidate();
+  return is_relu_biasadd_conv2d_candidate() || is_batch_norm_candidate() ||
+         is_batch_norm_fusion_candidate();
 #endif  // INTEL_MKL
 }
 
@@ -1697,6 +1739,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
     }
 #endif  //! INTEL_MKL
+
+    // Infer properties lazily in case they are not needed.
+    if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
+      const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
+      TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
+          assume_valid_feeds,
+          /*aggressive_shape_inference=*/false,
+          /*include_input_tensor_values=*/true,
+          /*include_output_tensor_values=*/false));
+      ctx.inferred_graph_properties = true;
+    }
 
     // Remap {Conv2D,DepthwiseConv2D,MatMul}+BiasAdd into the
     // _Fused{Conv2D,DepthwiseConv2dNative,MatMul}

@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/op_utils.h"
 
+#include <algorithm>
+#include <string>
+
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -57,21 +64,20 @@ void HostOpMetricsDbBuilder::UpdateHostInfeedEnqInfo(
       start_timestamp_ps_diff);
 }
 
-void DeviceOpMetricsDbBuilder::EnterOp(uint64 program_id,
-                                       absl::string_view name,
-                                       absl::string_view category,
-                                       absl::string_view provenance,
-                                       bool is_eager, uint64 occurrences,
-                                       uint64 time_ps, uint64 children_time_ps,
-                                       int64 flops, int64 bytes_accessed) {
+void DeviceOpMetricsDbBuilder::EnterOp(
+    uint64 program_id, absl::string_view name, absl::string_view category,
+    absl::string_view provenance, bool is_eager, uint64 occurrences,
+    uint64 time_ps, uint64 children_time_ps, int64 flops, int64 bytes_accessed,
+    const protobuf::RepeatedPtrField<OpMetrics_MemoryAccessed>&
+        memory_accessed_breakdown) {
   uint64 self_time_ps = time_ps - children_time_ps;
   DCHECK_GE(time_ps, self_time_ps);
   OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, name);
   if (op_metrics->category().empty())
     op_metrics->set_category(category == kUnknownOp ? "unknown"
-                                                    : string(category));
+                                                    : std::string(category));
   if (op_metrics->provenance().empty())
-    op_metrics->set_provenance(string(provenance));
+    op_metrics->set_provenance(std::string(provenance));
   op_metrics->set_is_eager(op_metrics->is_eager() || is_eager);
   op_metrics->set_occurrences(op_metrics->occurrences() + occurrences);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);
@@ -83,6 +89,9 @@ void DeviceOpMetricsDbBuilder::EnterOp(uint64 program_id,
       op_metrics->bytes_accessed() +
       GetCappedPerf(bytes_accessed * occurrences, self_time_ps,
                     peak_hbm_bw_giga_bytes_per_second_ / 1000));
+  CombineMemoryAccessedBreakdown(
+      memory_accessed_breakdown,
+      op_metrics->mutable_memory_accessed_breakdown());
   db()->set_total_op_time_ps(db()->total_op_time_ps() + self_time_ps);
 }
 

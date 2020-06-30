@@ -56,9 +56,14 @@ FloatActivationsOpTest/PRelu,29
 LogisticOpTest/LogisticOpTest/Sigmoid(.+nt8)?/\d+
 LogisticOpTest/LogisticOpTest/Sigmoid/\d+
 TanhOpTest/TanhOpTest/Tanh(.+nt8)?/\d+,29
+FloatActivationsOpTest/Elu,30
 FloatActivationsOpTest/HardSwish
 QuantizedActivationsOpTest/HardSwish
 QuantizedActivationsOpTest/HardSwishBias
+QuantizedActivationsOpTest/Relu*
+QuantizedActivationsOpTest/PRelu,29
+QuantizedActivationsOpTest/PReluSameShapes,29
+QuantizedActivationsOpTest/PReluInt8.+,30
 
 # add_test
 FloatAddOpModel/.+
@@ -144,6 +149,7 @@ ConvolutionOpTest/ConvolutionOpTest/.+/\d+
 
 # dequantize_test
 DequantizeOpTest/Uint8
+DequantizeOpTest/Int8,30
 
 # depth_to_space_test
 DepthToSpaceOpModel/Float32
@@ -172,6 +178,11 @@ ExpOpTest/FloatTest,29
 # Only constant tensors models
 ExpandDimsOpTest/.+/1,29
 
+# fill_test
+FillOpTest/FillOpTest/FillInt32/0,30
+FillOpTest/FillOpTest/FillFloat/0,30
+FillOpTest/FillOpTest/FillFloatInt32Dims/0,30
+
 # floor_test
 FloorOpTest/.+
 
@@ -184,6 +195,7 @@ QuantizedFullyConnectedOpTest/SimpleTestQuantizedOutputMultiplierGreaterThan1Uin
 QuantizedFullyConnectedOpTest/SimpleTestQuantizedOutputMultiplierGreaterThan1Int8/\d+,29
 HybridFullyConnectedOpTest/SimpleTestQuantizedUint8,29
 HybridFullyConnectedOpTest/SimpleTestQuantizedInt8,29
+HybridAsymmetricInputFullyConnectedOpTest.SimpleTestQuantizedUint8,29
 FloatFullyConnectedOpTest/FloatFullyConnectedOpTest/SimpleTest4DInput/\d+
 QuantizedFullyConnectedOpTest/QuantizedFullyConnectedOpTest/SimpleTest4dInputQuantizedUint8/\d+
 QuantizedFullyConnectedOpTest/QuantizedFullyConnectedOpTest/SimpleTest4dInputQuantizedOutputMultiplierGreaterThan1Uint8/\d+,29
@@ -201,6 +213,7 @@ FloatGatherOpTest/LastAxis,29
 TypesGatherOpTest/Float32Int32,29
 TypesGatherOpTest/Int32Int32,29
 TypesGatherOpTest/Uint8Int32,29
+TypesGatherOpTest/Int8Int32,29
 
 # hashtable_lookup_test
 # All test excepted the string one should be accelerated
@@ -280,13 +293,18 @@ QuantizedLstmTest/BasicQuantizedLstmTest/29
 
 # quantize_test
 QuantizeOpTest/UINT8,29
+QuantizeOpTest/INT8,30
+
+# rank
 
 # reduce_test
 -Dynamic.+(Mean|Sum|Prod|Max|Min)OpTest/.+
 -ConstUint8(Mean|Sum)OpTest/.+
+-ConstInt8MeanOpTest.NonSpecialAxisNonSameScale
+-ConstInt8MeanOpTest.QuantizedDifferentScale
 ConstUint8(Max|Min)OpTest/.+,29
 ConstUint8(Mean)OpTest/.+
-Constint8(Mean|Max|Min)OpTest/.+
+ConstInt8(Mean|Max|Min)OpTest/.+,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/NotKeepDims,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/KeepDims,29
 ConstFloat(Mean|Any)OpTest/NotKeepDims
@@ -300,13 +318,15 @@ VariedShapeSpec/ReshapeOpTest/RegularShapes/1
 VariedShapeSpec/ReshapeOpTest/WithStretchDimension/1
 
 # resize_bilinear_test
+// align_corners & half_pixel_centers are not implemented in NNAPI before API 30
+ResizeBilinearOpTest/ResizeBilinearOpTest.+HalfPixelCenters.*/0,30
 // Only models with constant size tensor are accelerated
 ResizeBilinearOpTest/ResizeBilinearOpTest/.+/0,29
 
 # resize_nearest_neighbor_test
-// align_corners & half_pixel_centers are not implemented in NNAPI.
--ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+AlignCorners.*,29
--ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+HalfPixelCenters.*,29
+// align_corners & half_pixel_centers are not implemented in NNAPI before API 30
+ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+AlignCorners.*/0,30
+ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+HalfPixelCenters.*/0,30
 // Only models with constant size tensor are accelerated
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest/.+/0,29
 
@@ -373,6 +393,7 @@ TransposeTest/.+
 
 # transpose_conv_test
 -TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannelSingleChannel/0
+-TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannel16x8/0
 -TransposeConvOpTest/TransposeConvOpTest.TestQuantizedPerChannelMultiChannel/0
 # Const tensor only
 TransposeConvOpTest/TransposeConvOpTest/.+/0,29

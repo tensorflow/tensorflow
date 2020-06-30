@@ -14,6 +14,9 @@
 # ==============================================================================
 """Code for backpropagation using the tape utilities."""
 
+# TODO(b/159343581): Properly support CompositeTensor in all functions in this
+# file.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -59,6 +62,9 @@ from tensorflow.python.util.tf_export import tf_export
 pfor_ops = LazyLoader(
     "pfor_ops", globals(),
     "tensorflow.python.ops.parallel_for.control_flow_ops")
+np_arrays = LazyLoader(
+    "np_arrays", globals(),
+    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 function = LazyLoader("function", globals(),
                       "tensorflow.python.eager.function")
@@ -241,6 +247,11 @@ def implicit_val_and_grad(f):
                        "function was being computed.")
 
     sources = [v.handle for v in variables]
+    for s in sources:
+      if getattr(s, "is_packed", False):
+        raise ValueError(
+            "GradientTape.gradient is not supported on packed EagerTensors yet."
+        )
     grad = imperative_grad.imperative_grad(this_tape, nest.flatten(end_node),
                                            sources)
     return end_node, list(zip(grad, variables))
@@ -529,7 +540,7 @@ def make_vjp(f, params=None, persistent=True):
     wrapped_fn = tfe.make_vjp(f)
     result, vjp = wrapped_fn(tf.constant(3.0))
     # result is 9.0
-    vjp()  # the vjp function rturns 6.0
+    vjp()  # the vjp function returns 6.0
 
   Raises:
     ValueError: if `f` returns None.
@@ -548,6 +559,10 @@ def make_vjp(f, params=None, persistent=True):
       ]
       args = _ensure_unique_tensor_objects(parameter_positions, args)
       for i in parameter_positions:
+        if getattr(args[i], "is_packed", False):
+          raise ValueError(
+              "GradientTape.gradient is not supported on packed EagerTensors"
+              "yet.")
         sources.append(args[i])
         tape.watch(this_tape, args[i])
       result = f(*args)
@@ -684,7 +699,7 @@ def _ones(shape, dtype):
   if as_dtype == dtypes.string:
     return None
 
-  if not context.context().executing_eagerly():
+  if not context.executing_eagerly():
     return array_ops.ones(shape, dtype)
 
   if as_dtype.is_bool:
@@ -709,9 +724,11 @@ pywrap_tfe.TFE_Py_RegisterVSpace(_default_vspace)
 
 
 def _handle_or_self(x):
-  """If x is ResourceVariable, return its handle, else x."""
+  """Unwrap resource variable/ndarray to return tensors."""
   if resource_variable_ops.is_resource_variable(x):
-    x = x.handle
+    return x.handle
+  if isinstance(x, np_arrays.ndarray):
+    return x.data
   return x
 
 
@@ -873,7 +890,7 @@ class GradientTape(object):
     Raises:
       ValueError: if it encounters something that is not a tensor.
     """
-    for t in nest.flatten(tensor):
+    for t in nest.flatten(tensor, expand_composites=True):
       if not (_pywrap_utils.IsTensor(t) or _pywrap_utils.IsVariable(t)):
         raise ValueError("Passed in object of type {}, not tf.Tensor".format(
             type(t)))
@@ -1011,6 +1028,7 @@ class GradientTape(object):
             "gradient in order to compute higher order "
             "derivatives.", 1)
 
+    num_ndarrays = 0
     flat_targets = []
     for t in nest.flatten(target):
       if not backprop_util.IsTrainable(t):
@@ -1021,7 +1039,12 @@ class GradientTape(object):
       if resource_variable_ops.is_resource_variable(t):
         with self:
           t = ops.convert_to_tensor(t)
+      elif isinstance(t, np_arrays.ndarray):
+        t = t.data
+        num_ndarrays += 1
       flat_targets.append(t)
+    # Only rewrap if all targets are ndarray. If not, prefer tensors.
+    rewrap_as_ndarray = num_ndarrays == len(flat_targets)
 
     flat_sources = nest.flatten(sources)
     flat_sources_raw = flat_sources
@@ -1032,6 +1055,10 @@ class GradientTape(object):
             logging.WARN, "The dtype of the source tensor must be "
             "floating (e.g. tf.float32) when calling GradientTape.gradient, "
             "got %r", t.dtype)
+      if getattr(t, "is_packed", False):
+        raise ValueError(
+            "GradientTape.gradient is not supported on packed EagerTensors yet."
+        )
 
     if output_gradients is not None:
       output_gradients = [None if x is None else ops.convert_to_tensor(x)
@@ -1049,6 +1076,9 @@ class GradientTape(object):
       # Keep track of watched variables before setting tape to None
       self._watched_variables = self._tape.watched_variables()
       self._tape = None
+
+    if rewrap_as_ndarray:
+      flat_grad = nest.map_structure(np_arrays.tensor_to_ndarray, flat_grad)
 
     grad = nest.pack_sequence_as(sources, flat_grad)
     return grad
@@ -1104,6 +1134,10 @@ class GradientTape(object):
       ValueError: If vectorization of jacobian computation fails.
     """
     flat_sources = nest.flatten(sources)
+    rewrap_as_ndarray = False
+    if isinstance(target, np_arrays.ndarray):
+      target = target.data
+      rewrap_as_ndarray = True
     target_static_shape = target.shape
     target_shape = array_ops.shape(target)
     # Note that we push and pop the tape here and below. This is needed since we
@@ -1153,6 +1187,8 @@ class GradientTape(object):
         out = array_ops.reshape(out, new_shape)
         if context.executing_eagerly():
           out.set_shape(target_static_shape.concatenate(flat_sources[i].shape))
+      if rewrap_as_ndarray:
+        out = np_arrays.tensor_to_ndarray(out)
       output[i] = out
 
     return nest.pack_sequence_as(sources, output)

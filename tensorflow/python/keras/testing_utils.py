@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -32,6 +33,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
@@ -42,6 +44,14 @@ from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+
+def string_test(actual, expected):
+  np.testing.assert_array_equal(actual, expected)
+
+
+def numeric_test(actual, expected):
+  np.testing.assert_allclose(actual, expected, rtol=1e-3, atol=1e-6)
 
 
 def get_test_data(train_samples,
@@ -84,7 +94,8 @@ def layer_test(layer_cls,
                expected_output_shape=None,
                validate_training=True,
                adapt_data=None,
-               custom_objects=None):
+               custom_objects=None,
+               test_harness=None):
   """Test routine for a layer with a single input and single output.
 
   Arguments:
@@ -104,6 +115,8 @@ def layer_test(layer_cls,
       be tested for this layer. This is only relevant for PreprocessingLayers.
     custom_objects: Optional dictionary mapping name strings to custom objects
       in the layer class. This is helpful for testing custom layers.
+    test_harness: The Tensorflow test, if any, that this function is being
+      called in.
 
   Returns:
     The output data (Numpy array) returned by the layer, for additional
@@ -131,6 +144,17 @@ def layer_test(layer_cls,
     input_dtype = input_data.dtype
   if expected_output_dtype is None:
     expected_output_dtype = input_dtype
+
+  if dtypes.as_dtype(expected_output_dtype) == dtypes.string:
+    if test_harness:
+      assert_equal = test_harness.assertAllEqual
+    else:
+      assert_equal = string_test
+  else:
+    if test_harness:
+      assert_equal = test_harness.assertAllClose
+    else:
+      assert_equal = numeric_test
 
   # instantiation
   kwargs = kwargs or {}
@@ -199,8 +223,7 @@ def layer_test(layer_cls,
         (layer_cls.__name__, x, actual_output.dtype,
          computed_output_signature.dtype, kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output,
-                               rtol=1e-3, atol=1e-6)
+    assert_equal(actual_output, expected_output)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
@@ -209,11 +232,12 @@ def layer_test(layer_cls,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
+    assert_equal(output, actual_output)
 
   # test training mode (e.g. useful for dropout tests)
   # Rebuild the model to avoid the graph being reused between predict() and
   # See b/120160788 for more details. This should be mitigated after 2.0.
+  layer_weights = layer.get_weights()  # Get the layer weights BEFORE training.
   if validate_training:
     model = models.Model(x, layer(x))
     if _thread_local_data.run_eagerly is not None:
@@ -238,6 +262,8 @@ def layer_test(layer_cls,
   model = models.Sequential()
   model.add(layers.Input(shape=input_shape[1:], dtype=input_dtype))
   model.add(layer)
+
+  layer.set_weights(layer_weights)
   actual_output = model.predict(input_data)
   actual_output_shape = actual_output.shape
   for expected_dim, actual_dim in zip(computed_output_shape,
@@ -254,8 +280,7 @@ def layer_test(layer_cls,
              computed_output_shape,
              kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output,
-                               rtol=1e-3, atol=1e-6)
+    assert_equal(actual_output, expected_output)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
@@ -264,7 +289,7 @@ def layer_test(layer_cls,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
+    assert_equal(output, actual_output)
 
   # for further checks in the caller function
   return actual_output
@@ -317,6 +342,29 @@ def run_eagerly_scope(value):
   finally:
     # Restore model type to initial value.
     _thread_local_data.run_eagerly = previous_value
+
+
+@tf_contextlib.contextmanager
+def use_keras_tensors_scope(value):
+  """Provides a scope within which we use KerasTensors in the func. API or not.
+
+  The boolean gets restored to its original value upon exiting the scope.
+
+  Arguments:
+     value: Bool specifying if we should build functional models
+      using KerasTensors in the active test.
+     Should be True or False.
+
+  Yields:
+    The provided value.
+  """
+  previous_value = keras_tensor._KERAS_TENSORS_ENABLED  # pylint: disable=protected-access
+  try:
+    keras_tensor._KERAS_TENSORS_ENABLED = value  # pylint: disable=protected-access
+    yield value
+  finally:
+    # Restore KerasTensor usage to initial value.
+    keras_tensor._KERAS_TENSORS_ENABLED = previous_value  # pylint: disable=protected-access
 
 
 def should_run_eagerly():

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -37,7 +38,7 @@ using tensorflow::string;
 void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
                  const char* raw_device_name, TF_Status* status) {
   if (op_to_reset) {
-    tensorflow::AbstractOperationInterface* op =
+    tensorflow::ImmediateExecutionOperation* op =
         tensorflow::unwrap(op_to_reset);
     op->Clear();
     status->status = op->Reset(op_or_function_name, raw_device_name);
@@ -57,6 +58,12 @@ void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   context->SetShouldStoreGraphs(false);
+}
+
+uint64_t TFE_GetContextId(TFE_Context* ctx) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  return context->GetContextId();
 }
 
 void TFE_MonitoringCounterCellIncrementBy(TFE_MonitoringCounterCell* cell,
@@ -637,4 +644,36 @@ TFE_TensorHandle* TFE_NewTensorHandleFromTensor(TFE_Context* ctx, TF_Tensor* t,
                                                 TF_Status* status) {
   return tensorflow::wrap(
       tensorflow::unwrap(ctx)->CreateLocalHandle(t->tensor));
+}
+
+TFE_TensorHandle* TFE_CreatePackedTensorHandle(TFE_Context* ctx,
+                                               TFE_TensorHandle** handles,
+                                               int* num_handles,
+                                               TF_Status* status) {
+  std::vector<tensorflow::TensorHandle*> tensor_handles;
+  tensor_handles.reserve(*num_handles);
+  for (int i = 0; i < *num_handles; ++i) {
+    tensor_handles.push_back(
+        tensorflow::TensorHandleFromInterface(tensorflow::unwrap(handles[i])));
+  }
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  tensorflow::TensorHandle* handle = nullptr;
+  status->status = tensorflow::TensorHandle::CreatePackedHandle(
+      std::move(tensor_handles), context, &handle);
+  return tensorflow::wrap(handle);
+}
+
+void TFE_ContextSetSoftDevicePlacement(TFE_Context* ctx, unsigned char enable,
+                                       TF_Status* status) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  context->SetAllowSoftPlacement(enable);
+}
+
+void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx, unsigned char enable,
+                                      TF_Status* status) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  context->SetLogDevicePlacement(enable);
 }

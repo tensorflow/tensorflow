@@ -49,7 +49,7 @@ namespace TF {
 namespace {
 
 constexpr int64_t kUnknownResourceId = -1;
-constexpr char kResourceArgUniqueIdAttr[] = "tf.resource_arg_unique_id";
+constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
 
 // Returns if a VarHandleOp is anonymous, which means it always creates a new
 // variable.
@@ -100,8 +100,7 @@ int64_t FindPassthroughArgumentForReturnValue(int64_t return_index,
       value = graph.GetFetch().getOperand(res_num);
     } else if (auto island = llvm::dyn_cast<tf_executor::IslandOp>(op)) {
       value = island.GetYield().getOperand(res_num);
-    } else if (llvm::isa<TF::IdentityNOp>(op) ||
-               llvm::isa<TF::IdentityOp>(op)) {
+    } else if (llvm::isa<TF::IdentityNOp, TF::IdentityOp>(op)) {
       value = op->getOperand(res_num);
     } else {
       return -1;

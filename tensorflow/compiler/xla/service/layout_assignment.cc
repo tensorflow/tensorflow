@@ -2179,6 +2179,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kConditional:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
+    case HloOpcode::kAllGather:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
@@ -2192,6 +2193,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kIsFinite:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLogistic:
     case HloOpcode::kMap:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -2239,6 +2241,8 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCall:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kConstant:
     case HloOpcode::kConvolution:
     case HloOpcode::kCopy:

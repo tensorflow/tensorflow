@@ -318,7 +318,9 @@ llvm::Value* GenerateVF32Log(llvm::IRBuilder<>* b, llvm::Value* input,
   llvm::Value* is_pos_inf_mask = vsl.FCmpEQMask(input, pos_inf);
 
   // Cut off denormalized stuff.
-  llvm::Value* tmp0 = vsl.Max(min_norm_pos, input);
+  // Always allow fast max because we are checking for the nan above.
+  llvm::Value* tmp0 =
+      vsl.Max(min_norm_pos, input, /*enable_fast_min_max=*/true);
 
   // VectorSupportLibrary (intentionally) can't juggle more than one type at a
   // time so drop down to IRBuilder for this bit.

@@ -63,8 +63,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_KERNEL_LOG(
           context,
           "Op Concatenation does not currently support num dimensions >4 "
-          "Tensor '%s' has %d dimensions.",
-          input->name, num_dimensions);
+          "Tensor has %d dimensions.",
+          num_dimensions);
       return kTfLiteError;
     }
   }

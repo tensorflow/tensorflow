@@ -468,6 +468,25 @@ Status CheckFormatConstraintsOnShape(const TensorFormat tensor_format,
   return Status::OK();
 }
 
+Status DatasetIteratorShape(shape_inference::InferenceContext* c) {
+  shape_inference::ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+  std::vector<PartialTensorShape> output_shapes;
+  TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+  if (output_shapes.size() != c->num_outputs()) {
+    return errors::InvalidArgument(
+        "`output_shapes` must be the same length as `output_types` (",
+        output_shapes.size(), " vs. ", c->num_outputs());
+  }
+  for (size_t i = 0; i < output_shapes.size(); ++i) {
+    shape_inference::ShapeHandle output_shape_handle;
+    TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+        output_shapes[i], &output_shape_handle));
+    c->set_output(static_cast<int>(i), output_shape_handle);
+  }
+  return Status::OK();
+}
+
 Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
                            const std::vector<DimensionOrConstant>& spatial,
                            DimensionOrConstant C, ShapeHandle* out,
@@ -1936,6 +1955,7 @@ Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
       // in C++ op code, we must still assert that the unknown dim is either 1
       // or the same as the known dim.
       // - If either dimension is 1, the other dimension is the output.
+      // - If both are unknown then dimension is unknown
       if (c->Value(dim_x) > 1) {
         if (!incompatible_shape_error) {
           *out = c->UnknownShape();
@@ -1954,6 +1974,8 @@ Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
         dims.push_back(dim_x);
       } else if (dim_y.SameHandle(dim_x)) {
         dims.push_back(dim_x);
+      } else if (!c->ValueKnown(dim_x) && !c->ValueKnown(dim_y)) {
+        dims.push_back(c->UnknownDim());
       } else {
         if (!incompatible_shape_error) {
           *out = c->UnknownShape();

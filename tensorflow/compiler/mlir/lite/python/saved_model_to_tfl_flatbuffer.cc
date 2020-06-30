@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -125,8 +126,8 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
   std::vector<std::vector<int>> node_shapes;
-  std::vector<double> node_mins;
-  std::vector<double> node_maxs;
+  std::vector<llvm::Optional<double>> node_mins;
+  std::vector<llvm::Optional<double>> node_maxs;
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(
@@ -146,6 +147,10 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
       saved_model_exported_names.begin(), saved_model_exported_names.end());
   absl::Span<std::string> exported_names(exported_names_in_vector);
 
+  if (exported_names.size() != 1) {
+    return errors::Unimplemented("Only support a single exported name.");
+  }
+
   TF_ASSIGN_OR_RETURN(auto module,
                       ImportSavedModel(model_flags.saved_model_dir(),
                                        model_flags.saved_model_version(), tags,
@@ -161,8 +166,10 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = true;
 
+  // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      toco_flags, std::move(module), pass_config, result);
+      toco_flags, std::move(module), pass_config, result,
+      /*session=*/llvm::None);
   return status;
 }
 

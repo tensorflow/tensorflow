@@ -1,4 +1,4 @@
-// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+// RUN: xla-gpu-opt %s | FileCheck %s
 HloModule Compare
 
 ENTRY %Compare (x: f32[2,2], y: f32[2,2]) -> pred[2,2] {

@@ -156,6 +156,98 @@ func @broadcast_in_dim_bad_shape_mismatch(%arg0: tensor<3xi32>) -> tensor<1x2x3x
 
 // -----
 
+func @case_mismatch_num_args(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{expects branch regions to have single argument, but found 2 for branch 1}}
+  %0 = "xla_hlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
+    ^bb0(%arg0: tensor<f32>):
+      %1 = "xla_hlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
+      "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+    },  {
+    ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
+      %1 = "xla_hlo.copy"(%arg0) : (tensor<f32>) -> tensor<f32>
+      "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+    },  {
+    ^bb0(%arg0: tensor<f32>):
+      %1 = "xla_hlo.floor"(%arg0) : (tensor<f32>) -> tensor<f32>
+      "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+    }
+  ) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func @case_mismatch_num_results(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{branch 1 returned values do not match op result types}}
+  %0 = "xla_hlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
+    ^bb0(%arg0: tensor<f32>):
+      %1 = "xla_hlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
+      "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+    },  {
+    ^bb0(%arg0: tensor<f32>):
+      %1 = "xla_hlo.copy"(%arg0) : (tensor<f32>) -> tensor<f32>
+      "xla_hlo.return"(%1, %arg0) : (tensor<f32>, tensor<f32>) -> ()
+    },  {
+    ^bb0(%arg0: tensor<f32>):
+      %1 = "xla_hlo.floor"(%arg0) : (tensor<f32>) -> tensor<f32>
+      "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+    }
+  ) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func @case_mismatch_arg_type(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{expects operand 2 to be of type 'tensor<i32>', but found 'tensor<f32>'}}
+  %0 = "xla_hlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
+    ^bb0(%arg0: tensor<f32>):
+      %1 = "xla_hlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
+      "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+    },  {
+    ^bb0(%arg0: tensor<i32>):
+      %1 = xla_hlo.constant dense<2.0> : tensor<f32>
+      "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+    },  {
+    ^bb0(%arg0: tensor<f32>):
+      %1 = "xla_hlo.floor"(%arg0) : (tensor<f32>) -> tensor<f32>
+      "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+    }
+  ) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func @case_mismatch_return_type(%index: tensor<i32>, %operand_1: tensor<f32>, %operand_2: tensor<f32>, %operand_3: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{branch 1 returned values do not match op result types}}
+  %0 = "xla_hlo.case"(%index, %operand_1, %operand_2, %operand_3) ( {
+    ^bb0(%arg0: tensor<f32>):
+      %1 = "xla_hlo.negate"(%arg0) : (tensor<f32>) -> tensor<f32>
+      "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+    },  {
+    ^bb0(%arg0: tensor<f32>):
+      %1 = xla_hlo.constant dense<2> : tensor<i32>
+      "xla_hlo.return"(%1) : (tensor<i32>) -> ()
+    },  {
+    ^bb0(%arg0: tensor<f32>):
+      %1 = "xla_hlo.floor"(%arg0) : (tensor<f32>) -> tensor<f32>
+      "xla_hlo.return"(%1) : (tensor<f32>) -> ()
+    }
+  ) : (tensor<i32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func @case_empty_region(%index: tensor<i32>, %operand_1: tensor<f32>) -> () {
+  // expected-error@+1 {{cannot have empty regions}}
+  "xla_hlo.case"(%index, %operand_1) ( {} ) : (tensor<i32>, tensor<f32>) -> tensor<f32>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @comp_eq
 func @comp_eq(%arg0: tensor<3xi32>, %arg1: tensor<3xi32>) -> tensor<3xi1> {
   %0 = "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "EQ"} : (tensor<3xi32>, tensor<3xi32>) -> tensor<3xi1>
@@ -208,6 +300,46 @@ func @collective_permute_duplicate_sources(%arg0: tensor<128x32xf32>) -> tensor<
     source_target_pairs = dense<[[0, 1, 2], [3, 4, 5]]> : tensor<2x3xi64>
   } : (tensor<128x32xf32>) -> tensor<128x32xf32>
   return %0 : tensor<128x32xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @concat_1D
+func @concat_1D(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<3xi32> {
+  %0 = "xla_hlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
+func @concat_1D_type_error(%arg0: tensor<1xi32>, %arg1: tensor<2xf32>)  -> tensor<3xi32> {
+  // expected-error@+1 {{'xla_hlo.concatenate' op requires the same element type for all operands and results}}
+  %0 = "xla_hlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xf32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @concat_1D_unranked
+func @concat_1D_unranked(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> tensor<*xi32> {
+  %0 = "xla_hlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<*xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
+// -----
+
+func @concat_1D_unranked_error(%arg0: tensor<1xi32>, %arg1: tensor<*xi32>)  -> tensor<3xi32> {
+  // expected-error@+1 {{'xla_hlo.concatenate' op inferred type incompatible with return type of operation}}
+  %0 = "xla_hlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<*xi32>) -> tensor<3xi32>
+  return %0 : tensor<3xi32>
+}
+
+// -----
+
+func @concat_1D_error(%arg0: tensor<1xi32>, %arg1: tensor<2xi32>)  -> tensor<4xi32> {
+  // expected-error@+1 {{'xla_hlo.concatenate' op inferred type incompatible with return type of operation}}
+  %0 = "xla_hlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1xi32>, tensor<2xi32>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
 }
 
 // -----
@@ -449,14 +581,6 @@ func @rng_uniform_invalid_type(%mu: tensor<complex<f32>>, %sigma: tensor<f32>) -
   // expected-error@+1 {{but got 'tensor<complex<f32>>'}}
   %0 = "xla_hlo.rng_uniform"(%mu, %sigma, %shape) : (tensor<complex<f32>>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
   return %0 : tensor<2x3x5xf32>
-}
-
-// -----
-
-// CHECK-LABEL: @scalars_to_dimension_tensor
-func @scalars_to_dimension_tensor(%arg0: i32, %arg1: i32) -> tensor<2xi32> {
-  %0 = "xla_hlo.scalars_to_dimension_tensor"(%arg0, %arg1) : (i32, i32) -> tensor<2xi32>
-  return %0 : tensor<2xi32>
 }
 
 // -----
@@ -742,6 +866,13 @@ func @tuple_type_mismatch(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tuple<tenso
 func @get_tuple_element(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
   %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
   return %0 : tensor<f32>
+}
+
+// -----
+
+func @get_tuple_element_token(%arg0: tuple<tensor<f32>, !xla_hlo.token>) -> !xla_hlo.token {
+  %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 1 : i32} : (tuple<tensor<f32>, !xla_hlo.token>) -> !xla_hlo.token
+  return %0 : !xla_hlo.token
 }
 
 // -----

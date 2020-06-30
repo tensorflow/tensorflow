@@ -610,6 +610,9 @@ class IteratorBase {
   // properly propagate errors.
   virtual Status Initialize(IteratorContext* ctx) { return Status::OK(); }
 
+  // Performs initialization of the base iterator.
+  Status InitializeBase(IteratorContext* ctx, const IteratorBase* parent);
+
   // Saves the state of this iterator.
   virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
     return SaveInternal(ctx, writer);
@@ -672,10 +675,6 @@ class IteratorBase {
   // For access to `AddCleanupFunction` and `Restore`.
   friend class DatasetBase;
   friend class DatasetBaseIterator;  // for access to `node_`
-
-  // Performs initialization of the base iterator.
-  Status InitializeBase(IteratorContext* ctx, const IteratorBase* parent,
-                        const string& output_prefix);
 
   std::vector<std::function<void()>> cleanup_fns_;
   std::shared_ptr<model::Node> node_ = nullptr;

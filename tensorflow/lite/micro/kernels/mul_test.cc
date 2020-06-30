@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -35,21 +35,21 @@ void TestMulFloat(std::initializer_list<int> input1_dims_data,
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
 
   constexpr int inputs_size = 2;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims, "input1_tensor"),
-      CreateFloatTensor(input2_data, input2_dims, "input2_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input1_data, input1_dims),
+      CreateFloatTensor(input2_data, input2_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MUL, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MUL);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
@@ -76,7 +76,6 @@ void TestMulFloat(std::initializer_list<int> input1_dims_data,
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -107,24 +106,21 @@ void TestMulQuantized(std::initializer_list<int> input1_dims_data,
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
 
-  ::tflite::ops::micro::AllOpsResolver resolver;
+  ::tflite::AllOpsResolver resolver;
 
   constexpr int inputs_size = 2;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input1_data, input1_dims, "input1_tensor",
-                            input_min, input_max),
-      CreateQuantizedTensor(input2_data, input2_dims, "input2_tensor",
-                            input_min, input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input1_data, input1_dims, input_min, input_max),
+      CreateQuantizedTensor(input2_data, input2_dims, input_min, input_max),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MUL, 1);
+      resolver.FindOp(tflite::BuiltinOperator_MUL);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
@@ -151,7 +147,6 @@ void TestMulQuantized(std::initializer_list<int> input1_dims_data,
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -405,7 +400,7 @@ TF_LITE_MICRO_TEST(FloatRelu) {
       {0.1, 0.2, 0.3, 0.5},     // input2 data
       {4, 1, 2, 2, 1},          // output shape
       {-0.2, 0.04, 0.21, 0.4},  // expected output data
-      output_data, kTfLiteActRelu1);
+      output_data, kTfLiteActReluN1To1);
 }
 
 TF_LITE_MICRO_TEST(FloatBroadcast) {
