@@ -118,6 +118,7 @@ def _spec_for_value(value):
     return value
 
 
+
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
@@ -3937,8 +3938,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       trace_count[0] += 1
       return x
 
-    enabled = def_function.function(func, experimental_type_tracing=True)
-    disabled = def_function.function(func, experimental_type_tracing=False)
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
 
     enabled(1) # Initial call gets traced
     enabled(2)
@@ -3957,8 +3958,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       trace_count[0] += 1
       return args
 
-    enabled = def_function.function(func, experimental_type_tracing=True)
-    disabled = def_function.function(func, experimental_type_tracing=False)
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
 
     args = ("abc", "def",) * 20
     args2 = ("def", "abc",) * 20
@@ -3978,8 +3979,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       trace_count[0] += 1
       return t
 
-    enabled = def_function.function(func, experimental_type_tracing=True)
-    disabled = def_function.function(func, experimental_type_tracing=False)
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
 
     enabled(1, x=1, y=1.0, z="one")
     enabled(2, x=2, y=2.0, z="two")
@@ -3997,8 +3998,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       trace_count[0] += 1
       return t
 
-    enabled = def_function.function(func, experimental_type_tracing=True)
-    disabled = def_function.function(func, experimental_type_tracing=False)
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+    disabled = def_function.function(func, experimental_follow_type_hints=False)
 
     enabled(1, constant_op.constant(1), "str", x=4.0)
     enabled(2, constant_op.constant(2), "str2", x=5.0)

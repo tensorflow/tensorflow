@@ -2314,7 +2314,7 @@ class FunctionSpec(object):
   @staticmethod
   def from_function_and_signature(python_function, input_signature,
                                   is_pure=False,
-                                  experimental_type_tracing=False):
+                                  experimental_follow_type_hints=False):
     """Create a FunctionSpec instance given a python function and signature.
 
     Args:
@@ -2400,7 +2400,7 @@ class FunctionSpec(object):
 
     return FunctionSpec(
         fullargspec, is_method, input_signature,
-        is_pure=is_pure, experimental_type_tracing=experimental_type_tracing,
+        is_pure=is_pure, experimental_follow_type_hints=experimental_follow_type_hints,
         name=name)
 
   def __init__(self,
@@ -2408,7 +2408,7 @@ class FunctionSpec(object):
                is_method,
                input_signature,
                is_pure=False,
-               experimental_type_tracing=False,
+               experimental_follow_type_hints=False,
                name=None):
     """Constructs a FunctionSpec describing a python function.
 
@@ -2423,7 +2423,7 @@ class FunctionSpec(object):
     self._fullargspec = fullargspec
     self._is_method = is_method
     self._is_pure = is_pure
-    self._experimental_type_tracing = experimental_type_tracing
+    self._experimental_follow_type_hints = experimental_follow_type_hints
 
     # TODO(edloper): Include name when serializing for SavedModel?
     self._name = name or "f"
@@ -2493,8 +2493,8 @@ class FunctionSpec(object):
     return self._is_pure
 
   @property
-  def experimental_type_tracing(self):
-    return self._experimental_type_tracing
+  def experimental_follow_type_hints(self):
+    return self._experimental_follow_type_hints
 
   @property
   def arg_names(self):
@@ -2593,7 +2593,7 @@ class FunctionSpec(object):
     """
     if self._is_pure:
       args, kwargs = self._convert_variables_to_tensors(args, kwargs)
-    if self._experimental_type_tracing:
+    if self._experimental_follow_type_hints:
       args, kwargs = self._convert_typed_variables_to_tensors(args, kwargs)
     if self._input_signature is not None:
       if len(args) > len(self._input_signature):
@@ -2827,7 +2827,7 @@ class Function(object):
                experimental_relax_shapes=False,
                capture_by_value=None,
                experimental_compile=None,
-               experimental_type_tracing=False):
+               experimental_follow_type_hints=False):
     """Initializes a `Function`.
 
     Args:
@@ -2851,8 +2851,7 @@ class Function(object):
         default to False.
       experimental_compile: Force-compile the function with XLA, cf.
         def_function.Function doc on experimental_compile.
-      experimental_type_tracing: When true, arguments type annotated with
-        tf.TensorLike will be treated as if they were a tensor.
+      experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -2862,7 +2861,7 @@ class Function(object):
     pure_function = attributes and IMPLEMENTS_ATTRIBUTE_NAME in attributes
     self._function_spec = FunctionSpec.from_function_and_signature(
         python_function, input_signature, is_pure=pure_function,
-        experimental_type_tracing=experimental_type_tracing)
+        experimental_follow_type_hints=experimental_follow_type_hints)
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options
@@ -2878,7 +2877,7 @@ class Function(object):
     # functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._experimental_compile = experimental_compile
-    self._experimental_type_tracing = experimental_type_tracing
+    self._experimental_follow_type_hints = experimental_follow_type_hints
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
@@ -3655,7 +3654,7 @@ def defun_with_attributes(func=None,
                           autograph=True,
                           experimental_autograph_options=None,
                           experimental_compile=None,
-                          experimental_type_tracing=False,
+                          experimental_follow_type_hints=False,
                           experimental_relax_shapes=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
@@ -3705,7 +3704,7 @@ def defun_with_attributes(func=None,
             autograph=autograph,
             autograph_options=experimental_autograph_options,
             experimental_compile=experimental_compile,
-            experimental_type_tracing=experimental_type_tracing,
+            experimental_follow_type_hints=experimental_follow_type_hints,
             experimental_relax_shapes=experimental_relax_shapes))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
