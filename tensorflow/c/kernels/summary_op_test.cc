@@ -21,15 +21,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/test.h"
-
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 
-#include<stdio.h>
-#include<sstream>
-#include<iostream>
 namespace tensorflow {
 namespace {
 
@@ -52,7 +48,7 @@ static void EXPECT_SummaryMatches(const Summary& actual,
 
 void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
                          error::Code expected_code) {
-  // initialize node used to fetch OpKernel 
+  // Initialize node used to fetch OpKernel 
   Status status;
   NodeDef def;
   def.set_op("SummaryScalar");
@@ -66,10 +62,11 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
     strings::StrCat("input2: ", DataTypeString(values->dtype())));
 
   std::unique_ptr<OpKernel> kernel =
-      CreateOpKernel(DeviceType(DEVICE_CPU), nullptr, nullptr, def, 1, &status); 
+      CreateOpKernel(DeviceType(DEVICE_CPU), nullptr, 
+      nullptr, def, 1, &status);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
-  // initialize OpKernel parameters 
+  // Initialize OpKernel parameters 
   OpKernelContext::Params params;
   DummyDevice dummy_device(nullptr);
   params.device = &dummy_device;
@@ -88,7 +85,7 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
     Summary summary; 
     ParseProtoUnlimited(&summary, ctx.mutable_output(0)->scalar<tstring>()());
     EXPECT_SummaryMatches(summary, expected_summary);
-  }
+  } 
 }
 
 TEST(ScalarSummaryOpTest, SimpleFloat) {
@@ -160,18 +157,19 @@ TEST(ScalarSummaryOpTest, Error_WrongValuesTags) {
   TestScalarSummaryOp(&tags, &values, R"()", error::INVALID_ARGUMENT); 
 }
 
+TEST(ScalarSummaryOpTest, Error_WrongWithSingleTag) {
+  Tensor tags(DT_STRING, {1}); 
+  Tensor values(DT_FLOAT, {2, 1}); 
+  tags.vec<tstring>()(0) = "tag1";
+  values.matrix<float>()(0, 0) = 1.0f; 
+  values.matrix<float>()(1, 0) = -2.0f; 
+  TestScalarSummaryOp(&tags, &values, R"()", error::INVALID_ARGUMENT); 
+}
+
 TEST(ScalarSummaryOpTest, IsRegistered){ 
   const OpRegistrationData* reg;
   TF_CHECK_OK(OpRegistry::Global()->LookUp("SummaryScalar", &reg));
 }
-
-
-
-PartialTensorShape S(std::initializer_list<int64> dims) {
-  return PartialTensorShape(dims);
-}
-
-
 
 }  // namespace
 }  // namespace tensorflow

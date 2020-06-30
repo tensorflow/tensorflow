@@ -27,14 +27,9 @@ limitations under the License.
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/framework/register_types.h"
-
 #include "tensorflow/core/framework/types.h"
-#include<iostream>
-
-// TODO: Copy over Summary Scalar Op Doc 
 
 static void* SummaryScalarOp_Create(TF_OpKernelConstruction* ctx) {
-  // TODO: replace with a void* pointer type later 
   void* ptr; 
   return ptr; 
 }
@@ -43,17 +38,9 @@ static void SummaryScalarOp_Delete(void* kernel) {
   return;
 }
 
-bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2){ 
-  if (TF_NumDims(tensor1) != TF_NumDims(tensor2)){
-    return false; 
-  }
-  for(int d = 0; d < TF_NumDims(tensor1); d++){
-    if (TF_Dim(tensor1, d) != TF_Dim(tensor2, d)){
-      return false; 
-    }
-  }
-  return true; 
-}
+// Helper functions for compute method 
+bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2);
+static tensorflow::string SingleTag(TF_Tensor* tags); 
 
 template<typename T>
 static void SummaryScalarOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
@@ -61,35 +48,34 @@ static void SummaryScalarOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   TF_Tensor* values; 
   TF_Status* status = TF_NewStatus();
   TF_GetInput(ctx, 0, &tags, status);
-  if (TF_GetCode(status) == TF_OK){
+  if (TF_GetCode(status) == TF_OK) {
     TF_GetInput(ctx, 1, &values, status);
   } 
-
   if (TF_GetCode(status) == TF_OK) {
     if (!IsSameSize(tags, values)) {
       std::ostringstream err;
-      err << "tags and values not the same shape: " << TF_ShapeDebugString(tags)
-          << " != " << TF_ShapeDebugString(values); 
+      err << "tags and values not the same shape: " 
+          << TF_ShapeDebugString(tags) << " != " << TF_ShapeDebugString(values)
+          << SingleTag(tags); 
       TF_SetStatus(status, TF_INVALID_ARGUMENT, err.str().c_str());
     }
   }
-
- // Copy tag and string data into summary protobuf 
+  // Copy tag and string data into summary protobuf 
   tensorflow::Summary s; 
   if (TF_GetCode(status) == TF_OK) {
     // Convert tags and values tensor to array to access elements by index 
-    auto tags_array = static_cast<TF_TString*>(TF_TensorData(tags)); 
+    auto tags_array = static_cast<tensorflow::tstring*>(TF_TensorData(tags)); 
     auto values_array = static_cast<T*>(TF_TensorData(values)); 
-    for (int i = 0; i < TF_TensorElementCount(tags); ++i){ 
+    // Copy tags and values into summary protobuf 
+    for (int i = 0; i < TF_TensorElementCount(tags); ++i) { 
       tensorflow::Summary::Value* v = s.add_value(); 
-      v->set_tag(TF_TString_GetDataPointer(&tags_array[i]), 
-                 TF_TString_GetSize(&tags_array[i]));
+      v->set_tag(tags_array[i].data(), tags_array[i].size());
       v->set_simple_value(float(values_array[i]));
     }
     TF_Tensor* summary_tensor = TF_AllocateOutput(ctx, 0, 
         TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
         sizeof(TF_TString), status);
-    if (TF_GetCode(status) == TF_OK){
+    if (TF_GetCode(status) == TF_OK) {
       SerializeToTString(s, static_cast<tensorflow::tstring*>
                         (TF_TensorData(summary_tensor)));
     } 
@@ -101,40 +87,68 @@ static void SummaryScalarOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   }
   TF_DeleteStatus(status);
   TF_DeleteTensor(tags);
+  TF_DeleteTensor(values); 
+}
+
+bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2){ 
+  if (TF_NumDims(tensor1) != TF_NumDims(tensor2)) {
+    return false; 
+  }
+  for (int d = 0; d < TF_NumDims(tensor1); d++) {
+    if (TF_Dim(tensor1, d) != TF_Dim(tensor2, d)) {
+      return false; 
+    }
+  }
+  return true; 
+}
+
+static tensorflow::string SingleTag(TF_Tensor* tags){ 
+  if (TF_TensorElementCount(tags) == 1) { 
+    const char* single_tag = static_cast<tensorflow::tstring*>(
+        TF_TensorData(tags))->c_str(); 
+    return tensorflow::strings::StrCat(" (tag '", single_tag, "')");
+  } 
+  else {
+    return ""; 
+  }
 }
 
 template <typename T>
 void RegisterSummaryScalarOpKernel() {
   TF_Status* status = TF_NewStatus();
   {
-    auto* builder = TF_NewKernelBuilder("SummaryScalar", tensorflow::DEVICE_CPU,
-                                        &SummaryScalarOp_Create, &SummaryScalarOp_Compute<T>,
+    auto* builder = TF_NewKernelBuilder("SummaryScalar", 
+                                        tensorflow::DEVICE_CPU,
+                                        &SummaryScalarOp_Create, 
+                                        &SummaryScalarOp_Compute<T>,
                                         &SummaryScalarOp_Delete);
-    TF_KernelBuilder_TypeConstraint(builder, "T", static_cast<TF_DataType>(tensorflow::DataTypeToEnum<T>::v()), status); 
+    TF_KernelBuilder_TypeConstraint(builder, "T", 
+        static_cast<TF_DataType>(tensorflow::DataTypeToEnum<T>::v()), status); 
     CHECK_EQ(TF_OK, TF_GetCode(status))
         << "Error while adding type constraint";
     TF_RegisterKernelBuilder("SummaryScalarOp", builder, status);
     CHECK_EQ(TF_OK, TF_GetCode(status))
         << "Error while registering Summary Scalar kernel";
   }
-// #if GOOGLE_CUDA
-//   {
-//     auto* builder = TF_NewKernelBuilder("SummaryScalar", tensorflow::DEVICE_GPU,
-//                                         &SummaryScalarOp_Create, &SummaryScalarOp_Compute<T>,
-//                                         &SummaryScalarOp_Delete);
-//     TF_RegisterKernelBuilder("SummaryScalar", builder, status);
-//     CHECK_EQ(TF_OK, TF_GetCode(status))
-//         << "Error while registering CUDA SummaryScalar kernel";
-//   }
-// #endif
+
+#if GOOGLE_CUDA
+  {
+    auto* builder = TF_NewKernelBuilder("SummaryScalar", 
+                                        tensorflow::DEVICE_GPU,
+                                        &SummaryScalarOp_Create, 
+                                        &SummaryScalarOp_Compute<T>,
+                                        &SummaryScalarOp_Delete);
+    TF_RegisterKernelBuilder("SummaryScalar", builder, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status))
+        << "Error while registering CUDA SummaryScalar kernel";
+  }
+#endif
 
   TF_DeleteStatus(status);
 }
 
 // A dummy static variable initialized by a lambda whose side-effect is to
-// register the bitcast kernel.
-
-                                                          
+// register the bitcast kernel.                                                          
 TF_ATTRIBUTE_UNUSED static bool  IsSummaryScalarOpKernelRegistered = []() {                  
   if (SHOULD_REGISTER_OP_KERNEL("SummaryScalarOp")) {                                                                           
     RegisterSummaryScalarOpKernel<tensorflow::int64>();          

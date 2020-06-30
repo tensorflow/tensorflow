@@ -39,7 +39,7 @@ class SummaryScalarOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     const Tensor& tags = c->input(0);
     const Tensor& values = c->input(1);
-
+    string tag = SingleTag(tags); 
     OP_REQUIRES(
         c,
         tags.IsSameSize(values) || (TensorShapeUtils::IsScalar(tags.shape()) &&
