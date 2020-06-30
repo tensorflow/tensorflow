@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/kernels/tensor_map.h"
 
+#include "tensorflow/core/kernels/tensor_map.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -28,7 +28,7 @@ TensorMap::~TensorMap() {
 void TensorMap::Encode(VariantTensorData* data) const {
   data->set_type_name(TypeName());
 
-  absl::flat_hash_map<Tensor,Tensor>::const_iterator map_it = tensors().begin();
+  absl::flat_hash_map<TensorKey,Tensor>::const_iterator map_it = tensors().begin();
   while (map_it != tensors().end()) {
     Tensor k = map_it->first;
     Tensor v = map_it->second;
@@ -56,7 +56,7 @@ static Status TensorMapDeviceCopy(
   to->element_shape = from.element_shape;
   to->element_dtype = from.element_dtype;
   to->max_num_elements = from.max_num_elements;
-  for (const std::pair<Tensor,Tensor>& p : from.tensors()) {
+  for (const std::pair<TensorKey,Tensor>& p : from.tensors()) {
     to->tensors().emplace(p); //TODO: check valid dtype
     //if (t.dtype() != DT_INVALID) {
       //TF_RETURN_IF_ERROR(copy(p, &to->tensors().back()));
@@ -85,14 +85,15 @@ bool TensorMap::Decode(const VariantTensorData& data) {
   StringPiece iter(metadata);
 
   std::vector<Tensor>::const_iterator tensors_it = data.tensors().begin();
+
   while (tensors_it != data.tensors().end())
   {
     // should assert that tensors_it + 1 is also not the end
-    /*if (*tensors_it + 1 == data.tensors().end()) {
+    /*if (*std::next(tensors_it) == data.tensors().end()) {
       return false;
     }*/
-    
-    tensors().emplace(*tensors_it,*++tensors_it);
+    TensorKey k = TensorKey(*tensors_it); // copy inefficient?
+    tensors().emplace(k,*++tensors_it);
     tensors_it++;
   }
 

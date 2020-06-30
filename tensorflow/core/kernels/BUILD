@@ -2971,6 +2971,7 @@ tf_cc_tests(
     ],
     deps = [
         ":tensor_map",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",

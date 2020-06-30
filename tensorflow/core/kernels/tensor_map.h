@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_key.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -124,8 +125,8 @@ class TensorMap {
   int max_num_elements = -1;
 
   // Access to the underlying tensor container.
-  absl::flat_hash_map<Tensor,Tensor>& tensors() { return tensors_->values_; }
-  const absl::flat_hash_map<Tensor,Tensor>& tensors() const { return tensors_->values_; }
+  absl::flat_hash_map<TensorKey,Tensor>& tensors() { return tensors_->values_; }
+  const absl::flat_hash_map<TensorKey,Tensor>& tensors() const { return tensors_->values_; }
   
   // Access to shape and element dtype
   PartialTensorShape& shape() { return element_shape; }
@@ -142,17 +143,29 @@ class TensorMap {
     return out;
   }
 
-  bool insert(Tensor key, Tensor value) {
-    tensors_->values_.try_emplace(key, value);
-    return true;
+  // Insert key and value if the key does not already exist.
+  // Returns true if the insertion happens.
+  bool insert(TensorKey key, Tensor value) {
+    auto r = tensors_->values_.try_emplace(key, value);
+    return r.second;
   }
 
-  /*Tensor& lookup(Tensor key) {
+  // Lookup given key. Returns iterator to found key or end.
+  absl::flat_hash_map<TensorKey,Tensor>::iterator find(TensorKey key) {
     return tensors_->values_.find(key);
-  }*/
+  }
 
-  bool erase(Tensor key) {
+  Tensor& operator[](TensorKey& k) {
+      return tensors_->values_[k];
+  }
+  // Removes element with given key. Return size of removed element.
+  size_t erase(TensorKey key) {
     return tensors_->values_.erase(key);
+  }
+
+  // Size returns the number of elements in the map
+  size_t size() {
+    return tensors_->values_.size();
   }
 
   // Is this TensorMap the only one with a reference to the underlying
@@ -163,7 +176,7 @@ class TensorMap {
   class Tensors : public core::RefCounted {
    public:
     //std::unordered_map<Tensor,Tensor> values_;
-    absl::flat_hash_map<Tensor,Tensor> values_;
+    absl::flat_hash_map<TensorKey,Tensor> values_;
   };
   Tensors* tensors_;
 };
