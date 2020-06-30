@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
@@ -120,6 +121,23 @@ int64 TpuPlatform::TpuMemoryLimit() {
 bool TpuPlatform::ShouldRegisterTpuDeviceToDeviceCopy() {
   return tpu::ExecutorApiFn()
       ->TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopyFn(platform_);
+}
+
+Status TpuPlatform::TpusPerHost(int* tpus) {
+  TF_Status* status = TF_NewStatus();
+  tpu::ConfigApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus, status);
+  auto ret_status = StatusFromTF_Status(status);
+  TF_DeleteStatus(status);
+  return ret_status;
+}
+
+Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
+  TF_Status* status = TF_NewStatus();
+  tpu::ConfigApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
+      reinterpret_cast<int64_t*>(&memory_limit), status);
+  auto ret_status = StatusFromTF_Status(status);
+  TF_DeleteStatus(status);
+  return ret_status;
 }
 
 bool RegisterTpuPlatform() {

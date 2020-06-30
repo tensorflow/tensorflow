@@ -90,6 +90,7 @@ cc_library(
         ":tpu_platform_interface",
         ":tpu_stream_interface",
         "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
