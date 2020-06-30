@@ -356,7 +356,7 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
-  U num_elements_in_axis = 1;
+  size_t num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
     // Overflow prevention.
