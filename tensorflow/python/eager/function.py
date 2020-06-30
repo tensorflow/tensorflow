@@ -2400,7 +2400,8 @@ class FunctionSpec(object):
 
     return FunctionSpec(
         fullargspec, is_method, input_signature,
-        is_pure=is_pure, experimental_follow_type_hints=experimental_follow_type_hints,
+        is_pure=is_pure,
+        experimental_follow_type_hints=experimental_follow_type_hints,
         name=name)
 
   def __init__(self,
@@ -2540,6 +2541,7 @@ class FunctionSpec(object):
 
     args = list(args)
     for i, arg in enumerate(args):
+      # See https://docs.python.org/3/library/inspect.html#inspect.getfullargspec for details on fullargspec
       if i < len(self._fullargspec.args):
         arg_annotation = self._fullargspec.annotations.get(
             self._fullargspec.args[i])
