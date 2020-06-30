@@ -254,24 +254,18 @@ def disable_tensor_equality():
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
-DataType = TypeVar("DataType",
-                   dtypes.Float16, dtypes.Float32, dtypes.Float64,
-                   dtypes.BFloat16, dtypes.Complex64, dtypes.Complex128,
-                   dtypes.Int8, dtypes.UInt8, dtypes.UInt16,
-                   dtypes.UInt32, dtypes.UInt64, dtypes.Int16,
-                   dtypes.Int32, dtypes.Int64, dtypes.Bool,
-                   dtypes.String, dtypes.QInt8, dtypes.QUInt8,
-                   dtypes.QInt16, dtypes.QUInt16, dtypes.QInt32,
-                   dtypes.Resource, dtypes.Variant)
+DataType = TypeVar("DataType", bound=dtypes.DType)
 
+# TODO(rahulkamat): Remove this and make Tensor a generic class
+# once compatibility with Python 2 is dropped.
 if sys.version_info[0] >= 3:
-  GenericTensor = Generic[DataType]
+  TensorTypeBase = Generic[DataType]
 else:
-  GenericTensor = object
+  TensorTypeBase = object
 
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
 @tf_export("Tensor")
-class Tensor(internal.NativeObject, core_tf_types.Tensor, GenericTensor):
+class Tensor(internal.NativeObject, core_tf_types.Tensor, TensorTypeBase):
   """A tensor is a multidimensional array of elements represented by a
 
   `tf.Tensor` object.  All elements are of a single known data type.
