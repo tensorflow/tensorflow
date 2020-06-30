@@ -77,10 +77,15 @@ RUN apt-get update && apt-get install -y \
     virtualenv \
     swig
 
+RUN apt-get update && apt-get install -y \
+    gfortran \
+    libblas-dev \
+    liblapack-dev
+
 RUN python3 -m pip --no-cache-dir install \
     Pillow \
-    h5py \
     keras_preprocessing \
+    h5py \
     matplotlib \
     mock \
     'numpy<1.19.0' \
