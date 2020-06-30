@@ -74,7 +74,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.types import core as core_tf_types
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
@@ -2544,18 +2543,20 @@ class FunctionSpec(object):
       if i < len(self._fullargspec.args):
         arg_annotation = self._fullargspec.annotations.get(
             self._fullargspec.args[i])
-        if arg_annotation == core_tf_types.TensorLike:
+        # TODO(rahulkamat): Once TensorLike is ready, change the following conditional statements
+        # to check if the input arg is annotated with TensorLike
+        if arg_annotation == ops.Tensor:
           args[i] = ops.convert_to_tensor(arg)
       else:
         varargs_annotation = self._fullargspec.annotations.get(
             self._fullargspec.varargs)
-        if varargs_annotation == core_tf_types.TensorLike:
+        if varargs_annotation == ops.Tensor:
           args[i] = ops.convert_to_tensor(arg)
 
     if self._fullargspec.varkw is not None:
       varkw_annotation = self._fullargspec.annotations.get(
           self._fullargspec.varkw)
-      if varkw_annotation == core_tf_types.TensorLike:
+      if varkw_annotation == ops.Tensor:
         kwargs = {kw: ops.convert_to_tensor(x) for kw, x in kwargs.items()}
 
     return tuple(args), kwargs

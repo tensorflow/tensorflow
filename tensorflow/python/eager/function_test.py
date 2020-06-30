@@ -80,7 +80,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.structured import structured_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_ops
-from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -3934,7 +3933,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testTraceWithAnnotationsBasic(self):
     trace_count = [0]
-    def func(x: core_tf_types.TensorLike):
+    def func(x: ops.Tensor):
       trace_count[0] += 1
       return x
 
@@ -3954,7 +3953,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testTraceWithAnnotationsWithArgs(self):
     trace_count = [0]
-    def func(*args: core_tf_types.TensorLike):
+    def func(*args: ops.Tensor):
       trace_count[0] += 1
       return args
 
@@ -3975,7 +3974,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testTraceWithAnnotationsWithKwargs(self):
     trace_count = [0]
-    def func(t: core_tf_types.TensorLike, **kwargs: core_tf_types.TensorLike):
+    def func(t: ops.Tensor, **kwargs: ops.Tensor):
       trace_count[0] += 1
       return t
 
@@ -3993,8 +3992,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testTraceWithAnnotationsWithMultipleInputTypes(self):
     trace_count = [0]
-    def func(t: core_tf_types.TensorLike, *args: core_tf_types.TensorLike,
-             **kwargs: core_tf_types.TensorLike):
+    def func(t: ops.Tensor, *args: ops.Tensor,
+             **kwargs: ops.Tensor):
       trace_count[0] += 1
       return t
 
