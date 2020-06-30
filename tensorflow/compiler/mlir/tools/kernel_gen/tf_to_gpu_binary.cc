@@ -53,8 +53,12 @@ int main(int argc, char** argv) {
   tensorflow::InitMlir y(&argc, &argv);
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
 
+#if TENSORFLOW_USE_ROCM
+  std::pair<int32_t, int32_t> compute_capability(architecture, 0);
+#else
   std::pair<int32_t, int32_t> compute_capability(architecture / 10,
                                                  architecture % 10);
+#endif
 
   std::string tf_code;
   auto read_status = tensorflow::ReadFileToString(tensorflow::Env::Default(),
@@ -64,7 +68,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  auto cubin = tensorflow::kernel_gen::GenerateCubinForTfCode(
+  auto cubin = tensorflow::kernel_gen::GenerateGpuBinaryForTfCode(
       tf_code, compute_capability, tile_sizes, same_shape, unroll_factors);
 
   if (!cubin.ok()) {

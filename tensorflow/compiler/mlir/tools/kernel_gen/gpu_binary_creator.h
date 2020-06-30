@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace kernel_gen {
-xla::StatusOr<std::vector<uint8_t>> GenerateCubinForTfCode(
+xla::StatusOr<std::vector<uint8_t>> GenerateGpuBinaryForTfCode(
     llvm::StringRef tf_code,
     std::pair<int32_t, int32_t> compute_capability = {7, 5},
     llvm::ArrayRef<uint32_t> tile_sizes = {16, 64},
