@@ -416,6 +416,23 @@ class MultiProcessRunner(object):
     p = self._processes.get((task_type, task_id), None)
     return p.pid if p else None
 
+  def get_process_exit_code(self, task_type, task_id):
+    """Returns the subprocess exit code given the task type and task id.
+
+    Args:
+      task_type: The task type.
+      task_id: The task id.
+
+    Returns:
+      The subprocess exit code; `None` if the subprocess has not exited yet.
+
+    Raises:
+      KeyError: If the corresponding subprocess is not found with `task_type`
+        and `task_id`.
+    """
+    p = self._processes[(task_type, task_id)]
+    return p.exitcode if p else None
+
   def _join_or_terminate(self, task_type, task_id, process, timeout):
     """Joins a process. If it times out, terminate all procsses."""
     logging.info('joining %s-%d', task_type, task_id)
