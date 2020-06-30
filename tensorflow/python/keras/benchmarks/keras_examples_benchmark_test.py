@@ -19,10 +19,8 @@ from __future__ import print_function
 
 import six
 
-from tensorflow.python import keras
-from tensorflow.python.keras import layers
-from tensorflow.python.keras import preprocessing
-from tensorflow.python.keras.datasets import imdb
+import tensorflow as tf
+
 from tensorflow.python.keras.benchmarks import benchmark_util
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
@@ -58,19 +56,22 @@ class KerasExamplesBenchmark(
 
   def _lstm_imdb_model(self):
     """LSTM model from https://keras.io/examples/nlp/bidirectional_lstm_imdb/."""
-    inputs = keras.Input(shape=(None,), dtype="int32")
-    x = layers.Embedding(_MAX_FEATURE, 128)(inputs)
-    x = layers.Bidirectional(layers.LSTM(64, return_sequences=True))(x)
-    x = layers.Bidirectional(layers.LSTM(64))(x)
-    outputs = layers.Dense(1, activation="sigmoid")(x)
-    model = keras.Model(inputs, outputs)
+    inputs = tf.keras.Input(shape=(None,), dtype="int32")
+    x = tf.keras.layers.Embedding(_MAX_FEATURE, 128)(inputs)
+    x = tf.keras.layers.Bidirectional(
+        tf.keras.layers.LSTM(64, return_sequences=True))(x)
+    x = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(64))(x)
+    outputs = tf.keras.layers.Dense(1, activation="sigmoid")(x)
+    model = tf.keras.Model(inputs, outputs)
     return model
 
   def benchmark_bidirect_lstm_imdb(self, batch_size, run_iters):
     """Benchmark for Bidirectional LSTM on IMDB."""
     # Load dataset.
-    (x_train, y_train), _ = imdb.load_data(num_words=_MAX_FEATURE)
-    x_train = preprocessing.sequence.pad_sequences(x_train, maxlen=_MAX_LEN)
+    (x_train, y_train), _ = tf.keras.datasets.imdb.load_data(
+        num_words=_MAX_FEATURE)
+    x_train = tf.keras.preprocessing.sequence.pad_sequences(x_train,
+                                                            maxlen=_MAX_LEN)
     results = benchmark_util.measure_performance(self._lstm_imdb_model,
                                                  x=x_train,
                                                  y=y_train,

@@ -20,10 +20,9 @@ from __future__ import print_function
 import timeit
 import numpy as np
 
-from tensorflow.python.keras import callbacks
+import tensorflow as tf
 
-
-class TimerCallBack(callbacks.Callback):
+class TimerCallBack(tf.keras.callbacks.Callback):
   """Callback for logging time in each epoch or batch."""
 
   def __init__(self):
