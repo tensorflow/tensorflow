@@ -791,9 +791,9 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_tf32_execution",
     srcs = ["util/tf32.cc"],
+    hdrs = ["//tensorflow/core/platform:tf32_hdr"],
     module_name = "_pywrap_tf32_execution",
     deps = [
-        "//tensorflow/core/platform:tf32_utils",
         "@pybind11",
     ],
 )
