@@ -73,7 +73,6 @@ py_test(
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -82,5 +81,6 @@ py_library(
     srcs = ["benchmark_util.py"],
     deps = [
         "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
