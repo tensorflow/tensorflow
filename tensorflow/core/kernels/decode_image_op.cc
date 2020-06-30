@@ -771,9 +771,9 @@ class DecodeImageV2Op : public OpKernel {
     int32 height_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 22)));
     const int32 height = ByteSwapInt32ForBigEndian(height_);
-    int16 bpp_ = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int16*>(img_bytes + 28)));
-    const int16 bpp = le16toh(bpp_);
+    int32 bpp_ = internal::SubtleMustCopy(
+        *(reinterpret_cast<const int32*>(img_bytes + 28)));
+    const int32 bpp = ByteSwapInt32ForBigEndian(bpp_);
 
     if (channels_) {
       OP_REQUIRES(context, (channels_ == bpp / 8),
