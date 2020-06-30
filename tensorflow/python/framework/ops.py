@@ -5352,7 +5352,7 @@ def control_dependencies(control_inputs):
    A context manager that specifies control dependencies for all
    operations constructed within the context.
   """
-  if context.executing_eagerly():
+  if executing_eagerly_outside_functions():
     if control_inputs:
       # Execute any pending callables.
       for control in control_inputs:
