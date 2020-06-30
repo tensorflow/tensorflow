@@ -244,7 +244,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Output Tensor detection_boxes: size is set to (1, num_detected_boxes, 4)
   TfLiteTensor* detection_boxes =
       GetOutput(context, node, kOutputTensorDetectionBoxes);
-  if (detection_boxes->dims == nullptr) {
+  if (detection_boxes->dims->size == 0) {
     TF_LITE_ENSURE_STATUS(AllocateOutDimensions(
         context, &detection_boxes->dims, 1, num_detected_boxes, 4));
   }
@@ -252,7 +252,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Output Tensor detection_classes: size is set to (1, num_detected_boxes)
   TfLiteTensor* detection_classes =
       GetOutput(context, node, kOutputTensorDetectionClasses);
-  if (detection_classes->dims == nullptr) {
+  if (detection_classes->dims->size == 0) {
     TF_LITE_ENSURE_STATUS(AllocateOutDimensions(
         context, &detection_classes->dims, 1, num_detected_boxes));
   }
@@ -260,7 +260,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Output Tensor detection_scores: size is set to (1, num_detected_boxes)
   TfLiteTensor* detection_scores =
       GetOutput(context, node, kOutputTensorDetectionScores);
-  if (detection_scores->dims == nullptr) {
+  if (detection_scores->dims->size == 0) {
     TF_LITE_ENSURE_STATUS(AllocateOutDimensions(
         context, &detection_scores->dims, 1, num_detected_boxes));
   }
@@ -268,7 +268,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Output Tensor num_detections: size is set to 1
   TfLiteTensor* num_detections =
       GetOutput(context, node, kOutputTensorNumDetections);
-  if (num_detections->dims == nullptr) {
+  if (num_detections->dims->size == 0) {
     TF_LITE_ENSURE_STATUS(AllocateOutDimensions(
         context, &num_detections->dims, 1));
   }

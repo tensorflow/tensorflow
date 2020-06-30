@@ -80,7 +80,7 @@ void TestDetectionPostprocess(const int* input_dims_data1, const float* input_da
                               const int* output_dims_data4, float* output_data4,
                               const float* golden1, const float* golden2,
                               const float* golden3, const float* golden4,
-                              const float tolerance, bool use_regular_nms,  //TODO 4 tolerance
+                              const float tolerance, bool use_regular_nms,
                               uint8_t* input_data_quantized1=nullptr,
                               uint8_t* input_data_quantized2=nullptr,
                               uint8_t* input_data_quantized3=nullptr,
@@ -90,10 +90,23 @@ void TestDetectionPostprocess(const int* input_dims_data1, const float* input_da
   TfLiteIntArray* input_dims1 = IntArrayFromInts(input_dims_data1);
   TfLiteIntArray* input_dims2 = IntArrayFromInts(input_dims_data2);
   TfLiteIntArray* input_dims3 = IntArrayFromInts(input_dims_data3);
-  TfLiteIntArray* output_dims1 = IntArrayFromInts(output_dims_data1);
-  TfLiteIntArray* output_dims2 = IntArrayFromInts(output_dims_data2);
-  TfLiteIntArray* output_dims3 = IntArrayFromInts(output_dims_data3);
-  TfLiteIntArray* output_dims4 = IntArrayFromInts(output_dims_data4);
+  TfLiteIntArray* output_dims1 = nullptr;
+  TfLiteIntArray* output_dims2 = nullptr;
+  TfLiteIntArray* output_dims3 = nullptr;
+  TfLiteIntArray* output_dims4 = nullptr;
+
+  // Instance of a zero-length int to pass as tensor dims for a flatbuffer
+  // Tensor with no shape.
+  const TfLiteIntArray kZeroLengthIntArray = {0};
+
+  output_dims1 = output_dims_data1 == nullptr ? const_cast<TfLiteIntArray*>(&kZeroLengthIntArray) :
+                 IntArrayFromInts(output_dims_data1);
+  output_dims2 = output_dims_data2 == nullptr ? const_cast<TfLiteIntArray*>(&kZeroLengthIntArray) :
+                 IntArrayFromInts(output_dims_data2);
+  output_dims3 = output_dims_data3 == nullptr ? const_cast<TfLiteIntArray*>(&kZeroLengthIntArray) :
+                 IntArrayFromInts(output_dims_data3);
+  output_dims4 = output_dims_data4 == nullptr ? const_cast<TfLiteIntArray*>(&kZeroLengthIntArray) :
+                 IntArrayFromInts(output_dims_data4);
 
   constexpr int inputs_size = 3;
   constexpr int outputs_size = 4;
