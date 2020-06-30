@@ -615,6 +615,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
     ],
 )
 
