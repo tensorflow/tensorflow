@@ -169,6 +169,12 @@ static void InitializeTargets() {
   LLVMInitializeAArch64TargetMC();
   LLVMInitializeAArch64AsmPrinter();
 #endif
+#if TF_LLVM_S390X_AVILABLE
+  LLVMInitializeSystemZTarget();
+  LLVMInitializeSystemZTargetInfo();
+  LLVMInitializeSystemZTargetMC();
+  LLVMInitializeSystemZAsmPrinter();
+#endif
   LLVMInitializeARMTarget();
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTargetMC();
@@ -177,10 +183,6 @@ static void InitializeTargets() {
   LLVMInitializePowerPCTargetInfo();
   LLVMInitializePowerPCTargetMC();
   LLVMInitializePowerPCAsmPrinter();
-  LLVMInitializeSystemZTarget();
-  LLVMInitializeSystemZTargetInfo();
-  LLVMInitializeSystemZTargetMC();
-  LLVMInitializeSystemZAsmPrinter();
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();

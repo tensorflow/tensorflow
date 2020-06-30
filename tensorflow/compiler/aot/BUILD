@@ -1,6 +1,7 @@
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available")
+load("//tensorflow/core/platform:build_config.bzl", "if_llvm_s390x_available")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -35,7 +36,8 @@ cc_library(
         "flags.h",
         "quantize.h",
     ],
-    defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]),
+    defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"])
+              + if_llvm_s390x_available(["TF_LLVM_S390X_AVAILABLE=1"]),
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         ":aot_only_var_handle_op",
@@ -73,13 +75,9 @@ cc_library(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "//tensorflow/core:regexp_internal",
-    ] + select({
-        "//tensorflow:linux_s390x": [
-            "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
-        ],
-        "//conditions:default": [
-        ],
-    }) + if_llvm_aarch64_available([
+    ] + if_llvm_s390x_available([
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_aarch64_available([
         "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )
@@ -120,13 +118,9 @@ cc_library(
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-    ] + select({
-        "//tensorflow:linux_s390x": [
-            "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
-        ],
-        "//conditions:default": [
-        ],
-    }) + if_llvm_aarch64_available([
+    ] + if_llvm_s390x_available([
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_aarch64_available([
         "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )

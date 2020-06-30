@@ -779,3 +779,9 @@ def if_llvm_aarch64_available(then, otherwise = []):
     # TODO(b/...): The TF XLA build fails when adding a dependency on
     # @llvm/llvm-project/llvm:aarch64_target.
     return otherwise
+
+def if_llvm_s390x_available(then, otherwise = []):
+    return select({
+        "//tensorflow:linux_s390x": then,
+        "//conditions:default": otherwise,
+    })
