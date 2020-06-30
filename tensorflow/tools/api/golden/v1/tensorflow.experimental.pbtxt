@@ -4,6 +4,10 @@ tf_module {
     name: "Optional"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "TensorLike"
+    mtype: "<class \'typing._GenericAlias\'>"
+  }
   member_method {
     name: "async_clear_error"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"

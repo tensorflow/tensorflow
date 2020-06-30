@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TensorLike"
+    mtype: "<class \'typing._GenericAlias\'>"
+  }
+  member {
     name: "dlpack"
     mtype: "<type \'module\'>"
   }
