@@ -593,8 +593,8 @@ func @QuantizeSharedBiases(
 // CHECK: %[[cst_0:.*]] = constant dense<1.000000e+00> : tensor<32xf32>
 // CHECK: %[[q_0:.*]] = "tfl.quantize"(%[[cst_0]])
 // CHECK: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]])
-// CHECK: %{{.*}} = "tfl.conv_2d"(%{{.*}}, %{{.*}}, %[[dq]])
 // CHECK: %{{.*}} = "tfl.conv_2d"(%{{.*}}, %{{.*}}, %[[dq_0]])
+// CHECK: %{{.*}} = "tfl.conv_2d"(%{{.*}}, %{{.*}}, %[[dq]])
 }
 
 // CHECK-LABEL: QuantizeSharedBiases2

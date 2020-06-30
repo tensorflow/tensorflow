@@ -34,6 +34,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
+
+// This includes the interface class definition. It couldn't be in a namespace
+// because the table gen doesn't emit the namespace when it is used.
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_interface.cc.inc"
+
 namespace quant {
 
 const float kNearZeroTolerance = 1.0e-6;
