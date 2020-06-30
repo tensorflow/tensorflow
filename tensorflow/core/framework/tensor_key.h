@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_KEY_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TENSOR_KEY_H_
 
 #include "tensorflow/core/framework/tensor.h"
 
@@ -62,3 +64,5 @@ class TensorKey : public Tensor {
 };
 
 } //namespace tensorflow
+
+#endif
