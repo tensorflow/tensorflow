@@ -75,9 +75,9 @@ class MomentumOptimizerTest(test.TestCase):
       # Check we have slots
       self.assertEqual(["momentum"], mom_opt.get_slot_names())
       slot0 = mom_opt.get_slot(var0, "momentum")
-      self.assertEquals(slot0.get_shape(), var0.get_shape())
+      self.assertEqual(slot0.get_shape(), var0.get_shape())
       slot1 = mom_opt.get_slot(var1, "momentum")
-      self.assertEquals(slot1.get_shape(), var1.get_shape())
+      self.assertEqual(slot1.get_shape(), var1.get_shape())
       if not context.executing_eagerly():
         self.assertFalse(slot0 in variables.trainable_variables())
         self.assertFalse(slot1 in variables.trainable_variables())
@@ -146,7 +146,7 @@ class MomentumOptimizerTest(test.TestCase):
       optimizer_variables = optimizer.variables()
       self.assertStartsWith(optimizer_variables[0].name, "var0")
       self.assertStartsWith(optimizer_variables[1].name, "var1")
-      self.assertEquals(2, len(optimizer_variables))
+      self.assertEqual(2, len(optimizer_variables))
 
     with ops.Graph().as_default():
       var2 = resource_variable_ops.ResourceVariable(
@@ -158,7 +158,7 @@ class MomentumOptimizerTest(test.TestCase):
       optimizer_variables = optimizer.variables()
       self.assertStartsWith(optimizer_variables[0].name, "var2")
       self.assertStartsWith(optimizer_variables[1].name, "var3")
-      self.assertEquals(2, len(optimizer_variables))
+      self.assertEqual(2, len(optimizer_variables))
 
   @test_util.run_deprecated_v1
   def testNesterovMomentum(self):
@@ -299,10 +299,10 @@ class MomentumOptimizerTest(test.TestCase):
         # Check we have slots
         self.assertEqual(["momentum"], mom_opt.get_slot_names())
         slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         self.assertFalse(slot0 in variables.trainable_variables())
         slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
         self.assertFalse(slot1 in variables.trainable_variables())
 
         # Fetch params to validate initial values
@@ -482,9 +482,9 @@ class MomentumOptimizerTest(test.TestCase):
         # Check we have slots
         self.assertEqual(["momentum"], mom_opt.get_slot_names())
         slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
 
         # Fetch params to validate initial values
         self.assertAllClose([0, 0], self.evaluate(var0)[0])
@@ -557,9 +557,9 @@ class MomentumOptimizerTest(test.TestCase):
 
         self.assertEqual(["momentum"], mom_opt.get_slot_names())
         slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))

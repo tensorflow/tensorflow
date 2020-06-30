@@ -563,7 +563,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               {_SAVED_MODEL_SIGNATURE_KEY: root.run})
 
     # Run TRT conversion.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"Option is_dynamic_op=False is not supported in TF 2.0, "
         "please set it to True instead."):
       self._CreateConverterV2(input_saved_model_dir, is_dynamic_op=False)
@@ -684,16 +684,16 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         gen_resource_variable_ops.destroy_resource_op(
             handle, ignore_lookup_error=False)
 
-    with self.assertRaisesRegexp(errors.NotFoundError,
-                                 r"Resource .* does not exist."):
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                r"Resource .* does not exist."):
       _DestroyCache()
 
     # Load the converted model and make sure the engine cache is populated by
     # default.
     root = load.load(output_saved_model_dir)
     _DestroyCache()
-    with self.assertRaisesRegexp(errors.NotFoundError,
-                                 r"Resource .* does not exist."):
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                r"Resource .* does not exist."):
       _DestroyCache()
 
     # Load the converted model again and make sure the engine cache is destroyed
@@ -701,8 +701,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     root = load.load(output_saved_model_dir)
     del root
     gc.collect()  # Force GC to destroy the TRT engine cache.
-    with self.assertRaisesRegexp(errors.NotFoundError,
-                                 r"Resource .* does not exist."):
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                r"Resource .* does not exist."):
       _DestroyCache()
 
   def _CompareSavedModel(self, model_class):

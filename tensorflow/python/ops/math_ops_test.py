@@ -73,7 +73,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
       return
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     axis = np.array([[0], [1]])
-    with self.assertRaisesRegexp(ValueError, "must be at most rank 1"):
+    with self.assertRaisesRegex(ValueError, "must be at most rank 1"):
       math_ops.reduce_sum(x, axis)
 
   def testReduceVar(self):
@@ -83,7 +83,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
         self.evaluate(math_ops.reduce_variance(x, axis=0)), [0, 0, 0])
 
     x = [[1, 2, 1, 1], [1, 1, 0, 1]]
-    with self.assertRaisesRegexp(TypeError, "must be either real or complex"):
+    with self.assertRaisesRegex(TypeError, "must be either real or complex"):
       math_ops.reduce_variance(x)
 
     x = [[1., 2., 1., 1.], [1., 1., 0., 1.]]
@@ -110,7 +110,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
         self.evaluate(math_ops.reduce_std(x, axis=0)), [0, 0, 0])
 
     x = [[1, 2, 1, 1], [1, 1, 0, 1]]
-    with self.assertRaisesRegexp(TypeError, "must be either real or complex"):
+    with self.assertRaisesRegex(TypeError, "must be either real or complex"):
       math_ops.reduce_std(x)
 
     x = [[1., 2., 1., 1.], [1., 1., 0., 1.]]
@@ -176,8 +176,8 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.array(x, dtype=dtype)
       max_np = np.max(x_np)
-      with self.assertRaisesRegexp(RuntimeWarning,
-                                   "overflow encountered in exp"):
+      with self.assertRaisesRegex(RuntimeWarning,
+                                  "overflow encountered in exp"):
         out = np.log(np.sum(np.exp(x_np)))
         if out == np.inf:
           raise RuntimeWarning("overflow encountered in exp")
@@ -193,8 +193,8 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.array(x, dtype=dtype)
       max_np = np.max(x_np)
-      with self.assertRaisesRegexp(RuntimeWarning,
-                                   "divide by zero encountered in log"):
+      with self.assertRaisesRegex(RuntimeWarning,
+                                  "divide by zero encountered in log"):
         out = np.log(np.sum(np.exp(x_np)))
         if out == -np.inf:
           raise RuntimeWarning("divide by zero encountered in log")
@@ -314,7 +314,7 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
       x = np.array([1, 2], dtype=dtype)
       y = np.array([[1, 2]], dtype=dtype)
       # The inputs 'x' and 'y' must have the same shape.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           (ValueError, errors.InvalidArgumentError),
           "Shapes must be equal rank|must be of the same shape"):
         math_ops.approximate_equal(x, y)
@@ -761,7 +761,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       error_message = (
           "Input 'y' of 'Add(V2)?' Op has type float32 that does not "
           "match type int32 of argument 'x'.")
-    with self.assertRaisesRegexp(error, error_message):
+    with self.assertRaisesRegex(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + 1.0
       self.evaluate(a)
 
@@ -786,7 +786,8 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
 
       def __radd__(self, other):
         raise TypeError("RHS not implemented")
-    with self.assertRaisesRegexp(error, error_message):
+
+    with self.assertRaisesRegex(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSRaisesError()
       self.evaluate(a)
 
@@ -794,13 +795,15 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
 
       def __radd__(self, other):
         return NotImplemented
-    with self.assertRaisesRegexp(error, error_message):
+
+    with self.assertRaisesRegex(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsNotImplemented()
       self.evaluate(a)
 
     class RHSNotImplemented(object):
       pass
-    with self.assertRaisesRegexp(error, error_message):
+
+    with self.assertRaisesRegex(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSNotImplemented()
       self.evaluate(a)
 

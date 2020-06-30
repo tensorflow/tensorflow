@@ -649,11 +649,11 @@ class CheckpointCompatibilityTests(test.TestCase):
       else:
         # When graph building, we haven't read any keys, so we don't know
         # whether the restore will be complete.
-        with self.assertRaisesRegexp(AssertionError, "not restored"):
+        with self.assertRaisesRegex(AssertionError, "not restored"):
           status.assert_consumed()
-        with self.assertRaisesRegexp(AssertionError, "not restored"):
+        with self.assertRaisesRegex(AssertionError, "not restored"):
           status.assert_existing_objects_matched()
-        with self.assertRaisesRegexp(AssertionError, "not restored"):
+        with self.assertRaisesRegex(AssertionError, "not restored"):
           status.assert_nontrivial_match()
       status.run_restore_ops()
       self._check_sentinels(root)

@@ -97,7 +97,7 @@ class BetaincTest(test.TestCase):
             rtol=rtol,
             atol=atol)
 
-      with self.assertRaisesRegexp(ValueError, "must be equal"):
+      with self.assertRaisesRegex(ValueError, "must be equal"):
         math_ops.betainc(0.5, [0.5], [[0.5]])
 
       with self.cached_session():

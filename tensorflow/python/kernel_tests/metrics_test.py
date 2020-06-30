@@ -160,9 +160,9 @@ def _assert_nan(test_case, actual):
 
 
 def _assert_metric_variables(test_case, expected):
-  test_case.assertEquals(
+  test_case.assertEqual(
       set(expected), set(v.name for v in variables.local_variables()))
-  test_case.assertEquals(
+  test_case.assertEqual(
       set(expected),
       set(v.name for v in ops.get_collection(ops.GraphKeys.METRIC_VARIABLES)))
 
@@ -340,11 +340,11 @@ class MeanTest(test.TestCase):
     expected_error_msg = 'weights can not be broadcast to values'
     for invalid_weight in invalid_weights:
       # Static shapes.
-      with self.assertRaisesRegexp(ValueError, expected_error_msg):
+      with self.assertRaisesRegex(ValueError, expected_error_msg):
         metrics.mean(values, invalid_weight)
 
       # Dynamic shapes.
-      with self.assertRaisesRegexp(errors_impl.OpError, expected_error_msg):
+      with self.assertRaisesRegex(errors_impl.OpError, expected_error_msg):
         with self.cached_session():
           _, update_op = metrics.mean(values_placeholder, invalid_weight)
           variables.local_variables_initializer().run()

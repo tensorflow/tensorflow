@@ -82,7 +82,7 @@ class PForTest(PForTestCase):
       x_i = array_ops.gather(x, i)
       return nn.top_k(x_i)
 
-    with self.assertRaisesRegexp(ValueError, "No pfor vectorization"):
+    with self.assertRaisesRegex(ValueError, "No pfor vectorization"):
       self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=False)
     self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=True)
 
@@ -103,14 +103,14 @@ class PForTest(PForTestCase):
           parallel_iterations=parallel_iterations)
 
   def test_parallel_iterations_zero(self):
-    with self.assertRaisesRegexp(ValueError, "positive integer"):
+    with self.assertRaisesRegex(ValueError, "positive integer"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=0)
-    with self.assertRaisesRegexp(TypeError, "positive integer"):
+    with self.assertRaisesRegex(TypeError, "positive integer"):
       pfor_control_flow_ops.for_loop(
           lambda i: 1, dtypes.int32, 8, parallel_iterations=0)
 
   def test_parallel_iterations_one(self):
-    with self.assertRaisesRegexp(ValueError, "Use for_loop instead"):
+    with self.assertRaisesRegex(ValueError, "Use for_loop instead"):
       pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
 
   def test_vectorized_map(self):
@@ -273,8 +273,8 @@ class ReductionTest(PForTestCase):
       x_i = array_ops.gather(x, i)
       return pfor_config.reduce_sum(x_i)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "parallel_iterations currently unsupported"):
+    with self.assertRaisesRegex(ValueError,
+                                "parallel_iterations currently unsupported"):
       pfor_control_flow_ops.pfor(loop_fn, 8, parallel_iterations=2)
 
 
@@ -1084,7 +1084,7 @@ class StackTest(PForTestCase):
     def loop_fn(_):
       return data_flow_ops.stack_push_v2(s, 7)
 
-    with self.assertRaisesRegexp(ValueError, "StackPushV2 not allowed.*"):
+    with self.assertRaisesRegex(ValueError, "StackPushV2 not allowed.*"):
       pfor_control_flow_ops.pfor(loop_fn, iters=2)
 
 
@@ -2092,7 +2092,7 @@ class VariableTest(PForTestCase):
       return math_ops.matmul(z, a_var / 16)
 
     # Note that this error is only raised under v2 behavior.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "tf.function-decorated function tried to create variables on non-first"
     ):

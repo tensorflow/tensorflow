@@ -77,7 +77,7 @@ class DirectivesTest(converter_testing.TestCase):
       directives.set_loop_options()
       pass
 
-    with self.assertRaisesRegexp(ValueError, 'must be used inside a statement'):
+    with self.assertRaisesRegex(ValueError, 'must be used inside a statement'):
       self.transform(f, directives_converter, include_ast=True)
 
   def test_loop_target_not_first(self):
@@ -88,7 +88,7 @@ class DirectivesTest(converter_testing.TestCase):
         a = 2
         directives.set_loop_options(parallel_iterations=10, back_prop=a)
 
-    with self.assertRaisesRegexp(ValueError, 'must be the first statement'):
+    with self.assertRaisesRegex(ValueError, 'must be the first statement'):
       self.transform(f, directives_converter, include_ast=True)
 
   def test_value_verification_does_not_trigger_properties(self):

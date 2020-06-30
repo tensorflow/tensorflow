@@ -587,7 +587,7 @@ class ApiTest(test.TestCase):
     opts = converter.ConversionOptions(internal_convert_user_code=False)
 
     # f should not be converted, causing len to error out.
-    with self.assertRaisesRegexp(Exception, 'len is not well defined'):
+    with self.assertRaisesRegex(Exception, 'len is not well defined'):
       api.converted_call(f, (constant_op.constant([0]),), None, options=opts)
 
     # len on the other hand should work fine.

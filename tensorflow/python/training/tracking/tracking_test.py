@@ -59,7 +59,7 @@ class InterfaceTests(test.TestCase):
     root.leaf = tracking.AutoTrackable()
     root.leaf = root.leaf
     duplicate_name_dep = tracking.AutoTrackable()
-    with self.assertRaisesRegexp(ValueError, "already declared"):
+    with self.assertRaisesRegex(ValueError, "already declared"):
       root._track_trackable(duplicate_name_dep, name="leaf")
     # No error; we're overriding __setattr__, so we can't really stop people
     # from doing this while maintaining backward compatibility.
@@ -106,7 +106,7 @@ class InterfaceTests(test.TestCase):
     c = tracking.AutoTrackable()
     a.l.insert(0, c)
     checkpoint = util.Checkpoint(a=a)
-    with self.assertRaisesRegexp(ValueError, "A list element was replaced"):
+    with self.assertRaisesRegex(ValueError, "A list element was replaced"):
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
   @test_util.run_in_graph_and_eager_modes
@@ -118,7 +118,7 @@ class InterfaceTests(test.TestCase):
     c = tracking.AutoTrackable()
     held_reference.append(c)
     checkpoint = util.Checkpoint(a=a)
-    with self.assertRaisesRegexp(ValueError, "The wrapped list was modified"):
+    with self.assertRaisesRegex(ValueError, "The wrapped list was modified"):
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
   @test_util.run_in_graph_and_eager_modes
@@ -154,7 +154,7 @@ class InterfaceTests(test.TestCase):
     checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
     # Dirtying the inner list means the root object is unsaveable.
     a.l[0][1] = 2
-    with self.assertRaisesRegexp(ValueError, "A list element was replaced"):
+    with self.assertRaisesRegex(ValueError, "A list element was replaced"):
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
   @test_util.run_in_graph_and_eager_modes

@@ -42,7 +42,7 @@ class DimensionDivTest(test_util.TensorFlowTestCase):
       two = tensor_shape.Dimension(2)
       message = (r"unsupported operand type\(s\) for /: "
                  r"'int' and 'Dimension', please use // instead")
-      with self.assertRaisesRegexp(TypeError, message):
+      with self.assertRaisesRegex(TypeError, message):
         _ = 6 / two
 
 

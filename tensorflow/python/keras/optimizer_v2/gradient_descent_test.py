@@ -686,7 +686,7 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(opt3.nesterov)
 
   def testNesterovWithoutMomentum(self):
-    with self.assertRaisesRegexp(ValueError, "must be between"):
+    with self.assertRaisesRegex(ValueError, "must be between"):
       gradient_descent.SGD(learning_rate=1.0, momentum=2.0)
 
   def testConstructMomentumWithLR(self):

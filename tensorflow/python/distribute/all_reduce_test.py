@@ -40,8 +40,7 @@ class AllReduceTest(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testFlattenTensorsShapesDefined(self):
     x = array_ops.placeholder(types_pb2.DT_FLOAT, [None])
-    with self.assertRaisesRegexp(ValueError,
-                                 "must have statically known shape"):
+    with self.assertRaisesRegex(ValueError, "must have statically known shape"):
       ar._flatten_tensors([x, x])
 
   def testRingPermutations(self):

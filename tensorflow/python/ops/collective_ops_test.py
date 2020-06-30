@@ -426,8 +426,8 @@ class CollectiveOpTest(test.TestCase):
         run_options = config_pb2.RunOptions()
         run_options.experimental.collective_graph_key = 1
         sess.run([c0, c1], options=run_options)
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     'Shape mismatch'):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    'Shape mismatch'):
           sess.run([c0, c2], options=run_options)
 
   def testCollectiveGatherShapeMismatchAcrossDevices(self):
@@ -447,8 +447,8 @@ class CollectiveOpTest(test.TestCase):
           c1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
         run_options = config_pb2.RunOptions()
         run_options.experimental.collective_graph_key = 1
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     'Shape mismatch'):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    'Shape mismatch'):
           sess.run([c0, c1], options=run_options)
 
   def testCollectiveGatherPolymorphicShape(self):
@@ -510,8 +510,8 @@ class CollectiveOpTest(test.TestCase):
             merge_op='Add', final_op='Id')
       return c0, c1
 
-    with self.assertRaisesRegexp(errors.InternalError,
-                                 'but that group has size'):
+    with self.assertRaisesRegex(errors.InternalError,
+                                'but that group has size'):
       run_all_reduce()
 
   @test_util.run_v2_only

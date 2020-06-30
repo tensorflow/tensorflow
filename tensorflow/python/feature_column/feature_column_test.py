@@ -133,11 +133,11 @@ class LazyColumnTest(test.TestCase):
 
   def test_error_if_feature_is_not_found(self):
     builder = _LazyBuilder(features={'a': [[2], [3.]]})
-    with self.assertRaisesRegexp(ValueError,
-                                 'bbb is not in features dictionary'):
+    with self.assertRaisesRegex(ValueError,
+                                'bbb is not in features dictionary'):
       builder.get('bbb')
-    with self.assertRaisesRegexp(ValueError,
-                                 'bbb is not in features dictionary'):
+    with self.assertRaisesRegex(ValueError,
+                                'bbb is not in features dictionary'):
       builder.get(u'bbb')
 
   def test_not_supported_feature_column(self):
@@ -157,8 +157,8 @@ class LazyColumnTest(test.TestCase):
         pass
 
     builder = _LazyBuilder(features={'a': [[2], [3.]]})
-    with self.assertRaisesRegexp(ValueError,
-                                 'NotAProperColumn is not supported'):
+    with self.assertRaisesRegex(ValueError,
+                                'NotAProperColumn is not supported'):
       builder.get(NotAProperColumn())
 
   def test_key_should_be_string_or_feature_colum(self):
@@ -167,7 +167,7 @@ class LazyColumnTest(test.TestCase):
       pass
 
     builder = _LazyBuilder(features={'a': [[2], [3.]]})
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, '"key" must be either a "str" or "_FeatureColumn".'):
       builder.get(NotAFeatureColumn())
 
@@ -199,7 +199,7 @@ class NumericColumnTest(test.TestCase):
     self.assertIsNone(a.normalizer_fn)
 
   def test_key_should_be_string(self):
-    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+    with self.assertRaisesRegex(ValueError, 'key must be a string.'):
       fc._numeric_column(key=('aaa',))
 
   def test_shape_saved_as_tuple(self):
@@ -214,14 +214,14 @@ class NumericColumnTest(test.TestCase):
 
   def test_shape_and_default_value_compatibility(self):
     fc._numeric_column('aaa', shape=[2], default_value=[1, 2.])
-    with self.assertRaisesRegexp(ValueError, 'The shape of default_value'):
+    with self.assertRaisesRegex(ValueError, 'The shape of default_value'):
       fc._numeric_column('aaa', shape=[2], default_value=[1, 2, 3.])
     fc._numeric_column(
         'aaa', shape=[3, 2], default_value=[[2, 3], [1, 2], [2, 3.]])
-    with self.assertRaisesRegexp(ValueError, 'The shape of default_value'):
+    with self.assertRaisesRegex(ValueError, 'The shape of default_value'):
       fc._numeric_column(
           'aaa', shape=[3, 1], default_value=[[2, 3], [1, 2], [2, 3.]])
-    with self.assertRaisesRegexp(ValueError, 'The shape of default_value'):
+    with self.assertRaisesRegex(ValueError, 'The shape of default_value'):
       fc._numeric_column(
           'aaa', shape=[3, 3], default_value=[[2, 3], [1, 2], [2, 3.]])
 
@@ -230,30 +230,30 @@ class NumericColumnTest(test.TestCase):
         'aaa', shape=[2], default_value=[1, 2.], dtype=dtypes.float32)
     fc._numeric_column(
         'aaa', shape=[2], default_value=[1, 2], dtype=dtypes.int32)
-    with self.assertRaisesRegexp(TypeError, 'must be compatible with dtype'):
+    with self.assertRaisesRegex(TypeError, 'must be compatible with dtype'):
       fc._numeric_column(
           'aaa', shape=[2], default_value=[1, 2.], dtype=dtypes.int32)
-    with self.assertRaisesRegexp(TypeError,
-                                 'default_value must be compatible with dtype'):
+    with self.assertRaisesRegex(TypeError,
+                                'default_value must be compatible with dtype'):
       fc._numeric_column('aaa', default_value=['string'])
 
   def test_shape_must_be_positive_integer(self):
-    with self.assertRaisesRegexp(TypeError, 'shape dimensions must be integer'):
+    with self.assertRaisesRegex(TypeError, 'shape dimensions must be integer'):
       fc._numeric_column(
           'aaa', shape=[
               1.0,
           ])
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'shape dimensions must be greater than 0'):
+    with self.assertRaisesRegex(ValueError,
+                                'shape dimensions must be greater than 0'):
       fc._numeric_column(
           'aaa', shape=[
               0,
           ])
 
   def test_dtype_is_convertible_to_float(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'dtype must be convertible to float'):
+    with self.assertRaisesRegex(ValueError,
+                                'dtype must be convertible to float'):
       fc._numeric_column('aaa', dtype=dtypes.string)
 
   def test_scalar_default_value_fills_the_shape(self):
@@ -306,7 +306,7 @@ class NumericColumnTest(test.TestCase):
       self.assertAllEqual([[20., 110.], [11., 11.]], features['price'].eval())
 
   def test_normalizer_fn_must_be_callable(self):
-    with self.assertRaisesRegexp(TypeError, 'must be a callable'):
+    with self.assertRaisesRegex(TypeError, 'must be a callable'):
       fc._numeric_column('price', normalizer_fn='NotACallable')
 
   @test_util.run_deprecated_v1
@@ -337,7 +337,7 @@ class NumericColumnTest(test.TestCase):
             sparse_tensor.SparseTensor(
                 indices=[[0, 0]], values=[0.3], dense_shape=[1, 1])
     })
-    with self.assertRaisesRegexp(ValueError, 'must be a Tensor'):
+    with self.assertRaisesRegex(ValueError, 'must be a Tensor'):
       price._transform_feature(builder)
 
   @test_util.run_deprecated_v1
@@ -388,30 +388,26 @@ class BucketizedColumnTest(test.TestCase):
 
   def test_invalid_source_column_type(self):
     a = fc._categorical_column_with_hash_bucket('aaa', hash_bucket_size=10)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'source_column must be a column generated with numeric_column'):
       fc._bucketized_column(a, boundaries=[0, 1])
 
   def test_invalid_source_column_shape(self):
     a = fc._numeric_column('aaa', shape=[2, 3])
-    with self.assertRaisesRegexp(
-        ValueError, 'source_column must be one-dimensional column'):
+    with self.assertRaisesRegex(ValueError,
+                                'source_column must be one-dimensional column'):
       fc._bucketized_column(a, boundaries=[0, 1])
 
   def test_invalid_boundaries(self):
     a = fc._numeric_column('aaa')
-    with self.assertRaisesRegexp(
-        ValueError, 'boundaries must be a sorted list'):
+    with self.assertRaisesRegex(ValueError, 'boundaries must be a sorted list'):
       fc._bucketized_column(a, boundaries=None)
-    with self.assertRaisesRegexp(
-        ValueError, 'boundaries must be a sorted list'):
+    with self.assertRaisesRegex(ValueError, 'boundaries must be a sorted list'):
       fc._bucketized_column(a, boundaries=1.)
-    with self.assertRaisesRegexp(
-        ValueError, 'boundaries must be a sorted list'):
+    with self.assertRaisesRegex(ValueError, 'boundaries must be a sorted list'):
       fc._bucketized_column(a, boundaries=[1, 0])
-    with self.assertRaisesRegexp(
-        ValueError, 'boundaries must be a sorted list'):
+    with self.assertRaisesRegex(ValueError, 'boundaries must be a sorted list'):
       fc._bucketized_column(a, boundaries=[1, 1])
 
   def test_name(self):
@@ -540,7 +536,7 @@ class BucketizedColumnTest(test.TestCase):
             sparse_tensor.SparseTensor(
                 indices=[[0, 0]], values=[0.3], dense_shape=[1, 1])
     })
-    with self.assertRaisesRegexp(ValueError, 'must be a Tensor'):
+    with self.assertRaisesRegex(ValueError, 'must be a Tensor'):
       bucketized_price._transform_feature(builder)
 
   @test_util.run_deprecated_v1
@@ -681,22 +677,22 @@ class HashedCategoricalColumnTest(test.TestCase):
     self.assertEqual(dtypes.string, a.dtype)
 
   def test_key_should_be_string(self):
-    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+    with self.assertRaisesRegex(ValueError, 'key must be a string.'):
       fc._categorical_column_with_hash_bucket(('key',), 10)
 
   def test_bucket_size_should_be_given(self):
-    with self.assertRaisesRegexp(ValueError, 'hash_bucket_size must be set.'):
+    with self.assertRaisesRegex(ValueError, 'hash_bucket_size must be set.'):
       fc._categorical_column_with_hash_bucket('aaa', None)
 
   def test_bucket_size_should_be_positive(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'hash_bucket_size must be at least 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'hash_bucket_size must be at least 1'):
       fc._categorical_column_with_hash_bucket('aaa', 0)
 
   def test_dtype_should_be_string_or_integer(self):
     fc._categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.string)
     fc._categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.int32)
-    with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be string or integer'):
       fc._categorical_column_with_hash_bucket('aaa', 10, dtype=dtypes.float32)
 
   @test_util.run_deprecated_v1
@@ -786,7 +782,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     })
     builder.get(string_fc)
     builder.get(int_fc)
-    with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be string or integer'):
       builder.get(float_fc)
 
   def test_dtype_should_match_with_tensor(self):
@@ -795,7 +791,7 @@ class HashedCategoricalColumnTest(test.TestCase):
     wire_tensor = sparse_tensor.SparseTensor(
         values=['omar'], indices=[[0, 0]], dense_shape=[1, 1])
     builder = _LazyBuilder({'wire': wire_tensor})
-    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       builder.get(hashed_sparse)
 
   @test_util.run_deprecated_v1
@@ -916,37 +912,34 @@ class HashedCategoricalColumnTest(test.TestCase):
 class CrossedColumnTest(test.TestCase):
 
   def test_keys_empty(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'keys must be a list with length > 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'keys must be a list with length > 1'):
       fc._crossed_column([], 10)
 
   def test_keys_length_one(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'keys must be a list with length > 1'):
+    with self.assertRaisesRegex(ValueError,
+                                'keys must be a list with length > 1'):
       fc._crossed_column(['a'], 10)
 
   def test_key_type_unsupported(self):
-    with self.assertRaisesRegexp(ValueError, 'Unsupported key type'):
+    with self.assertRaisesRegex(ValueError, 'Unsupported key type'):
       fc._crossed_column(['a', fc._numeric_column('c')], 10)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'categorical_column_with_hash_bucket is not supported'):
       fc._crossed_column(
           ['a', fc._categorical_column_with_hash_bucket('c', 10)], 10)
 
   def test_hash_bucket_size_negative(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'hash_bucket_size must be > 1'):
+    with self.assertRaisesRegex(ValueError, 'hash_bucket_size must be > 1'):
       fc._crossed_column(['a', 'c'], -1)
 
   def test_hash_bucket_size_zero(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'hash_bucket_size must be > 1'):
+    with self.assertRaisesRegex(ValueError, 'hash_bucket_size must be > 1'):
       fc._crossed_column(['a', 'c'], 0)
 
   def test_hash_bucket_size_none(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'hash_bucket_size must be > 1'):
+    with self.assertRaisesRegex(ValueError, 'hash_bucket_size must be > 1'):
       fc._crossed_column(['a', 'c'], None)
 
   def test_name(self):
@@ -1192,7 +1185,7 @@ class CrossedColumnTest(test.TestCase):
     t = _TestColumnWithWeights()
     crossed = fc._crossed_column([t, 'c'], hash_bucket_size=5, hash_key=5)
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'crossed_column does not support weight_tensor.*{}'.format(t.name)):
         fc.linear_model({
@@ -1280,7 +1273,7 @@ class CrossedColumnTest(test.TestCase):
     t = _TestColumnWithWeights()
     crossed = fc._crossed_column([t, 'c'], hash_bucket_size=5, hash_key=5)
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'crossed_column does not support weight_tensor.*{}'.format(t.name)):
         get_keras_linear_model_predictions({
@@ -1335,12 +1328,12 @@ def get_keras_linear_model_predictions(features,
 class LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'feature_columns must not be empty'):
+    with self.assertRaisesRegex(ValueError,
+                                'feature_columns must not be empty'):
       fc.linear_model(features={}, feature_columns=[])
 
   def test_should_be_feature_column(self):
-    with self.assertRaisesRegexp(ValueError, 'must be a _FeatureColumn'):
+    with self.assertRaisesRegex(ValueError, 'must be a _FeatureColumn'):
       fc.linear_model(features={'a': [[0]]}, feature_columns='NotSupported')
 
   def test_should_be_dense_or_categorical_column(self):
@@ -1358,19 +1351,19 @@ class LinearModelTest(test.TestCase):
       def _parse_example_spec(self):
         pass
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'must be either a _DenseColumn or _CategoricalColumn'):
       fc.linear_model(
           features={'a': [[0]]}, feature_columns=[NotSupportedColumn()])
 
   def test_does_not_support_dict_columns(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Expected feature_columns to be iterable, found dict.'):
       fc.linear_model(
           features={'a': [[0]]}, feature_columns={'a': fc._numeric_column('a')})
 
   def test_raises_if_duplicate_name(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Duplicate feature column name found for columns'):
       fc.linear_model(
           features={'a': [[0]]},
@@ -1608,7 +1601,7 @@ class LinearModelTest(test.TestCase):
     price = fc._numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           Exception,
           r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
         fc.linear_model(features, [price])
@@ -1831,7 +1824,7 @@ class LinearModelTest(test.TestCase):
           'price1': [[1.], [5.], [7.]],  # batchsize = 3
           'price2': [[3.], [4.]]  # batchsize = 2
       }
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'Batch size \(first dimension\) of each feature must be same.'):
       fc.linear_model(features, [price1, price2])
@@ -1846,7 +1839,7 @@ class LinearModelTest(test.TestCase):
           'price2': [[3.], [4.]],  # batchsize = 2
           'price3': [[3.], [4.], [5.]]  # batchsize = 3
       }
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc.linear_model(features, [price1, price2, price3])
@@ -1861,8 +1854,8 @@ class LinearModelTest(test.TestCase):
       }
       predictions = fc.linear_model(features, [price1, price2])
       with _initialized_session() as sess:
-        with self.assertRaisesRegexp(errors.OpError,
-                                     'must have the same size and shape'):
+        with self.assertRaisesRegex(errors.OpError,
+                                    'must have the same size and shape'):
           sess.run(
               predictions, feed_dict={features['price1']: [[1.], [5.], [7.]]})
 
@@ -1976,7 +1969,7 @@ class LinearModelTest(test.TestCase):
     self.assertEqual(0, features['price'].shape.ndims)
 
     # Static rank 0 should fail
-    with self.assertRaisesRegexp(ValueError, 'Feature .* cannot have rank 0'):
+    with self.assertRaisesRegex(ValueError, 'Feature .* cannot have rank 0'):
       fc.linear_model(features, [price])
 
     # Dynamic rank 0 should fail
@@ -2014,12 +2007,12 @@ class LinearModelTest(test.TestCase):
 class _LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'feature_columns must not be empty'):
+    with self.assertRaisesRegex(ValueError,
+                                'feature_columns must not be empty'):
       get_keras_linear_model_predictions(features={}, feature_columns=[])
 
   def test_should_be_feature_column(self):
-    with self.assertRaisesRegexp(ValueError, 'must be a _FeatureColumn'):
+    with self.assertRaisesRegex(ValueError, 'must be a _FeatureColumn'):
       get_keras_linear_model_predictions(
           features={'a': [[0]]}, feature_columns='NotSupported')
 
@@ -2038,19 +2031,19 @@ class _LinearModelTest(test.TestCase):
       def _parse_example_spec(self):
         pass
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'must be either a _DenseColumn or _CategoricalColumn'):
       get_keras_linear_model_predictions(
           features={'a': [[0]]}, feature_columns=[NotSupportedColumn()])
 
   def test_does_not_support_dict_columns(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Expected feature_columns to be iterable, found dict.'):
       fc.linear_model(
           features={'a': [[0]]}, feature_columns={'a': fc._numeric_column('a')})
 
   def test_raises_if_duplicate_name(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Duplicate feature column name found for columns'):
       get_keras_linear_model_predictions(
           features={'a': [[0]]},
@@ -2276,7 +2269,7 @@ class _LinearModelTest(test.TestCase):
     price = fc._numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           Exception,
           r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
         get_keras_linear_model_predictions(features, [price])
@@ -2466,7 +2459,7 @@ class _LinearModelTest(test.TestCase):
           'price1': [[1.], [5.], [7.]],  # batchsize = 3
           'price2': [[3.], [4.]]  # batchsize = 2
       }
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
       get_keras_linear_model_predictions(features, [price1, price2])
@@ -2481,7 +2474,7 @@ class _LinearModelTest(test.TestCase):
           'price2': [[3.], [4.]],  # batchsize = 2
           'price3': [[3.], [4.], [5.]]  # batchsize = 3
       }
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         get_keras_linear_model_predictions(features, [price1, price2, price3])
@@ -2497,8 +2490,8 @@ class _LinearModelTest(test.TestCase):
       predictions = get_keras_linear_model_predictions(features,
                                                        [price1, price2])
       with _initialized_session() as sess:
-        with self.assertRaisesRegexp(errors.OpError,
-                                     'must have the same size and shape'):
+        with self.assertRaisesRegex(errors.OpError,
+                                    'must have the same size and shape'):
           sess.run(
               predictions, feed_dict={features['price1']: [[1.], [5.], [7.]]})
 
@@ -2618,7 +2611,7 @@ class _LinearModelTest(test.TestCase):
     self.assertEqual(0, features['price'].shape.ndims)
 
     # Static rank 0 should fail
-    with self.assertRaisesRegexp(ValueError, 'Feature .* cannot have rank 0'):
+    with self.assertRaisesRegex(ValueError, 'Feature .* cannot have rank 0'):
       get_keras_linear_model_predictions(features, [price])
 
     # Dynamic rank 0 should fail
@@ -2735,12 +2728,12 @@ class InputLayerTest(test.TestCase):
 class FunctionalInputLayerTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'feature_columns must not be empty'):
+    with self.assertRaisesRegex(ValueError,
+                                'feature_columns must not be empty'):
       fc.input_layer(features={}, feature_columns=[])
 
   def test_should_be_dense_column(self):
-    with self.assertRaisesRegexp(ValueError, 'must be a _DenseColumn'):
+    with self.assertRaisesRegex(ValueError, 'must be a _DenseColumn'):
       fc.input_layer(
           features={'a': [[0]]},
           feature_columns=[
@@ -2748,7 +2741,7 @@ class FunctionalInputLayerTest(test.TestCase):
           ])
 
   def test_does_not_support_dict_columns(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Expected feature_columns to be iterable, found dict.'):
       fc.input_layer(
           features={'a': [[0]]}, feature_columns={'a': fc._numeric_column('a')})
@@ -2769,7 +2762,7 @@ class FunctionalInputLayerTest(test.TestCase):
         self.assertAllClose([[0., 1.]], self.evaluate(net))
 
   def test_raises_if_duplicate_name(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Duplicate feature column name found for columns'):
       fc.input_layer(
           features={'a': [[0]]},
@@ -2796,7 +2789,7 @@ class FunctionalInputLayerTest(test.TestCase):
     price = fc._numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           Exception,
           r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
         fc.input_layer(features, [price])
@@ -2962,7 +2955,7 @@ class FunctionalInputLayerTest(test.TestCase):
               sparse_tensor.SparseTensor(
                   indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
       }
-      with self.assertRaisesRegexp(Exception, 'must be a _DenseColumn'):
+      with self.assertRaisesRegex(Exception, 'must be a _DenseColumn'):
         fc.input_layer(features, [animal])
 
   def test_static_batch_size_mismatch(self):
@@ -2973,7 +2966,7 @@ class FunctionalInputLayerTest(test.TestCase):
           'price1': [[1.], [5.], [7.]],  # batchsize = 3
           'price2': [[3.], [4.]]  # batchsize = 2
       }
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc.input_layer(features, [price1, price2])
@@ -2988,7 +2981,7 @@ class FunctionalInputLayerTest(test.TestCase):
           'price2': [[3.], [4.]],  # batchsize = 2
           'price3': [[3.], [4.], [5.]]  # batchsize = 3
       }
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc.input_layer(features, [price1, price2, price3])
@@ -3003,8 +2996,8 @@ class FunctionalInputLayerTest(test.TestCase):
       }
       net = fc.input_layer(features, [price1, price2])
       with _initialized_session() as sess:
-        with self.assertRaisesRegexp(errors.OpError,
-                                     'Dimensions of inputs should match'):
+        with self.assertRaisesRegex(errors.OpError,
+                                    'Dimensions of inputs should match'):
           sess.run(net, feed_dict={features['price1']: [[1.], [5.], [7.]]})
 
   def test_runtime_batch_size_matches(self):
@@ -3255,7 +3248,7 @@ class FunctionalInputLayerTest(test.TestCase):
     self.assertEqual(0, features['price'].shape.ndims)
 
     # Static rank 0 should fail
-    with self.assertRaisesRegexp(ValueError, 'Feature .* cannot have rank 0'):
+    with self.assertRaisesRegex(ValueError, 'Feature .* cannot have rank 0'):
       fc.input_layer(features, [price])
 
     # Dynamic rank 0 should fail
@@ -3287,7 +3280,7 @@ class MakeParseExampleSpecTest(test.TestCase):
     key1 = 'key1'
     parse_spec1 = parsing_ops.FixedLenFeature(
         shape=(2,), dtype=dtypes.float32, default_value=0.)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'All feature_columns must be _FeatureColumn instances.*invalid_column'):
       fc.make_parse_example_spec(
@@ -3317,7 +3310,7 @@ class MakeParseExampleSpecTest(test.TestCase):
     parse_spec1 = parsing_ops.FixedLenFeature(
         shape=(2,), dtype=dtypes.float32, default_value=0.)
     parse_spec2 = parsing_ops.VarLenFeature(dtype=dtypes.string)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'feature_columns contain different parse_spec for key key1'):
       fc.make_parse_example_spec(
@@ -3389,7 +3382,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
     }, column._parse_example_spec)
 
   def test_key_should_be_string(self):
-    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+    with self.assertRaisesRegex(ValueError, 'key must be a string.'):
       fc._categorical_column_with_vocabulary_file(
           key=('aaa',), vocabulary_file='path_to_file', vocabulary_size=3)
 
@@ -3422,12 +3415,12 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
       }, column._parse_example_spec)
 
   def test_vocabulary_file_none(self):
-    with self.assertRaisesRegexp(ValueError, 'Missing vocabulary_file'):
+    with self.assertRaisesRegex(ValueError, 'Missing vocabulary_file'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa', vocabulary_file=None, vocabulary_size=3)
 
   def test_vocabulary_file_empty_string(self):
-    with self.assertRaisesRegexp(ValueError, 'Missing vocabulary_file'):
+    with self.assertRaisesRegex(ValueError, 'Missing vocabulary_file'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa', vocabulary_file='', vocabulary_size=3)
 
@@ -3440,17 +3433,17 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
     column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    with self.assertRaisesRegexp(errors.OpError, 'file_does_not_exist'):
+    with self.assertRaisesRegex(errors.OpError, 'file_does_not_exist'):
       with self.cached_session():
         lookup_ops.tables_initializer().run()
 
   def test_invalid_vocabulary_size(self):
-    with self.assertRaisesRegexp(ValueError, 'Invalid vocabulary_size'):
+    with self.assertRaisesRegex(ValueError, 'Invalid vocabulary_size'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa',
           vocabulary_file=self._wire_vocabulary_file_name,
           vocabulary_size=-1)
-    with self.assertRaisesRegexp(ValueError, 'Invalid vocabulary_size'):
+    with self.assertRaisesRegex(ValueError, 'Invalid vocabulary_size'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa',
           vocabulary_file=self._wire_vocabulary_file_name,
@@ -3467,12 +3460,12 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
     column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    with self.assertRaisesRegexp(errors.OpError, 'Invalid vocab_size'):
+    with self.assertRaisesRegex(errors.OpError, 'Invalid vocab_size'):
       with self.cached_session():
         lookup_ops.tables_initializer().run()
 
   def test_invalid_num_oov_buckets(self):
-    with self.assertRaisesRegexp(ValueError, 'Invalid num_oov_buckets'):
+    with self.assertRaisesRegex(ValueError, 'Invalid num_oov_buckets'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa',
           vocabulary_file='path',
@@ -3480,7 +3473,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
           num_oov_buckets=-1)
 
   def test_invalid_dtype(self):
-    with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be string or integer'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa',
           vocabulary_file='path',
@@ -3488,8 +3481,8 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
           dtype=dtypes.float64)
 
   def test_invalid_buckets_and_default_value(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'both num_oov_buckets and default_value'):
+    with self.assertRaisesRegex(ValueError,
+                                'both num_oov_buckets and default_value'):
       fc._categorical_column_with_vocabulary_file(
           key='aaa',
           vocabulary_file=self._wire_vocabulary_file_name,
@@ -3507,7 +3500,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(12, 24, 36),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   def test_invalid_input_dtype_string(self):
@@ -3520,7 +3513,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   @test_util.run_deprecated_v1
@@ -3849,7 +3842,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
     }, column._parse_example_spec)
 
   def test_key_should_be_string(self):
-    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+    with self.assertRaisesRegex(ValueError, 'key must be a string.'):
       fc._categorical_column_with_vocabulary_list(
           key=('aaa',), vocabulary_list=('omar', 'stringer', 'marlo'))
 
@@ -3888,57 +3881,57 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
       }, column._parse_example_spec)
 
   def test_invalid_dtype(self):
-    with self.assertRaisesRegexp(ValueError, 'dtype must be string or integer'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be string or integer'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa',
           vocabulary_list=('omar', 'stringer', 'marlo'),
           dtype=dtypes.float32)
 
   def test_invalid_mapping_dtype(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'vocabulary dtype must be string or integer'):
+    with self.assertRaisesRegex(ValueError,
+                                r'vocabulary dtype must be string or integer'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=(12., 24., 36.))
 
   def test_mismatched_int_dtype(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'dtype.*and vocabulary dtype.*do not match'):
+    with self.assertRaisesRegex(ValueError,
+                                r'dtype.*and vocabulary dtype.*do not match'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa',
           vocabulary_list=('omar', 'stringer', 'marlo'),
           dtype=dtypes.int32)
 
   def test_mismatched_string_dtype(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'dtype.*and vocabulary dtype.*do not match'):
+    with self.assertRaisesRegex(ValueError,
+                                r'dtype.*and vocabulary dtype.*do not match'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=(12, 24, 36), dtype=dtypes.string)
 
   def test_none_mapping(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'vocabulary_list.*must be non-empty'):
+    with self.assertRaisesRegex(ValueError,
+                                r'vocabulary_list.*must be non-empty'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=None)
 
   def test_empty_mapping(self):
-    with self.assertRaisesRegexp(
-        ValueError, r'vocabulary_list.*must be non-empty'):
+    with self.assertRaisesRegex(ValueError,
+                                r'vocabulary_list.*must be non-empty'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=tuple([]))
 
   def test_duplicate_mapping(self):
-    with self.assertRaisesRegexp(ValueError, 'Duplicate keys'):
+    with self.assertRaisesRegex(ValueError, 'Duplicate keys'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=(12, 24, 12))
 
   def test_invalid_num_oov_buckets(self):
-    with self.assertRaisesRegexp(ValueError, 'Invalid num_oov_buckets'):
+    with self.assertRaisesRegex(ValueError, 'Invalid num_oov_buckets'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa', vocabulary_list=(12, 24, 36), num_oov_buckets=-1)
 
   def test_invalid_buckets_and_default_value(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'both num_oov_buckets and default_value'):
+    with self.assertRaisesRegex(ValueError,
+                                'both num_oov_buckets and default_value'):
       fc._categorical_column_with_vocabulary_list(
           key='aaa',
           vocabulary_list=(12, 24, 36),
@@ -3952,7 +3945,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(12, 24, 36),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   def test_invalid_input_dtype_string(self):
@@ -3962,7 +3955,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
+    with self.assertRaisesRegex(ValueError, 'dtype must be compatible'):
       column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   @test_util.run_deprecated_v1
@@ -4257,7 +4250,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
     }, column._parse_example_spec)
 
   def test_key_should_be_string(self):
-    with self.assertRaisesRegexp(ValueError, 'key must be a string.'):
+    with self.assertRaisesRegex(ValueError, 'key must be a string.'):
       fc._categorical_column_with_identity(key=('aaa',), num_buckets=3)
 
   @test_util.run_deprecated_v1
@@ -4271,20 +4264,20 @@ class IdentityCategoricalColumnTest(test.TestCase):
       }, column._parse_example_spec)
 
   def test_invalid_num_buckets_zero(self):
-    with self.assertRaisesRegexp(ValueError, 'num_buckets 0 < 1'):
+    with self.assertRaisesRegex(ValueError, 'num_buckets 0 < 1'):
       fc._categorical_column_with_identity(key='aaa', num_buckets=0)
 
   def test_invalid_num_buckets_negative(self):
-    with self.assertRaisesRegexp(ValueError, 'num_buckets -1 < 1'):
+    with self.assertRaisesRegex(ValueError, 'num_buckets -1 < 1'):
       fc._categorical_column_with_identity(key='aaa', num_buckets=-1)
 
   def test_invalid_default_value_too_small(self):
-    with self.assertRaisesRegexp(ValueError, 'default_value -1 not in range'):
+    with self.assertRaisesRegex(ValueError, 'default_value -1 not in range'):
       fc._categorical_column_with_identity(
           key='aaa', num_buckets=3, default_value=-1)
 
   def test_invalid_default_value_too_big(self):
-    with self.assertRaisesRegexp(ValueError, 'default_value 3 not in range'):
+    with self.assertRaisesRegex(ValueError, 'default_value 3 not in range'):
       fc._categorical_column_with_identity(
           key='aaa', num_buckets=3, default_value=3)
 
@@ -4294,7 +4287,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'Invalid input, not integer'):
+    with self.assertRaisesRegex(ValueError, 'Invalid input, not integer'):
       column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   @test_util.run_deprecated_v1
@@ -4416,8 +4409,8 @@ class IdentityCategoricalColumnTest(test.TestCase):
         _LazyBuilder({'aaa': sparse_input}))
 
     with _initialized_session():
-      with self.assertRaisesRegexp(errors.OpError,
-                                   r'indices\[0\] .* 2 .* \[0, 2\)'):
+      with self.assertRaisesRegex(errors.OpError,
+                                  r'indices\[0\] .* 2 .* \[0, 2\)'):
         self.evaluate(embedding_lookup)
 
   @test_util.run_deprecated_v1
@@ -4912,7 +4905,7 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
   def test_invalid_initializer(self):
     categorical_column = fc._categorical_column_with_identity(
         key='aaa', num_buckets=3)
-    with self.assertRaisesRegexp(ValueError, 'initializer must be callable'):
+    with self.assertRaisesRegex(ValueError, 'initializer must be callable'):
       fc._embedding_column(
           categorical_column, dimension=2, initializer='not_fn')
 
@@ -5710,7 +5703,7 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
         key='aaa', num_buckets=3)
     categorical_column_b = fc._categorical_column_with_identity(
         key='bbb', num_buckets=3)
-    with self.assertRaisesRegexp(ValueError, 'initializer must be callable'):
+    with self.assertRaisesRegex(ValueError, 'initializer must be callable'):
       fc_new.shared_embedding_columns(
           [categorical_column_a, categorical_column_b],
           dimension=2,
@@ -5724,9 +5717,8 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
         key='bbb', num_buckets=3)
     categorical_column_c = fc._categorical_column_with_hash_bucket(
         key='ccc', hash_bucket_size=3)
-    with self.assertRaisesRegexp(
-        ValueError,
-        'all categorical_columns must have the same type.*'
+    with self.assertRaisesRegex(
+        ValueError, 'all categorical_columns must have the same type.*'
         '_IdentityCategoricalColumn.*_HashedCategoricalColumn'):
       fc_new.shared_embedding_columns(
           [categorical_column_a, categorical_column_b, categorical_column_c],
@@ -6347,7 +6339,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
       }, column._parse_example_spec)
 
   def test_invalid_dtype_none(self):
-    with self.assertRaisesRegexp(ValueError, 'is not convertible to float'):
+    with self.assertRaisesRegex(ValueError, 'is not convertible to float'):
       fc._weighted_categorical_column(
           categorical_column=fc._categorical_column_with_identity(
               key='ids', num_buckets=3),
@@ -6355,7 +6347,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
           dtype=None)
 
   def test_invalid_dtype_string(self):
-    with self.assertRaisesRegexp(ValueError, 'is not convertible to float'):
+    with self.assertRaisesRegex(ValueError, 'is not convertible to float'):
       fc._weighted_categorical_column(
           categorical_column=fc._categorical_column_with_identity(
               key='ids', num_buckets=3),
@@ -6371,11 +6363,11 @@ class WeightedCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(ValueError, 'Bad dtype'):
+    with self.assertRaisesRegex(ValueError, 'Bad dtype'):
       _transform_features({'ids': strings, 'values': strings}, (column,))
 
   def test_column_name_collision(self):
-    with self.assertRaisesRegexp(ValueError, r'Parse config.*already exists'):
+    with self.assertRaisesRegex(ValueError, r'Parse config.*already exists'):
       fc._weighted_categorical_column(
           categorical_column=fc._categorical_column_with_identity(
               key='aaa', num_buckets=3),
@@ -6390,8 +6382,8 @@ class WeightedCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
-    with self.assertRaisesRegexp(
-        ValueError, 'values is not in features dictionary'):
+    with self.assertRaisesRegex(ValueError,
+                                'values is not in features dictionary'):
       _transform_features({'ids': inputs}, (column,))
 
   @test_util.run_deprecated_v1
@@ -6555,8 +6547,8 @@ class WeightedCategoricalColumnTest(test.TestCase):
             key='ids', num_buckets=3),
         weight_feature_key='values')
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError,
-                                   r'Dimensions.*are not compatible'):
+      with self.assertRaisesRegex(ValueError,
+                                  r'Dimensions.*are not compatible'):
         get_keras_linear_model_predictions({
             'ids':
                 sparse_tensor.SparseTensorValue(
@@ -6592,7 +6584,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
       config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
       with _initialized_session(config):
-        with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
+        with self.assertRaisesRegex(errors.OpError, 'Incompatible shapes'):
           self.evaluate(predictions)
 
   def test_keras_linear_model_mismatched_dense_shape(self):
@@ -6656,8 +6648,8 @@ class WeightedCategoricalColumnTest(test.TestCase):
             key='ids', num_buckets=3),
         weight_feature_key='values')
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
-          ValueError, r'Dimensions.*are not compatible'):
+      with self.assertRaisesRegex(ValueError,
+                                  r'Dimensions.*are not compatible'):
         fc.linear_model({
             'ids': sparse_tensor.SparseTensorValue(
                 indices=((0, 0), (1, 0), (1, 1)),
@@ -6691,7 +6683,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
       config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
       with _initialized_session(config):
-        with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
+        with self.assertRaisesRegex(errors.OpError, 'Incompatible shapes'):
           self.evaluate(predictions)
 
   def test_linear_model_mismatched_dense_shape(self):

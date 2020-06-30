@@ -113,7 +113,7 @@ class SquareLinearOperatorCompositionTest(
     self.assertFalse(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
 
-    with self.assertRaisesRegexp(ValueError, "always non-singular"):
+    with self.assertRaisesRegex(ValueError, "always non-singular"):
       linalg.LinearOperatorComposition(
           [operator_1, operator_2], is_non_singular=False)
 
@@ -131,11 +131,11 @@ class SquareLinearOperatorCompositionTest(
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3)),
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3).astype(np.float32))
     ]
-    with self.assertRaisesRegexp(TypeError, "same dtype"):
+    with self.assertRaisesRegex(TypeError, "same dtype"):
       linalg.LinearOperatorComposition(operators)
 
   def test_empty_operators_raises(self):
-    with self.assertRaisesRegexp(ValueError, "non-empty"):
+    with self.assertRaisesRegex(ValueError, "non-empty"):
       linalg.LinearOperatorComposition([])
 
 

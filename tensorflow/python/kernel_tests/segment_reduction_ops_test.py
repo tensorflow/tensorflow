@@ -782,7 +782,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     tf_indices = [8, 3, 0, 9]
     with self.session(use_gpu=False):
       for tf_op in ops_list:
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError, "Cannot specify a negative value for num_segments"):
           tf_op(
               data=tf_x,

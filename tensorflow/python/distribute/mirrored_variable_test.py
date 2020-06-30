@@ -377,7 +377,7 @@ class MirroredVariableCreationTest(test.TestCase):
 
   def testNoneSynchronizationWithGetVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "`NONE` variable synchronization mode is not "
           "supported with `Mirrored` distribution strategy. Please change "
           "the `synchronization` for variable: v"):
@@ -387,7 +387,7 @@ class MirroredVariableCreationTest(test.TestCase):
 
   def testNoneSynchronizationWithVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "`NONE` variable synchronization mode is not "
           "supported with `Mirrored` distribution strategy. Please change "
           "the `synchronization` for variable: v"):
@@ -398,14 +398,14 @@ class MirroredVariableCreationTest(test.TestCase):
 
   def testInvalidSynchronizationWithVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Invalid variable synchronization mode: Invalid for "
           "variable: v"):
         variable_scope.variable(1.0, name="v", synchronization="Invalid")
 
   def testInvalidAggregationWithGetVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Invalid variable aggregation mode: invalid for "
           "variable: v"):
         variable_scope.get_variable(
@@ -415,7 +415,7 @@ class MirroredVariableCreationTest(test.TestCase):
 
   def testInvalidAggregationWithVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Invalid variable aggregation mode: invalid for "
           "variable: v"):
         variable_scope.variable(

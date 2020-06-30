@@ -1181,8 +1181,8 @@ class DenseHashTableOpTest(test.TestCase):
 
   def testSameEmptyAndDeletedKey(self):
     with self.cached_session():
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Empty and deleted keys"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Empty and deleted keys"):
         table = lookup_ops.DenseHashTable(
             dtypes.int64,
             dtypes.int64,
@@ -1810,39 +1810,39 @@ class DenseHashTableOpTest(test.TestCase):
       # Inserting the empty key returns an error
       keys1 = constant_op.constant([11, 0], dtypes.int64)
       values1 = constant_op.constant([0, 1], dtypes.int64)
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "empty_key"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "empty_key"):
         self.evaluate(table.insert(keys1, values1))
 
       # Looking up the empty key returns an error
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "empty_key"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "empty_key"):
         self.evaluate(table.lookup(keys1))
 
       # Inserting the deleted key returns an error
       keys2 = constant_op.constant([11, -1], dtypes.int64)
       values2 = constant_op.constant([0, 1], dtypes.int64)
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "deleted_key"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "deleted_key"):
         self.evaluate(table.insert(keys2, values2))
 
       # Looking up the empty key returns an error
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "deleted_key"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "deleted_key"):
         self.evaluate(table.lookup(keys2))
 
       # Arbitrary tensors of keys are not supported
       keys = constant_op.constant([[11, 0], [12, 1]], dtypes.int64)
       values = constant_op.constant([[11, 0], [12, 1]], dtypes.int64)
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Expected key shape"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Expected key shape"):
         self.evaluate(table.lookup(keys))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Expected key shape"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Expected key shape"):
         self.evaluate(table.insert(keys, values))
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Number of buckets must be"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Number of buckets must be"):
         table2 = lookup_ops.DenseHashTable(
             dtypes.int64,
             dtypes.int64,
@@ -1852,7 +1852,7 @@ class DenseHashTableOpTest(test.TestCase):
             initial_num_buckets=12)
         self.assertAllEqual(0, self.evaluate(table2.size()))
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Empty and deleted keys must have same shape"):
         table3 = lookup_ops.DenseHashTable(
@@ -1863,8 +1863,8 @@ class DenseHashTableOpTest(test.TestCase):
             deleted_key=[1, 2])
         self.assertAllEqual(0, self.evaluate(table3.size()))
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Empty and deleted keys cannot be equal"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Empty and deleted keys cannot be equal"):
         table4 = lookup_ops.DenseHashTable(
             dtypes.int64,
             dtypes.int64,
@@ -1873,8 +1873,8 @@ class DenseHashTableOpTest(test.TestCase):
             deleted_key=42)
         self.assertAllEqual(0, self.evaluate(table4.size()))
 
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Empty and deleted keys cannot be equal"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Empty and deleted keys cannot be equal"):
         table5 = lookup_ops.DenseHashTable(
             dtypes.int64,
             dtypes.int64,
@@ -2067,9 +2067,8 @@ class IndexTableFromFile(test.TestCase):
 
   def test_index_table_from_file_str_fails_with_zero_size_vocabulary(self):
     vocabulary_file = self._createVocabFile("zero_vocab_str.txt")
-    self.assertRaisesRegexp(
-        ValueError,
-        "vocab_size must be greater than 0, got 0. "
+    self.assertRaisesRegex(
+        ValueError, "vocab_size must be greater than 0, got 0. "
         "vocabulary_file: .*zero_vocab_str.txt",
         lookup_ops.index_table_from_file,
         vocabulary_file=vocabulary_file,
@@ -2078,9 +2077,8 @@ class IndexTableFromFile(test.TestCase):
   def test_index_table_from_file_tensor_fails_with_zero_size_vocabulary(self):
     vocabulary_file = constant_op.constant(
         self._createVocabFile("zero_vocab_tensor.txt"))
-    self.assertRaisesRegexp(
-        ValueError,
-        "vocab_size must be greater than 0, got 0. "
+    self.assertRaisesRegex(
+        ValueError, "vocab_size must be greater than 0, got 0. "
         "vocabulary_file: .*zero_vocab_tensor.txt",
         lookup_ops.index_table_from_file,
         vocabulary_file=vocabulary_file,
@@ -2103,8 +2101,8 @@ class IndexTableFromFile(test.TestCase):
   def test_index_table_from_file_with_vocab_size_too_large(self):
     vocabulary_file = self._createVocabFile("f2i_vocab7.txt")
     with self.cached_session():
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Invalid vocab_size"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Invalid vocab_size"):
         table = lookup_ops.index_table_from_file(
             vocabulary_file=vocabulary_file, vocab_size=4)
         self.evaluate(table.initializer)
@@ -2225,15 +2223,15 @@ class IndexTableFromTensor(test.TestCase):
 
   def test_index_table_from_tensor_missing_vocabulary_list(self):
     with self.cached_session():
-      with self.assertRaisesRegexp(ValueError,
-                                   "vocabulary_list must be specified"):
+      with self.assertRaisesRegex(ValueError,
+                                  "vocabulary_list must be specified"):
         lookup_ops.index_table_from_tensor(
             vocabulary_list=None, num_oov_buckets=1)
 
   def test_index_table_from_tensor_empty_vocabulary_list(self):
     with self.cached_session():
-      with self.assertRaisesRegexp(
-          errors_impl.OpError, "keys and values cannot be empty"):
+      with self.assertRaisesRegex(errors_impl.OpError,
+                                  "keys and values cannot be empty"):
         _ = lookup_ops.index_table_from_tensor(
             vocabulary_list=np.array([], dtype=np.str_), num_oov_buckets=1)
         self.evaluate(lookup_ops.tables_initializer())
@@ -2347,8 +2345,8 @@ class IndexToStringTableFromFileTest(test.TestCase):
   def test_index_to_string_table_with_vocab_size_too_large(self):
     vocabulary_file = self._createVocabFile("f2i_vocab6.txt")
     with self.cached_session():
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Invalid vocab_size"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Invalid vocab_size"):
         _ = lookup_ops.index_to_string_table_from_file(
             vocabulary_file=vocabulary_file, vocab_size=4)
         self.evaluate(lookup_ops.tables_initializer())
@@ -2532,13 +2530,13 @@ class IdTableWithHashBucketsTest(test.TestCase):
 
   def testFloat64IdTableWithOnlyHashBucket(self):
     with self.cached_session():
-      with self.assertRaisesRegexp(TypeError, "Invalid key_dtype"):
+      with self.assertRaisesRegex(TypeError, "Invalid key_dtype"):
         lookup_ops.IdTableWithHashBuckets(
             None, num_oov_buckets=5, key_dtype=dtypes.float64)
 
   def testBoolIdTableWithOnlyHashBucket(self):
     with self.cached_session():
-      with self.assertRaisesRegexp(TypeError, "Invalid key_dtype"):
+      with self.assertRaisesRegex(TypeError, "Invalid key_dtype"):
         lookup_ops.IdTableWithHashBuckets(
             None, num_oov_buckets=5, key_dtype=dtypes.bool)
 

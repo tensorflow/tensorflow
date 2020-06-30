@@ -73,8 +73,8 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       xw = math_ops.matmul(inp, w, name="xw")
       h = bias_add(xw, b, name="h")
       w_grad = gradients.gradients(h, w)[0]
-    self.assertEquals("MatMul", w_grad.op.type)
-    self.assertEquals(w_grad.op._original_op, xw.op)
+    self.assertEqual("MatMul", w_grad.op.type)
+    self.assertEqual(w_grad.op._original_op, xw.op)
     self.assertTrue(w_grad.op.get_attr("transpose_a"))
     self.assertFalse(w_grad.op.get_attr("transpose_b"))
 
@@ -86,7 +86,7 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       split_wx = array_ops.split(value=wx, num_or_size_splits=2, axis=0)
       c = math_ops.reduce_sum(split_wx[1])
       gw = gradients.gradients(c, [w])[0]
-    self.assertEquals("MatMul", gw.op.type)
+    self.assertEqual("MatMul", gw.op.type)
 
   def testColocateGradients(self):
     with ops.Graph().as_default() as g:
@@ -218,7 +218,7 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
       def _TestOpGrad(_, float_grad, string_grad):
         """Gradient function for TestStringOutput."""
-        self.assertEquals(float_grad.dtype, dtypes.float32)
+        self.assertEqual(float_grad.dtype, dtypes.float32)
         self.assertFalse(string_grad)
         return float_grad
 
@@ -427,7 +427,7 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       x = constant(1.0)
       y = constant(1.0)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Unknown value for unconnected_gradients: 'nonsense'"):
         gradients.gradients([y], [x], unconnected_gradients="nonsense")
 
@@ -573,7 +573,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       grad_func = framework_function.Defun(dtypes.float32, dtypes.float32,
                                            dtypes.float32)(
                                                self.XSquarePlusBGradient)
-      with self.assertRaisesRegexp(ValueError, "Gradient defined twice"):
+      with self.assertRaisesRegex(ValueError, "Gradient defined twice"):
         f = self._GetFunc(
             grad_func=grad_func, python_grad_func=self._PythonGradient)
         f.add_to_graph(ops.Graph())
@@ -704,7 +704,7 @@ class PreventGradientTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       inp = constant(1.0, shape=[100, 32], name="in")
       out = array_ops.prevent_gradient(inp)
-      with self.assertRaisesRegexp(LookupError, "explicitly disabled"):
+      with self.assertRaisesRegex(LookupError, "explicitly disabled"):
         _ = gradients.gradients(out, inp)
 
 
@@ -920,9 +920,8 @@ class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
   def testRealOnly(self):
     x = constant_op.constant(7+3j, dtype=dtypes.complex64)
     y = math_ops.square(x)
-    with self.assertRaisesRegexp(
-        TypeError,
-        r"Gradients of complex tensors must set grad_ys "
+    with self.assertRaisesRegex(
+        TypeError, r"Gradients of complex tensors must set grad_ys "
         r"\(y\.dtype = tf\.complex64\)"):
       gradients.gradients(y, x)
 

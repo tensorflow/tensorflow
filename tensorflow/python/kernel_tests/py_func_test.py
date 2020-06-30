@@ -320,8 +320,8 @@ class PyFuncTest(PyFuncTestBase):
 
       y, = script_ops.py_func(bad, [], [dtypes.float32])
 
-      with self.assertRaisesRegexp(errors.InternalError,
-                                   "Unsupported numpy data type"):
+      with self.assertRaisesRegex(errors.InternalError,
+                                  "Unsupported numpy data type"):
         self.evaluate(y)
 
   @test_util.run_v1_only("b/120545219")
@@ -334,8 +334,8 @@ class PyFuncTest(PyFuncTestBase):
 
       z, = script_ops.py_func(bad, [], [dtypes.int64])
 
-      with self.assertRaisesRegexp(errors.InternalError,
-                                   "Unsupported object type"):
+      with self.assertRaisesRegex(errors.InternalError,
+                                  "Unsupported object type"):
         self.evaluate(z)
 
   @test_util.run_v1_only("b/120545219")
@@ -634,8 +634,8 @@ class EagerPyFuncTest(PyFuncTestBase):
     def return_variable():
       return resource_variable_ops.ResourceVariable(0.0)
 
-    with self.assertRaisesRegexp(errors.UnknownError,
-                                 "Attempting to return a variable"):
+    with self.assertRaisesRegex(errors.UnknownError,
+                                "Attempting to return a variable"):
       output = script_ops.eager_py_func(
           return_variable, inp=[], Tout=dtypes.float32)
       self.evaluate(output)
@@ -773,7 +773,7 @@ class EagerPyFuncTest(PyFuncTestBase):
   def testEagerPyFuncNotACallable(self):
     x = constant_op.constant("x", dtype=dtypes.string)
 
-    with self.assertRaisesRegexp(ValueError, "callable"):
+    with self.assertRaisesRegex(ValueError, "callable"):
       _ = script_ops.eager_py_func(x, inp=[x], Tout=dtypes.string)
 
 

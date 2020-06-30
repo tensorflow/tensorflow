@@ -395,7 +395,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertEqual(steps, 2)
 
       # All samples can not be consumed in specified number of steps
-      with self.assertRaisesRegexp(ValueError, 'not divisible by steps'):
+      with self.assertRaisesRegex(ValueError, 'not divisible by steps'):
         distributed_training_utils.get_input_params(
             distribution, 63, steps=2, batch_size=None)
 
@@ -409,7 +409,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         self.assertEqual(steps, 3)
       else:
         # Computed global batch size can not be sharded across replicas
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError, 'could not be sharded evenly '
             'across the sync replicas'):
           distributed_training_utils.get_input_params(
@@ -448,7 +448,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertEqual(steps, 5)
 
       # Number of samples is less than global batch size * steps
-      with self.assertRaisesRegexp(ValueError, 'less than samples required'):
+      with self.assertRaisesRegex(ValueError, 'less than samples required'):
         distributed_training_utils.get_input_params(
             distribution, 64, steps=10, batch_size=13)
 
@@ -1166,8 +1166,8 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self.assertAllClose(
           predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   'Number of steps could not be inferred'):
+      with self.assertRaisesRegex(ValueError,
+                                  'Number of steps could not be inferred'):
         model.fit(dataset, epochs=1)
 
   @combinations.generate(all_strategy_combinations())
@@ -1238,7 +1238,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
 
-      with self.assertRaisesRegexp(ValueError, 'incompatible with the layer'):
+      with self.assertRaisesRegex(ValueError, 'incompatible with the layer'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
   @combinations.generate(
@@ -1692,8 +1692,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
       # Check for `steps_per_epoch`.
       if distribution.num_replicas_in_sync > 1:
-        with self.assertRaisesRegexp(ValueError,
-                                     'distributed dataset, you must specify'):
+        with self.assertRaisesRegex(ValueError,
+                                    'distributed dataset, you must specify'):
           model.fit(ds, epochs=2)
 
   @combinations.generate(
@@ -1746,8 +1746,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
       # Check for `steps_per_epoch`.
       if distribution.num_replicas_in_sync > 1:
-        with self.assertRaisesRegexp(ValueError,
-                                     'distributed dataset, you must specify'):
+        with self.assertRaisesRegex(ValueError,
+                                    'distributed dataset, you must specify'):
           model.fit(ds, epochs=2)
 
   @combinations.generate(
@@ -1815,7 +1815,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     ds = ds.filter(lambda *args, **kwargs: True)  # Makes the size UNKNOWN.
     bc = BatchCountingCB()
 
-    with self.assertRaisesRegexp(ValueError, 'steps_per_execution'):
+    with self.assertRaisesRegex(ValueError, 'steps_per_execution'):
       model.fit(ds, epochs=2, callbacks=[bc])
 
     train_ds = ds.repeat(2)
@@ -1823,7 +1823,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     self.assertEqual(bc.train_begin_batches, [0, 20, 40, 0, 20, 40])
     self.assertEqual(bc.train_end_batches, [19, 39, 49, 19, 39, 49])
 
-    with self.assertRaisesRegexp(ValueError, 'steps_per_execution'):
+    with self.assertRaisesRegex(ValueError, 'steps_per_execution'):
       model.evaluate(ds, callbacks=[bc])
 
     test_ds = ds.repeat(2)
@@ -2266,8 +2266,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
                           (parameter_server_strategy.ParameterServerStrategyV1,
                            parameter_server_strategy.ParameterServerStrategy))
 
-    with self.assertRaisesRegexp(NotImplementedError,
-                                 'ParameterServerStrategy*'):
+    with self.assertRaisesRegex(NotImplementedError,
+                                'ParameterServerStrategy*'):
       with distribution.scope():
         model = simple_sequential_model()
         optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
@@ -2494,8 +2494,7 @@ class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
     # This should raise an error because the metric is constructed
     # outside of the scope, and not by compile
     if distribution_strategy_context.has_strategy():
-      with self.assertRaisesRegexp(
-          ValueError, 'All metrics must be created in'):
+      with self.assertRaisesRegex(ValueError, 'All metrics must be created in'):
         model.compile(
             optimizer=keras.optimizers.adam_v2.Adam(1e-4),
             loss=keras.losses.MeanSquaredError(),

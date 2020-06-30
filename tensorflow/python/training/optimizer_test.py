@@ -126,7 +126,7 @@ class OptimizerTest(test.TestCase):
         return 5 * var0 + var1
       # pylint: enable=cell-var-from-loop
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
-      with self.assertRaisesRegexp(ValueError, 'No.*variables'):
+      with self.assertRaisesRegex(ValueError, 'No.*variables'):
         sgd_op.minimize(loss)
 
   @test_util.run_in_graph_and_eager_modes
@@ -143,7 +143,7 @@ class OptimizerTest(test.TestCase):
         return 5 * var0
       # pylint: enable=cell-var-from-loop
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
-      with self.assertRaisesRegexp(ValueError, 'No gradients'):
+      with self.assertRaisesRegex(ValueError, 'No gradients'):
         # var1 has no gradient
         sgd_op.minimize(loss, var_list=[var1])
 
@@ -159,8 +159,8 @@ class OptimizerTest(test.TestCase):
       def loss():
         return constant_op.constant(5.0)
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
-      with self.assertRaisesRegexp(ValueError,
-                                   'No gradients provided for any variable'):
+      with self.assertRaisesRegex(ValueError,
+                                  'No gradients provided for any variable'):
         sgd_op.minimize(loss, var_list=[var0, var1])
 
   @test_util.run_in_graph_and_eager_modes
@@ -173,8 +173,8 @@ class OptimizerTest(test.TestCase):
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype,
                                                     name='b_%d' % i)
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
-      with self.assertRaisesRegexp(ValueError,
-                                   'No gradients provided for any variable'):
+      with self.assertRaisesRegex(ValueError,
+                                  'No gradients provided for any variable'):
         sgd_op.apply_gradients([(None, var0), (None, var1)])
 
   @test_util.run_in_graph_and_eager_modes

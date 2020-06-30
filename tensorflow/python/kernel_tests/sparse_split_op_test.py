@@ -254,13 +254,13 @@ class SparseSplitOpTest(test.TestCase):
                             expected_output.indices.eval())
 
   def testArgumentErrors(self):
-    with self.assertRaisesRegexp(ValueError, 'Keyword arguments are required'):
+    with self.assertRaisesRegex(ValueError, 'Keyword arguments are required'):
       sparse_ops.sparse_split(3, 2, 1)
-    with self.assertRaisesRegexp(ValueError, 'sp_input is required'):
+    with self.assertRaisesRegex(ValueError, 'sp_input is required'):
       sparse_ops.sparse_split()
-    with self.assertRaisesRegexp(ValueError, 'num_split is required'):
+    with self.assertRaisesRegex(ValueError, 'num_split is required'):
       sparse_ops.sparse_split(sp_input=1)
-    with self.assertRaisesRegexp(ValueError, 'axis is required'):
+    with self.assertRaisesRegex(ValueError, 'axis is required'):
       sparse_ops.sparse_split(num_split=2, sp_input=1)
 
 
