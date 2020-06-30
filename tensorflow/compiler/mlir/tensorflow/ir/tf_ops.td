@@ -1130,4 +1130,34 @@ This function is faster and numerically stabler than `bessel_i1(x)`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_StringToHashBucketFastOp : TF_Op<"StringToHashBucketFast", [NoSideEffect]> {
+  let summary = [{
+Converts each string in the input Tensor to its hash mod by a number of buckets.
+  }];
+
+  let description = [{
+The hash function is deterministic on the content of the string within the
+process and will never change. However, it is not suitable for cryptography.
+This function may be used when CPU time is scarce and inputs are trusted or
+unimportant. There is a risk of adversaries constructing inputs that all hash
+to the same bucket. To prevent this problem, use a strong hash function with
+`tf.string_to_hash_bucket_strong`.
+
+Examples:
+
+>>> tf.strings.to_hash_bucket_fast(["Hello", "TensorFlow", "2.x"], 3).numpy()
+array([0, 2, 2])
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$input,
+
+    Confined<I64Attr, [IntMinValue<1>]>:$num_buckets
+  );
+
+  let results = (outs
+    I64Tensor:$output
+  );
+}
+
 #endif // TF_OPS
