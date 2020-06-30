@@ -969,6 +969,77 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
 
+  @combinations.generate(combinations.keras_mode_combinations())
+  def test_call_kwarg_dtype_serialization(self):
+
+    class Double(layers.Layer):
+
+      def call(self, x1, dtype=None):
+        return math_ops.cast(x1 + x1, dtype=dtype)
+
+    input1 = input_layer_lib.Input(10)
+    outputs = Double()(input1, dtype=dtypes.float16)
+    model = training_lib.Model([input1], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10))],
+        y=6 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that input was correctly doubled.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    # Check the output dtype
+    self.assertEqual(model(array_ops.ones(3, 3)).dtype, dtypes.float16)
+
+    model = training_lib.Model.from_config(
+        model.get_config(), custom_objects={'Double': Double})
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10))],
+        y=6 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that input was correctly doubled.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    # Check the output dtype
+    self.assertEqual(model(array_ops.ones(3, 3)).dtype, dtypes.float16)
+
+  @combinations.generate(combinations.keras_mode_combinations())
+  def test_call_kwarg_nonserializable(self):
+
+    class Double(layers.Layer):
+
+      def call(self, x1, kwarg=None):
+        return x1 + x1
+
+    class NonSerializable(object):
+
+      def __init__(self, foo=None):
+        self.foo = foo
+
+    input1 = input_layer_lib.Input(10)
+    outputs = Double()(input1, kwarg=NonSerializable())
+    model = training_lib.Model([input1], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10))],
+        y=6 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that input was correctly doubled.
+    self.assertEqual(history.history['loss'][0], 0.0)
+    with self.assertRaisesRegexp(
+        TypeError, 'Layer double was passed non-JSON-serializable arguments.'):
+      model.get_config()
+
   @combinations.generate(combinations.times(
       combinations.keras_mode_combinations(),
       combinations.keras_tensor_combinations()))
