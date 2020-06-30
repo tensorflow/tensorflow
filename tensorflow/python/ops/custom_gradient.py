@@ -374,9 +374,9 @@ def _graph_mode_decorator(f, args, kwargs):
   variables_in_signature = ("variables" in grad_argspec.args or
                             grad_argspec.varkw)
   if variables and not variables_in_signature:
-    raise TypeError("If using @custom_gradient with a function that "
-                    "uses variables, then grad_fn must accept a keyword "
-                    "argument 'variables'.")
+    raise TypeError(
+        "@tf.custom_gradient grad_fn must accept keyword argument 'variables', "
+        "since function uses variables: {}".format(variables))
   if variables_in_signature and not variables:
     # User seems to intend to use variables but none were captured.
     logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
@@ -441,9 +441,9 @@ def _eager_mode_decorator(f, args, kwargs):
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   if (variables and ("variables" not in grad_argspec.args) and
       not grad_argspec.varkw):
-    raise TypeError("If using @custom_gradient with a function that "
-                    "uses variables, then grad_fn must accept a keyword "
-                    "argument 'variables'.")
+    raise TypeError(
+        "@tf.custom_gradient grad_fn must accept keyword argument 'variables', "
+        "since function uses variables: {}".format(variables))
   flat_result = nest.flatten(result)
   # TODO(apassos) consider removing the identity below.
   flat_result = [gen_array_ops.identity(x) for x in flat_result]
