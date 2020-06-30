@@ -6,6 +6,11 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* The byte layout for string tensors across the C-API has been updated to match
+  TF Core/C++; i.e., a contiguous array of `tensorflow::tstring`/`TF_TString`s.
+* C-API functions `TF_StringDecode`, `TF_StringEncode`, and
+  `TF_StringEncodedSize` are no longer relevant and have been removed; see
+  core/platform/ctstring.h for string access/modification in C.
 
 ## Known Caveats
 

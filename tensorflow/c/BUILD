@@ -29,6 +29,8 @@ filegroup(
         "tf_file_statistics.h",
         "tf_status.h",
         "tf_tensor.h",
+        "tf_tstring.h",
+        "//tensorflow/core/platform:ctstring",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -48,6 +50,7 @@ filegroup(
             "*test*",
         ],
     ) + [
+        "//tensorflow/core/platform:ctstring",
         "//tensorflow/cc:srcs_no_runtime",
         "//tensorflow/core/distributed_runtime:server_lib.h",
     ],
@@ -78,6 +81,7 @@ tf_cuda_library(
         "c_api_internal.h",
         "tf_datatype.h",
         "tf_tensor.h",
+        "tf_tstring.h",
     ],
     visibility = [
         "//tensorflow:internal",
