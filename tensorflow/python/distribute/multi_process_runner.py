@@ -218,6 +218,10 @@ class MultiProcessRunner(object):
     # This flag will be set to True once terminate_all() is called.
     self._all_forced_terminated = False
 
+  def set_args(self, args=None, kwargs=None):
+    self._args = args or self._args
+    self._kwargs = kwargs or self._kwargs
+
   def _continuously_readline_from_sub(self, pipe_r, task_type, task_id):
     """Function to continuously read lines from subprocesses."""
     with os.fdopen(pipe_r.fileno(), 'r', closefd=False) as reader:
@@ -546,6 +550,29 @@ class MultiProcessRunner(object):
         logging.info('Attempting to kill %s-%d but it does not exist.',
                      task_type, task_id)
     self._all_forced_terminated = True
+
+  def get_manager(self):
+    """Returns the multiprocessing manager object for concurrency tools.
+
+    The manager object is useful as it controls a server process that holds
+    the python objects that can be shared across processes. This can be used
+    for parent-subprocess communication:
+
+    ```python
+    mpr = multi_process_runner.MultiProcessRunner(...)
+    manager = mpr.get_manager()
+    some_event_happening_in_subprocess = manager.Event()
+    mpr.set_args(args=(some_event_happening_in_subprocess,))
+    mpr.start()
+    some_event_happening_in_subprocess.wait()
+    # Do something that only should after some event happens in subprocess.
+    ```
+
+    Note that the user of multi_process_runner should not create additional
+    `multiprocessing.Manager()` objects; doing so can result in segfault in
+    some cases.
+    """
+    return self._manager
 
 
 class _Process(multi_process_lib.Process):
