@@ -24,7 +24,8 @@
 * TF Core:
     * <ADD RELEASE NOTES HERE>
 * `tf.data`:
-    * <ADD RELEASE NOTES HERE>
+    * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
+  the complement of `select_cols`; at most one of these should be specified.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:
@@ -50,7 +51,7 @@
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 # Release 2.3.0
 
