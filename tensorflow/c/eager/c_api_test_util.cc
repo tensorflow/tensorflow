@@ -88,12 +88,10 @@ TFE_TensorHandle* TestMatrixTensorHandle(TFE_Context* ctx) {
   return th;
 }
 
-TFE_TensorHandle* TestMatrixTensorHandleWithInput(TFE_Context* ctx, float data[]) {
-  int64_t dims[] = {2, 2};
- 
+TFE_TensorHandle* TestMatrixTensorHandleWithInput(TFE_Context* ctx, float data[], int64_t dims [], int num_dims) {
   TF_Status* status = TF_NewStatus();
   TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0],
-                                        sizeof(dims) / sizeof(int64_t), status);
+                                        num_dims, status);
   memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
