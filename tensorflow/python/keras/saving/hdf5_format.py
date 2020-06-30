@@ -190,7 +190,7 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
   opened_new_file = not isinstance(filepath, h5py.File)
   if opened_new_file:
     # check if lock file exist
-    if check_lockfile(filepath) == True:
+    if check_lockfile(filepath):
       raise ValueError('Cannot read from file at this time.')
 
     f = h5py.File(filepath, mode='r')
