@@ -474,3 +474,10 @@ def reduce_any(input_tensor, axis=None, keepdims=False):
     return math_ops.reduce_any(input_tensor, axis=axis, keepdims=keepdims)
   else:
     return v.any(axis=axis, keepdims=keepdims)
+
+
+def tf_rank(t):
+  r = t.shape.rank
+  if r is not None:
+    return r
+  return array_ops.rank(t)
