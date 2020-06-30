@@ -88,8 +88,8 @@ def save_model_to_hdf5(model, filepath, overwrite=True, \
       overwrite: Whether we should overwrite any existing
           model at the target location, or instead
           ask the user with a manual prompt.
-      lockfile: Create a lockfile before saving the model 
-          file to prevent from reading, while saving 
+      lockfile: Create a lockfile before saving the model
+          file to prevent from reading, while saving
           is not done.
       include_optimizer: If True, save optimizer's state together.
 
