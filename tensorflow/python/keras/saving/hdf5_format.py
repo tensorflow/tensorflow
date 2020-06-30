@@ -118,7 +118,7 @@ def save_model_to_hdf5(model, filepath, overwrite=True, \
         return
 
     # create lock file
-    if (lockfile == True):
+    if lockfile:
       lockfile_path = create_lockfile(filepath)
 
     f = h5py.File(filepath, mode='w')
