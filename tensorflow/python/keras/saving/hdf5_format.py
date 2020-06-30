@@ -32,10 +32,10 @@ from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import serialization
 from tensorflow.python.util.lazy_loader import LazyLoader
-import tensorflow.python.platform.gfile as gfile
 
 # pylint: disable=g-import-not-at-top
 try:
