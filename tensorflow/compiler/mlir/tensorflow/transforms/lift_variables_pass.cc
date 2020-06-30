@@ -13,18 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_LIFT_VARIABLES_PASS_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_LIFT_VARIABLES_PASS_H_
-
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lift_variables.h"
 #include "tensorflow/core/public/session.h"
 
 namespace mlir {
-namespace tf_saved_model {
+namespace {
 
 // This pass takes care of finding all variables from the function arguments and
 // converting them to the corresponding global tensors, that will be located out
@@ -33,19 +29,27 @@ namespace tf_saved_model {
 class LiftVariablesPass
     : public PassWrapper<LiftVariablesPass, OperationPass<ModuleOp>> {
  public:
-  explicit LiftVariablesPass(::tensorflow::Session* session)
+  explicit LiftVariablesPass(tensorflow::Session* session)
       : session_(session) {}
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    if (failed(LiftVariables(module, session_))) signalPassFailure();
+    if (failed(tf_saved_model::LiftVariables(module, session_)))
+      signalPassFailure();
   }
 
  private:
   ::tensorflow::Session* session_;
 };
 
+}  // namespace
+
+namespace tf_saved_model {
+
+std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesPass(
+    tensorflow::Session* session) {
+  return std::make_unique<LiftVariablesPass>(session);
+}
+
 }  // namespace tf_saved_model
 }  // namespace mlir
-
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_LIFT_VARIABLES_PASS_H_
