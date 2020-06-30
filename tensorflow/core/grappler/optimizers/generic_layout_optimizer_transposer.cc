@@ -242,7 +242,7 @@ Status Transposer::CreateConstPermNode(TransposeContext* context,
 
   AttrValue attr_tensor;
   Tensor tensor(DT_INT32, TensorShape({4}));
-  for (int i = 0; i < permutation.size(); i++) {
+  for (int i = 0, iter_limit = permutation.size(); i < iter_limit; i++) {
     tensor.flat<int>()(i) = permutation[i];
   }
   tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -538,10 +538,11 @@ bool Transposer::IsFaninPortDimsNIfConst(const utils::MutableNodeView& node,
     if (!tensor.FromProto(value_attr->tensor())) {
       return false;
     }
-    if (tensor.dims() != dims.size()) {
+    const int dims_size = dims.size();
+    if (tensor.dims() != dims_size) {
       return false;
     }
-    for (int i = 0; i < dims.size(); ++i) {
+    for (int i = 0; i < dims_size; ++i) {
       if (tensor.dim_size(i) != dims[i]) {
         return false;
       }
@@ -863,12 +864,13 @@ inline bool IsValidConstPermTransposeNode(const utils::MutableNodeView& node,
   if (!GetValueAttrFromConstInputNode(node, IsTranspose, 1, &tensor)) {
     return false;
   }
-  if (tensor.NumElements() != permutation.size()) {
+  const int permutation_size = permutation.size();
+  if (tensor.NumElements() != permutation_size) {
     return false;
   }
 
   const auto& tensor_data = tensor.unaligned_flat<int32>();
-  for (int i = 0; i < permutation.size(); i++) {
+  for (int i = 0; i < permutation_size; i++) {
     if (permutation[i] != tensor_data(i)) {
       return false;
     }
@@ -1229,10 +1231,11 @@ bool ReduceTransposer::KeepDims(const utils::MutableNodeView& node) {
 
 bool ReduceTransposer::IsAlongAxis(const Tensor& tensor,
                                    absl::Span<const int> axis, int rank) {
-  if (tensor.dims() != 1 || tensor.dim_size(0) != axis.size()) {
+  const int axis_size = axis.size();
+  if (tensor.dims() != 1 || tensor.dim_size(0) != axis_size) {
     return false;
   }
-  for (int i = 0; i < axis.size(); ++i) {
+  for (int i = 0; i < axis_size; ++i) {
     int local_axis = tensor.flat<int>()(i);
     if (local_axis < 0) {
       local_axis += rank;
@@ -1444,12 +1447,13 @@ bool SqueezeTransposer::IsAlongAxis(const AttrValue& attr,
                                     int rank) const {
   const auto& list = attr.list();
   // If list is empty, Squeeze op will squeeze all dimensions of size 1.
+  int axis_size = axis.size();
   if (list.i_size() == 0) {
     return true;
-  } else if (list.i_size() != axis.size()) {
+  } else if (list.i_size() != axis_size) {
     return false;
   }
-  for (int i = 0; i < axis.size(); ++i) {
+  for (int i = 0; i < axis_size; ++i) {
     int local_axis = list.i(i);
     if (local_axis < 0) {
       local_axis += rank;
@@ -1563,7 +1567,8 @@ Status StridedSliceTransposer::PermuteMask(TransposeContext* context,
     return errors::InvalidArgument("invalid mask value: ", mask_i);
   }
   int result = 0;
-  for (int i = 0; i < context->src_to_dst.size(); i++) {
+  for (int i = 0, iter_limit = context->src_to_dst.size(); i < iter_limit;
+       i++) {
     const int final_pos = context->src_to_dst[i];
     const int position_mask = 1 << final_pos;
     const int bit_i = (mask_i & position_mask) >> final_pos;

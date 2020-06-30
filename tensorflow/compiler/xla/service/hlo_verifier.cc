@@ -1123,7 +1123,8 @@ Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
 Status ShapeVerifier::HandleSetDimensionSize(HloInstruction* set_size) {
   return CheckShape(set_size,
                     ShapeInference::InferSetDimensionSizeShape(
-                        set_size->operand(0)->shape(), set_size->dimension()));
+                        set_size->operand(0)->shape(),
+                        set_size->operand(1)->shape(), set_size->dimension()));
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
@@ -1323,7 +1324,8 @@ Status VerifyHloStructure(HloModule* module) {
               "Operand %d (%s) of instruction %s is in a different "
               "computation: %s vs %s",
               i, operand->name(), instruction->name(),
-              operand->parent()->name(), instruction->parent()->name());
+              operand->parent() ? operand->parent()->name() : "(null)",
+              instruction->parent()->name());
         }
       }
     }

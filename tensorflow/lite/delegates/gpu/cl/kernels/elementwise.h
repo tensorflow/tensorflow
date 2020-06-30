@@ -30,17 +30,14 @@ namespace cl {
 // log, sin, cos and etc.
 class ElementwiseOneInput : public ElementwiseOperation {
  public:
-  explicit ElementwiseOneInput(const OperationDef& definition,
-                               const OperationType& op_type)
-      : ElementwiseOperation(definition), op_type_(op_type) {}
+  ElementwiseOneInput(const OperationDef& definition,
+                      const OperationType& op_type);
 
   // Move only
   ElementwiseOneInput(ElementwiseOneInput&& operation);
   ElementwiseOneInput& operator=(ElementwiseOneInput&& operation);
   ElementwiseOneInput(const ElementwiseOneInput&) = delete;
   ElementwiseOneInput& operator=(const ElementwiseOneInput&) = delete;
-
-  std::string GetCoreCode(const LinkingContext& context) const override;
 
  private:
   OperationType op_type_;
@@ -56,10 +53,8 @@ class ElementwiseOneRuntimeOneScalar : public ElementwiseOperation {
  public:
   ElementwiseOneRuntimeOneScalar(const OperationDef& definition,
                                  const OperationType& op_type,
-                                 FLT scalar_parameter)
-      : ElementwiseOperation(definition),
-        op_type_(op_type),
-        scalar_parameter_(scalar_parameter) {}
+                                 float scalar_parameter,
+                                 CalculationsPrecision scalar_precision);
 
   // Move only
   ElementwiseOneRuntimeOneScalar(ElementwiseOneRuntimeOneScalar&& operation);
@@ -70,15 +65,9 @@ class ElementwiseOneRuntimeOneScalar : public ElementwiseOperation {
   ElementwiseOneRuntimeOneScalar& operator=(
       const ElementwiseOneRuntimeOneScalar&) = delete;
 
-  void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const LinkingContext& context) const override;
-  std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
-
  private:
   int link_index_;
   OperationType op_type_;
-  FLT scalar_parameter_;
 };
 
 ElementwiseOneRuntimeOneScalar CreateElementwiseOneRuntimeOneScalar(
@@ -99,21 +88,12 @@ class ElementwiseTwoInput : public ElementwiseOperation {
   ElementwiseTwoInput() = default;
   ElementwiseTwoInput(const OperationDef& definition,
                       const OperationType& op_type,
-                      const BroadcastSettings& broadcast)
-      : ElementwiseOperation(definition),
-        op_type_(op_type),
-        broadcast_(broadcast),
-        use_constant_tensor_(false) {}
+                      const BroadcastSettings& broadcast);
 
   ElementwiseTwoInput(const OperationDef& definition,
                       const OperationType& op_type,
                       const BroadcastSettings& broadcast,
-                      Tensor&& constant_tensor)
-      : ElementwiseOperation(definition),
-        op_type_(op_type),
-        broadcast_(broadcast),
-        use_constant_tensor_(true),
-        constant_tensor_(std::move(constant_tensor)) {}
+                      Tensor&& constant_tensor);
 
   // Move only
   ElementwiseTwoInput(ElementwiseTwoInput&& operation);
@@ -121,17 +101,13 @@ class ElementwiseTwoInput : public ElementwiseOperation {
   ElementwiseTwoInput(const ElementwiseTwoInput&) = delete;
   ElementwiseTwoInput& operator=(const ElementwiseTwoInput&) = delete;
 
-  void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const LinkingContext& context) const override;
-  std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
+  absl::Status SetArgs(const std::string& unique_postfix,
+                       Arguments* args) override;
 
  private:
   int link_index_;
   OperationType op_type_;
   BroadcastSettings broadcast_;
-  bool use_constant_tensor_;
-  Tensor constant_tensor_;
 };
 
 absl::Status CreateElementwiseTwoInput(

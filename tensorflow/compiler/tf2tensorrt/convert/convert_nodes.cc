@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
@@ -58,8 +59,7 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 #include "third_party/tensorrt/NvInferPlugin.h"
 
@@ -1214,15 +1214,16 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
       getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
   if (!trt_plugin_creator_list) {
-    LOG(WARNING) << "Can not find any TensorRT plugins in registry.";
+    LOG_WARNING_WITH_PREFIX << "Can not find any TensorRT plugins in registry.";
   } else {
     VLOG(1) << "Found the following " << num_trt_plugins
             << " TensorRT plugins in registry:";
     for (int i = 0; i < num_trt_plugins; ++i) {
       if (!trt_plugin_creator_list[i]) {
-        LOG(WARNING) << "TensorRT plugin at index " << i
-                     << " is not accessible (null pointer returned by "
-                        "getPluginCreatorList for this plugin)";
+        LOG_WARNING_WITH_PREFIX
+            << "TensorRT plugin at index " << i
+            << " is not accessible (null pointer returned by "
+               "getPluginCreatorList for this plugin)";
       } else {
         VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
       }
@@ -1322,10 +1323,14 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
   // We verify the batch size only for the input nodes, and rely on individual
   // op converter to ensure the batch size of the outputs is not changed.
   // TODO(laigd): we need to test this properties.
-  Status status = MaybeUpdateBatchSize(batch_size);
-  if (!status.ok()) {
-    return Status(status.code(), StrCat("Batch size doesn't match for tensor ",
-                                        name, ": ", status.error_message()));
+  Status status;
+  if (use_implicit_batch_) {
+    status = MaybeUpdateBatchSize(batch_size);
+    if (!status.ok()) {
+      return Status(status.code(),
+                    StrCat("Batch size doesn't match for tensor ", name, ": ",
+                           status.error_message()));
+    }
   }
   nvinfer1::ITensor* tensor = network()->addInput(name.c_str(), dtype, dims);
   if (tensor == nullptr) {
@@ -1823,9 +1828,9 @@ void Converter::MaybeApplyQuantizationRanges() {
       // are tensors which are created internally by TF-TRT. The ranges for
       // these unnamed ITensors are always inferred from user provided ranges,
       // thus there will also be a warning for the range(s) the user missed.
-      LOG(WARNING) << "Quantization range was not found for "
-                   << tensor->getName() << ". "
-                   << "Setting invalid quantization range.";
+      LOG_WARNING_WITH_PREFIX << "Quantization range was not found for "
+                              << tensor->getName() << ". "
+                              << "Setting invalid quantization range.";
       // Set the range to something unusable so the engine will fail if it
       // tries to actually use the tensor's range.
       tensor->setDynamicRange(0, 0);
@@ -1918,37 +1923,56 @@ Status Converter::GetInputs(const NodeDef& node_def,
   return Status::OK();
 }
 
+enum class TrtInputArg { kTensor = 1, kWeight = 2, kBoth = 3 };
+
 // Checks that the number of inputs match, and enforces that the inputs marked
-// as true are constant weights. true means that the input must be a weight,
-// while false means the input must be a tensor. In the future, false will mean
-// the input can be a tensor or weight.
+// as weights are constant. Inputs are allowed to be both weight and tensor.
 Status CheckInputsWeights(
     const OpConverterParams& params,
-    const std::vector<std::pair<string, bool>>& inputs_is_weight) {
+    const std::vector<std::pair<string, TrtInputArg>>& expected_inputs) {
   const auto& inputs = params.inputs;
   const auto& node_def = params.node_def;
-  if (inputs.size() != inputs_is_weight.size()) {
+  if (inputs.size() != expected_inputs.size()) {
     return errors::InvalidArgument(
         node_def.op(), " got ", inputs.size(), " inputs but expected ",
-        inputs_is_weight.size(), ", at ", node_def.name());
+        expected_inputs.size(), ", at ", node_def.name());
   }
   for (int i = 0; i < inputs.size(); i++) {
-    if (inputs_is_weight[i].second && inputs.at(i).is_tensor()) {
-      return errors::Unimplemented("The input \"", inputs_is_weight[i].first,
+    if (expected_inputs[i].second == TrtInputArg::kWeight &&
+        inputs.at(i).is_tensor()) {
+      return errors::Unimplemented("The input \"", expected_inputs[i].first,
                                    "\" for ", node_def.op(),
                                    " must be a constant, at ", node_def.name());
     }
-    // TODO(tmorris): Remove this check and provide a method to automatically
+    // TODO(tfeher): Remove this check and provide a method to automatically
     // retrieve an input as a tensor, converting via CreateConstantLayer if it
     // was originally a weight. We will want a caching mechanism to prevent many
     // duplicate constants from being created.
-    if (!inputs_is_weight[i].second && inputs.at(i).is_weights()) {
-      return errors::Unimplemented("The input \"", inputs_is_weight[i].first,
+    if (expected_inputs[i].second == TrtInputArg::kTensor &&
+        inputs.at(i).is_weights()) {
+      return errors::Unimplemented("The input \"", expected_inputs[i].first,
                                    "\" for ", node_def.op(),
                                    " must be a tensor, at ", node_def.name());
     }
   }
   return Status::OK();
+}
+
+// Checks that the number of inputs match, and enforces that the inputs marked
+// as true are constant weights. true means that the input must be a weight,
+// while false means the input must be a tensor.
+Status CheckInputsWeights(
+    const OpConverterParams& params,
+    const std::vector<std::pair<string, bool>>& inputs_is_weight) {
+  std::vector<std::pair<string, TrtInputArg>> expected_inputs;
+  expected_inputs.reserve(inputs_is_weight.size());
+  std::transform(
+      inputs_is_weight.begin(), inputs_is_weight.end(),
+      std::back_inserter(expected_inputs), [](std::pair<string, bool> x) {
+        return std::make_pair(
+            x.first, x.second ? TrtInputArg::kWeight : TrtInputArg::kTensor);
+      });
+  return CheckInputsWeights(params, expected_inputs);
 }
 
 Status GetNodeDefTfType(const NodeDef& node_def, DataType* tf_type,
@@ -4235,8 +4259,13 @@ Status ConvertBinary(OpConverterParams* params) {
                                    " inputs but expected 2, at ",
                                    node_def.name());
   }
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
+                                   DataType::DT_INT32};
+#else
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF};
+#endif
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
 
   // Constant folding should have been done by TensorFlow
   if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
@@ -4396,8 +4425,13 @@ Status ConvertSquare(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
+#if IS_TRT_VERSION_GE(6, 0, 1, 0)
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+#else
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+#endif
   if (params->validation_only) return Status::OK();
 
   // Constant 2 with same rank as input
@@ -4865,10 +4899,11 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
     // Trying to use batchnorm in training mode is a very common problem.
     // Because the error message will only be printed in VLOG(1) by the
     // segmenter, we issue a special warning so that users will actually see it.
-    LOG(WARNING) << node_def.op() << " only supports is_training=false. If you "
-                 << "are using Keras, please call "
-                 << "keras.backend.set_learning_phase(0) before constructing "
-                 << "your model. At " << node_def.name();
+    LOG_WARNING_WITH_PREFIX
+        << node_def.op() << " only supports is_training=false. If you "
+        << "are using Keras, please call "
+        << "keras.backend.set_learning_phase(0) before constructing "
+        << "your model. At " << node_def.name();
     return errors::Unimplemented(node_def.op(),
                                  " only supports is_training=false, at ",
                                  node_def.name());
@@ -4982,24 +5017,14 @@ Status ConvertGather(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   // TODO(tmorris): Use CheckInputsWeights by changing bool to enum with an
   // option for an input to be either tensor or weight.
-  if (inputs.size() != 3) {
-    return errors::InvalidArgument("GatherV2 got ", inputs.size(),
-                                   " inputs but expected 3, at ",
-                                   node_def.name());
-  }
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"params", TrtInputArg::kBoth},
+                                   {"indices", TrtInputArg::kTensor},
+                                   {"axis", TrtInputArg::kWeight}}));
+
   const auto& params_input = inputs.at(0);
   const auto& indices_input = inputs.at(1);
   const auto& axis_input = inputs.at(2);
-  if (!axis_input.is_weights()) {
-    return errors::Unimplemented(
-        "The input \"axis\" for GatherV2 must be a constant, at ",
-        node_def.name());
-  }
-  if (!indices_input.is_tensor()) {
-    return errors::Unimplemented(
-        "The input \"indices\" for GatherV2 must be a tensor, at ",
-        node_def.name());
-  }
 
   TF_RETURN_IF_ERROR(AllowDataTypes(
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32},
@@ -5013,14 +5038,16 @@ Status ConvertGather(OpConverterParams* params) {
                                    node_def.name());
   }
   int trt_axis = 0;
-  TF_RETURN_IF_ERROR(ConvertAxis(axis[0], params_input.GetTrtDims().nbDims,
-                                 node_def.name(), params_input.is_tensor(),
-                                 &trt_axis));
-  if (params_input.is_weights() && trt_axis != 0) {
+  TF_RETURN_IF_ERROR(ConvertAxis(
+      axis[0], params_input.GetTrtDims().nbDims, node_def.name(),
+      params->use_implicit_batch && params_input.is_tensor(), &trt_axis));
+  if (params->use_implicit_batch && params_input.is_weights() &&
+      trt_axis != 0) {
     return errors::Unimplemented(
         "The input axis must be zero when params is a weight.");
   }
-  if (params_input.is_tensor() && indices_input.batch_size() != 1) {
+  if (params->use_implicit_batch && params_input.is_tensor() &&
+      indices_input.batch_size() != 1) {
     return errors::Unimplemented(
         "Indices must have a batch size of 1 when params is a tensor.");
   }
@@ -5029,10 +5056,13 @@ Status ConvertGather(OpConverterParams* params) {
   // where "+ 1" adds the batch dim. If params is a weight, the TRT rank matches
   // the TF rank so we don't have to add + 1.
   const int params_tf_rank =
-      params_input.GetTrtDims().nbDims + (params_input.is_tensor() ? 1 : 0);
-  const int indices_tf_rank = indices_input.GetTrtDims().nbDims + 1;
+      params_input.GetTrtDims().nbDims +
+      (params->use_implicit_batch && params_input.is_tensor() ? 1 : 0);
+  const int indices_tf_rank =
+      indices_input.GetTrtDims().nbDims + (params->use_implicit_batch ? 1 : 0);
   const int tf_gather_output_rank = params_tf_rank + indices_tf_rank - 1;
-  if (tf_gather_output_rank > nvinfer1::Dims::MAX_DIMS + 1) {
+  if (tf_gather_output_rank >
+      nvinfer1::Dims::MAX_DIMS + (params->use_implicit_batch ? 1 : 0)) {
     return errors::InvalidArgument(
         "Result of gather has dimension greater than ",
         nvinfer1::Dims::MAX_DIMS + 1);
@@ -5064,7 +5094,8 @@ Status ConvertGather(OpConverterParams* params) {
   // because of the implicit batch dim in the indices (see the above note).
   const int expected_trt_output_rank =
       tf_gather_output_rank - (params_input.is_tensor() ? 2 : 1);
-  if (trt_gather_output_dims.nbDims != expected_trt_output_rank) {
+  if (params->use_implicit_batch &&
+      trt_gather_output_dims.nbDims != expected_trt_output_rank) {
     return errors::Internal(
         "Get unexpected output dimensions of IGatherLayer. Expect nbDims: ",
         expected_trt_output_rank,
@@ -5072,7 +5103,7 @@ Status ConvertGather(OpConverterParams* params) {
   }
   // Reshape the output so after adding the implicit batch dim it'll match the
   // output shape of TF GatherV2.
-  if (params_input.is_tensor()) {
+  if (params->use_implicit_batch && params_input.is_tensor()) {
     for (int i = trt_gather_output_dims.nbDims; i > trt_axis; --i) {
       trt_gather_output_dims.d[i] = trt_gather_output_dims.d[i - 1];
     }
@@ -6010,7 +6041,7 @@ Status ConvertGraphDefToEngine(
         const string error_message =
             StrCat("Validation failed for ", node_name, " and input slot ",
                    slot_number, ": ", status.error_message());
-        LOG(WARNING) << error_message;
+        LOG_WARNING_WITH_PREFIX << error_message;
         return Status(status.code(), error_message);
       }
       VLOG(2) << "Adding engine input tensor " << node_name << " with shape "
@@ -6226,5 +6257,4 @@ bool OutputEdgeValidator::operator()(const Edge* out_edge) const {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

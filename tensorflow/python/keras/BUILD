@@ -86,6 +86,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/keras/engine:keras_tensor",
     ],
 )
 

@@ -17,6 +17,7 @@ limitations under the License.
 // class declaration].
 #include "tensorflow/stream_executor/host/host_gpu_executor.h"
 
+#include <stdint.h>
 #include <string.h>
 
 #include "absl/strings/numbers.h"
@@ -56,6 +57,13 @@ port::Status HostExecutor::Init(int device_ordinal,
     }
   }
   return port::Status::OK();
+}
+
+bool HostExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
+  tensorflow::port::MemoryInfo mem_info = tensorflow::port::GetMemoryInfo();
+  *free = (mem_info.free != INT64_MAX) ? mem_info.free : -1;
+  *total = (mem_info.total != INT64_MAX) ? mem_info.total : -1;
+  return true;
 }
 
 DeviceMemoryBase HostExecutor::Allocate(uint64 size, int64 memory_space) {

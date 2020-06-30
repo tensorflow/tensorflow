@@ -57,13 +57,14 @@ class ReduceTest(test_util.TensorFlowTestCase):
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     with test_util.device(use_gpu=True):
-      for axis in (0, -2, (0, 0), (0, -2)):
+      for axis in (0, -2):
         self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
                             [5, 7, 9])
-      for axis in (1, -1, (1, 1), (1, -1)):
+      for axis in (1, -1):
         self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
                             [6, 15])
-      for axis in (None, (0, 1), (-1, -2), (-2, -1, 0, 1)):
+      for axis in (None, (0, 1), (1, 0), (-1, 0), (0, -1), (-2, 1), (1, -2),
+                   (-1, -2), (-2, -1)):
         self.assertEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)), 21)
 
   def testReduceInvalidAxis(self):
@@ -397,7 +398,6 @@ class AddNTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(x[0] * num_inputs,
                             math_ops.add_n([tf_x[0]] * num_inputs))
 
-  @test_util.deprecated_graph_mode_only
   def testGrad(self):
     np.random.seed(42)
     for num_inputs in range(1, 10):
@@ -406,9 +406,16 @@ class AddNTest(test_util.TensorFlowTestCase):
             variables.Variable(10.0 * np.random.random())
             for _ in range(0, num_inputs)
         ]
-        addn = math_ops.add_n(input_vars)
         self.evaluate(variables.global_variables_initializer())
-        add_n_grad = gradients.gradients(addn, input_vars)
+        if context.executing_eagerly():
+          with backprop.GradientTape() as tape:
+            tape.watch(input_vars)
+            addn = math_ops.add_n(input_vars)
+            add_n_grad = tape.gradient(addn, input_vars)
+        else:
+          addn = math_ops.add_n(input_vars)
+          add_n_grad = gradients.gradients(addn, input_vars)
+
         self.assertAllEqual(
             np.repeat(1.0, num_inputs),  # d/dx (x + y + ...) = 1
             [self.evaluate(g) for g in add_n_grad])
@@ -515,18 +522,32 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     _ = math_ops.divide(foo, 1.)
     _ = math_ops.div(foo, 2.)
 
-  @test_util.deprecated_graph_mode_only
   def testFloorDivGrad(self):
     a = variables.Variable(2.)
     b = variables.Variable(4.)
+    input_vars = [a, b]
     self.evaluate(variables.global_variables_initializer())
-    c_grad = gradients.gradients(math_ops.divide(a, b), [a, b])
-    self.assertAllEqual([self.evaluate(x) for x in c_grad], [.25, -.125])
-    c_grad = gradients.gradients(math_ops.div(a, b), [a, b])
-    self.assertAllEqual([self.evaluate(x) for x in c_grad], [.25, -.125])
-    c_grad = gradients.gradients(math_ops.floordiv(a, b), [a, b])
+    if context.executing_eagerly():
+      # TDOO(rmlarsen): Is there a more compact way of
+      # writing this for multiple expressions?
+      with backprop.GradientTape() as tape:
+        tape.watch(input_vars)
+        c_grad0 = tape.gradient(math_ops.divide(a, b), input_vars)
+      with backprop.GradientTape() as tape:
+        tape.watch(input_vars)
+        c_grad1 = tape.gradient(math_ops.div(a, b), input_vars)
+      with backprop.GradientTape() as tape:
+        tape.watch(input_vars)
+        c_grad2 = tape.gradient(math_ops.floordiv(a, b), input_vars)
+    else:
+      c_grad0 = gradients.gradients(math_ops.divide(a, b), input_vars)
+      c_grad1 = gradients.gradients(math_ops.div(a, b), input_vars)
+      c_grad2 = gradients.gradients(math_ops.floordiv(a, b), input_vars)
+    self.assertAllEqual([self.evaluate(x) for x in c_grad0], [.25, -.125])
+    self.assertAllEqual([self.evaluate(x) for x in c_grad1], [.25, -.125])
     self.assertAllEqual(
-        [None if x is None else self.evaluate(x) for x in c_grad], [None, None])
+        [None if x is None else self.evaluate(x) for x in c_grad2],
+        [None, None])
 
   def testConsistent(self):
     nums, divs = self.intTestData()

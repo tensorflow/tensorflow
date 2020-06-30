@@ -27,21 +27,19 @@ namespace gpu {
 namespace cl {
 namespace {
 
-std::string GenerateConvolutionTransposedCode(
-    const OperationDef& op_def, const LinearStorage& biases, int src_depth,
-    int dst_depth, const CLDevice& device,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor(
-      "src_data",
-      WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
-      op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor(
-      "dst_data",
-      WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
-      op_def.dst_tensors[0]);
+std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
+                                              int src_depth, int dst_depth,
+                                              const CLDevice& device,
+                                              Arguments* args) {
+  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
+  src_desc->SetTextureAddressMode(GetFastestZeroMode(device));
+  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
+  args->AddObjectRef(
+      "dst_tensor", AccessType::WRITE,
+      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
+
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
-  const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
 
   switch (op_def.precision) {
@@ -61,23 +59,19 @@ std::string GenerateConvolutionTransposedCode(
   }
 
   c += "__kernel void main_function(\n";
-  c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  c += "    __constant FLT4* filters,  \n";
-  c += biases.GetDeclaration();
-  c += GetArgsDeclaration(linked_operations);
-  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int4 src_size,             \n";
-  c += "    int4 dst_size              \n";
-  c += ") {\n";
+  c += "$0) {\n";
   if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
-    c += "  int X = linear_id / dst_size.w;\n";
-    c += "  int B = linear_id % dst_size.w;\n";
+    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
   } else {
     c += "  int X = get_global_id(0);\n";
   }
   c += "  int Y = get_global_id(1);\n";
-  c += "  if (X >= src_size.x || Y >= src_size.y) return;\n";
+  c += "  if (X >= args.src_tensor.Width() || Y >= args.src_tensor.Height()) "
+       "return;\n";
   for (int d = 0; d < dst_depth; ++d) {
     const std::string layer = std::to_string(d);
     c += "  ACCUM_FLT4 r" + layer + "[2][2];\n";
@@ -91,61 +85,48 @@ std::string GenerateConvolutionTransposedCode(
     const std::string z = std::to_string(s);
     c += "  {\n";
     if (src_tensor_type == TensorStorageType::BUFFER) {
-      c += "  bool x_in = X + 1 < src_size.x;\n";
-      c += "  bool y_in = Y + 1 < src_size.y;\n";
-      c +=
-          "  FLT4 src0 = " + src_tensor.ReadWHSB("X", "Y", z, batch_id) + ";\n";
+      c += "  bool x_in = X + 1 < args.src_tensor.Width();\n";
+      c += "  bool y_in = Y + 1 < args.src_tensor.Height();\n";
+      c += "  FLT4 src0 = args.src_tensor.Read(X, Y, " + z + ");\n";
       c += "  FLT4 src1 = (FLT4)(0.0);\n";
       c += "  FLT4 src2 = (FLT4)(0.0);\n";
       c += "  FLT4 src3 = (FLT4)(0.0);\n";
       c += "  if (x_in) {\n";
-      c += "    src1 = " + src_tensor.ReadWHSB("X + 1", "Y", z, batch_id) +
-           ";\n";
+      c += "    src1 = args.src_tensor.Read(X + 1, Y, " + z + ");\n";
       c += "  }\n";
       c += "  if (y_in) {\n";
-      c += "    src2 = " + src_tensor.ReadWHSB("X", "Y + 1", z, batch_id) +
-           ";\n";
+      c += "    src2 = args.src_tensor.Read(X, Y + 1, " + z + ");\n";
       c += "  }\n";
       c += "  if (x_in && y_in) {\n";
-      c += "    src3 = " + src_tensor.ReadWHSB("X + 1", "Y + 1", z, batch_id) +
-           ";\n";
+      c += "    src3 = args.src_tensor.Read(X + 1, Y + 1, " + z + ");\n";
       c += "  }\n";
     } else if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
-      c +=
-          "  " + src_tensor.GetAddressWHSB("c0", "X", "Y", z, batch_id) + ";\n";
-      c += "  " + src_tensor.GetAddressWHSB("c1", "X + 1", "Y", z, batch_id) +
-           ";\n";
-      c += "  " + src_tensor.GetAddressWHSB("c2", "X", "Y + 1", z, batch_id) +
-           ";\n";
-      c += "  " +
-           src_tensor.GetAddressWHSB("c3", "X + 1", "Y + 1", z, batch_id) +
-           ";\n";
-      c += "  bool x_in = X + 1 < src_size.x;\n";
-      c += "  bool y_in = Y + 1 < src_size.y;\n";
+      c += "  args.src_tensor.GetAddress(c0, X, Y, " + z + ");\n";
+      c += "  args.src_tensor.GetAddress(c1, X + 1, Y, " + z + ");\n";
+      c += "  args.src_tensor.GetAddress(c2, X, Y + 1, " + z + ");\n";
+      c += "  args.src_tensor.GetAddress(c3, X + 1, Y + 1, " + z + ");\n";
+      c += "  bool x_in = X + 1 < args.src_tensor.Width();\n";
+      c += "  bool y_in = Y + 1 < args.src_tensor.Height();\n";
       c += "  c1 = select(-1, c1, x_in);\n";
       c += "  c2 = select(-1, c2, y_in);\n";
       c += "  c3 = select(-1, c3, x_in && y_in);\n";
-      c += "  FLT4 src0 = " + src_tensor.Read("c0") + ";\n";
-      c += "  FLT4 src1 = " + src_tensor.Read("c1") + ";\n";
-      c += "  FLT4 src2 = " + src_tensor.Read("c2") + ";\n";
-      c += "  FLT4 src3 = " + src_tensor.Read("c3") + ";\n";
+      c += "  FLT4 src0 = args.src_tensor.Read(c0);\n";
+      c += "  FLT4 src1 = args.src_tensor.Read(c1);\n";
+      c += "  FLT4 src2 = args.src_tensor.Read(c2);\n";
+      c += "  FLT4 src3 = args.src_tensor.Read(c3);\n";
     } else {
-      const auto mode = GetFastestZeroMode(device);
-      c += "  FLT4 src0 = " + src_tensor.ReadWHSB("X", "Y", z, batch_id, mode) +
-           ";\n";
-      c += "  FLT4 src1 = " +
-           src_tensor.ReadWHSB("X + 1", "Y", z, batch_id, mode) + ";\n";
-      c += "  FLT4 src2 = " +
-           src_tensor.ReadWHSB("X", "Y + 1", z, batch_id, mode) + ";\n";
-      c += "  FLT4 src3 = " +
-           src_tensor.ReadWHSB("X + 1", "Y + 1", z, batch_id, mode) + ";\n";
+      c += "  FLT4 src0 = args.src_tensor.Read(X, Y, " + z + ");\n";
+      c += "  FLT4 src1 = args.src_tensor.Read(X + 1, Y, " + z + ");\n";
+      c += "  FLT4 src2 = args.src_tensor.Read(X, Y + 1, " + z + ");\n";
+      c += "  FLT4 src3 = args.src_tensor.Read(X + 1, Y + 1, " + z + ");\n";
     }
     for (int d = 0; d < dst_depth; ++d) {
       const std::string layer = std::to_string(d);
       const std::string f_offset = std::to_string(filters_index);
       filters_index++;
       c += "  {\n";
-      c += "  __constant FLT4* L0 = filters + 36 * " + f_offset + ";\n";
+      c += "  __constant FLT4* L0 = args.weights.GetPtr() + 36 * " + f_offset +
+           ";\n";
       c += "  CONV(r" + layer + "[0][0], src0, L0, 0);\n";
       c += "  CONV(r" + layer + "[0][1], src0, L0, 4);\n";
       c += "  CONV(r" + layer + "[0][1], src1, L0, 8);\n";
@@ -164,7 +145,8 @@ std::string GenerateConvolutionTransposedCode(
   for (int d = 0; d < dst_depth; ++d) {
     const std::string layer = std::to_string(d);
     c += "  {\n";
-    c += "  FLT4 bias_val = " + biases.ReadLinearFLT4(layer) + ";\n";
+    c += "  FLT4 bias_val = args.weights.Read(" +
+         std::to_string(36 * filters_index + d) + ");\n";
     for (int y = 0; y < 2; ++y) {
       for (int x = 0; x < 2; ++x) {
         const std::string x_coord = "X + " + std::to_string(x);
@@ -172,14 +154,8 @@ std::string GenerateConvolutionTransposedCode(
         c += "  {\n";
         c += "    FLT4 result = TO_FLT4(r" + layer + "[" + std::to_string(y) +
              "][" + std::to_string(x) + "]) + bias_val;\n";
-        const std::string x_3dcoord = op_def.IsBatchSupported()
-                                          ? "(" + x_coord + ") * dst_size.w + B"
-                                          : x_coord;
-        const LinkingContext context{"result", x_3dcoord, y_coord, layer};
-        c += PostProcess(linked_operations, context);
-        c += "    " +
-             dst_tensor.WriteWHSB("result", x_coord, y_coord, layer, batch_id) +
-             "\n";
+        c += "    args.dst_tensor.Write(result, " + x_coord + ", " + y_coord +
+             ", " + layer + ");\n";
         c += "  }\n";
       }
     }
@@ -200,8 +176,6 @@ ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
 ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
     ConvolutionTransposed3x3Thin&& operation)
     : GPUOperation(std::move(operation)),
-      weights_(std::move(operation.weights_)),
-      biases_(std::move(operation.biases_)),
       src_channels_(operation.src_channels_),
       dst_channels_(operation.dst_channels_),
       kernel_(std::move(operation.kernel_)),
@@ -210,8 +184,6 @@ ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
 ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
     ConvolutionTransposed3x3Thin&& operation) {
   if (this != &operation) {
-    weights_ = std::move(operation.weights_);
-    biases_ = std::move(operation.biases_);
     std::swap(src_channels_, operation.src_channels_);
     std::swap(dst_channels_, operation.dst_channels_);
     kernel_ = std::move(operation.kernel_);
@@ -223,25 +195,25 @@ ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
 
 absl::Status ConvolutionTransposed3x3Thin::Compile(
     const CreationContext& creation_context) {
-  const auto code = GenerateConvolutionTransposedCode(
-      definition_, biases_, DivideRoundUp(src_channels_, 4),
-      DivideRoundUp(dst_channels_, 4), *creation_context.device,
-      linked_operations_);
+  std::string code = GenerateConvolutionTransposedCode(
+      definition_, DivideRoundUp(src_channels_, 4),
+      DivideRoundUp(dst_channels_, 4), *creation_context.device, &args_);
+  std::string element_wise_code;
+  RETURN_IF_ERROR(
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                          {{"dst_tensor", element_wise_code}},
+                                          &code));
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
 absl::Status ConvolutionTransposed3x3Thin::BindArguments() {
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
-  return absl::OkStatus();
+  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
+  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
+  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
+  return args_.Bind(kernel_.kernel());
 }
 
 int3 ConvolutionTransposed3x3Thin::GetGridSize() const {
@@ -282,15 +254,7 @@ absl::Status CreateConvolutionTransposed3x3Thin(
   }
   *result = ConvolutionTransposed3x3Thin(definition, attr);
   RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type =
-      DeduceLinearStorageType(definition.GetPrimaryStorageType());
-  create_info.data_type = definition.GetDataType();
-  create_info.name = "biases";
-  create_info.aligned_size = attr.weights.shape.o;
-  RETURN_IF_ERROR(CreateLinearStorage(
-      create_info, attr.bias, creation_context.context, &result->biases_));
+      result->UploadData(attr.weights, attr.bias, creation_context.context));
   return absl::OkStatus();
 }
 

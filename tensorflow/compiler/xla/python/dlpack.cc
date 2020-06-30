@@ -23,8 +23,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
-#include "tensorflow/compiler/xla/python/traceback_manager.h"
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
@@ -298,7 +299,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(PyBuffer* buffer) {
 }
 
 StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, std::shared_ptr<PjRtClient> client) {
+    const pybind11::capsule& tensor, std::shared_ptr<PyClient> client) {
   if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(
         "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
@@ -311,8 +312,9 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
         "Number of dimensions in DLManagedTensor must be nonnegative, got %d",
         dlmt->dl_tensor.ndim);
   }
-  TF_ASSIGN_OR_RETURN(Device * device,
-                      DeviceForDLContext(*client, dlmt->dl_tensor.ctx));
+  TF_ASSIGN_OR_RETURN(
+      Device * device,
+      DeviceForDLContext(*client->pjrt_client(), dlmt->dl_tensor.ctx));
   absl::Span<int64 const> dimensions(
       reinterpret_cast<int64*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);
   TF_ASSIGN_OR_RETURN(PrimitiveType element_type,
@@ -349,9 +351,9 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
   auto pjrt_buffer = std::make_unique<PjRtBuffer>(
-      shape, shape, std::move(device_buffer), client.get(), device);
+      shape, shape, std::move(device_buffer), client->pjrt_client(), device);
   return std::make_unique<PyBuffer>(std::move(client), std::move(pjrt_buffer),
-                                    TracebackManager::Get()->GetTraceback());
+                                    Traceback::Get());
 }
 
 }  // namespace xla

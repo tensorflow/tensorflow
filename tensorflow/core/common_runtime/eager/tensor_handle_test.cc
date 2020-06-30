@@ -150,13 +150,13 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
   Device* d0 = ListDevices().at(0);
   TensorHandle* h0 =
       TensorHandle::CreateLocalHandle(std::move(t0), d0, d0, d0, context());
-  h0->SetResourceHandleInfo({{dtype_and_shape}, {}});
+  h0->SetResourceHandleDtypeAndShape({dtype_and_shape});
   handles.push_back(h0);
   Tensor t1(dtype, shape);
   Device* d1 = ListDevices().at(1);
   TensorHandle* h1 =
       TensorHandle::CreateLocalHandle(std::move(t1), d1, d1, d1, context());
-  h1->SetResourceHandleInfo({{dtype_and_shape}, {}});
+  h1->SetResourceHandleDtypeAndShape({dtype_and_shape});
   handles.push_back(h1);
 
   // Create 2 remote TensorHandles (not ready).
@@ -185,13 +185,12 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
   TensorShape packed_shape;
   TF_ASSERT_OK(packed_handle->Shape(&packed_shape));
   EXPECT_EQ(packed_shape, shape);
-  TensorHandle::ResourceHandleInfo resource_handle_info;
-  TF_ASSERT_OK(packed_handle->GetResourceHandleInfo(&resource_handle_info));
-  EXPECT_EQ(resource_handle_info.dtypes_and_shapes.size(), 1);
-  EXPECT_EQ(resource_handle_info.dtypes_and_shapes.at(0).dtype, DT_FLOAT);
-  EXPECT_EQ(
-      resource_handle_info.dtypes_and_shapes.at(0).shape.IsIdenticalTo({2, 2}),
-      true);
+  std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
+  TF_ASSERT_OK(
+      packed_handle->GetResourceHandleDtypesAndShapes(&dtypes_and_shapes));
+  EXPECT_EQ(dtypes_and_shapes.size(), 1);
+  EXPECT_EQ(dtypes_and_shapes.at(0).dtype, DT_FLOAT);
+  EXPECT_EQ(dtypes_and_shapes.at(0).shape.IsIdenticalTo({2, 2}), true);
 
   CompositeDevice* device = reinterpret_cast<CompositeDevice*>(
       absl::get<Device*>(packed_handle->device()));
@@ -216,6 +215,39 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
                                   context()->GetContextViewId()));
   EXPECT_TRUE(IsReady(packed_handle));
 
+  packed_handle->Unref();
+}
+
+TEST_F(PackedTensorHandleTest, PackedSingleHandle) {
+  tensorflow::DataType dtype = DT_RESOURCE;
+  TensorShape shape = {};
+
+  Tensor t(dtype, shape);
+  Device* d = ListDevices().at(0);
+  TensorHandle* h =
+      TensorHandle::CreateLocalHandle(std::move(t), d, d, d, context());
+  std::vector<TensorHandle*> handles = {h};
+
+  TensorHandle* packed_handle = nullptr;
+  TF_EXPECT_OK(TensorHandle::CreatePackedHandle(std::move(handles), context(),
+                                                &packed_handle));
+  h->Unref();
+
+  EXPECT_EQ(packed_handle->Type(), TensorHandle::PACKED);
+  EXPECT_EQ(packed_handle->dtype, dtype);
+  TensorShape packed_shape;
+  TF_ASSERT_OK(packed_handle->Shape(&packed_shape));
+  EXPECT_EQ(packed_shape, shape);
+
+  CompositeDevice* device = reinterpret_cast<CompositeDevice*>(
+      absl::get<Device*>(packed_handle->device()));
+  EXPECT_EQ(device->name(), "/job:worker/replica:0/task:0/device:COMPOSITE:0");
+  EXPECT_EQ(device->underlying_devices()->size(), 1);
+  EXPECT_EQ(packed_handle->NumPackedHandles(), 1);
+  TensorHandle* h0 = nullptr;
+  TF_ASSERT_OK(packed_handle->ExtractPackedHandle(0, &h0));
+  EXPECT_EQ(absl::get<Device*>(h0->device()), d);
+  EXPECT_TRUE(IsReady(packed_handle));
   packed_handle->Unref();
 }
 

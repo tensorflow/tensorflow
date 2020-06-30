@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow.profiler;
 
+import "tensorflow/core/profiler/protobuf/diagnostics.proto";
 import "tensorflow/core/profiler/protobuf/kernel_stats.proto";
 import "tensorflow/core/profiler/protobuf/op_metrics.proto";
 import "tensorflow/core/profiler/protobuf/steps_db.proto";
@@ -107,6 +108,7 @@ message OpStats {
   KernelStatsDb kernel_stats_db = 6;
   // Statistics for all tf-functions.
   TfFunctionDb tf_function_db = 8;
-  // Errors seen.
-  repeated string errors = 7;
+  // Error and warning messages for diagnosing profiling issues.
+  Diagnostics diagnostics = 9;
+  reserved 7;
 }

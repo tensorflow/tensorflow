@@ -11,7 +11,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
@@ -44,8 +44,9 @@ tf_cc_binary(
     visibility = ["//tensorflow/core/kernels/cubin_headers:__pkg__"],
     deps = [
         ":cubin_creator",
-        "//tensorflow/core:framework_internal",
+        "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
     ],
 )

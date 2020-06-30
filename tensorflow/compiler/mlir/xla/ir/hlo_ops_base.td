@@ -264,6 +264,17 @@ class BASE_HLO_Log1pOp {
   }];
 }
 
+class BASE_HLO_LogisticOp {
+  string summary = "Logistic operator";
+
+  string description = [{
+    Returns `logistic(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_NegOp {
   string summary = "Negation operator";
 
@@ -583,6 +594,15 @@ class BASE_HLO_CaseOp {
 //===----------------------------------------------------------------------===//
 // XLA parallelism related op definitions.
 //===----------------------------------------------------------------------===//
+
+// Represents a unique identifier for each Send/Recv instruction pair or
+// optionally for collective instructions (AllReduce, CollectivePermute,
+// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
+class ChannelHandle<Dialect dialect> : StructAttr<"ChannelHandle", dialect, [
+                StructFieldAttr<"handle", I64Attr>,
+                StructFieldAttr<"type", I64Attr>]> {
+  let description = "two 64-bit integers 'handle' and 'type'";
+}
 
 class BASE_HLO_ReplicaIdOp {
   string summary = "ReplicaId operator";
@@ -1089,6 +1109,15 @@ class BASE_HLO_ReshapeOp {
   }];
 }
 
+class ScatterDimensionNumbers<Dialect dialect> : StructAttr<
+    "ScatterDimensionNumbers", dialect, [
+      StructFieldAttr<"update_window_dims", I64ElementsAttr>,
+      StructFieldAttr<"inserted_window_dims", I64ElementsAttr>,
+      StructFieldAttr<"scatter_dims_to_operand_dims", I64ElementsAttr>,
+      StructFieldAttr<"index_vector_dim", I64Attr>]> {
+  let description = "Structure of dimension information for scatter";
+}
+
 class BASE_HLO_ScatterOp {
   string summary = "Scatter operator";
 
@@ -1255,6 +1284,47 @@ class BASE_HLO_RngNormalOp {
     The parameters furthermore have to be scalar valued.
 
     See https://www.tensorflow.org/xla/operation_semantics#rngnormal.
+  }];
+}
+
+class BASE_HLO_ReducePrecisionOp {
+  string summary = "Reduce precision operator";
+
+  string description = [{
+    Models the effect of converting floating - point values to a lower -
+    precision format(such as IEEE - FP16) and back to the original
+    format. The number of exponent and mantissa bits in the lower -
+    precision format can be specified arbitrarily,
+    although all bit sizes may not be supported on all hardware
+    implementations.
+
+    See https://www.tensorflow.org/xla/operation_semantics#reduceprecision.
+  }];
+}
+
+class BASE_HLO_InfeedOp {
+  string summary = "Infeed operator";
+
+  string description = [{
+    Reads a single data item from the implicit Infeed streaming interface of
+    the device, interpreting the data as the given shape and its layout, and
+    returns an LHLO op of the data. Multiple Infeed operations are allowed in a
+    computation, but there must be a total order among the Infeed operations.
+    For example, two Infeeds in the code below have a total order since there
+    is a dependency between the while loops.
+
+    See https://www.tensorflow.org/xla/operation_semantics#infeed
+  }];
+}
+
+class BASE_HLO_WhileOp {
+  string summary = "While operator";
+
+  string description = [{
+    Returns the result of executing a body function until the cond body returns
+    true.
+
+    See https://www.tensorflow.org/xla/operation_semantics#while.
   }];
 }
 

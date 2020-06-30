@@ -40,12 +40,11 @@ namespace mlir {
 namespace xla_hlo {
 namespace {
 
-constexpr StringRef kTempBufferAttr = "temp";
 template <typename T>
 using BaseOpConversion = BufferAssignmentOpConversionPattern<T>;
 using StdReturnOpConverter =
-    BufferAssignmentReturnOpConverter<mlir::ReturnOp, xla_lhlo::TerminatorOp,
-                                      xla_lhlo::CopyOp>;
+    detail::BufferAssignmentReturnOpConverter<mlir::ReturnOp, mlir::ReturnOp,
+                                              xla_lhlo::CopyOp, true>;
 
 Value InsertDynamicAllocAndDealloc(Location loc, Value result,
                                    Value shape_operand,
@@ -59,7 +58,6 @@ Value InsertDynamicAllocAndDealloc(Location loc, Value result,
       MemRefType::get(result_type.getShape(), result_type.getElementType());
 
   Operation* op = result.getDefiningOp();
-  auto block = op->getBlock();
 
   // Extract the required element out of the vector.
   SmallVector<Value, 4> dynamic_operands;
@@ -80,12 +78,6 @@ Value InsertDynamicAllocAndDealloc(Location loc, Value result,
   // Insert in front of op to ensure sizes are available.
   OpBuilder allocBuilder(op);
   auto alloc = allocBuilder.create<AllocOp>(loc, memref_type, dynamic_operands);
-
-  alloc.setAttr(kTempBufferAttr, rewriter->getBoolAttr(true));
-
-  allocBuilder.setInsertionPoint(block, std::prev(block->end()));
-  allocBuilder.create<DeallocOp>(loc, alloc);
-
   return alloc;
 }
 
@@ -238,10 +230,10 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<xla_hlo::ReduceOp> {
     auto loc = op.getLoc();
     // TODO(b/137624192) Implement variadic reduce.
     if (op.getNumResults() != 1) return failure();
-    if (op.getParentRegion()->getBlocks().size() != 1) {
-      op.emitOpError() << "tensor to buffer conversion expects a single block "
-                          "in the region containing the operation";
-      return failure();
+    if (!llvm::hasSingleElement(op.body())) {
+      return op.emitOpError()
+             << "tensor to buffer conversion expects a single block "
+                "in the region containing the operation";
     }
     const auto& original_results = op.getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
@@ -376,6 +368,15 @@ class HloToLhloTensorStoreOpConverter
 
 struct HloLegalizeToLhlo
     : public PassWrapper<HloLegalizeToLhlo, OperationPass<ModuleOp>> {
+ public:
+  HloLegalizeToLhlo() = default;
+  HloLegalizeToLhlo(const HloLegalizeToLhlo& o) {
+    this->results_escape_function = o.results_escape_function.getValue();
+  }
+  explicit HloLegalizeToLhlo(bool results_escape_function) {
+    this->results_escape_function.setValue(results_escape_function);
+  }
+
   void runOnOperation() override {
     OwningRewritePatternList patterns;
     auto& context = getContext();
@@ -383,29 +384,52 @@ struct HloLegalizeToLhlo
     target.addLegalDialect<xla_lhlo::XlaLhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
     target.addLegalOp<ModuleOp>();
-    target.addIllegalOp<mlir::ReturnOp>();
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addLegalOp<ModuleTerminatorOp>();
     target.addLegalOp<TensorFromElementsOp>();
     target.addIllegalDialect<xla_hlo::XlaHloDialect>();
+
+    BufferAssignmentTypeConverter converter;
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();
-      return std::all_of(inputs.begin(), inputs.end(),
-                         [](Type input) { return input.isa<MemRefType>(); });
+      return llvm::all_of(inputs,
+                          [](Type input) { return input.isa<MemRefType>(); }) &&
+             converter.isLegal(&op.getBody());
+    });
+    target.addDynamicallyLegalOp<mlir::ReturnOp>([&](mlir::ReturnOp returnOp) {
+      return std::all_of(returnOp.operand_type_begin(),
+                         returnOp.operand_type_end(),
+                         [](Type type) { return type.isa<MemRefType>(); });
     });
 
     auto module = getOperation();
-    BufferAssignmentTypeConverter converter;
-    module.walk([&](FuncOp func) {
+    module.walk([&](FuncOp func) -> WalkResult {
       BufferAssignmentPlacer bufferAssignment(func);
       OwningRewritePatternList patterns;
       populateHLOToLHLOConversionPattern(func.getContext(), &bufferAssignment,
                                          &converter, &patterns);
-      return WalkResult(
-          applyPartialConversion(func, target, patterns, &converter));
+      if (results_escape_function) {
+        populateWithBufferAssignmentOpConversionPatterns<
+            mlir::ReturnOp, mlir::ReturnOp, xla_lhlo::CopyOp,
+            /*allowMemrefFunctionResults=*/true>(&context, &bufferAssignment,
+                                                 &converter, &patterns);
+      } else {
+        populateWithBufferAssignmentOpConversionPatterns<
+            mlir::ReturnOp, mlir::ReturnOp, xla_lhlo::CopyOp,
+            /*allowMemrefFunctionResults=*/false>(&context, &bufferAssignment,
+                                                  &converter, &patterns);
+      }
+      return applyPartialConversion(func, target, patterns);
     });
   }
+
+ private:
+  Option<bool> results_escape_function{
+      *this, "results-escape-function",
+      llvm::cl::desc(
+          "Allocate the results of functions within the functions body"),
+      llvm::cl::init(false)};
 };
 }  // namespace
 
@@ -423,12 +447,14 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::CompareOp>,
       HloToLhloOpConverter<xla_hlo::ComplexOp>,
       HloToLhloOpConverter<xla_hlo::ConstOp>,
+      HloToLhloOpConverter<xla_hlo::ConvOp>,
       HloToLhloOpConverter<xla_hlo::ConvertOp>,
       HloToLhloOpConverter<xla_hlo::CopyOp>,
       HloToLhloOpConverter<xla_hlo::CosOp>,
       HloToLhloOpConverter<xla_hlo::DivOp>,
       HloToLhloOpConverter<xla_hlo::DotOp>,
       HloToLhloOpConverter<xla_hlo::ExpOp>,
+      HloToLhloOpConverter<xla_hlo::GatherOp>,
       HloToLhloOpConverter<xla_hlo::ImagOp>,
       HloToLhloOpConverter<xla_hlo::IotaOp>,
       HloToLhloOpConverter<xla_hlo::LogOp>,
@@ -439,6 +465,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::RealOp>,
       HloToLhloOpConverter<xla_hlo::RemOp>,
       HloToLhloOpConverter<xla_hlo::RsqrtOp>,
+      HloToLhloOpConverter<xla_hlo::ReshapeOp>,
       HloToLhloOpConverter<xla_hlo::SelectOp>,
       HloToLhloOpConverter<xla_hlo::SignOp>,
       HloToLhloOpConverter<xla_hlo::SqrtOp>,
@@ -446,15 +473,14 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<xla_hlo::TanhOp>,
       HloToLhloReduceOpConverter,
       HloToLhloTensorLoadOpConverter,
-      HloToLhloTensorStoreOpConverter,
-      FunctionAndBlockSignatureConverter,
-      StdReturnOpConverter
+      HloToLhloTensorStoreOpConverter
   >(context, bufferAssignment, converter);
   // clang-format on
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass() {
-  return absl::make_unique<HloLegalizeToLhlo>();
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass(
+    bool results_escape_function) {
+  return absl::make_unique<HloLegalizeToLhlo>(results_escape_function);
 }
 
 static PassRegistration<HloLegalizeToLhlo> legalize_pass(

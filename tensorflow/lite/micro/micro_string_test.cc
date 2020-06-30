@@ -110,6 +110,17 @@ TF_LITE_MICRO_TEST(FloatFormatOverrunShouldTruncate) {
   TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
 }
 
+TF_LITE_MICRO_TEST(FloatFormatShouldPrintFractionCorrectly) {
+  const int kBufferLen = 24;
+  char buffer[kBufferLen];
+  const char golden[] = "Float: 1.0625*2^0";
+  // Add small offset to float value to account for float rounding error.
+  int bytes_written =
+      MicroSnprintf(buffer, kBufferLen, "Float: %f", 1.0625001f);
+  TF_LITE_MICRO_EXPECT_EQ(sizeof(golden), bytes_written);
+  TF_LITE_MICRO_EXPECT_STRING_EQ(golden, buffer);
+}
+
 TF_LITE_MICRO_TEST(StringFormatOverrunShouldTruncate) {
   const int kBufferLen = 10;
   char buffer[kBufferLen];

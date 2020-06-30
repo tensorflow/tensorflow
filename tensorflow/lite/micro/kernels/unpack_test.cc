@@ -45,10 +45,10 @@ void TestUnpackThreeOutputsFloat(
   constexpr int output_size = 3;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output1_data, output1_dims, "output1_tensor"),
-      CreateFloatTensor(output2_data, output2_dims, "output2_tensor"),
-      CreateFloatTensor(output3_data, output3_dims, "output3_tensor")};
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output1_data, output1_dims),
+      CreateFloatTensor(output2_data, output2_dims),
+      CreateFloatTensor(output3_data, output3_dims)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output1_dims_count; ++i) {
@@ -79,19 +79,18 @@ void TestUnpackThreeOutputsFloat(
   if (registration->init) {
     user_data = registration->init(&context, nullptr, 0);
   }
-  TfLiteIntArray* inputs_array = IntArrayFromInitializer({1, 0});
-  TfLiteIntArray* outputs_array = IntArrayFromInitializer({3, 1, 2, 3});
-  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
+  int inputs_array_data[] = {1, 0};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {3, 1, 2, 3};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -132,8 +131,8 @@ void TestUnpackOneOutputFloat(std::initializer_list<int> input_dims_data,
   constexpr int output_size = 1;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor")};
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(output_data, output_dims)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output_dims_count; ++i) {
@@ -156,19 +155,18 @@ void TestUnpackOneOutputFloat(std::initializer_list<int> input_dims_data,
   if (registration->init) {
     user_data = registration->init(&context, nullptr, 0);
   }
-  TfLiteIntArray* inputs_array = IntArrayFromInitializer({1, 0});
-  TfLiteIntArray* outputs_array = IntArrayFromInitializer({1, 1});
-  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
+  int inputs_array_data[] = {1, 0};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {1, 1};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -211,13 +209,10 @@ void TestUnpackThreeOutputsQuantized(
       // CreateQuantizedTensor needs min/max values as input, but these values
       // don't matter as to the functionality of UNPACK, so just set as 0
       // and 10.
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", 0, 10),
-      CreateQuantizedTensor(output1_data, output1_dims, "output1_tensor", 0,
-                            10),
-      CreateQuantizedTensor(output2_data, output2_dims, "output2_tensor", 0,
-                            10),
-      CreateQuantizedTensor(output3_data, output3_dims, "output3_tensor", 0,
-                            10)};
+      CreateQuantizedTensor(input_data, input_dims, 0, 10),
+      CreateQuantizedTensor(output1_data, output1_dims, 0, 10),
+      CreateQuantizedTensor(output2_data, output2_dims, 0, 10),
+      CreateQuantizedTensor(output3_data, output3_dims, 0, 10)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output1_dims_count; ++i) {
@@ -248,19 +243,18 @@ void TestUnpackThreeOutputsQuantized(
   if (registration->init) {
     user_data = registration->init(&context, nullptr, 0);
   }
-  TfLiteIntArray* inputs_array = IntArrayFromInitializer({1, 0});
-  TfLiteIntArray* outputs_array = IntArrayFromInitializer({3, 1, 2, 3});
-  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
+  int inputs_array_data[] = {1, 0};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {3, 1, 2, 3};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -307,13 +301,10 @@ void TestUnpackThreeOutputsQuantized32(
   constexpr int output_size = 3;
   constexpr int tensors_size = input_size + output_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantized32Tensor(input_data, input_dims, "input_tensor", 1.0),
-      CreateQuantized32Tensor(output1_data, output1_dims, "output1_tensor",
-                              1.0),
-      CreateQuantized32Tensor(output2_data, output2_dims, "output2_tensor",
-                              1.0),
-      CreateQuantized32Tensor(output3_data, output3_dims, "output3_tensor",
-                              1.0)};
+      CreateQuantized32Tensor(input_data, input_dims, 1.0),
+      CreateQuantized32Tensor(output1_data, output1_dims, 1.0),
+      CreateQuantized32Tensor(output2_data, output2_dims, 1.0),
+      CreateQuantized32Tensor(output3_data, output3_dims, 1.0)};
 
   // Place a unique value in the uninitialized output buffer.
   for (int i = 0; i < output1_dims_count; ++i) {
@@ -344,19 +335,18 @@ void TestUnpackThreeOutputsQuantized32(
   if (registration->init) {
     user_data = registration->init(&context, nullptr, 0);
   }
-  TfLiteIntArray* inputs_array = IntArrayFromInitializer({1, 0});
-  TfLiteIntArray* outputs_array = IntArrayFromInitializer({3, 1, 2, 3});
-  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
+  int inputs_array_data[] = {1, 0};
+  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
+  int outputs_array_data[] = {3, 1, 2, 3};
+  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));

@@ -17,6 +17,7 @@ tensorflow::swig::Flatten
 tensorflow::swig::IsSequenceForData
 tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
+tensorflow::swig::RegisterPyObject
 tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
 
@@ -82,6 +83,7 @@ tensorflow::Device::attributes
 [device_factory]  # device_lib, tfe, tf_session
 tensorflow::DeviceFactory::AddDevices
 tensorflow::DeviceFactory::ListAllPhysicalDevices
+tensorflow::DeviceFactory::GetAnyDeviceDetails
 
 [session_options]  # device_lib, tfe, tf_session
 tensorflow::SessionOptions::SessionOptions
@@ -366,3 +368,4 @@ tensorflow::grappler::CostAnalyzer::GenerateReport
 
 [flags] # tfe
 tensorflow::IsXlaEnabled
+tensorflow::GetMlirCommonFlags

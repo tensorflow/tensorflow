@@ -18,7 +18,6 @@ limitations under the License.
 #include <queue>
 
 #include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
 
@@ -49,10 +49,34 @@ namespace snapshot_util {
 /* static */ constexpr const int64
     CustomReader::kSnappyReaderOutputBufferSizeBytes;
 
-std::string GetCurrentCheckpointFile(const std::string& shard_directory,
-                                     const uint64 current_checkpoint_id) {
-  return io::JoinPath(shard_directory,
-                      absl::StrFormat("%08d.snapshot", current_checkpoint_id));
+std::string HashDirectory(const std::string& path, uint64 hash) {
+  return io::JoinPath(
+      path, strings::Printf("%llu", static_cast<unsigned long long>(hash)));
+}
+
+std::string RunDirectory(const std::string& hash_directory, uint64 run_id) {
+  return RunDirectory(
+      hash_directory,
+      strings::Printf("%llu", static_cast<unsigned long long>(run_id)));
+}
+
+std::string RunDirectory(const std::string& hash_directory,
+                         const std::string& run_id) {
+  return io::JoinPath(hash_directory, run_id);
+}
+
+std::string ShardDirectory(const std::string& run_directory, int64 shard_id) {
+  return io::JoinPath(
+      run_directory,
+      strings::Printf("%08llu%s", static_cast<unsigned long long>(shard_id),
+                      kShardDirectorySuffix));
+}
+std::string GetCheckpointFileName(const std::string& shard_directory,
+                                  uint64 checkpoint_id) {
+  return io::JoinPath(
+      shard_directory,
+      strings::Printf("%08llu.snapshot",
+                      static_cast<unsigned long long>(checkpoint_id)));
 }
 
 Status Writer::Create(Env* env, const std::string& filename,
@@ -357,13 +381,6 @@ class Reader::Dataset : public DatasetBase {
   }
 
  private:
-  const std::string shard_dir_;
-  const std::string compression_;
-  const int64 version_;
-  const DataTypeVector dtypes_;
-  const std::vector<PartialTensorShape> shapes_;
-  const int64 start_index_;
-
   class Iterator : public DatasetIterator<Dataset> {
    public:
     explicit Iterator(const Params& params)
@@ -417,16 +434,9 @@ class Reader::Dataset : public DatasetBase {
     }
 
    private:
-    std::unique_ptr<Reader> reader_;
-
-    // Stores the id current checkpoint file that we are in the process of
-    // reading (e.g. if the file is currently 00000001.snapshot, then this will
-    // be 1).
-    uint64 current_checkpoint_id_;
-
     std::string GetCurrentFilename() {
-      return GetCurrentCheckpointFile(dataset()->shard_dir_,
-                                      current_checkpoint_id_);
+      return GetCheckpointFileName(dataset()->shard_dir_,
+                                   current_checkpoint_id_);
     }
 
     Status AdvanceToNextFile(Env* env) {
@@ -435,7 +445,21 @@ class Reader::Dataset : public DatasetBase {
       return Reader::Create(env, GetCurrentFilename(), dataset()->compression_,
                             dataset()->version_, dataset()->dtypes_, &reader_);
     }
+
+    std::unique_ptr<Reader> reader_;
+
+    // Stores the id current checkpoint file that we are in the process of
+    // reading (e.g. if the file is currently 00000001.snapshot, then this will
+    // be 1).
+    uint64 current_checkpoint_id_;
   };
+
+  const std::string shard_dir_;
+  const std::string compression_;
+  const int64 version_;
+  const DataTypeVector dtypes_;
+  const std::vector<PartialTensorShape> shapes_;
+  const int64 start_index_;
 };
 
 class Reader::NestedDataset : public DatasetBase {
@@ -571,7 +595,7 @@ TFRecordReader::TFRecordReader(const std::string& filename,
       dtypes_(dtypes) {}
 
 Status TFRecordReader::Initialize(Env* env) {
-  TF_RETURN_IF_ERROR(Env::Default()->NewRandomAccessFile(filename_, &file_));
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
 
   record_reader_ = absl::make_unique<io::RecordReader>(
       file_.get(), io::RecordReaderOptions::CreateRecordReaderOptions(
@@ -607,7 +631,7 @@ CustomReader::CustomReader(const std::string& filename,
       dtypes_(dtypes) {}
 
 Status CustomReader::Initialize(Env* env) {
-  TF_RETURN_IF_ERROR(Env::Default()->NewRandomAccessFile(filename_, &file_));
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename_, &file_));
   input_stream_ = std::make_unique<io::RandomAccessInputStream>(file_.get());
 
 #if defined(IS_SLIM_BUILD)
@@ -807,31 +831,31 @@ Status CustomReader::ReadRecord(absl::Cord* record) {
 }
 #endif
 
-Status WriteMetadataFile(const string& hash_dir,
+Status WriteMetadataFile(Env* env, const string& dir,
                          const experimental::SnapshotMetadataRecord* metadata) {
-  string metadata_filename = io::JoinPath(hash_dir, kMetadataFilename);
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
+  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir));
   std::string tmp_filename =
       absl::StrCat(metadata_filename, "-tmp-", random::New64());
-  TF_RETURN_IF_ERROR(WriteBinaryProto(Env::Default(), tmp_filename, *metadata));
-  return Env::Default()->RenameFile(tmp_filename, metadata_filename);
+  TF_RETURN_IF_ERROR(WriteBinaryProto(env, tmp_filename, *metadata));
+  return env->RenameFile(tmp_filename, metadata_filename);
 }
 
-Status ReadMetadataFile(const string& hash_dir,
+Status ReadMetadataFile(Env* env, const string& dir,
                         experimental::SnapshotMetadataRecord* metadata,
                         bool* file_exists) {
-  string metadata_filename = io::JoinPath(hash_dir, kMetadataFilename);
-  Status s = Env::Default()->FileExists(metadata_filename);
+  string metadata_filename = io::JoinPath(dir, kMetadataFilename);
+  Status s = env->FileExists(metadata_filename);
   *file_exists = s.ok();
 
   if (*file_exists) {
-    return ReadBinaryProto(Env::Default(), metadata_filename, metadata);
+    return ReadBinaryProto(env, metadata_filename, metadata);
   } else {
     return Status::OK();
   }
 }
 
-Status DumpDatasetGraph(const std::string& path, uint64 hash,
+Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
                         const GraphDef* graph) {
   std::string hash_hex =
       strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
@@ -839,8 +863,8 @@ Status DumpDatasetGraph(const std::string& path, uint64 hash,
       io::JoinPath(path, absl::StrCat(hash_hex, "-graph.pbtxt"));
 
   LOG(INFO) << "Graph hash is " << hash_hex << ", writing to " << graph_file;
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(path));
-  return WriteTextProto(Env::Default(), graph_file, *graph);
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(path));
+  return WriteTextProto(env, graph_file, *graph);
 }
 
 Status DetermineOpState(const std::string& mode_string, bool file_exists,
@@ -891,6 +915,68 @@ Status DetermineOpState(const std::string& mode_string, bool file_exists,
     *mode = WRITER;
     return Status::OK();
   }
+}
+
+AsyncWriter::AsyncWriter(Env* env, int64 file_index,
+                         const std::string& shard_directory,
+                         uint64 checkpoint_id, const std::string& compression,
+                         int64 version, const DataTypeVector& output_types,
+                         std::function<void(Status)> done) {
+  thread_ = absl::WrapUnique(env->StartThread(
+      ThreadOptions(), absl::StrCat("writer_thread_", file_index),
+      [this, env, shard_directory, checkpoint_id, compression, version,
+       &output_types, done = std::move(done)] {
+        done(WriterThread(env, shard_directory, checkpoint_id, compression,
+                          version, output_types));
+      }));
+}
+
+void AsyncWriter::Write(const std::vector<Tensor>& tensors) {
+  mutex_lock l(mu_);
+  ElementOrEOF element;
+  element.value = tensors;
+  deque_.push_back(std::move(element));
+}
+
+void AsyncWriter::SignalEOF() {
+  mutex_lock l(mu_);
+  ElementOrEOF be;
+  be.end_of_sequence = true;
+  deque_.push_back(std::move(be));
+}
+
+void AsyncWriter::Consume(ElementOrEOF* be) {
+  mutex_lock l(mu_);
+  mu_.Await(tensorflow::Condition(this, &AsyncWriter::ElementAvailable));
+  *be = deque_.front();
+  deque_.pop_front();
+}
+
+bool AsyncWriter::ElementAvailable() { return !deque_.empty(); }
+
+Status AsyncWriter::WriterThread(Env* env, const std::string& shard_directory,
+                                 uint64 checkpoint_id,
+                                 const std::string& compression, int64 version,
+                                 DataTypeVector output_types) {
+  std::unique_ptr<snapshot_util::Writer> writer;
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(shard_directory));
+
+  TF_RETURN_IF_ERROR(snapshot_util::Writer::Create(
+      env, GetCheckpointFileName(shard_directory, checkpoint_id), compression,
+      version, std::move(output_types), &writer));
+
+  while (true) {
+    ElementOrEOF be;
+    Consume(&be);
+
+    if (be.end_of_sequence) {
+      TF_RETURN_IF_ERROR(writer->Close());
+      break;
+    }
+
+    TF_RETURN_IF_ERROR(writer->WriteTensors(be.value));
+  }
+  return Status::OK();
 }
 
 }  // namespace snapshot_util

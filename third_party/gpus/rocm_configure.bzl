@@ -169,24 +169,7 @@ def auto_configure_warning(msg):
 
 # END cc_configure common functions (see TODO above).
 
-def _host_compiler_includes(repository_ctx, cc):
-    """Computed the list of gcc include directories.
-
-    Args:
-      repository_ctx: The repository context.
-      cc: The path to the gcc host compiler.
-
-    Returns:
-      A list of gcc include directories.
-    """
-    inc_dirs = get_cxx_inc_directories(repository_ctx, cc)
-
-    # Add numpy headers
-    inc_dirs.append("/usr/lib/python2.7/dist-packages/numpy/core/include")
-
-    return inc_dirs
-
-def _rocm_include_path(repository_ctx, rocm_config):
+def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     """Generates the cxx_builtin_include_directory entries for rocm inc dirs.
 
     Args:
@@ -200,59 +183,18 @@ def _rocm_include_path(repository_ctx, rocm_config):
     """
     inc_dirs = []
 
-    # general ROCm include path
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/include")
-
-    # Add HSA headers
+    # Add HSA headers (needs to match $HSA_PATH)
     inc_dirs.append(rocm_config.rocm_toolkit_path + "/hsa/include")
 
-    # Add HIP headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip/hcc_detail")
+    # Add HIP headers (needs to match $HIP_PATH)
     inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
 
-    # Add HIP-Clang headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/llvm/lib/clang/8.0/include")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/llvm/lib/clang/9.0.0/include")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/llvm/lib/clang/10.0.0/include")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/llvm/lib/clang/11.0.0/include")
-
-    # Add rocrand and hiprand headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/rocrand/include")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hiprand/include")
-
-    # Add rocfft headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/rocfft/include")
-
-    # Add rocBLAS headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/rocblas/include")
-
-    # Add MIOpen headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/miopen/include")
-
-    # Add RCCL headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/rccl/include")
-
-    # Add hcc headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/include")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/compiler/lib/clang/7.0.0/include/")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/lib/clang/7.0.0/include")
-
-    # Newer hcc builds use/are based off of clang 8.0.0.
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/compiler/lib/clang/8.0.0/include/")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/lib/clang/8.0.0/include")
-
-    # Support hcc based off clang 9.0.0, included in ROCm2.2
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/compiler/lib/clang/9.0.0/include/")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/lib/clang/9.0.0/include")
-
-    # Support hcc based off clang 10.0.0, included in ROCm2.8
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/lib/clang/10.0.0/include")
-
-    # Support hcc based off clang 11.0.0, included in ROCm3.1
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/compiler/lib/clang/11.0.0/include/")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/lib/clang/11.0.0/include")
+    # Add HIP-Clang headers (realpath relative to compiler binary)
+    rocm_toolkit_path = realpath(repository_ctx, rocm_config.rocm_toolkit_path, bash_bin)
+    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/8.0/include")
+    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/9.0.0/include")
+    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/10.0.0/include")
+    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/11.0.0/include")
 
     return inc_dirs
 
@@ -277,7 +219,7 @@ def _rocm_toolkit_path(repository_ctx, bash_bin):
     rocm_toolkit_path = get_host_environ(repository_ctx, _ROCM_TOOLKIT_PATH, _DEFAULT_ROCM_TOOLKIT_PATH)
     if files_exist(repository_ctx, [rocm_toolkit_path], bash_bin) != [True]:
         auto_configure_fail("Cannot find rocm toolkit path.")
-    return realpath(repository_ctx, rocm_toolkit_path, bash_bin)
+    return rocm_toolkit_path
 
 def _amdgpu_targets(repository_ctx):
     """Returns a list of strings representing AMDGPU targets."""
@@ -734,8 +676,9 @@ def _create_local_rocm_repository(repository_ctx):
 
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
-    rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes +
-                                                                            _rocm_include_path(repository_ctx, rocm_config))
+    rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
+        host_compiler_includes + _rocm_include_path(repository_ctx, rocm_config, bash_bin),
+    )
 
     verify_build_defines(rocm_defines)
 

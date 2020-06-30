@@ -97,7 +97,7 @@ will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
 #### Step 3. Create a delegate and initialize a TensorFlow Lite Interpreter
 
 ```java
-import org.tensorflow.lite.experimental.HexagonDelegate;
+import org.tensorflow.lite.HexagonDelegate;
 
 // Create the Delegate instance.
 try {
@@ -202,7 +202,7 @@ will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
 #### Step 3. Include the C header
 
 *   The header file "hexagon_delegate.h" can be downloaded from
-    [GitHub](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h)
+    [GitHub](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/hexagon/hexagon_delegate.h)
     or extracted from the Hexagon delegate AAR.
 
 #### Step 4. Create a delegate and initialize a TensorFlow Lite Interpreter
@@ -214,7 +214,7 @@ will need to add the Hexagon shared libs to both 32 and 64-bit lib folders.
 *   Create a delegate, example:
 
 ```c
-#include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
+#include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 
 // Assuming shared libraries are under "/data/local/tmp/"
 // If files are packaged with native lib in android App then it
@@ -260,7 +260,7 @@ ro.board.platform`).
 
 *   Which ops are supported by the delegate?
     *   See the current list of
-        [supported ops and constraints](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/hexagon/README.md)
+        [supported ops and constraints](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/hexagon/README.md)
 *   How can I tell that the model is using the DSP when I enable the delegate?
     *   Two log messages will be printed when you enable the delegate - one to
         indicate if the delegate was created and another to indicate how many
@@ -272,7 +272,7 @@ ro.board.platform`).
         ops. Any unsupported ops will run on the CPU.
 *   How can I build the Hexagon delegate AAR from source?
     *   Use `bazel build -c opt --config=android_arm64
-        tensorflow/lite/experimental/delegates/hexagon/java:tensorflow-lite-hexagon`.
+        tensorflow/lite/delegates/hexagon/java:tensorflow-lite-hexagon`.
 *   Why does Hexagon delegate fail to initialize although my Android device has
     a supported SoC?
     *   Verify if your device indeed has a supported SoC. Run `adb shell cat

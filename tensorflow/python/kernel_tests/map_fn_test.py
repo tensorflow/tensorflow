@@ -237,6 +237,12 @@ class MapFnTest(test.TestCase):
       self.assertAllEqual([0, 3, 2], map_return.get_shape().dims)
       self.assertAllEqual([0, 3, 2], self.evaluate(map_return).shape)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testMapEmptyList(self):
+    x = []
+    with self.assertRaisesRegexp(ValueError, r"elems must be a Tensor or"):
+      _ = map_fn.map_fn(lambda e: e, x)
+
 
 if __name__ == "__main__":
   test.main()
