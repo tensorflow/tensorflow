@@ -25,6 +25,10 @@ namespace tflite {
 namespace testing {
 namespace {
 
+// Instance of a zero-length int to pass as tensor dims for a flatbuffer
+// Tensor with no shape.
+const TfLiteIntArray kZeroLengthIntArray = {0};
+
 // Shapes and values for mixed broadcast tests.
 const int broadcast_output_dims_count = 36;
 const int broadcast_num_shapes = 4;
@@ -63,7 +67,7 @@ const int broadcast_output_shapes[broadcast_num_shapes]
 
 template <typename T>
 void ValidateAddGoldens(TfLiteTensor* tensors, int tensors_size,
-                        const T* golden, T* output, int output_size,
+                        const T* golden, T* output, int output_tensor_index,
                         TfLiteFusedActivation activation,
                         float tolerance = 1e-5) {
   TfLiteContext context;
@@ -112,6 +116,8 @@ void ValidateAddGoldens(TfLiteTensor* tensors, int tensors_size,
     registration->free(&context, user_data);
   }
 
+  TfLiteIntArray* output_dims = tensors[output_tensor_index].dims;
+  int output_size = ElementCount(*output_dims);
   for (int i = 0; i < output_size; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(golden[i], output[i], tolerance);
   }
@@ -123,7 +129,14 @@ void TestAddFloat(const int* input1_dims_data, const float* input1_data,
                   TfLiteFusedActivation activation, float* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
+  TfLiteIntArray* output_dims = nullptr;
+
+  if (output_dims_data == nullptr) {
+    output_dims = const_cast<TfLiteIntArray*>(&kZeroLengthIntArray);
+  }
+  else {
+    output_dims = IntArrayFromInts(output_dims_data);
+  }
 
   constexpr int inputs_size = 2;
   constexpr int outputs_size = 1;
@@ -135,7 +148,7 @@ void TestAddFloat(const int* input1_dims_data, const float* input1_data,
   };
 
   ValidateAddGoldens(tensors, tensors_size, expected_output, output_data,
-                     ElementCount(*output_dims), activation);
+                     tensors_size-1, activation);
 }
 
 template <typename T>
@@ -150,11 +163,19 @@ void TestAddQuantized(const int* input1_dims_data, const float* input1_data,
                       T* output_data) {
   TfLiteIntArray* input1_dims = IntArrayFromInts(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInts(input2_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
+  TfLiteIntArray* output_dims = nullptr;
+
+  if (output_dims_data == nullptr) {
+    output_dims = const_cast<TfLiteIntArray*>(&kZeroLengthIntArray);
+  }
+  else {
+    output_dims = IntArrayFromInts(output_dims_data);
+  }
 
   constexpr int inputs_size = 2;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
+  constexpr int output_tensor_index = tensors_size - 1;
   TfLiteTensor tensors[tensors_size] = {
       tflite::testing::CreateQuantizedTensor(
           input1_data, input1_quantized, input1_dims, input1_scale,
@@ -166,12 +187,23 @@ void TestAddQuantized(const int* input1_dims_data, const float* input1_data,
                                              output_scale, output_zero_point,
                                              "output_tensor"),
   };
+
+  int element_count = ElementCount(*output_dims);
+
+  // Output element count is not yet known but should match largest input.
+  if (0 == tensors[output_tensor_index].dims->size) {
+    element_count = ElementCount(*input1_dims) > ElementCount(*input2_dims) ?
+                    ElementCount(*input1_dims) : ElementCount(*input2_dims);
+  }
+
   tflite::AsymmetricQuantize(golden, golden_quantized,
-                             ElementCount(*output_dims), output_scale,
+                             element_count, output_scale,
                              output_zero_point);
 
   ValidateAddGoldens(tensors, tensors_size, golden_quantized, output_data,
-                     ElementCount(*output_dims), activation);
+                     output_tensor_index, activation);
+
+  TF_LITE_MICRO_EXPECT_EQ(element_count, ElementCount(*tensors[output_tensor_index].dims));
 }
 
 }  // namespace
@@ -250,6 +282,31 @@ TF_LITE_MICRO_TEST(FloatAddWithScalarBroadcast) {
   for (int i = 0; i < num_shapes; ++i) {
     tflite::testing::TestAddFloat(test_shapes[i], input1_values, input2_shape,
                                   input2_values, test_shapes[i],
+                                  expected_output, kTfLiteActNone, output_data);
+  }
+}
+
+TF_LITE_MICRO_TEST(FloatAddWithScalarBroadcastUndefOutDim) {
+  const int output_dims_count = 6;
+  float output_data[output_dims_count];
+
+  const float input1_values[] = {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0};
+  const int input2_shape[] = {0};
+  const float input2_values[] = {0.1};
+  const float expected_output[] = {-1.9, 0.3, 0.8, 0.9, 1.2, 2.1};
+
+  constexpr int num_shapes = 4;
+  constexpr int max_shape_size = 5;
+  const int test_shapes[num_shapes][max_shape_size] = {
+      {1, 6},
+      {2, 2, 3},
+      {3, 2, 1, 3},
+      {4, 1, 3, 1, 2},
+  };
+
+  for (int i = 0; i < num_shapes; ++i) {
+    tflite::testing::TestAddFloat(test_shapes[i], input1_values, input2_shape,
+                                  input2_values, nullptr /* undefined output dim*/,
                                   expected_output, kTfLiteActNone, output_data);
   }
 }
@@ -435,6 +492,42 @@ TF_LITE_MICRO_TEST(QuantizedAddWithScalarBroadcastUint8) {
         scales[2], zero_points[2], kTfLiteActNone, output);
   }
 }
+
+TF_LITE_MICRO_TEST(QuantizedAddWithScalarBroadcastUndefOutDimUint8) {
+  const int output_dims_count = 6;
+
+  const float input1_values[] = {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0};
+  const int input2_shape[] = {0};
+  const float input2_values[] = {0.1};
+  const float golden[] = {-1.9, 0.3, 0.8, 0.9, 1.2, 2.1};
+
+  constexpr int num_shapes = 4;
+  constexpr int max_shape_size = 5;
+  const int test_shapes[num_shapes][max_shape_size] = {
+      {1, 6},
+      {2, 2, 3},
+      {3, 2, 1, 3},
+      {4, 1, 3, 1, 2},
+  };
+
+  const float scales[] = {0.1, 0.1, 0.1};
+  const int zero_points[] = {120, 131, 139};
+
+  uint8_t input1_quantized[output_dims_count];
+  uint8_t input2_quantized[output_dims_count];
+  uint8_t golden_quantized[output_dims_count];
+  uint8_t output[output_dims_count];
+
+  for (int i = 0; i < num_shapes; ++i) {
+    tflite::testing::TestAddQuantized(
+        test_shapes[i], input1_values, input1_quantized, scales[0],
+        zero_points[0], input2_shape, input2_values, input2_quantized,
+        scales[1], zero_points[1], nullptr /* undefined out dimension*/
+        ,golden, golden_quantized,  scales[2], zero_points[2],
+        kTfLiteActNone, output);
+  }
+}
+
 TF_LITE_MICRO_TEST(QuantizedAddWithScalarBroadcastFloat) {
   const float scales[] = {0.1, 0.05, 0.1};
   const int zero_points[] = {127, 131, 139};
@@ -486,6 +579,41 @@ TF_LITE_MICRO_TEST(QuantizedAddWithScalarBroadcastInt8) {
         zero_points[0], input2_shape, input2_values, input2_quantized,
         scales[1], zero_points[1], test_shapes[i], golden, golden_quantized,
         scales[2], zero_points[2], kTfLiteActNone, output);
+  }
+}
+
+TF_LITE_MICRO_TEST(QuantizedAddWithScalarBroadcastUndefOutDimInt8) {
+  const int output_dims_count = 6;
+
+  const float input1_values[] = {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0};
+  const int input2_shape[] = {0};
+  const float input2_values[] = {0.1};
+  const float golden[] = {-1.9, 0.3, 0.8, 0.9, 1.2, 2.1};
+
+  constexpr int num_shapes = 4;
+  constexpr int max_shape_size = 5;
+  const int test_shapes[num_shapes][max_shape_size] = {
+      {1, 6},
+      {2, 2, 3},
+      {3, 2, 1, 3},
+      {4, 1, 3, 1, 2},
+  };
+
+  const float scales[] = {0.1, 0.05, 0.05};
+  const int zero_points[] = {-8, 4, 12};
+
+  int8_t input1_quantized[output_dims_count];
+  int8_t input2_quantized[output_dims_count];
+  int8_t golden_quantized[output_dims_count];
+  int8_t output[output_dims_count];
+
+  for (int i = 0; i < num_shapes; ++i) {
+    tflite::testing::TestAddQuantized(
+        test_shapes[i], input1_values, input1_quantized, scales[0],
+        zero_points[0], input2_shape, input2_values, input2_quantized,
+        scales[1], zero_points[1], nullptr /* undefined output dimension */,
+        golden, golden_quantized, scales[2], zero_points[2],
+        kTfLiteActNone, output);
   }
 }
 

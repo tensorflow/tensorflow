@@ -814,7 +814,11 @@ TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
   result.data.uint8 = const_cast<uint8_t*>(data);
   result.params = {scale, zero_point};
   result.quantization = {kTfLiteAffineQuantization, nullptr};
-  result.bytes = ElementCount(*dims) * sizeof(uint8_t);
+  if (dims == nullptr) {
+    result.bytes = 0;
+  } else {
+    result.bytes = ElementCount(*dims) * sizeof(uint8_t);
+  }
   return result;
 }
 
@@ -826,7 +830,11 @@ TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
   result.data.int8 = const_cast<int8_t*>(data);
   result.params = {scale, zero_point};
   result.quantization = {kTfLiteAffineQuantization, nullptr};
-  result.bytes = ElementCount(*dims) * sizeof(int8_t);
+  if (dims == nullptr) {
+    result.bytes = 0;
+  } else {
+    result.bytes = ElementCount(*dims) * sizeof(int8_t);
+  }
   return result;
 }
 

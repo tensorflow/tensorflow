@@ -23,6 +23,10 @@ namespace tflite {
 namespace testing {
 namespace {
 
+// Instance of a zero-length int to pass as tensor dims for a tensor
+// with no shape.
+const TfLiteIntArray kZeroLengthIntArray = {0};
+
 void TestMulFloat(std::initializer_list<int> input1_dims_data,
                   std::initializer_list<float> input1_data,
                   std::initializer_list<int> input2_dims_data,
@@ -32,8 +36,14 @@ void TestMulFloat(std::initializer_list<int> input1_dims_data,
                   float* output_data, TfLiteFusedActivation activation) {
   TfLiteIntArray* input1_dims = IntArrayFromInitializer(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInitializer(input2_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
-  const int output_dims_count = ElementCount(*output_dims);
+  TfLiteIntArray* output_dims = nullptr;
+
+  if (output_dims_data.size() == 0) {
+    output_dims = const_cast<TfLiteIntArray*>(&kZeroLengthIntArray);
+  }
+  else {
+    output_dims = IntArrayFromInitializer(output_dims_data);
+  }
 
   ::tflite::AllOpsResolver resolver;
 
@@ -82,6 +92,9 @@ void TestMulFloat(std::initializer_list<int> input1_dims_data,
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
 
+  // After prepare all output should have a dimension.
+  const int output_dims_count = ElementCount(*output_dims);
+
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
 
@@ -104,14 +117,21 @@ void TestMulQuantized(std::initializer_list<int> input1_dims_data,
                       int error_tolerance) {
   TfLiteIntArray* input1_dims = IntArrayFromInitializer(input1_dims_data);
   TfLiteIntArray* input2_dims = IntArrayFromInitializer(input2_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
-  const int output_dims_count = ElementCount(*output_dims);
+  TfLiteIntArray* output_dims = nullptr;
+
+  if (output_dims_data.size() == 0) {
+    output_dims = const_cast<TfLiteIntArray*>(&kZeroLengthIntArray);
+  }
+  else {
+    output_dims = IntArrayFromInitializer(output_dims_data);
+  }
 
   ::tflite::AllOpsResolver resolver;
 
   constexpr int inputs_size = 2;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
+  constexpr int output_tensor_idx = tensors_size - 1;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input1_data, input1_dims, "input1_tensor",
                             input_min, input_max),
@@ -153,9 +173,17 @@ void TestMulQuantized(std::initializer_list<int> input1_dims_data,
   node.custom_initial_data_size = 0;
   node.delegate = nullptr;
 
+  // Output with no shape.
+  if (output_dims_data.size() == 0) {
+    TF_LITE_MICRO_EXPECT_EQ(0, tensors[output_tensor_idx].dims->size);
+  }
+
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
+
+  // After prepare all output should have a dimension.
+  const int output_dims_count = ElementCount(*tensors[output_tensor_idx].dims);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
@@ -279,6 +307,41 @@ TF_LITE_MICRO_TEST(Int8NoActivationBroadcast) {
                                     output_data, kTfLiteActNone, 1);
 }
 
+TF_LITE_MICRO_TEST(Int8NoActivationBroadcastUndefOutDim) {
+  using tflite::testing::F2QS;
+  const float input_min = -3.0;
+  const float input_max = 3.0;
+  const float output_min = -3.0;
+  const float output_max = 3.0;
+
+  int8_t output_data[6];
+  tflite::testing::TestMulQuantized({4, 1, 3, 1, 2},  // input1 shape
+                                    {
+                                        F2QS(-2.0, input_min, input_max),
+                                        F2QS(0.2, input_min, input_max),
+                                        F2QS(0.7, input_min, input_max),
+                                        F2QS(0.8, input_min, input_max),
+                                        F2QS(1.1, input_min, input_max),
+                                        F2QS(2.0, input_min, input_max),
+                                    },       // input1 data
+                                    {1, 1},  // input2 shape
+                                    {
+                                        F2QS(0.1, input_min, input_max),
+                                    },  // input2 data
+                                    input_min, input_max,
+                                    {},  // output shape undefined
+                                    output_min, output_max,
+                                    {
+                                        F2QS(-0.2, output_min, output_max),
+                                        F2QS(0.02, output_min, output_max),
+                                        F2QS(0.07, output_min, output_max),
+                                        F2QS(0.08, output_min, output_max),
+                                        F2QS(0.11, output_min, output_max),
+                                        F2QS(0.2, output_min, output_max),
+                                    },  // expected output data
+                                    output_data, kTfLiteActNone, 1);
+}
+
 TF_LITE_MICRO_TEST(UInt8NoActivation) {
   using tflite::testing::F2Q;
   const float input_min = -1;
@@ -384,6 +447,41 @@ TF_LITE_MICRO_TEST(UInt8NoActivationBroadcast) {
                                     output_data, kTfLiteActNone, 1);
 }
 
+TF_LITE_MICRO_TEST(UInt8NoActivationBroadcastUndefOutDim) {
+  using tflite::testing::F2Q;
+  const float input_min = -3.0;
+  const float input_max = 3.0;
+  const float output_min = -3.0;
+  const float output_max = 3.0;
+
+  uint8_t output_data[6];
+  tflite::testing::TestMulQuantized({4, 1, 3, 1, 2},  // input1 shape
+                                    {
+                                        F2Q(-2.0, input_min, input_max),
+                                        F2Q(0.2, input_min, input_max),
+                                        F2Q(0.7, input_min, input_max),
+                                        F2Q(0.8, input_min, input_max),
+                                        F2Q(1.1, input_min, input_max),
+                                        F2Q(2.0, input_min, input_max),
+                                    },       // input1 data
+                                    {1, 1},  // input2 shape
+                                    {
+                                        F2Q(0.1, input_min, input_max),
+                                    },  // input2 data
+                                    input_min, input_max,
+                                    {},  // output shape undefined
+                                    output_min, output_max,
+                                    {
+                                        F2Q(-0.2, output_min, output_max),
+                                        F2Q(0.02, output_min, output_max),
+                                        F2Q(0.07, output_min, output_max),
+                                        F2Q(0.08, output_min, output_max),
+                                        F2Q(0.11, output_min, output_max),
+                                        F2Q(0.2, output_min, output_max),
+                                    },  // expected output data
+                                    output_data, kTfLiteActNone, 1);
+}
+
 TF_LITE_MICRO_TEST(FloatNoActivation) {
   float output_data[4];
   tflite::testing::TestMulFloat(
@@ -416,6 +514,18 @@ TF_LITE_MICRO_TEST(FloatBroadcast) {
       {1, 1},                               // input2 shape
       {0.1},                                // input2 data
       {4, 1, 3, 1, 2},                      // output shape
+      {-0.2, 0.02, 0.07, 0.08, 0.11, 0.2},  // expected output data
+      output_data, kTfLiteActNone);
+}
+
+TF_LITE_MICRO_TEST(FloatBroadcastUndefOutDim) {
+  float output_data[6];
+  tflite::testing::TestMulFloat(
+      {4, 1, 3, 1, 2},                      // input1 shape
+      {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0},      // input1 data
+      {1, 1},                               // input2 shape
+      {0.1},                                // input2 data
+      {},                                   // output shape undefined
       {-0.2, 0.02, 0.07, 0.08, 0.11, 0.2},  // expected output data
       output_data, kTfLiteActNone);
 }

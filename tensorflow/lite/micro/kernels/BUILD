@@ -99,6 +99,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/micro:micro_utils",
+        "//tensorflow/lite/micro:memory_helpers",
     ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini_legacy": [

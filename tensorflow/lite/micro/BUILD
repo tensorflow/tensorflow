@@ -198,6 +198,22 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_helpers",
+    srcs = [
+        "memory_helpers.cc",
+    ],
+    hdrs = [
+        "memory_helpers.h",
+    ],
+    build_for_embedded = True,
+    copts = micro_copts(),
+    deps = [
+         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:tensor",
+    ],
+)
+
+cc_library(
     name = "recording_allocators",
     srcs = [
         "recording_micro_allocator.cc",
