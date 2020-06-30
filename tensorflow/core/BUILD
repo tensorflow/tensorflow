@@ -494,7 +494,6 @@ tf_cuda_library(
         "//tensorflow/core/framework:shared_ptr_variant.h",
         "//tensorflow/core/framework:stats_aggregator.h",
         "//tensorflow/core/framework:tensor.h",
-        "//tensorflow/core/framework:tensor_key.h",
         "//tensorflow/core/framework:tensor_shape.h",
         "//tensorflow/core/framework:tensor_slice.h",
         "//tensorflow/core/framework:tensor_types.h",
@@ -1122,7 +1121,8 @@ cc_library(
         "//tensorflow/core/kernels:dataset_ops",  # Depends on grappler
         "//tensorflow/core/kernels:list_kernels",  # Depends on variant_op_registry.h
         "//tensorflow/core/kernels:map_kernels",
-    ],
+        "//tensorflow/core/kernels:tensor_map",
+        ],
 )
 
 tf_cuda_library(
