@@ -35,12 +35,32 @@ fi
 wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.gz
 tar xvf openmpi-4.0.4.tar.gz
 
-cd openmpi
+# Install gcc.
+sudo apt install --assume-yes build-essential
+
+gcc --version
+
+cd openmpi-4.0.4
 ./configure
 
 # Install open-mpi.
 sudo make all install
+export LD_LIBRARY_PATH=/usr/local/lib/openmpi
 sudo ldconfig
 
+# Install Horovod.
+cd ..
+pip3 install horovod tensorflow
 
+# Install tests.
+git clone https://github.com/DEKHTIARJonathan/TF_HVD_Stability_Test.git
 
+# Install pytest.
+pip3 install -U pytest
+
+# Install requirements.
+cd TF_HVD_Stability_Test
+pip3 install -r requirements.txt
+
+# Run the tests.
+python3 -m pytest
