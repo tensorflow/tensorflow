@@ -6946,7 +6946,6 @@ filegroup(
         "queue_op.cc",
         "queue_ops.cc",
         "ragged_range_op.cc",
-        "ragged_tensor_to_tensor_op.cc",
         "random_op.cc",
         "random_op_cpu.h",
         "random_poisson_op.cc",
