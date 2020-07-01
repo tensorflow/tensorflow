@@ -651,9 +651,12 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
     input_num_row = 4
     input_num_col = 5
     for data_format in ['channels_first', 'channels_last']:
-      inputs = np.ones((num_samples, input_num_row, input_num_col, stack_size))
-      inputs = np.ones((num_samples, stack_size, input_num_row, input_num_col))
-
+      if data_format == 'channels_first':
+        inputs = np.ones((num_samples, stack_size, input_num_row,
+                          input_num_col))
+      else:
+        inputs = np.ones((num_samples, input_num_row, input_num_col,
+                          stack_size))
       # basic test
       with self.cached_session(use_gpu=True):
         testing_utils.layer_test(
