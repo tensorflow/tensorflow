@@ -131,26 +131,26 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(network.get_layer(index=1), dense_a)
 
     # test invalid get_layer by index
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Was asked to retrieve layer at index ' + str(3) +
         ' but model only has ' + str(len(network.layers)) + ' layers.'):
       network.get_layer(index=3)
 
     # test that only one between name and index is requested
-    with self.assertRaisesRegexp(ValueError,
-                                 'Provide only a layer name or a layer index'):
+    with self.assertRaisesRegex(ValueError,
+                                'Provide only a layer name or a layer index'):
       network.get_layer(index=1, name='dense_b')
 
     # test that a name or an index must be provided
-    with self.assertRaisesRegexp(ValueError,
-                                 'Provide either a layer name or layer index.'):
+    with self.assertRaisesRegex(ValueError,
+                                'Provide either a layer name or layer index.'):
       network.get_layer()
 
     # test various get_layer by name
     self.assertEqual(network.get_layer(name='dense_a'), dense_a)
 
     # test invalid get_layer by name
-    with self.assertRaisesRegexp(ValueError, 'No such layer: dense_c.'):
+    with self.assertRaisesRegex(ValueError, 'No such layer: dense_c.'):
       network.get_layer(name='dense_c')
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1036,7 +1036,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
         batch_size=2)
     # Check that input was correctly doubled.
     self.assertEqual(history.history['loss'][0], 0.0)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, 'Layer double was passed non-JSON-serializable arguments.'):
       model.get_config()
 
@@ -1274,7 +1274,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       def __init__(self):
         self._foo = [layers.Dense(10), layers.Dense(10)]
 
-    with self.assertRaisesRegexp(RuntimeError, 'forgot to call'):
+    with self.assertRaisesRegex(RuntimeError, 'forgot to call'):
       MyNetwork()
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1291,12 +1291,12 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     inputs = input_layer_lib.Input(shape=(32,))
     outputs = layers.Dense(4)(inputs)
 
-    with self.assertRaisesRegexp(TypeError,
-                                 'got an unexpected keyword argument'):
+    with self.assertRaisesRegex(TypeError,
+                                'got an unexpected keyword argument'):
       model = training_lib.Model(
           inputs, outputs, name='m', trainable=False, dtype='int64')
-    with self.assertRaisesRegexp(TypeError,
-                                 'got an unexpected keyword argument'):
+    with self.assertRaisesRegex(TypeError,
+                                'got an unexpected keyword argument'):
       model = training_lib.Model(
           inputs, outputs, name='m', trainable=False, dynamic=False)
 
@@ -1931,7 +1931,7 @@ class WeightAccessTest(keras_parameterized.TestCase):
     x3 = layers.Dense(1)
     model = sequential.Sequential([x1, x2, x3])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Weights for model .* have not yet been created'):
       _ = model.weights
 
@@ -1947,7 +1947,7 @@ class WeightAccessTest(keras_parameterized.TestCase):
 
     model = SubclassModel()
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Weights for model .* have not yet been created'):
       _ = model.weights
 

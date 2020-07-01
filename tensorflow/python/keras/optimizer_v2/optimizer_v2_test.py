@@ -166,7 +166,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0  # pylint: disable=cell-var-from-loop
         sgd_op = gradient_descent.SGD(3.0)
-        with self.assertRaisesRegexp(ValueError, 'No gradients'):
+        with self.assertRaisesRegex(ValueError, 'No gradients'):
           # var1 has no gradient
           sgd_op.minimize(loss, var_list=[var1])
 
@@ -179,8 +179,8 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
         loss = lambda: constant_op.constant(5.0)
 
         sgd_op = gradient_descent.SGD(3.0)
-        with self.assertRaisesRegexp(ValueError,
-                                     'No gradients provided for any variable'):
+        with self.assertRaisesRegex(ValueError,
+                                    'No gradients provided for any variable'):
           sgd_op.minimize(loss, var_list=[var0, var1])
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -190,8 +190,8 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         sgd_op = gradient_descent.SGD(3.0)
-        with self.assertRaisesRegexp(ValueError,
-                                     'No gradients provided for any variable'):
+        with self.assertRaisesRegex(ValueError,
+                                    'No gradients provided for any variable'):
           sgd_op.apply_gradients([(None, var0), (None, var1)])
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -357,12 +357,12 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInvalidClipNorm(self):
-    with self.assertRaisesRegexp(ValueError, '>= 0'):
+    with self.assertRaisesRegex(ValueError, '>= 0'):
       gradient_descent.SGD(learning_rate=1.0, clipnorm=-1.0)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInvalidKwargs(self):
-    with self.assertRaisesRegexp(TypeError, 'Unexpected keyword argument'):
+    with self.assertRaisesRegex(TypeError, 'Unexpected keyword argument'):
       gradient_descent.SGD(learning_rate=1.0, invalidkwargs=1.0)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -396,7 +396,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
       # Assert set_weights with ValueError since weight list does not match.
       self.evaluate(variables.global_variables_initializer())
       weights = opt1.get_weights()
-      with self.assertRaisesRegexp(ValueError, 'but the optimizer was'):
+      with self.assertRaisesRegex(ValueError, 'but the optimizer was'):
         opt2.set_weights(weights)
 
       # Assert set_weights and variables get updated to same value.
@@ -566,7 +566,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
     loss = lambda: losses.mean_squared_error(model(x), y)
     var_list = lambda: model.trainable_weights
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Weights for model .* have not yet been created'):
       var_list()
     train_op = opt.minimize(loss, var_list)

@@ -423,9 +423,9 @@ class GroupedConvTest(keras_parameterized.TestCase):
       ('Conv3D', keras.layers.Conv3D),
   )
   def test_group_conv_incorrect_use(self, layer):
-    with self.assertRaisesRegexp(ValueError, 'The number of filters'):
+    with self.assertRaisesRegex(ValueError, 'The number of filters'):
       layer(16, 3, groups=3)
-    with self.assertRaisesRegexp(ValueError, 'The number of input channels'):
+    with self.assertRaisesRegex(ValueError, 'The number of input channels'):
       layer(16, 3, groups=4).build((32, 12, 12, 3))
 
   @parameterized.named_parameters(

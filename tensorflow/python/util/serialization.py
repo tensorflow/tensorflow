@@ -65,7 +65,7 @@ def get_json_type(obj):
     return obj.as_list()
 
   if isinstance(obj, dtypes.DType):
-    return {'class_name': 'DType', 'dtype': obj.name}
+    return obj.name
 
   if isinstance(obj, collections_abc.Mapping):
     return dict(obj)

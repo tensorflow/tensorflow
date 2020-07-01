@@ -99,7 +99,7 @@ class AssertV2Asserts(test.TestCase):
         def failing_fn():
           fn(*failing_args, message="fail")  # pylint: disable=cell-var-from-loop
 
-        with self.assertRaisesRegexp(error, "fail"):
+        with self.assertRaisesRegex(error, "fail"):
           failing_fn()
 
         del failing_fn
@@ -110,32 +110,32 @@ class AssertProperIterableTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_single_tensor_raises(self):
     tensor = constant_op.constant(1)
-    with self.assertRaisesRegexp(TypeError, "proper"):
+    with self.assertRaisesRegex(TypeError, "proper"):
       check_ops.assert_proper_iterable(tensor)
 
   @test_util.run_in_graph_and_eager_modes
   def test_single_sparse_tensor_raises(self):
     ten = sparse_tensor.SparseTensor(
         indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])
-    with self.assertRaisesRegexp(TypeError, "proper"):
+    with self.assertRaisesRegex(TypeError, "proper"):
       check_ops.assert_proper_iterable(ten)
 
   @test_util.run_in_graph_and_eager_modes
   def test_single_ndarray_raises(self):
     array = np.array([1, 2, 3])
-    with self.assertRaisesRegexp(TypeError, "proper"):
+    with self.assertRaisesRegex(TypeError, "proper"):
       check_ops.assert_proper_iterable(array)
 
   @test_util.run_in_graph_and_eager_modes
   def test_single_string_raises(self):
     mystr = "hello"
-    with self.assertRaisesRegexp(TypeError, "proper"):
+    with self.assertRaisesRegex(TypeError, "proper"):
       check_ops.assert_proper_iterable(mystr)
 
   @test_util.run_in_graph_and_eager_modes
   def test_non_iterable_object_raises(self):
     non_iterable = 1234
-    with self.assertRaisesRegexp(TypeError, "to be iterable"):
+    with self.assertRaisesRegex(TypeError, "to be iterable"):
       check_ops.assert_proper_iterable(non_iterable)
 
   @test_util.run_in_graph_and_eager_modes
@@ -165,7 +165,7 @@ class AssertEqualTest(test.TestCase):
   def test_scalar_comparison(self):
     const_true = constant_op.constant(True, name="true")
     const_false = constant_op.constant(False, name="false")
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "fail"):
       check_ops.assert_equal(const_true, const_false, message="fail")
 
   def test_returns_none_with_eager(self):
@@ -180,7 +180,7 @@ class AssertEqualTest(test.TestCase):
     # Static check
     static_small = constant_op.constant([1, 2], name="small")
     static_big = constant_op.constant([3, 4], name="big")
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "fail"):
       check_ops.assert_equal(static_big, static_small, message="fail")
 
   @test_util.run_deprecated_v1
@@ -239,15 +239,15 @@ First 2 elements of y:
     with context.eager_mode():
       big = constant_op.constant([[2, 2], [3, 3], [6, 6]])
       small = constant_op.constant([[20, 2], [3, 30], [60, 6]])
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   expected_error_msg_full):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  expected_error_msg_full):
         check_ops.assert_equal(big, small, message="big does not equal small",
                                summarize=10)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   expected_error_msg_default):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  expected_error_msg_default):
         check_ops.assert_equal(big, small, message="big does not equal small")
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   expected_error_msg_short):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  expected_error_msg_short):
         check_ops.assert_equal(big, small, message="big does not equal small",
                                summarize=2)
 
@@ -257,7 +257,7 @@ First 2 elements of y:
     # Static check
     static_small = constant_op.constant([3, 1], name="small")
     static_big = constant_op.constant([4, 2], name="big")
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "fail"):
       check_ops.assert_equal(static_big, static_small, message="fail")
 
   @test_util.run_deprecated_v1
@@ -285,10 +285,9 @@ First 2 elements of y:
     # The exception in eager and non-eager mode is different because
     # eager mode relies on shape check done as part of the C++ op, while
     # graph mode does shape checks when creating the `Operation` instance.
-    with self.assertRaisesRegexp(
-        (errors.InvalidArgumentError, ValueError),
-        (r"Incompatible shapes: \[3\] vs. \[2\]|"
-         r"Dimensions must be equal, but are 3 and 2")):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                (r"Incompatible shapes: \[3\] vs. \[2\]|"
+                                 r"Dimensions must be equal, but are 3 and 2")):
       with ops.control_dependencies([check_ops.assert_equal(small, small_2)]):
         out = array_ops.identity(small)
       self.evaluate(out)
@@ -296,7 +295,7 @@ First 2 elements of y:
   @test_util.run_in_graph_and_eager_modes
   def test_raises_when_not_equal_and_broadcastable_shapes(self):
     cond = constant_op.constant([True, False], name="small")
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "fail"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "fail"):
       check_ops.assert_equal(cond, False, message="fail")
 
   @test_util.run_in_graph_and_eager_modes
@@ -354,10 +353,9 @@ class AssertNoneEqualTest(test.TestCase):
     # The exception in eager and non-eager mode is different because
     # eager mode relies on shape check done as part of the C++ op, while
     # graph mode does shape checks when creating the `Operation` instance.
-    with self.assertRaisesRegexp(
-        (ValueError, errors.InvalidArgumentError),
-        (r"Incompatible shapes: \[3\] vs. \[2\]|"
-         r"Dimensions must be equal, but are 3 and 2")):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                (r"Incompatible shapes: \[3\] vs. \[2\]|"
+                                 r"Dimensions must be equal, but are 3 and 2")):
       with ops.control_dependencies(
           [check_ops.assert_none_equal(small, big)]):
         out = array_ops.identity(small)
@@ -381,9 +379,8 @@ class AssertNoneEqualTest(test.TestCase):
 
   def test_static_check_in_graph_mode(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
-          errors.InvalidArgumentError,
-          "Custom error message"):
+      with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
+          errors.InvalidArgumentError, "Custom error message"):
         check_ops.assert_none_equal(1, 1, message="Custom error message")
 
   def test_error_message_eager(self):
@@ -394,23 +391,19 @@ class AssertNoneEqualTest(test.TestCase):
     with context.eager_mode():
       t = constant_op.constant(
           np.array(range(6)), shape=[2, 3], dtype=np.float32)
-      with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
-          errors.InvalidArgumentError,
-          expected_error_msg_full):
+      with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
+          errors.InvalidArgumentError, expected_error_msg_full):
         check_ops.assert_none_equal(
             t, t, message="This is the error message.", summarize=10)
-      with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
-          errors.InvalidArgumentError,
-          expected_error_msg_full):
+      with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
+          errors.InvalidArgumentError, expected_error_msg_full):
         check_ops.assert_none_equal(
             t, t, message="This is the error message.", summarize=-1)
-      with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
-          errors.InvalidArgumentError,
-          expected_error_msg_default):
+      with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
+          errors.InvalidArgumentError, expected_error_msg_default):
         check_ops.assert_none_equal(t, t, message="This is the error message.")
-      with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
-          errors.InvalidArgumentError,
-          expected_error_msg_short):
+      with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
+          errors.InvalidArgumentError, expected_error_msg_short):
         check_ops.assert_none_equal(
             t, t, message="This is the error message.", summarize=2)
 
@@ -588,7 +581,7 @@ class AssertLessTest(test.TestCase):
     # The exception in eager and non-eager mode is different because
     # eager mode relies on shape check done as part of the C++ op, while
     # graph mode does shape checks when creating the `Operation` instance.
-    with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
+    with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
         (ValueError, errors.InvalidArgumentError),
         (r"Incompatible shapes: \[3\] vs. \[2\]|"
          "Dimensions must be equal, but are 3 and 2")):
@@ -613,9 +606,8 @@ class AssertLessTest(test.TestCase):
 
   def test_static_check_in_graph_mode(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
-          errors.InvalidArgumentError,
-          "Custom error message"):
+      with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
+          errors.InvalidArgumentError, "Custom error message"):
         check_ops.assert_less(1, 1, message="Custom error message")
 
 
@@ -665,7 +657,7 @@ class AssertLessEqualTest(test.TestCase):
     # The exception in eager and non-eager mode is different because
     # eager mode relies on shape check done as part of the C++ op, while
     # graph mode does shape checks when creating the `Operation` instance.
-    with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
+    with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
         (errors.InvalidArgumentError, ValueError),
         (r"Incompatible shapes: \[2\] vs. \[3\]|"
          r"Dimensions must be equal, but are 2 and 3")):
@@ -685,9 +677,8 @@ class AssertLessEqualTest(test.TestCase):
 
   def test_static_check_in_graph_mode(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
-          errors.InvalidArgumentError,
-          "Custom error message"):
+      with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
+          errors.InvalidArgumentError, "Custom error message"):
         check_ops.assert_less_equal(1, 0, message="Custom error message")
 
 
@@ -739,7 +730,7 @@ class AssertGreaterTest(test.TestCase):
     # The exception in eager and non-eager mode is different because
     # eager mode relies on shape check done as part of the C++ op, while
     # graph mode does shape checks when creating the `Operation` instance.
-    with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
+    with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
         (errors.InvalidArgumentError, ValueError),
         (r"Incompatible shapes: \[2\] vs. \[3\]|"
          r"Dimensions must be equal, but are 2 and 3")):
@@ -757,9 +748,8 @@ class AssertGreaterTest(test.TestCase):
 
   def test_static_check_in_graph_mode(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
-          errors.InvalidArgumentError,
-          "Custom error message"):
+      with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
+          errors.InvalidArgumentError, "Custom error message"):
         check_ops.assert_greater(0, 1, message="Custom error message")
 
 
@@ -811,7 +801,7 @@ class AssertGreaterEqualTest(test.TestCase):
     # The exception in eager and non-eager mode is different because
     # eager mode relies on shape check done as part of the C++ op, while
     # graph mode does shape checks when creating the `Operation` instance.
-    with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
+    with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
         (errors.InvalidArgumentError, ValueError),
         (r"Incompatible shapes: \[2\] vs. \[3\]|"
          r"Dimensions must be equal, but are 2 and 3")):
@@ -831,9 +821,8 @@ class AssertGreaterEqualTest(test.TestCase):
 
   def test_static_check_in_graph_mode(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(  # pylint:disable=g-error-prone-assert-raises
-          errors.InvalidArgumentError,
-          "Custom error message"):
+      with self.assertRaisesRegex(  # pylint:disable=g-error-prone-assert-raises
+          errors.InvalidArgumentError, "Custom error message"):
         check_ops.assert_greater_equal(0, 1, message="Custom error message")
 
 
@@ -881,8 +870,8 @@ class AssertNegativeTest(test.TestCase):
 
   def test_static_check_in_graph_mode(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Custom error message"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "Custom error message"):
         check_ops.assert_negative(1, message="Custom error message")
 
 
@@ -929,8 +918,8 @@ class AssertPositiveTest(test.TestCase):
 
   def test_static_check_in_graph_mode(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Custom error message"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "Custom error message"):
         check_ops.assert_positive(-1, message="Custom error message")
 
 
@@ -1106,8 +1095,7 @@ class AssertRankTest(test.TestCase):
   def test_rank_zero_tensor_raises_if_rank_too_small_static_rank(self):
     tensor = constant_op.constant(1, name="my_tensor")
     desired_rank = 1
-    with self.assertRaisesRegexp(ValueError,
-                                 "fail.*must have rank 1"):
+    with self.assertRaisesRegex(ValueError, "fail.*must have rank 1"):
       with ops.control_dependencies(
           [check_ops.assert_rank(
               tensor, desired_rank, message="fail")]):
@@ -1145,7 +1133,7 @@ class AssertRankTest(test.TestCase):
   def test_rank_one_tensor_raises_if_rank_too_large_static_rank(self):
     tensor = constant_op.constant([1, 2], name="my_tensor")
     desired_rank = 0
-    with self.assertRaisesRegexp(ValueError, "rank"):
+    with self.assertRaisesRegex(ValueError, "rank"):
       with ops.control_dependencies(
           [check_ops.assert_rank(tensor, desired_rank)]):
         self.evaluate(array_ops.identity(tensor))
@@ -1181,7 +1169,7 @@ class AssertRankTest(test.TestCase):
   def test_rank_one_tensor_raises_if_rank_too_small_static_rank(self):
     tensor = constant_op.constant([1, 2], name="my_tensor")
     desired_rank = 2
-    with self.assertRaisesRegexp(ValueError, "rank"):
+    with self.assertRaisesRegex(ValueError, "rank"):
       with ops.control_dependencies(
           [check_ops.assert_rank(tensor, desired_rank)]):
         self.evaluate(array_ops.identity(tensor))
@@ -1199,7 +1187,7 @@ class AssertRankTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raises_if_rank_is_not_scalar_static(self):
     tensor = constant_op.constant([1, 2], name="my_tensor")
-    with self.assertRaisesRegexp(ValueError, "Rank must be a scalar"):
+    with self.assertRaisesRegex(ValueError, "Rank must be a scalar"):
       check_ops.assert_rank(tensor, np.array([], dtype=np.int32))
 
   @test_util.run_deprecated_v1
@@ -1216,8 +1204,7 @@ class AssertRankTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raises_if_rank_is_not_integer_static(self):
     tensor = constant_op.constant([1, 2], name="my_tensor")
-    with self.assertRaisesRegexp(TypeError,
-                                 "must be of type <dtype: 'int32'>"):
+    with self.assertRaisesRegex(TypeError, "must be of type <dtype: 'int32'>"):
       check_ops.assert_rank(tensor, .5)
 
   @test_util.run_deprecated_v1
@@ -1226,8 +1213,8 @@ class AssertRankTest(test.TestCase):
       tensor = constant_op.constant(
           [1, 2], dtype=dtypes.float32, name="my_tensor")
       rank_tensor = array_ops.placeholder(dtypes.float32, name="rank_tensor")
-      with self.assertRaisesRegexp(TypeError,
-                                   "must be of type <dtype: 'int32'>"):
+      with self.assertRaisesRegex(TypeError,
+                                  "must be of type <dtype: 'int32'>"):
         with ops.control_dependencies(
             [check_ops.assert_rank(tensor, rank_tensor)]):
           array_ops.identity(tensor).eval(feed_dict={rank_tensor: .5})
@@ -1238,8 +1225,7 @@ class AssertRankInTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_rank_zero_tensor_raises_if_rank_mismatch_static_rank(self):
     tensor_rank0 = constant_op.constant(42, name="my_tensor")
-    with self.assertRaisesRegexp(
-        ValueError, "fail.*must have rank.*in.*1.*2"):
+    with self.assertRaisesRegex(ValueError, "fail.*must have rank.*in.*1.*2"):
       with ops.control_dependencies([
           check_ops.assert_rank_in(tensor_rank0, (1, 2), message="fail")]):
         self.evaluate(array_ops.identity(tensor_rank0))
@@ -1292,7 +1278,7 @@ class AssertRankInTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_rank_one_tensor_raises_if_rank_mismatches_static_rank(self):
     tensor_rank1 = constant_op.constant((42, 43), name="my_tensor")
-    with self.assertRaisesRegexp(ValueError, "rank"):
+    with self.assertRaisesRegex(ValueError, "rank"):
       with ops.control_dependencies([
           check_ops.assert_rank_in(tensor_rank1, (0, 2))]):
         self.evaluate(array_ops.identity(tensor_rank1))
@@ -1314,7 +1300,7 @@ class AssertRankInTest(test.TestCase):
     desired_ranks = (
         np.array(1, dtype=np.int32),
         np.array((2, 1), dtype=np.int32))
-    with self.assertRaisesRegexp(ValueError, "Rank must be a scalar"):
+    with self.assertRaisesRegex(ValueError, "Rank must be a scalar"):
       check_ops.assert_rank_in(tensor, desired_ranks)
 
   @test_util.run_deprecated_v1
@@ -1336,8 +1322,7 @@ class AssertRankInTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raises_if_rank_is_not_integer_static(self):
     tensor = constant_op.constant((42, 43), name="my_tensor")
-    with self.assertRaisesRegexp(TypeError,
-                                 "must be of type <dtype: 'int32'>"):
+    with self.assertRaisesRegex(TypeError, "must be of type <dtype: 'int32'>"):
       check_ops.assert_rank_in(tensor, (1, .5,))
 
   @test_util.run_deprecated_v1
@@ -1346,8 +1331,8 @@ class AssertRankInTest(test.TestCase):
       tensor = constant_op.constant(
           (42, 43), dtype=dtypes.float32, name="my_tensor")
       rank_tensor = array_ops.placeholder(dtypes.float32, name="rank_tensor")
-      with self.assertRaisesRegexp(TypeError,
-                                   "must be of type <dtype: 'int32'>"):
+      with self.assertRaisesRegex(TypeError,
+                                  "must be of type <dtype: 'int32'>"):
         with ops.control_dependencies(
             [check_ops.assert_rank_in(tensor, (1, rank_tensor))]):
           array_ops.identity(tensor).eval(feed_dict={rank_tensor: .5})
@@ -1359,7 +1344,7 @@ class AssertRankAtLeastTest(test.TestCase):
   def test_rank_zero_tensor_raises_if_rank_too_small_static_rank(self):
     tensor = constant_op.constant(1, name="my_tensor")
     desired_rank = 1
-    with self.assertRaisesRegexp(ValueError, "rank at least 1"):
+    with self.assertRaisesRegex(ValueError, "rank at least 1"):
       with ops.control_dependencies(
           [check_ops.assert_rank_at_least(tensor, desired_rank)]):
         self.evaluate(array_ops.identity(tensor))
@@ -1429,7 +1414,7 @@ class AssertRankAtLeastTest(test.TestCase):
   def test_rank_one_tensor_raises_if_rank_too_small_static_rank(self):
     tensor = constant_op.constant([1, 2], name="my_tensor")
     desired_rank = 2
-    with self.assertRaisesRegexp(ValueError, "rank at least 2"):
+    with self.assertRaisesRegex(ValueError, "rank at least 2"):
       with ops.control_dependencies(
           [check_ops.assert_rank_at_least(tensor, desired_rank)]):
         self.evaluate(array_ops.identity(tensor))
@@ -1476,8 +1461,8 @@ class AssertNonNegativeTest(test.TestCase):
 
   def test_static_check_in_graph_mode(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Custom error message"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "Custom error message"):
         check_ops.assert_non_negative(-1, message="Custom error message")
 
 
@@ -1512,8 +1497,8 @@ class AssertNonPositiveTest(test.TestCase):
 
   def test_static_check_in_graph_mode(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Custom error message"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "Custom error message"):
         check_ops.assert_non_positive(1, message="Custom error message")
 
 
@@ -1529,7 +1514,7 @@ class AssertIntegerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raises_when_float(self):
     floats = constant_op.constant([1.0, 2.0], name="floats")
-    with self.assertRaisesRegexp(TypeError, "Expected.*integer"):
+    with self.assertRaisesRegex(TypeError, "Expected.*integer"):
       check_ops.assert_integer(floats)
 
 
@@ -1546,7 +1531,7 @@ class AssertTypeTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_raises_when_wrong_type(self):
     floats = constant_op.constant([1.0, 2.0], dtype=dtypes.float16)
-    with self.assertRaisesRegexp(TypeError, "must be of type.*float32"):
+    with self.assertRaisesRegex(TypeError, "must be of type.*float32"):
       check_ops.assert_type(floats, dtypes.float32)
 
 
@@ -1883,12 +1868,12 @@ class AssertShapesTest(test.TestCase):
     self.evaluate(out)
 
   def raises_static_error(self, shapes, regex):
-    with self.assertRaisesRegexp(ValueError, regex):
+    with self.assertRaisesRegex(ValueError, regex):
       check_ops.assert_shapes(shapes)
 
   def raises_dynamic_error(self, shapes, regex, feed_dict):
     with self.session() as sess:
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, regex):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, regex):
         assertion = check_ops.assert_shapes(shapes)
         with ops.control_dependencies([assertion]):
           out = array_ops.identity(0)
@@ -2024,7 +2009,7 @@ class AssertScalarTest(test.TestCase):
     check_ops.assert_scalar(constant_op.constant("foo"))
     check_ops.assert_scalar(3)
     check_ops.assert_scalar("foo")
-    with self.assertRaisesRegexp(ValueError, "Expected scalar"):
+    with self.assertRaisesRegex(ValueError, "Expected scalar"):
       check_ops.assert_scalar(constant_op.constant([3, 4]))
 
 

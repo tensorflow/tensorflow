@@ -72,12 +72,6 @@ stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
     models will not be impacted.
 
 ## Bug Fixes and Other Changes
-
-*   `tf.keras`:
-    *   Deprecated the `tf.keras.experimental.PeepholeLSTMCell` layer, which was
-        moved to `tensorflow_addons` as
-        `tensorflow_addons.rnn.PeepholeLSTMCell`. This experimental API is
-        expected to be removed from TF in the next public release (2.4).
 * Mutable tables now restore checkpointed values when loaded from SavedModel.
 
 # Release 2.1.1

@@ -79,7 +79,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
         return 1.
 
     m = ModelWithProperty()
-    with self.assertRaisesRegexp(AttributeError, 'read_only'):
+    with self.assertRaisesRegex(AttributeError, 'read_only'):
       m.read_only = 2.
 
   def test_custom_build_with_fit(self):
@@ -140,8 +140,8 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
                                      'has not been built.'))
-    with self.assertRaisesRegexp(
-        ValueError, 'input shape is not one of the valid types'):
+    with self.assertRaisesRegex(ValueError,
+                                'input shape is not one of the valid types'):
       model.build(input_shape=tensor_shape.Dimension(input_dim))
 
   def test_embed_dtype_with_subclass_build(self):
@@ -177,7 +177,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
                                      'has not been built.'))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'if your layers do not support float type inputs'):
       model.build(input_shape=(35, 20))
 
@@ -652,8 +652,8 @@ class CustomCallSignatureTests(test.TestCase, parameterized.TestCase):
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
                                      'has not been built.'))
-    with self.assertRaisesRegexp(
-        ValueError, 'cannot build your model if it has positional'):
+    with self.assertRaisesRegex(ValueError,
+                                'cannot build your model if it has positional'):
       model.build(input_shape=[first_input_shape, second_input_shape])
 
   def test_kwargs_in_signature(self):
@@ -689,20 +689,20 @@ class CustomCallSignatureTests(test.TestCase, parameterized.TestCase):
     y = np.ones((10, 1))
     m = ModelWithPositionalArgs()
     m.compile('sgd', 'mse')
-    with self.assertRaisesRegexp(ValueError, r'Models passed to `fit`'):
+    with self.assertRaisesRegex(ValueError, r'Models passed to `fit`'):
       m.fit(x, y, batch_size=2)
-    with self.assertRaisesRegexp(ValueError, r'Models passed to `evaluate`'):
+    with self.assertRaisesRegex(ValueError, r'Models passed to `evaluate`'):
       m.evaluate(x, y, batch_size=2)
-    with self.assertRaisesRegexp(ValueError, r'Models passed to `predict`'):
+    with self.assertRaisesRegex(ValueError, r'Models passed to `predict`'):
       m.predict(x, batch_size=2)
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Models passed to `train_on_batch`'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Models passed to `train_on_batch`'):
       m.train_on_batch(x, y)
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Models passed to `test_on_batch`'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Models passed to `test_on_batch`'):
       m.test_on_batch(x, y)
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Models passed to `predict_on_batch`'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Models passed to `predict_on_batch`'):
       m.predict_on_batch(x)
 
   def test_deepcopy(self):

@@ -271,17 +271,17 @@ class GatherTest(test.TestCase, parameterized.TestCase):
             params = np.zeros((7, 0, 0), dtype=dtype.as_numpy_dtype)
             indices = np.array([3, 4], dtype=itype)
             gather = array_ops.gather(params, indices, axis=0)
-            self.assertAllEqual(gather.eval(), np.zeros((2, 0, 0)))
+            self.assertAllEqual(gather, np.zeros((2, 0, 0)))
 
             # Middle axis gather.
             params = np.zeros((0, 7, 0), dtype=dtype.as_numpy_dtype)
             gather = array_ops.gather(params, indices, axis=1)
-            self.assertAllEqual(gather.eval(), np.zeros((0, 2, 0)))
+            self.assertAllEqual(gather, np.zeros((0, 2, 0)))
 
             # Trailing axis gather.
             params = np.zeros((0, 0, 7), dtype=dtype.as_numpy_dtype)
             gather = array_ops.gather(params, indices, axis=2)
-            self.assertAllEqual(gather.eval(), np.zeros((0, 0, 2)))
+            self.assertAllEqual(gather, np.zeros((0, 0, 2)))
 
   @parameterized.parameters([
       # batch_dims=0 (equivalent to tf.gather)

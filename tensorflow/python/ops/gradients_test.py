@@ -73,8 +73,8 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       xw = math_ops.matmul(inp, w, name="xw")
       h = bias_add(xw, b, name="h")
       w_grad = gradients.gradients(h, w)[0]
-    self.assertEquals("MatMul", w_grad.op.type)
-    self.assertEquals(w_grad.op._original_op, xw.op)
+    self.assertEqual("MatMul", w_grad.op.type)
+    self.assertEqual(w_grad.op._original_op, xw.op)
     self.assertTrue(w_grad.op.get_attr("transpose_a"))
     self.assertFalse(w_grad.op.get_attr("transpose_b"))
 
@@ -86,7 +86,7 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       split_wx = array_ops.split(value=wx, num_or_size_splits=2, axis=0)
       c = math_ops.reduce_sum(split_wx[1])
       gw = gradients.gradients(c, [w])[0]
-    self.assertEquals("MatMul", gw.op.type)
+    self.assertEqual("MatMul", gw.op.type)
 
   def testColocateGradients(self):
     with ops.Graph().as_default() as g:
@@ -218,7 +218,7 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
       def _TestOpGrad(_, float_grad, string_grad):
         """Gradient function for TestStringOutput."""
-        self.assertEquals(float_grad.dtype, dtypes.float32)
+        self.assertEqual(float_grad.dtype, dtypes.float32)
         self.assertFalse(string_grad)
         return float_grad
 
@@ -329,13 +329,13 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       y1 = math_ops.square(y)
       y2 = math_ops.square(y1)
       g = gradients.gradients([y, y2], x)
-      self.assertAllClose(17502.0, g[0].eval())
+      self.assertAllClose(17502.0, g[0])
       g = gradients.gradients(y + y2, x)
-      self.assertAllClose(17502.0, g[0].eval())
+      self.assertAllClose(17502.0, g[0])
       z = array_ops.identity(y)
       z2 = array_ops.identity(y2)
       g = gradients.gradients([z, z2], x)
-      self.assertAllClose(17502.0, g[0].eval())
+      self.assertAllClose(17502.0, g[0])
 
   @test_util.run_v1_only("b/120545219")
   def testPartialDerivatives(self):
@@ -427,7 +427,7 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       x = constant(1.0)
       y = constant(1.0)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Unknown value for unconnected_gradients: 'nonsense'"):
         gradients.gradients([y], [x], unconnected_gradients="nonsense")
 
@@ -573,7 +573,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       grad_func = framework_function.Defun(dtypes.float32, dtypes.float32,
                                            dtypes.float32)(
                                                self.XSquarePlusBGradient)
-      with self.assertRaisesRegexp(ValueError, "Gradient defined twice"):
+      with self.assertRaisesRegex(ValueError, "Gradient defined twice"):
         f = self._GetFunc(
             grad_func=grad_func, python_grad_func=self._PythonGradient)
         f.add_to_graph(ops.Graph())
@@ -704,7 +704,7 @@ class PreventGradientTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       inp = constant(1.0, shape=[100, 32], name="in")
       out = array_ops.prevent_gradient(inp)
-      with self.assertRaisesRegexp(LookupError, "explicitly disabled"):
+      with self.assertRaisesRegex(LookupError, "explicitly disabled"):
         _ = gradients.gradients(out, inp)
 
 
@@ -838,7 +838,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       np_val = np.random.rand(4, 4, 4, 4).astype(np.float32)
       c = constant_op.constant(np_val)
       c_sparse = math_ops._as_indexed_slices(c)
-      self.assertAllEqual(np_val.shape, c_sparse.dense_shape.eval())
+      self.assertAllEqual(np_val.shape, c_sparse.dense_shape)
       c_dense = math_ops.multiply(c_sparse, 1.0)
       self.assertAllClose(np_val, self.evaluate(c_dense))
 
@@ -857,7 +857,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
         sparse_list.append(c_sparse)
       packed_dense = array_ops.stack(dense_list)
       packed_sparse = array_ops.stack(sparse_list)
-      self.assertAllClose(packed_dense.eval(), self.evaluate(packed_sparse))
+      self.assertAllClose(packed_dense, self.evaluate(packed_sparse))
 
   @test_util.run_v1_only("b/120545219")
   def testInt64Indices(self):
@@ -868,7 +868,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       c_sparse = ops.IndexedSlices(
           c_sparse.values,
           math_ops.cast(c_sparse.indices, dtypes.int64), c_sparse.dense_shape)
-      self.assertAllEqual(np_val.shape, c_sparse.dense_shape.eval())
+      self.assertAllEqual(np_val.shape, c_sparse.dense_shape)
       c_dense = math_ops.multiply(c_sparse, 1.0)
       self.assertAllClose(np_val, self.evaluate(c_dense))
 
@@ -920,9 +920,8 @@ class OnlyRealGradientsTest(test_util.TensorFlowTestCase):
   def testRealOnly(self):
     x = constant_op.constant(7+3j, dtype=dtypes.complex64)
     y = math_ops.square(x)
-    with self.assertRaisesRegexp(
-        TypeError,
-        r"Gradients of complex tensors must set grad_ys "
+    with self.assertRaisesRegex(
+        TypeError, r"Gradients of complex tensors must set grad_ys "
         r"\(y\.dtype = tf\.complex64\)"):
       gradients.gradients(y, x)
 
@@ -1348,7 +1347,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
       g, = gradients_impl.gradients(output, alpha)
       self.evaluate(variables.global_variables_initializer())
-      self.assertAllEqual(g.eval(), [2.0])
+      self.assertAllEqual(g, [2.0])
       self.assertAllEqual(g.eval(feed_dict={conditional: False}), [3.0])
 
   def testRecursiveCustomGradient(self):

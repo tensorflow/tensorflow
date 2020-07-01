@@ -65,7 +65,7 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
     with distribution.scope(), self.cached_session() as sess:
       var, assign = distribution.extended.call_for_each_replica(replica_fn)
       variables.global_variables_initializer().run()
-      self.assertAllClose([10.0, 11.0], var.eval())
+      self.assertAllClose([10.0, 11.0], var)
       sess.run(distribution.experimental_local_results(assign))
       # Mean of val across calls to replica_fn().
       average_val = [1.0 + 0.5 * (replica_id[0] - 1),
@@ -91,12 +91,12 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
     with distribution.scope(), self.cached_session() as sess:
       var, assign_op = distribution.extended.call_for_each_replica(replica_fn)
       variables.global_variables_initializer().run()
-      self.assertAllClose([0.0, 0.0], var.eval())
+      self.assertAllClose([0.0, 0.0], var)
       sess.run(distribution.experimental_local_results(assign_op))
       # Mean of val across calls to replica_fn().
       average_val = [1.0 + 0.5 * (replica_id[0] - 1),
                      2.0 - 0.5 * (replica_id[0] - 1)]
-      self.assertAllClose(average_val, var.eval())
+      self.assertAllClose(average_val, var)
 
   @combinations.generate(all_combinations)
   def testCrossDeviceWithoutZeroDebias(self, distribution):
@@ -110,7 +110,7 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
           var, val, decay, zero_debias=False)
 
       variables.global_variables_initializer().run()
-      self.assertAllClose([10.0, 11.0], var.eval())
+      self.assertAllClose([10.0, 11.0], var)
       sess.run(assign)
       average_val = [1.0, 2.0]
       val_weight = 1.0 - 0.25
@@ -138,9 +138,9 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       assign = moving_averages.assign_moving_average(var, val, decay)
 
       variables.global_variables_initializer().run()
-      self.assertAllClose([0.0, 0.0], var.eval())
+      self.assertAllClose([0.0, 0.0], var)
       sess.run(assign, feed_dict={val: [1.0, 2.0]})
-      self.assertAllClose([1.0, 2.0], var.eval())
+      self.assertAllClose([1.0, 2.0], var)
 
       # Also try assign.op.
       sess.run(assign.op, feed_dict={val: [10.0, 0.0]})
@@ -182,7 +182,7 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
     with distribution.scope(), self.cached_session() as sess:
       var, assign = distribution.extended.call_for_each_replica(replica_fn)
       variables.global_variables_initializer().run()
-      self.assertAllClose([10.0, 11.0], var.eval())
+      self.assertAllClose([10.0, 11.0], var)
       sess.run(distribution.experimental_local_results(assign))
       self.assertAllClose(
           [10 * 0.25 + 1. * (1 - 0.25), 11 * 0.25 + 2. * (1 - 0.25)],

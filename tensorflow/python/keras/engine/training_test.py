@@ -93,8 +93,8 @@ class TrainingTest(keras_parameterized.TestCase):
   def test_fit_on_empty(self):
     model = sequential.Sequential([layers_module.Dense(1)])
     model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
-    with self.assertRaisesRegexp(
-        ValueError, 'Expect x to be a non-empty array or dataset.'):
+    with self.assertRaisesRegex(ValueError,
+                                'Expect x to be a non-empty array or dataset.'):
       model.fit(x=np.array([]), y=np.array([]))
 
   @keras_parameterized.run_all_keras_modes
@@ -123,7 +123,7 @@ class TrainingTest(keras_parameterized.TestCase):
       getattr(model, method_name)(1)
 
     error_msg = 'inside a `tf.function`'
-    with self.assertRaisesRegexp(RuntimeError, error_msg):
+    with self.assertRaisesRegex(RuntimeError, error_msg):
       my_fn()
 
   @keras_parameterized.run_all_keras_modes
@@ -1084,8 +1084,8 @@ class TrainingTest(keras_parameterized.TestCase):
     outputs = layers_module.Dense(1, activation='sigmoid')(inputs)
     model = training_module.Model(inputs, outputs)
     model.compile(optimizer_v2.adam.Adam(0.001), 'binary_crossentropy')
-    with self.assertRaisesRegexp(ValueError,
-                                 'incompatible with the specified batch size'):
+    with self.assertRaisesRegex(ValueError,
+                                'incompatible with the specified batch size'):
       model.fit(x, y, batch_size=4)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1099,8 +1099,8 @@ class TrainingTest(keras_parameterized.TestCase):
     input1 = input_layer.Input(batch_size=2, shape=(10,))
     input2 = input_layer.Input(batch_size=3, shape=(10,))
     outputs = MyLayer()([input1, input2])
-    with self.assertRaisesRegexp(ValueError,
-                                 'specified batch sizes of the Input Layers'):
+    with self.assertRaisesRegex(ValueError,
+                                'specified batch sizes of the Input Layers'):
       training_module.Model([input1, input2], outputs)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1226,7 +1226,7 @@ class TrainingTest(keras_parameterized.TestCase):
         'mse',
         run_eagerly=testing_utils.should_run_eagerly())
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, '`validation_steps` should not be specified if '
         '`validation_data` is None.'):
       model.fit(x, y, epochs=4, validation_data=None, validation_steps=3)
@@ -1648,10 +1648,8 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
   def test_sparse_op_with_op_layer(self):
     inputs = layers_module.Input(shape=(2,), sparse=True, name='sparse_tensor')
     output = sparse_ops.sparse_minimum(inputs, inputs)
-    with self.assertRaisesRegexp(
-        ValueError,
-        'not supported by Keras automatic op wrapping'
-    ):
+    with self.assertRaisesRegex(ValueError,
+                                'not supported by Keras automatic op wrapping'):
       training_module.Model([inputs], output)
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -1661,11 +1659,29 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
     model = training_module.Model(inputs=inputs, outputs=outputs)
     model.compile(loss='mse')
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Expect x to be a non-empty array or dataset.'
-    ):
+    with self.assertRaisesRegex(ValueError,
+                                'Expect x to be a non-empty array or dataset.'):
       model.predict(np.array([]))
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_on_batch_error_inconsistent_batch_size(self):
+    input_node1 = layers_module.Input(shape=(5,))
+    input_node2 = layers_module.Input(shape=(5,))
+    output_node = layers_module.Concatenate()([input_node1, input_node2])
+    output_node = layers_module.Dense(4)(output_node)
+    model = training_module.Model([input_node1, input_node2], output_node)
+    model.compile(loss='mse')
+
+    with self.assertRaisesRegex(ValueError, 'Data cardinality is ambiguous'):
+      model.train_on_batch([np.ones((10, 5)), np.ones((10, 5))],
+                           np.ones((11, 4)))
+
+    with self.assertRaisesRegex(ValueError, 'Data cardinality is ambiguous'):
+      model.test_on_batch([np.ones((10, 5)), np.ones((10, 5))],
+                          np.ones((11, 4)))
+
+    with self.assertRaisesRegex(ValueError, 'Data cardinality is ambiguous'):
+      model.predict_on_batch([np.ones((10, 5)), np.ones((11, 5))])
 
 
 class LossWeightingTest(keras_parameterized.TestCase):
@@ -3190,7 +3206,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
     x = np.ones(shape=(10, 1))
     y = np.ones(shape=(10, 2))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'Please provide different names for the metrics you have added. '
         'We found 2 metrics with the name: "metric_1"'):
@@ -3346,13 +3362,13 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     x = layers_module.Input(shape=(1,))
     y = layers_module.Dense(1, kernel_initializer='ones')(x)
     model = training_module.Model(x, y)
-    with self.assertRaisesRegexp(ValueError,
-                                 'only `mean` sample-wise metric aggregation'):
+    with self.assertRaisesRegex(ValueError,
+                                'only `mean` sample-wise metric aggregation'):
       model.add_metric(
           math_ops.reduce_sum(y), name='metric_1', aggregation='sum')
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'only `mean` sample-wise metric aggregation'):
+    with self.assertRaisesRegex(ValueError,
+                                'only `mean` sample-wise metric aggregation'):
       model.add_metric(
           math_ops.reduce_sum(y), name='metric_1', aggregation=None)
 

@@ -1027,7 +1027,7 @@ class LeakyReluTest(test_lib.TestCase):
     inputs = constant_op.constant(inputs)
 
     outputs = nn_ops.leaky_relu(inputs)
-    self.assertEquals(inputs.shape, outputs.shape)
+    self.assertEqual(inputs.shape, outputs.shape)
 
     inputs, outputs = self.evaluate([inputs, outputs])
 

@@ -80,7 +80,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
 
           # Should fail.
           saver = saver_module.Saver(sharded=False)
-          with self.assertRaisesRegexp(ValueError, "collides with"):
+          with self.assertRaisesRegex(ValueError, "collides with"):
             saver.save(sess, filepath)
 
           # Succeeds: the file will be named "checkpoint-<step>".
@@ -507,7 +507,7 @@ class CheckpointManagerTest(test.TestCase):
     with test.mock.patch.object(logging, "warning") as mock_log:
       second_manager = checkpoint_management.CheckpointManager(
           checkpoint, directory, max_to_keep=1)
-      self.assertRegexpMatches(
+      self.assertRegex(
           str(mock_log.call_args),
           "behind the last preserved checkpoint timestamp")
     # We should err on the side of keeping checkpoints around when we're not

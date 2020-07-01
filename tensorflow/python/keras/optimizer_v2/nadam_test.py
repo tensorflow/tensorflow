@@ -99,15 +99,15 @@ class NadamOptimizerTest(test.TestCase):
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 1.0, 2.0], var0)
+        self.assertAllClose([3.0, 3.0, 4.0], var1)
 
         beta1_power, beta2_power = get_beta_accumulators(opt, dtype)
 
         # Run 3 steps of Nadam
         for t in range(3):
-          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**(t + 1), beta2_power.eval())
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power)
+          self.assertAllCloseAccordingToType(0.999**(t + 1), beta2_power)
           update.run()
 
           mcache = update_m_cache(mcache, t)
@@ -117,8 +117,8 @@ class NadamOptimizerTest(test.TestCase):
               var1_np, grads1_np, t, m1, v1, mcache, epsilon=sparse_epsilon)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, var0)
+          self.assertAllCloseAccordingToType(var1_np, var1)
 
   def testBasic(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
@@ -140,8 +140,8 @@ class NadamOptimizerTest(test.TestCase):
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], var0)
+        self.assertAllClose([3.0, 4.0], var1)
 
         # Run 3 steps of Nadam
         for t in range(3):
@@ -154,8 +154,8 @@ class NadamOptimizerTest(test.TestCase):
                                                mcache)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, var0)
+          self.assertAllCloseAccordingToType(var1_np, var1)
 
   def testConstructNAdamWithLR(self):
     opt = nadam.Nadam(lr=1.0)

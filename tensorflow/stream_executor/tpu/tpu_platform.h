@@ -113,6 +113,12 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   EventMap* event_map() { return &event_map_; }
 
+  // Returns the number of TPUs per host.
+  static Status TpusPerHost(int* tpus);
+
+  // Returns the memory capacity of the TPUs on this host.
+  static Status TpuMemoryLimit(int64* memory_limit);
+
  private:
   SE_Platform* platform_;
 

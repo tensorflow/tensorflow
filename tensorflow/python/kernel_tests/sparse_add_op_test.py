@@ -207,8 +207,8 @@ class SparseAddTest(test.TestCase):
         sparse = sparse_tensor.SparseTensorValue(bad_idx, val, shape)
         s = sparse_ops.sparse_add(sparse, dense)
 
-        with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                     "invalid index"):
+        with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                    "invalid index"):
           self.evaluate(s)
 
 ######################## Benchmarking code

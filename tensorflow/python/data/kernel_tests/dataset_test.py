@@ -351,7 +351,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSameGraphError(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+      with self.assertRaisesRegex(ValueError, "must be from the same graph"):
         dataset = dataset.batch(2)
 
   @combinations.generate(
@@ -359,7 +359,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSameGraphErrorOneShot(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Please ensure that all datasets in the pipeline are "
           "created in the same graph as the iterator."):
         _ = dataset_ops.make_one_shot_iterator(dataset)
@@ -369,7 +369,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSameGraphErrorInitializable(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Please ensure that all datasets in the pipeline are "
           "created in the same graph as the iterator."):
         _ = dataset_ops.make_initializable_iterator(dataset)

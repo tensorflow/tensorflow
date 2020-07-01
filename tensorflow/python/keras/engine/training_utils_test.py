@@ -203,9 +203,8 @@ class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
 
     with test.mock.patch.object(logging, 'warning') as mock_log:
       training_utils.verify_dataset_shuffled(dataset)
-      self.assertRegexpMatches(
-          str(mock_log.call_args),
-          'input dataset `x` is not shuffled.')
+      self.assertRegex(
+          str(mock_log.call_args), 'input dataset `x` is not shuffled.')
 
     shuffled_dataset = dataset.shuffle(10)
     training_utils.verify_dataset_shuffled(shuffled_dataset)
@@ -398,14 +397,14 @@ class AggregationTest(keras_parameterized.TestCase):
     training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
     training_utils.SliceAggregator._MAX_COPY_SECONDS = 0.1
     training_utils._COPY_POOL._func_wrapper = add_sleep
-    with self.assertRaisesRegexp(ValueError, 'Timed out waiting for copy'):
+    with self.assertRaisesRegex(ValueError, 'Timed out waiting for copy'):
       self._run_without_steps()
 
   def test_async_copy_reraise(self):
     training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
     training_utils.SliceAggregator._MAX_COPY_SECONDS = 1.
     training_utils._COPY_POOL._func_wrapper = cause_error
-    with self.assertRaisesRegexp(TypeError, 'NoneType'):
+    with self.assertRaisesRegex(TypeError, 'NoneType'):
       self._run_without_steps()
 
 

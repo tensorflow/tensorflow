@@ -49,6 +49,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["applications_saved_model_test.py"],
     shard_count = 8,
+    tags = [
+        "no_oss_py38",  # b/160170347
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras/applications",
