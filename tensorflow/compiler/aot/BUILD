@@ -36,8 +36,9 @@ cc_library(
         "flags.h",
         "quantize.h",
     ],
-    defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"])
-              + if_llvm_s390x_available(["TF_LLVM_S390X_AVAILABLE=1"]),
+    defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]) + if_llvm_s390x_available([
+        "TF_LLVM_S390X_AVAILABLE=1",
+    ]),
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         ":aot_only_var_handle_op",
