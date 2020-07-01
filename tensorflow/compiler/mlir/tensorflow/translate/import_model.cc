@@ -124,6 +124,8 @@ using stream_executor::port::StatusOr;
 
 namespace {
 
+constexpr char kTpuReplicateAttr[] = "_tpu_replicate";
+
 bool IsDisableCallShapeInferenceAttribute(const AttrValue& attr_value,
                                           llvm::StringRef attr_name) {
   return attr_name.compare("_disable_call_shape_inference") == 0 &&
@@ -3596,8 +3598,15 @@ GraphImportConfig::InputArrays SavedModelSignatureDefImporter::ParseInputArrays(
 
 }  // namespace
 
-Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def) {
-  return FunctionalizeControlFlow(graph, flib_def);
+Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
+                          bool restrict_functionalization_to_tpu_nodes) {
+  // If `restrict_functionalization_to_tpu_nodes` is true let filter function
+  // return true for `_tpu_replicate` nodes, otherwise don't set filter.
+  NodeFilter node_filter =
+      restrict_functionalization_to_tpu_nodes
+          ? [](const Node* n) { return n->attrs().Find(kTpuReplicateAttr); }
+          : NodeFilter{};
+  return FunctionalizeControlFlow(graph, flib_def, node_filter);
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
@@ -3627,7 +3636,8 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
   if (specs.upgrade_legacy) {
     TF_RETURN_IF_ERROR(
         UpgradeLegacyGraph(const_cast<Graph*>(&graph),
-                           const_cast<FunctionLibraryDefinition*>(&flib_def)));
+                           const_cast<FunctionLibraryDefinition*>(&flib_def),
+                           specs.restrict_functionalization_to_tpu_nodes));
   }
   return GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs,
                                    /*func_name=*/"main");
