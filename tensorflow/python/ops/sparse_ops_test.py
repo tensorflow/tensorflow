@@ -190,9 +190,11 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # helper function to check equality of sparse tensor
     def assert_sparse_equal(expected, result):
-        self.assertAllEqual(expected.values, result.values, msg="Values differ")
-        self.assertAllEqual(expected.indices, result.indices, msg="Indices differ")
-        self.assertAllEqual(expected.dense_shape, result.dense_shape, msg="Shapes differ")
+      self.assertAllEqual(expected.values, result.values, msg="Values differ")
+      self.assertAllEqual(expected.indices, result.indices,
+                          msg="Indices differ")
+      self.assertAllEqual(expected.dense_shape, result.dense_shape,
+                          msg="Shapes differ")
 
     # check for a single sparse argument
     expected = sparse_ops.from_dense([[0.0, 1.0, 0.0], [2.0, 1.0, 0.0]])
@@ -202,8 +204,8 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # check correct passing of keyword argument, and handling of two sparse
     # arguments at the same time
     def mapping(arg1, arg2, kwarg):
-        self.assertTrue(kwarg == "kwarg")
-        return arg1 + arg2
+      self.assertTrue(kwarg == "kwarg")
+      return arg1 + arg2
     result = sparse_ops.map_values(mapping, sp, sp, kwarg="kwarg")
     expected = sparse_ops.from_dense([[0.0, 2.0, 0.0], [-4.0, 2.0, 0.0]])
     assert_sparse_equal(expected, result)

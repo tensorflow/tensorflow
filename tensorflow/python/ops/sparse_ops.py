@@ -2750,18 +2750,18 @@ def map_values(op, *args, **kwargs):
 
   Examples:
 
-  >>> st = tf.sparse.from_dense([[1, 2, 0], 
-  ...                            [0, 4, 0],
-  ...                            [1, 0, 0]])
-  >>> print(tf.sparse.to_dense(tf.sparse.map_values(tf.ones_like, st)).numpy())
+  >>> s = tf.sparse.from_dense([[1, 2, 0],
+  ...                           [0, 4, 0],
+  ...                           [1, 0, 0]])
+  >>> print(tf.sparse.to_dense(tf.sparse.map_values(tf.ones_like, s)).numpy())
   [[1 1 0]
    [0 1 0]
    [1 0 0]]
-  >>> print(tf.sparse.to_dense(tf.sparse.map_values(tf.multiply, st, st)).numpy())
+  >>> print(tf.sparse.to_dense(tf.sparse.map_values(tf.multiply, s, s)).numpy())
   [[ 1  4  0]
    [ 0 16  0]
    [ 1  0  0]]
-  >>> print(tf.sparse.to_dense(tf.sparse.map_values(tf.add, st, 5)).numpy())
+  >>> print(tf.sparse.to_dense(tf.sparse.map_values(tf.add, s, 5)).numpy())
   [[6 7 0]
    [0 9 0]
    [6 0 0]]
@@ -2795,7 +2795,8 @@ def map_values(op, *args, **kwargs):
     # and the known indices/dense shape. Since we ensure that indices and shape
     # are identical, we can just use the first one.
     return sparse_tensor.SparseTensor(sparse_list[0].indices,
-        op(*inner_args, **inner_kwargs), sparse_list[0].dense_shape)
+                                      op(*inner_args, **inner_kwargs),
+                                      sparse_list[0].dense_shape)
 
 
 def _assert_sparse_compatible(sparse_tensors):
