@@ -16,8 +16,8 @@ limitations under the License.
 // This is the canonicalize pattern definition file.
 
 include "mlir/IR/OpBase.td"
-include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
-include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
 
 def UnaryToBinaryEinsumEq : NativeCodeCall<
   "$_builder.getStringAttr(\",\" + $0.getValue().str())">;

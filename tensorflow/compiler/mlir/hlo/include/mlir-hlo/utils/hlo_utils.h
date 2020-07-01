@@ -21,7 +21,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 
 namespace mlir {
 namespace xla {

@@ -35,7 +35,7 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
-include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 
 def LHLO_Dialect : Dialect {
   let name = "xla_lhlo";

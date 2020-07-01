@@ -221,8 +221,11 @@ gentbl(
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/legalize_hlo_patterns.td",
+    td_relative_includes = [
+        "../hlo/include",
+    ],
     td_srcs = [
-        "//tensorflow/compiler/mlir/xla:hlo_ops_td_files",
+        "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:StdOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
@@ -238,7 +241,7 @@ cc_library(
     deps = [
         ":lower_tf_lib",
         ":tensorflow",
-        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/core:framework",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -1276,7 +1279,7 @@ genrule(
     ],
     cmd = ("$(location :derived_attr_populator_gen) " +
            "-I external/llvm-project/mlir/include " +
-           "-I external/org_tensorflow " +
+           "-I tensorflow/compiler/mlir " +
            "$(location //tensorflow/compiler/mlir/tensorflow:ir/tf_ops.td) " + " -o $@"),
     tools = [":derived_attr_populator_gen"],
 )
@@ -1324,7 +1327,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "@llvm-project//mlir:StandardOps",
     "@llvm-project//mlir:TransformUtils",
     "@llvm-project//mlir:Transforms",
-    "//tensorflow/compiler/mlir/xla:hlo",
+    "//tensorflow/compiler/mlir/hlo:hlo",
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:type_to_shape",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf",

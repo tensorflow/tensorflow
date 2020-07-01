@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines the operations used in the XLA dialect.
 
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -54,12 +54,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 
 namespace mlir {
-#include "tensorflow/compiler/mlir/xla/ir/hlo_structs.cc.inc"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.cc.inc"
 namespace xla_hlo {
 
 Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
@@ -106,7 +106,7 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
   return GetI64ElementsAttr(slice_limits, builder);
 }
 
-#include "tensorflow/compiler/mlir/xla/transforms/generated_canonicalize.inc"
+#include "tensorflow/compiler/mlir/hlo/lib/Dialect/mhlo/transforms/generated_canonicalize.inc"
 }  // namespace
 
 //===----------------------------------------------------------------------===//
@@ -2017,7 +2017,7 @@ void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
 }
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
 // xla_hlo Dialect Interfaces
@@ -2048,7 +2048,7 @@ XlaHloDialect::XlaHloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
       >();
   addInterfaces<HLOInlinerInterface>();
   addTypes<TokenType>();

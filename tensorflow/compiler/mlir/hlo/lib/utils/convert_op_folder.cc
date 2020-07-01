@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines helpers useful when creating or manipulating lhlo/hlo.
 
-#include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project

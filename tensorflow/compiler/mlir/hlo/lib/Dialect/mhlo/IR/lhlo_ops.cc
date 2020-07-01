@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines the operations used in the XLA dialect.
 
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -42,17 +42,17 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h.inc"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
 
 namespace mlir {
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_structs.cc.inc"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_structs.cc.inc"
 namespace xla_lhlo {
 
 XlaLhloDialect::XlaLhloDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.cc.inc"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
       >();
 }
 
@@ -87,7 +87,7 @@ static LogicalResult Verify(DynamicMemRefCastOp op) {
 }
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.cc.inc"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
 
 // TODO(cheshire): Support folding, reuse code from hlo_ops.cc.
 

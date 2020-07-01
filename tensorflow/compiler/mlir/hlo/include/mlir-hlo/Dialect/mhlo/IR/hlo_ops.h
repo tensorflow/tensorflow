@@ -30,12 +30,12 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/ir/infer_fusibility_op_interface.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.h"
 
 namespace mlir {
 class OpBuilder;
 
-#include "tensorflow/compiler/mlir/xla/ir/hlo_structs.h.inc"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.h.inc"
 
 namespace xla_hlo {
 
@@ -91,7 +91,7 @@ LogicalResult deriveShapeFromFirstOperand(
     SmallVectorImpl<Value> *reifiedReturnShapes);
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
 
 }  // end namespace xla_hlo
 }  // end namespace mlir
