@@ -201,7 +201,6 @@ cc_library(
         "tpu_compilation_cache_lookup.h",
     ],
     deps = [
-        ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_proto_cc",
         "//tensorflow/core/lib/core:refcount",
