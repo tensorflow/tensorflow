@@ -274,5 +274,5 @@ model.save('fashion_mnist_model')
 *   [Using Convolutional Neural Networks with TensorFlow by Rishit Dagli](https://medium.com/@rishit.dagli/using-convolutional-neural-networks-with-tensorflow-part-3-35de28a5621)
 *   [Extending what Convolutional nets can do by Rishit Dagli](https://medium.com/@rishit.dagli/extending-what-convolutional-nets-can-do-251f3021529c)
 *   [Matplotlib Documentation](https://matplotlib.org/3.2.2/contents.html#)
-*   [Visulaizing Convolutions by Laurence Moroney](https://github.com/lmoroney/dlaicourse/blob/842e3b1099082dc8631301c26afb6ec71f158eee/Horse_or_Human_NoValidation.ipynb)
+*   [Visualizing Convolutions by Laurence Moroney](https://github.com/lmoroney/dlaicourse/blob/842e3b1099082dc8631301c26afb6ec71f158eee/Horse_or_Human_NoValidation.ipynb)
 """
