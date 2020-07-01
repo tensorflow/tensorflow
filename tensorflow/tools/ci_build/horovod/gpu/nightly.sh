@@ -14,6 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 set -e
+set -x
 
 # TODO(pkanwar): upgrade to 3.7.
 PIP_CMD="pip3.5"
@@ -25,15 +26,11 @@ source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 which bazel
 
-# Install pip3.5
-curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-sudo python3.5 get-pip.py
-
 # Install realpath
 sudo apt-get install realpath
 
 # Install tf-nightly and verify version.
-"${PIP_CMD}" install --user tf-nightly
+python3.5 -m "${PIP_CMD}" install --user tf-nightly
 
 python3.5 -c "import tensorflow as tf; print(tf.__version__)"
 
@@ -56,7 +53,8 @@ sudo ldconfig
 
 # Install Horovod.
 cd ..
-"${PIP_CMD}" install horovod tensorflow
+HOROVOD_WITH_TENSORFLOW=1
+"${PIP_CMD}" install horovod[tensorflow]
 
 # Install tests.
 git clone https://github.com/DEKHTIARJonathan/TF_HVD_Stability_Test.git
