@@ -225,7 +225,7 @@ class tstring {
   friend bool operator==(const std::string& a, const tstring& b);
   friend tstring operator+(const tstring& a, const tstring& b);
   friend std::ostream& operator<<(std::ostream& o, const tstring& str);
-  #if !(defined(__APPLE__) && GOOGLE_CUDA)
+  #if !(defined(__APPLE__) && GOOGLE_CUDA && cuda_version < 10010)
       friend std::hash<tstring>;
   #endif
 };
