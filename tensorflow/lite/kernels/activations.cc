@@ -298,7 +298,6 @@ void HardSwishFree(TfLiteContext* context, void* buffer) {
   delete static_cast<HardSwishData*>(buffer);
 }
 
-
 TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_STATUS(GenericPrepare(context, node));
   TfLiteTensor* output = GetOutput(context, node, 0);
@@ -426,13 +425,19 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
         (data->input_left_shift == 0 || data->input_left_shift == 1);
 
     if (!param_scale_pot) {
-      // In case of general scale parameter, we need to do a rescaling.
-      // Magic constant 4096:
-      // We need to scale down to (-2^3, 2^3) / 3 is kInputIntegerBits/ interval
-      // from 16-bit (-2^15, 2^15),
-      // so we need to multiply by
-      // 2^(15 - kInputIntegerBits) = 2^12 = 4096.
-      data->input_multiplier = static_cast<int32_t>(input->params.scale * 4096);
+      // Calculate multiplier to change input scale to 1/(3*4096)
+      // as required by the table lookup.
+      // In this scaling +/-2^17 represents +/-10.7
+
+      double multiplier = input->params.scale * 4096.0 * 3.0;
+      data->input_left_shift = 0;
+
+      while (multiplier <= 32767.0 / 2.0 && data->input_left_shift <= 30) {
+        data->input_left_shift++;
+        multiplier = multiplier * 2.0;
+      }
+
+      data->input_multiplier = static_cast<int32_t>(multiplier);
     }
 
     int output_scale_log2_rounded;
@@ -521,13 +526,19 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
     param_scale_pot &= (data->input_left_shift == 0);
 
     if (!param_scale_pot) {
-      // In case of general scale parameter, we need to do a rescaling.
-      // Magic constant 4096:
-      // We need to scale down to (-2^3, 2^3) / 3 is kInputIntegerBits/ interval
-      // from 16-bit (-2^15, 2^15),
-      // so we need to multiply by
-      // 2^(15 - kInputIntegerBits) = 2^12 = 4096.
-      data->input_multiplier = static_cast<int32_t>(input->params.scale * 4096);
+      // Calculate multiplier to change input scale to 1/(3*4096)
+      // as required by the table lookup.
+      // In this scaling +/-2^17 represents +/-10.7
+      double multiplier = input->params.scale * 4096.0 * 3.0;
+
+      data->input_left_shift = 0;
+
+      while (multiplier <= 32767.0 / 2.0 && data->input_left_shift <= 30) {
+        data->input_left_shift++;
+        multiplier = multiplier * 2.0;
+      }
+
+      data->input_multiplier = static_cast<int32_t>(multiplier);
     }
 
     int output_scale_log2_rounded;
@@ -943,9 +954,9 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
         const int size =
             MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
 
-        reference_integer_ops::Logistic(data->input_multiplier, size,
-                                        GetTensorData<int16_t>(input),
-                                        GetTensorData<int16_t>(output));
+        reference_integer_ops::Logistic(
+            data->input_multiplier, data->input_left_shift, size,
+            GetTensorData<int16_t>(input), GetTensorData<int16_t>(output));
       } else {
         optimized_ops::Logistic(
             params, GetTensorShape(input), GetTensorData<int16_t>(input),
