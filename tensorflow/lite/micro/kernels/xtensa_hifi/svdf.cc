@@ -539,16 +539,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace svdf
 
-TfLiteRegistration* Register_SVDF() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/svdf::Prepare,
-                                 /*invoke=*/svdf::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_SVDF() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/svdf::Prepare,
+          /*invoke=*/svdf::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

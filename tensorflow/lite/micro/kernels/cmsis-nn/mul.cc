@@ -178,10 +178,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }
 }  // namespace mul
 
-TfLiteRegistration* Register_MUL() {
-  static TfLiteRegistration r = {nullptr /* Init */, nullptr /* Free */,
-                                 mul::Prepare, mul::Eval};
-  return &r;
+TfLiteRegistration Register_MUL() {
+  return {nullptr /* Init */, nullptr /* Free */, nullptr /* Prepare */,
+          mul::Eval};
 }
 
 }  // namespace micro
