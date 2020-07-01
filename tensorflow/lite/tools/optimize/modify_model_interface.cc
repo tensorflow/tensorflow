@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 #include <unordered_set>
-#include <typeinfo>
 
 #include "absl/memory/memory.h"
 #include "flatbuffers/flexbuffers.h"
