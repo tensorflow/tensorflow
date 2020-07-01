@@ -199,12 +199,12 @@ class AdagradOptimizerTest(test.TestCase):
         aggregated_update = adagrad.AdagradOptimizer(3.0).apply_gradients(
             [(grad_aggregated, aggregated_update_var)])
         self.evaluate(variables.global_variables_initializer())
-        self.assertAllClose(aggregated_update_var.eval(),
+        self.assertAllClose(aggregated_update_var,
                             self.evaluate(repeated_index_update_var))
         for _ in range(3):
           repeated_update.run()
           aggregated_update.run()
-          self.assertAllClose(aggregated_update_var.eval(),
+          self.assertAllClose(aggregated_update_var,
                               self.evaluate(repeated_index_update_var))
 
   @test_util.run_deprecated_v1

@@ -106,14 +106,14 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0, 3.0], var0.eval())
-        self.assertAllClose([4.0, 5.0, 6.0], var1.eval())
+        self.assertAllClose([1.0, 2.0, 3.0], var0)
+        self.assertAllClose([4.0, 5.0, 6.0], var1)
 
         beta1_power = get_beta_accumulators(opt, dtype)
 
         # Run 3 steps of Adamax
         for t in range(3):
-          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power)
           update.run()
 
           var0_np, m0, v0 = adamax_sparse_update_numpy(
@@ -122,8 +122,8 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
               var1_np, grads1_np_indices, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, var0)
+          self.assertAllCloseAccordingToType(var1_np, var1)
 
   def testSparseDevicePlacement(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
@@ -163,12 +163,12 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         aggregated_update = adamax.Adamax().apply_gradients(
             [(grad_aggregated, aggregated_update_var)])
         variables.global_variables_initializer().run()
-        self.assertAllClose(aggregated_update_var.eval(),
+        self.assertAllClose(aggregated_update_var,
                             repeated_index_update_var.eval())
         for _ in range(3):
           repeated_update.run()
           aggregated_update.run()
-          self.assertAllClose(aggregated_update_var.eval(),
+          self.assertAllClose(aggregated_update_var,
                               repeated_index_update_var.eval())
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
@@ -292,22 +292,22 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], var0)
+        self.assertAllClose([3.0, 4.0], var1)
 
         beta1_power = get_beta_accumulators(opt, dtype)
 
         # Run 3 steps of Adamax
         for t in range(3):
-          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power)
           update.run()
 
           var0_np, m0, v0 = adamax_update_numpy(var0_np, grads0_np, t, m0, v0)
           var1_np, m1, v1 = adamax_update_numpy(var1_np, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, var0)
+          self.assertAllCloseAccordingToType(var1_np, var1)
 
   def testSharing(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
@@ -332,12 +332,12 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
         beta1_power = get_beta_accumulators(opt, dtype)
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], var0)
+        self.assertAllClose([3.0, 4.0], var1)
 
         # Run 3 steps of intertwined Adamax1 and Adamax2.
         for t in range(3):
-          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power)
           if t % 2 == 0:
             update1.run()
           else:
@@ -347,8 +347,8 @@ class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
           var1_np, m1, v1 = adamax_update_numpy(var1_np, grads1_np, t, m1, v1)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, var0)
+          self.assertAllCloseAccordingToType(var1_np, var1)
 
   def testSlotsUniqueEager(self):
     with context.eager_mode():

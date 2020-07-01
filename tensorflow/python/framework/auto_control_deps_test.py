@@ -50,7 +50,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         v.assign(2 * v)
         val = v.read_value()
         val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(), 4.0)
+      self.assertAllEqual(val, 4.0)
 
   def testNoControlDepsBetweenVariableReads(self):
     with context.graph_mode(), self.cached_session():

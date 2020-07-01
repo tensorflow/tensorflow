@@ -325,7 +325,7 @@ class UnicodeTranscodeOpTest(test.TestCase, parameterized.TestCase):
     with self.test_session():
       output = string_ops.unicode_transcode(
           string, input_encoding=input_encoding, output_encoding="UTF-8")
-      self.assertAllEqual(output.eval(), expected)
+      self.assertAllEqual(output, expected)
 
   @test_util.run_deprecated_v1
   def test_invalid_encoding_causes_errors(self):

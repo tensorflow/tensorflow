@@ -147,12 +147,12 @@ class AdamOptimizerTest(test.TestCase):
         aggregated_update = adam.AdamOptimizer().apply_gradients(
             [(grad_aggregated, aggregated_update_var)])
         variables.global_variables_initializer().run()
-        self.assertAllClose(aggregated_update_var.eval(),
+        self.assertAllClose(aggregated_update_var,
                             self.evaluate(repeated_index_update_var))
         for _ in range(3):
           repeated_update.run()
           aggregated_update.run()
-          self.assertAllClose(aggregated_update_var.eval(),
+          self.assertAllClose(aggregated_update_var,
                               self.evaluate(repeated_index_update_var))
 
   def doTestBasic(self, use_resource=False, use_callable_params=False):

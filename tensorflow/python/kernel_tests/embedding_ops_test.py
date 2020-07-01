@@ -274,7 +274,7 @@ class EmbeddingLookupTest(test.TestCase):
       embedding = embedding_ops.embedding_lookup(
           [embeddings], ids, max_norm=1.0)
 
-      self.assertAllEqual(embedding.eval(), [[1.0]])
+      self.assertAllEqual(embedding, [[1.0]])
 
   @test_util.run_deprecated_v1
   def testMaxNormNontrivial(self):
@@ -288,7 +288,7 @@ class EmbeddingLookupTest(test.TestCase):
       norms = math_ops.sqrt(
           math_ops.reduce_sum(embeddings * embeddings, axis=1))
       normalized = embeddings / array_ops.stack([norms, norms], axis=1)
-      self.assertAllEqual(embedding.eval(), 2 * self.evaluate(normalized))
+      self.assertAllEqual(embedding, 2 * self.evaluate(normalized))
 
   @test_util.run_deprecated_v1
   def testSimpleShardedPartitionedVariable(self):
@@ -557,7 +557,7 @@ class EmbeddingLookupTest(test.TestCase):
               params.shape[0], size=np.prod(ids_shape)).reshape(ids_shape)
           # Compare nonsharded to gather
           simple = embedding_ops.embedding_lookup(params, ids).eval()
-          self.assertAllEqual(simple, array_ops.gather(params, ids).eval())
+          self.assertAllEqual(simple, array_ops.gather(params, ids))
           # Run a few random sharded versions
           for procs in 1, 2, 3:
             stride = procs * math_ops.range(params.shape[0] // procs)
@@ -591,7 +591,7 @@ class EmbeddingLookupTest(test.TestCase):
           # vectorized square root algorithm for doubles.  These different
           # implementations of sqrt are not guaranteed to produce exactly the
           # same results. Therefore, an exact comparison cannot be made.
-          self.assertAllClose(simple, array_ops.gather(params_norm, ids).eval())
+          self.assertAllClose(simple, array_ops.gather(params_norm, ids))
           # Run a few different sharded versions.
           for procs in 1, 2, 3:
             stride = procs * math_ops.range(params.shape[0] // procs)
@@ -627,7 +627,7 @@ class EmbeddingLookupTest(test.TestCase):
         # Compare nonsharded to gather.
         simple = embedding_ops._embedding_lookup_and_transform(
             params, ids, max_norm=l2_norm, transform_fn=transform).eval()
-        self.assertAllClose(simple, array_ops.gather(params_norm, ids).eval())
+        self.assertAllClose(simple, array_ops.gather(params_norm, ids))
         # Run a few different sharded versions.
         for procs in 1, 2, 3:
           stride = procs * math_ops.range(params.shape[0] // procs)

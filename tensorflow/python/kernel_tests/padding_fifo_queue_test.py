@@ -543,7 +543,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       dequeued_t = q.dequeue_many(10)
 
       enqueue_op.run()
-      self.assertAllEqual(dequeued_t.eval(), elems)
+      self.assertAllEqual(dequeued_t, elems)
 
   def testPartiallyKnownHighDimension(self):
     with self.cached_session():
@@ -554,7 +554,7 @@ class PaddingFIFOQueueTest(test.TestCase):
       dequeued_t = q.dequeue_many(10)
 
       enqueue_op.run()
-      self.assertAllEqual(dequeued_t.eval(), elems)
+      self.assertAllEqual(dequeued_t, elems)
 
   def testEnqueueWrongShape(self):
     q = data_flow_ops.PaddingFIFOQueue(10, (dtypes_lib.int32, dtypes_lib.int32),

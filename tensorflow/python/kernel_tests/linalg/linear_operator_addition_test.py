@@ -81,7 +81,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
       self.assertIsInstance(op, linalg_lib.LinearOperatorDiag)
-      self.assertAllClose([[3., 0.], [0., 3.]], op.to_dense().eval())
+      self.assertAllClose([[3., 0.], [0., 3.]], op.to_dense())
       # Adding positive definite operators produces positive def.
       self.assertTrue(op.is_positive_definite)
       # Real diagonal ==> self-adjoint.
@@ -104,7 +104,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
       self.assertTrue(isinstance(op, linalg_lib.LinearOperatorDiag))
-      self.assertAllClose([[6., 0.], [0., 6.]], op.to_dense().eval())
+      self.assertAllClose([[6., 0.], [0., 6.]], op.to_dense())
       # Adding positive definite operators produces positive def.
       self.assertTrue(op.is_positive_definite)
       # Real diagonal ==> self-adjoint.
@@ -128,7 +128,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
       self.assertIsInstance(op, linalg_lib.LinearOperatorLowerTriangular)
-      self.assertAllClose([[6., 0.], [0., 6.]], op.to_dense().eval())
+      self.assertAllClose([[6., 0.], [0., 6.]], op.to_dense())
 
       # The diag operators will be self-adjoint (because real and diagonal).
       # The TriL operator has the self-adjoint hint set.
@@ -151,7 +151,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
       self.assertIsInstance(op, linalg_lib.LinearOperatorFullMatrix)
-      self.assertAllClose([[5., -1.], [0.5, 5.]], op.to_dense().eval())
+      self.assertAllClose([[5., -1.], [0.5, 5.]], op.to_dense())
       self.assertEqual("my_operator", op.name)
 
   def test_incompatible_domain_dimensions_raises(self):
@@ -241,10 +241,10 @@ class LinearOperatorOrderOfAdditionTest(test.TestCase):
       for op in op_sum:
         if isinstance(op, linalg.LinearOperatorDiag):
           found_diag = True
-          self.assertAllClose([[3.]], op.to_dense().eval())
+          self.assertAllClose([[3.]], op.to_dense())
         if isinstance(op, linalg.LinearOperatorLowerTriangular):
           found_tril = True
-          self.assertAllClose([[5.]], op.to_dense().eval())
+          self.assertAllClose([[5.]], op.to_dense())
       self.assertTrue(found_diag and found_tril)
 
   def test_intermediate_tier_is_not_skipped(self):
@@ -390,7 +390,7 @@ class AddAndReturnTriLTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorLowerTriangular)
 
     with self.cached_session():
-      self.assertAllClose([[11., 0.], [30., 2.]], operator.to_dense().eval())
+      self.assertAllClose([[11., 0.], [30., 2.]], operator.to_dense())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)
@@ -413,7 +413,7 @@ class AddAndReturnMatrixTest(test.TestCase):
     self.assertIsInstance(operator, linalg.LinearOperatorFullMatrix)
 
     with self.cached_session():
-      self.assertAllClose([[0., 0.], [0., 5.]], operator.to_dense().eval())
+      self.assertAllClose([[0., 0.], [0., 5.]], operator.to_dense())
     self.assertFalse(operator.is_positive_definite)
     self.assertFalse(operator.is_non_singular)
     self.assertEqual("my_operator", operator.name)

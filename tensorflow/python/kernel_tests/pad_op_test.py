@@ -373,7 +373,7 @@ class PadOpTest(test.TestCase):
             [paddings_value[i][0] + inp.shape.dims[i].value for i in range(4)],
             [-1, -1, -1, -1])
         with self.cached_session(use_gpu=True):
-          self.assertAllEqual(inp.eval(), self.evaluate(middle))
+          self.assertAllEqual(inp, self.evaluate(middle))
           self.assertAllEqual(
               np.zeros([row[0] for row in paddings_value]), self.evaluate(left))
           self.assertAllEqual(

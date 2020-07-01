@@ -59,7 +59,7 @@ class ReducedShapeTest(test.TestCase):
 
   def _check(self, shape, axes, result):
     output = math_ops.reduced_shape(shape, axes=axes)
-    self.assertAllEqual(output.eval(), result)
+    self.assertAllEqual(output, result)
 
   @test_util.run_deprecated_v1
   def testSimple(self):
@@ -390,7 +390,7 @@ class SumReductionTest(BaseReductionTest):
         # A large number is needed to get Eigen to die
         x = array_ops.zeros((0, 9938), dtype=dtype)
         y = math_ops.reduce_sum(x, [0])
-        self.assertAllEqual(y.eval(), np.zeros(9938))
+        self.assertAllEqual(y, np.zeros(9938))
 
 
 class MeanReductionTest(BaseReductionTest):
@@ -697,7 +697,7 @@ class ProdReductionTest(BaseReductionTest):
         # A large number is needed to get Eigen to die
         x = array_ops.zeros((0, 9938), dtype=dtype)
         y = math_ops.reduce_prod(x, [0])
-        self.assertAllEqual(y.eval(), np.ones(9938))
+        self.assertAllEqual(y, np.ones(9938))
 
 
 class MinReductionTest(test.TestCase):
@@ -1124,7 +1124,7 @@ class CountNonzeroReductionTest(test.TestCase):
           # A large number is needed to get Eigen to die
           x = array_ops.zeros((0, 9938), dtype=dtype)
           y = math_ops.count_nonzero(x, [0])
-          self.assertAllEqual(y.eval(), np.zeros(9938))
+          self.assertAllEqual(y, np.zeros(9938))
 
   def testStringReduce(self):
     # Test case for GitHub issue 18712

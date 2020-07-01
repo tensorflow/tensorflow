@@ -1499,7 +1499,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       tf_max = max_pooling3d(
           tf_aa, pool_size=pool_size, strides=strides, padding='SAME')
       tf_da = gradients.gradients(tf_max, [tf_aa])
-      self.assertAllEqual(da[0], tf_da[0].eval())
+      self.assertAllEqual(da[0], tf_da[0])
 
   @test_util.run_in_graph_and_eager_modes
   def testWatchBadThing(self):

@@ -208,7 +208,7 @@ class CompilationEnabledInGradientTest(test.TestCase, parameterized.TestCase):
           ncg.get_attr("_XlaCompile")
 
       # d/dx (x ** 4) = 4 * (x ** 3)
-      self.assertAllClose([[108]], x_grads.eval())
+      self.assertAllClose([[108]], x_grads)
 
   @test_util.build_as_function_and_v1_graph
   def testCompilationGradientScopeNames(self):

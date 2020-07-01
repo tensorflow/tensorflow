@@ -4153,14 +4153,14 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       image = constant_op.constant(x_np)
       y = image_ops.convert_image_dtype(image, output_dtype)
       self.assertTrue(y.dtype == output_dtype)
-      self.assertAllClose(y.eval(), y_np, atol=1e-5)
+      self.assertAllClose(y, y_np, atol=1e-5)
       if output_dtype in [
           dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64
       ]:
         y_saturate = image_ops.convert_image_dtype(
             image, output_dtype, saturate=True)
         self.assertTrue(y_saturate.dtype == output_dtype)
-        self.assertAllClose(y_saturate.eval(), y_np, atol=1e-5)
+        self.assertAllClose(y_saturate, y_np, atol=1e-5)
 
   @test_util.run_deprecated_v1
   def testNoConvert(self):
@@ -4440,7 +4440,7 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
       iou_threshold = constant_op.constant(iou_threshold_np)
       selected_indices = image_ops.non_max_suppression(
           boxes, scores, max_output_size, iou_threshold)
-      self.assertAllClose(selected_indices.eval(), [3, 0, 5])
+      self.assertAllClose(selected_indices, [3, 0, 5])
 
   @test_util.run_deprecated_v1
   def testInvalidShape(self):
@@ -4616,10 +4616,9 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
     self.assertEqual(selected_indices_padded.shape.is_fully_defined(), True)
     self.assertEqual(selected_indices.shape.is_fully_defined(), False)
     with self.cached_session():
-      self.assertAllClose(selected_indices_padded.eval(),
-                          [3, 0, 5, 0, 0])
+      self.assertAllClose(selected_indices_padded, [3, 0, 5, 0, 0])
       self.assertEqual(num_valid_padded.eval(), 3)
-      self.assertAllClose(selected_indices.eval(), [3, 0, 5])
+      self.assertAllClose(selected_indices, [3, 0, 5])
       self.assertEqual(num_valid.eval(), 3)
 
   @test_util.run_deprecated_v1
@@ -4646,7 +4645,7 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
     # The output shape of the padded operation must be fully defined.
     self.assertEqual(selected_indices.shape.is_fully_defined(), False)
     with self.cached_session():
-      self.assertAllClose(selected_indices.eval(), [0, 2, 4])
+      self.assertAllClose(selected_indices, [0, 2, 4])
       self.assertEqual(num_valid.eval(), 3)
 
 
@@ -4672,7 +4671,7 @@ class NonMaxSuppressionWithOverlapsTest(test_util.TensorFlowTestCase):
         overlaps, scores, max_output_size, overlap_threshold, score_threshold)
 
     with self.cached_session():
-      self.assertAllClose(selected_indices.eval(), [1])
+      self.assertAllClose(selected_indices, [1])
 
 
 class VerifyCompatibleImageShapesTest(test_util.TensorFlowTestCase):

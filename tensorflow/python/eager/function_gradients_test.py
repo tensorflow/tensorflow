@@ -85,7 +85,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       node = f()
       grads, = gradients_impl.gradients(node, v)
       v.initializer.run()
-      self.assertAllEqual(grads.eval(), 2.0)
+      self.assertAllEqual(grads, 2.0)
       self.assertEqual(grads.shape, v.shape)
 
   def testSymbolicHigherOrder(self):

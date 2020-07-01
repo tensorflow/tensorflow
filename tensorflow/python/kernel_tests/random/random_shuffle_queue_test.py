@@ -55,9 +55,9 @@ class RandomShuffleQueueTest(test.TestCase):
     with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
-      self.assertAllEqual(0, q.size().eval())
+      self.assertAllEqual(0, q.size())
       enqueue_op.run()
-      self.assertAllEqual(1, q.size().eval())
+      self.assertAllEqual(1, q.size())
 
   def testEnqueueWithShape(self):
     with self.cached_session():
@@ -65,7 +65,7 @@ class RandomShuffleQueueTest(test.TestCase):
           10, 5, dtypes_lib.float32, shapes=tensor_shape.TensorShape([3, 2]))
       enqueue_correct_op = q.enqueue(([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],))
       enqueue_correct_op.run()
-      self.assertAllEqual(1, q.size().eval())
+      self.assertAllEqual(1, q.size())
       with self.assertRaises(ValueError):
         q.enqueue(([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],))
 
@@ -74,7 +74,7 @@ class RandomShuffleQueueTest(test.TestCase):
       q = data_flow_ops.RandomShuffleQueue(
           10, 5, [dtypes_lib.int32, dtypes_lib.int32], shapes=[(), (2,)])
       q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
-      self.assertAllEqual(4, q.size().eval())
+      self.assertAllEqual(4, q.size())
 
       q2 = data_flow_ops.RandomShuffleQueue(
           10, 5, dtypes_lib.int32, shapes=tensor_shape.TensorShape([3]))

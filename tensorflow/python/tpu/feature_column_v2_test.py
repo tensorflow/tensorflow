@@ -167,8 +167,8 @@ class EmbeddingColumnTestV2(test.TestCase, parameterized.TestCase):
          'sequence_features/bbb_embedding/embedding_weights:0',),
         tuple([v.name for v in global_vars]))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
-      self.assertAllEqual(expected_lookups, embedding_lookup.eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
+      self.assertAllEqual(expected_lookups, embedding_lookup)
       self.assertAllEqual(expected_lookups_sequence,
                           sequence_embedding_lookup[0].eval())
       # The graph will still have SparseFillEmptyRows due to sequence being
@@ -341,8 +341,8 @@ class SharedEmbeddingColumnTestV2(test.TestCase, parameterized.TestCase):
         tuple([v.name for v in global_vars]))
     embedding_var = global_vars[0]
     with _initialized_session():
-      self.assertAllEqual(embedding_values, embedding_var.eval())
-      self.assertAllEqual(expected_lookups_a, embedding_lookup_a.eval())
+      self.assertAllEqual(embedding_values, embedding_var)
+      self.assertAllEqual(expected_lookups_a, embedding_lookup_a)
       self.assertAllEqual(expected_lookups_b,
                           embedding_lookup_b[0].eval())
       # The graph will still have SparseFillEmptyRows due to sequence being
@@ -556,7 +556,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
 
       embedding_var = global_vars[0]
       with _initialized_session():
-        self.assertAllEqual(embedding_values, embedding_var.eval())
+        self.assertAllEqual(embedding_values, embedding_var)
         eval_res = embedding_lookup.eval()
         self.assertAllEqual(expected_lookups, eval_res)
       context.Exit()
@@ -624,7 +624,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
 
       embedding_var = global_vars[0]
       with _initialized_session():
-        self.assertAllEqual(embedding_values, embedding_var.eval())
+        self.assertAllEqual(embedding_values, embedding_var)
         eval_res = embedding_lookup.eval()
         self.assertAllEqual(expected_lookups, eval_res)
       context.Exit()

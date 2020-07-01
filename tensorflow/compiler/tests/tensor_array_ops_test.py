@@ -508,7 +508,7 @@ class TensorArrayTest(xla_test.XLATestCase):
         return w2_grad.read(2)
 
       # Assert that aggregation works correctly
-      self.assertAllEqual(c(12.00), xla.compile(fn)[0].eval())
+      self.assertAllEqual(c(12.00), xla.compile(fn)[0])
 
       def fn():
         ta = tensor_array_ops.TensorArray(

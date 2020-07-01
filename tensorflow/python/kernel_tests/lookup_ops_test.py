@@ -1443,14 +1443,14 @@ class DenseHashTableOpTest(test.TestCase):
 
       save = saver.Saver()
 
-      self.assertAllEqual(0, table.size().eval())
+      self.assertAllEqual(0, table.size())
       table.insert(keys, values).run()
-      self.assertAllEqual(4, table.size().eval())
+      self.assertAllEqual(4, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       keys2 = constant_op.constant([12, 15], dtypes.int64)
       table.remove(keys2).run()
-      self.assertAllEqual(3, table.size().eval())
+      self.assertAllEqual(3, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       val = save.save(sess, save_path)
@@ -1470,7 +1470,7 @@ class DenseHashTableOpTest(test.TestCase):
       table.insert(
           constant_op.constant([11, 14], dtypes.int64),
           constant_op.constant([12, 24], dtypes.int64)).run()
-      self.assertAllEqual(2, table.size().eval())
+      self.assertAllEqual(2, table.size())
       self.assertAllEqual(64, len(table.export()[0].eval()))
 
       save = saver.Saver()
@@ -1478,12 +1478,12 @@ class DenseHashTableOpTest(test.TestCase):
       # Restore the saved values in the parameter nodes.
       save.restore(sess, save_path)
 
-      self.assertAllEqual(3, table.size().eval())
+      self.assertAllEqual(3, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       input_string = constant_op.constant([10, 11, 12, 13, 14], dtypes.int64)
       output = table.lookup(input_string)
-      self.assertAllEqual([-1, 0, -1, 2, 3], output.eval())
+      self.assertAllEqual([-1, 0, -1, 2, 3], output)
 
   @test_util.run_v1_only("Saver V1 only")
   def testSaveRestoreOnlyTable(self):
@@ -1508,14 +1508,14 @@ class DenseHashTableOpTest(test.TestCase):
 
       save = saver.Saver([table])
 
-      self.assertAllEqual(0, table.size().eval())
+      self.assertAllEqual(0, table.size())
       table.insert(keys, values).run()
-      self.assertAllEqual(4, table.size().eval())
+      self.assertAllEqual(4, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       keys2 = constant_op.constant([12, 15], dtypes.int64)
       table.remove(keys2).run()
-      self.assertAllEqual(3, table.size().eval())
+      self.assertAllEqual(3, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       val = save.save(sess, save_path)
@@ -1535,7 +1535,7 @@ class DenseHashTableOpTest(test.TestCase):
       table.insert(
           constant_op.constant([11, 14], dtypes.int64),
           constant_op.constant([12, 24], dtypes.int64)).run()
-      self.assertAllEqual(2, table.size().eval())
+      self.assertAllEqual(2, table.size())
       self.assertAllEqual(64, len(table.export()[0].eval()))
 
       save = saver.Saver([table])
@@ -1543,12 +1543,12 @@ class DenseHashTableOpTest(test.TestCase):
       # Restore the saved values in the parameter nodes.
       save.restore(sess, save_path)
 
-      self.assertAllEqual(3, table.size().eval())
+      self.assertAllEqual(3, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       input_string = constant_op.constant([10, 11, 12, 13, 14], dtypes.int64)
       output = table.lookup(input_string)
-      self.assertAllEqual([-1, 0, -1, 2, 3], output.eval())
+      self.assertAllEqual([-1, 0, -1, 2, 3], output)
 
   @test_util.run_in_graph_and_eager_modes
   def testObjectSaveRestore(self):
@@ -1633,14 +1633,14 @@ class DenseHashTableOpTest(test.TestCase):
 
       save = saver.Saver()
 
-      self.assertAllEqual(0, table.size().eval())
+      self.assertAllEqual(0, table.size())
       table.insert(keys, values).run()
-      self.assertAllEqual(4, table.size().eval())
+      self.assertAllEqual(4, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       keys2 = constant_op.constant([[12, 13], [16, 17]], dtypes.int64)
       table.remove(keys2).run()
-      self.assertAllEqual(3, table.size().eval())
+      self.assertAllEqual(3, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       val = save.save(sess, save_path)
@@ -1663,7 +1663,7 @@ class DenseHashTableOpTest(test.TestCase):
       table.insert(
           constant_op.constant([[11, 12], [13, 15]], dtypes.int64),
           constant_op.constant([[21, 22], [23, 24]], dtypes.int64)).run()
-      self.assertAllEqual(2, table.size().eval())
+      self.assertAllEqual(2, table.size())
       self.assertAllEqual(64, len(table.export()[0].eval()))
 
       save = saver.Saver()
@@ -1671,7 +1671,7 @@ class DenseHashTableOpTest(test.TestCase):
       # Restore the saved values in the parameter nodes.
       save.restore(sess, save_path)
 
-      self.assertAllEqual(3, table.size().eval())
+      self.assertAllEqual(3, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       input_string = constant_op.constant(
@@ -1704,14 +1704,14 @@ class DenseHashTableOpTest(test.TestCase):
 
       save = saver.Saver()
 
-      self.assertAllEqual(0, table.size().eval())
+      self.assertAllEqual(0, table.size())
       table.insert(keys, values).run()
-      self.assertAllEqual(4, table.size().eval())
+      self.assertAllEqual(4, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       keys2 = constant_op.constant([[12, 13], [15, 16]], dtypes.int64)
       table.remove(keys2).run()
-      self.assertAllEqual(3, table.size().eval())
+      self.assertAllEqual(3, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       val = save.save(sess, save_path)
@@ -1734,7 +1734,7 @@ class DenseHashTableOpTest(test.TestCase):
       table.insert(
           constant_op.constant([[11, 12], [13, 15]], dtypes.int64),
           constant_op.constant([3, 4], dtypes.int64)).run()
-      self.assertAllEqual(2, table.size().eval())
+      self.assertAllEqual(2, table.size())
       self.assertAllEqual(64, len(table.export()[0].eval()))
 
       save = saver.Saver()
@@ -1742,13 +1742,13 @@ class DenseHashTableOpTest(test.TestCase):
       # Restore the saved values in the parameter nodes.
       save.restore(sess, save_path)
 
-      self.assertAllEqual(3, table.size().eval())
+      self.assertAllEqual(3, table.size())
       self.assertAllEqual(32, len(table.export()[0].eval()))
 
       input_string = constant_op.constant(
           [[11, 12], [11, 14], [11, 15], [13, 14], [13, 15]], dtypes.int64)
       output = table.lookup(input_string)
-      self.assertAllEqual([0, 1, -1, 3, -1], output.eval())
+      self.assertAllEqual([0, 1, -1, 3, -1], output)
 
   def testReprobe(self):
     with self.cached_session():
@@ -3006,22 +3006,22 @@ class MutableHashTableOpTest(test.TestCase):
 
     # Populate the table in the first session
     with session1:
-      self.assertAllEqual(0, table.size().eval())
+      self.assertAllEqual(0, table.size())
 
       keys = constant_op.constant([11, 12], dtypes.int64)
       values = constant_op.constant(["a", "b"])
       table.insert(keys, values).run()
-      self.assertAllEqual(2, table.size().eval())
+      self.assertAllEqual(2, table.size())
 
       output = table.lookup(constant_op.constant([11, 12, 13], dtypes.int64))
-      self.assertAllEqual([b"a", b"b", b"-"], output.eval())
+      self.assertAllEqual([b"a", b"b", b"-"], output)
 
     # Verify that we can access the shared data from the second session
     with session2:
-      self.assertAllEqual(2, table.size().eval())
+      self.assertAllEqual(2, table.size())
 
       output = table.lookup(constant_op.constant([10, 11, 12], dtypes.int64))
-      self.assertAllEqual([b"-", b"a", b"b"], output.eval())
+      self.assertAllEqual([b"-", b"a", b"b"], output)
 
   def testMutableHashTableOfTensors(self):
     with self.cached_session():

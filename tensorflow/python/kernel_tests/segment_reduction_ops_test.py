@@ -464,7 +464,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
           data = np.zeros((2, 0), dtype=dtype)
           segment_ids = np.array([0, 1], dtype=itype)
           unsorted = math_ops.unsorted_segment_sum(data, segment_ids, 2)
-          self.assertAllEqual(unsorted.eval(), np.zeros((2, 0), dtype=dtype))
+          self.assertAllEqual(unsorted, np.zeros((2, 0), dtype=dtype))
 
   def testDropNegatives(self):
     # Note: the test is done by replacing segment_ids with 8 to -1

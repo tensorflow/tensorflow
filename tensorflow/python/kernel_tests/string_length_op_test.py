@@ -60,7 +60,7 @@ class StringLengthOpTest(test.TestCase):
     strings = [[["1", "12"], ["123", "1234"], ["12345", "123456"]]]
     lengths = string_ops.string_length(strings, "some_name")
     with self.session():
-      self.assertAllEqual(lengths.eval(), [[[1, 2], [3, 4], [5, 6]]])
+      self.assertAllEqual(lengths, [[[1, 2], [3, 4], [5, 6]]])
 
 
 if __name__ == "__main__":

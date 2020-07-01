@@ -430,11 +430,11 @@ class ZerosTest(test.TestCase):
       z = array_ops.zeros([2, 3])
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.zeros([2, 3]))
+      self.assertAllEqual(z, np.zeros([2, 3]))
       z = array_ops.zeros(array_ops.shape(d))
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.zeros([2, 3]))
+      self.assertAllEqual(z, np.zeros([2, 3]))
       # Test explicit type control
       for dtype in [
           dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
@@ -610,11 +610,11 @@ class OnesTest(test.TestCase):
       z = array_ops.ones([2, 3])
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.ones([2, 3]))
+      self.assertAllEqual(z, np.ones([2, 3]))
       z = array_ops.ones(array_ops.shape(d))
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.ones([2, 3]))
+      self.assertAllEqual(z, np.ones([2, 3]))
       # Test explicit type control
       for dtype in (dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
                     dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8,
@@ -623,11 +623,11 @@ class OnesTest(test.TestCase):
         z = array_ops.ones([2, 3], dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
-        self.assertAllEqual(z.eval(), np.ones([2, 3]))
+        self.assertAllEqual(z, np.ones([2, 3]))
         z = array_ops.ones(array_ops.shape(d), dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
-        self.assertAllEqual(z.eval(), np.ones([2, 3]))
+        self.assertAllEqual(z, np.ones([2, 3]))
 
 
 class OnesLikeTest(test.TestCase):

@@ -322,7 +322,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
                                       self._observer)
 
     with wrapper as sess:
-      self.assertAllClose([[3.0], [4.0]], self._s.eval())
+      self.assertAllClose([[3.0], [4.0]], self._s)
       self.assertEqual(1, self._observer["on_run_start_count"])
       self.assertEqual(self._s, self._observer["run_fetches"])
       self.assertEqual(1, self._observer["on_run_end_count"])
