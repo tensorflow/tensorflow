@@ -270,7 +270,7 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
 }
 
 TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype, 
-                     int64_t* dims, int num_dims, TF_Status* status){
+													 int64_t* dims, int num_dims, TF_Status* status){
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   TF_SetStatus(status, TF_OK, ""); 
   tensorflow::TensorShape shape;
@@ -280,7 +280,8 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
   tensorflow::Status s;
   tensorflow::Tensor tensor_temp;  
   TF_Tensor* tf_tensor_temp; 
-  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape, &tensor_temp);
+  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape, 
+  		&tensor_temp);
   if (s.ok()){ 
     tf_tensor_temp = TF_TensorFromTensor(tensor_temp, &s); 
   }
