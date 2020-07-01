@@ -9,7 +9,7 @@ Original file is located at
 # Get started with CNNs
 (Author: [Rishit Dagli](https://www.rishit.tech))
 
-In this tutorial you will se how you can create a simple CNN to create an image cllassification algorithm with the [Fashion MNIST](https://www.tensorflow.org/datasets/catalog/fashion_mnist) Dataset. We will be using Keras, a high level abstraction so you can very easily get started on making your first CNN.
+In this tutorial you will see how you can create a simple [CNN](https://en.wikipedia.org/wiki/Convolutional_neural_network) to create an image classification algorithm with the [Fashion MNIST](https://www.tensorflow.org/datasets/catalog/fashion_mnist) Dataset. We will be using Keras, a high level abstraction so you can very easily get started on making your first CNN.
 
 ## What is a CNN?
 
