@@ -28,20 +28,20 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Dialect/Traits.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"        // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"    // from @llvm-project
+#include "mlir/Dialect/Traits.h"                // from @llvm-project
+#include "mlir/IR/Attributes.h"                 // from @llvm-project
+#include "mlir/IR/Diagnostics.h"                // from @llvm-project
+#include "mlir/IR/MLIRContext.h"                // from @llvm-project
+#include "mlir/IR/Matchers.h"                   // from @llvm-project
+#include "mlir/IR/Module.h"                     // from @llvm-project
+#include "mlir/IR/Operation.h"                  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"               // from @llvm-project
+#include "mlir/IR/StandardTypes.h"              // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"              // from @llvm-project
+#include "mlir/IR/Types.h"                      // from @llvm-project
+#include "mlir/Pass/Pass.h"                     // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
@@ -897,7 +897,7 @@ static DenseElementsAttr GetEpsilonValue(Type ty) {
     auto value = APFloat(APFloat::IEEEhalf(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isBF16()) {
-    uint16_t raw_epsilon = tensorflow::bfloat16::epsilon().value;
+    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::bfloat16>::epsilon().value;
     auto value = APFloat(APFloat::BFloat(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isF32()) {
