@@ -268,7 +268,7 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
 }
 
 TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype, 
-                     int64_t* dims, int num_dims, TF_Status* status){
+    int64_t* dims, int num_dims, TF_Status* status){
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   TF_SetStatus(status, TF_OK, ""); 
   tensorflow::TensorShape shape;
