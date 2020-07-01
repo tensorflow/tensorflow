@@ -43,6 +43,8 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
+_CHECK_EQUAL_INPUT_OUTPUT_DTYPES_FLAGGED = set()
+
 ops.NotDifferentiable('RandomCrop')
 # TODO(b/31222613): This op may be differentiable, and there may be
 # latent bugs here.
@@ -1205,42 +1207,49 @@ class ResizeMethod(object):
 
 
 def _check_equal_input_output_dtypes(func):
-  """This decorator issue will issue a warning if the input dtype and output
-  dtype are different. Help to prevent silent dtype conversion from integer to
-  floating point format."""
+  """This decorator issue will issue a warning if the first input dtype and
+  output dtype are different. Help to prevent silent dtype conversion from
+  integer to floating point format."""
 
   def wrapper(*args, **kwargs):
-    try:
-      check_dtype = _check_equal_input_output_dtypes._fns_flagged[func.__name__]
-    except KeyError:
-      _check_equal_input_output_dtypes._fns_flagged[func.__name__] = True
-      check_dtype = True
+    if func.__name__ in _CHECK_EQUAL_INPUT_OUTPUT_DTYPES_FLAGGED:
+      return func(*args, **kwargs)
 
-    if check_dtype:
-        if args:
-            input_dtype = args[0].dtype
-        else:
-            input_dtype = kwargs["images"].dtype
+    if args:
+        input_dtype = args[0].dtype
+    else:
+        input_dtype = kwargs["images"].dtype
 
     output = func(*args, **kwargs)
 
-    if check_dtype and (input_dtype != output.dtype):
-        _check_equal_input_output_dtypes._fns_flagged[func.__name__] = False
+    if input_dtype != output.dtype:
+        _CHECK_EQUAL_INPUT_OUTPUT_DTYPES_FLAGGED.add(func.__name__)
+
+        def get_calling_context():
+          from inspect import getframeinfo, stack
+          tensorflow_path = __file__.split("tensorflow")[0] + "tensorflow"
+          for idx in range(len(stack())):
+            caller = getframeinfo(stack()[idx][0])
+            if tensorflow_path in caller.filename:
+              continue
+            return caller.filename, caller.lineno
+
+        user_file, user_line = get_calling_context()
+
         logging.warning(
-          "The operation `{func_name}` has silently converted the "
-          "data type from `{input_dtype}` to `{output_dtype}`. "
-          "This might have an adverse effect on data numerical "
-          "range.".format(
+          "The operation `{func_name}` called by `{file}:L{line}` has silently "
+          "converted the data type from `{input_dtype}` to `{output_dtype}`.\n"
+          "This might have changed the image format in ways that make it "
+          "incompatible with other tf.image functions.".format(
               func_name=func.__name__,
+              file=user_file,
+              line=user_line,
               input_dtype=input_dtype,
               output_dtype=output.dtype
           ))
     return output
 
   return wrapper
-
-
-_check_equal_input_output_dtypes._fns_flagged = dict()
 
 
 @_check_equal_input_output_dtypes
