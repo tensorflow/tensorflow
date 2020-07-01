@@ -362,6 +362,24 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllClose(5., self.evaluate(run_assign()))
 
   @combinations.generate(maybe_distribute)
+  def test_tf_function_control_dependencies(self, distribution):
+    if not context.executing_eagerly():
+      self.skipTest('Test is not compatible with graph mode')
+
+    with distribution.scope():
+      x = get_var(0., dtypes.float32)
+      x = autocast_variable.create_autocast_variable(x)
+
+      @def_function.function
+      def func():
+        update = x.assign_add(1.)
+        with ops.control_dependencies([update]):
+          x.assign_add(1.)
+
+      func()
+      self.assertAllClose(2., self.evaluate(x))
+
+  @combinations.generate(maybe_distribute)
   def test_assign_stays_in_true_dtype(self, distribution):
     with distribution.scope():
       x = get_var(1., dtypes.float32)
