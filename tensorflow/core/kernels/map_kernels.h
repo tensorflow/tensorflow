@@ -36,7 +36,7 @@ class EmptyTensorMap : public OpKernel {
     Tensor* result;
     AllocatorAttributes attr;
     attr.set_on_host(true);
-    g(ctx, ctx->allocate_output(0, TensorShape{}, &result, attr));
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &result, attr));
     TensorMap empty;
     empty.element_dtype = element_dtype_;
     empty.max_num_elements = max_num_elements_t.scalar<int32>()();
