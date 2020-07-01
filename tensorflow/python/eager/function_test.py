@@ -4018,7 +4018,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
-    trace_count = [0]
     enabled(1, 3, x=4.0, y="str")
     enabled(2, 4, x=4.0, y="str") # Retrace
     self.assertEqual(trace_count[0], 2)
@@ -4045,7 +4044,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
-    trace_count = [0]
     enabled(1, 20, 3, 4, 5, 6)
     enabled(1, 20, 3, 4, 5, 60) # No retrace - change in *args
     enabled(1, 30, 7, 8, 9, 10) # Retrace - change in args
@@ -4059,7 +4057,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
-    trace_count = [0]
     enabled(1, 2, 3, 4, 5, 6, a=1.0, b=2.0, c=3.0)
     enabled(1, 2, 3, 4, 5, 6, a=1.5, b=2.5, c=3.5) # No retrace - change in **kwargs
     enabled(100, 2, 3, 4, 5, 6, a=1.0, b=2.0, c=3.0) # Retrace - change in args
