@@ -39,7 +39,7 @@ StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
 
 // Creates a compare HLO instruction and adds it to the computation containing
 // `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
-StatusOr<HloInstruction*> MakeCompareHlo(ComparisonDirection direction,
+StatusOr<HloInstruction*> MakeCompareHlo(Comparison::Direction direction,
                                          HloInstruction* lhs,
                                          HloInstruction* rhs);
 
@@ -275,6 +275,11 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
 HloInstruction* BroadcastZeros(HloComputation* computation,
                                PrimitiveType element_type,
                                absl::Span<const int64> broadcast_dimensions);
+
+// Same as above, but fill the tensor with ones.
+HloInstruction* BroadcastOnes(HloComputation* computation,
+                              PrimitiveType element_type,
+                              absl::Span<const int64> broadcast_dimensions);
 
 // Creates a HLO computation that takes arguments of type `domain` and produces
 // a value of type `range`.

@@ -453,7 +453,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       for _ in range(10):
         yield [20]
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"Cannot convert value \[tf.int64\] to a TensorFlow DType"):
       dataset_ops.Dataset.from_generator(
           generator, output_types=[dtypes.int64])
@@ -465,8 +465,8 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       for _ in range(10):
         yield [20]
 
-    with self.assertRaisesRegexp(
-        TypeError, r"Failed to convert '\[\[1\]\]' to a shape"):
+    with self.assertRaisesRegex(TypeError,
+                                r"Dimension value must be integer or None"):
       dataset_ops.Dataset.from_generator(
           generator, output_types=(dtypes.int64), output_shapes=[[1]])
 

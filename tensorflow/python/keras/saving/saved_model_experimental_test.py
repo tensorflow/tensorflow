@@ -496,12 +496,12 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
   def testSaveSequentialModelWithoutInputShapes(self):
     model = sequential_model_without_input_shape(True)
     # A Sequential model that hasn't been built should raise an error.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Weights for sequential model have not yet been created'):
       keras_saved_model.export_saved_model(model, '')
 
     # Even with input_signature, the model's weights has not been created.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Weights for sequential model have not yet been created'):
       saved_model_dir = self._save_model_dir()
       keras_saved_model.export_saved_model(

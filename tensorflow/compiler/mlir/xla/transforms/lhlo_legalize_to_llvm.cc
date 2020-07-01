@@ -35,7 +35,7 @@ struct StaticMemRefCastOpConverter
     auto loc = op->getLoc();
     auto cast_op = cast<StaticMemRefCastOp>(op);
 
-    StaticMemRefCastOp::OperandAdaptor operands_adaptor(operands);
+    StaticMemRefCastOp::Adaptor operands_adaptor(operands);
     MemRefDescriptor sourceMemRef(operands_adaptor.operand());
 
     MemRefType targetMemRefType =
@@ -86,7 +86,7 @@ struct DynamicMemRefCastOpConverter
     auto loc = op->getLoc();
     auto cast_op = cast<DynamicMemRefCastOp>(op);
 
-    DynamicMemRefCastOp::OperandAdaptor operands_adaptor(operands);
+    DynamicMemRefCastOp::Adaptor operands_adaptor(operands);
     MemRefDescriptor sourceMemRef(operands_adaptor.operand());
 
     MemRefType targetMemRefType =
@@ -126,10 +126,11 @@ struct DynamicMemRefCastOpConverter
 
 }  // namespace
 
-void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
+void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
+                                          LLVMTypeConverter *converter,
                                           OwningRewritePatternList *patterns) {
   patterns->insert<DynamicMemRefCastOpConverter, StaticMemRefCastOpConverter>(
-      *converter);
+      *converter, options);
 }
 
 }  // namespace xla_lhlo

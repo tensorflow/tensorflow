@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
@@ -88,6 +89,9 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::AddNOp>(),
     TypeID::get<TF::AddV2Op>(),
     TypeID::get<TF::AngleOp>(),
+    TypeID::get<TF::AdjustContrastv2Op>(),
+    TypeID::get<TF::AdjustHueOp>(),
+    TypeID::get<TF::AdjustSaturationOp>(),
     TypeID::get<TF::ApproximateEqualOp>(),
     TypeID::get<TF::ArgMaxOp>(),
     TypeID::get<TF::ArgMinOp>(),
@@ -127,6 +131,7 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GreaterEqualOp>(),
     TypeID::get<TF::GreaterOp>(),
+    TypeID::get<TF::HSVToRGBOp>(),
     TypeID::get<TF::IFFT2DOp>(),
     TypeID::get<TF::IFFT3DOp>(),
     TypeID::get<TF::IFFTOp>(),
@@ -157,10 +162,14 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::PowOp>(),
     TypeID::get<TF::RFFT2DOp>(),
     TypeID::get<TF::RFFT3DOp>(),
+    TypeID::get<TF::RGBToHSVOp>(),
     TypeID::get<TF::RealDivOp>(),
     TypeID::get<TF::ReciprocalOp>(),
     TypeID::get<TF::ReciprocalGradOp>(),
     TypeID::get<TF::Relu6GradOp>(),
+    TypeID::get<TF::ResizeBilinearOp>(),
+    TypeID::get<TF::ResizeBilinearGradOp>(),
+    TypeID::get<TF::ResizeNearestNeighborOp>(),
     TypeID::get<TF::ReverseSequenceOp>(),
     TypeID::get<TF::RightShiftOp>(),
     TypeID::get<TF::RintOp>(),
@@ -312,13 +321,14 @@ LogicalResult FuncLegalizer::PrepareParams() {
 }
 
 LogicalResult FuncLegalizer::Legalize() {
+  if (func_.empty()) return success();
+
   // TensorFlow functions don't use CFGs.
-  if (func_.getBlocks().size() > 1) {
+  if (!llvm::hasSingleElement(func_)) {
     emitError(func_.getLoc()) << "requires at most one block in a TF function";
     return failure();
   }
-  if (func_.getBlocks().empty()) return success();
-  Block& block = func_.getBlocks().front();
+  Block& block = func_.front();
 
   std::vector<Operation*> ops;
   ops.reserve(block.getOperations().size());
@@ -337,9 +347,9 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
 
   // Only static shaped operands are supported in XLA builders for now.
   for (Type ty : op->getOperandTypes()) {
-    auto ranked_ty = ty.cast<ShapedType>();
-    if (!ranked_ty.hasStaticShape()) {
-      op->emitRemark() << "lowering requires static shaped operands";
+    auto ranked_ty = ty.dyn_cast<ShapedType>();
+    if (!ranked_ty || !ranked_ty.hasStaticShape()) {
+      op->emitRemark() << "lowering requires static shaped tensor operands";
       return success();
     }
   }

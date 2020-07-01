@@ -468,6 +468,7 @@ class DatasetInitializer(TableInitializerBase):
     _check_table_dtypes(table, self._key_dtype, self._value_dtype)
     init_op = gen_lookup_ops.initialize_table_from_dataset(
         table.resource_handle, self.dataset._variant_tensor)  # pylint: disable=protected-access
+    ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
 
@@ -1870,25 +1871,27 @@ class MutableHashTable(LookupInterface):
     return {
         "table":
             functools.partial(
-                MutableHashTable._Saveable, table=self, name=self._name)
+                MutableHashTable._Saveable, table=self, name=self._name,
+                table_name=self._name)
     }
 
   class _Saveable(BaseSaverBuilder.SaveableObject):
-    """SaveableObject implementation for MutableHashTable."""
+    """SaveableObject implementation for DenseHashTable."""
 
-    def __init__(self, table, name):
+    def __init__(self, table, name, table_name=None):
       tensors = table.export()
       specs = [
           BaseSaverBuilder.SaveSpec(tensors[0], "", name + "-keys"),
           BaseSaverBuilder.SaveSpec(tensors[1], "", name + "-values")
       ]
+      self.table_name = table_name or name
       # pylint: disable=protected-access
       super(MutableHashTable._Saveable, self).__init__(table, specs, name)
 
-    def restore(self, restored_tensors, restored_shapes, name=None):
+    def restore(self, restored_tensors, restored_shapes):
       del restored_shapes  # unused
       # pylint: disable=protected-access
-      with ops.name_scope(name, "%s_table_restore" % self.name):
+      with ops.name_scope("%s_table_restore" % self.table_name):
         with ops.colocate_with(self.op.resource_handle):
           return gen_lookup_ops.lookup_table_import_v2(self.op.resource_handle,
                                                        restored_tensors[0],
@@ -2166,25 +2169,27 @@ class DenseHashTable(LookupInterface):
     return {
         "table":
             functools.partial(
-                DenseHashTable._Saveable, table=self, name=self._name)
+                DenseHashTable._Saveable, table=self, name=self._name,
+                table_name=self._name)
     }
 
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""
 
-    def __init__(self, table, name):
+    def __init__(self, table, name, table_name=None):
       tensors = table.export()
       specs = [
           BaseSaverBuilder.SaveSpec(tensors[0], "", name + "-keys"),
           BaseSaverBuilder.SaveSpec(tensors[1], "", name + "-values")
       ]
+      self.table_name = table_name or name
       # pylint: disable=protected-access
       super(DenseHashTable._Saveable, self).__init__(table, specs, name)
 
-    def restore(self, restored_tensors, restored_shapes, name=None):
+    def restore(self, restored_tensors, restored_shapes):
       del restored_shapes  # unused
       # pylint: disable=protected-access
-      with ops.name_scope(name, "%s_table_restore" % self.name):
+      with ops.name_scope("%s_table_restore" % self.table_name):
         with ops.colocate_with(self.op.resource_handle):
           return gen_lookup_ops.lookup_table_import_v2(self.op.resource_handle,
                                                        restored_tensors[0],

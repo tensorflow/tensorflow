@@ -40,7 +40,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
 from tensorflow.python.eager import monitoring
-from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -286,16 +285,34 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       module.Module._TF_MODULE_IGNORED_PROPERTIES
   ))
 
+  # When loading from a SavedModel, Layers typically can be revived into a
+  # generic Layer wrapper. Sometimes, however, layers may implement methods
+  # that go beyond this wrapper, as in the case of PreprocessingLayers'
+  # `adapt` method. When this is the case, layer implementers can override
+  # must_restore_from_config to return True; layers with this property must
+  # be restored into their actual objects (and will fail if the object is
+  # not available to the restoration code).
+  _must_restore_from_config = False
+
   @trackable.no_automatic_dependency_tracking
-  def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
+  def __init__(self,
+               trainable=True,
+               name=None,
+               dtype=None,
+               dynamic=False,
                **kwargs):
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
     # to non-input layers.
     allowed_kwargs = {
-        'input_dim', 'input_shape', 'batch_input_shape', 'batch_size',
-        'weights', 'activity_regularizer', 'autocast'
+        'input_dim',
+        'input_shape',
+        'batch_input_shape',
+        'batch_size',
+        'weights',
+        'activity_regularizer',
+        'autocast',
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -637,7 +654,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         Python dictionary.
     """
     all_args = tf_inspect.getfullargspec(self.__init__).args
-    config = {'name': self.name, 'trainable': self.trainable}
+    config = {
+        'name': self.name,
+        'trainable': self.trainable,
+    }
     if hasattr(self, '_batch_input_shape'):
       config['batch_input_shape'] = self._batch_input_shape
     config['dtype'] = policy.serialize(self._dtype_policy)
@@ -820,8 +840,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         self._handle_activity_regularization(inputs, outputs)
       self._set_mask_metadata(inputs, outputs, input_masks,
                               build_graph=False)
+      outputs = nest.map_structure(
+          keras_tensor.keras_tensor_from_tensor, outputs)
 
-    outputs = nest.map_structure(keras_tensor.keras_tensor_from_tensor, outputs)
     if hasattr(self, '_set_inputs') and not self.inputs:
       # TODO(kaftan): figure out if we ned to do this at all
       # Subclassed network: explicitly set metadata normally set by
@@ -923,10 +944,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       kwargs['mask'] = input_masks
 
     # Training mode for `Layer.call` is set via (in order of priority):
-    # (1) The `training` argument passed to this `Layer.call`.
+    # (1) The `training` argument passed to this `Layer.call`, if it is not None
     # (2) The training mode of an outer `Layer.call`.
-    # (3) The default mode set by `tf.keras.backed.set_learning_phase` (if set).
-    training_mode = self._set_training_mode(args, kwargs, call_context)
+    # (3) The default mode set by `tf.keras.backend.set_learning_phase` (if set)
+    # (4) Any non-None default value for `training` specified in the call
+    #  signature
+    # (5) False (treating the layer as if it's in inference)
+    args, kwargs, training_mode = self._set_training_mode(
+        args, kwargs, call_context)
 
     # Losses are cleared for all sublayers on the outermost `Layer.call`.
     # Losses are not cleared on inner `Layer.call`s, because sublayers can be
@@ -1000,7 +1025,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # propagate `training` value from this layer's calling layer.
     training_value = None
     training_arg_passed_by_framework = False
-    # Priority 1: `training` was explicitly passed.
+    # Priority 1: `training` was explicitly passed a non-None value.
     if self._call_arg_was_passed('training', args, kwargs):
       training_value = self._get_call_arg_value('training', args, kwargs)
       if not self._expects_training_arg:
@@ -1010,17 +1035,23 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # Priority 2: `training` was passed to a parent layer.
       if call_context.training is not None:
         training_value = call_context.training
-      # Priority 3a: `learning_phase()` has been set.
+      # Priority 3: `learning_phase()` has been set.
       elif backend.global_learning_phase_is_set():
         training_value = backend.learning_phase()
-
-      if self._expects_training_arg and training_value is not None:
         # Force the training_value to be bool type which matches to the contract
         # for layer/model call args.
         if tensor_util.is_tensor(training_value):
           training_value = math_ops.cast(training_value, dtypes.bool)
         else:
           training_value = bool(training_value)
+      # Priority 4: trace layer with the default training argument specified
+      # in the `call` signature (or in inference mode if the `call` signature
+      # specifies no non-None default).
+      else:
+        training_value = self._default_training_arg
+      # In cases (2), (3), (4) the training argument is passed automatically
+      # by the framework, and will not be hard-coded into the model.
+      if self._expects_training_arg:
         args, kwargs = self._set_call_arg_value('training', training_value,
                                                 args, kwargs)
         training_arg_passed_by_framework = True
@@ -1084,17 +1115,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
           try:
             with ops.enable_auto_cast_variables(self._compute_dtype_object):
-              # Add auto_control_deps in V2 when they are not already added by
-              # a `tf.function`.
-              if (ops.executing_eagerly_outside_functions() and
-                  not base_layer_utils.is_in_eager_or_tf_function()):
-                with auto_control_deps.AutomaticControlDependencies() as acd:
-                  outputs = call_fn(cast_inputs, *args, **kwargs)
-                  # Wrap Tensors in `outputs` in `tf.identity` to avoid
-                  # circular dependencies.
-                  outputs = base_layer_utils.mark_as_return(outputs, acd)
-              else:
-                outputs = call_fn(cast_inputs, *args, **kwargs)
+              outputs = call_fn(cast_inputs, *args, **kwargs)
 
           except errors.OperatorNotAllowedInGraphError as e:
             raise TypeError('You are attempting to use Python control '
@@ -1140,6 +1161,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # (1) `training` was passed to this `Layer.call`.
       if self._call_arg_was_passed('training', args, kwargs):
         training_mode = self._get_call_arg_value('training', args, kwargs)
+      # If no `training` arg was passed, or `None` was explicitly passed,
+      # the framework will make a decision about the training mode is.
       if training_mode is None:
         call_ctx_training = call_context.training
         # (2) `training` mode is inferred from an outer `Layer.call`.
@@ -1155,10 +1178,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             training_mode = math_ops.cast(training_mode, dtypes.bool)
           else:
             training_mode = bool(training_mode)
+        # (4) We default to using `call`'s default value for `training`,
+        # or treating the layer as if it is in inference if no non-None default
+        # is specified in the `call` signature.
+        else:
+          training_mode = self._default_training_arg
 
-        # For case (2) or (3), `training` arg is passed by framework.
-        if training_mode is not None:
-          kwargs['training'] = training_mode
+        # For case (2), (3), (4) `training` arg is passed by framework.
+        args, kwargs = self._set_call_arg_value('training', training_mode, args,
+                                                kwargs)
     else:
       if 'training' in kwargs:
         # `training` was passed to this `Layer` but is not needed for
@@ -1168,7 +1196,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         # Grab the current `training` mode from any outer `Layer.call`.
         training_mode = call_context.training
 
-    return training_mode
+    return args, kwargs, training_mode
 
   def _autographed_call(self):
     # Wrapping `call` function in autograph to allow for dynamic control
@@ -1712,54 +1740,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       inputs: Deprecated, will be automatically inferred.
     """
     call_context = base_layer_utils.call_context()
-
-    if (ds_context.has_strategy() and
-        ds_context.in_cross_replica_context() and
-        # When saving the model, the distribution strategy context should be
-        # ignored, following the default path for adding updates.
-        not call_context.saving):
-      # Updates don't need to be run in a cross-replica context.
+    # No need to run updates during Functional API construction.
+    if call_context.in_keras_graph:
       return
 
-    updates = generic_utils.to_list(updates)
-
-    # All updates can be run immediately in Eager or in a tf.function.
-    if base_layer_utils.is_in_eager_or_tf_function():
-      if not call_context.frozen:
-        for update in updates:
-          if callable(update):
-            update()
-      return
-
-    def process_update(x):
-      """Standardize update ops.
-
-      Arguments:
-        x: Tensor, op, or callable.
-
-      Returns:
-        An update op.
-      """
-      if callable(x):
-        update = lambda: process_update(x())
-        if not ops.executing_eagerly_outside_functions():
-          # In V1 mode, call the callable right away and process. This is needed
-          # for TPU strategy.
-          return update()
-      elif isinstance(x, ops.Operation):
-        update = x
-      elif hasattr(x, 'op'):
-        update = x.op
-      else:
-        update = ops.convert_to_tensor_v2(x)
-      return update
-
-    updates = [process_update(x) for x in updates]
-    # Non-callable Updates are run automatically inside `call` in V2, so
-    # they do not need to be tracked later.
-    if ops.executing_eagerly_outside_functions() and call_context.in_call:
-      updates = [u for u in updates if callable(u)]
-    self._updates.extend(updates)
+    # Callable updates are disabled by setting `trainable=False`.
+    if not call_context.frozen:
+      for update in nest.flatten(updates):
+        if callable(update):
+          update()
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -2558,7 +2547,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if len(args) > arg_pos:
         args = list(args)
         args[arg_pos] = new_value
-        return args, kwargs
+        return tuple(args), kwargs
     if new_value is None and pop_kwarg_if_none:
       kwargs.pop(arg_name, None)
     else:
@@ -2902,6 +2891,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     call_fn_args = self._call_fn_args
     self._expects_training_arg = ('training' in call_fn_args or
                                   self._call_accepts_kwargs)
+    # The default training arg will be any (non-None) default specified in the
+    # method signature, or None if no value is specified.
+    self._default_training_arg = self._call_fn_arg_defaults.get(
+        'training')
     self._expects_mask_arg = ('mask' in call_fn_args or
                               self._call_accepts_kwargs)
 
@@ -2920,6 +2913,19 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if all_args and all_args[0] == 'self':
       return all_args[1:]
     return all_args
+
+  @property
+  @tracking.cached_per_instance
+  def _call_fn_arg_defaults(self):
+    call_fn_args = self._call_fn_args
+    call_fn_defaults = self._call_full_argspec.defaults or []
+    defaults = dict()
+
+    # The call arg defaults are an n-tuple of the last n elements of the args
+    # list. (n = # of elements that have a default argument)
+    for i in range(-1 * len(call_fn_defaults), 0):
+      defaults[call_fn_args[i]] = call_fn_defaults[i]
+    return defaults
 
   @property
   @tracking.cached_per_instance
@@ -3087,6 +3093,9 @@ class TensorFlowOpLayer(Layer):
     # Layer uses original op unless it is called on new inputs.
     # This means `built` is not set in `__call__`.
     self.built = True
+
+    # Do not individually trace TensorflowOpLayers in the SavedModel.
+    self._must_restore_from_config = True
 
   def call(self, inputs):
     if context.executing_eagerly():

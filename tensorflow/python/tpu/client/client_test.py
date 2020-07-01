@@ -630,6 +630,22 @@ class CloudTpuClientTest(test.TestCase):
         'http://5.6.7.8:8475/requestversion/1.15?restartType=ifNeeded'
     ], sorted(paths))
 
+  @mock.patch.object(request, 'urlopen')
+  def testGetTpuVersion(self, urlopen):
+    c = client.Client(
+        tpu='grpc://1.2.3.4:8470')
+    resp = mock.Mock()
+    resp.read.side_effect = ['{}', '{"currentVersion": "someVersion"}']
+    urlopen.return_value = resp
+    self.assertIsNone(c.runtime_version(), 'Missing key should be handled.')
+    self.assertEqual(
+        'someVersion', c.runtime_version(), 'Should return configured version.')
+    paths = [call[0][0].full_url for call in urlopen.call_args_list]
+    self.assertCountEqual([
+        'http://1.2.3.4:8475/requestversion',
+        'http://1.2.3.4:8475/requestversion',
+    ], sorted(paths))
+
 
 if __name__ == '__main__':
   test.main()

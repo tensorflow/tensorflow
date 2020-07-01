@@ -119,9 +119,9 @@ def load_data(path='reuters.npz',
   with np.load(path, allow_pickle=True) as f:
     xs, labels = f['x'], f['y']
 
-  np.random.seed(seed)
+  rng = np.random.RandomState(seed)
   indices = np.arange(len(xs))
-  np.random.shuffle(indices)
+  rng.shuffle(indices)
   xs = xs[indices]
   labels = labels[indices]
 

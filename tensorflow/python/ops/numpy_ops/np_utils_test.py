@@ -31,7 +31,7 @@ class UtilsTest(test.TestCase):
       """np_fun docstring."""
       return
 
-    @np_utils.np_doc(np_fun)
+    @np_utils.np_doc(None, np_fun=np_fun)
     def f():
       """f docstring."""
       return
@@ -47,7 +47,7 @@ np_fun docstring."""
 
   def testNpDocName(self):
 
-    @np_utils.np_doc(None, np_fun_name='foo')
+    @np_utils.np_doc('foo')
     def f():
       """f docstring."""
       return
@@ -68,22 +68,22 @@ f docstring.
       return
 
     # pylint: disable=unused-variable
-    with self.assertRaisesRegexp(TypeError, 'Cannot find parameter'):
+    with self.assertRaisesRegex(TypeError, 'Cannot find parameter'):
 
-      @np_utils.np_doc(np_fun)
+      @np_utils.np_doc(None, np_fun=np_fun)
       def f1(a):
         return
 
-    with self.assertRaisesRegexp(TypeError, 'is of kind'):
+    with self.assertRaisesRegex(TypeError, 'is of kind'):
 
-      @np_utils.np_doc(np_fun)
+      @np_utils.np_doc(None, np_fun=np_fun)
       def f2(x, kwargs):
         return
 
-    with self.assertRaisesRegexp(TypeError,
-                                 'Parameter "y" should have a default value'):
+    with self.assertRaisesRegex(TypeError,
+                                'Parameter "y" should have a default value'):
 
-      @np_utils.np_doc(np_fun)
+      @np_utils.np_doc(None, np_fun=np_fun)
       def f3(x, y):
         return
 

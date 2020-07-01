@@ -685,6 +685,44 @@ struct fresnel_sin : base<T, Eigen::internal::fresnel_sin_op<T>> {};
 template <typename T>
 struct spence : base<T, Eigen::internal::spence_op<T>> {};
 
+// Bessel Functions
+
+template <typename T>
+struct bessel_i0 : base<T, Eigen::internal::scalar_bessel_i0_op<T>> {};
+
+template <typename T>
+struct bessel_i0e : base<T, Eigen::internal::scalar_bessel_i0e_op<T>> {};
+
+template <typename T>
+struct bessel_i1 : base<T, Eigen::internal::scalar_bessel_i1_op<T>> {};
+
+template <typename T>
+struct bessel_i1e : base<T, Eigen::internal::scalar_bessel_i1e_op<T>> {};
+
+template <typename T>
+struct bessel_k0 : base<T, Eigen::internal::scalar_bessel_k0_op<T>> {};
+
+template <typename T>
+struct bessel_k0e : base<T, Eigen::internal::scalar_bessel_k0e_op<T>> {};
+
+template <typename T>
+struct bessel_k1 : base<T, Eigen::internal::scalar_bessel_k1_op<T>> {};
+
+template <typename T>
+struct bessel_k1e : base<T, Eigen::internal::scalar_bessel_k1e_op<T>> {};
+
+template <typename T>
+struct bessel_j0 : base<T, Eigen::internal::scalar_bessel_j0_op<T>> {};
+
+template <typename T>
+struct bessel_j1 : base<T, Eigen::internal::scalar_bessel_j1_op<T>> {};
+
+template <typename T>
+struct bessel_y0 : base<T, Eigen::internal::scalar_bessel_y0_op<T>> {};
+
+template <typename T>
+struct bessel_y1 : base<T, Eigen::internal::scalar_bessel_y1_op<T>> {};
+
 }  // end namespace functor
 }  // end namespace tensorflow
 

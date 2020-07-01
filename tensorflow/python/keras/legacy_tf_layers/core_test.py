@@ -69,7 +69,7 @@ class DenseTest(test.TestCase, parameterized.TestCase):
           'X', initializer=init_ops.zeros_initializer(), shape=(1, 1))
       x = core_layers.Dense(1)(v)
       variables.global_variables_initializer().run()
-      self.assertAllEqual(x.eval(), [[0.0]])
+      self.assertAllEqual(x, [[0.0]])
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testCall(self):

@@ -89,6 +89,18 @@ auto* tf_data_getnext_duration_counter = monitoring::Sampler<0>::New(
     // Power of 2 with bucket count 10 (1024 ms)
     {monitoring::Buckets::Exponential(1, 2, 10)});
 
+auto* tf_data_getnext_time_between_ms_histogram = monitoring::Sampler<0>::New(
+    {"/tensorflow/data/getnext_time_between",
+     "Milliseconds spent in between calls to tf.data Dataset TF iterator."},
+    // A typical training step is in the 200ms to 1 second range.
+    // Elapsed time less than 25ms are likely due to multiple devices calling
+    // the iterator's getNext() during the same step.
+    // Bucket density is highest for small time intervals to more accurately
+    // measure fast ingest rates. Step sizes are as follows:
+    {monitoring::Buckets::Explicit({25., 50., 75., 100., 125., 150., 175., 200.,
+                                    225., 250., 300., 350., 400., 450., 500.,
+                                    1000., 10000.})});
+
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
 
@@ -168,6 +180,14 @@ void RecordTFDataGetNextDuration(uint64 duration_us) {
   static auto* tfdata_getnext_duration_cell =
       tf_data_getnext_duration_counter->GetCell();
   tfdata_getnext_duration_cell->Add(duration_us);
+}
+
+void RecordTFDataGetNextTimeBetween(uint64 duration_us) {
+  static auto* tfdata_getnext_time_between_cell =
+      tf_data_getnext_time_between_ms_histogram->GetCell();
+  // Convert to milliseconds for histogram
+  const auto duration_ms = duration_us / 1000;
+  tfdata_getnext_time_between_cell->Add(duration_ms);
 }
 
 void RecordTFDataOptimization(const string& name, int64 num_changes) {

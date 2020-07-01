@@ -59,6 +59,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   return std::make_shared<PjRtClient>(
       kCpuPlatformName, client, std::move(devices), /*host_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
+      /*should_stage_host_to_device_transfers=*/false,
       /*gpu_run_options=*/nullptr);
 }
 

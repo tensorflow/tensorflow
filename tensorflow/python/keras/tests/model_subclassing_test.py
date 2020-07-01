@@ -37,7 +37,6 @@ from tensorflow.python.keras.tests import model_subclassing_test_util as model_u
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import data_structures
@@ -80,7 +79,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
         return 1.
 
     m = ModelWithProperty()
-    with self.assertRaisesRegexp(AttributeError, 'read_only'):
+    with self.assertRaisesRegex(AttributeError, 'read_only'):
       m.read_only = 2.
 
   def test_custom_build_with_fit(self):
@@ -141,8 +140,8 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
                                      'has not been built.'))
-    with self.assertRaisesRegexp(
-        ValueError, 'input shape is not one of the valid types'):
+    with self.assertRaisesRegex(ValueError,
+                                'input shape is not one of the valid types'):
       model.build(input_shape=tensor_shape.Dimension(input_dim))
 
   def test_embed_dtype_with_subclass_build(self):
@@ -178,7 +177,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
                                      'has not been built.'))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'if your layers do not support float type inputs'):
       model.build(input_shape=(35, 20))
 
@@ -361,7 +360,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
         self.isdep = keras.layers.Dense(1)
         self.notdep = data_structures.NoDependency(keras.layers.Dense(2))
         self.notdep_var = data_structures.NoDependency(
-            resource_variable_ops.ResourceVariable(1., name='notdep_var'))
+            variables_lib.Variable(1., name='notdep_var'))
 
     m = Foo()
     self.assertEqual([m.isdep, m.notdep], m.layers)
@@ -376,9 +375,8 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
       def __init__(self):
         super(ExtraVar, self).__init__()
         self.dense = keras.layers.Dense(1)
-        self.var = resource_variable_ops.ResourceVariable(1.)
-        self.not_trainable_var = resource_variable_ops.ResourceVariable(
-            2., trainable=False)
+        self.var = variables_lib.Variable(1.)
+        self.not_trainable_var = variables_lib.Variable(2., trainable=False)
 
       def call(self, inputs):
         return self.dense(inputs + self.var)
@@ -654,8 +652,8 @@ class CustomCallSignatureTests(test.TestCase, parameterized.TestCase):
     self.assertFalse(model.built, 'Model should not have been built')
     self.assertFalse(model.weights, ('Model should have no weights since it '
                                      'has not been built.'))
-    with self.assertRaisesRegexp(
-        ValueError, 'cannot build your model if it has positional'):
+    with self.assertRaisesRegex(ValueError,
+                                'cannot build your model if it has positional'):
       model.build(input_shape=[first_input_shape, second_input_shape])
 
   def test_kwargs_in_signature(self):
@@ -691,20 +689,20 @@ class CustomCallSignatureTests(test.TestCase, parameterized.TestCase):
     y = np.ones((10, 1))
     m = ModelWithPositionalArgs()
     m.compile('sgd', 'mse')
-    with self.assertRaisesRegexp(ValueError, r'Models passed to `fit`'):
+    with self.assertRaisesRegex(ValueError, r'Models passed to `fit`'):
       m.fit(x, y, batch_size=2)
-    with self.assertRaisesRegexp(ValueError, r'Models passed to `evaluate`'):
+    with self.assertRaisesRegex(ValueError, r'Models passed to `evaluate`'):
       m.evaluate(x, y, batch_size=2)
-    with self.assertRaisesRegexp(ValueError, r'Models passed to `predict`'):
+    with self.assertRaisesRegex(ValueError, r'Models passed to `predict`'):
       m.predict(x, batch_size=2)
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Models passed to `train_on_batch`'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Models passed to `train_on_batch`'):
       m.train_on_batch(x, y)
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Models passed to `test_on_batch`'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Models passed to `test_on_batch`'):
       m.test_on_batch(x, y)
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Models passed to `predict_on_batch`'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Models passed to `predict_on_batch`'):
       m.predict_on_batch(x)
 
   def test_deepcopy(self):

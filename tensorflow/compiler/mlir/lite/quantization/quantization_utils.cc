@@ -32,8 +32,14 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
+
+// This includes the interface class definition. It couldn't be in a namespace
+// because the table gen doesn't emit the namespace when it is used.
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_interface.cc.inc"
+
 namespace quant {
 
 const float kNearZeroTolerance = 1.0e-6;
@@ -55,7 +61,7 @@ static Type GetQuantizedType(Builder builder, Type input_type,
   } else if (min.size() == max.size()) {
     auto shape = input_type.dyn_cast<ShapedType>();
     if (!shape || shape.getRank() <= quant_dim ||
-        min.size() != shape.getDimSize(quant_dim)) {
+        static_cast<int64_t>(min.size()) != shape.getDimSize(quant_dim)) {
       return {};
     }
     // TODO(b/141508873): the quantization dim is set to the last dimension.
@@ -76,7 +82,8 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor) {
   if (auto qtype = ele_type.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
     ArrayRef<double> scales = qtype.getScales();
     // Broadcasting hasn't been implemented yet.
-    if (scales.size() != factor_values.getNumElements()) return {};
+    if (static_cast<int64_t>(scales.size()) != factor_values.getNumElements())
+      return {};
     SmallVector<double, 4> new_scales;
     new_scales.reserve(scales.size());
     auto scales_iter = scales.begin();
@@ -270,7 +277,7 @@ Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
                                              bool narrow_range) {
   Builder builder(attr.getContext());
   auto shape = attr.getType().cast<ShapedType>().getShape();
-  if (shape.size() <= quant_dim) return {};
+  if (static_cast<int>(shape.size()) <= quant_dim) return {};
   // `symmetric` can only be used when it is `signed` and `narrow_range`.
   if (symmetric && (!is_signed || !narrow_range)) return {};
 
@@ -335,7 +342,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
     const std::vector<quant::QuantizedType>& op_types) {
   if (op_types.empty()) return {};
 
-  int axis_size = 1;
+  size_t axis_size = 1;
   int32_t quant_dim = -1;
   Type expressed_type;
   // Requires all the op types are valid UniformQuantizedTypes or
@@ -369,7 +376,7 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
         scales[index_scale.index()] *= index_scale.value();
       }
     } else if (auto type = op_type.dyn_cast<quant::UniformQuantizedType>()) {
-      for (int index = 0; index != axis_size; ++index) {
+      for (int index = 0, e = axis_size; index != e; ++index) {
         scales[index] *= type.getScale();
       }
     }
@@ -469,7 +476,7 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
       // We don't propagate this parameter down if it has multiple operands.
       // We want to use the result parameter scales instead.
 
-      if (user->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() &&
+      if (llvm::dyn_cast<SameScalesOpInterface>(user) &&
           !PreferResultScale(user)) {
         for (Value res : user->getResults()) {
           if (res.hasOneUse()) {
@@ -500,7 +507,7 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
     all_stats_ops.pop_back();
 
     if (auto def = stats_op.arg().getDefiningOp()) {
-      if (def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
+      if (llvm::dyn_cast<SameScalesOpInterface>(def)) {
         for (auto input : def->getOperands()) {
           if (auto next_stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(
                   input.getDefiningOp())) {
@@ -522,6 +529,57 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
 
   // Returns false if the steps finish without errors.
   return false;
+}
+
+LogicalResult VerifySameScales(Operation* op) {
+  auto same_scale_op = llvm::cast<SameScalesOpInterface>(op);
+
+  llvm::SmallVector<QuantizedType, 4> collected_quant_params;
+  for (auto input : op->getOperands()) {
+    auto quant_params =
+        UniformQuantizedType::getQuantizedElementType(input.getType());
+    // Skip non-quantizable operands.
+    if (quant_params) {
+      collected_quant_params.push_back(quant_params);
+    }
+  }
+
+  for (auto output : op->getResults()) {
+    auto quant_params =
+        UniformQuantizedType::getQuantizedElementType(output.getType());
+    // Skip non-quantizable results.
+    if (quant_params) {
+      collected_quant_params.push_back(quant_params);
+    }
+  }
+
+  if (collected_quant_params.size() <= 1) return success();
+  for (int i = 1; i < collected_quant_params.size(); i++) {
+    auto expected_params = collected_quant_params[0];
+    auto compared_paras = collected_quant_params[i];
+    // Same quantization parameters are always ok.
+    if (expected_params == compared_paras) continue;
+    // If the quantization parameters are not the same, as long as it has the
+    // same storage type and the op interface doesn't require same scale
+    // constraint for this storage type, it is still ok.
+    if ((expected_params.isSigned() == compared_paras.isSigned() &&
+         expected_params.getStorageTypeIntegralWidth() ==
+             compared_paras.getStorageTypeIntegralWidth()) &&
+        !same_scale_op.RequiredSameOperandsAndResultsScale(
+            expected_params.isSigned(),
+            expected_params.getStorageTypeIntegralWidth()))
+      continue;
+
+    std::string err_msg =
+        "quantization parameters violate the same scale constraint: ";
+    llvm::raw_string_ostream os(err_msg);
+    collected_quant_params[0].print(os);
+    os << " vs. ";
+    collected_quant_params[i].print(os);
+    os.flush();
+    return op->emitOpError(err_msg);
+  }
+  return success();
 }
 }  // namespace quant
 }  // namespace mlir

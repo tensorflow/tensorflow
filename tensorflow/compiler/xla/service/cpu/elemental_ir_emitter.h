@@ -50,6 +50,10 @@ class CpuElementalIrEmitter : public ElementalIrEmitter {
     return ir_emitter_->EmitThreadLocalCall(callee, parameters, name);
   }
 
+  bool fast_min_max() override {
+    return hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max();
+  }
+
   IrEmitter* ir_emitter_;
 };
 

@@ -6,6 +6,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
     default_visibility = [
@@ -113,21 +114,6 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "eager_benchmarks_test",
-    srcs = ["eager_benchmarks_test.py"],
-    python_version = "PY3",
-    deps = [
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:training_lib",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:profiler",
-        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -335,6 +321,44 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "saver_test",
+    size = "medium",
+    srcs = ["saver_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:nn_grad",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:saver",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:training_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:util",
+    ],
+)
+
+tf_py_test(
+    name = "serialization_util_test",
+    size = "small",
+    srcs = ["serialization_util_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+    ],
+)
+
 tf_py_test(
     name = "temporal_sample_weights_correctness_test",
     srcs = ["temporal_sample_weights_correctness_test.py"],
@@ -344,6 +368,128 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "tracking_test",
+    srcs = ["tracking_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/layers:normalization",
+        "//tensorflow/python/module",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:data_structures",
+        "//tensorflow/python/training/tracking:util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "tracking_util_test",
+    srcs = ["tracking_util_test.py"],
+    python_version = "PY3",
+    tags = ["notsan"],  # b/74395663
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:checkpoint_management",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:saver",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:template",
+        "//tensorflow/python:training_util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:graph_view",
+        "//tensorflow/python/training/tracking:util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "tracking_util_with_v1_optimizers_test",
+    srcs = ["tracking_util_with_v1_optimizers_test.py"],
+    tags = [
+        "notsan",  # b/74395663
+    ],
+    deps = [
+        "//tensorflow/python:checkpoint_management",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:saver",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:training_util",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:graph_view",
+        "//tensorflow/python/training/tracking:util",
+    ],
+)
+
+tf_xla_py_test(
+    name = "tracking_util_xla_test",
+    srcs = ["tracking_util_xla_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_windows",
+        "nomac",
+        "notsan",  # b/74395663
+    ],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:checkpoint_management",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/keras:metrics",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 

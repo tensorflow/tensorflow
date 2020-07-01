@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 
@@ -37,11 +36,12 @@ std::string GetTransposeCode(
       "dst_tensor", AccessType::WRITE,
       absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
 
-  const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
+  const std::string batch_id =
+      op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
-  if (op_def.IsBatchSupported()) {
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
@@ -66,7 +66,7 @@ std::string GetTransposeCode(
   remap[attr.perm.w] = 2;
   remap[attr.perm.c] = 3;
   if (attr.perm.c == 3) {  // optimized reading when no channels permutation
-    const std::string bhw[] = {"B", "Y", "X"};
+    const std::string bhw[] = {batch_id, "Y", "X"};
     if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
       c += "  args.src_tensor.SetBatchRef(" + bhw[remap[0]] + ");\n";
     }
@@ -81,7 +81,7 @@ std::string GetTransposeCode(
     c += "  for (int i = 0; i < 4; ++i) {\n";
     c += "    int dst_channel = Z * 4 + i;\n";
     c += "    if (dst_channel < args.dst_tensor.Channels()) {\n";
-    const std::string bhwc[] = {"B", "Y", "X", "dst_channel"};
+    const std::string bhwc[] = {batch_id, "Y", "X", "dst_channel"};
     if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
       c += "      args.src_tensor.SetBatchRef(" + bhwc[remap[0]] + ");\n";
     }
@@ -127,7 +127,6 @@ absl::Status Transpose::Compile(const CreationContext& creation_context) {
   RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
                                           {{"dst_tensor", element_wise_code}},
                                           &code));
-  code = absl::Substitute(code, args_.GetListOfArgs());
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
@@ -137,8 +136,7 @@ absl::Status Transpose::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
   RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return absl::OkStatus();
+  return args_.Bind(kernel_.kernel());
 }
 
 int3 Transpose::GetGridSize() const {

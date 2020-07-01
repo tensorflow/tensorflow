@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import collections
 import contextlib
 import functools
 import itertools
@@ -57,7 +56,6 @@ try:
   from scipy import sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
 except ImportError:
   scipy_sparse = None
-
 try:
   import pandas as pd  # pylint: disable=g-import-not-at-top
 except ImportError:
@@ -274,15 +272,8 @@ class TensorLikeDataAdapter(DataAdapter):
 
     inputs = pack_x_y_sample_weight(x, y, sample_weights)
 
-    num_samples = set(int(i.shape[0]) for i in nest.flatten(inputs))
-    if len(num_samples) > 1:
-      msg = "Data cardinality is ambiguous:\n"
-      for label, data in zip(["x", "y", "sample_weight"], inputs):
-        msg += "  {} sizes: {}\n".format(
-            label, ", ".join(str(i.shape[0]) for i in nest.flatten(data)))
-      msg += "Please provide data which shares the same first dimension."
-      raise ValueError(msg)
-    num_samples = num_samples.pop()
+    num_samples = set(int(i.shape[0]) for i in nest.flatten(inputs)).pop()
+    _check_data_cardinality(inputs)
 
     # If batch_size is not passed but steps is, calculate from the input data.
     # Default to 32 for backwards compat.
@@ -786,7 +777,6 @@ class GeneratorDataAdapter(DataAdapter):
     # Since we have to know the dtype of the python generator when we build the
     # dataset, we have to look at a batch to infer the structure.
     peek, x = self._peek_and_restore(x)
-    assert_not_namedtuple(peek)
     peek = self._standardize_batch(peek)
     peek = _process_tensorlike(peek)
 
@@ -1068,21 +1058,6 @@ def broadcast_sample_weight_modes(target_structure, sample_weight_modes):
             "structure:\n  {}\n    to  \n  {}".format(target_str, mode_str))
 
   return sample_weight_modes
-
-
-def assert_not_namedtuple(x):
-  if (isinstance(x, tuple) and
-      # TODO(b/144192902): Use a namedtuple checking utility.
-      hasattr(x, "_fields") and
-      isinstance(x._fields, collections.Sequence) and
-      all(isinstance(f, six.string_types) for f in x._fields)):
-    raise ValueError(
-        "Received namedtuple ({}) with fields `{}` as input. namedtuples "
-        "cannot, in general, be unambiguously resolved into `x`, `y`, "
-        "and `sample_weight`. For this reason Keras has elected not to "
-        "support them. If you would like the value to be unpacked, "
-        "please explicitly convert it to a tuple before passing it to "
-        "Keras.".format(x.__class__, x._fields))
 
 
 class DataHandler(object):
@@ -1545,11 +1520,23 @@ def single_batch_iterator(strategy,
   else:
     data = (x, y, sample_weight)
 
+  _check_data_cardinality(data)
   dataset = dataset_ops.DatasetV2.from_tensors(data)
   if class_weight:
     dataset = dataset.map(_make_class_weight_map_fn(class_weight))
   dataset = strategy.experimental_distribute_dataset(dataset)
   return iter(dataset)
+
+
+def _check_data_cardinality(data):
+  num_samples = set(int(i.shape[0]) for i in nest.flatten(data))
+  if len(num_samples) > 1:
+    msg = "Data cardinality is ambiguous:\n"
+    for label, single_data in zip(["x", "y", "sample_weight"], data):
+      msg += "  {} sizes: {}\n".format(
+          label, ", ".join(str(i.shape[0]) for i in nest.flatten(single_data)))
+    msg += "Make sure all arrays contain the same number of samples."
+    raise ValueError(msg)
 
 
 def _scipy_sparse_to_sparse_tensor(t):

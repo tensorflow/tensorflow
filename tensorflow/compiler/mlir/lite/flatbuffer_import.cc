@@ -724,6 +724,59 @@ StatusOr<absl::flat_hash_set<const tflite::OperatorT*>> PruneSubgraph(
   return visited;
 }
 
+// We want to adjust the func op according to some cross ops information.
+static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
+  OpBuilder builder(func);
+  // When a quantized constant is imported, its quantization parameter is set
+  // to be narrow range. Here revert to be the fully range if the user doesn't
+  // require narrow range.
+  func.walk([&](tfl::QConstOp cst) {
+    Value value = cst.getResult();
+    // This is a quantized constant, so it only has one use.
+    assert(value.hasOneUse() && "QConst has only one use.");
+    auto& use = *value.getUses().begin();
+    Operation* user = use.getOwner();
+    if (user->isKnownTerminator()) return;
+    auto affine_user = llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
+    if (affine_user &&
+        affine_user.GetAffineOperandIndex() == use.getOperandNumber() &&
+        affine_user.RequiredNarrowRangeAffineOperand())
+      return;
+    auto qtype = mlir::quant::UniformQuantizedType::getQuantizedElementType(
+        value.getType());
+    // Only the 8-bit constants are imported with narrow range.
+    if (!qtype || qtype.getStorageTypeIntegralWidth() != 8) return;
+    mlir::quant::QuantizedType new_qtype;
+    if (auto per_axis =
+            qtype.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+      new_qtype = mlir::quant::UniformQuantizedPerAxisType::get(
+          per_axis.getFlags(), per_axis.getStorageType(),
+          per_axis.getExpressedType(), per_axis.getScales(),
+          per_axis.getZeroPoints(), per_axis.getQuantizedDimension(),
+          per_axis.getStorageTypeMin() - 1, per_axis.getStorageTypeMax());
+    } else if (auto per_tensor =
+                   qtype.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+      new_qtype = mlir::quant::UniformQuantizedType::get(
+          per_tensor.getFlags(), per_tensor.getStorageType(),
+          per_tensor.getExpressedType(), per_tensor.getScale(),
+          per_tensor.getZeroPoint(), per_tensor.getStorageTypeMin() - 1,
+          per_tensor.getStorageTypeMax());
+    } else {
+      return;
+    }
+    auto new_output_type = new_qtype.castFromExpressedType(
+        mlir::quant::UniformQuantizedType::castToExpressedType(
+            value.getType()));
+    builder.setInsertionPointAfter(cst);
+    auto new_op = builder.create<tfl::QConstOp>(
+        cst.getLoc(), new_output_type, mlir::TypeAttr::get(new_output_type),
+        cst.valueAttr());
+    cst.replaceAllUsesWith(new_op.getResult());
+    cst.erase();
+  });
+  return func;
+}
+
 // Build a FuncOp from a tflite SubGraph
 // The op_names are a mapping from indexes into the TFLite operators array to
 // the operator name MLIR expects (tfl.foo_op). The buffers are directly taken
@@ -978,7 +1031,7 @@ StatusOr<FuncOp> ConvertSubgraph(
 
   op_builder.create<mlir::ReturnOp>(base_loc, return_operands);
 
-  return func;
+  return PostProcessFuncOp(func);
 }
 
 // TFLite subgraphs do not necessarily have names, though MLIR functions must
@@ -1059,6 +1112,5 @@ OwningModuleRef tflite::FlatBufferToMlir(
     }
     module.push_back(func_or_error.ConsumeValueOrDie());
   }
-
   return OwningModuleRef(module);
 }

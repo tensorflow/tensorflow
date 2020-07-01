@@ -35,7 +35,7 @@ namespace tflite {
 class RecordingMicroInterpreter : public MicroInterpreter {
  public:
   RecordingMicroInterpreter(const Model* model,
-                            const MicroOpResolver* op_resolver,
+                            const MicroOpResolver& op_resolver,
                             uint8_t* tensor_arena, size_t tensor_arena_size,
                             ErrorReporter* error_reporter)
       : MicroInterpreter(model, op_resolver,
@@ -44,6 +44,13 @@ class RecordingMicroInterpreter : public MicroInterpreter {
                          error_reporter),
         recording_micro_allocator_(
             static_cast<const RecordingMicroAllocator&>(allocator())) {}
+
+  RecordingMicroInterpreter(const Model* model,
+                            const MicroOpResolver& op_resolver,
+                            RecordingMicroAllocator* allocator,
+                            ErrorReporter* error_reporter)
+      : MicroInterpreter(model, op_resolver, allocator, error_reporter),
+        recording_micro_allocator_(*allocator) {}
 
   const RecordingMicroAllocator& GetMicroAllocator() const {
     return recording_micro_allocator_;

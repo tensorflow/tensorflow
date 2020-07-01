@@ -435,8 +435,8 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index> :
     TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
-    TFL_ChannelDimIndexInterface, AffineOpCoefficient<index, 1>,
-    TFL_GpuTargetOp]> {
+    AffineQuantizedOpInterface, AffineOpCoefficient<index, 1>,
+    TFL_GpuTargetOp, TFL_SparseOp]> {
   let summary = opSummary # " operator";
 
   let description = [{
@@ -571,7 +571,10 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     TFL_OperandHasRank<2, 4>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 2>>,
-    TFL_GpuTargetOp]> {
+    AccumulatorUniformScale<3, 1, 2>,
+    AffineQuantizedOpInterface, AffineOpCoefficient<0, 2>,
+    TFL_GpuTargetOp,
+    TFL_SparseOp]> {
   let summary = "Transpose convolution operator";
 
   let description = [{
@@ -593,6 +596,17 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
   let hasOptions = 1;
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // AffineQuantizedOpInterface:
+    int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return 0; }
+    int GetAffineOperandIndex() { return 2; }
+    // SparseOpInterface:
+    std::vector<int> GetSparseOperands() { return {1}; }
+    std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
+    std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
+  }];
 }
 
 def TFL_AveragePool2DOp:
@@ -725,6 +739,15 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
   let hasFolder = 1;
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // SameScalesOpInterface:
+    bool RequiredSameOperandsAndResultsScale(bool sign, int bit_width) {
+      // uint8 doesn't require same operands and results scales.
+      bool is_uint8 = !sign && (bit_width == 8);
+      return !is_uint8;
+    }
+  }];
 }
 
 def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
@@ -824,8 +847,13 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
   let extraClassDeclaration = [{
-    // ChannelDimIndexInterface:
+    // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return 0; }
+    // SparseOpInterface:
+    std::vector<int> GetSparseOperands() { return {1}; }
+    std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
+    std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
   }];
 }
 
@@ -864,8 +892,13 @@ def TFL_DepthwiseConv2DOp :
   );
 
   let extraClassDeclaration = [{
-    // ChannelDimIndexInterface:
+    // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 3; }
+    int GetQuantizationDimIndex() { return 3; }    
+    // SparseOpInterface:
+    std::vector<int> GetSparseOperands() { return {1}; }
+    std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
+    std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
   }];
 }
 
@@ -881,7 +914,7 @@ def TFL_FullyConnectedOptionsWeightFormatAttr :
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
-    TFL_ChannelDimIndexInterface,
+    AffineQuantizedOpInterface,
     AffineOpCoefficient<-1, 1>,
     TFL_SparseOp,
     TFL_GpuTargetOp]> {
@@ -907,8 +940,9 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let hasOptions = 1;
 
   let extraClassDeclaration = [{
-    // ChannelDimIndexInterface:
+    // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return -1; }
     // SparseOpInterface:
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {{1, 4}}; }
@@ -937,14 +971,14 @@ in the batch dimensions and broadcasting.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32]>:$x,
-    TFL_TensorOf<[F32]>:$y,
+    TFL_TensorOf<[F32, QI8]>:$x,
+    TFL_TensorOf<[F32, QI8]>:$y,
     DefaultValuedAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedAttr<BoolAttr, "false">:$adj_y
   );
 
    let results = (outs
-    TFL_TensorOf<[F32]>:$output
+    TFL_TensorOf<[F32, QI8]>:$output
   );
 
   let hasOptions = 1;
@@ -2844,11 +2878,11 @@ def TFL_SubOp : TFL_Op<"sub", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$lhs,
-    TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$rhs,
+    ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$lhs,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$rhs,
     TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$output);
 
   let hasFolder = 1;
 

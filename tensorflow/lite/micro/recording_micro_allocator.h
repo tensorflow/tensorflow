@@ -36,12 +36,11 @@ enum class RecordedAllocationType {
 // type. Each recording contains the number of bytes requested, the actual bytes
 // allocated (can defer from requested by alignment), and the number of items
 // allocated.
-typedef struct RecordedAllocation {
-  RecordedAllocation() : requested_bytes(0), used_bytes(0), count(0) {}
+struct RecordedAllocation {
   size_t requested_bytes;
   size_t used_bytes;
   size_t count;
-} RecordedAllocation;
+};
 
 // Utility subclass of MicroAllocator that records all allocations
 // inside the arena. A summary of allocations can be logged through the
@@ -82,9 +81,6 @@ class RecordingMicroAllocator : public MicroAllocator {
   TfLiteStatus AllocateVariables(TfLiteContext* context,
                                  const SubGraph* subgraph) override;
 
-  void SnapshotAllocationUsage(RecordedAllocation& recorded_allocation);
-  void RecordAllocationUsage(RecordedAllocation& recorded_allocation);
-
  private:
   RecordingMicroAllocator(RecordingSimpleMemoryAllocator* memory_allocator,
                           ErrorReporter* error_reporter);
@@ -93,13 +89,17 @@ class RecordingMicroAllocator : public MicroAllocator {
                                const char* allocation_name,
                                const char* allocation_description) const;
 
+  RecordedAllocation SnapshotAllocationUsage() const;
+  void RecordAllocationUsage(const RecordedAllocation& snapshotted_allocation,
+                             RecordedAllocation& recorded_allocation);
+
   const RecordingSimpleMemoryAllocator* recording_memory_allocator_;
 
-  RecordedAllocation recorded_tflite_tensor_array_data_;
-  RecordedAllocation recorded_tflite_tensor_array_quantization_data_;
-  RecordedAllocation recorded_tflite_tensor_variable_buffer_data_;
-  RecordedAllocation recorded_node_and_registration_array_data_;
-  RecordedAllocation recorded_op_data_;
+  RecordedAllocation recorded_tflite_tensor_array_data_ = {};
+  RecordedAllocation recorded_tflite_tensor_array_quantization_data_ = {};
+  RecordedAllocation recorded_tflite_tensor_variable_buffer_data_ = {};
+  RecordedAllocation recorded_node_and_registration_array_data_ = {};
+  RecordedAllocation recorded_op_data_ = {};
 
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };

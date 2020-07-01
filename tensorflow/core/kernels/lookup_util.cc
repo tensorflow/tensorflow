@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -132,7 +133,8 @@ class TextFileLineIterator
     std::vector<string> tokens;
     if (!ignore_split_) {
       tokens = str_util::Split(line, delimiter_);
-      if (std::max(key_index_, value_index_) >= tokens.size()) {
+      if (static_cast<size_t>(std::max(key_index_, value_index_)) >=
+          tokens.size()) {
         status_ = errors::InvalidArgument(
             "Invalid number of columns in ", filename_, " line ", next_id_,
             " (", line, ") : expected ", std::max(key_index_, value_index_),
@@ -450,46 +452,54 @@ class DatasetIterator : public InitializableLookupTable::InitTableIterator {
   Status status_;
 };
 
-Status InitializeTableFromDataset(OpKernelContext* ctx,
-                                  data::DatasetBase* dataset,
-                                  InitializableLookupTable* table) {
+void InitializeTableFromDataset(OpKernelContext* ctx,
+                                data::DatasetBase* dataset,
+                                InitializableLookupTable* table,
+                                AsyncOpKernel::DoneCallback done) {
   // Assert that the dataset types match up to that expected in the table.
   const auto& dataset_types = dataset->output_dtypes();
-  if (dataset_types.size() != 2) {
-    return errors::InvalidArgument("Dataset should have two output types only");
-  }
-  if (dataset_types[0] != table->key_dtype()) {
-    return errors::InvalidArgument("Key dtype expected: ", table->key_dtype(),
-                                   " but obtained: ", dataset_types[0],
-                                   " from the dataset");
-  }
-  if (dataset_types[1] != table->value_dtype()) {
-    return errors::InvalidArgument(
-        "Value dtype expected: ", table->value_dtype(),
-        " but obtained: ", dataset_types[1], " from the dataset");
-  }
+  OP_REQUIRES_ASYNC(
+      ctx, dataset_types.size() == 2,
+      errors::InvalidArgument("Dataset should have two output types only"),
+      done);
+  OP_REQUIRES_ASYNC(
+      ctx, dataset_types[0] == table->key_dtype(),
+      errors::InvalidArgument("Key dtype expected: ", table->key_dtype(),
+                              " but obtained: ", dataset_types[0],
+                              " from the dataset"),
+      done);
+  OP_REQUIRES_ASYNC(
+      ctx, dataset_types[1] == table->value_dtype(),
+      errors::InvalidArgument("Value dtype expected: ", table->value_dtype(),
+                              " but obtained: ", dataset_types[1],
+                              " from the dataset"),
+      done);
   // Assert that the dataset output shapes are scalars.
   const auto& dataset_shapes = dataset->output_shapes();
-  if (dataset_shapes.size() != 2) {
-    return errors::InvalidArgument(
-        "Dataset should have two output shapes only");
-  }
-  if (!dataset_shapes[0].IsCompatibleWith(PartialTensorShape({}))) {
-    return errors::InvalidArgument("Expected scalar for key. Obtained: ",
-                                   dataset_shapes[0].DebugString());
-  }
-  if (!dataset_shapes[1].IsCompatibleWith(PartialTensorShape({}))) {
-    return errors::InvalidArgument("Expected scalar for key. Obtained: ",
-                                   dataset_shapes[1].DebugString());
-  }
+  OP_REQUIRES_ASYNC(
+      ctx, dataset_shapes.size() == 2,
+      errors::InvalidArgument("Dataset should have two output shapes only"),
+      done);
+  OP_REQUIRES_ASYNC(
+      ctx, dataset_shapes[0].IsCompatibleWith(PartialTensorShape({})),
+      errors::InvalidArgument("Expected scalar for key. Obtained: ",
+                              dataset_shapes[0].DebugString()),
+      done);
+  OP_REQUIRES_ASYNC(
+      ctx, dataset_shapes[1].IsCompatibleWith(PartialTensorShape({})),
+      errors::InvalidArgument("Expected scalar for key. Obtained: ",
+                              dataset_shapes[1].DebugString()),
+      done);
   DatasetIterator iter(dataset);
-  TF_RETURN_IF_ERROR(iter.Init(ctx));
+  OP_REQUIRES_OK_ASYNC(ctx, iter.Init(ctx), done);
   Status s = table->Initialize(iter);
   if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table already initialized from dataset.";
-    return Status::OK();
+    done();
+    return;
   }
-  return s;
+  ctx->SetStatus(s);
+  done();
 }
 
 }  // namespace lookup

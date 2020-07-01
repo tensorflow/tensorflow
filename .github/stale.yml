@@ -23,7 +23,7 @@
 daysUntilStale: 7
 # Number of days of inactivity before a stale Issue or Pull Request is closed
 daysUntilClose: 7
-# Issues or Pull Requests with these labels will never be considered stale. Set to `[]` to disable
+# Only issues or pull requests with all of these labels are checked if stale. Defaults to `[]` (disabled)
 onlyLabels:
  - stat:awaiting response
 # Comment to post when marking as stale. Set to `false` to disable

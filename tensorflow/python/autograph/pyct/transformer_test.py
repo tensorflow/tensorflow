@@ -211,7 +211,7 @@ class TransformerTest(test.TestCase):
       node = tr.visit(node)
     obtained_message = str(cm.exception)
     expected_message = r'expected "ast.AST", got "\<(type|class) \'list\'\>"'
-    self.assertRegexpMatches(obtained_message, expected_message)
+    self.assertRegex(obtained_message, expected_message)
 
   def test_robust_error_on_ast_corruption(self):
     # A child class should not be able to be so broken that it causes the error

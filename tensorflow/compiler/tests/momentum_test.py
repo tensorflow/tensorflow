@@ -54,10 +54,10 @@ class MomentumOptimizerTest(xla_test.XLATestCase):
         # Check we have slots
         self.assertEqual(["momentum"], mom_opt.get_slot_names())
         slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         self.assertFalse(slot0 in variables.trainable_variables())
         slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
         self.assertFalse(slot1 in variables.trainable_variables())
 
         # Fetch params to validate initial values
@@ -140,10 +140,10 @@ class MomentumOptimizerTest(xla_test.XLATestCase):
         # Check we have slots
         self.assertEqual(["momentum"], mom_opt.get_slot_names())
         slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         self.assertFalse(slot0 in variables.trainable_variables())
         slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
         self.assertFalse(slot1 in variables.trainable_variables())
 
         # Fetch params to validate initial values

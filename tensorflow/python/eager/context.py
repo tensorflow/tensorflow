@@ -98,7 +98,7 @@ class _EagerTensorCache(object):
     return self._data.get(key, None)
 
   def flush(self):
-    self._data = {}
+    self._data.clear()
 
 
 class FunctionCallOptions(object):
@@ -427,7 +427,7 @@ class Context(object):
       raise ValueError(
           "execution_mode should be None/SYNC/ASYNC. Got %s" % execution_mode)
     if execution_mode is None:
-      execution_mode = SYNC
+      execution_mode = ASYNC if is_tfrt_enabled() else SYNC
     self._default_is_async = execution_mode == ASYNC
     self._lazy_remote_inputs_copy = None
     self._use_tfrt = is_tfrt_enabled()
@@ -890,13 +890,13 @@ class Context(object):
 
   @property
   def executor(self):
-    ensure_initialized()
+    self.ensure_initialized()
     return executor.Executor(
         pywrap_tfe.TFE_ContextGetExecutorForThread(self._context_handle))
 
   @executor.setter
   def executor(self, e):
-    ensure_initialized()
+    self.ensure_initialized()
     pywrap_tfe.TFE_ContextSetExecutorForThread(self._context_handle, e.handle())
 
   @property
@@ -1877,9 +1877,8 @@ def executing_eagerly():
   True
   False
 
-  Inside `tf.function` after
+  Inside `tf.function` after `tf.config.run_functions_eagerly(True)` is called:
 
-  `tf.config.run_functions_eagerly(True)` is called:
   >>> tf.config.run_functions_eagerly(True)
   >>> @tf.function
   ... def fn():

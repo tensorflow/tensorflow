@@ -117,7 +117,7 @@ class ConstantInitializersTest(test.TestCase):
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.zeros_initializer())
       x.initializer.run()
-      self.assertAllEqual(x.eval(), np.zeros(shape))
+      self.assertAllEqual(x, np.zeros(shape))
 
   @test_util.run_deprecated_v1
   def testOnesInitializer(self):
@@ -126,7 +126,7 @@ class ConstantInitializersTest(test.TestCase):
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.ones_initializer())
       x.initializer.run()
-      self.assertAllEqual(x.eval(), np.ones(shape))
+      self.assertAllEqual(x, np.ones(shape))
 
   @test_util.run_deprecated_v1
   def testConstantZeroInitializer(self):
@@ -135,7 +135,7 @@ class ConstantInitializersTest(test.TestCase):
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.constant_initializer(0.0))
       x.initializer.run()
-      self.assertAllEqual(x.eval(), np.zeros(shape))
+      self.assertAllEqual(x, np.zeros(shape))
 
   @test_util.run_deprecated_v1
   def testConstantOneInitializer(self):
@@ -144,7 +144,7 @@ class ConstantInitializersTest(test.TestCase):
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.constant_initializer(1.0))
       x.initializer.run()
-      self.assertAllEqual(x.eval(), np.ones(shape))
+      self.assertAllEqual(x, np.ones(shape))
 
   @test_util.run_deprecated_v1
   def testConstantIntInitializer(self):
@@ -157,7 +157,7 @@ class ConstantInitializersTest(test.TestCase):
           initializer=init_ops.constant_initializer(7))
       x.initializer.run()
       self.assertEqual(x.dtype.base_dtype, dtypes.int32)
-      self.assertAllEqual(x.eval(), 7 * np.ones(shape, dtype=np.int32))
+      self.assertAllEqual(x, 7 * np.ones(shape, dtype=np.int32))
 
   @test_util.run_deprecated_v1
   def testConstantTupleInitializer(self):
@@ -170,7 +170,7 @@ class ConstantInitializersTest(test.TestCase):
           initializer=init_ops.constant_initializer((10, 20, 30)))
       x.initializer.run()
       self.assertEqual(x.dtype.base_dtype, dtypes.int32)
-      self.assertAllEqual(x.eval(), [10, 20, 30])
+      self.assertAllEqual(x, [10, 20, 30])
 
   def _testNDimConstantInitializer(self, name, value, shape, expected):
     with self.cached_session(use_gpu=True):
@@ -245,11 +245,11 @@ class ConstantInitializersTest(test.TestCase):
 
   def testInvalidValueTypeForConstantInitializerCausesTypeError(self):
     c = constant_op.constant([1.0, 2.0, 3.0])
-    with self.assertRaisesRegexp(TypeError,
-                                 r"Invalid type for initial value: .*Tensor.*"):
+    with self.assertRaisesRegex(TypeError,
+                                r"Invalid type for initial value: .*Tensor.*"):
       init_ops.constant_initializer(c, dtype=dtypes.float32)
     v = variables.Variable([3.0, 2.0, 1.0])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"Invalid type for initial value: .*Variable.*"):
       init_ops.constant_initializer(v, dtype=dtypes.float32)
 
@@ -482,7 +482,7 @@ class RangeTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testLimitOnly(self):
     with self.session(use_gpu=True):
-      self.assertAllEqual(np.arange(5), math_ops.range(5).eval())
+      self.assertAllEqual(np.arange(5), math_ops.range(5))
 
   def testEmpty(self):
     for start in 0, 5:
@@ -1348,7 +1348,7 @@ class IdentityInitializerTest(test.TestCase):
           "foo", partitioner=partitioner, initializer=init):
         v = array_ops.identity(variable_scope.get_variable("bar", shape=shape))
       variables.global_variables_initializer().run()
-      self.assertAllClose(v.eval(), np.eye(*shape))
+      self.assertAllClose(v, np.eye(*shape))
 
 
 if __name__ == "__main__":

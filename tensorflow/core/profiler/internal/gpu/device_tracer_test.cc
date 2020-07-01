@@ -263,12 +263,10 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   // At least one gpu plane and one host plane for launching events.
   const XPlane* host_plane = FindPlaneWithName(space, kCuptiDriverApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
-  EXPECT_EQ(host_plane->id(), kCuptiDriverApiPlaneId);
 
   const XPlane* device_plane =
       FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
   ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
-  EXPECT_EQ(device_plane->id(), kGpuPlaneBaseId);
   // one for MemcpyH2D, one for MemcpyD2H, two for Matmul (one from Eigen, one
   // from cudnn).
   EXPECT_EQ(device_plane->event_metadata_size(), 4);

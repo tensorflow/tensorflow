@@ -40,6 +40,7 @@ limitations under the License.
 namespace mlir {
 namespace TFTPU {
 
+constexpr char kReplicatedInputIndicesAttr[] = "_replicated_input_indices";
 constexpr char kPaddingMapAttr[] = "padding_map";
 
 // This pass remaps and assigns padding maps to an encapsulated function's
@@ -56,14 +57,23 @@ struct TPUDynamicPaddingMapper
 // Creates a mapping from replicated input index (in `tf_device.replicate` op)
 // to `tf_device.cluster_func` operand index.
 llvm::SmallDenseMap<int32_t, int32_t> GetRemappedReplicatedInputIndices(
-    tf_device::ClusterFuncOp cluster_func, tf_device::ReplicateOp replicate) {
+    tf_device::ClusterFuncOp cluster_func, tf_device::ReplicateOp replicate,
+    ArrayAttr replicated_input_indices_attr) {
   Block* replicate_block = &replicate.GetBody();
 
   llvm::SmallDenseMap<int32_t, int32_t> remapped_indices;
-  for (auto operand_and_idx : llvm::enumerate(cluster_func.getOperands()))
-    if (auto block_arg = operand_and_idx.value().dyn_cast<BlockArgument>())
-      if (block_arg.getOwner() == replicate_block)
-        remapped_indices[block_arg.getArgNumber()] = operand_and_idx.index();
+  for (auto operand_and_idx : llvm::enumerate(cluster_func.getOperands())) {
+    if (auto block_arg = operand_and_idx.value().dyn_cast<BlockArgument>()) {
+      if (block_arg.getOwner() == replicate_block) {
+        int64_t replicated_input_index =
+            replicated_input_indices_attr[block_arg.getArgNumber()]
+                .cast<IntegerAttr>()
+                .getInt();
+        if (replicated_input_index != -1)
+          remapped_indices[replicated_input_index] = operand_and_idx.index();
+      }
+    }
+  }
 
   return remapped_indices;
 }
@@ -73,16 +83,15 @@ llvm::SmallDenseMap<int32_t, int32_t> GetRemappedReplicatedInputIndices(
 // indices. An error will be returned if an index is not found or parsing
 // failed.
 LogicalResult GetRemappedPaddings(
-    tf_device::ClusterFuncOp cluster_func, int num_replicated_args,
+    tf_device::ClusterFuncOp cluster_func,
     const llvm::SmallDenseMap<int32_t, int32_t>& remapped_indices,
     llvm::SmallVectorImpl<tensorflow::tpu::PaddingMap>* remapped_paddings) {
-  auto bad_index_msg = [num_replicated_args](int32_t index,
-                                             llvm::StringRef arg_type,
-                                             int32_t arg_index) {
+  auto bad_index_msg = [](int32_t index, llvm::StringRef arg_type,
+                          int32_t arg_index) {
     return llvm::formatv(
-               "bad '{0}' attribute at index {1}, {2} must be in [0, {3}), got "
-               "{4}",
-               kPaddingMapAttr, index, arg_type, num_replicated_args, arg_index)
+               "bad '{0}' attribute at index {1}, {2} must be nonnegative, but "
+               "got {3}",
+               kPaddingMapAttr, index, arg_type, arg_index)
         .str();
   };
 
@@ -111,12 +120,12 @@ LogicalResult GetRemappedPaddings(
           kPaddingMapAttr, idx, padding.getValue()));
 
     const int32_t arg_index = padding_proto.arg_index();
-    if (arg_index >= num_replicated_args || arg_index < 0)
+    if (arg_index < 0)
       return cluster_func.emitOpError()
              << bad_index_msg(idx, "arg_index", arg_index);
 
     const int32_t padding_arg_index = padding_proto.padding_arg_index();
-    if (padding_arg_index >= num_replicated_args || padding_arg_index < 0)
+    if (padding_arg_index < 0)
       return cluster_func.emitOpError()
              << bad_index_msg(idx, "padding_arg_index", padding_arg_index);
 
@@ -175,17 +184,21 @@ LogicalResult RemapAndAssignPaddingMaps(tf_device::ClusterFuncOp cluster_func,
   auto replicate = cluster_func.getParentOfType<tf_device::ReplicateOp>();
   // LaunchFunc is not replicated, there will be no padding.
   if (!replicate) return success();
-  const int num_replicated_args = replicate.GetBody().getNumArguments();
 
   auto func = symbol_table->lookup<FuncOp>(cluster_func.func());
   if (!func) return success();
 
+  auto replicated_input_indices_attr =
+      replicate.getAttrOfType<ArrayAttr>(kReplicatedInputIndicesAttr);
+  if (!replicated_input_indices_attr) return success();
+
   llvm::SmallDenseMap<int32_t, int32_t> remapped_indices =
-      GetRemappedReplicatedInputIndices(cluster_func, replicate);
+      GetRemappedReplicatedInputIndices(cluster_func, replicate,
+                                        replicated_input_indices_attr);
 
   llvm::SmallVector<tensorflow::tpu::PaddingMap, 4> remapped_paddings;
-  if (failed(GetRemappedPaddings(cluster_func, num_replicated_args,
-                                 remapped_indices, &remapped_paddings)))
+  if (failed(GetRemappedPaddings(cluster_func, remapped_indices,
+                                 &remapped_paddings)))
     return failure();
 
   AnnotateFunctionArgumentsWithPaddings(func, remapped_paddings);

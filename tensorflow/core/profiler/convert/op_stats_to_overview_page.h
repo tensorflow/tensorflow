@@ -32,11 +32,17 @@ namespace profiler {
 // the tf-functions profiled.
 const double kTfFunctionReportThresholdInPercent = 20;
 
+// Reports eager-mode optimization opportunity in the Overview Page if the
+// percent of Op time on host (or device) that is spent on eager mode is over
+// this threshold.
+const double kEagerReportThresholdInPercent = 10;
+
 void SetCommonRecommendation(absl::string_view input_classification,
                              absl::string_view input_statement,
                              absl::string_view output_statement,
                              HardwareType hardware_type,
                              absl::string_view tf_function_statement_html,
+                             absl::string_view eager_statement_html,
                              OverviewPageRecommendation* re);
 
 OverviewPageRecommendation ComputeGenericRecommendation(
@@ -53,6 +59,10 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
 
 // Returns a html which provides tf-function related recommendation.
 std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db);
+
+// Returns a html which provides eager-mode related recommendation.
+std::string EagerRecommendationHtml(double host_op_time_eager_percent,
+                                    double device_op_time_eager_percent);
 
 }  // namespace profiler
 }  // namespace tensorflow

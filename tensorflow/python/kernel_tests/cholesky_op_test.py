@@ -167,7 +167,7 @@ class CholeskyOpTest(test.TestCase):
   def testNotInvertibleCPU(self):
     # The input should be invertible.
     with self.session(use_gpu=True):
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Cholesky decomposition was not successful. The"
           " input might not be valid."):

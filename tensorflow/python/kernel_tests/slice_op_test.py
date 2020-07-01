@@ -265,7 +265,7 @@ class SliceTest(test.TestCase):
       else:
         y = 0
       slice_t = a[:, x, y:z, :]
-      self.assertAllEqual(slice_t.eval(), inp[:, x, y:z, :])
+      self.assertAllEqual(slice_t, inp[:, x, y:z, :])
 
   def testRandom(self):
     # Random dims of rank 6

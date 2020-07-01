@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -32,7 +31,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
@@ -208,38 +206,6 @@ class MirroredVariableCreationTest(test.TestCase):
       # The resulting mirrored variable will use the name from the first device.
       self.assertEqual("foo_0:0", result.name)
 
-  def testWithLayers(self, distribution):
-
-    def model_fn(features):
-
-      layer1 = core.Dense(1)
-      layer1(features)
-      layer2 = core.Dense(1)
-      layer2(features)
-      # We rely on names and orders to make sure replica references the same
-      # MirroredVariable. Uniquifying names may involve global states,
-      # merge_call switches threads so we need to test things work after
-      # merge_call.
-      ds_context.get_replica_context().merge_call(lambda _: _)
-      layer3 = core.Dense(1)
-      layer3(features)
-      return [(layer1.kernel, layer1.bias), (layer2.kernel, layer2.bias),
-              (layer3.kernel, layer3.bias)]
-
-    iterator = distribution.make_input_fn_iterator(
-        lambda _: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
-    self.evaluate(iterator.initializer)
-    features = iterator.get_next()
-
-    with distribution.scope():
-      result = distribution.extended.call_for_each_replica(
-          model_fn, args=(features,))
-      for kernel, bias in result:
-        self.assertIsInstance(kernel, values.MirroredVariable)
-        self.assertAllDifferent(distribution.experimental_local_results(kernel))
-        self.assertIsInstance(bias, values.MirroredVariable)
-        self.assertAllDifferent(distribution.experimental_local_results(kernel))
-
   def testWithVariableAndVariableScope(self, distribution):
 
     def model_fn():
@@ -411,7 +377,7 @@ class MirroredVariableCreationTest(test.TestCase):
 
   def testNoneSynchronizationWithGetVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "`NONE` variable synchronization mode is not "
           "supported with `Mirrored` distribution strategy. Please change "
           "the `synchronization` for variable: v"):
@@ -421,7 +387,7 @@ class MirroredVariableCreationTest(test.TestCase):
 
   def testNoneSynchronizationWithVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "`NONE` variable synchronization mode is not "
           "supported with `Mirrored` distribution strategy. Please change "
           "the `synchronization` for variable: v"):
@@ -432,14 +398,14 @@ class MirroredVariableCreationTest(test.TestCase):
 
   def testInvalidSynchronizationWithVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Invalid variable synchronization mode: Invalid for "
           "variable: v"):
         variable_scope.variable(1.0, name="v", synchronization="Invalid")
 
   def testInvalidAggregationWithGetVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Invalid variable aggregation mode: invalid for "
           "variable: v"):
         variable_scope.get_variable(
@@ -449,7 +415,7 @@ class MirroredVariableCreationTest(test.TestCase):
 
   def testInvalidAggregationWithVariable(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Invalid variable aggregation mode: invalid for "
           "variable: v"):
         variable_scope.variable(

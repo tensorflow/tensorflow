@@ -44,7 +44,7 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
   EventGroupNameMap event_group_name_map;
-  XPlane* plane = space.add_planes();
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
@@ -74,7 +74,7 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
   EventGroupNameMap event_group_name_map;
-  XPlane* plane = space.add_planes();
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
@@ -109,7 +109,7 @@ TEST(DerivedTimelineTest, DependencyTest) {
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
   EventGroupNameMap event_group_name_map({{0, "train 0"}, {1, "train 1"}});
-  XPlane* plane = space.add_planes();
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
@@ -138,7 +138,7 @@ TEST(DerivedTimelineTest, TfOpNameScopeTest) {
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
   EventGroupNameMap event_group_name_map;
-  XPlane* plane = space.add_planes();
+  XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);
   CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,

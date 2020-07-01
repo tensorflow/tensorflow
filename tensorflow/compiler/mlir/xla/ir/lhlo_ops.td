@@ -65,10 +65,6 @@ def LHLO_PredOrIntBuffer : MemRefOf<[HLO_Int, HLO_Pred]>;
 
 def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
 
-def LHLO_TupleBuffer : NestedTupleOf<[LHLO_Buffer]>;
-
-def LHLO_BufferOrTuple : AnyTypeOf<[LHLO_Buffer, LHLO_TupleBuffer]>;
-
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -225,9 +221,9 @@ def LHLO_ReduceOp: LHLO_Op<"reduce", [
       SingleBlockImplicitTerminator<"TerminatorOp">
     ]>, BASE_HLO_ReduceOp {
   let arguments = (ins
-    Arg<Variadic<LHLO_BufferOrTuple>, "", [MemRead]>:$operands,
-    Arg<Variadic<LHLO_BufferOrTuple>, "", [MemRead]>:$init_values,
-    Arg<Variadic<LHLO_BufferOrTuple>, "", [MemWrite]>:$out,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$init_values,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$out,
     I64ElementsAttr:$dimensions
   );
 
@@ -255,24 +251,33 @@ def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [
   let regions = (region SizedRegion<1>:$body);
 }
 
+// TODO(timshen): Add a custom parser to hide operand_segment_sizes. For example,
+// A tuple-like pattern match syntax could work:
+// xla_lhlo.case %index, (%input0, %input1, %input2), (%output0, %output1) {
+//   ...
+// }, {
+//   ...
+// } : (type_input0, type_input1, type_input2, type_output0, type_output1) -> ()
 def LHLO_CaseOp: LHLO_Op<"case", [
+      AttrSizedOperandSegments,
       SingleBlockImplicitTerminator<"TerminatorOp">
     ]>, BASE_HLO_CaseOp {
 
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$index,
-    Arg<Variadic<LHLO_BufferOrTuple>, "", [MemRead]>:$branch_operands,
-    Arg<LHLO_BufferOrTuple, "", [MemWrite]>:$out
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$branch_operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$out
   );
 
   let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
 }
 
 // TODO(timshen): Add a custom syntax for this.
-def LHLO_WhileOp: LHLO_Op<"while", [SameTypeOperands]>, BASE_HLO_WhileOp {
+def LHLO_WhileOp: LHLO_Op<"while", [SameVariadicOperandSize]>,
+                  BASE_HLO_WhileOp {
   let arguments = (ins
-    Arg<LHLO_BufferOrTuple, "", [MemRead]>:$val,
-    Arg<LHLO_BufferOrTuple, "", [MemWrite]>:$output
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$val,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output
   );
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
@@ -281,20 +286,6 @@ def LHLO_WhileOp: LHLO_Op<"while", [SameTypeOperands]>, BASE_HLO_WhileOp {
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
 //===----------------------------------------------------------------------===//
-
-def LHLO_GetTupleElementOp: LHLO_Op<"get_tuple_element", []>, BASE_HLO_GetTupleElementOp {
-  let arguments = (ins
-    Arg<LHLO_TupleBuffer, "", [MemRead]>:$input,
-    Arg<LHLO_BufferOrTuple, "", [MemWrite]>:$out,
-    I32Attr:$index
-  );
-}
-
-def LHLO_TupleOp : LHLO_Op<"tuple", []>, BASE_HLO_TupleOp {
-   let arguments = (ins
-     Arg<Variadic<LHLO_BufferOrTuple>, "", [MemRead]>:$val,
-     Arg<LHLO_TupleBuffer, "", [MemWrite]>:$out);
-}
 
 def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
   let arguments = (ins
@@ -436,7 +427,9 @@ def LHLO_BatchNormGradOp : LHLO_Op<"batch_norm_grad", []>,
     Arg<LHLO_Buffer, "", [MemRead]>:$mean,
     Arg<LHLO_Buffer, "", [MemRead]>:$variance,
     Arg<LHLO_Buffer, "", [MemRead]>:$grad_output,
-    Arg<LHLO_TupleBuffer, "", [MemWrite]>:$output,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$grad_operand,  // gradient of $operand.
+    Arg<LHLO_Buffer, "", [MemWrite]>:$grad_scale,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$grad_offset,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
@@ -465,10 +458,18 @@ def LHLO_BatchNormTrainingOp : LHLO_Op<"batch_norm_training", []>,
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_Buffer, "", [MemRead]>:$scale,
     Arg<LHLO_Buffer, "", [MemRead]>:$offset,
-    Arg<LHLO_TupleBuffer, "", [MemWrite]>:$output,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$batch_mean,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$batch_var,
     F32Attr:$epsilon,
     I64Attr:$feature_index
   );
+}
+
+// TODO(timshen): add a custom verifier.
+def LHLO_BitcastOp: LHLO_Op<"bitcast", []> {
+  let arguments = (ins Arg<LHLO_Buffer, "", [MemRead]>:$input,
+                       Arg<LHLO_Buffer, "", [MemWrite]>:$output);
 }
 
 def LHLO_BroadcastOp : LHLO_Op<"broadcast",
@@ -578,6 +579,19 @@ def LHLO_ReshapeOp: LHLO_Op<"reshape", []>, BASE_HLO_ReshapeOp {
   );
 }
 
+def LHLO_ScatterOp: LHLO_Op<"scatter", []>, BASE_HLO_ScatterOp {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$operand,
+    Arg<LHLO_Buffer, "", [MemRead]>:$scatter_indices,
+    Arg<LHLO_Buffer, "", [MemRead]>:$updates,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    ScatterDimensionNumbers<LHLO_Dialect>:$scatter_dimension_numbers,
+    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
+    DefaultValuedAttr<BoolAttr, "false">:$unique_indices
+  );
+
+  let regions = (region SizedRegion<1>:$update_computation);
+}
 
 def LHLO_SelectOp: LHLO_Op<"select", []>, BASE_HLO_SelectOp {
   let arguments = (ins
@@ -710,6 +724,35 @@ def LHLO_TriangularSolveOp: LHLO_Op<"triangular_solve", [SameOperandsElementType
     BoolAttr:$unit_diagonal,
     HLO_TransposeAttr:$transpose_a
   );
+}
+
+// TODO(timshen): add a custom verifier.
+def LHLO_MapOp: LHLO_Op<"map", [SameOperandsShape]>, BASE_HLO_MapOp {
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    I64ElementsAttr:$dimensions
+  );
+  let regions = (region SizedRegion<1>:$computation);
+}
+
+def LHLO_RngGetAndUpdateStateOp: LHLO_Op<"rng_get_and_update_state", []> {
+  let arguments = (ins
+    Arg<MemRefOf<[UI64]>, "", [MemRead, MemWrite]>:$state,
+    I64Attr:$delta
+  );
+}
+
+// TODO(timshen): add a custom verifier.
+def LHLO_SortOp: LHLO_Op<"sort", [SameVariadicOperandSize, SameOperandsShape]>, BASE_HLO_SortOp {
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$operands,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
+    DefaultValuedAttr<I64Attr, "-1">:$dimension,
+    DefaultValuedAttr<BoolAttr, "false">:$is_stable
+  );
+
+  let regions = (region SizedRegion<1>:$comparator);
 }
 
 //===----------------------------------------------------------------------===//

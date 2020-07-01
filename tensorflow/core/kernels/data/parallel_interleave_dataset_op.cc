@@ -1544,11 +1544,13 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   int64 buffer_output_elements = model::kAutotune;
   int64 prefetch_input_elements = model::kAutotune;
   if (op_version_ >= 4) {
+    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBufferOutputElements,
+                                            &buffer_output_elements));
     OP_REQUIRES(ctx,
                 buffer_output_elements == model::kAutotune ||
-                    buffer_output_elements >= 0,
+                    buffer_output_elements > 0,
                 errors::InvalidArgument("`buffer_output_elements` must be ",
-                                        model::kAutotune, " or >= 0 but is ",
+                                        model::kAutotune, " or > 0 but is ",
                                         buffer_output_elements));
 
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kPrefetchInputElements,

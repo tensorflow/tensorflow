@@ -36,14 +36,15 @@ class TestLhloToLLVMPass
     OwningRewritePatternList patterns;
     LLVMTypeConverter converter(m.getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
-    PopulateLhloToLLVMConversionPatterns(&converter, &patterns);
+    PopulateLhloToLLVMConversionPatterns(
+        LowerToLLVMOptions::getDefaultOptions(), &converter, &patterns);
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
     target.addIllegalDialect<XlaLhloDialect>();
 
-    if (failed(applyFullConversion(m, target, patterns, &converter))) {
+    if (failed(applyFullConversion(m, target, patterns))) {
       signalPassFailure();
     }
   }

@@ -23,12 +23,20 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace testing {
+
+constexpr int kOfflinePlannerHeaderSize = 3;
+
+struct NodeConnection_ {
+  std::initializer_list<int32_t> input;
+  std::initializer_list<int32_t> output;
+};
+typedef struct NodeConnection_ NodeConnection;
 
 // A simple operator that returns the median of the input with the number of
 // times the kernel was invoked. The implementation below is deliberately
@@ -47,6 +55,7 @@ class SimpleStatefulOp {
 
  public:
   static const TfLiteRegistration* getRegistration();
+  static TfLiteRegistration* GetMutableRegistration();
   static void* Init(TfLiteContext* context, const char* buffer, size_t length);
   static TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
   static TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node);
@@ -55,6 +64,7 @@ class SimpleStatefulOp {
 class MockCustom {
  public:
   static const TfLiteRegistration* getRegistration();
+  static TfLiteRegistration* GetMutableRegistration();
   static void* Init(TfLiteContext* context, const char* buffer, size_t length);
   static void Free(TfLiteContext* context, void* buffer);
   static TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
@@ -63,13 +73,8 @@ class MockCustom {
   static bool freed_;
 };
 
-class MockOpResolver : public MicroOpResolver {
- public:
-  const TfLiteRegistration* FindOp(BuiltinOperator op) const override;
-  const TfLiteRegistration* FindOp(const char* op) const override;
-  MicroOpResolver::BuiltinParseFunction GetOpDataParser(
-      tflite::BuiltinOperator) const override;
-};
+// Returns an Op Resolver that can be used in the testing code.
+AllOpsResolver GetOpResolver();
 
 // Returns a simple example flatbuffer TensorFlow Lite model. Contains 1 input,
 // 1 layer of weights, 1 output Tensor, and 1 operator.
@@ -81,6 +86,12 @@ const Model* GetComplexMockModel();
 
 // Returns a simple flatbuffer model with two branches.
 const Model* GetSimpleModelWithBranch();
+
+// Returns a simple flatbuffer model with offline planned tensors
+const Model* GetModelWithOfflinePlanning(int num_tensors,
+                                         const int32_t* metadata_buffer,
+                                         NodeConnection* node_conn,
+                                         int num_conns);
 
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();

@@ -73,8 +73,8 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
         self.assertAllEqual(a_value, b_value, msg)
 
   def testConstructorIsPrivate(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "StructuredTensor constructor is private"):
+    with self.assertRaisesRegex(ValueError,
+                                "StructuredTensor constructor is private"):
       structured_tensor.StructuredTensor({}, (), None, ())
 
   @parameterized.named_parameters([
@@ -453,7 +453,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
       nrows = nrows()  # deferred construction.
     if callable(row_partitions):
       row_partitions = row_partitions()  # deferred construction.
-    with self.assertRaisesRegexp(err, msg):
+    with self.assertRaisesRegex(err, msg):
       struct = StructuredTensor.from_fields(
           fields=fields,
           shape=shape,
@@ -468,7 +468,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     nrows = constant_op.constant(5)
     static_nrows = tensor_shape.Dimension(5)
     value = constant_op.constant([1, 2, 3])
-    with self.assertRaisesRegexp(ValueError, "fields have incompatible nrows"):
+    with self.assertRaisesRegex(ValueError, "fields have incompatible nrows"):
       structured_tensor._merge_nrows(nrows, static_nrows, value, dtypes.int32,
                                      validate=False)
 
@@ -538,12 +538,12 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
   def testPartitionOuterDimsErrors(self):
     st = StructuredTensor.from_fields({})
     partition = row_partition.RowPartition.from_row_splits([0])
-    with self.assertRaisesRegexp(ValueError,
-                                 r"Shape \(\) must have rank at least 1"):
+    with self.assertRaisesRegex(ValueError,
+                                r"Shape \(\) must have rank at least 1"):
       st.partition_outer_dimension(partition)
 
-    with self.assertRaisesRegexp(TypeError,
-                                 "row_partition must be a RowPartition"):
+    with self.assertRaisesRegex(TypeError,
+                                "row_partition must be a RowPartition"):
       st.partition_outer_dimension(10)
 
   @parameterized.named_parameters([
@@ -728,13 +728,13 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
 
   ])  # pyformat: disable
   def testFromPyvalError(self, pyval, err=ValueError, type_spec=None, msg=None):
-    with self.assertRaisesRegexp(err, msg):
+    with self.assertRaisesRegex(err, msg):
       structured_tensor.StructuredTensor.from_pyval(pyval, type_spec)
 
   def testToPyvalRequiresEagerMode(self):
     st = structured_tensor.StructuredTensor.from_pyval({"a": 5})
     if not context.executing_eagerly():
-      with self.assertRaisesRegexp(ValueError, "only supported in eager mode."):
+      with self.assertRaisesRegex(ValueError, "only supported in eager mode."):
         st.to_pyval()
 
   @parameterized.named_parameters([
@@ -915,7 +915,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
 
   def testMergeDimsError(self):
     st = StructuredTensor.from_pyval([[[{"a": 5}]]])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r"Expected outer_axis \(2\) to be less than inner_axis \(1\)"):
       st.merge_dims(2, 1)
@@ -925,7 +925,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(st.field_value(("a",)), 5)
     self.assertAllEqual(st.field_value(("b", "c")), [1, 2, 3])
     expected = "Field path \(.*a.*,.*b.*\) not found in .*"
-    with self.assertRaisesRegexp(KeyError, expected):
+    with self.assertRaisesRegex(KeyError, expected):
       st.field_value(("a", "b"))
 
   def testRepr(self):

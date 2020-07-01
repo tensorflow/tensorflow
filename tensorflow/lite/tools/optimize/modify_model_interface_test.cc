@@ -307,7 +307,7 @@ TEST_P(ModelInterface, SingleInputOutput) {
 
   // Verify results.
   EXPECT_EQ(model->subgraphs.size(), 1);
-  // TODO (b/158254056): Remove unused inputs and outputs from tensor list
+  // TODO(mnatraj): The float input tensor has not been removed.
   // EXPECT_EQ(model->subgraphs[0]->tensors.size(), 2);
   EXPECT_EQ(model->subgraphs[0]->tensors.size(), 3);
   EXPECT_EQ(model->subgraphs[0]->inputs.size(), 1);
@@ -517,6 +517,57 @@ TEST(ModelInterface, Uint8MutipleInputOutput) {
   EXPECT_EQ(output_2->type, TensorType_UINT8);
   EXPECT_FLOAT_EQ(output_2->quantization->scale[0], 0.22);
   EXPECT_EQ(output_2->quantization->zero_point[0], 178);
+}
+
+TEST(ModelInterface, Int8MutipleInputOutput) {
+  auto model = CreateQuantizedModelMultipleInputOutput();
+
+  // Change model type.
+  flatbuffers::FlatBufferBuilder builder;
+  EXPECT_EQ(ModifyModelInterface(&builder, model.get(), TensorType_INT8,
+                                 TensorType_INT8),
+            kTfLiteOk);
+
+  // Verify results.
+  EXPECT_EQ(model->subgraphs.size(), 1);
+  // TODO(mnatraj): The two float input tensors have not been removed.
+  // EXPECT_EQ(model->subgraphs[0]->tensors.size(), 4);
+  EXPECT_EQ(model->subgraphs[0]->tensors.size(), 6);
+  EXPECT_EQ(model->subgraphs[0]->inputs.size(), 2);
+  EXPECT_EQ(model->subgraphs[0]->inputs[0], 2);
+  EXPECT_EQ(model->subgraphs[0]->inputs[1], 3);
+  EXPECT_EQ(model->subgraphs[0]->outputs.size(), 2);
+  EXPECT_EQ(model->subgraphs[0]->outputs[0], 4);
+  EXPECT_EQ(model->subgraphs[0]->outputs[1], 5);
+  EXPECT_EQ(model->operator_codes.size(), 3);
+  EXPECT_EQ(model->subgraphs[0]->operators.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->operators[0]->opcode_index, 1);
+
+  auto fc_op = model->subgraphs[0]->operators[0].get();
+
+  auto input_1 = model->subgraphs[0]->tensors[fc_op->inputs[0]].get();
+  EXPECT_EQ(input_1->name, "tensor_2");
+  EXPECT_EQ(input_1->type, TensorType_INT8);
+  EXPECT_FLOAT_EQ(input_1->quantization->scale[0], 0.35);
+  EXPECT_EQ(input_1->quantization->zero_point[0], 28);
+
+  auto input_2 = model->subgraphs[0]->tensors[fc_op->inputs[1]].get();
+  EXPECT_EQ(input_2->name, "tensor_3");
+  EXPECT_EQ(input_2->type, TensorType_INT8);
+  EXPECT_FLOAT_EQ(input_2->quantization->scale[0], 0.12);
+  EXPECT_EQ(input_2->quantization->zero_point[0], 50);
+
+  auto output_1 = model->subgraphs[0]->tensors[fc_op->outputs[0]].get();
+  EXPECT_EQ(output_1->name, "tensor_4");
+  EXPECT_EQ(output_1->type, TensorType_INT8);
+  EXPECT_FLOAT_EQ(output_1->quantization->scale[0], 0.45);
+  EXPECT_EQ(output_1->quantization->zero_point[0], 28);
+
+  auto output_2 = model->subgraphs[0]->tensors[fc_op->outputs[1]].get();
+  EXPECT_EQ(output_2->name, "tensor_5");
+  EXPECT_EQ(output_2->type, TensorType_INT8);
+  EXPECT_FLOAT_EQ(output_2->quantization->scale[0], 0.22);
+  EXPECT_EQ(output_2->quantization->zero_point[0], 50);
 }
 
 TEST(ModelInterface, Float) {

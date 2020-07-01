@@ -36,13 +36,13 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   constexpr int64 kCorrelationId = 100;
 
   XSpace space;
-  XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, kStepNum}});
+  CreateXEvent(
+      &host_plane_builder, &main_thread, HostEventType::kTraceContext, 0, 100,
+      {{StatType::kGraphType, "train"}, {StatType::kStepNum, kStepNum}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
                10, 90, {{StatType::kStepId, kStepId}});
 
@@ -69,7 +69,7 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
                 device_plane->lines(0).events(0).stats(1)),
             StatType::kGroupId);
   EXPECT_EQ(event_group_name_map.size(), 1);
-  EXPECT_EQ(event_group_name_map[0], "123");
+  EXPECT_EQ(event_group_name_map[0], "train 123");
 }
 
 TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
@@ -78,8 +78,7 @@ TEST(GroupEventsTest, GroupTensorFlowLoopTest) {
   constexpr int64 kCorrelationId = 100;
 
   XSpace space;
-  XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
   host_plane_builder.ReserveLines(1);
 
   auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
@@ -125,8 +124,7 @@ TEST(GroupEventsTest, GroupMultipleTensorFlowLoopsTest) {
   constexpr int64 kSecondIterNumStart = 0;
 
   XSpace space;
-  XPlaneBuilder host_plane_builder(space.add_planes());
-  host_plane_builder.SetName(kHostThreads);
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
   host_plane_builder.ReserveLines(2);
 
   auto first_tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
@@ -163,9 +161,8 @@ TEST(GroupEventsTest, GroupFunctionalOp) {
   constexpr int64 kFunctionStepId = 1;
 
   XSpace space;
-  XPlane* host_plane = space.add_planes();
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
   XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -209,9 +206,8 @@ TEST(GroupEventsTest, EagerOpTest) {
   constexpr int64 kCorrelationId = 100;
 
   XSpace space;
-  XPlane* host_plane = space.add_planes();
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
   XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(1);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
@@ -255,9 +251,8 @@ TEST(GroupEventsTest, FunctionOpTest) {
   constexpr int64 kCorrelationId = 100;
 
   XSpace space;
-  XPlane* host_plane = space.add_planes();
+  XPlane* host_plane = GetOrCreateHostXPlane(&space);
   XPlaneBuilder host_plane_builder(host_plane);
-  host_plane_builder.SetName(kHostThreads);
   host_plane_builder.ReserveLines(2);
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);

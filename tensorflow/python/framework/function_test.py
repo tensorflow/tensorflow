@@ -144,7 +144,7 @@ class FunctionTest(test.TestCase):
       return a
 
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           (r"output names must be either empty or equal in size to outputs. "
            "output names size = 2 outputs size = 1")):
@@ -305,7 +305,7 @@ class FunctionTest(test.TestCase):
 
     x = np.random.uniform(-10., 10., size=(4, 9)).astype(np.float32)
     with session.Session(graph=g) as sess:
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "SymGrad expects to return 1.*but get 2.*instead"):
         _ = sess.run(dinp, {inp: x})
@@ -350,8 +350,8 @@ class FunctionTest(test.TestCase):
                 do_constant_folding=True)))
 
     with self.session(graph=g, config=cfg):
-      self.assertAllClose(y.eval(), 6.)
-      self.assertAllClose(dx.eval(), 2.)
+      self.assertAllClose(y, 6.)
+      self.assertAllClose(dx, 2.)
 
   def _testZNoDepOnY(self, use_const_grad_ys):
 
@@ -423,7 +423,7 @@ class FunctionTest(test.TestCase):
 
     with ops.Graph().as_default(), self.cached_session():
       z = Foo(constant_op.constant(3.0))
-      self.assertAllEqual(z.eval(), 6.0)
+      self.assertAllEqual(z, 6.0)
 
   def testAssertOp(self):
 
@@ -438,8 +438,8 @@ class FunctionTest(test.TestCase):
     g = ops.Graph()
     with g.as_default(), self.cached_session():
       self.assertAllEqual(Foo(constant_op.constant(3.0)).eval(), 6.0)
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "assertion failed.*-3"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "assertion failed.*-3"):
         self.assertAllEqual(Foo(constant_op.constant(-3.0)).eval(), 6.0)
 
   @test_util.run_deprecated_v1
@@ -453,8 +453,8 @@ class FunctionTest(test.TestCase):
 
     with self.cached_session():
       self.assertEqual(1.0, MyFn(1.0).eval())
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "assertion"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "assertion"):
         _ = MyFn(100.0).eval()
 
   @test_util.run_deprecated_v1
@@ -514,14 +514,14 @@ class FunctionTest(test.TestCase):
       self.assertEqual(4, sess.run(cond, {pred: True, x: 3}))
 
       # The assertion should still fire if the False branch is taken.
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "assertion"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "assertion"):
         sess.run(cond, {pred: False, x: 3})
 
       # Similarly for loops.
       self.assertEqual(3, sess.run(loop, {pred: False, x: 3}))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "assertion"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "assertion"):
         sess.run(loop, {pred: True, x: 3})
 
   @test_util.run_deprecated_v1
@@ -538,7 +538,7 @@ class FunctionTest(test.TestCase):
 
     with self.session(graph=g):
       variables.global_variables_initializer().run()
-      self.assertAllEqual(z.eval(), 101.)
+      self.assertAllEqual(z, 101.)
 
   @test_util.run_deprecated_v1
   def testResourceVarAsImplicitInput(self):
@@ -561,12 +561,12 @@ class FunctionTest(test.TestCase):
 
     with self.session(graph=g):
       v.initializer.run()
-      self.assertAllEqual(expected_val.eval(), self.evaluate(actual_val))
+      self.assertAllEqual(expected_val, self.evaluate(actual_val))
       self.assertAllEqual(expected_shape, self.evaluate(actual_shape))
 
   def testDefineErrors(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError, "can not return None"):
+      with self.assertRaisesRegex(ValueError, "can not return None"):
 
         @function.Defun()
         def TwoNone():
@@ -574,28 +574,28 @@ class FunctionTest(test.TestCase):
 
         _ = TwoNone.definition
 
-      with self.assertRaisesRegexp(ValueError, "are not supported"):
+      with self.assertRaisesRegex(ValueError, "are not supported"):
 
         @function.Defun()
         def DefaultArg(unused_a=12):
           return constant_op.constant([1])
 
         _ = DefaultArg.definition
-      with self.assertRaisesRegexp(ValueError, "are not supported"):
+      with self.assertRaisesRegex(ValueError, "are not supported"):
 
         @function.Defun()
         def KwArgs(**unused_kwargs):
           return constant_op.constant([1])
 
         _ = KwArgs.definition
-      with self.assertRaisesRegexp(ValueError, "specified input types"):
+      with self.assertRaisesRegex(ValueError, "specified input types"):
 
         @function.Defun(dtypes.float32)
         def PlusMinusV2(a, b):
           return a + b, b - a
 
         _ = PlusMinusV2.definition
-      with self.assertRaisesRegexp(ValueError, "specified input types"):
+      with self.assertRaisesRegex(ValueError, "specified input types"):
 
         @function.Defun(dtypes.float32, dtypes.float32, dtypes.float32)
         def PlusMinusV3(a, b):
@@ -623,25 +623,25 @@ class FunctionTest(test.TestCase):
       # pylint: disable=too-many-function-args
       # pylint: disable=unexpected-keyword-arg
       # pylint: disable=no-value-for-parameter
-      with self.assertRaisesRegexp(ValueError, "arguments: 0"):
+      with self.assertRaisesRegex(ValueError, "arguments: 0"):
         _ = Const(1)
-      with self.assertRaisesRegexp(ValueError, "arguments: 0"):
+      with self.assertRaisesRegex(ValueError, "arguments: 0"):
         _ = Const(1, 2)
 
-      with self.assertRaisesRegexp(ValueError, "arguments: 1"):
+      with self.assertRaisesRegex(ValueError, "arguments: 1"):
         _ = PlusOne()
       _ = PlusOne(1)
-      with self.assertRaisesRegexp(ValueError, "arguments: 1"):
+      with self.assertRaisesRegex(ValueError, "arguments: 1"):
         _ = PlusOne(1, 2)
 
-      with self.assertRaisesRegexp(ValueError, "arguments: 2"):
+      with self.assertRaisesRegex(ValueError, "arguments: 2"):
         _ = PlusMinus()
-      with self.assertRaisesRegexp(ValueError, "arguments: 2"):
+      with self.assertRaisesRegex(ValueError, "arguments: 2"):
         _ = PlusMinus(1)
       _ = PlusMinus(1, 2)
 
       _ = PlusOne(1, name="p1")
-      with self.assertRaisesRegexp(ValueError, "Unknown keyword arguments"):
+      with self.assertRaisesRegex(ValueError, "Unknown keyword arguments"):
         _ = PlusOne(1, device="/device:GPU:0")
 
   def testFunctionDecorator(self):
@@ -675,7 +675,7 @@ class FunctionTest(test.TestCase):
     with ops.Graph().as_default():
       z = CubeXPlusY(3.0, -2.0)
       with self.cached_session():
-        self.assertAllEqual(z.eval(), 25.0)
+        self.assertAllEqual(z, 25.0)
 
   def testNestedDefinedFunction(self):
 
@@ -691,7 +691,7 @@ class FunctionTest(test.TestCase):
     with ops.Graph().as_default():
       z = CubeXPlusY(3.0, -2.0)
       with self.cached_session():
-        self.assertAllEqual(z.eval(), 25.0)
+        self.assertAllEqual(z, 25.0)
 
   def testUnusedFunction(self):
     invoked = False
@@ -773,8 +773,8 @@ class FunctionTest(test.TestCase):
 
     with self.session(graph=g):
       variables.global_variables_initializer().run()
-      self.assertAllEqual(y.eval(), [[12.0]])
-      self.assertAllEqual(z.eval(), [[1.0]])
+      self.assertAllEqual(y, [[12.0]])
+      self.assertAllEqual(z, [[1.0]])
 
   def testCaptureControls(self):
     g = ops.Graph()
@@ -788,7 +788,7 @@ class FunctionTest(test.TestCase):
           y = logging_ops.Print(y, [y], "inner")
         return y
 
-      with self.assertRaisesRegexp(ValueError, "not an element of this graph."):
+      with self.assertRaisesRegex(ValueError, "not an element of this graph."):
         # NOTE: We still do not support capturing control deps.
         _ = Foo(x)
 
@@ -1051,7 +1051,7 @@ class FunctionTest(test.TestCase):
       return t + constant_op.constant(3, dtype=dtypes.int32)
 
     # First time we try to capture a stateful RandomUniform op.
-    with self.assertRaisesRegexp(ValueError, "Cannot capture a stateful node"):
+    with self.assertRaisesRegex(ValueError, "Cannot capture a stateful node"):
       res = StatefulFn()
 
     # This time we whitelist this op, so that its recreated.
@@ -1313,7 +1313,7 @@ class FunctionsFromProtos(test.TestCase):
     library.gradient.extend([gradient])
     library.function.extend([F1.definition])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "FunctionDefLibrary missing 'G1_[0-9a-zA-Z]{8,11}' FunctionDef"):
       function.from_library(library)
@@ -1323,7 +1323,7 @@ class FunctionsFromProtos(test.TestCase):
     library.gradient.extend([gradient])
     library.function.extend([G1.definition])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "FunctionDefLibrary missing 'F1_[0-9a-zA-Z]{8,11}' FunctionDef"):
       function.from_library(library)
@@ -1353,7 +1353,7 @@ class FunctionsFromProtos(test.TestCase):
 
     library.gradient.extend([gradient1, gradient2])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "FunctionDefLibrary contains cyclic gradient functions!"):
       function.from_library(library)
 
@@ -1418,8 +1418,8 @@ class FunctionOverloadTest(test.TestCase):
       y = Sinh(constant_op.constant(0.25, dtypes.float64))
 
     with self.session(graph=g):
-      self.assertAllClose(x.eval(), np.sinh(0.25))
-      self.assertAllClose(y.eval(), np.sinh(0.25))
+      self.assertAllClose(x, np.sinh(0.25))
+      self.assertAllClose(y, np.sinh(0.25))
 
   def testGradient(self):
 
@@ -1439,7 +1439,7 @@ class FunctionOverloadTest(test.TestCase):
         dx, = gradients_impl.gradients(y, x)
 
         with self.session(graph=g):
-          self.assertAllClose(dx.eval(), 0.25)
+          self.assertAllClose(dx, 0.25)
 
   def testDocString(self):
 
@@ -1483,7 +1483,7 @@ class FunctionCaptureByValueTest(test.TestCase):
     self.assertEqual(0, len(Foo.captured_inputs))
 
     with self.session(graph=g):
-      self.assertAllEqual(y.eval(), [[12.0]])
+      self.assertAllEqual(y, [[12.0]])
 
 
 class UnrollLSTMTest(test.TestCase):

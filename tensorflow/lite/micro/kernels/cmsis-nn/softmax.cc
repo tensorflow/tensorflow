@@ -36,8 +36,15 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
     } else {
       TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
-      TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
-      TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+      if (output->type == kTfLiteInt16) {
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
+        // NOTE: Current int16 softmax output does not require symmetric scaling
+        // - so no need to verify scale here.
+      } else {
+        TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
+        TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+        TF_LITE_ENSURE(context, output->params.scale == 1.f / 256);
+      }
     }
     TF_LITE_ENSURE(context, (output->params.scale == 1.f / 256) ||
                                 (output->params.scale == 1.f / 255));
@@ -90,17 +97,23 @@ void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
                                    GetTensorData<uint8_t>(input), output_shape,
                                    GetTensorData<uint8_t>(output));
   } else {
-    const unsigned int num_dims = NumDimensions(input);
+    if (output->type == kTfLiteInt16) {
+      tflite::reference_ops::Softmax(
+          op_data, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
+    } else {
+      const unsigned int num_dims = NumDimensions(input);
 
-    const int trailing_dim = input_shape.DimensionsCount() - 1;
-    const int outer_size =
-        MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-    const int depth =
-        MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+      const int trailing_dim = input_shape.DimensionsCount() - 1;
+      const int outer_size =
+          MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+      const int depth =
+          MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-    arm_softmax_s8(GetTensorData<int8_t>(input), outer_size, depth,
-                   op_data.input_multiplier, op_data.input_left_shift,
-                   op_data.diff_min, GetTensorData<int8_t>(output));
+      arm_softmax_s8(GetTensorData<int8_t>(input), outer_size, depth,
+                     op_data.input_multiplier, op_data.input_left_shift,
+                     op_data.diff_min, GetTensorData<int8_t>(output));
+    }
   }
 }
 

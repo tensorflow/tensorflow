@@ -1,3 +1,63 @@
+# Release 2.4.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+## Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* The byte layout for string tensors across the C-API has been updated to match
+  TF Core/C++; i.e., a contiguous array of `tensorflow::tstring`/`TF_TString`s.
+* C-API functions `TF_StringDecode`, `TF_StringEncode`, and
+  `TF_StringEncodedSize` are no longer relevant and have been removed; see
+  core/platform/ctstring.h for string access/modification in C.
+
+## Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES). E.G. ADDING A NEW DEPENDENCY, BUMPING A DEPENDENCY NUMBER, LACK OF SUPPORT ON SOME PLATFORM, ETC>
+
+## Major Features and Improvements
+
+* <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+* <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+## Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+* TF Core:
+    * <ADD RELEASE NOTES HERE>
+* `tf.data`:
+    * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
+  the complement of `select_cols`; at most one of these should be specified.
+*   `tf.distribute`:
+    * <ADD RELEASE NOTES HERE>
+*   `tf.keras`:
+    * <ADD RELEASE NOTES HERE>
+*   `tf.function`/AutoGraph:
+    * <ADD RELEASE NOTES HERE>
+*   `tf.lite`:
+    * <ADD RELEASE NOTES HERE>
+*   `tf.random`:
+    * <ADD RELEASE NOTES HERE>
+*   Math and Linear Algebra:
+    * <ADD RELEASE NOTES HERE>
+*   TPU Enhancements:
+    * <ADD RELEASE NOTES HERE>
+*   XLA Support:
+    * <ADD RELEASE NOTES HERE>
+*   Tracing and Debugging:
+    * <ADD RELEASE NOTES HERE>
+*   Other:
+    * <ADD RELEASE NOTES HERE>
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.3.0
 
 ## Breaking Changes
@@ -10,6 +70,9 @@
     `tf.compat.v1.image.extract_glimpse` does not change. The behavior of
     exsiting C++ kernel `ExtractGlimpse` does not change as well, so saved
     models will not be impacted.
+
+## Bug Fixes and Other Changes
+* Mutable tables now restore checkpointed values when loaded from SavedModel.
 
 # Release 2.1.1
 

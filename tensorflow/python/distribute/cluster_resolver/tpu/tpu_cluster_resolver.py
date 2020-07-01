@@ -52,15 +52,58 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
   """Cluster Resolver for Google Cloud TPUs.
 
   This is an implementation of cluster resolvers for the Google Cloud TPU
-  service. As Cloud TPUs are in alpha, you will need to specify a API definition
-  file for this to consume, in addition to a list of Cloud TPUs in your Google
-  Cloud Platform project.
+  service.
 
   TPUClusterResolver supports the following distinct environments:
   Google Compute Engine
   Google Kubernetes Engine
   Google internal
+
+  It can be passed into `tf.distribute.TPUStrategy` to support TF2 training on
+  Cloud TPUs.
   """
+
+  @staticmethod
+  def connect(tpu=None,
+              zone=None,
+              project=None):
+    """Initializes TPU and returns a TPUClusterResolver.
+
+    This API will connect to remote TPU cluster and initialize the TPU
+    hardwares. Example usage:
+
+    >>> resolver = tf.distribute.cluster_resolver.TPUClusterResolver.connect(
+    ...     tpu='')
+
+    It can be viewed as convenient wrapper of the following code:
+
+    >>> resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    >>> tf.config.experimental_connect_to_cluster(resolver)
+    >>> tf.tpu.experimental.initialize_tpu_system(resolver)
+
+    Args:
+      tpu: A string corresponding to the TPU to use. It can be the TPU name or
+        TPU worker gRPC address. If not set, it will try automatically resolve
+        the TPU address on Cloud TPUs.
+      zone: Zone where the TPUs are located. If omitted or empty, we will assume
+        that the zone of the TPU is the same as the zone of the GCE VM, which we
+        will try to discover from the GCE metadata service.
+      project: Name of the GCP project containing Cloud TPUs. If omitted or
+        empty, we will try to discover the project name of the GCE VM from the
+        GCE metadata service.
+
+    Returns:
+      An instance of TPUClusterResolver object.
+
+    Raises:
+      NotFoundError: If no TPU devices found in eager mode.
+    """
+    resolver = TPUClusterResolver(tpu, zone, project)
+    from tensorflow.python.eager import remote  # pylint: disable=g-import-not-at-top
+    remote.connect_to_cluster(resolver)
+    from tensorflow.python.tpu import tpu_strategy_util  # pylint: disable=g-import-not-at-top
+    tpu_strategy_util.initialize_tpu_system(resolver)
+    return resolver
 
   @staticmethod
   def _get_device_dict_and_cores(devices):
@@ -110,12 +153,9 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
     for the IP addresses and ports of each Cloud TPU listed.
 
     Args:
-      tpu: A string corresponding to the TPU to use. If the string is an empty
-        string, the string 'local', or a string that begins with 'grpc://', then
-          it is assumed to not correspond with a Cloud TPU and will instead be
-          passed as the session master and no ClusterSpec propagation will be
-          done. In the future, this may also support a list of strings when
-          multiple Cloud TPUs are used.
+      tpu: A string corresponding to the TPU to use. It can be the TPU name or
+        TPU worker gRPC address. If not set, it will try automatically resolve
+        the TPU address on Cloud TPUs.
       zone: Zone where the TPUs are located. If omitted or empty, we will assume
         that the zone of the TPU is the same as the zone of the GCE VM, which we
         will try to discover from the GCE metadata service.

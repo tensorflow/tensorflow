@@ -159,7 +159,8 @@ Status SaveDatasetOp::WriteMetadataFile(Env* env, const std::string& path,
                                         uint64 num_elements, bool finalized) {
   SnapshotMetadataRecord metadata;
   metadata.set_creation_timestamp(EnvTime::NowMicros());
-  metadata.set_run_id(strings::Printf("%llu", run_id));
+  metadata.set_run_id(
+      strings::Printf("%llu", static_cast<unsigned long long>(run_id)));
   metadata.set_version(kFileFormatVersion);
   for (const auto& output_dtype : output_dtypes) {
     metadata.add_dtype(output_dtype);

@@ -31,7 +31,6 @@ from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -122,8 +121,8 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.0, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np)
-        var1 = resource_variable_ops.ResourceVariable(var1_np)
+        var0 = variables.Variable(var0_np)
+        var1 = variables.Variable(var1_np)
         grads0_np_indices = np.array([0, 2], dtype=np.int32)
         grads0 = ops.IndexedSlices(
             constant_op.constant(grads0_np[grads0_np_indices]),
@@ -194,12 +193,12 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
         aggregated_update = adam.Adam().apply_gradients(
             [(grad_aggregated, aggregated_update_var)])
         variables.global_variables_initializer().run()
-        self.assertAllClose(aggregated_update_var.eval(),
+        self.assertAllClose(aggregated_update_var,
                             self.evaluate(repeated_index_update_var))
         for _ in range(3):
           repeated_update.run()
           aggregated_update.run()
-          self.assertAllClose(aggregated_update_var.eval(),
+          self.assertAllClose(aggregated_update_var,
                               self.evaluate(repeated_index_update_var))
 
   def doTestBasic(self, use_callable_params=False):
@@ -212,10 +211,8 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
@@ -272,10 +269,8 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
@@ -366,10 +361,8 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
@@ -413,10 +406,8 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
@@ -536,8 +527,8 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
 
   def testSlotsUniqueEager(self):
     with context.eager_mode():
-      v1 = resource_variable_ops.ResourceVariable(1.)
-      v2 = resource_variable_ops.ResourceVariable(1.)
+      v1 = variables.Variable(1.)
+      v2 = variables.Variable(1.)
       opt = adam.Adam(1.)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
       # There should be iteration, and two unique slot variables for v1 and v2.
@@ -582,8 +573,8 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.0, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np)
-        var1 = resource_variable_ops.ResourceVariable(var1_np)
+        var0 = variables.Variable(var0_np)
+        var1 = variables.Variable(var1_np)
         grads0_np_indices = np.array([0, 2], dtype=np.int32)
         grads0 = ops.IndexedSlices(
             constant_op.constant(grads0_np[grads0_np_indices]),
@@ -654,12 +645,12 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
         aggregated_update = adam.NonFusedAdam().apply_gradients(
             [(grad_aggregated, aggregated_update_var)])
         variables.global_variables_initializer().run()
-        self.assertAllClose(aggregated_update_var.eval(),
+        self.assertAllClose(aggregated_update_var,
                             self.evaluate(repeated_index_update_var))
         for _ in range(3):
           repeated_update.run()
           aggregated_update.run()
-          self.assertAllClose(aggregated_update_var.eval(),
+          self.assertAllClose(aggregated_update_var,
                               self.evaluate(repeated_index_update_var))
 
   def doTestBasic(self, use_callable_params=False):
@@ -672,10 +663,8 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
@@ -734,10 +723,8 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
@@ -830,10 +817,8 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
@@ -877,10 +862,8 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, name="var0_%d" % i)
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, name="var1_%d" % i)
+        var0 = variables.Variable(var0_np, name="var0_%d" % i)
+        var1 = variables.Variable(var1_np, name="var1_%d" % i)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
