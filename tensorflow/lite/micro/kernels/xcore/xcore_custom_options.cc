@@ -96,10 +96,19 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
           const std::string &plan_key = plan_keys[j].AsString().str();
           if (plan_key.compare("th") == 0) {
             plan->SetNumThreads(plan_values[j].AsInt32());
-          } else if (plan_key.compare("co") == 0) {
-            plan->changrps.SetNumChannels(plan_values[j].AsInt32());
+          } else if (plan_key.compare("cg") == 0) {
+            const auto &changrps = plan_values[j].AsVector();
+            plan->changrps.Init(changrps.size());
+            for (int k = 0; k < changrps.size(); k++) {
+              auto changrp =
+                  changrps[k].AsVector();  // values represent [start, end]
+              plan->changrps.Append(
+                  {k, changrp[0].AsInt32(),
+                   changrp[1].AsInt32() - changrp[0].AsInt32() + 1});
+            }
           } else if (plan_key.compare("rc") == 0) {
             const auto &regions = plan_values[j].AsVector();
+            plan->regions.Init(regions.size());
             for (int k = 0; k < regions.size(); k++) {
               auto region =
                   regions[k]
