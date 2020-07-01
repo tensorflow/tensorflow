@@ -22,19 +22,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-
-#define REGISTER_TEST_FLOAT32(TEST) REGISTER_TEST(TEST, DT_FLOAT, Float32Input);
-
-#ifdef ENABLE_INTEL_MKL_BFLOAT16
-#define REGISTER_TEST_BFLOAT16(TEST) \
-  REGISTER_TEST(TEST, DT_BFLOAT16, BFloat16Input);
-
-#define REGISTER_TEST_ALL_TYPES(TEST) \
-  REGISTER_TEST_FLOAT32(TEST);        \
-  REGISTER_TEST_BFLOAT16(TEST);
-#else
-#define REGISTER_TEST_ALL_TYPES(TEST) REGISTER_TEST_FLOAT32(TEST);
-#endif  // ENABLE_INTEL_MKL_BFLOAT16
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 namespace grappler {
