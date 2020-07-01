@@ -247,9 +247,8 @@ class LossFunctionWrapper(Loss):
       Loss values per sample.
     """
     if tensor_util.is_tensor(y_pred) and tensor_util.is_tensor(y_true):
-      if not K.is_keras_tensor(y_pred) and not K.is_keras_tensor(y_true):
-        y_pred, y_true = tf_losses_util.squeeze_or_expand_dimensions(
-            y_pred, y_true)
+      y_pred, y_true = tf_losses_util.squeeze_or_expand_dimensions(
+          y_pred, y_true)
     ag_fn = autograph.tf_convert(self.fn, ag_ctx.control_status_ctx())
     return ag_fn(y_true, y_pred, **self._fn_kwargs)
 
