@@ -5067,6 +5067,198 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     return ret
 
 
+@tf_export(v1=["nn.mixout"])
+@dispatch.add_dispatch_support
+@deprecation.deprecated_args(None, "Please use `rate` instead of `keep_prob`. "
+                             "Rate should be set to `rate = 1 - keep_prob`.",
+                             "keep_prob")
+def mixout(x, target_x, keep_prob=None, noise_shape=None, seed=None, name=None,
+            rate=None):
+    """Computes mixout.
+    reference: Lee, Cheolhyoung, Kyunghyun Cho, and Wanmo Kang. "Mixout: Effective regularization to finetune large-scale pretrained language models." arXiv preprint arXiv:1909.11299 (2019)
+
+    For each element of `x`, with probability `rate`, outputs `the corresponding weight in target_x`,
+    and otherwise scales up the input by `1 / (1-rate)`. The scaling is such that the expected
+    sum is unchanged.
+
+    By default, each element is kept or dropped independently.  If `noise_shape`
+    is specified, it must be
+    [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+    to the shape of `x`, and only dimensions with `noise_shape[i] == shape(x)[i]`
+    will make independent decisions.  For example, if `shape(x) = [k, l, m, n]`
+    and `noise_shape = [k, 1, 1, n]`, each batch and channel component will be
+    kept independently and each row and column will be kept or not kept together.
+
+    Args:
+      x: A floating point tensor.
+      target_x: A floating point tensor. It must share same shape with x.
+      keep_prob: (deprecated) A deprecated alias for `(1-rate)`.
+      noise_shape: A 1-D `Tensor` of type `int32`, representing the
+        shape for randomly generated keep/drop flags.
+      seed: A Python integer. Used to create random seeds. See
+        `tf.random.set_seed` for behavior.
+      name: A name for this operation (optional).
+      rate: A scalar `Tensor` with the same type as `x`. The probability that each
+        element of `x` is discarded.
+
+    Returns:
+      A Tensor of the same shape of `x`.
+
+    Raises:
+      ValueError: If `rate` is not in `[0, 1)` or if `x` or `target_x` is not a floating
+        point tensor.
+    """
+    try:
+        keep = 1. - keep_prob if keep_prob is not None else None
+    except TypeError:
+        raise ValueError("keep_prob must be a floating point number or Tensor "
+                         "(got %r)" % keep_prob)
+
+    rate = deprecation.deprecated_argument_lookup(
+        "rate", rate,
+        "keep_prob", keep)
+
+    if rate is None:
+        raise ValueError("You must provide a rate to dropout.")
+
+    return mixout_v2(x, target_x, rate, noise_shape=noise_shape, seed=seed, name=name)
+
+
+@tf_export("nn.mixout", v1=[])
+@dispatch.add_dispatch_support
+def mixout_v2(x, target_x, rate, noise_shape=None, seed=None, name=None):
+    """Computes mixout: randomly sets elements to the corresponding element in target_x
+    to prevent overfitting in finetuning. target_x should be weight read from pre-trained
+    model.
+
+    [Mixout](https://arxiv.org/abs/1909.11299) is useful for regularizing models at
+    finetuning stage. Inputs elements are randomly set to the corresponding elements
+    in the pre-trained model (and the other elements are rescaled).
+
+    More precisely: With probability `rate` elements of `x` are set to elements of `target_x`.
+    The remaining elements are scaled up by `1.0 / (1 - rate)`, so that the
+    expected value is preserved.
+
+    >>> tf.random.set_seed(0)
+    >>> x = tf.ones([3,5])
+    >>> target_x = tf.ones_like(x) * 2
+    >>> tf.nn.mixout(x, target_x, rate = 0.5, seed = 1).numpy()
+    array([[4., 2., 4., 4., 2.],
+           [4., 4., 4., 2., 2.],
+           [2., 4., 4., 4., 4.]], dtype=float32)
+
+    >>> tf.random.set_seed(0)
+    >>> x = tf.ones([3,5])
+    >>> target_x = tf.ones_like(x) * 2
+    >>> tf.nn.mixout(x, target_x, rate = 0.8, seed = 1).numpy()
+    array([[10., 10., 10.,  5.,  5.],
+           [10.,  5., 10.,  5., 10.],
+           [ 5., 10.,  5., 10.,  5.]], dtype=float32)
+
+    >>> tf.nn.mixout(x, target_x, rate = 0.0) == x
+    <tf.Tensor: shape=(3, 5), dtype=bool, numpy=
+      array([[ True,  True,  True,  True,  True],
+             [ True,  True,  True,  True,  True],
+             [ True,  True,  True,  True,  True]])>
+
+    >>> mixout(x, target_x, 1.0) == target_x
+    <tf.Tensor: shape=(3, 5), dtype=bool, numpy=
+    array([[ True,  True,  True,  True,  True],
+           [ True,  True,  True,  True,  True],
+           [ True,  True,  True,  True,  True]])>
+
+    By default, each element is kept or dropped independently.  If `noise_shape`
+    is specified, it must be
+    [broadcastable](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+    to the shape of `x`, and only dimensions with `noise_shape[i] == shape(x)[i]`
+    will make independent decisions. This is useful for dropping whole
+    channels from an image or sequence. For example:
+
+    >>> tf.random.set_seed(0)
+    >>> x = tf.ones([3,10])
+    >>> target_x = tf.ones_like(x) * 2
+    >>> tf.nn.mixout(x, target_x, rate = 2/3, noise_shape=[1,10], seed=1).numpy()
+    array([[3., 6., 6., 6., 6., 3., 6., 6., 6., 6.],
+           [3., 6., 6., 6., 6., 3., 6., 6., 6., 6.],
+           [3., 6., 6., 6., 6., 3., 6., 6., 6., 6.]], dtype=float32)
+
+    Args:
+      x: A floating point tensor.
+      target_x: A floating point tensor. It must share same shape with x.
+      rate: A scalar `Tensor` with the same type as x. The probability
+        that each element is dropped. For example, setting rate=0.1 would drop
+        10% of input elements.
+      noise_shape: A 1-D `Tensor` of type `int32`, representing the
+        shape for randomly generated keep/drop flags.
+      seed: A Python integer. Used to create random seeds. See
+        `tf.random.set_seed` for behavior.
+      name: A name for this operation (optional).
+
+    Returns:
+      A Tensor of the same shape of `x`.
+
+    Raises:
+      ValueError: If `rate` is not in `[0, 1)` or if `x` is not a floating point
+        tensor. `rate=1` is disallowed, because the output would be all zeros,
+        which is likely not what was intended.
+    """
+    with ops.name_scope(name, "mixout", [x]) as name:
+        is_rate_number = isinstance(rate, numbers.Real)
+        if is_rate_number and (rate < 0 or rate >= 1):
+            raise ValueError("rate must be a scalar tensor or a float in the "
+                             "range [0, 1), got %g" % rate)
+
+        x = ops.convert_to_tensor(x, name="x")
+        target_x = ops.convert_to_tensor(target_x, name="target_x")
+        x_dtype = x.dtype
+        if not x_dtype.is_floating:
+            raise ValueError("x has to be a floating point tensor since it's going "
+                             "to be scaled. Got a %s tensor instead." % x_dtype)
+        if x_dtype != target_x.dtype:
+            raise ValueError("x and target x have to have same dtype. Got %s as x's "
+                             "dtype and %s as target x's dtype" % (x_dtype, target_x.dtype))
+
+        is_executing_eagerly = context.executing_eagerly()
+        if not tensor_util.is_tensor(rate):
+            if is_rate_number:
+                keep_prob = 1 - rate
+                scale = 1 / keep_prob
+                scale = ops.convert_to_tensor(scale, dtype=x_dtype)
+                ret = gen_math_ops.mul(x, scale)
+                tgt_ret = gen_math_ops.mul(target_x, scale)
+            else:
+                raise ValueError("rate is neither scalar nor scalar tensor %r" % rate)
+        else:
+            rate.get_shape().assert_has_rank(0)
+            rate_dtype = rate.dtype
+            if rate_dtype != x_dtype:
+                if not rate_dtype.is_compatible_with(x_dtype):
+                    raise ValueError(
+                        "Tensor dtype %s is incomptaible with Tensor dtype %s: %r" %
+                        (x_dtype.name, rate_dtype.name, rate))
+                rate = gen_math_ops.cast(rate, x_dtype, name="rate")
+            one_tensor = constant_op.constant(1, dtype=x_dtype)
+            ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
+            tgt_ret = gen_math_ops.real_div(target_x, gen_math_ops.sub(one_tensor, rate))
+
+        noise_shape = _get_noise_shape(x, noise_shape)
+        # Sample a uniform distribution on [0.0, 1.0) and select values larger
+        # than rate.
+        #
+        # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
+        # and subtract 1.0.
+        random_tensor = random_ops.random_uniform(noise_shape, seed=seed, dtype=x_dtype)
+        # NOTE: if (1.0 + rate) - 1 is equal to rate, then that float is selected,
+        # hence a >= comparison is used.
+        keep_mask = gen_math_ops.cast(random_tensor >= rate, x_dtype)
+        replace_mask = gen_math_ops.cast(random_tensor < rate, x_dtype)
+        ret = gen_math_ops.add(gen_math_ops.mul(ret, keep_mask), gen_math_ops.mul(tgt_ret, replace_mask))
+
+        if not is_executing_eagerly:
+            ret.set_shape(x.get_shape())
+        return ret
+
+
 @tf_export("math.top_k", "nn.top_k")
 @dispatch.add_dispatch_support
 def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-builtin
