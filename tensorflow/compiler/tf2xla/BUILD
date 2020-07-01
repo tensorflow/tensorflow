@@ -655,6 +655,7 @@ cc_library(
         "functionalize_cond.h",
     ],
     deps = [
+        ":frontend_attributes_util",
         ":functionalize_control_flow_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
