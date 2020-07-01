@@ -20,23 +20,22 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-
 REGISTER_OP("EmptyTensorMap")
-    .Input("element_shape: shape_type")
-    .Input("max_num_elements: int32")
+//    .Input("element_shape: shape_type")
+//    .Input("max_num_elements: int32")
     .Output("handle: variant")
-    .Attr("element_dtype: type")
-    .Attr("shape_type: {int32, int64}")
+//    .Attr("element_dtype: type")
+//    .Attr("shape_type: {int32, int64}")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      DataType element_dtype;
+      /*DataType element_dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
       shape_inference::ShapeHandle element_shape;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
           0, &element_shape));
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
-                 {element_shape, element_dtype}});
+                 {element_shape, element_dtype}});*/
       return Status::OK();
     });
 

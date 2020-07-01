@@ -2953,6 +2953,7 @@ cc_library(
 tf_kernel_library(
     name = "map_kernels",
     srcs = ["map_kernels.cc"],
+    hdrs = ["map_kernels.h"],
     deps = [
         ":concat_lib",
         ":fill_functor",

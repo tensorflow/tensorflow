@@ -40,10 +40,10 @@ namespace tensorflow {
 // a reference count.  Modifying b.tensors() modifies a.tensors().  In this way,
 // TensorList should be considered similar to the tf::Tensor object.
 //
-// In order to get a copy of the underlying list, use the Copy method:
+// In order to get a copy of the underlying map, use the Copy method:
 //
 //    TensorList b = a.Copy();
-//    b.tensors().push_back(t);  // This does not modify a.tensors().
+//    b.tensors().insert(k, v);  // This does not modify a.tensors().
 //
 // Note that this is not a deep copy: the memory locations of the underlying
 // tensors will still point to the same locations of the corresponding tensors
@@ -188,4 +188,4 @@ static_assert(Variant::CanInlineType<TensorMap>(),
 #endif
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_TENSOR_LIST_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TENSOR_MAP_H_

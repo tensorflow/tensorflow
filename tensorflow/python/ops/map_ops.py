@@ -37,11 +37,10 @@ def empty_tensor_map(element_shape,
   if max_num_elements is None:
     max_num_elements = -1
 
-  return gen_map_ops.empty_tensor_map(
-      element_shape=_build_element_shape(element_shape),
-      element_dtype=element_dtype,
-      max_num_elements=max_num_elements,
-      name=name)
+  return gen_map_ops.empty_tensor_map(element_shape, 
+      element_dtype,
+      max_num_elements,
+      name)
 
 def zero_out(to_zero):
     print("Hello World - Python Op")
