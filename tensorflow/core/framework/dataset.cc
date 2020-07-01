@@ -496,6 +496,34 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   return s;
 }
 
+Status DatasetBaseIterator::SkipNext(IteratorContext* ctx,
+                                     bool* end_of_sequence) {
+  profiler::TraceMe activity([&] { return BuildTraceMeName(); },
+                             profiler::TraceMeLevel::kInfo);
+  DVLOG(3) << prefix() << " SkipNext enter";
+  RecordStart(ctx, /*stop_output=*/true);
+  Status s = SkipNextInternal(ctx, end_of_sequence);
+  if (s.ok() && !*end_of_sequence) RecordElement(ctx);
+  RecordStop(ctx, /*start_output=*/true);
+  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
+    s = errors::Internal("Iterator \"", params_.prefix,
+                         "\" returned `OutOfRange`. This indicates an "
+                         "implementation error as `OutOfRange` errors are not "
+                         "expected to be returned here. Original message: ",
+                         s.error_message());
+    LOG(ERROR) << s;
+  }
+  DVLOG(3) << prefix() << " SkipNext exit";
+  return s;
+}
+
+Status DatasetBaseIterator::SkipNextInternal(IteratorContext* ctx,
+                                             bool* end_of_sequence) {
+  std::vector<Tensor> out_tensors;
+  Status s = GetNextInternal(ctx, &out_tensors, end_of_sequence);
+  return s;
+}
+
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset = nullptr;
   MakeDataset(ctx, &dataset);

@@ -592,6 +592,8 @@ class IteratorBase {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
 
+  virtual Status SkipNext(IteratorContext* ctx, bool* end_of_sequence) = 0;
+
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
   // iterator.
@@ -895,6 +897,8 @@ class DatasetBaseIterator : public IteratorBase {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
 
+  Status SkipNext(IteratorContext* ctx, bool* end_of_sequence) final;
+
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
     return IteratorBase::Save(ctx, writer);
   }
@@ -904,6 +908,8 @@ class DatasetBaseIterator : public IteratorBase {
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) = 0;
+
+  virtual Status SkipNextInternal(IteratorContext* ctx, bool* end_of_sequence);
 
   string full_name(const string& name) const {
     if (str_util::StrContains(name, kColon)) {
