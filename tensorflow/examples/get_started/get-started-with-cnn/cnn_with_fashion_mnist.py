@@ -193,7 +193,7 @@ history = model.fit(training_images, training_labels, epochs=10)
 
 """### Accuracy and loss curves
 
-Let's build an accuracy and loss curve to see how well the model performs. We will use `matplotlib` to do so.
+Let's build an accuracy and loss curve to see how well the model performs. We will use [`matplotlib`](https://matplotlib.org/) to do so.
 """
 
 # Accuracy curve
@@ -202,16 +202,16 @@ plt.plot(history.history['accuracy'])
 plt.title('Model Accuracy')
 plt.ylabel('accuracy')
 plt.xlabel('epoch')
-plt.legend(['train', 'val'], loc='upper left')
+plt.legend(['train'], loc='upper left')
 plt.show()
 
 # Loss curve
 
 plt.plot(history.history['loss'])
-plt.title('model accuracy')
-plt.ylabel('accuracy')
+plt.title('Model Loss')
+plt.ylabel('loss')
 plt.xlabel('epoch')
-plt.legend(['train', 'val'], loc='upper left')
+plt.legend(['train'], loc='upper left')
 plt.show()
 
 """### Test accuracy
@@ -273,5 +273,6 @@ model.save('fashion_mnist_model')
 *   [TensorFlow Datasets, Fashion MNIST](https://www.tensorflow.org/api_docs/python/tf/keras/datasets/fashion_mnist)
 *   [Using Convolutional Neural Networks with TensorFlow by Rishit Dagli](https://medium.com/@rishit.dagli/using-convolutional-neural-networks-with-tensorflow-part-3-35de28a5621)
 *   [Extending what Convolutional nets can do by Rishit Dagli](https://medium.com/@rishit.dagli/extending-what-convolutional-nets-can-do-251f3021529c)
+*   [Matplotlib Documentation](https://matplotlib.org/3.2.2/contents.html#)
 *   [Visulaizing Convolutions by Laurence Moroney](https://github.com/lmoroney/dlaicourse/blob/842e3b1099082dc8631301c26afb6ec71f158eee/Horse_or_Human_NoValidation.ipynb)
 """
