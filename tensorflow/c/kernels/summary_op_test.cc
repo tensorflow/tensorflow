@@ -52,10 +52,13 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
   Status status;
   NodeDef def;
   def.set_op("SummaryScalar");
+
   def.set_device(DEVICE_CPU);
+
   AttrValue valuesTypeAttr;
   SetAttrValue(values->dtype(), &valuesTypeAttr);
   (*def.mutable_attr())["T"] = valuesTypeAttr;
+
   def.add_input(
       strings::StrCat("input1: ", DataTypeString(tags->dtype())));
   def.add_input(
@@ -65,8 +68,6 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
       CreateOpKernel(DeviceType(DEVICE_CPU), nullptr, 
       nullptr, def, 1, &status);
   ASSERT_TRUE(status.ok()) << status.ToString();
-
-  // Initialize OpKernel parameters 
   OpKernelContext::Params params;
   DummyDevice dummy_device(nullptr);
   params.device = &dummy_device;
@@ -76,10 +77,8 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
   inputs.emplace_back(values);
   params.inputs = &inputs;
   OpKernelContext ctx(&params, 1); 
-  AllocatorAttributes alloc_attrs;
-  std::vector<AllocatorAttributes> output_alloc_attrs({alloc_attrs});
-  params.output_attr_array = output_alloc_attrs.data();
   kernel->Compute(&ctx);
+
   ASSERT_EQ(expected_code, ctx.status().code());
   if (expected_code == error::OK){ 
     Summary summary; 
@@ -88,8 +87,8 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
   } 
 }
 
-TEST(ScalarSummaryOpTest, SimpleFloat) {
-  int vectorSize = 3; 
+TEST(ScalarSummaryOpTest, Test) {
+  int vectorSize = 2; 
   Tensor tags(DT_STRING, {vectorSize}); 
   Tensor values(DT_FLOAT, {vectorSize}); 
   tags.vec<tstring>()(0) = "tag1";

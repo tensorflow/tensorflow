@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/casts.h"
-#include <iostream>
-#include <string>
 
 using tensorflow::Status;
 using tensorflow::Tensor;
@@ -182,11 +180,6 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
   Set_TF_Status_from_Status(status, cc_status);
 }
 
-std::string TF_ShapeDebugString(const TF_Tensor* t){ 
-  return tensorflow::down_cast<tensorflow::TensorInterface*>(t->tensor)
-      ->ShapeDebugString(); 
-}
-
 namespace tensorflow {
 
 void TensorInterface::Release() { delete this; }
@@ -232,10 +225,6 @@ Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
   return tensor_.BitcastFrom(from.tensor_, type, s);
 }
 
-std::string TensorInterface::ShapeDebugString() const {
-  return tensor_.shape().DebugString();
-}
-
 }  // namespace tensorflow
 
 // --------------------------------------------------------------------------
@@ -267,7 +256,6 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype,
 namespace tensorflow {
 
 // Non-static for testing.
-
 TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
   *status = tensorflow::Status::OK();
   if (!src.IsInitialized()) {
@@ -295,12 +283,62 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
     std::memcpy(TF_TensorData(t), str.c_str(), str.size());
     return t;
   }
+  if (src.dtype() != tensorflow::DT_STRING) {
+    Tensor tensor;
+    if (!tensor.CopyFrom(src, src.shape())) {
+      return nullptr;
+    }
+    return new TF_Tensor{new tensorflow::TensorInterface(tensor)};
+  }
+  // DT_STRING tensors require a copying since TF_Tensor.buffer expects a flatly
+  // encoded sequence of strings.
 
-  Tensor tensor;
-  if (!tensor.CopyFrom(src, src.shape())) {
+  // Compute bytes needed for encoding.
+  size_t size = 0;
+  const auto& srcarray = src.flat<tstring>();
+  for (int i = 0; i < srcarray.size(); ++i) {
+    const string& s = srcarray(i);
+    // uint64 starting_offset, TF_StringEncode-d string.
+    size += sizeof(tensorflow::uint64) + TF_StringEncodedSize(s.size());
+  }
+
+  // Encode all strings.
+  char* base = new char[size];
+  char* data_start = base + sizeof(tensorflow::uint64) * srcarray.size();
+  char* dst = data_start;  // Where next string is encoded.
+  size_t dst_len = size - static_cast<size_t>(data_start - base);
+  tensorflow::uint64* offsets = reinterpret_cast<tensorflow::uint64*>(base);
+  for (int i = 0; i < srcarray.size(); ++i) {
+    *offsets = (dst - data_start);
+    offsets++;
+    const string& s = srcarray(i);
+    const size_t consumed = TF_StringEncodedSize(s.size());
+    StringEncode(s.data(), s.size(), dst);
+    dst += consumed;
+    dst_len -= consumed;
+  }
+  if (dst != base + size) {
+    *status = InvalidArgument(
+        "invalid string tensor encoding (decoded ", (dst - base),
+        " bytes, but the tensor is encoded in ", size, " bytes");
+    delete[] base;
     return nullptr;
   }
-  return new TF_Tensor{new tensorflow::TensorInterface(tensor)};
+// <<<<<<< HEAD
+//   return new TF_Tensor{new tensorflow::TensorInterface(tensor)};
+// =======
+
+  auto dims = src.shape().dim_sizes();
+  std::vector<tensorflow::int64> dimvec(dims.size());
+  for (size_t i = 0; i < dims.size(); ++i) {
+    dimvec[i] = dims[i];
+  }
+  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                "64-bit int types should match in size");
+  return TF_NewTensor(TF_STRING,
+                      reinterpret_cast<const int64_t*>(dimvec.data()),
+                      dimvec.size(), base, size, DeleteArray, base);
+// >>>>>>> parent of 477470d094... finished test file
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
@@ -324,14 +362,44 @@ Status TensorInterface::ToTensor(tensorflow::Tensor* dst) const {
     }
     return Status::OK();
   }
-  *dst = tensor_;
+  if (tensor_.dtype() != DT_STRING) {
+    *dst = tensor_;
+    return Status::OK();
+  }
+  // TF_STRING tensors require copying since Tensor class expects a sequence of
+  // string objects.
+  const tensorflow::int64 num_elements = tensor_.NumElements();
+  const char* input = reinterpret_cast<const char*>(Data());
+  const size_t src_size = ByteSize();
+  if (static_cast<tensorflow::int64>(src_size / sizeof(tensorflow::uint64)) <
+      num_elements) {
+    return InvalidArgument(
+        "Malformed TF_STRING tensor; too short to hold number of elements");
+  }
+  const char* data_start = input + sizeof(tensorflow::uint64) * num_elements;
+  const char* limit = input + src_size;
+
+  *dst = tensorflow::Tensor(tensor_.dtype(), tensor_.shape());
+  auto dstarray = dst->flat<tstring>();
+  for (tensorflow::int64 i = 0; i < num_elements; ++i) {
+    tensorflow::uint64 offset =
+        reinterpret_cast<const tensorflow::uint64*>(input)[i];
+    if (static_cast<ptrdiff_t>(offset) >= (limit - data_start)) {
+      return InvalidArgument("Malformed TF_STRING tensor; element ", i,
+                             " out of range");
+    }
+    size_t len;
+    const char* p;
+    const char* srcp = data_start + offset;
+    Status status = TF_StringDecode_Impl(srcp, limit - srcp, &p, &len);
+    if (!status.ok()) return status;
+    dstarray(i).assign(p, len);
+  }
   return Status::OK();
 }
-
 
 bool TensorInterface::IsAligned() const { return tensor_.IsAligned(); }
 
 }  // namespace tensorflow
 
 bool TF_TensorIsAligned(const TF_Tensor* t) { return t->tensor->IsAligned(); }
-

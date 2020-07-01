@@ -24,8 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/casts.h"
-#include <iostream>
-#include <string>
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
@@ -106,7 +104,6 @@ class TensorInterface : public AbstractTensorInterface {
   void* Data() const override;
   bool IsAligned() const override;
   bool CanMove() const override;
-  std::string ShapeDebugString() const; 
 
   Status ToTensor(tensorflow::Tensor* dst) const;
   Status BitcastFrom(const TensorInterface& from, DataType type,

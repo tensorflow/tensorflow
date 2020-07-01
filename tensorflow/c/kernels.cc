@@ -27,9 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-
 // This file forms the basis of a stable ABI for third-party kernel
 // implementations. It is crucial that changes to this file are made cautiously
 // and with a focus on maintaining both source and binary compatibility.
@@ -293,3 +290,4 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
   }  
   return tf_tensor_temp; 
 }
+

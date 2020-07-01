@@ -81,10 +81,6 @@ static void SummaryScalarOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
     } 
     TF_DeleteTensor(summary_tensor);
   }
-
-  if (TF_GetCode(status) != TF_OK) {
-    TF_OpKernelContext_Failure(ctx, status);
-  }
   TF_DeleteStatus(status);
   TF_DeleteTensor(tags);
   TF_DeleteTensor(values); 
@@ -126,11 +122,10 @@ void RegisterSummaryScalarOpKernel() {
         static_cast<TF_DataType>(tensorflow::DataTypeToEnum<T>::v()), status); 
     CHECK_EQ(TF_OK, TF_GetCode(status))
         << "Error while adding type constraint";
-    TF_RegisterKernelBuilder("SummaryScalarOp", builder, status);
+    TF_RegisterKernelBuilder("SummaryScalar", builder, status);
     CHECK_EQ(TF_OK, TF_GetCode(status))
         << "Error while registering Summary Scalar kernel";
   }
-
 #if GOOGLE_CUDA
   {
     auto* builder = TF_NewKernelBuilder("SummaryScalar", 
@@ -143,14 +138,13 @@ void RegisterSummaryScalarOpKernel() {
         << "Error while registering CUDA SummaryScalar kernel";
   }
 #endif
-
   TF_DeleteStatus(status);
 }
 
 // A dummy static variable initialized by a lambda whose side-effect is to
 // register the bitcast kernel.                                                          
 TF_ATTRIBUTE_UNUSED static bool  IsSummaryScalarOpKernelRegistered = []() {                  
-  if (SHOULD_REGISTER_OP_KERNEL("SummaryScalarOp")) {                                                                           
+  if (SHOULD_REGISTER_OP_KERNEL("SummaryScalar")) {                                                                           
     RegisterSummaryScalarOpKernel<tensorflow::int64>();          
     RegisterSummaryScalarOpKernel<tensorflow::int32>();   
     RegisterSummaryScalarOpKernel<tensorflow::uint16>();   
