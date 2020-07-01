@@ -263,6 +263,7 @@ if sys.version_info[0] >= 3:
 else:
   TensorTypeBase = object
 
+
 # TODO(mdan): This object should subclass Symbol, not just Tensor.
 @tf_export("Tensor")
 class Tensor(internal.NativeObject, core_tf_types.Tensor, TensorTypeBase):
