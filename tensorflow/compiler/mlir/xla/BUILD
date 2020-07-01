@@ -485,6 +485,7 @@ cc_library(
     hdrs = ["transforms/xla_hlo_to_lhlo_with_xla.h"],
     deps = [
         ":hlo",
+        ":hlo_module_importer",
         ":hlo_utils",
         ":lhlo",
         ":mlir_hlo_to_hlo",
@@ -493,6 +494,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
