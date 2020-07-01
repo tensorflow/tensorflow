@@ -15,20 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/gpu/rocm_tracer.h"
 
+#include <chrono>
 #include <iostream>
 #include <sstream>
-
-#if TENSORFLOW_COMPILER_IS_HIP_CLANG
-// For HIP-VDI disable the roctracer flush bug workaround
-#define ROCTRACER_FLUSH_BUG_WORKAROUND 0
-#else  // TENSORFLOW_COMPILER_IS_HIP_CLANG
-#define ROCTRACER_FLUSH_BUG_WORKAROUND 1
-#endif  // TENSORFLOW_COMPILER_IS_HIP_CLANG
-
-#if ROCTRACER_FLUSH_BUG_WORKAROUND
-#include <chrono>
 #include <thread>
-#endif
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
@@ -341,12 +331,10 @@ class RocmApiCallbackImpl {
         case HIP_API_ID_hipExtModuleLaunchKernel:
         case HIP_API_ID_hipHccModuleLaunchKernel:
           AddKernelEventUponApiExit(cbid, data);
-#if ROCTRACER_FLUSH_BUG_WORKAROUND
           // Add the correlation_ids for these events to the pending set
           // so that we can explicitly wait for their corresponding
-          // HCC runtime activity records, before exporting the trace data
+          // HIP runtime activity records, before exporting the trace data
           tracer_->AddToPendingActivityRecords(data->correlation_id);
-#endif
           break;
         case HIP_API_ID_hipMemcpyDtoH:
         case HIP_API_ID_hipMemcpyDtoHAsync:
@@ -678,9 +666,7 @@ class RocmActivityCallbackImpl {
             case HIP_OP_ID_DISPATCH:
               DumpActivityRecord(record);
               AddHccKernelActivityEvent(record);
-#if ROCTRACER_FLUSH_BUG_WORKAROUND
               tracer_->RemoveFromPendingActivityRecords(record->correlation_id);
-#endif
               break;
             case HIP_OP_ID_COPY:
               DumpActivityRecord(record);
@@ -1107,24 +1093,13 @@ Status RocmTracer::DisableActivityTracing() {
     }
   }
 
-#if ROCTRACER_FLUSH_BUG_WORKAROUND
+  // Flush the activity buffer BEFORE setting the activity_tracing_enable_
+  // flag to FALSE. This is because the activity record callback routine is
+  // gated by the same flag
+  VLOG(kRocmTracerVlog) << "Flushing roctracer activity buffer";
+  RETURN_IF_ROCTRACER_ERROR(roctracer_flush_activity());
 
-  // FWIW, having this workaround BEFORE the call to flush (instead of
-  // immediately after it) seems to workout better. In this case, we
-  // rarely see any events getting dropped (as result of HCC activiy
-  // records not showing up), where as if this workaround is done after
-  // the flush call, a few (10s out of 1000s) do get dropped
-
-  // Further fine-tuning of the workaround....
-  // If the pending count is less than 64, it makes more sense to call
-  // flush first. For small testscase, the last few activity records
-  // do not seem to get flushed out until the call to flush. So for them
-  // make the call to flush before the wait
-  if (GetPendingActivityRecordsCount() < 64) {
-    VLOG(kRocmTracerVlog) << "Flushing roctracer activity buffer";
-    RETURN_IF_ROCTRACER_ERROR(roctracer_flush_activity());
-  }
-
+  // Explicitly wait for (almost) all pending acitivity records
   // The choice of all of the following is based what seemed to work
   // best when enabling tracing on a large testcase (BERT)
   // * 100 ms as the initial sleep duration AND
@@ -1134,22 +1109,16 @@ Status RocmTracer::DisableActivityTracing() {
   size_t threshold = 1;
   for (int i = 0; i < 6; i++, duration_ms *= 2, threshold *= 2) {
     if (GetPendingActivityRecordsCount() < threshold) break;
-    VLOG(kRocmTracerVlog) << "ROCTRACER_FLUSH_BUG_WORKAROUND :"
+    VLOG(kRocmTracerVlog) << "Wait for pending activity records :"
                           << " Pending count = "
                           << GetPendingActivityRecordsCount()
                           << ", Threshold = " << threshold;
-    VLOG(kRocmTracerVlog) << "ROCTRACER_FLUSH_BUG_WORKAROUND : sleep for "
+    VLOG(kRocmTracerVlog) << "Wait for pending activity records : sleep for "
                           << duration_ms << " ms";
     std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
   }
   ClearPendingActivityRecordsCount();
-#endif
 
-  // Flush the activity buffer BEFORE setting the activity_tracing_enable_
-  // flag to FALSE. This is because the activity record callback routine is
-  // gated by the same flag
-  VLOG(kRocmTracerVlog) << "Flushing roctracer activity buffer";
-  RETURN_IF_ROCTRACER_ERROR(roctracer_flush_activity());
 
   activity_tracing_enabled_ = false;
 
