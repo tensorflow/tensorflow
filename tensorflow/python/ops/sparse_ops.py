@@ -2754,17 +2754,17 @@ def map_values(op, *args, **kwargs):
   ...                            [0, 4, 0],
   ...                            [1, 0, 0]])
   >>> print(tf.sparse.to_dense(tf.sparse.map_values(tf.ones_like, st)).numpy())
-  [[1, 1, 0], 
-   [0, 1, 0], 
-   [1, 0, 0]]
+  [[1 1 0]
+   [0 1 0]
+   [1 0 0]]
   >>> print(tf.sparse.to_dense(tf.sparse.map_values(tf.multiply, st, st)).numpy())
-  [[1, 4, 0],
-   [0, 16, 0],
-   [1, 0, 0]]
+  [[ 1  4  0]
+   [ 0 16  0]
+   [ 1  0  0]]
   >>> print(tf.sparse.to_dense(tf.sparse.map_values(tf.add, st, 5)).numpy())
-  [[5, 7, 0], 
-   [0, 9, 0], 
-   [6, 0, 0]]
+  [[6 7 0]
+   [0 9 0]
+   [6 0 0]]
 
   Note in particular that even though `tf.add(0, 5) != 0`, implicit zeros
   will remain unchanged. However, if the sparse tensor contains any explict
