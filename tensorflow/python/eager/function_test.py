@@ -4008,7 +4008,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     trace_count = [0]
     disabled(1, constant_op.constant(1), "str", x=4.0)
     disabled(2, constant_op.constant(2), "str2", x=5.0) # Retrace
-    self.assertEqual(trace_count[0], 2)
+    self.assertEqual(trace_count[0], 2) # pylint: disable=bad-whitespace
 
   def testFollowTypeHintsTraceWithOnlyArgNamed(self):
     trace_count = [0]

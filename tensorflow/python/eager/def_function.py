@@ -1414,9 +1414,10 @@ def function(func=None,
     experimental_compile: If True, the function is always compiled by
       [XLA](https://www.tensorflow.org/xla). XLA may be more efficient in some
       cases (e.g. TPU, XLA_GPU, dense tensor computations).
-    experimental_follow_type_hints: When True, the function may use type annotations
-      to optimize the tracing performance. For example, arguments annotated with
-      `tf.Tensor` will automatically be converted to a Tensor.
+    experimental_follow_type_hints: When True, the function may use type
+      annotations to optimize the tracing performance. For example,
+      arguments annotated with tf.Tensor` will automatically be converted
+      to a Tensor.
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
