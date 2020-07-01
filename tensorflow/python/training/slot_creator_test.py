@@ -147,7 +147,7 @@ class SlotCreatorTest(test.TestCase):
         slot = slot_creator.create_slot(v, s.initialized_value(), name="slot")
         si = slot._save_slice_info
 
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         self.assertEqual("var/part_%d/slot" % i, slot.op.name)
         self.assertEqual([2], slot.get_shape().as_list())
@@ -168,7 +168,7 @@ class SlotCreatorTest(test.TestCase):
       for i, v in enumerate(p_v):
         slot = slot_creator.create_slot(v, s.initialized_value(), name="slot")
 
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         self.assertEqual("var/part_%d/slot" % i, slot.op.name)
         self.assertEqual([], slot.get_shape().as_list())

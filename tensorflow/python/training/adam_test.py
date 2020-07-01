@@ -80,7 +80,7 @@ class AdamOptimizerTest(test.TestCase):
             constant_op.constant(grads1_np_indices), constant_op.constant([2]))
         opt = adam.AdamOptimizer()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
@@ -121,7 +121,7 @@ class AdamOptimizerTest(test.TestCase):
         gathered_sum = math_ops.reduce_sum(array_ops.gather(var, indices))
         optimizer = adam.AdamOptimizer(3.0)
         minimize_op = optimizer.minimize(gathered_sum)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         minimize_op.run()
 
   @test_util.run_deprecated_v1
@@ -146,7 +146,7 @@ class AdamOptimizerTest(test.TestCase):
             [(grad_repeated_index, repeated_index_update_var)])
         aggregated_update = adam.AdamOptimizer().apply_gradients(
             [(grad_aggregated, aggregated_update_var)])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.assertAllClose(aggregated_update_var,
                             self.evaluate(repeated_index_update_var))
         for _ in range(3):
@@ -268,7 +268,7 @@ class AdamOptimizerTest(test.TestCase):
         grads1 = constant_op.constant(grads1_np)
         opt = adam.AdamOptimizer(constant_op.constant(0.001))
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
@@ -308,7 +308,7 @@ class AdamOptimizerTest(test.TestCase):
         opt = adam.AdamOptimizer()
         update1 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         beta1_power, beta2_power = opt._get_beta_accumulators()
 

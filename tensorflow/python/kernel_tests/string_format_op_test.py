@@ -54,7 +54,7 @@ class StringFormatOpTest(test.TestCase):
       var = variables.Variable(3.34)
       format_output = string_ops.string_format("{}", [var])
       if not context.executing_eagerly():
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
       out = self.evaluate(format_output)
       expected = "3.34"
       self.assertEqual(compat.as_text(out), expected)
@@ -65,7 +65,7 @@ class StringFormatOpTest(test.TestCase):
       var = variables.Variable(math_ops.range(10))
       format_output = string_ops.string_format("{}", [var])
       if not context.executing_eagerly():
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
       out = self.evaluate(format_output)
       expected = "[0 1 2 ... 7 8 9]"
       self.assertEqual(compat.as_text(out), expected)
@@ -78,7 +78,7 @@ class StringFormatOpTest(test.TestCase):
       var_two = variables.Variable(math_ops.range(10))
       format_output = string_ops.string_format("{}, {}", [var_one, var_two])
       if not context.executing_eagerly():
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
       self.evaluate(plus_one)
       out = self.evaluate(format_output)
       expected = "3.14, [0 1 2 ... 7 8 9]"

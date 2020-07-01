@@ -1067,7 +1067,7 @@ class StridedSliceBenchmark(test_lib.Benchmark):
   """Benchmark new strided slice operation on non-trivial case."""
 
   def run_and_time(self, slice_op):
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
     for _ in range(10):
       _ = slice_op.eval()
     iters = 1000

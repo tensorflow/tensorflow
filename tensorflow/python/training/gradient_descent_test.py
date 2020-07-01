@@ -47,7 +47,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         optimizer = gradient_descent.GradientDescentOptimizer(3.0)
         sgd_op = optimizer.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
         self.assertAllCloseAccordingToType([3.0, 4.0], self.evaluate(var1))
@@ -155,7 +155,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         # doesn't work because the sessions and graph are reused across unit
         # tests and this would mean trying to reinitialize variables. Figure out
         # a long-term solution for this.
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         self.assertAllCloseAccordingToType([3.0], self.evaluate(var1))
@@ -179,7 +179,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         lrate = constant_op.constant(3.0)
         sgd_op = gradient_descent.GradientDescentOptimizer(
             lrate).apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
         self.assertAllCloseAccordingToType([3.0, 4.0], self.evaluate(var1))
@@ -199,7 +199,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         values = [1.0, 3.0]
         vars_ = [variables.Variable([v], dtype=dtype) for v in values]
         grads_and_vars = opt.compute_gradients(vars_[0] + vars_[1], vars_)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         for grad, _ in grads_and_vars:
           self.assertAllCloseAccordingToType([1.0], self.evaluate(grad))
 
@@ -214,7 +214,7 @@ class GradientDescentOptimizerTest(test.TestCase):
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         sgd_op = gradient_descent.GradientDescentOptimizer(3.0).apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
         self.assertAllCloseAccordingToType([3.0, 4.0], self.evaluate(var1))
@@ -245,7 +245,7 @@ class GradientDescentOptimizerTest(test.TestCase):
             constant_op.constant([2, 1]))
         sgd_op = gradient_descent.GradientDescentOptimizer(3.0).apply_gradients(
             zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0], [2.0]], self.evaluate(var0))
         self.assertAllCloseAccordingToType([[3.0], [4.0]], self.evaluate(var1))

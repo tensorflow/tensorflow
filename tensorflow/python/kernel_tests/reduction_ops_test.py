@@ -223,7 +223,7 @@ class SumReductionTest(BaseReductionTest):
 
     with self.session(graph=ops.Graph(), use_gpu=True) as sess:
       tf_arr = variables.Variable(arr)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
       tf_out_mean = self.evaluate(tf_mean)
     self.assertAllClose(tf_out_mean, 1.)

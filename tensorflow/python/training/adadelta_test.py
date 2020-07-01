@@ -176,7 +176,7 @@ class AdadeltaOptimizerTest(test.TestCase):
         loss = pred * pred
         sgd_op = adadelta.AdadeltaOptimizer(
             1.0, 1.0, 1.0).minimize(loss)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd

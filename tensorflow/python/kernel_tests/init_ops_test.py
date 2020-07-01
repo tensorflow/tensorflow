@@ -373,7 +373,7 @@ class UniformUnitScalingInitializationTest(test.TestCase):
           "x",
           shape=shape,
           initializer=init_ops.uniform_unit_scaling_initializer())
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(shape, self.evaluate(x).shape)
 
   @test_util.run_deprecated_v1
@@ -1347,7 +1347,7 @@ class IdentityInitializerTest(test.TestCase):
       with variable_scope.variable_scope(
           "foo", partitioner=partitioner, initializer=init):
         v = array_ops.identity(variable_scope.get_variable("bar", shape=shape))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(v, np.eye(*shape))
 
 

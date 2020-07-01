@@ -330,7 +330,7 @@ class CholeskyBenchmark(test.Benchmark):
           ops.device("/cpu:0"):
         matrix = variables.Variable(self._GenerateMatrix(shape))
         l = linalg_ops.cholesky(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(
@@ -344,7 +344,7 @@ class CholeskyBenchmark(test.Benchmark):
             ops.device("/device:GPU:0"):
           matrix = variables.Variable(self._GenerateMatrix(shape))
           l = linalg_ops.cholesky(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(
@@ -364,7 +364,7 @@ class CholeskyBenchmark(test.Benchmark):
           grad_matrix = variables.Variable(
               np.random.randn(*matrix.shape).astype(np.float32))
           grad = grad_fn(l, grad_matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(

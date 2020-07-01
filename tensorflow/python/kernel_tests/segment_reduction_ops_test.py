@@ -969,7 +969,7 @@ class SegmentReductionOpBenchmark(test.Benchmark):
       vc = variables.Variable(const.astype(dtype))
     name, op = op_functor(vc, vs, seg_ids)
     with session.Session() as sess:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       r = self.run_op_benchmark(
           sess,
           op,
