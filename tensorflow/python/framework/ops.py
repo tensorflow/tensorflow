@@ -4737,6 +4737,10 @@ class Graph(object):
     """
     if control_inputs is None:
       return self._ControlDependenciesController(self, None)
+
+    # Imported here to avoid circular dependency.
+    from tensorflow.python.ops import resource_variable_ops  # pylint: disable=g-import-not-at-top
+
     # First convert the inputs to ops, and deduplicate them.
     # NOTE(mrry): Other than deduplication, we do not currently track direct
     #   or indirect dependencies between control_inputs, which may result in
@@ -4748,7 +4752,7 @@ class Graph(object):
       # control dependencies on a variable or on an unread variable don't
       # trigger reads.
       if (isinstance(c, IndexedSlices) or
-          (hasattr(c, "_handle") and hasattr(c, "op"))):
+          (resource_variable_ops.is_resource_variable(c) and hasattr(c, "op"))):
         c = c.op
       c = self.as_graph_element(c)
       if isinstance(c, Tensor):

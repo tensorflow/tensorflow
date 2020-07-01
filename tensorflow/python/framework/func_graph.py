@@ -187,7 +187,7 @@ class FuncGraph(ops.Graph):
     self.inputs = []
     self.outputs = []
     self.control_outputs = []
-    self.control_captures = set()
+    self.control_captures = object_identity.ObjectIdentitySet()
     self.structured_input_signature = None
     self.structured_outputs = None
     self._weak_variables = []
@@ -347,7 +347,7 @@ class FuncGraph(ops.Graph):
     for c in control_inputs:
       # Check for _UnreadVariable
       if (isinstance(c, ops.IndexedSlices) or
-          (hasattr(c, "_handle") and hasattr(c, "op"))):
+          (resource_variable_ops.is_resource_variable(c) and hasattr(c, "op"))):
         c = c.op
       graph_element = ops._as_graph_element(c)  # pylint: disable=protected-access
       if graph_element is None:
