@@ -36,7 +36,8 @@ class TestLhloToLLVMPass
     OwningRewritePatternList patterns;
     LLVMTypeConverter converter(m.getContext());
     populateStdToLLVMConversionPatterns(converter, patterns);
-    PopulateLhloToLLVMConversionPatterns(&converter, &patterns);
+    PopulateLhloToLLVMConversionPatterns(
+        LowerToLLVMOptions::getDefaultOptions(), &converter, &patterns);
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
