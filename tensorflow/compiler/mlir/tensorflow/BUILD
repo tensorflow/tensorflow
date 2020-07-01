@@ -766,6 +766,7 @@ cc_library(
         ":tensorflow_attributes",
         ":tensorflow_passes",
         ":tensorflow_types",
+        ":tf_saved_model_passes",
         ":translate_utils",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/cc/saved_model:constants",
