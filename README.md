@@ -149,6 +149,8 @@ Build Type                                                        | Status      
 *   [Intro to TensorFlow for Deep Learning from Udacity](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187)
 *   [Introduction to TensorFlow Lite from Udacity](https://www.udacity.com/course/intro-to-tensorflow-lite--ud190)
 *   [Machine Learning with TensorFlow on GCP](https://www.coursera.org/specializations/machine-learning-tensorflow-gcp)
+*   [TensorFlow Chat Room on StackOverflow (not actively monitored by the
+    TensorFlow team)](https://chat.stackoverflow.com/rooms/216694/tensorflow)
 *   [TensorFlow Blog](https://blog.tensorflow.org)
 *   [Learn ML with TensorFlow](https://www.tensorflow.org/resources/learn-ml)
 *   [TensorFlow Twitter](https://twitter.com/tensorflow)
