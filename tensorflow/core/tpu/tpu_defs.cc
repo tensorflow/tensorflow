@@ -20,7 +20,6 @@ namespace tensorflow {
 const char* const DEVICE_TPU_NODE = "TPU";
 const char* const TPU_FAST_MEM_ATTR = "_TPU_FAST_MEM";
 const char* const DEVICE_TPU_REPLICATED_CORE = "TPU_REPLICATED_CORE";
-const char* const DEVICE_TPU_SYSTEM = "TPU_SYSTEM";
 const char* const DEVICE_TPU_XLA_JIT = "XLA_TPU_JIT";
 const char* const TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR =
     "_mirrored_variable_indices";
