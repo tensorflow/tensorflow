@@ -64,5 +64,6 @@ class Value(Tensor):
     pass
 
 
-TensorLike = Union[Tensor, int, float, bool, str, complex, tuple, list, np.ndarray]
+TensorLike = Union[Tensor, int, float, bool, str, complex, tuple, list,
+                   np.ndarray]
 tf_export("experimental.TensorLike").export_constant(__name__, "TensorLike")
