@@ -6,6 +6,10 @@ package(licenses = ["notice"])
 glob_lit_tests(
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
+    exclude = [
+        # TODO(b/160227541): Re-enable LHLO->LLVM lowering.
+        "lhlo-legalize-to-llvm.mlir",
+    ],
     test_file_exts = ["mlir"],
 )
 
