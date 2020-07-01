@@ -21,7 +21,6 @@ from __future__ import print_function
 import copy
 import weakref
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
@@ -304,7 +303,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         not getattr(self, "_local_or_standalone_client_mode", False)):
       # Checking _local_or_standalone_client_mode as well because we should not
       # create the std server in standalone client mode.
-      config_proto = config_pb2.ConfigProto()
+      config_proto = copy.deepcopy(context.context().config)
       config_proto = self._update_config_proto(config_proto)
 
       if hasattr(cluster_resolver, "port"):
