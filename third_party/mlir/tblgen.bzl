@@ -1,6 +1,6 @@
 """BUILD extensions for MLIR table generation."""
 
-def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], strip_include_prefix = None, test = False):
+def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], td_relative_includes = [], strip_include_prefix = None, test = False):
     """gentbl() generates tabular code from a table definition file.
 
     Args:
@@ -11,7 +11,8 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], stri
         options passed to tblgen, and the out is the corresponding output file
         produced.
       td_srcs: A list of table definition files included transitively.
-      td_includes: A list of include paths for relative includes.
+      td_includes: A list of include paths for relative includes, provided as build targets.
+      td_relative_includes: A list of include paths for relative includes, provided as relative path.
       strip_include_prefix: attribute to pass through to cc_library.
       test: whether to create a test to invoke the tool too.
     """
@@ -20,10 +21,21 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], stri
     if td_file not in td_srcs:
         srcs += [td_file]
 
-    td_includes_cmd = ["-I external/llvm-project/mlir/include -I external/org_tensorflow"]
-    td_includes_cmd += ["-I $(GENDIR)/external/llvm-project/mlir/include"]
+    td_includes_cmd = [
+        "-I external/llvm-project/mlir/include -I external/org_tensorflow",
+        "-I $(GENDIR)/external/llvm-project/mlir/include",
+    ]
     for td_include in td_includes:
-        td_includes_cmd += ["-I%s" % td_include]
+        td_includes_cmd += [
+            "-I%s" % td_include,
+            "-I$(GENDIR)/%s" % td_include,
+        ]
+    for td_include in td_relative_includes:
+        td_includes_cmd += [
+            "-I%s/%s" % (native.package_name(), td_include),
+            "-I$(GENDIR)/%s/%s" % (native.package_name(), td_include),
+        ]
+
     local_inc = "-I $$(dirname $(location %s))" % td_file
 
     if test:
