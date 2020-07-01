@@ -27,6 +27,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -76,7 +77,8 @@ class TensorTracerOpDispatcher(dispatch.GlobalOpDispatcher):
             any(self.is_tensor_tracer_arg(x) for x in kwargs.values())):
       return self.NOT_SUPPORTED
 
-    return TensorTracer(op.__name__, args, kwargs)
+    symbol_name = get_canonical_name_for_symbol(op)
+    return TensorTracer(symbol_name, args, kwargs)
 
   def is_tensor_tracer_arg(self, value):
     if isinstance(value, TensorTracer):
@@ -183,12 +185,29 @@ class DispatchTest(test_util.TensorFlowTestCase):
       y = TensorTracer("y")
       trace = math_ops.reduce_sum(math_ops.add(math_ops.abs(x), y), axis=3)
       self.assertEqual(
-          str(trace), "reduce_sum(add(name=None, x=abs(x), y=y), axis=3)")
+          str(trace),
+          "math.reduce_sum(math.add(name=None, x=math.abs(x), y=y), axis=3)")
 
     finally:
       # Clean up.
       dispatch._GLOBAL_DISPATCHERS = original_global_dispatchers
 
+  def testGlobalDispatcherConvertToTensor(self):
+    original_global_dispatchers = dispatch._GLOBAL_DISPATCHERS
+    try:
+      TensorTracerOpDispatcher().register()
+
+      x = TensorTracer("x")
+      y = TensorTracer("y")
+      trace = math_ops.add(math_ops.abs(
+          ops.convert_to_tensor_v2_with_dispatch(x)), y)
+      self.assertEqual(
+          str(trace),
+          "math.add(name=None, x=math.abs(convert_to_tensor(x)), y=y)")
+
+    finally:
+      # Clean up.
+      dispatch._GLOBAL_DISPATCHERS = original_global_dispatchers
 
 if __name__ == "__main__":
   googletest.main()

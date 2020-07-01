@@ -274,6 +274,7 @@ cuda_py_test(
     name = "op_callbacks_test",
     srcs = ["op_callbacks_test.py"],
     python_version = "PY3",
+    tags = ["no_cuda11"],
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",

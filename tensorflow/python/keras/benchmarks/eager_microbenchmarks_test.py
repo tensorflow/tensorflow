@@ -99,6 +99,21 @@ class MicroBenchmarksBase(test.Benchmark):
 
     self._run(fn, 10000)
 
+  def benchmark_op_layer_call_overhead(self):
+    model_input = tf.keras.Input(shape=(1,))
+    model_output = model_input
+    x = tf.convert_to_tensor([[1.1]])
+
+    for _ in range(20):
+      model_output = tf.multiply(model_output, x)
+    model = tf.keras.Model(inputs=model_input, outputs=model_output)
+
+    def fn():
+      model(x)  # pylint: disable=not-callable
+
+    fn()
+    self._run(fn, 100)
+
   def benchmark_model_predict_tensorlike_overhead(self):
 
     class OnlyOverheadLayer(tf.keras.layers.Layer):

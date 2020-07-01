@@ -537,7 +537,7 @@ class FunctionTest(test.TestCase):
       z = Foo(v)
 
     with self.session(graph=g):
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(z, 101.)
 
   @test_util.run_deprecated_v1
@@ -772,7 +772,7 @@ class FunctionTest(test.TestCase):
       z = Bar()
 
     with self.session(graph=g):
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(y, [[12.0]])
       self.assertAllEqual(z, [[1.0]])
 

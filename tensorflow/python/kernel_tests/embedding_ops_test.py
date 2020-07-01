@@ -76,7 +76,7 @@ class ScatterAddSubTest(test.TestCase):
       ind = constant_op.constant(indices, dtype=dtypes.int32)
       p2 = scatter_op(p, ind, vals, name="updated_p")
       # p = init
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       # p += vals
       result = self.evaluate(p2)
     # Compute the expected 'p' using numpy operations.
@@ -302,7 +302,7 @@ class EmbeddingLookupTest(test.TestCase):
       ids = constant_op.constant(list(id_vals), dtype=dtypes.int32)
       print("Construct ids", ids.get_shape())
       embedding = embedding_ops.embedding_lookup(p_variable, ids)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       params_values = [params[p_i.name] for p_i in p]
       # Test that the PartitionedVariable components equal the list in p
       p_var_val = self.evaluate(list(p_variable))
@@ -325,7 +325,7 @@ class EmbeddingLookupTest(test.TestCase):
       ids = constant_op.constant(list(id_vals), dtype=dtypes.int32)
       print("Construct ids", ids.get_shape())
       embedding = embedding_ops.embedding_lookup(p_variable, ids)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       params_values = [params[p_i.name] for p_i in p]
       # Test that the PartitionedVariable components equal the list in p
       p_var_val = self.evaluate(list(p_variable))
@@ -425,7 +425,7 @@ class EmbeddingLookupTest(test.TestCase):
       # will test that aspect.
       id_vals = np.random.randint(vocab_size, size=num_vals)
       ids = constant_op.constant(list(id_vals), dtype=dtypes.int32)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       embedding = embedding_ops.embedding_lookup(
           p_variable, ids, partition_strategy="div")
       tf_result = embedding.eval(feed_dict=feed_dict)

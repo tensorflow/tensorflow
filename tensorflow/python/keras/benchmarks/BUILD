@@ -51,6 +51,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss_py38",  # b/160170347
+        "no_windows",  # b/160269052
     ],
     deps = [
         "//tensorflow/python:client_testlib",

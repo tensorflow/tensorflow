@@ -628,7 +628,10 @@ class Model {
   // relative to other transformations. The collected parameters are returned
   // as a mapping from a (unique) node name to a parallelism parameter.
   absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-  CollectEssentialParallelism(std::shared_ptr<Node> node);
+  CollectEssentialParallelism(
+      std::shared_ptr<Node> node,
+      const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
+          parameters);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then repeatedly identifies the

@@ -652,7 +652,7 @@ void QuantizationDriver::PreprocessConstantOps() {
       }
 
       if (biases.find(operand_num) == biases.end() &&
-          !user->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
+          !llvm::dyn_cast<mlir::SameScalesOpInterface>(user)) {
         // Needs to scan the content to get the quantiztion parameters if there
         // are no quantization parameters (FakeQuant ops).
         weights_.insert(cst);
@@ -764,7 +764,7 @@ bool QuantizationDriver::PropagateParams() {
       continue;
     }
 
-    if (op->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
+    if (llvm::isa<SameScalesOpInterface>(op)) {
       auto params = GetQuantParamsForSameScaleConstraint(op);
       // The quantization parameters haven't been propagated to any operands
       // or results. Skip this node for now.

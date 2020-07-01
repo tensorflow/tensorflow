@@ -133,7 +133,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
             constant_op.constant(grads1_np_indices), constant_op.constant([3]))
         opt = adam.Adam()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 1.0, 2.0], self.evaluate(var0))
@@ -167,7 +167,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
         g_sum = lambda: math_ops.reduce_sum(array_ops.gather(var, indices))  # pylint: disable=cell-var-from-loop
         optimizer = adam.Adam(3.0)
         minimize_op = optimizer.minimize(g_sum, var_list=[var])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         minimize_op.run()
 
   def testSparseRepeatedIndices(self):
@@ -192,7 +192,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
             [(grad_repeated_index, repeated_index_update_var)])
         aggregated_update = adam.Adam().apply_gradients(
             [(grad_aggregated, aggregated_update_var)])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.assertAllClose(aggregated_update_var,
                             self.evaluate(repeated_index_update_var))
         for _ in range(3):
@@ -459,7 +459,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
         grads1 = constant_op.constant(grads1_np)
         opt = adam.Adam(constant_op.constant(0.001))
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
@@ -499,7 +499,7 @@ class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
         opt = adam.Adam()
         update1 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         beta_1_power, beta_2_power = get_beta_accumulators(opt, dtype)
 
@@ -585,7 +585,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
             constant_op.constant(grads1_np_indices), constant_op.constant([3]))
         opt = adam.NonFusedAdam()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 1.0, 2.0], self.evaluate(var0))
@@ -619,7 +619,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
         g_sum = lambda: math_ops.reduce_sum(array_ops.gather(var, indices))  # pylint: disable=cell-var-from-loop
         optimizer = adam.NonFusedAdam(3.0)
         minimize_op = optimizer.minimize(g_sum, var_list=[var])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         minimize_op.run()
 
   def testSparseRepeatedIndices(self):
@@ -644,7 +644,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
             [(grad_repeated_index, repeated_index_update_var)])
         aggregated_update = adam.NonFusedAdam().apply_gradients(
             [(grad_aggregated, aggregated_update_var)])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.assertAllClose(aggregated_update_var,
                             self.evaluate(repeated_index_update_var))
         for _ in range(3):
@@ -915,7 +915,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
         grads1 = constant_op.constant(grads1_np)
         opt = adam.NonFusedAdam(constant_op.constant(0.001))
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
@@ -955,7 +955,7 @@ class NonFusedAdamOptimizerTest(test.TestCase, parameterized.TestCase):
         opt = adam.NonFusedAdam()
         update1 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         beta_1_power, beta_2_power = get_beta_accumulators(opt, dtype)
 

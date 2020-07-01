@@ -237,7 +237,7 @@ class QRBenchmark(test.Benchmark):
             low=-1.0, high=1.0, size=shape_).astype(np.float32)
         matrix = variables.Variable(matrix_value)
         q, r = linalg_ops.qr(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(q, r),
@@ -252,7 +252,7 @@ class QRBenchmark(test.Benchmark):
               low=-1.0, high=1.0, size=shape_).astype(np.float32)
           matrix = variables.Variable(matrix_value)
           q, r = linalg_ops.qr(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(q, r),

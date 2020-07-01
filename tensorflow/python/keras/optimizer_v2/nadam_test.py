@@ -96,7 +96,7 @@ class NadamOptimizerTest(test.TestCase):
             constant_op.constant(grads1_np_indices), constant_op.constant([3]))
         opt = nadam.Nadam(epsilon=sparse_epsilon)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 1.0, 2.0], var0)
@@ -137,7 +137,7 @@ class NadamOptimizerTest(test.TestCase):
         grads1 = constant_op.constant(grads1_np)
         opt = nadam.Nadam()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], var0)

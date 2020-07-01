@@ -473,7 +473,7 @@ genrule(
     ],
     cmd = ("$(location //tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen) " +
            "-I external/llvm-project/mlir/include " +
-           "-I external/org_tensorflow " +
+           "-I tensorflow/compiler/mlir " +
            "$(location //tensorflow/compiler/mlir/lite:ir/tfl_ops.td) " + " -o $@"),
     tools = ["//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen"],
 )

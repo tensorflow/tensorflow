@@ -1472,18 +1472,6 @@ class OpConverterTest : public ::testing::Test {
     return Status::OK();
   }
 
-  bool HasStaticShape(const nvinfer1::Dims& dims) const {
-    if (dims.nbDims < 0) return false;
-    for (int i = 0; i < dims.nbDims; ++i) {
-      if (dims.d[i] < 0) return false;
-    }
-    return true;
-  }
-
-  bool HasStaticShape(std::vector<int> dims) const {
-    return !absl::c_any_of(dims, [](int i) { return i < 0; });
-  }
-
   // Adds ITensor for both validation and conversion, assuming explicit batch
   // dimension is included in dims (ie for an NCHW tensor dims = {N, C, H, W}).
   void AddTestTensorWithTFDims(
@@ -5680,152 +5668,170 @@ NodeDef GetPackNodeDef(DataType dtype, int num_inputs, int axis) {
   return pack.operation.node()->def();
 }
 
-template <DataType dtype>
-void TestConvertPack(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
-
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+TEST_P(OpConverterTest3, ConvertPack) {
+#else
+TEST_P(OpConverterTest2, ConvertPack) {
+#endif
   struct TestParams {
     std::vector<std::vector<int>> input_shapes;
-    std::vector<std::vector<CType>> input_values;
+    std::vector<std::vector<int>> partial_input_shapes;
+    std::vector<std::vector<float>> input_values;
     int axis;
     std::vector<int> expected_output_dims;
-    std::vector<CType> expected_output;
+    std::vector<float> expected_output;
+    Status conversion_status;
+    Status runtime_status;
+    bool input_1_is_weight;
   };
 
-  const std::vector<std::vector<CType>> common_input{
-      InitTestVector<CType>(6),
-      InitTestVector<CType>(6, /*start_value=*/CType(6))};
+  const std::vector<std::vector<float>> common_input{
+      InitTestVector<float>(6), InitTestVector<float>(6, /*start_value=*/6)};
   std::vector<TestParams> params = {
+      // Second input is weight, should fail in implicit batch mode
+      {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
+       /*partial_input_shapes=*/{{}, {}},
+       /*input_values=*/common_input,
+       /*axis=*/1,
+       /*expected_output_dims=*/{1, 2, 2, 3},
+       /*expected_output=*/InitTestVector<float>(12),
+       trt_mode == TrtTestMode::kImplicitBatch
+           ? Status{error::UNIMPLEMENTED,
+                    "The input \"values_1\" for Pack must be a tensor, at "
+                    "my_pack"}
+           : Status::OK(),
+       /*runtime_status*/ Status::OK(),
+       /*weight_input*/ true},
+      // Axis is out of bounds, should fail.
       {
-          /*input_shapes=*/{{2, 3}, {2, 3}},
+          /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
+          /*partial_input_shapes=*/{{}, {}},
+          /*input_values=*/common_input,
+          /*axis=*/-5,
+          /*expected_output_dims=*/{},
+          /*expected_output=*/{},
+          Status{error::INVALID_ARGUMENT,
+                 "Axis value of -5 is out of bounds, must be in"
+                 " range [-4, 4), at my_pack"},
+      },
+      // Axis is batch dimension, should fail in implicit batch mode.
+      {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
+       /*partial_input_shapes=*/{{}, {}},
+       /*input_values=*/common_input,
+       /*axis=*/-4,
+       /*expected_output_dims=*/{2, 1, 2, 3},
+       /*expected_output=*/InitTestVector<float>(12),
+       trt_mode == TrtTestMode::kImplicitBatch
+           ? Status{error::UNIMPLEMENTED,
+                    "TensorRT does not allow manipulation of the batch "
+                    "dimension, at my_pack"}
+           : Status::OK()},
+      // Inconsistent rank, should fail.
+      {
+          /*input_shapes=*/{{1, 2, 3}, {1, 6}},
+          /*partial_input_shapes=*/{{}, {}},
           /*input_values=*/common_input,
           /*axis=*/1,
-          /*expected_output_dims=*/{2, 2, 3},
-          /*expected_output=*/InitTestVector<CType>(12),
+          /*expected_output_dims=*/{},
+          /*expected_output=*/{},
+          Status{error::INVALID_ARGUMENT,
+                 "Received inputs with inconsistent rank, at my_pack"},
       },
       {
-          /*input_shapes=*/{{2, 3}, {2, 3}},
+          /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
+          /*partial_input_shapes=*/{{}, {}},
+          /*input_values=*/common_input,
+          /*axis=*/1,
+          /*expected_output_dims=*/{1, 2, 2, 3},
+          /*expected_output=*/InitTestVector<float>(12),
+      },
+      {
+          /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
+          /*partial_input_shapes=*/{{}, {}},
           /*input_values=*/common_input,
           /*axis=*/2,
-          /*expected_output_dims=*/{2, 2, 3},
+          /*expected_output_dims=*/{1, 2, 2, 3},
           /*expected_output=*/
-          {CType(0), CType(1), CType(2), CType(6), CType(7), CType(8), CType(3),
-           CType(4), CType(5), CType(9), CType(10), CType(11)},
+          {0, 1, 2, 6, 7, 8, 3, 4, 5, 9, 10, 11},
       },
       {
-          /*input_shapes=*/{{2, 3}, {2, 3}},
+          /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
+          /*partial_input_shapes=*/{{}, {}},
           /*input_values=*/common_input,
           /*axis=*/3,
-          /*expected_output_dims=*/{2, 3, 2},
+          /*expected_output_dims=*/{1, 2, 3, 2},
           /*expected_output=*/
-          {CType(0), CType(6), CType(1), CType(7), CType(2), CType(8), CType(3),
-           CType(9), CType(4), CType(10), CType(5), CType(11)},
+          {0, 6, 1, 7, 2, 8, 3, 9, 4, 10, 5, 11},
       },
       {
-          /*input_shapes=*/{{2, 3}},
-          /*input_values=*/{InitTestVector<CType>(6)},
+          /*input_shapes=*/{{1, 2, 3}},
+          /*partial_input_shapes=*/{{}},
+          /*input_values=*/{InitTestVector<float>(6)},
           /*axis=*/1,
-          /*expected_output_dims=*/{1, 2, 3},
-          /*expected_output=*/InitTestVector<CType>(6),
+          /*expected_output_dims=*/{1, 1, 2, 3},
+          /*expected_output=*/InitTestVector<float>(6),
       },
       {
-          /*input_shapes=*/{{2, 3}},
-          /*input_values=*/{InitTestVector<CType>(6)},
+          /*input_shapes=*/{{1, 2, 3}},
+          /*partial_input_shapes=*/{{}},
+          /*input_values=*/{InitTestVector<float>(6)},
           /*axis=*/2,
-          /*expected_output_dims=*/{2, 1, 3},
-          /*expected_output=*/InitTestVector<CType>(6),
+          /*expected_output_dims=*/{1, 2, 1, 3},
+          /*expected_output=*/InitTestVector<float>(6),
       },
   };
+  // Inputs have inconsistent shapes, should fail.
+  if (trt_mode != TrtTestMode::kDynamicShape) {
+    params.push_back(TestParams{
+        /*input_shapes=*/{{1, 2, 3}, {1, 3, 2}},
+        /*partial_input_shapes=*/{{}, {}},
+        /*input_values=*/common_input,
+        /*axis=*/1,
+        /*expected_output_dims=*/{},
+        /*expected_output=*/InitTestVector<float>(12),
+        Status{error::INVALID_ARGUMENT,
+               "Received inputs with inconsistent shape, at my_pack"}});
+  } else {
+    // In dynamic shape mode we cannot catch inconsistent shapes at conversion
+    // time, only during runtime. But TensorRT does not raise a proper runtime
+    // error, instead it aborts the program with the following message:
+    //  Assertion failed: t->start.d[i] + t->extent.d[i] <= r.dims.d[i]
+    // ../builder/cudnnBuilderGraph.cpp:862
+    // Aborting...
+    // TODO(tfeher) Add dynamic shapes test once TRT handles shape error
+    // decently
+  }
+  if (trt_mode == TrtTestMode::kDynamicShape) {
+    // Test with mixed dynamic / static shape input tensors
+    params.push_back(
+        TestParams{/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
+                   /*partial_input_shapes=*/{{-1, -1, -1}, {1, 2, 3}},
+                   /*input_values=*/common_input,
+                   /*axis=*/2,
+                   /*expected_output_dims=*/{1, 2, 2, 3},
+                   /*expected_output=*/
+                   {0, 1, 2, 6, 7, 8, 3, 4, 5, 9, 10, 11}});
+  }
+  for (auto p : params) {
+    Reset();
+    const int num_inputs = p.input_shapes.size();
+    EXPECT_EQ(num_inputs, p.input_values.size());
 
-  for (int i = 0; i < params.size(); ++i) {
-    test->Reset();
-    const int num_inputs = params[i].input_shapes.size();
-    EXPECT_EQ(num_inputs, params[i].input_values.size());
-
-    NodeDef node_def = GetPackNodeDef(dtype, num_inputs, params[i].axis);
+    NodeDef node_def = GetPackNodeDef(tf_type, num_inputs, p.axis);
     // Create inputs.
     for (int j = 0; j < num_inputs; ++j) {
-      test->AddTestTensor(StrCat("values_", j), params[i].input_shapes[j], 1,
-                          TfDataTypeToTrt(dtype));
+      if (j == 1 && p.input_1_is_weight) {
+        AddTestWeights(StrCat("values_", j), p.input_shapes[j],
+                       p.input_values[j], tf_type);
+      } else {
+        AddTestTensor(StrCat("values_", j), p.input_shapes[j], tf_type,
+                      p.input_values[j], p.partial_input_shapes[j]);
+      }
     }
-    test->RunValidationAndConversion(node_def);
-
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(test->GetTensorOrWeights("my_pack", &output));
-    EXPECT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray(params[i].expected_output_dims,
-                             output.tensor()->getDimensions());
-    // Create input data for tensors.
-    DataVec input_data;
-    for (int j = 0; j < num_inputs; ++j) {
-      input_data.push_back({StrCat("values_", j),
-                            test->AsTensor<CType>(params[i].input_values[j])});
-    }
-    DataVec output_data{{"my_pack", test->ConstructTensor<CType>(
-                                        params[i].expected_output.size())}};
-    TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data));
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAreArray(params[i].expected_output));
+    TestOpConverter("my_pack", node_def, p.expected_output_dims,
+                    p.conversion_status, p.runtime_status,
+                    ElementsAreArray(p.expected_output));
   }
-}
-
-TEST_F(OpConverterTest, ConvertPack) {
-  {
-    // An input is a weight, should fail.
-    Reset();
-    NodeDef node_def = GetPackNodeDef(DT_FLOAT, 2, /*axis=*/1);
-    AddTestTensor("values_0", {1, 2, 3});
-    AddTestWeights<float>("values_1", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"values_1\" for Pack must be a tensor, at my_pack");
-  }
-  {
-    // Axis is out of bounds, should fail.
-    Reset();
-    NodeDef node_def = GetPackNodeDef(DT_FLOAT, 2, /*axis=*/-5);
-    AddTestTensor("values_0", {2, 3});
-    AddTestTensor("values_1", {2, 3});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Axis value of -5 is out of bounds, must be in "
-                               "range [-4, 4), at my_pack");
-  }
-  {
-    // Axis is batch dimension, should fail.
-    Reset();
-    NodeDef node_def = GetPackNodeDef(DT_FLOAT, 2, /*axis=*/-4);
-    AddTestTensor("values_0", {2, 3});
-    AddTestTensor("values_1", {2, 3});
-    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "TensorRT does not allow manipulation of the "
-                               "batch dimension, at my_pack");
-  }
-  {
-    // Inputs have inconsistent rank, should fail.
-    Reset();
-    NodeDef node_def = GetPackNodeDef(DT_FLOAT, 2, /*axis=*/1);
-    AddTestTensor("values_0", {1, 2, 3});
-    AddTestTensor("values_1", {1, 6});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Received inputs with inconsistent rank, at my_pack");
-  }
-  {
-    // Inputs have inconsistent shapes, should fail.
-    Reset();
-    NodeDef node_def = GetPackNodeDef(DT_FLOAT, 2, /*axis=*/1);
-    AddTestTensor("values_0", {1, 2});
-    AddTestTensor("values_1", {2, 2});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Received inputs with inconsistent shape, at my_pack");
-  }
-
-  TestConvertPack<DT_FLOAT>(this);
-  TestConvertPack<DT_HALF>(this);
-
-  // TODO(hinsu): Enable INT32 with TensorRT version 5.1.3 after testing.
-  // TestConvertPack<DT_INT32>(this);
 }
 
 // Get the NodeDef for ArgMin or ArgMax.
