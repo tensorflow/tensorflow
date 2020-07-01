@@ -3932,7 +3932,6 @@ cc_library(
         ":SystemZCommonTableGen",
         ":SystemZInfo",
         ":config",
-        ":SystemZCommonTableGen",
     ],
 )
 
@@ -3979,7 +3978,6 @@ cc_library(
         ":Support",
         ":SystemZCommonTableGen",
         ":config",
-        ":SystemZCommonTableGen",
     ],
 )
 
