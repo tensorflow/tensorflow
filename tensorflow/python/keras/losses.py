@@ -1445,14 +1445,12 @@ def huber(y_true, y_pred, delta=1.0):
   delta = math_ops.cast(delta, dtype=K.floatx())
   error = math_ops.subtract(y_pred, y_true)
   abs_error = math_ops.abs(error)
-  quadratic = math_ops.minimum(abs_error, delta)
-  linear = math_ops.subtract(abs_error, quadratic)
+  half = ops.convert_to_tensor_v2(0.5, dtype=abs_error.dtype)
   return K.mean(
-      math_ops.add(
-          math_ops.multiply(
-              ops.convert_to_tensor_v2(0.5, dtype=quadratic.dtype),
-              math_ops.multiply(quadratic, quadratic)),
-          math_ops.multiply(delta, linear)),
+      array_ops.where_v2(
+          abs_error <= delta,
+          half * math_ops.pow(error, 2),
+          half * math_ops.pow(delta, 2) + delta * (abs_error - delta)),
       axis=-1)
 
 
