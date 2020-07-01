@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -73,6 +74,33 @@ static LogicalResult Verify(GlobalTensorOp global_tensor) {
                 "should have a static shape";
     }
   }
+  return success();
+}
+
+static LogicalResult Verify(SessionInitializerOp session_initializer) {
+  mlir::SymbolTable symbol_table(
+      session_initializer.getParentOfType<ModuleOp>());
+
+  auto init_func_op =
+      symbol_table.lookup<mlir::FuncOp>(session_initializer.initializer());
+  if (!init_func_op)
+    return session_initializer.emitOpError()
+           << "the initializer function does not exist";
+
+  if (!init_func_op.getType().getResults().empty())
+    return session_initializer.emitOpError()
+           << "the initializer function should have no output";
+
+  auto exported_names = GetExportedNames(init_func_op);
+
+  if (exported_names.empty())
+    return session_initializer.emitOpError()
+           << "the initializer function should be exported";
+
+  if (exported_names.size() != 1)
+    return session_initializer.emitOpError()
+           << "the initializer function should have only one exported names";
+
   return success();
 }
 
@@ -212,14 +240,36 @@ static LogicalResult VerifySavedModelModule(
     }
   }
   for (auto func : module.getOps<FuncOp>()) {
-    if (HasAnyTfSavedModelArgAttr(func)) {
-      if (!IsExported(func)) {
-        return func.emitError()
-               << "can only apply 'tf_saved_model' argument attributes "
-                  "to exported functions";
-      }
+    const bool is_exported = IsExported(func);
+
+    if (is_exported && !func.isPublic()) {
+      return func.emitError()
+             << "exported function @" << func.getName() << " should be public";
+    }
+
+    if (!is_exported && func.isPublic()) {
+      return func.emitError() << "non-exported function @" << func.getName()
+                              << " should be private";
+    }
+
+    if (!is_exported && HasAnyTfSavedModelArgAttr(func)) {
+      return func.emitError() << "can only apply 'tf_saved_model' argument "
+                                 "attributes to exported functions";
     }
   }
+
+  auto session_initializers = module.getOps<SessionInitializerOp>();
+  if (!session_initializers.empty() &&
+      !llvm::hasSingleElement(session_initializers)) {
+    return (*++session_initializers.begin()).emitError()
+           << "there must be no more than one session_initializer op";
+  }
+
+  auto is_init = [&session_initializers](mlir::FuncOp func) {
+    if (session_initializers.empty()) return false;
+    return (*session_initializers.begin()).initializer() == func.getName();
+  };
+
   SymbolTable symbol_table(module);
   auto symbol_uses = SymbolTable::getSymbolUses(&module.getBodyRegion());
   if (!symbol_uses.hasValue()) {
@@ -229,7 +279,13 @@ static LogicalResult VerifySavedModelModule(
   for (auto symbol_use : *symbol_uses) {
     auto func = symbol_table.lookup<FuncOp>(
         symbol_use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
-    if (func && !GetExportedNames(func).empty()) {
+    if (func && IsExported(func)) {
+      // If it is an init function, then it can be used by the unique
+      // session_initializer op.
+      if (is_init(func) &&
+          llvm::isa<SessionInitializerOp>(symbol_use.getUser()))
+        continue;
+
       return symbol_use.getUser()
           ->emitError("exported function cannot be internally referenced")
           .attachNote(func.getLoc())
@@ -254,9 +310,12 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
       }
       continue;
     }
+    if (func.getArgAttr(i, "tf.resource_name")) {
+      continue;
+    }
     return func.emitError()
-           << "all arguments should have 'tf_saved_model.index_path' or "
-              "'tf_saved_model.bound_input' attributes";
+           << "all arguments should have 'tf_saved_model.index_path', "
+              "'tf_saved_model.bound_input' or 'tf.resource_name' attributes";
   }
   llvm::SmallDenseSet<StringRef, 8> unique_bound_inputs;
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
@@ -328,7 +387,11 @@ SmallVector<StringRef, 2> GetExportedNames(Operation *op) {
   return ret;
 }
 
-bool IsExported(Operation *op) { return !GetExportedNames(op).empty(); }
+bool IsExported(Operation *op) {
+  auto exported_names =
+      op->getAttrOfType<ArrayAttr>("tf_saved_model.exported_names");
+  return exported_names && !exported_names.empty();
+}
 
 bool HasTfSavedModelSemantics(ModuleOp module) {
   return module.getAttr("tf_saved_model.semantics") != nullptr;
@@ -340,6 +403,51 @@ GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
       arg_index, "tf_saved_model.bound_input");
   if (!attr) return nullptr;
   return symbol_table.lookup<GlobalTensorOp>(attr.getValue());
+}
+
+SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op) {
+  auto initializers = op.getOps<SessionInitializerOp>();
+  if (initializers.empty()) return {};
+  return *initializers.begin();
+}
+
+class OptimizeSessionInitializerPattern
+    : public OpRewritePattern<SessionInitializerOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SessionInitializerOp op,
+                                PatternRewriter &rewriter) const override {
+    SymbolTable symbol_table(op.getParentOfType<ModuleOp>());
+    auto init_func_op = symbol_table.lookup<mlir::FuncOp>(op.initializer());
+
+    // The init function can only be referenced from the SessionInitializerOp.
+    // And there is at most one SessionInitializerOp in the module. So both ops
+    // have no other uses and can be simply erased.
+    if (init_func_op.front().begin()->isKnownTerminator()) {
+      rewriter.eraseOp(init_func_op);
+      rewriter.eraseOp(op);
+      return success();
+    }
+
+    return failure();
+  }
+};
+
+void SessionInitializerOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<OptimizeSessionInitializerPattern>(context);
+}
+
+llvm::Optional<StringRef> GetSessionInitializerExportedName(ModuleOp op) {
+  auto session_initializer_op = GetSessionInitializerOp(op);
+  if (!session_initializer_op) return llvm::None;
+
+  SymbolTable symbol_table(op);
+  auto init_func_op =
+      symbol_table.lookup<mlir::FuncOp>(session_initializer_op.initializer());
+  auto exported_names = GetExportedNames(init_func_op);
+  return exported_names[0];
 }
 
 }  // namespace tf_saved_model

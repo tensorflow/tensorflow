@@ -131,8 +131,8 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
 
   def testBroadcastToBadOutputShape(self):
     with context.eager_mode():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Unable to broadcast tensor of shape"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "Unable to broadcast tensor of shape"):
         self.evaluate(
             array_ops.broadcast_to(
                 constant_op.constant([0, 1]), constant_op.constant([2, 1])))

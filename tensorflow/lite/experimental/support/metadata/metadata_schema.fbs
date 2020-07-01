@@ -29,18 +29,31 @@ namespace tflite;
 // generate the model interface. It is recommended to fill in at least those
 // enties to boost the codegen performance.
 
-// LINT.IfChange
-
-// The Metadata schema is versioned by the Semantic versioning number, which
-// tracks the schema changes according to the Semantic versioning rules.
+// The Metadata schema is versioned by the Semantic versioning number, such as
+// MAJOR.MINOR.PATCH. It tracks the schema changes according to the rules below:
+//  * Bump up the MAJOR number when making potentially backwards incompatible
+//    changes. It must be incremented if the new changes break the backwards
+//    compatibility. It may also include minor and patch level changes as
+//    needed. The true backwards compatibility is indicated by the file
+//    identifier.
+//  * Bump up the MINOR number when making backwards compatible updates for
+//    major features, such as supporting new content types or adding new
+//    processing units.
+//  * Bump up the PATCH number when making small backwards compatible changes,
+//    such as adding a new fields or deprecating certain fields (not deleting
+//    them).
 //
 // ModelMetadata.min_parser_version indicates the minimum necessary metadata
 // parser version to fully understand all fields in a given metadata flatbuffer.
 //
-// New fields and types will have associated comments with the schema version for
-// which they were added.
+// New fields and types will have associated comments with the schema version
+// for which they were added.
 //
+// LINT.IfChange
 // Schema Semantic version: 1.0.1
+// LINT.ThenChange(//tensorflow/lite/experimental/\
+//.    support/metadata/java/src/java/org/tensorflow/lite/support/metadata/\
+//.    MetadataParser.java)
 
 // This indicates the flatbuffer compatibility. The number will bump up when a
 // break change is applied to the schema, such as removing fields or adding new
@@ -52,10 +65,6 @@ file_identifier "M001";
 
 // File extension of any written files.
 file_extension "tflitemeta";
-
-// LINT.ThenChange(//tensorflow/lite/experimental/\
-//     /support/metadata/java/src/java/org/tensorflow/lite/support/metadata/\
-//     MetadataExtractor.java)
 
 // LINT.IfChange
 enum AssociatedFileType : byte {
@@ -489,13 +498,20 @@ table SubGraphMetadata {
   // A description explains details about what the subgraph does.
   description:string;
 
-  // Metadata of all input tensors used in this subgraph.
+  // Metadata of all input tensors used in this subgraph. It matches extactly
+  // the input tensors specified by `SubGraph.inputs` in the TFLite
+  // schema.fbs file[2]. The number of `TensorMetadata` in the array should
+  // equal to the number of indices in `SubGraph.inputs`.
   //
+  // [2]: tensorflow/lite/schema/schema.fbs
   // <Codegen usage>:
   // Determines how to process the inputs.
   input_tensor_metadata:[TensorMetadata];
 
-  // Metadata of all output tensors used in this subgraph.
+  // Metadata of all output tensors used in this subgraph. It matches extactly
+  // the output tensors specified by `SubGraph.outputs` in the TFLite
+  // schema.fbs file[2]. The number of `TensorMetadata` in the array should
+  // equal to the number of indices in `SubGraph.outputs`.
   //
   // <Codegen usage>:
   // Determines how to process the outputs.

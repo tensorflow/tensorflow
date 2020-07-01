@@ -239,57 +239,6 @@ std::string TensorInterface::ShapeDebugString() const {
 }  // namespace tensorflow
 
 // --------------------------------------------------------------------------
-void StringEncode(const char* src, size_t src_len, char* dst) {
-  dst = tensorflow::core::EncodeVarint64(dst, src_len);
-  memcpy(dst, src, src_len);
-}
-
-size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
-                       size_t dst_len, TF_Status* status) {
-  const size_t sz = TF_StringEncodedSize(src_len);
-  if (sz < src_len) {
-    Set_TF_Status_from_Status(
-        status, InvalidArgument("src string is too large to encode"));
-    return 0;
-  }
-  if (dst_len < sz) {
-    Set_TF_Status_from_Status(
-        status,
-        InvalidArgument("dst_len (", dst_len, ") too small to encode a ",
-                        src_len, "-byte string"));
-    return 0;
-  }
-  StringEncode(src, src_len, dst);
-  return sz;
-}
-
-static Status TF_StringDecode_Impl(const char* src, size_t src_len,
-                                   const char** dst, size_t* dst_len) {
-  tensorflow::uint64 len64 = 0;
-  const char* p = tensorflow::core::GetVarint64Ptr(src, src + src_len, &len64);
-  if (p == nullptr) {
-    return InvalidArgument("invalid string encoding or truncated src buffer");
-  }
-  if (len64 > std::numeric_limits<size_t>::max()) {
-    return InvalidArgument("encoded string is ", len64,
-                           "-bytes, which is too large for this architecture");
-  }
-  *dst = p;
-  *dst_len = static_cast<size_t>(len64);
-  return Status::OK();
-}
-
-size_t TF_StringDecode(const char* src, size_t src_len, const char** dst,
-                       size_t* dst_len, TF_Status* status) {
-  Set_TF_Status_from_Status(status,
-                            TF_StringDecode_Impl(src, src_len, dst, dst_len));
-  if (TF_GetCode(status) != TF_OK) return 0;
-  return static_cast<size_t>(*dst - src) + *dst_len;
-}
-
-size_t TF_StringEncodedSize(size_t len) {
-  return static_cast<size_t>(tensorflow::core::VarintLength(len)) + len;
-}
 
 static void DeleteArray(void* data, size_t size, void* arg) {
   DCHECK_EQ(data, arg);
@@ -352,7 +301,6 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
     return nullptr;
   }
   return new TF_Tensor{new tensorflow::TensorInterface(tensor)};
-
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {

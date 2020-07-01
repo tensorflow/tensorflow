@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h.inc"
 
 namespace mlir {
+#include "tensorflow/compiler/mlir/xla/ir/lhlo_structs.cc.inc"
 namespace xla_lhlo {
 
 XlaLhloDialect::XlaLhloDialect(MLIRContext *context)

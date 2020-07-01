@@ -30,6 +30,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:indexed_slices",
         "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:manip_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:sort_ops",
         "//tensorflow/python:tensor_util",
@@ -60,16 +61,6 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
         "@six_archive//:six",
-    ],
-)
-
-cuda_py_test(
-    name = "np_backprop_test",
-    srcs = ["np_backprop_test.py"],
-    deps = [
-        ":numpy",
-        "//tensorflow/python:platform",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -112,5 +103,15 @@ cuda_py_test(
         ":numpy",
         "//tensorflow/python:platform",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "np_interop_test",
+    srcs = ["np_interop_test.py"],
+    deps = [
+        ":numpy",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )

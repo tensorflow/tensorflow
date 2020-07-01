@@ -52,7 +52,7 @@ namespace toco {
   // It then just becomes a concat along that dimension.
   int non_one_dims = 0;
   int concat_axis = 0;
-  for (int i = 0; i < multiples.size(); ++i) {
+  for (size_t i = 0; i < multiples.size(); ++i) {
     if (multiples[i] != 1) {
       ++non_one_dims;
       concat_axis = i;

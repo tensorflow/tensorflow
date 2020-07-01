@@ -86,19 +86,19 @@ class AdadeltaOptimizerTest(test.TestCase):
             self.assertEqual(["accum", "accum_update"],
                              adadelta_opt.get_slot_names())
             slot[0] = adadelta_opt.get_slot(var0, "accum")
-            self.assertEquals(slot[0].get_shape(), var0.get_shape())
+            self.assertEqual(slot[0].get_shape(), var0.get_shape())
             self.assertFalse(slot[0] in variables.trainable_variables())
 
             slot_update[0] = adadelta_opt.get_slot(var0, "accum_update")
-            self.assertEquals(slot_update[0].get_shape(), var0.get_shape())
+            self.assertEqual(slot_update[0].get_shape(), var0.get_shape())
             self.assertFalse(slot_update[0] in variables.trainable_variables())
 
             slot[1] = adadelta_opt.get_slot(var1, "accum")
-            self.assertEquals(slot[1].get_shape(), var1.get_shape())
+            self.assertEqual(slot[1].get_shape(), var1.get_shape())
             self.assertFalse(slot[1] in variables.trainable_variables())
 
             slot_update[1] = adadelta_opt.get_slot(var1, "accum_update")
-            self.assertEquals(slot_update[1].get_shape(), var1.get_shape())
+            self.assertEqual(slot_update[1].get_shape(), var1.get_shape())
             self.assertFalse(slot_update[1] in variables.trainable_variables())
 
           # Fetch params to validate initial values

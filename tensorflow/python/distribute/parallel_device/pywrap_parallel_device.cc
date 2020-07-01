@@ -52,7 +52,7 @@ PYBIND11_MODULE(_pywrap_parallel_device, m) {
           tensorflow::Safe_PyObjectPtr device_capsule(
               PyCapsule_New(device, "TFE_CustomDevice", &CallDelete_Device));
           void* device_info;
-          tensorflow::eager::AllocateParallelDevice(
+          tensorflow::parallel_device::AllocateParallelDevice(
               name, underlying_devices_c.data(), underlying_devices_c.size(),
               device, &device_info);
           if (PyErr_Occurred()) throw py::error_already_set();

@@ -35,7 +35,7 @@ Status CreateHandle(OpKernelContext* ctx, T* resource,
   TF_RETURN_IF_ERROR(mgr->Create<T>(container_name, unique_name, resource));
 
   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
-                               MakeTypeIndex<T>());
+                               TypeIndex::Make<T>());
   return Status::OK();
 }
 
@@ -94,10 +94,16 @@ Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
 Status VerifyTypesMatch(const DataTypeVector& expected,
                         const DataTypeVector& received);
 
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const std::vector<Tensor>& received);
+
 // Returns Status::OK() if `expected` and `received` shapes are compatible,
 // errors::InvalidArgument otherwise.
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<PartialTensorShape>& received);
+
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<Tensor>& received);
 
 // Returns a stable hash of the subgraph rooted at the given node.
 //

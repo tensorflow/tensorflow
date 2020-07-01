@@ -372,8 +372,8 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
             'v', initializer=constant_op.constant(1.0))
         return x * constant_op.constant(2.0)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   'No trainable variables were accessed'):
+      with self.assertRaisesRegex(ValueError,
+                                  'No trainable variables were accessed'):
         backprop.implicit_val_and_grad(f)()
 
   def testDefunCallBackpropUsingSameObjectForMultipleArguments(self):

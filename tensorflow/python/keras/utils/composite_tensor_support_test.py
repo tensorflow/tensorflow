@@ -506,7 +506,8 @@ class RaggedTensorInputTest(keras_parameterized.TestCase,
     model_input = input_layer.Input(
         shape=(None, None), ragged=True, name=input_name, dtype=dtypes.int32,
         batch_size=2)
-    self.assertIsInstance(model_input, ragged_tensor.RaggedTensor)
+    self.assertIsInstance(model_input._type_spec,
+                          ragged_tensor.RaggedTensorSpec)
     self.assertEqual(model_input.shape.as_list(), [2, None, None])
     layers = [ToDense(default_value=-1)]
     model = get_model_from_layers_with_input(layers, model_input=model_input)

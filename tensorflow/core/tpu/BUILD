@@ -1,11 +1,23 @@
 # Description: Utilities for TPU Operations
 
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_windows",
+)
+
 package(
     default_visibility = [
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+cc_library(
+    name = "libtftpu_header",
+    hdrs = ["libtftpu.h"],
+    visibility = ["//visibility:public"],
+    deps = [],
 )
 
 cc_library(
@@ -88,14 +100,68 @@ cc_library(
     name = "tpu_config_c_api",
     hdrs = ["tpu_config_c_api.h"],
     deps = [
+        ":libtftpu_header",
         "//tensorflow/c:tf_status",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_api",
+    srcs = ["tpu_api.cc"],
+    hdrs = ["tpu_api.h"],
+    deps = [
+        ":libtftpu_header",
+        ":tpu_config_c_api",
+        "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_mesh_state_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_node_context_c_api_hdrs",
     ],
 )
 
 cc_library(
-    name = "tpu_library_loader",
-    srcs = ["tpu_library_loader.cc"],
-    hdrs = ["tpu_library_loader.h"],
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = ["//tensorflow/core/platform:status"],
+    name = "tpu_api_dlsym_initializer",
+    srcs = if_windows(
+        ["tpu_api_dlsym_initializer_windows.cc"],
+        otherwise = ["tpu_api_dlsym_initializer.cc"],
+    ),
+    hdrs = ["tpu_api_dlsym_initializer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":libtftpu_header",
+        ":tpu_api",
+        ":tpu_config_c_api",
+        ":tpu_library_init_fns",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_mesh_state_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_node_context_c_api_hdrs",
+    ] + select({
+        "//tensorflow:oss": [
+            "//tensorflow/stream_executor/tpu:tpu_executor_base",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "tpu_library_init_fns",
+    hdrs = ["tpu_library_init_fns.inc"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "virtual_device",
+    srcs = ["virtual_device.cc"],
+    hdrs = ["virtual_device.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )

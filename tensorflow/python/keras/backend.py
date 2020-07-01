@@ -49,8 +49,10 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -421,6 +423,30 @@ def set_learning_phase(value):
   Raises:
       ValueError: if `value` is neither `0` nor `1`.
   """
+  deprecated_internal_set_learning_phase(value)
+
+
+def deprecated_internal_set_learning_phase(value):
+  """A deprecated internal implementation of set_learning_phase.
+
+  This method is an internal-only version of `set_learning_phase` that
+  does not raise a deprecation error. It is required because
+  saved_model needs to keep working with user code that uses the deprecated
+  learning phase methods until those apis are fully removed from the public api.
+
+  Specifically SavedModel saving needs to make sure the learning phase is 0
+  during tracing even if users overwrote it to a different value.
+
+  But, we don't want to raise deprecation warnings for users when savedmodel
+  sets learning phase just for compatibility with code that relied on
+  explicitly setting the learning phase for other values.
+
+  Arguments:
+      value: Learning phase value, either 0 or 1 (integers). 0 = test, 1 = train
+
+  Raises:
+      ValueError: if `value` is neither `0` nor `1`.
+  """
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
@@ -433,6 +459,9 @@ def set_learning_phase(value):
     _GRAPH_LEARNING_PHASES[get_graph()] = value
 
 
+@deprecated('2020-10-11',
+            'Simply pass a True/False value to the `training` argument '
+            'of the `__call__` method of your layer or model.')
 @keras_export('keras.backend.learning_phase_scope')
 @tf_contextlib.contextmanager
 def learning_phase_scope(value):
@@ -443,6 +472,35 @@ def learning_phase_scope(value):
   Arguments:
      value: Learning phase value, either 0 or 1 (integers).
             0 = test, 1 = train
+
+  Yields:
+    None.
+
+  Raises:
+     ValueError: if `value` is neither `0` nor `1`.
+  """
+  with deprecated_internal_learning_phase_scope(value):
+    try:
+      yield
+    finally:
+      pass
+
+
+@tf_contextlib.contextmanager
+def deprecated_internal_learning_phase_scope(value):
+  """An internal-only version of `learning_phase_scope`.
+
+  Unlike the public method, this method does not raise a deprecation warning.
+  This is needed because saved model saving needs to set learning phase
+  to maintain compatibility
+  with code that sets/gets the learning phase, but saved model
+  saving itself shouldn't raise a deprecation warning.
+
+  We can get rid of this method and its usages when the public api is
+  removed.
+
+  Arguments:
+     value: Learning phase value, either 0 or 1 (integers). 0 = test, 1 = train
 
   Yields:
     None.
@@ -462,7 +520,7 @@ def learning_phase_scope(value):
 
   learning_phase_previously_set = _DUMMY_EAGER_GRAPH.learning_phase_is_set
   try:
-    set_learning_phase(value)
+    deprecated_internal_set_learning_phase(value)
     yield
   finally:
     # Restore learning phase to initial value.
@@ -1070,6 +1128,8 @@ def is_keras_tensor(x):
   True
 
   """
+  if keras_tensor.keras_tensors_enabled():
+    return isinstance(x, keras_tensor.KerasTensor)
   if not isinstance(x,
                     (ops.Tensor, variables_module.Variable,
                      sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
@@ -1120,35 +1180,56 @@ def placeholder(shape=None,
     raise ValueError(
         'Cannot set both sparse and ragged to True when creating a placeholder.'
     )
-
   if dtype is None:
     dtype = floatx()
   if not shape:
     if ndim:
       shape = (None,) * ndim
-  with get_graph().as_default():
+  if keras_tensor.keras_tensors_enabled():
+    spec = tensor_spec.TensorSpec(
+        shape=shape, dtype=dtype, name=name)
     if sparse:
-      x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
+      spec = sparse_tensor.SparseTensorSpec(
+          shape=shape, dtype=dtype)
     elif ragged:
       ragged_rank = 0
       for i in range(1, len(shape)):
-        if shape[i] is None:
+        # Hacky because could be tensorshape or tuple maybe?
+        # Or just tensorshape?
+        if shape[i] is None or (
+            hasattr(shape[i], 'value') and
+            shape[i].value is None):
           ragged_rank = i
-      type_spec = ragged_tensor.RaggedTensorSpec(
+      spec = ragged_tensor.RaggedTensorSpec(
           shape=shape, dtype=dtype, ragged_rank=ragged_rank)
-      def tensor_spec_to_placeholder(tensorspec):
-        return array_ops.placeholder(tensorspec.dtype, tensorspec.shape)
-      x = nest.map_structure(tensor_spec_to_placeholder, type_spec,
-                             expand_composites=True)
-    else:
-      x = array_ops.placeholder(dtype, shape=shape, name=name)
+
+    x = keras_tensor.KerasTensor(spec, name=name)
+  else:
+    with get_graph().as_default():
+      if sparse:
+        x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
+      elif ragged:
+        ragged_rank = 0
+        for i in range(1, len(shape)):
+          if shape[i] is None:
+            ragged_rank = i
+        type_spec = ragged_tensor.RaggedTensorSpec(
+            shape=shape, dtype=dtype, ragged_rank=ragged_rank)
+        def tensor_spec_to_placeholder(tensorspec):
+          return array_ops.placeholder(tensorspec.dtype, tensorspec.shape)
+        x = nest.map_structure(tensor_spec_to_placeholder, type_spec,
+                               expand_composites=True)
+      else:
+        x = array_ops.placeholder(dtype, shape=shape, name=name)
 
   if context.executing_eagerly():
     # Add keras_history connectivity information to the placeholder
     # when the placeholder is built in a top-level eager context
     # (intended to be used with keras.backend.function)
     from tensorflow.python.keras.engine import input_layer  # pylint: disable=g-import-not-at-top
-    return input_layer.Input(tensor=x)
+    x = input_layer.Input(tensor=x)
+    if keras_tensor.keras_tensors_enabled():
+      x._is_backend_placeholder = True
 
   return x
 
@@ -1163,6 +1244,8 @@ def is_placeholder(x):
       Boolean.
   """
   try:
+    if keras_tensor.keras_tensors_enabled():
+      return hasattr(x, '_is_backend_placeholder')
     if isinstance(x, composite_tensor.CompositeTensor):
       flat_components = nest.flatten(x, expand_composites=True)
       return py_any(is_placeholder(c) for c in flat_components)
@@ -4554,12 +4637,6 @@ def softsign(x):
   return nn.softsign(x)
 
 
-def _backtrack_identity(tensor):
-  while tensor.op.type == 'Identity':
-    tensor = tensor.op.inputs[0]
-  return tensor
-
-
 @keras_export('keras.backend.categorical_crossentropy')
 @dispatch.add_dispatch_support
 def categorical_crossentropy(target, output, from_logits=False, axis=-1):
@@ -4612,17 +4689,16 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
     return nn.softmax_cross_entropy_with_logits_v2(
         labels=target, logits=output, axis=axis)
 
-  if not isinstance(output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Softmax':
-      # When softmax activation function is used for output operation, we
-      # use logits from the softmax function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      # See b/117284466
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      return nn.softmax_cross_entropy_with_logits_v2(
-          labels=target, logits=output, axis=axis)
+  if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Softmax'):
+    # When softmax activation function is used for output operation, we
+    # use logits from the softmax function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    # See b/117284466
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    return nn.softmax_cross_entropy_with_logits_v2(
+        labels=target, logits=output, axis=axis)
 
   # scale preds so that the class probas of each sample sum to 1
   output = output / math_ops.reduce_sum(output, axis, True)
@@ -4657,17 +4733,16 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   target = ops.convert_to_tensor_v2(target)
   output = ops.convert_to_tensor_v2(output)
 
-  if not from_logits and not isinstance(
-      output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Softmax':
-      # When softmax activation function is used for output operation, we
-      # use logits from the softmax function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      # See b/117284466
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      from_logits = True
+  if (not from_logits and
+      not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Softmax'):
+    # When softmax activation function is used for output operation, we
+    # use logits from the softmax function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    # See b/117284466
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    from_logits = True
 
   if not from_logits:
     epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
@@ -4738,15 +4813,14 @@ def binary_crossentropy(target, output, from_logits=False):
   if from_logits:
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
-  if not isinstance(output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Sigmoid':
-      # When sigmoid activation function is used for output operation, we
-      # use logits from the sigmoid function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
+  if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Sigmoid'):
+    # When sigmoid activation function is used for output operation, we
+    # use logits from the sigmoid function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
   epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
   output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)

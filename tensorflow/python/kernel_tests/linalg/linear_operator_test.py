@@ -173,29 +173,29 @@ class LinearOperatorTest(test.TestCase):
     self.assertFalse(operator.is_square)
 
   def test_is_square_set_incorrectly_to_false_raises(self):
-    with self.assertRaisesRegexp(ValueError, "but.*was square"):
+    with self.assertRaisesRegex(ValueError, "but.*was square"):
       _ = LinearOperatorShape(shape=(2, 4, 4), is_square=False).is_square
 
   def test_is_square_set_inconsistent_with_other_hints_raises(self):
-    with self.assertRaisesRegexp(ValueError, "is always square"):
+    with self.assertRaisesRegex(ValueError, "is always square"):
       matrix = array_ops.placeholder_with_default(input=(), shape=None)
       LinearOperatorMatmulSolve(matrix, is_non_singular=True, is_square=False)
 
-    with self.assertRaisesRegexp(ValueError, "is always square"):
+    with self.assertRaisesRegex(ValueError, "is always square"):
       matrix = array_ops.placeholder_with_default(input=(), shape=None)
       LinearOperatorMatmulSolve(
           matrix, is_positive_definite=True, is_square=False)
 
   def test_non_square_operators_raise_on_determinant_and_solve(self):
     operator = LinearOperatorShape((2, 3))
-    with self.assertRaisesRegexp(NotImplementedError, "not be square"):
+    with self.assertRaisesRegex(NotImplementedError, "not be square"):
       operator.determinant()
-    with self.assertRaisesRegexp(NotImplementedError, "not be square"):
+    with self.assertRaisesRegex(NotImplementedError, "not be square"):
       operator.log_abs_determinant()
-    with self.assertRaisesRegexp(NotImplementedError, "not be square"):
+    with self.assertRaisesRegex(NotImplementedError, "not be square"):
       operator.solve(rng.rand(2, 2))
 
-    with self.assertRaisesRegexp(ValueError, "is always square"):
+    with self.assertRaisesRegex(ValueError, "is always square"):
       matrix = array_ops.placeholder_with_default(input=(), shape=None)
       LinearOperatorMatmulSolve(
           matrix, is_positive_definite=True, is_square=False)

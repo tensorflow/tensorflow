@@ -46,17 +46,13 @@ void ValidateArgMinMaxGoldens(TfLiteTensor* tensors, int tensors_size,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -83,9 +79,9 @@ void TestArgMinMaxFloat(const int* input_dims_data, const float* input_values,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_values, input_dims, "input_tensor"),
-      CreateInt32Tensor(axis_values, axis_dims, "axis_tensor"),
-      CreateInt32Tensor(output, output_dims, "output_tensor"),
+      CreateFloatTensor(input_values, input_dims),
+      CreateInt32Tensor(axis_values, axis_dims),
+      CreateInt32Tensor(output, output_dims),
   };
 
   ValidateArgMinMaxGoldens(tensors, tensors_size, goldens, output,
@@ -110,9 +106,9 @@ void TestArgMinMaxQuantized(const int* input_dims_data,
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_values, input_quantized, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
-      CreateInt32Tensor(axis_values, axis_dims, "axis_tensor"),
-      CreateInt32Tensor(output, output_dims, "output_tensor"),
+                            input_scale, input_zero_point),
+      CreateInt32Tensor(axis_values, axis_dims),
+      CreateInt32Tensor(output, output_dims),
   };
 
   ValidateArgMinMaxGoldens(tensors, tensors_size, goldens, output,

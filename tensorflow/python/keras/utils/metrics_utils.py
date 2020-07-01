@@ -346,6 +346,7 @@ def update_confusion_matrix_variables(variables_to_update,
       y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
           y_pred, y_true)
     else:
+      sample_weight = math_ops.cast(sample_weight, dtype=variable_dtype)
       y_pred, y_true, sample_weight = (
           tf_losses_utils.squeeze_or_expand_dimensions(
               y_pred, y_true, sample_weight=sample_weight))

@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
 
 from google.protobuf import text_format
 
@@ -29,7 +28,6 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -38,12 +36,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
-from tensorflow.python.keras.engine import sequential
-from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -58,24 +54,6 @@ from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import compat
-
-
-class _ModelWithOptimizer(util.Checkpoint):
-
-  def __init__(self):
-    self.dense = core.Dense(1)
-    self.optimizer = adam.Adam(0.01)
-
-  @def_function.function(
-      input_signature=(tensor_spec.TensorSpec([None, 2], dtypes.float32),
-                       tensor_spec.TensorSpec([None], dtypes.float32)))
-  def call(self, x, y):
-    with backprop.GradientTape() as tape:
-      loss = math_ops.reduce_mean((self.dense(x) - y) ** 2.)
-    trainable_variables = self.dense.trainable_variables
-    gradients = tape.gradient(loss, trainable_variables)
-    self.optimizer.apply_gradients(zip(gradients, trainable_variables))
-    return {"loss": loss}
 
 
 def _run_signature(session, meta_graph_def, inputs, signature_key):
@@ -116,6 +94,24 @@ class SaveTest(test.TestCase):
     self.assertEqual(
         {"output_0": 2.},
         _import_and_infer(save_dir, {"x": 1.}))
+
+  def test_method_save_list_func(self):
+    root = tracking.AutoTrackable()
+
+    @def_function.function
+    def case_fn(x):
+      branch_index = constant_op.constant(1)
+      branches = [lambda: x, lambda: x + 1]
+      case_out = control_flow_ops.switch_case(branch_index, branches)
+      return case_out
+
+    root.f = def_function.function(
+        lambda x: 2. * case_fn(x),
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.f(constant_op.constant(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, root.f)
+    self.assertEqual({"output_0": 4.}, _import_and_infer(save_dir, {"x": 1.}))
 
   def test_method_save_concrete(self):
     root = tracking.AutoTrackable()
@@ -167,10 +163,6 @@ class SaveTest(test.TestCase):
                      _import_and_infer(
                          save_dir, {"z": 1.}, signature_key="non_default_key"))
 
-  def test_unbuilt_model_does_not_prevent_saving(self):
-    root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
-    save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
-
   def test_unsaveable_func_graph(self):
     root = module.Module()
 
@@ -184,7 +176,7 @@ class SaveTest(test.TestCase):
       return nested_f()
 
     root.f = f
-    with self.assertRaisesRegexp(ValueError, "ERROR MSG"):
+    with self.assertRaisesRegex(ValueError, "ERROR MSG"):
       save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
 
   def test_version_information_included(self):
@@ -204,8 +196,7 @@ class SaveTest(test.TestCase):
     root.f = def_function.function(lambda x: 2. * x)
     root.f(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(
-        ValueError, "Expected a TensorFlow function"):
+    with self.assertRaisesRegex(ValueError, "Expected a TensorFlow function"):
       save.save(root, save_dir, root.f)
 
   def test_captures_unreachable_variable(self):
@@ -224,7 +215,7 @@ class SaveTest(test.TestCase):
 
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
 
-    with self.assertRaisesRegexp(KeyError, "not reachable from root"):
+    with self.assertRaisesRegex(KeyError, "not reachable from root"):
       save.save(root, save_dir)
 
   def test_nested_inputs(self):
@@ -241,8 +232,7 @@ class SaveTest(test.TestCase):
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(
-        ValueError, "non-flat outputs"):
+    with self.assertRaisesRegex(ValueError, "non-flat outputs"):
       save.save(root, save_dir, to_save)
 
   def test_nested_dict_outputs(self):
@@ -252,8 +242,8 @@ class SaveTest(test.TestCase):
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(
-        ValueError, "dictionary containing non-Tensor value"):
+    with self.assertRaisesRegex(ValueError,
+                                "dictionary containing non-Tensor value"):
       save.save(root, save_dir, to_save)
 
   def test_variable(self):
@@ -268,30 +258,6 @@ class SaveTest(test.TestCase):
     save.save(root, save_dir, to_save)
     self.assertAllEqual({"output_0": 12.},
                         _import_and_infer(save_dir, {"x": 2.}))
-
-  def test_optimizer(self):
-    x = constant_op.constant([[3., 4.]])
-    y = constant_op.constant([2.])
-    model = _ModelWithOptimizer()
-    first_loss = model.call(x, y)
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    save.save(model, save_dir, model.call)
-    second_loss = model.call(x, y)
-    self.assertNotEqual(first_loss, second_loss)
-    self.assertAllClose(
-        second_loss,
-        _import_and_infer(save_dir, {"x": [[3., 4.]], "y": [2.]}))
-
-  def test_single_method_default_signature(self):
-    model = _ModelWithOptimizer()
-    x = constant_op.constant([[3., 4.]])
-    y = constant_op.constant([2.])
-    model.call(x, y)
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    save.save(model, save_dir)
-    self.assertIn("loss",
-                  _import_and_infer(save_dir,
-                                    {"x": [[3., 4.]], "y": [2.]}))
 
   def test_single_function_default_signature(self):
     model = tracking.AutoTrackable()
@@ -387,7 +353,7 @@ class SaveTest(test.TestCase):
   def test_signature_attribute_reserved(self):
     root = util.Checkpoint(signatures=variables.Variable(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(ValueError, "del obj.signatures"):
+    with self.assertRaisesRegex(ValueError, "del obj.signatures"):
       save.save(root, save_dir)
     del root.signatures
     save.save(root, save_dir)
@@ -427,8 +393,8 @@ class SaveTest(test.TestCase):
       return 1
     root = tracking.AutoTrackable()
     root.f = f.get_concrete_function()
-    with self.assertRaisesRegexp(ValueError,
-                                 "tf.Variable inputs cannot be exported"):
+    with self.assertRaisesRegex(ValueError,
+                                "tf.Variable inputs cannot be exported"):
       save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
                 signatures=root.f)
 
@@ -504,7 +470,7 @@ class SavingOptionsTest(test.TestCase):
     graph_def = graph_pb2.GraphDef()
     text_format.Merge("node { name: 'A' op: 'Test>CustomOp' }",
                       graph_def)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Attempted to save ops from non-whitelisted namespaces"):
       save._verify_ops(graph_def, [])
     save._verify_ops(graph_def, ["Test"])
@@ -512,7 +478,7 @@ class SavingOptionsTest(test.TestCase):
     # Test with multiple carrots in op name.
     text_format.Merge("node { name: 'A' op: 'Test>>A>CustomOp' }",
                       graph_def)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Attempted to save ops from non-whitelisted namespaces"):
       save._verify_ops(graph_def, [])
     save._verify_ops(graph_def, ["Test"])
@@ -654,48 +620,9 @@ class AssetTests(test.TestCase):
     @def_function.function
     def _calls_save():
       save.save(root, export_dir)
-    with self.assertRaisesRegexp(AssertionError, "tf.function"):
+
+    with self.assertRaisesRegex(AssertionError, "tf.function"):
       _calls_save()
-
-
-class _ModelWithOptimizerUsingDefun(util.Checkpoint):
-
-  def __init__(self):
-    self.dense = core.Dense(1)
-    self.optimizer = adam.Adam(0.01)
-
-  # Using defun due to control flow v2 cycles, b/121159261. def_function uses
-  # conds to gate variable initialization and so triggers cond reference cycles,
-  # but the thing being wrapped here does not use cond itself.
-  @function.defun(
-      input_signature=(tensor_spec.TensorSpec([None, 2], dtypes.float32),
-                       tensor_spec.TensorSpec([None], dtypes.float32)),
-  )
-  def call(self, x, y):
-    with backprop.GradientTape() as tape:
-      loss = math_ops.reduce_mean((self.dense(x) - y) ** 2.)
-    trainable_variables = self.dense.trainable_variables
-    gradients = tape.gradient(loss, trainable_variables)
-    self.optimizer.apply_gradients(zip(gradients, trainable_variables))
-    return {"loss": loss}
-
-
-class MemoryTests(test.TestCase):
-
-  def setUp(self):
-    self._model = _ModelWithOptimizerUsingDefun()
-
-  @test_util.assert_no_garbage_created
-  def test_no_reference_cycles(self):
-    x = constant_op.constant([[3., 4.]])
-    y = constant_op.constant([2.])
-    self._model.call(x, y)
-    if sys.version_info[0] < 3:
-      # TODO(allenl): debug reference cycles in Python 2.x
-      self.skipTest("This test only works in Python 3+. Reference cycles are "
-                    "created in older Python versions.")
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    save.save(self._model, save_dir, self._model.call)
 
 
 class ExportMetaGraphTests(test.TestCase):

@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 import re
+import sys
 import textwrap
 import tokenize
 
@@ -33,11 +34,18 @@ from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 
 
-STANDARD_PREAMBLE = textwrap.dedent("""
-    from __future__ import division
-    from __future__ import print_function
+PY2_PREAMBLE = textwrap.dedent("""
+from __future__ import division
+from __future__ import print_function
 """)
-STANDARD_PREAMBLE_LEN = 2
+PY3_PREAMBLE = ''
+
+if sys.version_info >= (3,):
+  STANDARD_PREAMBLE = PY3_PREAMBLE
+else:
+  STANDARD_PREAMBLE = PY2_PREAMBLE
+
+STANDARD_PREAMBLE_LEN = STANDARD_PREAMBLE.count('__future__')
 
 
 _LEADING_WHITESPACE = re.compile(r'\s*')

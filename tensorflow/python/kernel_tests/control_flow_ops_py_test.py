@@ -384,7 +384,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     values = constant_op.constant(10)
     fn1 = lambda: math_ops.add(values, 1)
     fn2 = lambda: math_ops.subtract(values, 1)
-    with self.assertRaisesRegexp(TypeError, "must not be a Python bool"):
+    with self.assertRaisesRegex(TypeError, "must not be a Python bool"):
       _ = control_flow_ops.cond(False, fn1, fn2)
 
   @test_util.run_deprecated_v1
@@ -416,8 +416,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           if graph.is_fetchable(t.op):
             sess.run(t, feed_dict={x: 3})
           else:
-            with self.assertRaisesRegexp(ValueError,
-                                         "has been marked as not fetchable"):
+            with self.assertRaisesRegex(ValueError,
+                                        "has been marked as not fetchable"):
               sess.run(t, feed_dict={x: 3})
 
   @test_util.disable_control_flow_v2("Not relevant")
@@ -436,7 +436,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       for op in graph.get_operations():
         for t in op.inputs:
           if t not in feedable_tensors and t.dtype is dtypes.int32:
-            with self.assertRaisesRegexp(ValueError, "may not be fed"):
+            with self.assertRaisesRegex(ValueError, "may not be fed"):
               sess.run(r, feed_dict={t: 3})
 
   @test_util.run_v1_only("b/120545219")
@@ -461,8 +461,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       values = constant_op.constant([10])
       indices = constant_op.constant([0])
       x = ops.IndexedSlices(values, indices)
-      with self.assertRaisesRegexp(
-          TypeError, "Cannot reconcile tf.cond 0-th outputs"):
+      with self.assertRaisesRegex(TypeError,
+                                  "Cannot reconcile tf.cond 0-th outputs"):
         control_flow_ops.cond(
             constant_op.constant(True),
             lambda: ops.IndexedSlices(math_ops.add(x.values, 1), indices),
@@ -813,7 +813,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     # rely on variable names.
     prefix = "cond/" if context.executing_eagerly() else ""
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "Tensor %strue_branch:0 in true_fn is accessed from false_fn." %
         prefix):
@@ -844,7 +844,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     # This was needed for backwards compatibility with TF2 Estimators which
     # rely on variable names.
     prefix = "switch_case/indexed_case/" if context.executing_eagerly() else ""
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Tensor %sbr1_identity:0 in branch 1 is "
         "accessed from branch 4." % prefix):
       f()
@@ -929,7 +929,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       v1_msg = "The two structures don't have the same nested structure"
       v2_msg = ("true_fn and false_fn arguments to tf.cond must have the same "
                 "number, type, and overall structure of return values.")
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           TypeError if control_flow_util.ENABLE_CONTROL_FLOW_V2 else ValueError,
           v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
         control_flow_ops.cond(pred, fn1, fn2)
@@ -1092,7 +1092,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
       self.assertAllEqual(r, 10000.)
       grad = gradients_impl.gradients(r, [x])[0]
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           r"Connecting to invalid output 1 of source node cond which has 1 "
           r"outputs. Try using "
@@ -1667,14 +1667,14 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     loop_with_maxiter = create_while_loop(maximum_iterations=2)
     xla_context.Exit()
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r"Cannot create a gradient accumulator for tensor '.+' inside "
         r"XLA while_loop because maximum_iterations was not passed to "
         r"the tf.while_loop call \('.+'\)."):
       _ = gradients_impl.gradients(loop_no_maxiter, v)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r"Cannot create a gradient accumulator for tensor '.+' inside XLA "
         r"while_loop. maximum_iterations tensor '.+' for while_loop context "
@@ -1705,8 +1705,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     if control_flow_util.ENABLE_CONTROL_FLOW_V2:
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
-      with self.assertRaisesRegexp(ValueError,
-                                   r"must be from the same graph.*"):
+      with self.assertRaisesRegex(ValueError, r"must be from the same graph.*"):
         loop = create_while_loop()
       xla_context.Exit()
     else:
@@ -1714,7 +1713,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       xla_context.Enter()
       loop = create_while_loop()
       xla_context.Exit()
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r"Cannot create a gradient accumulator for tensor '.+' inside XLA "
           r"while_loop. maximum_iterations tensor '.*Placeholder:0' for "
@@ -1976,7 +1975,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     i = constant_op.constant(0)
     c = lambda i, _: math_ops.less(i, 10)
     b = lambda i, x: [i + 1, x + 1]
-    with self.assertRaisesRegexp(ValueError, "is not compatible with"):
+    with self.assertRaisesRegex(ValueError, "is not compatible with"):
       # Shape of x is [2], but we specify a shape of [5].
       control_flow_ops.while_loop(
           c, b, [i, x], [i.shape, tensor_shape.TensorShape([5])])
@@ -1990,9 +1989,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     # body accepts N values and returns N+1 values.
     b = lambda i, *x: (i, i) + x
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        "The two structures don't have the same nested structure."):
+    with self.assertRaisesRegex(
+        ValueError, "The two structures don't have the same nested structure."):
       control_flow_ops.while_loop(c, b, [i, x])
 
   @test_util.run_deprecated_v1
@@ -2035,7 +2033,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       m = array_ops.ones([2, 2])
       c = lambda i, j: math_ops.less(i, 2)
       b = lambda i, j: [i + 1, array_ops.concat([j, j], 0)]
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r"Input tensor 'ones:0' enters the loop with shape \(2, 2\), but has "
           r"shape \(4, 2\) after one iteration. To allow the shape to vary "
@@ -2138,7 +2136,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       ]
 
     # Explicit shape invariant, with a specific (incompatible) rank.
-    with self.assertRaisesRegexp(ValueError, "is not compatible with"):
+    with self.assertRaisesRegex(ValueError, "is not compatible with"):
       control_flow_ops.while_loop(
           c, b1, [i, x],
           [i.get_shape(), tensor_shape.TensorShape([5])])
@@ -2188,7 +2186,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     b = lambda i, x: [i+1, x]
 
     # Explicit shape invariant, with a specific (incompatible) rank.
-    with self.assertRaisesRegexp(ValueError, "is not compatible with"):
+    with self.assertRaisesRegex(ValueError, "is not compatible with"):
       control_flow_ops.while_loop(
           c, b, [i, x],
           [i.get_shape(), tensor_shape.TensorShape([5])])
@@ -3305,7 +3303,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         z = v * 2
         return i + 1, gradients_impl.gradients(z, x)[0]
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           "Cannot compute gradient inside while loop with respect to op 'x'. "
           "We do not support taking the gradient wrt or through the initial "
@@ -3451,7 +3449,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       def b(lv0, lv1, _):
         return [lv0, lv1]
 
-      with self.assertRaisesRegexp(ValueError, "the same number of elements"):
+      with self.assertRaisesRegex(ValueError, "the same number of elements"):
         control_flow_ops.while_loop(c, b, loop_vars)
 
   @test_util.run_v1_only("b/120545219")
@@ -4013,7 +4011,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     result = functional_ops.scan(fn, np.array([1., 2., 3.], dtype=np.float32))
     grad_theta = gradients_impl.gradients(result, theta)
     if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
-      with self.assertRaisesRegexp(TypeError, "Second-order gradient"):
+      with self.assertRaisesRegex(TypeError, "Second-order gradient"):
         gradients_impl.gradients(grad_theta, theta)
     grad_theta_stopped = array_ops.stop_gradient(grad_theta)
     gradients_impl.gradients(grad_theta_stopped, theta)
@@ -4676,7 +4674,7 @@ class ControlFlowContextCheckTest(test.TestCase):
   def testInvalidContext(self):
     # Accessing a while loop tensor outside of control flow is illegal.
     while_tensor = self._getWhileTensor()
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "Cannot use 'while/Const_1' as input to 'Add' because 'while/Const_1' "
         "is in a while loop. See info log for more details."):
@@ -4686,7 +4684,7 @@ class ControlFlowContextCheckTest(test.TestCase):
   def testInvalidContextInCond(self):
     # Accessing a while loop tensor in cond is illegal.
     while_tensor = self._getWhileTensor()
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Cannot use 'while/Const_1' as input to 'cond/Add' because "
         "'while/Const_1' is in a while loop. See info log for more details."):
       # TODO(skyewm): this passes if we return while_tensor directly instead
@@ -4699,14 +4697,14 @@ class ControlFlowContextCheckTest(test.TestCase):
   def testInvalidContextInWhile(self):
     # Accessing a while loop tensor in a different while loop is illegal.
     while_tensor = self._getWhileTensor()
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "Cannot use 'while/Const_1' as input to 'while_1/Add' because they are "
         "in different while loops. See info log for more details."):
       control_flow_ops.while_loop(lambda i: i < 10,
                                   lambda x: math_ops.add(1, while_tensor), [0])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "Cannot use 'while/Const_1' as input to 'while_2/NextIteration' "
         "because they are in different while loops. See info log for more "
@@ -4763,7 +4761,7 @@ class ControlFlowContextCheckTest(test.TestCase):
       return control_flow_ops.while_loop(lambda i: i < 3,
                                          lambda i: i + while_tensor, [0])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "Cannot use 'cond/while/Const_1' as input to 'cond/while_1/add' because"
         " they are in different while loops. See info log for more details."):
@@ -4855,7 +4853,7 @@ class TupleTest(test.TestCase):
       # Should trigger the assign.
       self.evaluate(t)
 
-      self.assertEquals(1, self.evaluate(var))
+      self.assertEqual(1, self.evaluate(var))
 
 
 class AssertTest(test.TestCase):

@@ -1004,6 +1004,8 @@ class ReluTest(test_lib.TestCase):
     z = self.evaluate(nn_ops.relu(constant_op.constant(x)))
     self.assertAllEqual(y, z)
 
+  @test_util.disable_xla(
+      "This test relies on undefined behavior that XLA does not replicate")
   @test_util.run_deprecated_v1
   def testNaNs(self):
     # Test that relu(nan) = nan for various sizes.
@@ -1025,7 +1027,7 @@ class LeakyReluTest(test_lib.TestCase):
     inputs = constant_op.constant(inputs)
 
     outputs = nn_ops.leaky_relu(inputs)
-    self.assertEquals(inputs.shape, outputs.shape)
+    self.assertEqual(inputs.shape, outputs.shape)
 
     inputs, outputs = self.evaluate([inputs, outputs])
 
@@ -1502,11 +1504,8 @@ class MaxPoolTest(test_lib.TestCase):
 class ConvolutionTest(test_lib.TestCase):
 
   def testUnknownSize(self):
-    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
-    # np.ones defaults to using float64 when dtype is not explicitly specified
-    dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
     x = tensor_spec.TensorSpec(None, dtypes.float32, name="x")
-    k = np.ones([3, 6, 6, 5], dtype=dtype)
+    k = np.ones([3, 6, 6, 5], dtype=np.float32)
 
     @def_function.function
     def F(value):

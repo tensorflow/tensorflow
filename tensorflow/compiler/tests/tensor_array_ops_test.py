@@ -393,9 +393,8 @@ class TensorArrayTest(xla_test.XLATestCase):
       # Test writing the wrong datatype.
       # TODO(b/129870929): Remove InvalidArgumentError/second regexp after all
       # callers provide proper init dtype.
-      with self.assertRaisesRegexp(
-          (ValueError, errors.InvalidArgumentError),
-          r"("
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), r"("
           r"conversion requested dtype float32 for Tensor with dtype int32"
           r"|"
           r"TensorArray dtype is float but op has dtype int32"

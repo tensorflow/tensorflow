@@ -22,6 +22,7 @@ import collections
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -29,6 +30,7 @@ from tensorflow.python.ops.numpy_ops import np_arrays
 # Required for operator overloads
 from tensorflow.python.ops.numpy_ops import np_math_ops  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.util import nest
 
 t2a = np_arrays.tensor_to_ndarray
 
@@ -49,6 +51,19 @@ class ArrayTest(test.TestCase):
                                   dtype=dtypes.float32)).astype(np.bool_)
     self.assertIs(a.dtype.type, np.bool_)
     self.assertAllEqual([False, True], a)
+
+  def testConstructor(self):
+    t = constant_op.constant([[1], [1]])
+    a = np_arrays.ndarray(shape=(2, 1), buffer=t)
+    self.assertAllEqual(t, a)
+    self.assertEqual(dtypes.float64, a.dtype)
+
+    a = np_arrays.ndarray(shape=(2, 1), dtype=dtypes.int32, buffer=t)
+    self.assertAllEqual(t, a)
+    self.assertEqual(dtypes.int32, a.dtype)
+
+    with self.assertRaises(ValueError):  # bad shape
+      _ = np_arrays.ndarray((2, 2), buffer=t)
 
   def testNeg(self):
     a = t2a(ops.convert_to_tensor(value=[1.0, 2.0]))
@@ -181,6 +196,23 @@ class ArrayTest(test.TestCase):
     self.assertNotIsInstance(a, collections.Hashable)
     with self.assertRaisesWithPredicateMatch(TypeError, r'unhashable type'):
       hash(a)
+
+  def testFromToCompositeTensor(self):
+    tensors = [t2a(ops.convert_to_tensor(0.1)), t2a(ops.convert_to_tensor(0.2))]
+
+    flattened = nest.flatten(tensors, expand_composites=True)
+    # Each ndarray contains only one tensor, so the flattened output should be
+    # just 2 tensors in a list.
+    self.assertLen(flattened, 2)
+    self.assertIsInstance(flattened[0], ops.Tensor)
+    self.assertIsInstance(flattened[1], ops.Tensor)
+
+    repacked = nest.pack_sequence_as(tensors, flattened, expand_composites=True)
+    self.assertLen(repacked, 2)
+    self.assertIsInstance(repacked[0], np_arrays.ndarray)
+    self.assertIsInstance(repacked[1], np_arrays.ndarray)
+
+    self.assertAllClose(tensors, repacked)
 
 
 if __name__ == '__main__':

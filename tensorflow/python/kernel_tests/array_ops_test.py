@@ -117,7 +117,7 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
 
   def testTensorWithStaticRankLessThanTwoRaisesBecauseNotAMatrix(self):
     vector = [1, 2, 3]
-    with self.assertRaisesRegexp(ValueError, "should be a "):
+    with self.assertRaisesRegex(ValueError, "should be a "):
       array_ops.matrix_transpose(vector)
 
 
@@ -249,28 +249,28 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       tensor = array_ops.placeholder(dtypes.int32, shape=[None, 2])
       mask = array_ops.placeholder(dtypes.bool, shape=None)
-      with self.assertRaisesRegexp(ValueError, "dimensions must be specified"):
+      with self.assertRaisesRegex(ValueError, "dimensions must be specified"):
         array_ops.boolean_mask(tensor, mask)
 
   def testMaskHasMoreDimsThanTensorRaises(self):
     mask = [[True, True], [False, False]]
     tensor = [1, 2, 3, 4]
     with self.cached_session():
-      with self.assertRaisesRegexp(ValueError, "incompatible"):
+      with self.assertRaisesRegex(ValueError, "incompatible"):
         array_ops.boolean_mask(tensor, mask).eval()
 
   def testMaskIsScalarRaises(self):
     mask = True
     tensor = 1
     with self.cached_session():
-      with self.assertRaisesRegexp(ValueError, "mask.*scalar"):
+      with self.assertRaisesRegex(ValueError, "mask.*scalar"):
         array_ops.boolean_mask(tensor, mask).eval()
 
   def testMaskShapeDifferentThanFirstPartOfTensorShapeRaises(self):
     mask = [True, True, True]
     tensor = [[1, 2], [3, 4]]
     with self.cached_session():
-      with self.assertRaisesRegexp(ValueError, "incompatible"):
+      with self.assertRaisesRegex(ValueError, "incompatible"):
         array_ops.boolean_mask(tensor, mask).eval()
 
   @test_util.run_deprecated_v1
@@ -331,7 +331,7 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
     matrix_squeezed = array_ops.squeeze(matrix, [0])
     self.assertEqual(matrix_squeezed.get_shape(), (3))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         Exception, "Can not squeeze dim.1., expected a dimension of 1, got 3"):
       matrix_squeezed = array_ops.squeeze(matrix, [1])
 
@@ -341,8 +341,8 @@ class OperatorShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual(matrix_squeezed.get_shape(), (3))
 
   def testExpandDimsWithNonScalarDim(self):
-    with self.assertRaisesRegexp(Exception,
-                                 "must be a tensor with a single value"):
+    with self.assertRaisesRegex(Exception,
+                                "must be a tensor with a single value"):
       array_ops.expand_dims(1, axis=[0, 1])
 
 
@@ -403,11 +403,11 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def testInvalidAxis(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
-    with self.assertRaisesRegexp(ValueError, "is out of valid range"):
+    with self.assertRaisesRegex(ValueError, "is out of valid range"):
       array_ops.reverse_v2(x_np, [-30])
-    with self.assertRaisesRegexp(ValueError, "is out of valid range"):
+    with self.assertRaisesRegex(ValueError, "is out of valid range"):
       array_ops.reverse_v2(x_np, [2])
-    with self.assertRaisesRegexp(ValueError, "axis 0 specified more than once"):
+    with self.assertRaisesRegex(ValueError, "axis 0 specified more than once"):
       array_ops.reverse_v2(x_np, [0, -2])
 
   # This is the version of reverse that uses axis indices rather than
@@ -421,13 +421,13 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
     axis = array_ops.placeholder(dtypes.int32)
     with self.cached_session():
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "is out of.*range"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "is out of.*range"):
         array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [-30]})
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "is out of.*range"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "is out of.*range"):
         array_ops.reverse_v2(x_np, axis).eval(feed_dict={axis: [2]})
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "(axis 0 specified more than once|canonicalized axis 0 was repeated.)"
       ):
@@ -726,7 +726,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       # ellipsis at middle
       _ = checker[0:1, ..., 0:1]
       # multiple ellipses not allowed
-      with self.assertRaisesRegexp(ValueError, "Multiple ellipses"):
+      with self.assertRaisesRegex(ValueError, "Multiple ellipses"):
         _ = checker[..., :, ...].eval()
 
   @test_util.run_deprecated_v1
@@ -765,17 +765,17 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
     with self.session(use_gpu=True):
       checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
       expected = re.escape(array_ops._SLICE_TYPE_ERROR)
-      with self.assertRaisesRegexp(TypeError, expected):
+      with self.assertRaisesRegex(TypeError, expected):
         _ = checker["foo"]
-      with self.assertRaisesRegexp(TypeError, expected):
+      with self.assertRaisesRegex(TypeError, expected):
         _ = checker[constant_op.constant("foo")]
-      with self.assertRaisesRegexp(TypeError, expected):
+      with self.assertRaisesRegex(TypeError, expected):
         _ = checker[0.0]
-      with self.assertRaisesRegexp(TypeError, expected):
+      with self.assertRaisesRegex(TypeError, expected):
         _ = checker[constant_op.constant(0.0)]
-      with self.assertRaisesRegexp(TypeError, expected):
+      with self.assertRaisesRegex(TypeError, expected):
         _ = checker[constant_op.constant([1, 2, 3])]
-      with self.assertRaisesRegexp(TypeError, expected):
+      with self.assertRaisesRegex(TypeError, expected):
         _ = checker[[2.1, -0.7, 1.5]]
 
   @test_util.run_deprecated_v1
@@ -973,9 +973,9 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
       _ = grad[3:0:-2, 1:3, 2]
       _ = grad[:, -1, :]
       _ = grad[:, -2, :]
-      with self.assertRaisesRegexp(ValueError, "out of bounds"):
+      with self.assertRaisesRegex(ValueError, "out of bounds"):
         _ = grad[:, -200, :]
-      with self.assertRaisesRegexp(ValueError, "out of bounds"):
+      with self.assertRaisesRegex(ValueError, "out of bounds"):
         _ = grad[:, 200, :]
 
       # Test numpy array type mask
@@ -1046,7 +1046,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
       begin = constant_op.constant([0, 0, 0], dtype=dtypes.int32)
       end = constant_op.constant([4, 1, 1], dtype=dtypes.int64)
       strides = constant_op.constant([1, 1, 1], dtype=dtypes.int64)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           TypeError, "Input 'begin' of 'StridedSliceGrad' Op has type int32"
           " that does not match type int64 of argument 'shape'"):
         dx = array_ops.strided_slice_grad(original_shape, begin, end, strides,
@@ -1148,7 +1148,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
   def testInvalidSlice(self):
     with self.cached_session() as sess:
       foo = constant_op.constant([1, 2, 3])
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Sliced assignment"
           " is only supported for variables"):
         bar = foo[:2].assign(constant_op.constant([1, 2]))
@@ -1196,7 +1196,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testUninitialized(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         errors.FailedPreconditionError,
         "Attempting to use uninitialized value Variable"):
       with self.cached_session() as sess:
@@ -1268,7 +1268,7 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
 
   def testExceptions(self):
     with self.cached_session():
-      with self.assertRaisesRegexp(ValueError, "maxlen must be scalar"):
+      with self.assertRaisesRegex(ValueError, "maxlen must be scalar"):
         array_ops.sequence_mask([10, 20], [10, 20])
 
   @test_util.run_deprecated_v1
@@ -1435,6 +1435,16 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
           dims_3 = constant_op.constant([7, 6], dtype=dtype)
           out_3 = array_ops.unravel_index(indices_3, dims_3)
           self.assertAllEqual(out_3.eval(), [[3, 6, 6], [4, 5, 1]])
+
+  # Test case for GitHub issue 40204.
+  def testUnravelIndexZeroDim(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "index is out of bound as with dims"):
+          indices = constant_op.constant([2, 5, 7], dtype=dtype)
+          dims = constant_op.constant([3, 0], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
 
 
 class GuaranteeConstOpTest(test_util.TensorFlowTestCase):

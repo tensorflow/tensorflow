@@ -12,23 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tensorflow numpy API."""
+"""tf.experimental.numpy: Numpy API on top of TensorFlow.
+
+This module provides a subset of numpy APIs, built on top of TensorFlow
+operations. Please see documentation here:
+https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/ops/numpy_ops.
+"""
+# TODO(wangpeng): Append `np_export`ed symbols to the comments above.
+
+# pylint: disable=g-direct-tensorflow-import
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.ops.array_ops import newaxis
 from tensorflow.python.ops.numpy_ops import np_random as random
-
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.numpy_ops.np_array_ops import *
 from tensorflow.python.ops.numpy_ops.np_arrays import ndarray
 from tensorflow.python.ops.numpy_ops.np_dtypes import *
 from tensorflow.python.ops.numpy_ops.np_math_ops import *
+# pylint: enable=wildcard-import
 from tensorflow.python.ops.numpy_ops.np_utils import finfo
 from tensorflow.python.ops.numpy_ops.np_utils import promote_types
 from tensorflow.python.ops.numpy_ops.np_utils import result_type
-# pylint: enable=wildcard-import
 
 # pylint: disable=redefined-builtin,undefined-variable
 max = amax

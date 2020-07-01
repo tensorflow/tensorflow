@@ -21,13 +21,33 @@ namespace xla {
 
 namespace py = pybind11;
 
-PyExecutable::PyExecutable(
-    std::shared_ptr<PjRtClient> client,
-    std::unique_ptr<PjRtExecutable> executable,
-    absl::optional<TracebackManager::Traceback> traceback)
+PyExecutable::PyExecutable(std::shared_ptr<PyClient> client,
+                           std::unique_ptr<PjRtExecutable> executable,
+                           std::shared_ptr<Traceback> traceback)
     : client_(std::move(client)),
       executable_(std::move(executable)),
-      traceback_(std::move(traceback)) {}
+      traceback_(std::move(traceback)) {
+  CHECK(PyGILState_Check());
+  next_ = client_->executables_;
+  client_->executables_ = this;
+  prev_ = nullptr;
+  if (next_) {
+    next_->prev_ = this;
+  }
+}
+
+PyExecutable::~PyExecutable() {
+  CHECK(PyGILState_Check());
+  if (client_->executables_ == this) {
+    client_->executables_ = next_;
+  }
+  if (prev_) {
+    prev_->next_ = next_;
+  }
+  if (next_) {
+    next_->prev_ = prev_;
+  }
+}
 
 std::vector<ClientAndPtr<Device>> PyExecutable::LocalDevices() const {
   std::vector<ClientAndPtr<Device>> devices;
@@ -40,15 +60,18 @@ std::vector<ClientAndPtr<Device>> PyExecutable::LocalDevices() const {
 
 StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PyExecutable::Execute(
     absl::Span<PyBuffer* const> args) {
-  auto traceback = TracebackManager::Get()->GetTraceback();
-  py::gil_scoped_release gil_release;
-  ExecuteOptions options;
-  options.untuple_result = true;
-  std::vector<PjRtBuffer*> arg_buffers(args.size());
-  absl::c_transform(args, arg_buffers.begin(),
-                    [](PyBuffer* buf) { return buf->buffer(); });
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-                      executable_->Execute(arg_buffers, options));
+  std::vector<std::unique_ptr<PjRtBuffer>> output_buffers;
+  {
+    py::gil_scoped_release gil_release;
+    ExecuteOptions options;
+    options.untuple_result = true;
+    std::vector<PjRtBuffer*> arg_buffers(args.size());
+    absl::c_transform(args, arg_buffers.begin(),
+                      [](PyBuffer* buf) { return buf->buffer(); });
+    TF_ASSIGN_OR_RETURN(output_buffers,
+                        executable_->Execute(arg_buffers, options));
+  }
+  auto traceback = Traceback::Get();
   std::vector<std::unique_ptr<PyBuffer>> outputs;
   outputs.reserve(output_buffers.size());
   for (auto& buffer : output_buffers) {
@@ -61,19 +84,21 @@ StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PyExecutable::Execute(
 StatusOr<std::vector<std::vector<std::unique_ptr<PyBuffer>>>>
 PyExecutable::ExecuteOnLocalDevices(
     absl::Span<const std::vector<PyBuffer*>> args) {
-  auto traceback = TracebackManager::Get()->GetTraceback();
-  py::gil_scoped_release gil_release;
-  ExecuteOptions options;
-  options.untuple_result = true;
-  std::vector<std::vector<PjRtBuffer*>> arg_buffers(args.size());
-  for (int computation = 0; computation < args.size(); ++computation) {
-    arg_buffers[computation].resize(args[computation].size());
-    absl::c_transform(args[computation], arg_buffers[computation].begin(),
-                      [](PyBuffer* buf) { return buf->buffer(); });
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers;
+  {
+    py::gil_scoped_release gil_release;
+    ExecuteOptions options;
+    options.untuple_result = true;
+    std::vector<std::vector<PjRtBuffer*>> arg_buffers(args.size());
+    for (int computation = 0; computation < args.size(); ++computation) {
+      arg_buffers[computation].resize(args[computation].size());
+      absl::c_transform(args[computation], arg_buffers[computation].begin(),
+                        [](PyBuffer* buf) { return buf->buffer(); });
+    }
+    TF_ASSIGN_OR_RETURN(output_buffers, executable_->ExecuteOnLocalDevices(
+                                            arg_buffers, options));
   }
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
-      executable_->ExecuteOnLocalDevices(arg_buffers, options));
+  auto traceback = Traceback::Get();
   std::vector<std::vector<std::unique_ptr<PyBuffer>>> outputs;
   outputs.resize(output_buffers.size());
   for (int computation = 0; computation < output_buffers.size();

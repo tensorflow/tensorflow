@@ -29,7 +29,7 @@ namespace {
 
 bool ApplyAttrsToArray(GraphTransformation* transformation, Model* model,
                        const FakeQuantOperator& fq_op,
-                       const string& array_name) {
+                       const std::string& array_name) {
   bool changed = false;
   auto& annotated_array = model->GetArray(array_name);
   if (!annotated_array.minmax) {

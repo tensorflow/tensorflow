@@ -46,6 +46,7 @@ gen_device_srcs(
         "src/collectives/device/broadcast.cu.cc",
         "src/collectives/device/reduce.cu.cc",
         "src/collectives/device/reduce_scatter.cu.cc",
+        "src/collectives/device/sendrecv.cu.cc",
     ],
 )
 

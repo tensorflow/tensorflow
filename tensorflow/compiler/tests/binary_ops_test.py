@@ -229,16 +229,16 @@ class BinaryOpsTest(xla_test.XLATestCase):
         self._testBinary(
             gen_math_ops.xdivy,
             np.array([0, 4, 3, 2, 1, 0], dtype=dtype),
-            np.array([0, 5, 6, 7, 8, float("NaN")], dtype=dtype),
-            expected=np.array([0, 0.8, 0.5, 0.285714, 0.125, 0], dtype=dtype),
+            np.array([[0, 5, 6, 7, 8, float("NaN")]], dtype=dtype),
+            expected=np.array([[0, 0.8, 0.5, 0.285714, 0.125, 0]], dtype=dtype),
             rtol=1e-6,
             atol=1e-6)
 
         self._testBinary(
             gen_math_ops.xlogy,
             np.array([0, 4, 3, 2, 1, 0], dtype=dtype),
-            np.array([0, 5, 6, 7, 8, float("NaN")], dtype=dtype),
-            expected=np.array([0, 6.437752, 5.375278, 3.89182, 2.079442, 0],
+            np.array([[0, 5, 6, 7, 8, float("NaN")]], dtype=dtype),
+            expected=np.array([[0, 6.437752, 5.375278, 3.89182, 2.079442, 0]],
                               dtype=dtype),
             rtol=1e-4,
             atol=1e-6)
@@ -246,8 +246,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
         self._testBinary(
             gen_math_ops.xlog1py,
             np.array([0, 4, 3, 2, 1, 0], dtype=dtype),
-            np.array([-1, 5, 6, 7, 8, float("NaN")], dtype=dtype),
-            expected=np.array([0, 7.167038, 5.837730, 4.158883, 2.197225, 0],
+            np.array([[-1, 5, 6, 7, 8, float("NaN")]], dtype=dtype),
+            expected=np.array([[0, 7.167038, 5.837730, 4.158883, 2.197225, 0]],
                               dtype=dtype),
             rtol=1e-4,
             atol=1e-6)
@@ -1225,8 +1225,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [7, 7, 7, 7, 7, 7]],
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "Requires concatenate op support in MlirHloBuilder")
   def testSymmetricMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "SYMMETRIC")
     for dtype in self.numeric_types:
@@ -1258,8 +1256,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[0, 0], [0, 0]], dtype=np.int32),
           expected=np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "Requires concatenate op support in MlirHloBuilder")
   def testReflectMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "REFLECT")
     for dtype in self.numeric_types:

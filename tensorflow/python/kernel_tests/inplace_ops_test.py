@@ -160,14 +160,14 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
 
   def testError(self):
     with self.cached_session():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "must be a vector"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "must be a vector"):
         _ = inplace_ops.inplace_update([[1.]], [[0]], [[10]]).eval()
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "x and v shape doesn't match"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "x and v shape doesn't match"):
         _ = inplace_ops.inplace_update([[1.]], [0], [10]).eval()
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "i and x shape doesn't match"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "i and x shape doesn't match"):
         _ = inplace_ops.inplace_update([[1.]], [0, 1], [[10]]).eval()
 
   @test_util.run_deprecated_v1

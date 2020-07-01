@@ -321,7 +321,10 @@ def : Pat<(TF_PadV2Op $input, (TF_ConstOp $padding), $c),
 
 foreach src = [TF_IdentityOp, TF_StopGradientOp] in
   def : Pat<(src $op), (replaceWithValue $op)>;
-def : Pat<(TF_PreventGradientOp $op, $msg), (replaceWithValue $op)>;
+
+// TODO(b/32223192): Support CheckNumerics in HLO.
+foreach src = [TF_PreventGradientOp, TF_CheckNumericsOp] in
+  def : Pat<(src $op, $msg), (replaceWithValue $op)>;
 
 //===----------------------------------------------------------------------===//
 // MatMul op patterns.
@@ -540,6 +543,7 @@ foreach Mapping = [
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
+                   [TF_SigmoidOp, HLO_LogisticOp],
                    [TF_SinOp, HLO_SinOp],
                    [TF_SqrtOp, HLO_SqrtOp],
                    [TF_TanhOp, HLO_TanhOp],
@@ -618,3 +622,39 @@ def : Pat<(TF_SigmoidGradOp AnyRankedTensor:$l, AnyRankedTensor:$r),
           (HLO_MulOp
            (HLO_MulOp $r, $l),
            (HLO_SubOp (HLO_ConstOp (ConstantSplat<"1"> $l)), $l))>;
+
+//===----------------------------------------------------------------------===//
+// Softplus op.
+//===----------------------------------------------------------------------===//
+
+def EpsilonValue : NativeCodeCall<"GetEpsilonValue($0.getType())">;
+
+def : Pattern<(TF_SoftplusOp AnyTensor:$features),
+              [
+                (HLO_ExpOp:$features_exp $features),
+                (HLOClient_BroadcastAddOp:$threshold
+                 (HLO_LogOp (HLO_ConstOp (EpsilonValue $features))),
+                 (HLO_ConstOp (GetScalarOfType<2> $features)),
+                 (NullDenseIntElementsAttr)
+                ),
+                (HLO_SelectOp:$output
+                 (HLOClient_BroadcastCompareOp
+                  $features,
+                  (HLO_NegOp $threshold),
+                  (NullDenseIntElementsAttr),
+                  HLO_COMPARISON_DIRECTION_GT
+                 ),
+                 $features,
+                 (HLO_SelectOp
+                  (HLOClient_BroadcastCompareOp
+                   $features,
+                   $threshold,
+                   (NullDenseIntElementsAttr),
+                   HLO_COMPARISON_DIRECTION_LT
+                  ),
+                  $features_exp,
+                  (HLO_Log1pOp $features_exp)
+                 )
+                ),
+                (replaceWithValue $output)
+              ]>;

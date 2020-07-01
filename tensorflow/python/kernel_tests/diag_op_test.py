@@ -537,7 +537,7 @@ class MatrixDiagTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testInvalidShape(self):
-    with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
+    with self.assertRaisesRegex(ValueError, "must be at least rank 1"):
       array_ops.matrix_diag(0)
 
   @test_util.run_deprecated_v1
@@ -695,9 +695,9 @@ class MatrixSetDiagTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testInvalidShape(self):
-    with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
+    with self.assertRaisesRegex(ValueError, "must be at least rank 2"):
       array_ops.matrix_set_diag(0, [0])
-    with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
+    with self.assertRaisesRegex(ValueError, "must be at least rank 1"):
       array_ops.matrix_set_diag([[0]], 0)
 
   @test_util.run_deprecated_v1
@@ -887,7 +887,7 @@ class MatrixDiagPartTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testInvalidShape(self):
-    with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
+    with self.assertRaisesRegex(ValueError, "must be at least rank 2"):
       array_ops.matrix_diag_part(0)
 
   @test_util.run_deprecated_v1
@@ -1068,7 +1068,7 @@ class DiagTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testInvalidRank(self):
-    with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
+    with self.assertRaisesRegex(ValueError, "must be at least rank 1"):
       array_ops.diag(0.0)
 
 

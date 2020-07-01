@@ -48,7 +48,7 @@ class StringLengthOpTest(test.TestCase):
           self.evaluate(utf8_byte_lengths), expected_utf8_byte_lengths)
       self.assertAllEqual(
           self.evaluate(utf8_char_lengths), expected_utf8_char_lengths)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Attr 'unit' of 'StringLength' Op passed string 'XYZ' "
           'not in: "BYTE", "UTF8_CHAR"'):
         string_ops.string_length(utf8_strings, unit="XYZ")

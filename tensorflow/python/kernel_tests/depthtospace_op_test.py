@@ -50,7 +50,7 @@ class DepthToSpaceTest(test.TestCase):
         output_nchw = array_ops.depth_to_space(
             input_nchw, block_size, data_format="NCHW")
         output_nhwc = test_util.NCHWToNHWC(output_nchw)
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors_impl.InvalidArgumentError,
             "No OpKernel was registered to support Op 'DepthToSpace'"):
           output_nhwc.eval()

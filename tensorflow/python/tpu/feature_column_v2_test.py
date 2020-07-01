@@ -411,7 +411,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
           embedding_lookup_device='cpu',
           tensor_core_shape=[None, 3])
     dense_features = fc_lib.DenseFeatures(embedding_column)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'.*embedding_lookup_device=\"cpu\" during training is not'):
       dense_features(input_features)
@@ -432,7 +432,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
     context = tpu._TPUInferenceContext('tpu_inference')
     context.Enter()
     dense_features = fc_lib.DenseFeatures(embedding_column)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'Using embedding_lookup_device=tpu_embedding_core during inference is '
     ):
@@ -522,7 +522,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
       dense_features = fc_lib.DenseFeatures(embedding_column)
       # Sqrtn combiner not supported for now.
       if combiner == 'sqrtn':
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError, 'Dense TPU Embedding does not support combiner'):
           embedding_lookup = dense_features(input_features)
         return
@@ -633,8 +633,7 @@ class DeviceSpecificEmbeddingColumnTestV2(test.TestCase,
   def test_error_dense_shape_invalid(self):
     categorical_column_input = fc_lib.categorical_column_with_identity(
         key='inp', num_buckets=5)
-    with self.assertRaisesRegexp(ValueError,
-                                 'tensor_core_shape must be size 2'):
+    with self.assertRaisesRegex(ValueError, 'tensor_core_shape must be size 2'):
       tpu_fc.shared_embedding_columns_v2([categorical_column_input],
                                          dimension=20,
                                          tensor_core_shape=[None, 20, 15])

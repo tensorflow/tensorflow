@@ -2526,16 +2526,16 @@ class Conv2DTest(test.TestCase):
   def testOpEdgeCases(self):
     with self.cached_session() as sess:
       # Illegal strides.
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "strides in the batch and depth"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "strides in the batch and depth"):
         sess.run(
             nn_ops.conv2d(
                 array_ops.placeholder(dtypes.float32),
                 array_ops.placeholder(dtypes.float32),
                 strides=[2, 1, 1, 1],
                 padding="SAME"))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "strides in the batch and depth"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "strides in the batch and depth"):
         sess.run(
             nn_ops.conv2d(
                 array_ops.placeholder(dtypes.float32),
@@ -2544,7 +2544,7 @@ class Conv2DTest(test.TestCase):
                 padding="SAME"))
 
       # Filter larger than input.
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
         sess.run(
             nn_ops.conv2d(
                 array_ops.placeholder(
@@ -2553,7 +2553,7 @@ class Conv2DTest(test.TestCase):
                     dtypes.float32, shape=[20, 21, 3, 2]),
                 strides=[1, 1, 1, 1],
                 padding="VALID"))
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
         sess.run(
             nn_ops.conv2d(
                 array_ops.placeholder(
@@ -2564,7 +2564,7 @@ class Conv2DTest(test.TestCase):
                 padding="VALID"))
 
       # Filter larger than input + padding.
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
         sess.run(
             nn_ops.conv2d(
                 array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
@@ -2573,8 +2573,8 @@ class Conv2DTest(test.TestCase):
                 padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
 
       # Negative padding during backprop.
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "nonnegative"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "nonnegative"):
         sess.run(
             nn_ops.conv2d_backprop_input([32, 20, 20, 3],
                                          array_ops.placeholder(
@@ -2586,8 +2586,8 @@ class Conv2DTest(test.TestCase):
                                          strides=[1, 1, 1, 1],
                                          padding=[[0, 0], [-1, 0], [0, 0],
                                                   [0, 0]]))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "nonnegative"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "nonnegative"):
         sess.run(
             nn_ops.conv2d_backprop_filter(
                 array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),

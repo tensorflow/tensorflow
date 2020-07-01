@@ -1416,8 +1416,28 @@ truncatemod = gen_math_ops.truncate_mod
 floormod = gen_math_ops.floor_mod
 
 
+@tf_export("__operators__.add", v1=[])
+@dispatch.add_dispatch_support
 def _add_dispatch(x, y, name=None):
-  """Dispatches to add for strings and add_v2 for all other types."""
+  """The operation invoked by the `Tensor.__add__` operator.
+
+    Purpose in the API:
+
+      This method is exposed in TensorFlow's API so that library developers
+      can register dispatching for `Tensor.__add__` to allow it to handle
+      custom composite tensors & other custom objects.
+
+      The API symbol is not intended to be called by users directly and does
+      appear in TensorFlow's generated documentation.
+
+  Args:
+    x: The left-hand side of the `+` operator.
+    y: The right-hand side of the `+` operator.
+    name: an optional name for the operation.
+
+  Returns:
+    The result of the elementwise `+` operation.
+  """
   if not isinstance(y, ops.Tensor) and not isinstance(
       y, sparse_tensor.SparseTensor):
     y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
@@ -1630,8 +1650,33 @@ def not_equal(x, y, name=None):
   return gen_math_ops.not_equal(x, y, name=name)
 
 
+@tf_export("__operators__.eq", v1=[])
+@dispatch.add_dispatch_support
 def tensor_equals(self, other):
-  """Compares two tensors element-wise for equality."""
+  """The operation invoked by the `Tensor.__eq__` operator.
+
+  Compares two tensors element-wise for equality if they are
+  broadcast-compatible; or returns False if they are not broadcast-compatible.
+  (Note that this behavior differs from `tf.math.equal`, which raises an
+  exception if the two tensors are not broadcast-compatible.)
+
+  Purpose in the API:
+
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__eq__` to allow it to handle
+    custom composite tensors & other custom objects.
+
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
+
+  Args:
+    self: The left-hand side of the `==` operator.
+    other: The right-hand side of the `==` operator.
+
+  Returns:
+    The result of the elementwise `==` operation, or `False` if the arguments
+    are not broadcast-compatible.
+  """
   if other is None:
     return False
   g = getattr(self, "graph", None)
@@ -1643,8 +1688,33 @@ def tensor_equals(self, other):
     return self is other
 
 
+@tf_export("__operators__.ne", v1=[])
+@dispatch.add_dispatch_support
 def tensor_not_equals(self, other):
-  """Compares two tensors element-wise for equality."""
+  """The operation invoked by the `Tensor.__ne__` operator.
+
+  Compares two tensors element-wise for inequality if they are
+  broadcast-compatible; or returns True if they are not broadcast-compatible.
+  (Note that this behavior differs from `tf.math.not_equal`, which raises an
+  exception if the two tensors are not broadcast-compatible.)
+
+  Purpose in the API:
+
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__ne__` to allow it to handle
+    custom composite tensors & other custom objects.
+
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
+
+  Args:
+    self: The left-hand side of the `!=` operator.
+    other: The right-hand side of the `!=` operator.
+
+  Returns:
+    The result of the elementwise `!=` operation, or `True` if the arguments
+    are not broadcast-compatible.
+  """
   if other is None:
     return True
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
@@ -1753,13 +1823,8 @@ if not six.PY2:
                                           _range_tensor_conversion_function)
 
 # Reduction operations
-def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-name
-  """Returns range(0, rank(x)) if reduction_indices is None."""
-  # TODO(aselle): Remove this after deprecation
-  if reduction_indices is not None:
-    if axis is not None:
-      raise ValueError("Can't specify both axis' and 'reduction_indices'.")
-    axis = reduction_indices
+def _ReductionDims(x, axis):  # pylint: disable=invalid-name
+  """Returns range(0, rank(x)) if axis is None."""
   if axis is not None:
     return axis
   else:
@@ -2682,7 +2747,7 @@ def reduce_all_v1(input_tensor,
   return reduce_all(input_tensor, axis, keepdims, name)
 
 
-@tf_export("reduce_all", "math.reduce_all", v1=[])
+@tf_export("math.reduce_all", "reduce_all", v1=[])
 @dispatch.add_dispatch_support
 def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the "logical and" of elements across dimensions of a tensor.

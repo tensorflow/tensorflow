@@ -66,19 +66,14 @@ TfLiteStatus ValidateDepthwiseConvGoldens(TfLiteTensor* tensors,
   // There is 1 output at index 3 in the tensors array.
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  // There are no intermediates.
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TfLiteStatus prepare_status = registration->prepare(&context, &node);
@@ -166,8 +161,7 @@ int main() {
   // Create per-tensor quantized int8 input tensor.
   int8_t input_quantized[input_elements];
   TfLiteTensor input_tensor = tflite::testing::CreateQuantizedTensor(
-      input_values, input_quantized, input_dims, input_scale, input_zero_point,
-      "input_tensor");
+      input_values, input_quantized, input_dims, input_scale, input_zero_point);
 
   // Set zero point and scale arrays with a single element for each.
   int input_zero_points[] = {1, input_zero_point};
@@ -180,8 +174,7 @@ int main() {
   // Create per-tensor quantized int8 filter tensor.
   int8_t filter_quantized[filter_elements];
   TfLiteTensor filter_tensor = tflite::testing::CreateQuantizedTensor(
-      filter_values, filter_quantized, filter_dims, filter_scale, 0,
-      "filter_tensor");
+      filter_values, filter_quantized, filter_dims, filter_scale, 0);
 
   // Set zero point and scale arrays with a single element for each.
   int filter_zero_points[] = {1, 0};
@@ -197,8 +190,8 @@ int main() {
   // detailed explanation of why bias scale is input_scale * filter_scale.
   tflite::SymmetricQuantize(bias_values, bias_quantized, bias_elements,
                             input_scale * output_scale);
-  TfLiteTensor bias_tensor = tflite::testing::CreateInt32Tensor(
-      bias_quantized, bias_dims, "bias_tensor");
+  TfLiteTensor bias_tensor =
+      tflite::testing::CreateInt32Tensor(bias_quantized, bias_dims);
 
   // Set zero point and scale arrays with a single element for each.
   int bias_zero_points[] = {1, 0};
@@ -211,8 +204,7 @@ int main() {
   // Create per-tensor quantized int8 output tensor.
   int8_t output_quantized[output_elements];
   TfLiteTensor output_tensor = tflite::testing::CreateQuantizedTensor(
-      output_quantized, output_dims, output_scale, output_zero_point,
-      "output_tensor");
+      output_quantized, output_dims, output_scale, output_zero_point);
 
   // Set zero point and scale arrays with a single element for each.
   int output_zero_points[] = {1, output_zero_point};

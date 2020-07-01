@@ -399,23 +399,6 @@ class ArrayCreationTest(test.TestCase):
                     np.arange(start, stop, step, dtype=dtype),
                     msg=msg)
 
-  def testGeomSpace(self):
-
-    def run_test(start, stop, **kwargs):
-      arg1 = start
-      arg2 = stop
-      self.match(
-          np_array_ops.geomspace(arg1, arg2, **kwargs),
-          np.geomspace(arg1, arg2, **kwargs),
-          msg='geomspace({}, {})'.format(arg1, arg2),
-          almost=True,
-          decimal=4)
-
-    run_test(1, 1000, num=5)
-    run_test(1, 1000, num=5, endpoint=False)
-    run_test(-1, -1000, num=5)
-    run_test(-1, -1000, num=5, endpoint=False)
-
   def testDiag(self):
     array_transforms = [
         lambda x: x,  # Identity,
@@ -928,26 +911,6 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 0, 1])
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 1, 0])
 
-  def testSetItem(self):
-
-    def run_test(arr, index, value):
-      for fn in self.array_transforms:
-        value_arg = fn(value)
-        tf_array = np_array_ops.array(arr)
-        np_array = np.array(arr)
-        tf_array[index] = value_arg
-        # TODO(srbs): "setting an array element with a sequence" is thrown
-        # if we do not wrap value_arg in a numpy array. Investigate how this can
-        # be avoided.
-        np_array[index] = np.array(value_arg)
-        self.match(tf_array, np_array)
-
-    run_test([1, 2, 3], 1, 5)
-    run_test([[1, 2], [3, 4]], 0, [6, 7])
-    run_test([[1, 2], [3, 4]], 1, [6, 7])
-    run_test([[1, 2], [3, 4]], (0, 1), 6)
-    run_test([[1, 2], [3, 4]], 0, 6)  # Value needs to broadcast.
-
   def match_shape(self, actual, expected, msg=None):
     if msg:
       msg = 'Shape match failed for: {}. Expected: {} Actual: {}'.format(
@@ -1076,6 +1039,21 @@ class ArrayMethodsTest(test.TestCase):
     y = np_array_ops.split(x, [3, 5, 6, 10])
     self.assertListEqual([([0, 1, 2]), ([3, 4]), ([5]), ([6, 7]), ([])], y)
 
+  def testSign(self):
+    state = np.random.RandomState(0)
+    test_types = [np.float16, np.float32, np.float64, np.int32, np.int64,
+                  np.complex64, np.complex128]
+    test_shapes = [(), (1,), (2, 3, 4), (2, 3, 0, 4)]
+
+    for dtype in test_types:
+      for shape in test_shapes:
+        if np.issubdtype(dtype, np.complex):
+          arr = (np.asarray(state.randn(*shape) * 100, dtype=dtype) +
+                 1j * np.asarray(state.randn(*shape) * 100, dtype=dtype))
+        else:
+          arr = np.asarray(state.randn(*shape) * 100, dtype=dtype)
+        self.match(np_array_ops.sign(arr), np.sign(arr))
+
 
 class ArrayManipulationTest(test.TestCase):
 
@@ -1103,6 +1081,16 @@ class ArrayManipulationTest(test.TestCase):
     run_test([[1], [2]], (2, 2))
     run_test([[1, 2]], (3, 2))
     run_test([[[1, 2]], [[3, 4]], [[5, 6]]], (3, 4, 2))
+
+  def testIx_(self):
+    possible_arys = [[True, True], [True, False], [False, False],
+                     list(range(5)), np_array_ops.empty(0, dtype=np.int64)]
+    for r in range(len(possible_arys)):
+      for arys in itertools.combinations_with_replacement(possible_arys, r):
+        tnp_ans = np_array_ops.ix_(*arys)
+        onp_ans = np.ix_(*arys)
+        for t, o in zip(tnp_ans, onp_ans):
+          self.match(t, o)
 
   def match_shape(self, actual, expected, msg=None):
     if msg:

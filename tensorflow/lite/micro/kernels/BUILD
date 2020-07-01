@@ -11,7 +11,7 @@ load(
 licenses(["notice"])  # Apache 2.0
 
 config_setting(
-    name = "xtensa_hifimini",
+    name = "xtensa_hifimini_legacy",
     define_values = {"tflm_build": "xtensa_hifimini"},
 )
 
@@ -20,11 +20,11 @@ package_group(
     packages = ["//tensorflow/lite/micro"],
 )
 
-# LINT.IfChange(micro_ops)
 cc_library(
     name = "micro_ops",
     srcs = [
         "activations.cc",
+        "hard_swish.cc",
         "add.cc",
         "arg_min_max.cc",
         "ceil.cc",
@@ -33,6 +33,7 @@ cc_library(
         "concatenation.cc",
         "dequantize.cc",
         "elementwise.cc",
+        "ethosu.cc",
         "floor.cc",
         "l2norm.cc",
         "logical.cc",
@@ -62,14 +63,14 @@ cc_library(
             "softmax.cc",
             "svdf.cc",
         ],
-        ":xtensa_hifimini": [
-            "xtensa_hifimini/conv.cc",
-            "xtensa_hifimini/depthwise_conv.cc",
-            "xtensa_hifimini/fixedpoint_utils.h",
-            "xtensa_hifimini/fully_connected.cc",
-            "xtensa_hifimini/quantize.cc",
-            "xtensa_hifimini/softmax.cc",
-            "xtensa_hifimini/svdf.cc",
+        ":xtensa_hifimini_legacy": [
+            "xtensa_hifimini_legacy/conv.cc",
+            "xtensa_hifimini_legacy/depthwise_conv.cc",
+            "xtensa_hifimini_legacy/fixedpoint_utils.h",
+            "xtensa_hifimini_legacy/fully_connected.cc",
+            "xtensa_hifimini_legacy/quantize.cc",
+            "xtensa_hifimini_legacy/softmax.cc",
+            "xtensa_hifimini_legacy/svdf.cc",
         ],
     }),
     hdrs = ["micro_ops.h"],
@@ -100,77 +101,11 @@ cc_library(
         "//tensorflow/lite/micro:micro_utils",
     ] + select({
         "//conditions:default": [],
-        ":xtensa_hifimini": [
+        ":xtensa_hifimini_legacy": [
             #"//third_party/xtensa/cstub64s:hifi_mini",
         ],
     }),
 )
-# LINT.ThenChange(//tensorflow/lite/micro/kernels/BUILD:portable_optimized_micro_ops)
-
-# LINT.IfChange(portable_optimized_micro_ops)
-cc_library(
-    name = "portable_optimized_micro_ops",
-    srcs = [
-        "activations.cc",
-        "add.cc",
-        "arg_min_max.cc",
-        "ceil.cc",
-        "circular_buffer.cc",
-        "comparisons.cc",
-        "concatenation.cc",
-        "conv.cc",
-        "dequantize.cc",
-        "elementwise.cc",
-        "floor.cc",
-        "fully_connected.cc",
-        "l2norm.cc",
-        "logical.cc",
-        "logistic.cc",
-        "maximum_minimum.cc",
-        "mul.cc",
-        "neg.cc",
-        "pack.cc",
-        "pad.cc",
-        "pooling.cc",
-        "portable_optimized/depthwise_conv.cc",
-        "prelu.cc",
-        "quantize.cc",
-        "reduce.cc",
-        "reshape.cc",
-        "resize_nearest_neighbor.cc",
-        "round.cc",
-        "softmax.cc",
-        "split.cc",
-        "strided_slice.cc",
-        "sub.cc",
-        "svdf.cc",
-        "tanh.cc",
-        "unpack.cc",
-    ],
-    hdrs = ["micro_ops.h"],
-    copts = micro_copts(),
-    visibility = [
-        # Needed for micro:portable_optimized_ops_resolver but visibility can not be
-        # finer-grained than a package.
-        ":micro_top_level",
-    ],
-    deps = [
-        ":activation_utils",
-        ":micro_utils",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/kernels:padding",
-        "//tensorflow/lite/kernels/internal:common",
-        "//tensorflow/lite/kernels/internal:compatibility",
-        "//tensorflow/lite/kernels/internal:quantization_util",
-        "//tensorflow/lite/kernels/internal:reference_base",
-        "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/kernels/internal:types",
-        "//tensorflow/lite/micro:micro_utils",
-    ],
-)
-# LINT.ThenChange(//tensorflow/lite/micro/kernels/BUILD:micro_ops)
 
 test_suite(
     name = "all_tests",
@@ -213,19 +148,6 @@ tflite_micro_cc_test(
 )
 
 tflite_micro_cc_test(
-    name = "portable_optimized_depthwise_conv_test",
-    srcs = [
-        "depthwise_conv_test.cc",
-    ],
-    deps = [
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/micro:portable_optimized_op_resolver",
-        "//tensorflow/lite/micro/testing:micro_test",
-    ],
-)
-
-tflite_micro_cc_test(
     name = "fully_connected_test",
     srcs = [
         "fully_connected_test.cc",
@@ -235,6 +157,7 @@ tflite_micro_cc_test(
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -514,6 +437,7 @@ tflite_micro_cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -527,6 +451,7 @@ tflite_micro_cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -548,6 +473,7 @@ tflite_micro_cc_test(
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -585,6 +511,7 @@ tflite_micro_cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
 )
@@ -641,6 +568,17 @@ tflite_micro_cc_test(
 tflite_micro_cc_test(
     name = "tanh_test",
     srcs = ["tanh_test.cc"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "hard_swish_test",
+    srcs = ["hard_swish_test.cc"],
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",

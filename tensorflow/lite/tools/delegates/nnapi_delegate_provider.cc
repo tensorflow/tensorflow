@@ -30,6 +30,8 @@ class NnapiDelegateProvider : public DelegateProvider {
     default_params_.AddParam("use_nnapi", ToolParam::Create<bool>(false));
     default_params_.AddParam("nnapi_execution_preference",
                              ToolParam::Create<std::string>(""));
+    default_params_.AddParam("nnapi_execution_priority",
+                             ToolParam::Create<std::string>(""));
     default_params_.AddParam("nnapi_accelerator_name",
                              ToolParam::Create<std::string>(""));
     default_params_.AddParam("disable_nnapi_cpu",
@@ -57,6 +59,10 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(ToolParams* params) const {
                             "execution preference for nnapi delegate. Should "
                             "be one of the following: fast_single_answer, "
                             "sustained_speed, low_power, undefined"),
+    CreateFlag<std::string>("nnapi_execution_priority", params,
+                            "The model execution priority in nnapi, and it "
+                            "should be one of the following: default, low, "
+                            "medium, high."),
     CreateFlag<std::string>(
         "nnapi_accelerator_name", params,
         "the name of the nnapi accelerator to use (requires Android Q+)"),
@@ -77,6 +83,11 @@ void NnapiDelegateProvider::LogParams(const ToolParams& params) const {
     if (!params.Get<std::string>("nnapi_execution_preference").empty()) {
       TFLITE_LOG(INFO) << "nnapi execution preference: ["
                        << params.Get<std::string>("nnapi_execution_preference")
+                       << "]";
+    }
+    if (!params.Get<std::string>("nnapi_execution_priority").empty()) {
+      TFLITE_LOG(INFO) << "model execution priority in nnapi: ["
+                       << params.Get<std::string>("nnapi_execution_priority")
                        << "]";
     }
     std::string log_string = "nnapi accelerator name: [" +
@@ -145,6 +156,28 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
       }
       options.execution_preference = execution_preference;
     }
+
+    std::string string_execution_priority =
+        params.Get<std::string>("nnapi_execution_priority");
+    // Only set execution priority if user explicitly passes one. Otherwise,
+    // leave it as whatever NNAPI has as the default.
+    if (!string_execution_priority.empty()) {
+      int execution_priority = 0;
+      if (string_execution_priority == "default") {
+        execution_priority = ANEURALNETWORKS_PRIORITY_DEFAULT;
+      } else if (string_execution_priority == "low") {
+        execution_priority = ANEURALNETWORKS_PRIORITY_LOW;
+      } else if (string_execution_priority == "medium") {
+        execution_priority = ANEURALNETWORKS_PRIORITY_MEDIUM;
+      } else if (string_execution_priority == "high") {
+        execution_priority = ANEURALNETWORKS_PRIORITY_HIGH;
+      } else {
+        TFLITE_LOG(WARN) << "The provided value (" << string_execution_priority
+                         << ") is not a valid nnapi execution priority.";
+      }
+      options.execution_priority = execution_priority;
+    }
+
     int max_delegated_partitions = params.Get<int>("max_delegated_partitions");
     if (max_delegated_partitions > 0) {
       options.max_number_delegated_partitions = max_delegated_partitions;

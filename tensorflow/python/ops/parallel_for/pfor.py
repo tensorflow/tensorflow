@@ -2703,8 +2703,18 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Atan", math_ops.atan)
 @RegisterPForWithArgs("Atan2", math_ops.atan2)
 @RegisterPForWithArgs("Atanh", math_ops.atanh)
-@RegisterPForWithArgs("BesselI0e", math_ops.bessel_i0e)
-@RegisterPForWithArgs("BesselI1e", math_ops.bessel_i1e)
+@RegisterPForWithArgs("BesselI0", special_math_ops.bessel_i0)
+@RegisterPForWithArgs("BesselI1", special_math_ops.bessel_i1)
+@RegisterPForWithArgs("BesselI0e", special_math_ops.bessel_i0e)
+@RegisterPForWithArgs("BesselI1e", special_math_ops.bessel_i1e)
+@RegisterPForWithArgs("BesselK0", special_math_ops.bessel_k0)
+@RegisterPForWithArgs("BesselK1", special_math_ops.bessel_k1)
+@RegisterPForWithArgs("BesselK0e", special_math_ops.bessel_k0e)
+@RegisterPForWithArgs("BesselK1e", special_math_ops.bessel_k1e)
+@RegisterPForWithArgs("BesselJ0", special_math_ops.bessel_j0)
+@RegisterPForWithArgs("BesselJ1", special_math_ops.bessel_j1)
+@RegisterPForWithArgs("BesselY0", special_math_ops.bessel_y0)
+@RegisterPForWithArgs("BesselY1", special_math_ops.bessel_y1)
 @RegisterPForWithArgs("BitwiseAnd", bitwise_ops.bitwise_and)
 @RegisterPForWithArgs("BitwiseOr", bitwise_ops.bitwise_or)
 @RegisterPForWithArgs("BitwiseXor", bitwise_ops.bitwise_xor)
@@ -4014,7 +4024,8 @@ def _convert_if(pfor_input):
     # Compute indices for cond being True or False.
     if pfor_input.pfor.all_indices_partitioned:
       else_indices, then_indices = data_flow_ops.dynamic_partition(
-          array_ops.range(len(pfor_input.pfor.all_indices)), cond_int, 2)
+          math_ops.range(pfor_input.pfor.loop_len_vector[0]),
+          cond_int, 2)
     else:
       else_indices, then_indices = false_indices, true_indices
     # Partition inputs
@@ -4103,9 +4114,16 @@ class WhileV2(object):
     with ops.name_scope("while_init"):
       for inp in self._pfor_input.inputs:
         inputs.append(inp.t)
-        output_tas.append(tensor_array_ops.TensorArray(inp.t.dtype, loop_len))
+        output_tas.append(tensor_array_ops.TensorArray(
+            inp.t.dtype,
+            size=loop_len,
+            dynamic_size=False,
+            infer_shape=True))
     # See documentation for __call__ for the structure of init_values.
-    return [True, self._pfor.all_indices] + inputs + output_tas
+    indices = (
+        math_ops.range(self._pfor.loop_len_vector[0])
+        if self._pfor.all_indices_partitioned else self._pfor.all_indices)
+    return [True, indices] + inputs + output_tas
 
   def _process_cond_unstacked(self, conditions, indices, inputs, output_tas):
     """Handles case when condition is pfor loop invariant."""
@@ -4170,12 +4188,16 @@ class WhileV2(object):
       # However once we make a new input loop variant, we might make other
       # outputs loop variant. Hence we need to iterate till we get fixed point.
       while True:
+        if self._pfor.all_indices_partitioned:
+          indices = array_ops.gather(self._pfor.all_indices, new_indices)
+        else:
+          indices = new_indices
         body_pfor = PFor(
             loop_var=self._pfor.loop_var,
             loop_len=array_ops.size(new_indices),
             pfor_ops=self._body_func.graph.get_operations(),
             fallback_to_while_loop=self._pfor.fallback_to_while_loop,
-            all_indices=new_indices,
+            all_indices=indices,
             all_indices_partitioned=(self._pfor.all_indices_partitioned or
                                      cond_stacked),
             pfor_config=self._pfor.pfor_config)

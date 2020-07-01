@@ -27,19 +27,22 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
-from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -534,8 +537,8 @@ class ParameterServerStrategyTestBase(
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run([values.select_replica(r, next_element)
-                                   for r in range(len(devices))])
+        computed_value = sess.run([distribute_utils.select_replica(
+            r, next_element) for r in range(len(devices))])
         if ignore_order:
           self.assertCountEqual(expected_value, computed_value)
         else:
@@ -543,7 +546,7 @@ class ParameterServerStrategyTestBase(
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
-        sess.run([values.select_replica(r, next_element)
+        sess.run([distribute_utils.select_replica(r, next_element)
                   for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
@@ -552,8 +555,8 @@ class ParameterServerStrategyTestBase(
 
         for expected_value in expected_values:
           next_element = iterator.get_next()
-          computed_value = sess.run([values.select_replica(r, next_element)
-                                     for r in range(len(devices))])
+          computed_value = sess.run([distribute_utils.select_replica(
+              r, next_element) for r in range(len(devices))])
           if ignore_order:
             self.assertCountEqual(expected_value, computed_value)
           else:
@@ -764,6 +767,55 @@ class ParameterServerStrategyTest(
 
     self.assertRaisesRegex(NotImplementedError, 'ParameterServerStrategy*',
                            strategy.run, train_step)
+
+  @combinations.generate(combinations.combine(
+      mode=['graph'],
+      prefetch_to_device=[None, True]))
+  def test_prefetch_to_device_dataset(self, prefetch_to_device):
+    distribution, _, _ = create_test_objects(
+        cluster_spec=self._cluster_spec,
+        task_type='worker',
+        task_id=0,
+        num_gpus=2)
+    if prefetch_to_device is None:
+      input_options = None
+    else:
+      input_options = distribute_lib.InputOptions(
+          experimental_prefetch_to_device=prefetch_to_device)
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.batch(distribution.num_replicas_in_sync)
+    dataset = distribution.experimental_distribute_dataset(
+        dataset, options=input_options)
+    if isinstance(dataset, input_lib.DistributedDatasetV1):
+      item = dataset.make_initializable_iterator().get_next()
+    else:
+      self.skipTest('unsupported test combination')
+    device_types = {
+        tf_device.DeviceSpec.from_string(tensor.device).device_type for
+        tensor in item.values}
+    self.assertAllEqual(list(device_types), ['GPU'])
+
+  @combinations.generate(combinations.combine(mode=['graph']))
+  def test_prefetch_to_host_dataset(self):
+    distribution, _, _ = create_test_objects(
+        cluster_spec=self._cluster_spec,
+        task_type='worker',
+        task_id=0,
+        num_gpus=2)
+    input_options = distribute_lib.InputOptions(
+        experimental_prefetch_to_device=False)
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.batch(distribution.num_replicas_in_sync)
+    dataset = distribution.experimental_distribute_dataset(
+        dataset, options=input_options)
+    if isinstance(dataset, input_lib.DistributedDatasetV1):
+      item = dataset.make_initializable_iterator().get_next()
+    else:
+      self.skipTest('unsupported test combination')
+    device_types = {
+        tf_device.DeviceSpec.from_string(tensor.device).device_type for
+        tensor in item.values}
+    self.assertAllEqual(list(device_types), ['CPU'])
 
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,

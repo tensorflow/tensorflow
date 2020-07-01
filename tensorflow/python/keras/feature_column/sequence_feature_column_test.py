@@ -167,7 +167,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     embedding_column_a = fc.embedding_column(
         categorical_column_a, dimension=2)
     sequence_input_layer = ksfc.SequenceFeatures([embedding_column_a])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'In embedding_column: aaa_embedding\. categorical_column must be of '
         r'type SequenceCategoricalColumn to use SequenceFeatures\.'):
@@ -266,7 +266,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
         [categorical_column_a, categorical_column_b], dimension=2)
 
     sequence_input_layer = ksfc.SequenceFeatures(shared_embedding_columns)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'In embedding_column: aaa_shared_embedding\. categorical_column must '
         r'be of type SequenceCategoricalColumn to use SequenceFeatures\.'):
@@ -357,7 +357,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     indicator_column_a = fc.indicator_column(categorical_column_a)
 
     sequence_input_layer = ksfc.SequenceFeatures([indicator_column_a])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'In indicator_column: aaa_indicator\. categorical_column must be of '
         r'type SequenceCategoricalColumn to use SequenceFeatures\.'):
@@ -464,8 +464,8 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     sequence_input_layer = ksfc.SequenceFeatures(
         [numeric_column_a, numeric_column_b])
 
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError, r'Condition x == y did not hold.*'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r'Condition x == y did not hold.*'):
       _, sequence_length = sequence_input_layer({
           'aaa': sparse_input_a,
           'bbb': sparse_input_b

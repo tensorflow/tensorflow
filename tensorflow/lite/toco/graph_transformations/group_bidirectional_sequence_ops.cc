@@ -125,7 +125,7 @@ bool CheckTwoUnidirectionalSequenceOpsAreValid(
       return false;
 
     // Make sure the inputs datatype matches.
-    for (int i = 0; i < fw_sequence_op->inputs.size(); ++i) {
+    for (size_t i = 0; i < fw_sequence_op->inputs.size(); ++i) {
       const auto& fw_input_array_name = fw_sequence_op->inputs[i];
       const auto& bw_input_array_name = bw_sequence_op->inputs[i];
       if (model.HasArray(fw_input_array_name) &&
@@ -137,7 +137,7 @@ bool CheckTwoUnidirectionalSequenceOpsAreValid(
     }
 
     // Make sure the outputs datatype matches.
-    for (int i = 0; i < fw_sequence_op->outputs.size(); ++i) {
+    for (size_t i = 0; i < fw_sequence_op->outputs.size(); ++i) {
       const auto& fw_output_array_name = fw_sequence_op->outputs[i];
       const auto& bw_output_array_name = bw_sequence_op->outputs[i];
       if (model.HasArray(fw_output_array_name) &&
@@ -197,7 +197,7 @@ void ConstructBidirectionalSequenceOp(
   constexpr int kBwInputActivationStartIndex = 37;
   constexpr int kAuxInputStartIndex = 39;
   (*bi_op)->inputs.reserve(kBidirectionalSequenceLstmInputsCount);
-  const string& input_array_name =
+  const std::string& input_array_name =
       AvailableArrayName(*model, "bidirectional_sequence_lstm_input_0");
   model->GetOrCreateArray(input_array_name);
   // The input will be changed later.
@@ -232,7 +232,7 @@ void ConstructBidirectionalSequenceOp(
 
   // TODO(renjieliu): Deal with Auxiliary input and weights for 39 - 47.
   for (; i <= kBidirectionalSequenceLstmInputsCount; ++i) {
-    const string& temp_array_name = AvailableArrayName(
+    const std::string& temp_array_name = AvailableArrayName(
         *model, "bidirectional_sequence_lstm_temp_" + std::to_string(i));
     model->CreateOptionalArray(temp_array_name);
     (*bi_op)->inputs.push_back(temp_array_name);
@@ -240,9 +240,9 @@ void ConstructBidirectionalSequenceOp(
 
   // Deal with outputs.
   (*bi_op)->outputs.reserve(2);
-  const string& fw_output_array_name =
+  const std::string& fw_output_array_name =
       AvailableArrayName(*model, "bidirectional_sequence_lstm_fw_output_0");
-  const string& bw_output_array_name =
+  const std::string& bw_output_array_name =
       AvailableArrayName(*model, "bidirectional_sequence_lstm_bw_output_0");
   model->GetOrCreateArray(fw_output_array_name);
   model->GetOrCreateArray(bw_output_array_name);
@@ -260,7 +260,7 @@ void ConstructBidirectionalSequenceOp(
   constexpr int kBwInputsStartIndex = 5;
   constexpr int kAuxInputsStartIndex = 9;
   (*bi_op)->inputs.reserve(kBidirectionalSequenceRnnInputsCount);
-  const string& input_array_name =
+  const std::string& input_array_name =
       AvailableArrayName(*model, "bidirectional_sequence_rnn_input_0");
   model->GetOrCreateArray(input_array_name);
   // The input will be changed later.
@@ -280,7 +280,7 @@ void ConstructBidirectionalSequenceOp(
 
   // TODO(renjieliu): Deal with optional weights.
   for (; i < kBidirectionalSequenceRnnInputsCount; ++i) {
-    const string& temp_array_name = AvailableArrayName(
+    const std::string& temp_array_name = AvailableArrayName(
         *model, "bidirectional_sequence_rnn_temp_" + std::to_string(i));
     model->CreateOptionalArray(temp_array_name);
     (*bi_op)->inputs.push_back(temp_array_name);
@@ -288,9 +288,9 @@ void ConstructBidirectionalSequenceOp(
 
   // Deal with outputs.
   (*bi_op)->outputs.reserve(2);
-  const string& fw_output_array_name =
+  const std::string& fw_output_array_name =
       AvailableArrayName(*model, "bidirectional_sequence_rnn_fw_output_0");
-  const string& bw_output_array_name =
+  const std::string& bw_output_array_name =
       AvailableArrayName(*model, "bidirectional_sequence_rnn_bw_output_0");
   model->GetOrCreateArray(fw_output_array_name);
   model->GetOrCreateArray(bw_output_array_name);
@@ -318,7 +318,7 @@ void GroupFwBwSequenceOps(Model* model, std::stack<Operator*> fw_sequence_ops,
 
 template <typename T>
 void RewireBidirectionalSequenceSequenceOpsConnections(
-    OperatorType operator_type, const string& input_array_name,
+    OperatorType operator_type, const std::string& input_array_name,
     const std::vector<T*>& bidirectional_sequence_ops,
     std::vector<std::unique_ptr<Operator>>::iterator* op_it, Model* model) {
   int aux_input_index = -1;
@@ -333,8 +333,8 @@ void RewireBidirectionalSequenceSequenceOpsConnections(
       // Should not reach here.
       DCHECK(false);
   }
-  string cur_fw_input = input_array_name;
-  string cur_bw_input = input_array_name;
+  std::string cur_fw_input = input_array_name;
+  std::string cur_bw_input = input_array_name;
   for (size_t i = 0; i < bidirectional_sequence_ops.size(); ++i) {
     DeleteArrayIfUnusedOutsideOfOp(bidirectional_sequence_ops[i]->inputs[0],
                                    bidirectional_sequence_ops[i], model);
@@ -371,8 +371,8 @@ void RewireFinalUnpackOutputs(const UnpackOperator& original_unpack_operator,
   (*final_unpack_operator)->num = original_unpack_operator.num;
 
   for (size_t i = 0; i < original_unpack_operator.outputs.size(); ++i) {
-    const string& output_array_name = original_unpack_operator.outputs[i];
-    const string& final_unpack_output_array_name = AvailableArrayName(
+    const std::string& output_array_name = original_unpack_operator.outputs[i];
+    const std::string& final_unpack_output_array_name = AvailableArrayName(
         *model, "bidirectional_sequence_unpack_" + std::to_string(i));
     model->GetOrCreateArray(final_unpack_output_array_name);
     (*final_unpack_operator)->outputs.push_back(final_unpack_output_array_name);
@@ -381,7 +381,7 @@ void RewireFinalUnpackOutputs(const UnpackOperator& original_unpack_operator,
       // If there's a following op after the unpack, it must be a concat op.
       DCHECK(unpack_following_op->type == OperatorType::kConcatenation);
       // For every output of the concat, rewire the outputs.
-      for (const string& concat_output : unpack_following_op->outputs) {
+      for (const std::string& concat_output : unpack_following_op->outputs) {
         (*final_unpack_operator)->outputs[i] = concat_output;
       }
       // Remove the concat op.
@@ -454,7 +454,7 @@ template <typename T>
                        &bidirectional_sequence_ops);
 
   // Rewire the inputs & outputs.
-  string current_input = first_fw_sequence_input->outputs[0];
+  std::string current_input = first_fw_sequence_input->outputs[0];
   RewireBidirectionalSequenceSequenceOpsConnections(
       operator_type, current_input, bidirectional_sequence_ops, &op_it, model);
 
@@ -525,7 +525,7 @@ template <typename T>
                        &bidirectional_sequence_lstm_ops);
 
   // Rewire the inputs & outputs.
-  string current_input = first_fw_lstm_input->outputs[0];
+  std::string current_input = first_fw_lstm_input->outputs[0];
   RewireBidirectionalSequenceSequenceOpsConnections(
       OperatorType::kBidirectionalSequenceLstm, current_input,
       bidirectional_sequence_lstm_ops, &op_it, model);
@@ -601,7 +601,7 @@ template <typename T>
                        &bidirectional_sequence_rnn_ops);
 
   // Rewire the inputs & outputs.
-  string current_input = first_fw_rnn_input->outputs[0];
+  std::string current_input = first_fw_rnn_input->outputs[0];
   RewireBidirectionalSequenceSequenceOpsConnections(
       OperatorType::kBidirectionalSequenceRnn, current_input,
       bidirectional_sequence_rnn_ops, &op_it, model);
