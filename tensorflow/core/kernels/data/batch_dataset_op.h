@@ -40,6 +40,7 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
   class Dataset;
   const int op_version_;
   bool parallel_copy_ = false;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 }  // namespace data

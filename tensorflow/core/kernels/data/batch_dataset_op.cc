@@ -47,7 +47,8 @@ constexpr char kBatchDataset[] = "BatchDataset";
 class BatchDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
-          bool parallel_copy, const DatasetBase* input, int op_version)
+          bool parallel_copy, const DatasetBase* input, int op_version,
+          const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
         batch_size_(batch_size),
         // Dataset batch is sometimes used to stack all elements in the
@@ -60,27 +61,13 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         parallel_copy_(parallel_copy),
         input_(input),
         op_version_(op_version),
+        output_shapes_(output_shapes),
         traceme_metadata_(
             {{"batch_size",
               strings::Printf("%lld", static_cast<long long>(batch_size))},
              {"drop_remainder", drop_remainder ? "true" : "false"},
              {"parallel_copy", parallel_copy ? "true" : "false"}}) {
     input_->Ref();
-
-    // NOTE(mrry): Currently we implement "batch up to" semantics. If
-    // we could tell statically that the input dataset is infinite,
-    // then we could always report `batch_size` as the 0th dimension.
-    const auto& input_shapes = input_->output_shapes();
-    output_shapes_.reserve(input_shapes.size());
-    for (const auto& input_shape : input_shapes) {
-      if (drop_remainder_) {
-        output_shapes_.emplace_back(
-            PartialTensorShape({batch_size_}).Concatenate(input_shape));
-      } else {
-        output_shapes_.emplace_back(
-            PartialTensorShape({-1}).Concatenate(input_shape));
-      }
-    }
   }
 
   ~Dataset() override { input_->Unref(); }
@@ -311,6 +298,7 @@ BatchDatasetOp::BatchDatasetOp(OpKernelConstruction* ctx)
   if (ctx->HasAttr(kParallelCopy)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kParallelCopy, &parallel_copy_));
   }
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
 }
 
 void BatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -327,7 +315,7 @@ void BatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   }
 
   *output = new Dataset(ctx, batch_size, drop_remainder, parallel_copy_, input,
-                        op_version_);
+                        op_version_, output_shapes_);
 }
 
 namespace {
