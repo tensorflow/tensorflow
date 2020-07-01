@@ -220,11 +220,13 @@ TfLiteStatus TfLiteExternalDelegateOptionsInsert(
 
 TfLiteExternalDelegateOptions TfLiteExternalDelegateOptionsDefault(
     const char* lib_path) {
-  TfLiteExternalDelegateOptions options = {
-      .lib_path = lib_path,
-      .count = 0,
-      .insert = TfLiteExternalDelegateOptionsInsert,
-  };
+  // As 'keys' and 'values' don't need to be set here, using designated
+  // initializers may cause a compiling error as "non-trivial designated
+  // initializers not supported" by some compiler.
+  TfLiteExternalDelegateOptions options;
+  options.lib_path = lib_path;
+  options.count = 0;
+  options.insert = TfLiteExternalDelegateOptionsInsert;
   return options;
 }
 
