@@ -739,6 +739,15 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
   let hasFolder = 1;
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // SameScalesOpInterface:
+    bool RequiredSameOperandsAndResultsScale(bool sign, int bit_width) {
+      // uint8 doesn't require same operands and results scales.
+      bool is_uint8 = !sign && (bit_width == 8);
+      return !is_uint8;
+    }
+  }];
 }
 
 def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
