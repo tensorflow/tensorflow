@@ -33,6 +33,7 @@ from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import serialization
 from tensorflow.python.util.lazy_loader import LazyLoader
@@ -54,7 +55,24 @@ sequential_lib = LazyLoader(
 # pylint:enable=g-inconsistent-quotes
 
 
-def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
+# create lock file
+def create_lockfile(filepath):
+  lockfile_path = filepath + '.lock'
+
+  f = gfile.GFile(lockfile_path, 'w')
+  f.write(str(os.getpid()))
+  f.close()
+
+  return lockfile_path
+
+
+def check_lockfile(filepath):
+  lockfile_path = filepath + '.lock'
+  return gfile.Exists(lockfile_path)
+
+
+def save_model_to_hdf5(model, filepath, overwrite=True, \
+                       lockfile=True, include_optimizer=True):
   """Saves a model to a HDF5 file.
 
   The saved model contains:
@@ -74,6 +92,9 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
       overwrite: Whether we should overwrite any existing
           model at the target location, or instead
           ask the user with a manual prompt.
+      lockfile: Create a lockfile before saving the model
+          file to prevent from reading, while saving
+          is not done.
       include_optimizer: If True, save optimizer's state together.
 
   Raises:
@@ -99,6 +120,10 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
       proceed = ask_to_proceed_with_overwrite(filepath)
       if not proceed:
         return
+
+    # create lock file
+    if lockfile:
+      lockfile_path = create_lockfile(filepath)
 
     f = h5py.File(filepath, mode='w')
     opened_new_file = True
@@ -129,6 +154,10 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
   finally:
     if opened_new_file:
       f.close()
+
+      # remove lock file
+      if lockfile:
+        gfile.Remove(lockfile_path)
 
 
 def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
@@ -164,6 +193,10 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
 
   opened_new_file = not isinstance(filepath, h5py.File)
   if opened_new_file:
+    # check if lock file exist
+    if check_lockfile(filepath):
+      raise ValueError('Cannot read from file at this time.')
+
     f = h5py.File(filepath, mode='r')
   else:
     f = filepath
