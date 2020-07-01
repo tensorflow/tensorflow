@@ -668,6 +668,205 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
   TF_DeleteAbstractFunction(func);
 }
 
+TEST_P(UnifiedCAPI, TestMultiOutputGraphMatMul) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TF_Status* s = status.get();
+
+  // Start a new function / execution context.
+  string fn_name = "two_adds_and_matmul";
+  TF_ExecutionContext* graph_ctx = TF_CreateFunction(fn_name.c_str(), s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  auto* arg0 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  auto* arg1 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Create a first "Add" computing `arg0 + arg1`.
+  TF_AbstractTensor* add_output1;
+  {
+    // Build an abstract operation, inputs and output.
+    auto* add_op = TF_NewAbstractOp(graph_ctx);
+    TF_AbstractOpSetOpType(add_op, "Add", s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_AbstractOpSetOpName(add_op, "my_add1", s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_AbstractTensor* inputs[2] = {arg0, arg1};
+    TF_OutputList* add_outputs = TF_NewOutputList();
+    
+    // Trace the operation now (create a node in the graph).
+    TF_ExecuteOperation(add_op, 2, inputs, add_outputs, graph_ctx, s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_DeleteAbstractOp(add_op);
+    // Extract the resulting tensor.
+    add_output1 = TF_OutputListGet(add_outputs, 0);
+    TF_DeleteOutputList(add_outputs);
+  }
+
+  // Same with a second "Add" computing `arg1 + arg1`.
+  TF_AbstractTensor* add_output2;
+  {
+    // Build an abstract operation, inputs and output.
+    auto* add_op = TF_NewAbstractOp(graph_ctx);
+    TF_AbstractOpSetOpType(add_op, "Add", s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_AbstractOpSetOpName(add_op, "my_add2", s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_AbstractTensor* inputs[2] = {arg1, arg1};
+    TF_OutputList* add_outputs = TF_NewOutputList();
+    // Trace the operation now (create a node in the graph).
+    TF_ExecuteOperation(add_op, 2, inputs, add_outputs, graph_ctx, s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_DeleteAbstractOp(add_op);
+    // Extract the resulting tensor.
+    add_output2 = TF_OutputListGet(add_outputs, 0);
+    TF_DeleteOutputList(add_outputs);
+  }
+
+  // 3rd Output will be Matrix Multiplication of add_output1 and add_output2
+  TF_AbstractTensor* mm_output;
+  {
+    // Build an abstract operation, inputs and output.
+    auto* mm_op = TF_NewAbstractOp(graph_ctx);
+    TF_AbstractOpSetOpType(mm_op, "MatMul", s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_AbstractOpSetOpName(mm_op, "mm", s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_AbstractTensor* inputs[2] = {add_output1, add_output2};
+    TF_OutputList* mm_outputs = TF_NewOutputList();
+    // Trace the operation now (create a node in the graph).
+    TF_ExecuteOperation(mm_op, 2, inputs, mm_outputs, graph_ctx, s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_DeleteAbstractOp(mm_op);
+    // Extract the resulting tensor.
+    mm_output = TF_OutputListGet(mm_outputs, 0);
+    TF_DeleteOutputList(mm_outputs);
+  }
+
+  // Finalize the function by providing the returned values.
+  TF_AbstractFunction* func;
+  {
+    // We want to return the output of both add operations and MatMul operation, create a new list
+    // and populate it.
+    TF_OutputList* func_outputs = TF_NewOutputList();
+    TF_OutputListPushBack(func_outputs, add_output1, s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_OutputListPushBack(func_outputs, add_output2, s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_OutputListPushBack(func_outputs, mm_output, s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    func = TF_FinalizeFunction(graph_ctx, func_outputs, s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_DeleteOutputList(func_outputs);
+  }
+
+  /**
+   * We traced so far this function:
+   *
+   *   def two_adds_and_mm(A, B):
+   *     my_add1 = A + B
+   *     my_add2 = B + B
+   *     mm = tf.MatMul(my_add1,my_add2)
+   *     return my_add1, my_add2, mm
+   *
+   * Now we will execute this function with an eager context:
+   *
+   *   A = [[0, 0], [0, 0]] 
+   *   B = [[1, 0], [0, 1]]   
+   *
+   *   output1, output2, output3 = two_adds_and_mm(A, B)
+   *
+   * We expect outputs: 
+   *    
+   *   output1 =  [[1, 0], [0, 1]]  
+   *   output2 =  [[2, 0], [0, 2]]  
+   *   output3 =  [[2, 0], [0, 2]]  
+   *
+   */
+
+  // Build eager context.
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TF_ExecutionContext* eager_execution_ctx =
+      TF_NewEagerExecutionContext(opts, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TFE_DeleteContextOptions(opts);
+
+  TF_ExecutionContextRegisterFunction(eager_execution_ctx, func, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Build the abstract op to run the function.
+  TF_AbstractOp* fn_op = TF_NewAbstractOp(eager_execution_ctx);
+  TF_AbstractOpSetOpType(fn_op, fn_name.c_str(), s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Build two abstract input tensors as function arguments.
+  std::vector<TF_AbstractTensor*> func_args;
+  {
+    TFE_Context* eager_ctx =
+        TF_ExecutionContextGetTFEContext(eager_execution_ctx);
+
+    // 1st Arg
+    float vals1 [] = {0.0f,0.0f,0.0f,0.0f};
+    int64_t dims [] = {2,2}; // Matrices will be 2 x 2   
+    int num_dims = sizeof(dims)/sizeof(dims[0]);
+
+    TFE_TensorHandle* input_eager = TestMatrixTensorHandleWithInput(eager_ctx, vals1, dims, num_dims);
+    func_args.push_back(TF_CreateAbstractTensorFromEagerTensor(input_eager, s));
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+    // 2nd Arg
+    float vals2 [] = {1.0f,0.0f,0.0f,1.0f};
+    input_eager = TestMatrixTensorHandleWithInput(eager_ctx, vals2, dims, num_dims);
+    func_args.push_back(TF_CreateAbstractTensorFromEagerTensor(input_eager, s));
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  }
+
+  TF_OutputList* func_outputs = TF_NewOutputList();
+  TF_OutputListSetNumOutputs(func_outputs, 3, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_ExecuteOperation(fn_op, func_args.size(), func_args.data(), func_outputs,
+                      eager_execution_ctx, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteAbstractOp(fn_op);
+  for (TF_AbstractTensor* t : func_args) TF_DeleteAbstractTensor(t);
+
+  ASSERT_EQ(3, TF_OutputListNumOutputs(func_outputs));
+  
+  float expected_outputs [3][4] = {{1.0f,0.0f,0.0f,1.0f}, 
+                                   {2.0f,0.0f,0.0f,2.0f},
+                                   {2.0f,0.0f,0.0f,2.0f}};
+
+  float result_data[4];
+  for (int idx = 0; idx < 3; ++idx) {
+    TF_AbstractTensor* result = TF_OutputListGet(func_outputs, idx);
+    TFE_TensorHandle* handle = TF_AbstractTensorGetEagerTensor(result, s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_Tensor* f_t = TFE_TensorHandleResolve(handle, s);
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+    memcpy(&result_data[0], TF_TensorData(f_t), TF_TensorByteSize(f_t));
+    
+    // Verify results for each output 
+    for(int j = 0; j < 4; j++){
+      ASSERT_EQ(result_data[j], expected_outputs[idx][j]);
+    }
+
+    TF_DeleteTensor(f_t);
+  }
+
+  // Free memory associated with add and MatMul outputs
+  for (int idx = 0; idx < 3; ++idx) {
+    TF_AbstractTensor* result = TF_OutputListGet(func_outputs, idx);
+    TF_DeleteAbstractTensor(result);
+  }
+  
+  TF_DeleteOutputList(func_outputs);
+  TF_DeleteExecutionContext(eager_execution_ctx);
+  TF_DeleteAbstractFunction(func);
+}
+
+
 TEST(UnifiedCAPI, TF_ExecutionContextToFunctionWithEagerContextRaises) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
