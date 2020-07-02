@@ -23,7 +23,7 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], td_r
 
     td_includes_cmd = [
         "-I external/llvm-project/mlir/include -I external/org_tensorflow",
-        "-I $(GENDIR)/external/llvm-project/mlir/include",
+        "-I $(GENDIR)/external/llvm-project/mlir/include -I $(GENDIR)/external/org_tensorflow",
     ]
     for td_include in td_includes:
         td_includes_cmd += [
@@ -32,7 +32,7 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], td_r
         ]
     for td_include in td_relative_includes:
         td_includes_cmd += [
-            "-I%s/%s" % (native.package_name(), td_include),
+            "-I%s/%s -Iexternal/org_tensorflow/%s/%s" % (native.package_name(), td_include, native.package_name(), td_include),
             "-I$(GENDIR)/%s/%s" % (native.package_name(), td_include),
         ]
 

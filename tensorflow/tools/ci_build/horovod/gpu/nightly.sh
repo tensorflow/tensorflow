@@ -60,17 +60,17 @@ sudo ldconfig
 # Install Horovod.
 cd ..
 HOROVOD_WITH_TENSORFLOW=1
-pip3.7 install horovod[tensorflow]
+pip3.7 install horovod[tensorflow] --user
 
 # Install tests.
 git clone https://github.com/DEKHTIARJonathan/TF_HVD_Stability_Test.git
 
 # Install pytest.
-pip3.7 install -U pytest
+pip3.7 install -U pytest --user
 
 # Install requirements.
 cd TF_HVD_Stability_Test
-pip3.7 install -r requirements.txt
+pip3.7 install -r requirements.txt --user
 
 # Run the tests.
 python3.7 -m pytest
