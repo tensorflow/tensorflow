@@ -178,7 +178,8 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 }
 
 BFCAllocator::ChunkHandle BFCAllocator::AllocateChunk() {
-  if (static_cast<int>(free_chunks_list_) != kInvalidChunkHandle) {
+  const int kInvalidChunkHandle_int = kInvalidChunkHandle;
+  if (free_chunks_list_ != kInvalidChunkHandle_int) {
     ChunkHandle h = free_chunks_list_;
     Chunk* c = ChunkFromHandle(h);
     free_chunks_list_ = c->next;
