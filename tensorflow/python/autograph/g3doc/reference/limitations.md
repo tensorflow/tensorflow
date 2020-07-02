@@ -665,7 +665,7 @@ foo = (
 The Python runtime will report the following source code for `foo[0]`:
 
 ```
->>> inspect.getsource(foo[0])
+>>> inspect.getsource(foo[1])
 ' lambda: x)\n'
 ```
 
