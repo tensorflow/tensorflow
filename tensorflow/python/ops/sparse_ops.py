@@ -2753,7 +2753,7 @@ def map_values(op, *args, **kwargs):
   >>> s = tf.sparse.from_dense([[1, 2, 0],
   ...                           [0, 4, 0],
   ...                           [1, 0, 0]])
-  >>> print(tf.sparse.to_dense(tf.sparse.map_values(tf.ones_like, s)).numpy())
+  >>> tf.sparse.to_dense(tf.sparse.map_values(tf.ones_like, s)).numpy()
   [[1 1 0]
    [0 1 0]
    [1 0 0]]
