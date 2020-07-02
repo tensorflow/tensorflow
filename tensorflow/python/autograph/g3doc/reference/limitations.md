@@ -662,7 +662,7 @@ foo = (
  lambda: x)
 ```
 
-The Python runtime will report the following source code for `foo[0]`:
+The Python runtime will report the following source code for `foo[1]`:
 
 ```
 >>> inspect.getsource(foo[1])
