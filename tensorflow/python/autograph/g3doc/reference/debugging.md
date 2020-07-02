@@ -21,10 +21,10 @@ Note: Python debugging can only be used to step through the code during graph
 construction time (or tracing time in the case of `tf.function`). To debug
 TensorFlow execution, use Eager execution.
 
-### Debugging `tf.function`: `tf.config.experimental_execute_functions_eagerly`
+### Debugging `tf.function`: `tf.config.experimental_run_functions_eagerly`
 
 When using `@tf.function`, you can temporarily toggle graph execution
-by using `tf.config.experimental_execute_functions_eagerly`. This will
+by using `tf.config.experimental_run_functions_eagerly`. This will
 effectively run the annotated code eagerly, without transformation.
 Since AutoGraph has semantics consistent with Eager, it's an effective way to
 debug the code step-by-step.
@@ -58,7 +58,7 @@ f(1)
      14       ...
 ```
 
-Adding a call to `tf.config.experimental_execute_functions_eagerly` before
+Adding a call to `tf.config.experimental_run_functions_eagerly` before
 executing the function will land the debugger in the original code instead:
 
 ```
