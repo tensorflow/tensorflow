@@ -156,7 +156,7 @@ significantly, but only slightly increase model size.
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 <b>converter.optimizations = [tf.lite.Optimize.DEFAULT]
-converter.target_spec.supported_types = [tf.lite.constants.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8]</b>
+converter.target_spec.supported_ops = [tf.lite.constants.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8]</b>
 tflite_quant_model = converter.convert()
 </pre>
 
@@ -167,7 +167,7 @@ The following option should be added to the target_spec to allow this.
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
-converter.target_spec.supported_types = [tf.lite.constants.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+converter.target_spec.supported_ops = [tf.lite.constants.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
 <b>tf.lite.OpsSet.TFLITE_BUILTINS</b>]
 tflite_quant_model = converter.convert()
 </pre>
