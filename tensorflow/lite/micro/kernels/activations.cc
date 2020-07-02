@@ -37,7 +37,7 @@ inline void ReluQuantized(const TfLiteTensor* input, TfLiteTensor* output,
   ReluParams params;
   float act_min = 0.0;
   float act_max = std::numeric_limits<float>::infinity();
-  double real_multiplier = input->params.scale / output->params.scale;
+  double real_multiplier = static_cast<double>(input->params.scale / output->params.scale);
 
   const RuntimeShape input_shape = GetTensorShape(input);
   const RuntimeShape output_shape = GetTensorShape(output);
