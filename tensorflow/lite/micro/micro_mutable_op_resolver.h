@@ -138,6 +138,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseCeil);
   }
 
+  TfLiteStatus AddCircularBuffer() {
+    return AddCustom("CIRCULAR_BUFFER",
+                     tflite::ops::micro::Register_CIRCULAR_BUFFER());
+  }
+
   TfLiteStatus AddConcatenation() {
     return AddBuiltin(BuiltinOperator_CONCATENATION,
                       tflite::ops::micro::Register_CONCATENATION(),
