@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -422,9 +423,13 @@ class OptimizeSessionInitializerPattern
     auto init_func_op = symbol_table.lookup<mlir::FuncOp>(op.initializer());
 
     // The init function can only be referenced from the SessionInitializerOp.
-    // And there is at most one SessionInitializerOp in the module. So both ops
-    // have no other uses and can be simply erased.
-    if (init_func_op.front().begin()->isKnownTerminator()) {
+    // And there is at most one SessionInitializerOp in the module. So if both
+    // ops have no other uses or have one NoOp only, they can be simply erased.
+    auto &operations = init_func_op.front().getOperations();
+    if ((operations.size() == 1 && operations.front().isKnownTerminator()) ||
+        (operations.size() == 2 &&
+         dyn_cast<mlir::TF::NoOp>(operations.front()) &&
+         operations.back().isKnownTerminator())) {
       rewriter.eraseOp(init_func_op);
       rewriter.eraseOp(op);
       return success();
