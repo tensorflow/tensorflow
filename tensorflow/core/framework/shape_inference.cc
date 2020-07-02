@@ -182,8 +182,8 @@ void InferenceContext::PreInputInit(
 }
 
 Status InferenceContext::ExpandOutputs(int new_output_size) {
-  int outputs_size_ = outputs_.size();
-  if (new_output_size < outputs_size_) {
+  const int outputs_size = outputs_.size();
+  if (new_output_size < outputs_size) {
     return errors::InvalidArgument("Trying to reduce number of outputs of op.");
   }
   outputs_.resize(new_output_size, nullptr);
