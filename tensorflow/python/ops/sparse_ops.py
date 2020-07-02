@@ -2757,7 +2757,7 @@ def map_values(op, *args, **kwargs):
   [[1 1 0]
    [0 1 0]
    [1 0 0]]
-  >>> print(tf.sparse.to_dense(tf.sparse.map_values(tf.multiply, s, s)).numpy())
+  >>> tf.sparse.to_dense(tf.sparse.map_values(tf.multiply, s, s)).numpy()
   [[ 1  4  0]
    [ 0 16  0]
    [ 1  0  0]]
