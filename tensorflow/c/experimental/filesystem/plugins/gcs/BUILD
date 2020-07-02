@@ -44,6 +44,14 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "file_block_cache",
+    hdrs = ["file_block_cache.h"],
+    deps = [
+        "//tensorflow/c:tf_status",
+    ],
+)
+
 tf_cc_test(
     name = "gcs_filesystem_test",
     srcs = [
