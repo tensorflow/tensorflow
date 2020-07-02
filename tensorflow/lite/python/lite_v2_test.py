@@ -256,13 +256,16 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
   @parameterized.named_parameters(
       ('_DefaultFLOAT32InputOutput_UseTargetTypesFlag', lite.constants.FLOAT,
-       False), ('_DefaultFLOAT32InputOutput', lite.constants.FLOAT, True),
-      ('_INT8InputOutput', lite.constants.INT8, True),
-      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8, True))
+       False, False),
+      ('_DefaultFLOAT32InputOutput', lite.constants.FLOAT, True, False),
+      ('_INT8InputOutput', lite.constants.INT8, True, False),
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8, True, False),
+      ('_INT16InputOutput', lite.constants.INT16, True, True))
   @test_util.run_v2_only
   def testPostTrainingIntegerNoFloatQuantization(self,
                                                  inference_input_output_type,
-                                                 use_target_ops_flag):
+                                                 use_target_ops_flag,
+                                                 quantization_16x8):
     func, calibration_gen = self._getCalibrationQuantizeModel()
 
     # Convert float model.
@@ -276,9 +279,15 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
     if use_target_ops_flag:
-      quantized_converter.target_spec.supported_ops = [
-          lite.OpsSet.TFLITE_BUILTINS_INT8
-      ]
+      if quantization_16x8:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.\
+            EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]
+      else:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.TFLITE_BUILTINS_INT8
+        ]
     else:
       quantized_converter.target_spec.supported_types = [lite.constants.INT8]
     quantized_converter.inference_input_type = inference_input_output_type
@@ -393,7 +402,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
   @parameterized.named_parameters(
       ('_INT8InputOutput', lite.constants.INT8),
-      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8),
+      ('_INT16InputOutput', lite.constants.INT16))
   def testInvalidTrainingTimeQuantization(self, inference_input_output_type):
     # We currently don't support integer inference_input_type and
     # inference_output_type flags for training time quantization.
