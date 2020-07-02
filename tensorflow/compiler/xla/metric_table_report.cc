@@ -80,7 +80,7 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
 
   int64 pos = 0;
   const string report = MakeReport(expected_metric_sum);
-  int report_size = report.size();
+  const int report_size = report.size();
   while (pos < report_size) {
     int64 end_of_line = report.find('\n', pos);
     int64 _npos = string::npos;
