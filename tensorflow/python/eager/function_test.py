@@ -4063,7 +4063,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled(1, 2, 3, 4, 5, 100, a=1.0, b=2.0, c=3.0) # Retrace - change in *args
     self.assertEqual(trace_count[0], 3)
 
-  def testFollowTypeHintsTraceWithKwOnlyArgs(self):
+  def testFollowTypeHintsTraceWithArgsEquals(self):
     trace_count = [0]
     def func(x: ops.Tensor = 0, y: int = 1, **kwargs: ops.Tensor):
       trace_count[0] += 1
@@ -4076,6 +4076,113 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled(x=2, y=2, z=4) # No retrace - change in args and **kwargs
     enabled(x=2, y=2, z=4, u=5) # Retrace - change in **kwargs
     self.assertEqual(trace_count[0], 3)
+
+  def testFollowTypeHintsTraceWithArgsEqualsTypedKwargs(self):
+    trace_count = [0]
+    def func(x, y, **kwargs: ops.Tensor):
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(x=1, y=2, z=3)
+    enabled(x=1, y=3, z=3) # Retrace
+    enabled(x=1, y=2, z=4) # No retrace
+    enabled(x=2, y=2, z=4) # Retrace
+    enabled(x=2, y=2, z=4, u=5) # Retrace
+    self.assertEqual(trace_count[0], 4)
+
+  def testFollowTypeHintsTraceWithArgsEqualsTypedArgs(self):
+    trace_count = [0]
+    def func(x: ops.Tensor, y: int, **kwargs):
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(x=1, y=2, z=3)
+    enabled(x=1, y=3, z=3) # Retrace
+    enabled(x=1, y=2, z=4) # Retrace
+    enabled(x=2, y=2, z=3) # No retrace
+    enabled(x=2, y=2, z=4, u=5) # Retrace
+    self.assertEqual(trace_count[0], 4)
+
+  def testFollowTypeHintsTraceWithKwOnlyArgsBasic(self):
+    trace_count = [0]
+    def func(*, a: ops.Tensor = None, b=1):
+      trace_count[0] += 1
+      return a
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(a=1, b=2)
+    enabled(a=2, b=2) # No retrace
+    enabled(a=1, b=1) # Retrace
+    self.assertEqual(trace_count[0], 2)
+
+  def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedArg(self):
+    trace_count = [0]
+    def func(arg: ops.Tensor, *args, kwonly, **kwargs):
+      trace_count[0] += 1
+      return arg
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7) # No retrace
+    enabled(1000, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7) # No retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7) # Retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70) # Retrace
+    self.assertEqual(trace_count[0], 4)
+
+  def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedArgs(self):
+    trace_count = [0]
+    def func(arg, *args: ops.Tensor, kwonly, **kwargs):
+      trace_count[0] += 1
+      return arg
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7) # No retrace
+    enabled(1, 200, 300, 400, kwonly=5, kwarg1=6, kwarg2=7) # No retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7) # Retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70) # Retrace
+    self.assertEqual(trace_count[0], 4)
+
+  def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedKwOnlyArg(self):
+    trace_count = [0]
+    def func(arg, *args, kwonly: ops.Tensor, **kwargs):
+      trace_count[0] += 1
+      return arg
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7) # No retrace
+    enabled(1, 2, 3, 4, kwonly=500, kwarg1=6, kwarg2=7) # No retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70) # Retrace
+    self.assertEqual(trace_count[0], 4)
+
+  def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedKwargs(self):
+    trace_count = [0]
+    def func(arg, *args, kwonly, **kwargs: ops.Tensor):
+      trace_count[0] += 1
+      return arg
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7) # Retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70) # No retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=600, kwarg2=700) # No retrace
+    self.assertEqual(trace_count[0], 4)
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 

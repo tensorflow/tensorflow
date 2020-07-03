@@ -1416,7 +1416,7 @@ def function(func=None,
       cases (e.g. TPU, XLA_GPU, dense tensor computations).
     experimental_follow_type_hints: When True, the function may use type
       annotations to optimize the tracing performance. For example,
-      arguments annotated with tf.Tensor` will automatically be converted
+      arguments annotated with `tf.Tensor` will automatically be converted
       to a Tensor.
 
   Returns:

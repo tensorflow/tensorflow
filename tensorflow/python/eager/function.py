@@ -2535,7 +2535,7 @@ class FunctionSpec(object):
     kwargs = {kw: ops.convert_to_tensor(x) for kw, x in kwargs.items()}
     return tuple(args), kwargs
 
-  def _convert_typed_variables_to_tensors(self, args, kwargs):
+  def _convert_annotated_args_to_tensors(self, args, kwargs):
     if self.input_signature is not None:
       return
 
@@ -2555,10 +2555,14 @@ class FunctionSpec(object):
         if varargs_annotation == ops.Tensor:
           args[i] = ops.convert_to_tensor(arg)
 
-    if self._fullargspec.varkw is not None:
-      varkw_annotation = self._fullargspec.annotations.get(
-          self._fullargspec.varkw)
-      for kw, v in kwargs.items():
+    for kw, v in kwargs.items():
+      if kw in self._fullargspec.kwonlyargs:
+        kwonlyarg_annotation = self._fullargspec.annotations.get(kw)
+        if kwonlyarg_annotation == ops.Tensor:
+          kwargs[kw] = ops.convert_to_tensor(v)
+      elif self._fullargspec.varkw is not None:
+        varkw_annotation = self._fullargspec.annotations.get(
+            self._fullargspec.varkw)
         if kw in self._fullargspec.args:
           arg_annotation = self._fullargspec.annotations.get(kw)
           if arg_annotation == ops.Tensor:
@@ -2601,7 +2605,7 @@ class FunctionSpec(object):
     if self._is_pure:
       args, kwargs = self._convert_variables_to_tensors(args, kwargs)
     if self._experimental_follow_type_hints:
-      args, kwargs = self._convert_typed_variables_to_tensors(args, kwargs)
+      args, kwargs = self._convert_annotated_args_to_tensors(args, kwargs)
     if self._input_signature is not None:
       if len(args) > len(self._input_signature):
         raise TypeError("{} takes {} positional arguments (as specified by the "
