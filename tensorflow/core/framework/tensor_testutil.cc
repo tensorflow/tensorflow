@@ -60,6 +60,9 @@ void ExpectClose(const Tensor& x, const Tensor& y, double atol, double rtol) {
     case DT_HALF:
       ExpectClose<Eigen::half>(x, y, atol, rtol);
       break;
+    case DT_BFLOAT16:
+      ExpectClose<bfloat16>(x, y, atol, rtol);
+      break;
     case DT_FLOAT:
       ExpectClose<float>(x, y, atol, rtol);
       break;

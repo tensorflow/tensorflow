@@ -85,7 +85,7 @@ class GrapplerTest : public ::testing::Test {
     typedef typename EnumToDataType<DTYPE>::Type T;
     Tensor tensor(DTYPE, shape);
     for (auto i = 0; i < tensor.NumElements(); i++)
-      tensor.flat<T>()(i) = i + random::New64() % 10;
+      tensor.flat<T>()(i) = static_cast<T>(i + random::New64() % 10);
     return tensor;
   }
 

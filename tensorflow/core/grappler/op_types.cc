@@ -142,6 +142,12 @@ bool IsCollective(const NodeDef& node) {
          node.op() == "CollectiveBcastRecv";
 }
 
+bool IsComparison(const NodeDef& node) {
+  return node.op() == "Equal" || node.op() == "NotEqual" ||
+         node.op() == "GreaterEqual" || node.op() == "Greater" ||
+         node.op() == "LessEqual" || node.op() == "Less";
+}
+
 bool IsComplex(const NodeDef& node) { return node.op() == "Complex"; }
 
 bool IsComplexAbs(const NodeDef& node) { return node.op() == "ComplexAbs"; }

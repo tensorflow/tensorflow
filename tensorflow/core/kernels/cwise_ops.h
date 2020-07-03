@@ -21,10 +21,10 @@ limitations under the License.
 #include <functional>
 #include <type_traits>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace Eigen {
 namespace internal {
@@ -1140,6 +1140,32 @@ struct equal_to : base<T, Eigen::internal::equal_to<T>, bool> {};
 
 template <typename T>
 struct not_equal_to : base<T, Eigen::internal::not_equal_to<T>, bool> {};
+
+template <typename T>
+struct less_with_cast : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                                    T, T, Eigen::internal::cmp_LT>> {};
+
+template <typename T>
+struct less_equal_with_cast : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                                          T, T, Eigen::internal::cmp_LE>> {};
+
+template <typename T>
+struct greater_with_cast : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                                       T, T, Eigen::internal::cmp_GT>> {};
+
+template <typename T>
+struct greater_equal_with_cast
+    : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                  T, T, Eigen::internal::cmp_GE>> {};
+
+template <typename T>
+struct equal_to_with_cast : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                                        T, T, Eigen::internal::cmp_EQ>> {};
+
+template <typename T>
+struct not_equal_to_with_cast
+    : base<T, Eigen::internal::scalar_cmp_with_cast_op<
+                  T, T, Eigen::internal::cmp_NEQ>> {};
 
 struct logical_and : base<bool, Eigen::internal::scalar_boolean_and_op> {};
 
