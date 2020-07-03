@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_BFLOAT16_BFLOAT16_H_
 
 #include <cmath>
+#include <cstring>
 #include <complex>
 #include <iostream>
 #include <limits>
@@ -176,11 +177,6 @@ struct bfloat16 {
     return complex128(double(*this), double(0.0));
   }
 
-  union FP32 {
-    unsigned int u;
-    float f;
-  };
-
   // Converts a float point to bfloat16, with round-nearest-to-even as rounding
   // method.
   // TODO: There is a slightly faster implementation (8% faster on CPU)
@@ -189,9 +185,9 @@ struct bfloat16 {
   // BF16 becomes compute-bound.
   B16_DEVICE_FUNC static bfloat16 round_to_bfloat16(float v) {
     uint32_t input;
-    FP32 f;
-    f.f = v;
-    input = f.u;
+    uint32_t u;
+    std::memcpy(&u, &v, sizeof(float)); 
+    input = u;
     bfloat16 output;
 
     // Fast rounding algorithm that rounds a half value to nearest even. This
@@ -348,11 +344,11 @@ struct bfloat16 {
     uint32_t rounding_bias = 0x7fff + lsb;
     input += rounding_bias;
     output.value = static_cast<uint16_t>(input >> 16);
-    if ((f.u & 0xff800000u) == 0) {
+    if ((u & 0xff800000u) == 0) {
       // Flush positive denormal to 0
       output.value = 0x0;
     }
-    if ((f.u & 0xff800000u) == 0x80000000u) {
+    if ((u & 0xff800000u) == 0x80000000u) {
       // Flush negative denormal to -0
       output.value = 0x8000;
     }
