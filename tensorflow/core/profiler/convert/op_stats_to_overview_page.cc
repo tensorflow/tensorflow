@@ -286,7 +286,7 @@ std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db) {
   // Sorts candidates in descending order of expensive_call_percent.
   absl::c_sort(candidates, cmp);
   std::string expensive_functions = "";
-  int64 num_functions_shown = std::min(
+  const int64 num_functions_shown = std::min(
       static_cast<decltype(candidates)::size_type>(3), candidates.size());
 
   for (int64 i = 0; i < num_functions_shown; i++) {
