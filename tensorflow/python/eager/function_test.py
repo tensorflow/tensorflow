@@ -4063,6 +4063,20 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled(1, 2, 3, 4, 5, 100, a=1.0, b=2.0, c=3.0) # Retrace - change in *args
     self.assertEqual(trace_count[0], 3)
 
+  def testFollowTypeHintsTraceWithKwOnlyArgs(self):
+    trace_count = [0]
+    def func(x: ops.Tensor = 0, y: int = 1, **kwargs: ops.Tensor):
+      trace_count[0] += 1
+      return x
+
+    enabled = def_function.function(func, experimental_follow_type_hints=True)
+
+    enabled(x=1, y=2, z=3)
+    enabled(x=1, y=3, z=3) # Retrace - change in args
+    enabled(x=2, y=2, z=4) # No retrace - change in args and **kwargs
+    enabled(x=2, y=2, z=4, u=5) # Retrace - change in **kwargs
+    self.assertEqual(trace_count[0], 3)
+
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_gpu_only

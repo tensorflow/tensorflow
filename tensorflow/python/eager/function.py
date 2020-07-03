@@ -2558,8 +2558,13 @@ class FunctionSpec(object):
     if self._fullargspec.varkw is not None:
       varkw_annotation = self._fullargspec.annotations.get(
           self._fullargspec.varkw)
-      if varkw_annotation == ops.Tensor:
-        kwargs = {kw: ops.convert_to_tensor(x) for kw, x in kwargs.items()}
+      for kw, v in kwargs.items():
+        if kw in self._fullargspec.args:
+          arg_annotation = self._fullargspec.annotations.get(kw)
+          if arg_annotation == ops.Tensor:
+            kwargs[kw] = ops.convert_to_tensor(v)
+        elif varkw_annotation == ops.Tensor:
+          kwargs[kw] = ops.convert_to_tensor(v)
 
     return tuple(args), kwargs
 
