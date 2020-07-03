@@ -30,6 +30,36 @@ static const absl::string_view content_view = content;
 
 namespace gcs = google::cloud::storage;
 
+static std::string* InitializeTmpDir() {
+  // This env should be something like `gs://bucket/path`
+  const char* test_dir = getenv("GCS_TEST_TMPDIR");
+  if (test_dir != nullptr) {
+    std::string bucket, object;
+    TF_Status* status = TF_NewStatus();
+    ParseGCSPath(test_dir, true, &bucket, &object, status);
+    if (TF_GetCode(status) != TF_OK) {
+      TF_DeleteStatus(status);
+      return nullptr;
+    }
+    TF_DeleteStatus(status);
+
+    // We add a random value into `test_dir` to ensures that two consecutive
+    // runs are unlikely to clash.
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distribution;
+    std::string rng_val = std::to_string(distribution(gen));
+    return new std::string(tensorflow::io::JoinPath(std::string(test_dir), rng_val));
+  } else {
+    return nullptr;
+  }
+}
+
+static std::string* GetTmpDir() {
+  static std::string* tmp_dir = InitializeTmpDir();
+  return tmp_dir;
+}
+
 namespace tensorflow {
 namespace {
 
@@ -37,7 +67,7 @@ class GCSFilesystemTest : public ::testing::Test {
  public:
   void SetUp() override {
     root_dir_ = io::JoinPath(
-        tmp_dir_,
+        *GetTmpDir(),
         ::testing::UnitTest::GetInstance()->current_test_info()->name());
     status_ = TF_NewStatus();
     filesystem_ = new TF_Filesystem;
@@ -49,32 +79,6 @@ class GCSFilesystemTest : public ::testing::Test {
     TF_DeleteStatus(status_);
     tf_gcs_filesystem::Cleanup(filesystem_);
     delete filesystem_;
-  }
-
-  static bool InitializeTmpDir() {
-    // This env should be something like `gs://bucket/path`
-    const char* test_dir = getenv("GCS_TEST_TMPDIR");
-    if (test_dir != nullptr) {
-      std::string bucket, object;
-      TF_Status* status = TF_NewStatus();
-      ParseGCSPath(test_dir, true, &bucket, &object, status);
-      if (TF_GetCode(status) != TF_OK) {
-        TF_DeleteStatus(status);
-        return false;
-      }
-      TF_DeleteStatus(status);
-
-      // We add a random value into `test_dir` to ensures that two consecutive
-      // runs are unlikely to clash.
-      std::random_device rd;
-      std::mt19937 gen(rd());
-      std::uniform_int_distribution<> distribution;
-      std::string rng_val = std::to_string(distribution(gen));
-      tmp_dir_ = io::JoinPath(string(test_dir), rng_val);
-      return true;
-    } else {
-      return false;
-    }
   }
 
   std::string GetURIForPath(absl::string_view path) {
@@ -89,9 +93,7 @@ class GCSFilesystemTest : public ::testing::Test {
 
  private:
   std::string root_dir_;
-  static std::string tmp_dir_;
 };
-std::string GCSFilesystemTest::tmp_dir_;
 
 ::testing::AssertionResult WriteToServer(const std::string& path, size_t offset,
                                          size_t length, gcs::Client* gcs_client,
@@ -298,7 +300,7 @@ TEST_F(GCSFilesystemTest, ReadOnlyMemoryRegion) {
 
 GTEST_API_ int main(int argc, char** argv) {
   tensorflow::testing::InstallStacktraceHandler();
-  if (!tensorflow::GCSFilesystemTest::InitializeTmpDir()) {
+  if (!GetTmpDir()) {
     std::cerr << "Could not read GCS_TEST_TMPDIR env";
     return -1;
   }
