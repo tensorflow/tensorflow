@@ -250,7 +250,18 @@ as is typically required with other delegate types.
 
 ### Python pip package
 
-Python support is actively under development.
+Flex ops are included in the nightly build of the TensorFlow Python package. You
+can use TFLite models containing Flex ops by the same Python API as normal
+TFLite models. The nightly TensorFlow build can be installed with this command:
+
+```sh
+pip install tf-nightly
+```
+
+Flex ops will be added to the TensorFlow Python package's and the
+`tflite_runtime`
+[package](https://www.tensorflow.org/lite/guide/python#install_just_the_tensorflow_lite_interpreter)
+from version 2.3 for Linux and 2.4 for other environments.
 
 ## Metrics
 
