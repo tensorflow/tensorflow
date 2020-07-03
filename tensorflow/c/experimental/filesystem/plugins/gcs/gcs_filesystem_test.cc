@@ -30,7 +30,7 @@ static const absl::string_view content_view = content;
 
 namespace gcs = google::cloud::storage;
 
-static std::string* InitializeTmpDir() {
+static std::string InitializeTmpDir() {
   // This env should be something like `gs://bucket/path`
   const char* test_dir = getenv("GCS_TEST_TMPDIR");
   if (test_dir != nullptr) {
@@ -39,7 +39,7 @@ static std::string* InitializeTmpDir() {
     ParseGCSPath(test_dir, true, &bucket, &object, status);
     if (TF_GetCode(status) != TF_OK) {
       TF_DeleteStatus(status);
-      return nullptr;
+      return "";
     }
     TF_DeleteStatus(status);
 
@@ -49,15 +49,18 @@ static std::string* InitializeTmpDir() {
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> distribution;
     std::string rng_val = std::to_string(distribution(gen));
-    return new std::string(tensorflow::io::JoinPath(std::string(test_dir), rng_val));
+    return tensorflow::io::JoinPath(std::string(test_dir), rng_val);
   } else {
-    return nullptr;
+    return "";
   }
 }
 
 static std::string* GetTmpDir() {
-  static std::string* tmp_dir = InitializeTmpDir();
-  return tmp_dir;
+  static std::string tmp_dir = InitializeTmpDir();
+  if (tmp_dir == "")
+    return nullptr;
+  else
+    return &tmp_dir;
 }
 
 namespace tensorflow {
