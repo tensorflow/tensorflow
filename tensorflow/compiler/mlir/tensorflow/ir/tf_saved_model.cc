@@ -298,6 +298,7 @@ static LogicalResult VerifySavedModelModule(
 
 LogicalResult VerifyExportedFunc(FuncOp func) {
   bool reached_bound_inputs = false;
+  auto module = func.getParentOfType<ModuleOp>();
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
     if (func.getArgAttr(i, "tf_saved_model.bound_input")) {
       reached_bound_inputs = true;
@@ -312,7 +313,9 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
       continue;
     }
     if (func.getArgAttr(i, "tf.resource_name")) {
-      continue;
+      if (module.getAttr("tf_saved_model.under_construction")) continue;
+      return func.emitError() << "'tf.resource_name' attribute is not allowed "
+                                 "unless it is being under construction";
     }
     return func.emitError()
            << "all arguments should have 'tf_saved_model.index_path', "
@@ -370,6 +373,9 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
                                 "be on a module op";
     }
     return VerifySavedModelModule(module, this);
+  }
+  if (named_attr.first == "tf_saved_model.under_construction") {
+    return success();
   }
 
   return op->emitError() << "unknown tf_saved_model dialect attribute '"
