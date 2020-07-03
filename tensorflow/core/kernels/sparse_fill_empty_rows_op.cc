@@ -118,7 +118,7 @@ class SparseFillEmptyRowsOp : public OpKernel {
       return;
     }
 
-    bool indices_is_order = true;
+    bool rows_are_ordered = true;
     int64 last_indices_row = 0;
     std::vector<int64> csr_offset(dense_rows, 0);
     for (int i = 0; i < N; ++i) {
@@ -127,7 +127,7 @@ class SparseFillEmptyRowsOp : public OpKernel {
                   errors::InvalidArgument("indices(", i, ", 0) is invalid: ",
                                           row, " >= ", dense_rows));
       ++csr_offset[row];
-      indices_is_order = indices_is_order & (row >= last_indices_row);
+      rows_are_ordered = rows_are_ordered & (row >= last_indices_row);
       last_indices_row = row;
     }
     bool all_rows_full = true;
@@ -151,7 +151,7 @@ class SparseFillEmptyRowsOp : public OpKernel {
       }
     }
 
-    if (all_rows_full && indices_is_order) {
+    if (all_rows_full && rows_are_ordered) {
       context->set_output(kOutputIndicesOutput, indices_t);
       context->set_output(kOutputValuesOutput, values_t);
       if (reverse_index_map) {
