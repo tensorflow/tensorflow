@@ -84,6 +84,27 @@ static void PropagateAttributes(Operation *src, Operation *dst) {
 // TF op helper functions
 //===----------------------------------------------------------------------===//
 
+// Returns true if attribute is a splat with value one.
+static bool IsSplatOne(ElementsAttr attr) {
+  auto dense_attr = attr.dyn_cast_or_null<DenseElementsAttr>();
+  if (!dense_attr || !dense_attr.isSplat()) return false;
+
+  Attribute splat = dense_attr.getSplatValue();
+  if (auto int_attr = splat.dyn_cast_or_null<IntegerAttr>()) {
+    return int_attr.getValue().isOneValue();
+  } else if (auto fp_attr = splat.dyn_cast_or_null<FloatAttr>()) {
+    return fp_attr.getValue().convertToFloat() == 1.0;
+  }
+
+  return false;
+}
+
+// Returns true if the attribute is a scalar value equal to one.
+static bool IsScalarOne(ElementsAttr attr) {
+  if (attr.getNumElements() != 1) return false;
+  return IsSplatOne(attr);
+}
+
 // Returns the RankedTensorType for the given operand. TensorFlow constant ops
 // may have non-static shape because the shape is not propagated during constant
 // folding. If the defining op for the given operand is a constant op, this
@@ -2198,7 +2219,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 
 void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  results.insert<LogOfSoftmax>(context);
+  results.insert<LogOfSoftmax, LogToLog1p>(context);
 }
 
 //===----------------------------------------------------------------------===//
