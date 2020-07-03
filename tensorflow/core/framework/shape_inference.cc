@@ -720,8 +720,8 @@ Status InferenceContext::MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
   TF_RETURN_IF_ERROR(WithRankAtMost(input(input_idx), 1, &input_shape));
 
   requested_input_tensor_as_partial_shape_[input_idx] = true;
-  int input_tensors_as_shapes_size_ = input_tensors_as_shapes_.size();
-  if (input_idx < input_tensors_as_shapes_size_ &&
+  const int input_tensors_as_shapes_size = input_tensors_as_shapes_.size();
+  if (input_idx < input_tensors_as_shapes_size &&
       input_tensors_as_shapes_[input_idx].IsSet() &&
       RankKnown(input_tensors_as_shapes_[input_idx])) {
     *out = input_tensors_as_shapes_[input_idx];
@@ -739,8 +739,8 @@ Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
   TF_RETURN_IF_ERROR(WithRank(input(input_idx), 1, &input_shape));
 
   requested_input_tensor_as_partial_shape_[input_idx] = true;
-  int input_tensors_as_shapes_size_ = input_tensors_as_shapes_.size();
-  if (input_idx < input_tensors_as_shapes_size_ &&
+  int input_tensors_as_shapes_size = input_tensors_as_shapes_.size();
+  if (input_idx < input_tensors_as_shapes_size &&
       input_tensors_as_shapes_[input_idx].IsSet() &&
       RankKnown(input_tensors_as_shapes_[input_idx])) {
     *out = input_tensors_as_shapes_[input_idx];
