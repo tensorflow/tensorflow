@@ -179,20 +179,27 @@ void TestCopies(const Tensor& t) {
   {
     LOG(INFO) << "Move constructor";
     Tensor t2 = t;
-    Tensor t3(std::move(t2));
+    Tensor t3 = std::move(t2);
     ExpectEqual<T>(t, t3);
     EXPECT_TRUE(t3.IsInitialized());
-    EXPECT_FALSE(t2.IsInitialized());
+    EXPECT_FALSE(t2.IsInitialized());  // NOLINT(bugprone-use-after-move)
   }
   {
     LOG(INFO) << "Move assignment";
     Tensor t2 = t;
-    Tensor t3 = std::move(t2);
-    Tensor* t4 = &t3;
-    *t4 = std::move(t3);
+    Tensor t3;
+    t3 = std::move(t2);
     ExpectEqual<T>(t, t3);
     EXPECT_TRUE(t3.IsInitialized());
-    EXPECT_FALSE(t2.IsInitialized());
+    EXPECT_FALSE(t2.IsInitialized());  // NOLINT(bugprone-use-after-move)
+  }
+  {
+    LOG(INFO) << "Move self-assignment";
+    Tensor t2 = t;
+    Tensor* t3 = &t2;
+    *t3 = std::move(t2);
+    ExpectEqual<Variant>(t, *t3);
+    EXPECT_TRUE(t3->IsInitialized());
   }
 }
 
@@ -273,20 +280,27 @@ TEST(Tensor_Variant, Simple) {
   {
     LOG(INFO) << "Move constructor";
     Tensor t2 = t;
-    Tensor t3(std::move(t2));
+    Tensor t3 = std::move(t2);
     ExpectEqual<Variant>(t, t3);
     EXPECT_TRUE(t3.IsInitialized());
-    EXPECT_FALSE(t2.IsInitialized());
+    EXPECT_FALSE(t2.IsInitialized());  // NOLINT(bugprone-use-after-move)
   }
   {
     LOG(INFO) << "Move assignment";
     Tensor t2 = t;
-    Tensor t3 = std::move(t2);
-    Tensor* t4 = &t3;
-    *t4 = std::move(t3);
+    Tensor t3;
+    t3 = std::move(t2);
     ExpectEqual<Variant>(t, t3);
     EXPECT_TRUE(t3.IsInitialized());
-    EXPECT_FALSE(t2.IsInitialized());
+    EXPECT_FALSE(t2.IsInitialized());  // NOLINT(bugprone-use-after-move)
+  }
+  {
+    LOG(INFO) << "Move self-assignment";
+    Tensor t2 = t;
+    Tensor* t3 = &t2;
+    *t3 = std::move(t2);
+    ExpectEqual<Variant>(t, *t3);
+    EXPECT_TRUE(t3->IsInitialized());
   }
 }
 
