@@ -118,7 +118,6 @@ def _spec_for_value(value):
     return value
 
 
-
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
