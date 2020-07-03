@@ -343,8 +343,9 @@ void BFCAllocator::DeallocateRegions(
 
     VLOG(2) << "Deallocate region with ptr = " << it->ptr();
     // Remove all chunk registrations from Bins.
+    const int kInvalidChunkHandle_int = kInvalidChunkHandle;
     ChunkHandle h = region_manager_.get_handle(it->ptr());
-    while (static_cast<int>(h) != kInvalidChunkHandle) {
+    while (h != kInvalidChunkHandle) {
       const Chunk* c = ChunkFromHandle(h);
       if (c->bin_num != kInvalidBinNum) {
         RemoveFreeChunkFromBin(h);
