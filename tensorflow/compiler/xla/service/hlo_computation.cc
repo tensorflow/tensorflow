@@ -413,17 +413,17 @@ void HloComputation::ComputeInstructionPostOrder(
       }
     };
 
-    // When adding a predecessor to the dfs_stack, we need to also add its
-    // associated channel dependencies.
     const auto add_dfs_stack = [&](HloInstruction* inst) {
-      auto channel_id = get_channel_id(inst);
-      if (channel_id && channel_dependency_group.count(*channel_id)) {
-        auto it = channel_dependency_group.find(*channel_id);
+      dfs_stack.emplace_back(inst);
+    };
+
+    // Add all associated dependencies of a channel
+    const auto add_channel = [&](int64 channel_id) {
+      auto it = channel_dependency_group.find(channel_id);
+      if (it != channel_dependency_group.end()) {
         for (HloInstruction* cinst : it->second) {
-          dfs_stack.emplace_back(cinst);
+          add_dfs_stack(cinst);
         }
-      } else {
-        dfs_stack.emplace_back(inst);
       }
     };
 
@@ -432,12 +432,28 @@ void HloComputation::ComputeInstructionPostOrder(
       // processed first. This will produce a more natural ordering and a nicer
       // result for things like HLO stringification.
       const auto& operands = inst->operands();
+      std::unordered_set<int64> channels;
       for (int64 i = operands.size() - 1; i >= 0; --i) {
-        add_dfs_stack(operands[i]);
+        auto channel_id = get_channel_id(operands[i]);
+        if (channel_id) {
+          channels.insert(*channel_id);
+        } else {
+          add_dfs_stack(operands[i]);
+        }
       }
 
       for (HloInstruction* op : inst->control_predecessors()) {
-        add_dfs_stack(op);
+        auto channel_id = get_channel_id(op);
+        if (channel_id) {
+          channels.insert(*channel_id);
+        } else {
+          add_dfs_stack(op);
+        }
+      }
+      // When adding predecessors to the dfs_stack, we need to also add their
+      // associated channel dependencies.
+      for (int64 channel_id : channels) {
+        add_channel(channel_id);
       }
     };
 
