@@ -404,7 +404,7 @@ struct HloLegalizeToLhlo
     });
 
     auto module = getOperation();
-    module.walk([&](FuncOp func) -> WalkResult {
+    WalkResult result = module.walk([&](FuncOp func) -> WalkResult {
       BufferAssignmentPlacer bufferAssignment(func);
       OwningRewritePatternList patterns;
       populateHLOToLHLOConversionPattern(func.getContext(), &bufferAssignment,
@@ -422,6 +422,9 @@ struct HloLegalizeToLhlo
       }
       return applyPartialConversion(func, target, patterns);
     });
+    if (result.wasInterrupted()) {
+      signalPassFailure();
+    }
   }
 
  private:
