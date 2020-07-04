@@ -31,25 +31,26 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export("keras.optimizers.schedules.LearningRateSchedule")
 class LearningRateSchedule(object):
-  """A serializable learning rate decay schedule.
+    """A serializable learning rate decay schedule.
 
   `LearningRateSchedule`s can be passed in as the learning rate of optimizers in
   `tf.keras.optimizers`. They can be serialized and deserialized using
   `tf.keras.optimizers.schedules.serialize` and
   `tf.keras.optimizers.schedules.deserialize`.
   """
+    @abc.abstractmethod
+    def __call__(self, step):
+        raise NotImplementedError(
+            "Learning rate schedule must override __call__")
 
-  @abc.abstractmethod
-  def __call__(self, step):
-    raise NotImplementedError("Learning rate schedule must override __call__")
+    @abc.abstractmethod
+    def get_config(self):
+        raise NotImplementedError(
+            "Learning rate schedule must override get_config")
 
-  @abc.abstractmethod
-  def get_config(self):
-    raise NotImplementedError("Learning rate schedule must override get_config")
-
-  @classmethod
-  def from_config(cls, config):
-    """Instantiates a `LearningRateSchedule` from its config.
+    @classmethod
+    def from_config(cls, config):
+        """Instantiates a `LearningRateSchedule` from its config.
 
     Args:
         config: Output of `get_config()`.
@@ -57,12 +58,12 @@ class LearningRateSchedule(object):
     Returns:
         A `LearningRateSchedule` instance.
     """
-    return cls(**config)
+        return cls(**config)
 
 
 @keras_export("keras.optimizers.schedules.ExponentialDecay")
 class ExponentialDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses an exponential decay schedule.
+    """A LearningRateSchedule that uses an exponential decay schedule.
 
   When training a model, it is often recommended to lower the learning rate as
   the training progresses. This schedule applies an exponential decay function
@@ -75,7 +76,7 @@ class ExponentialDecay(LearningRateSchedule):
 
   ```python
   def decayed_learning_rate(step):
-    return initial_learning_rate * decay_rate ^ (step / decay_steps)
+    return initial_learning_rate * decay_rate ^ ((step / decay_steps) ^ k_decay)
   ```
 
   If the argument `staircase` is `True`, then `step / decay_steps` is
@@ -93,6 +94,7 @@ class ExponentialDecay(LearningRateSchedule):
       initial_learning_rate,
       decay_steps=100000,
       decay_rate=0.96,
+      k_decay = 1.0,
       staircase=True)
 
   model.compile(optimizer=tf.keras.optimizers.SGD(learning_rate=lr_schedule),
@@ -111,15 +113,14 @@ class ExponentialDecay(LearningRateSchedule):
     step and outputs the decayed learning rate, a scalar `Tensor` of the same
     type as `initial_learning_rate`.
   """
-
-  def __init__(
-      self,
-      initial_learning_rate,
-      decay_steps,
-      decay_rate,
-      staircase=False,
-      name=None):
-    """Applies exponential decay to the learning rate.
+    def __init__(self,
+                 initial_learning_rate,
+                 decay_steps,
+                 decay_rate,
+                 k_decay=1.0,
+                 staircase=False,
+                 name=None):
+        """Applies exponential decay to the learning rate.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` `Tensor` or a
@@ -133,41 +134,45 @@ class ExponentialDecay(LearningRateSchedule):
       name: String.  Optional name of the operation.  Defaults to
         'ExponentialDecay'.
     """
-    super(ExponentialDecay, self).__init__()
-    self.initial_learning_rate = initial_learning_rate
-    self.decay_steps = decay_steps
-    self.decay_rate = decay_rate
-    self.staircase = staircase
-    self.name = name
+        super(ExponentialDecay, self).__init__()
+        self.initial_learning_rate = initial_learning_rate
+        self.decay_steps = decay_steps
+        self.decay_rate = decay_rate
+        self.k_decay = k_decay
+        self.staircase = staircase
+        self.name = name
 
-  def __call__(self, step):
-    with ops.name_scope_v2(self.name or "ExponentialDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
-          self.initial_learning_rate, name="initial_learning_rate")
-      dtype = initial_learning_rate.dtype
-      decay_steps = math_ops.cast(self.decay_steps, dtype)
-      decay_rate = math_ops.cast(self.decay_rate, dtype)
+    def __call__(self, step):
+        with ops.name_scope_v2(self.name or "ExponentialDecay") as name:
+            initial_learning_rate = ops.convert_to_tensor_v2(
+                self.initial_learning_rate, name="initial_learning_rate")
+            dtype = initial_learning_rate.dtype
+            decay_steps = math_ops.cast(self.decay_steps, dtype)
+            decay_rate = math_ops.cast(self.decay_rate, dtype)
+            k_decay = math_ops.cast(self.k_decay, dtype)
 
-      global_step_recomp = math_ops.cast(step, dtype)
-      p = global_step_recomp / decay_steps
-      if self.staircase:
-        p = math_ops.floor(p)
-      return math_ops.multiply(
-          initial_learning_rate, math_ops.pow(decay_rate, p), name=name)
+            global_step_recomp = math_ops.cast(step, dtype)
+            p = math_ops.pow(global_step_recomp / decay_steps, k_decay)
+            if self.staircase:
+                p = math_ops.floor(p)
+            return math_ops.multiply(initial_learning_rate,
+                                     math_ops.pow(decay_rate, p),
+                                     name=name)
 
-  def get_config(self):
-    return {
-        "initial_learning_rate": self.initial_learning_rate,
-        "decay_steps": self.decay_steps,
-        "decay_rate": self.decay_rate,
-        "staircase": self.staircase,
-        "name": self.name
-    }
+    def get_config(self):
+        return {
+            "initial_learning_rate": self.initial_learning_rate,
+            "decay_steps": self.decay_steps,
+            "decay_rate": self.decay_rate,
+            "k_decay": self.k_decay,
+            "staircase": self.staircase,
+            "name": self.name
+        }
 
 
 @keras_export("keras.optimizers.schedules.PiecewiseConstantDecay")
 class PiecewiseConstantDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses a piecewise constant decay schedule.
+    """A LearningRateSchedule that uses a piecewise constant decay schedule.
 
   The function returns a 1-arg callable to compute the piecewise constant
   when passed the current optimizer step. This can be useful for changing the
@@ -202,13 +207,8 @@ class PiecewiseConstantDecay(LearningRateSchedule):
     `values[1]` when `step > boundaries[0]` and `step <= boundaries[1]`, ...,
     and values[-1] when `step > boundaries[-1]`.
   """
-
-  def __init__(
-      self,
-      boundaries,
-      values,
-      name=None):
-    """Piecewise constant from boundaries and interval values.
+    def __init__(self, boundaries, values, name=None):
+        """Piecewise constant from boundaries and interval values.
 
     Args:
       boundaries: A list of `Tensor`s or `int`s or `float`s with strictly
@@ -224,50 +224,59 @@ class PiecewiseConstantDecay(LearningRateSchedule):
     Raises:
       ValueError: if the number of elements in the lists do not match.
     """
-    super(PiecewiseConstantDecay, self).__init__()
+        super(PiecewiseConstantDecay, self).__init__()
 
-    if len(boundaries) != len(values) - 1:
-      raise ValueError(
-          "The length of boundaries should be 1 less than the length of values")
+        if len(boundaries) != len(values) - 1:
+            raise ValueError(
+                "The length of boundaries should be 1 less than the length of values"
+            )
 
-    self.boundaries = boundaries
-    self.values = values
-    self.name = name
+        self.boundaries = boundaries
+        self.values = values
+        self.name = name
 
-  def __call__(self, step):
-    with ops.name_scope_v2(self.name or "PiecewiseConstant"):
-      boundaries = ops.convert_n_to_tensor(self.boundaries)
-      values = ops.convert_n_to_tensor(self.values)
-      x_recomp = ops.convert_to_tensor_v2(step)
-      for i, b in enumerate(boundaries):
-        if b.dtype.base_dtype != x_recomp.dtype.base_dtype:
-          # We cast the boundaries to have the same type as the step
-          b = math_ops.cast(b, x_recomp.dtype.base_dtype)
-          boundaries[i] = b
-      pred_fn_pairs = []
-      pred_fn_pairs.append((x_recomp <= boundaries[0], lambda: values[0]))
-      pred_fn_pairs.append((x_recomp > boundaries[-1], lambda: values[-1]))
-      for low, high, v in zip(boundaries[:-1], boundaries[1:], values[1:-1]):
-        # Need to bind v here; can do this with lambda v=v: ...
-        pred = (x_recomp > low) & (x_recomp <= high)
-        pred_fn_pairs.append((pred, lambda v=v: v))
+    def __call__(self, step):
+        with ops.name_scope_v2(self.name or "PiecewiseConstant"):
+            boundaries = ops.convert_n_to_tensor(self.boundaries)
+            values = ops.convert_n_to_tensor(self.values)
+            x_recomp = ops.convert_to_tensor_v2(step)
+            for i, b in enumerate(boundaries):
+                if b.dtype.base_dtype != x_recomp.dtype.base_dtype:
+                    # We cast the boundaries to have the same type as the step
+                    b = math_ops.cast(b, x_recomp.dtype.base_dtype)
+                    boundaries[i] = b
+            pred_fn_pairs = []
+            pred_fn_pairs.append(
+                (x_recomp <= boundaries[0], lambda: values[0]))
+            pred_fn_pairs.append(
+                (x_recomp > boundaries[-1], lambda: values[-1]))
+            for low, high, v in zip(boundaries[:-1], boundaries[1:],
+                                    values[1:-1]):
+                # Need to bind v here; can do this with lambda v=v: ...
+                pred = (x_recomp > low) & (x_recomp <= high)
+                pred_fn_pairs.append((pred, lambda v=v: v))
 
-      # The default isn't needed here because our conditions are mutually
-      # exclusive and exhaustive, but tf.case requires it.
-      default = lambda: values[0]
-      return control_flow_ops.case(pred_fn_pairs, default, exclusive=True)
+            # The default isn't needed here because our conditions are mutually
+            # exclusive and exhaustive, but tf.case requires it.
+            default = lambda: values[0]
+            return control_flow_ops.case(pred_fn_pairs,
+                                         default,
+                                         exclusive=True)
 
-  def get_config(self):
-    return {
-        "boundaries": self.boundaries,
-        "values": self.values,
-        "name": self.name
-    }
+    def get_config(self):
+        return {
+            "boundaries": self.boundaries,
+            "values": self.values,
+            "name": self.name
+        }
 
 
 @keras_export("keras.optimizers.schedules.PolynomialDecay")
 class PolynomialDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses a polynomial decay schedule.
+    """A LearningRateSchedule that uses a polynomial decay schedule.
+
+  See [Tao Zhang & Wei Li, 2020], k-decay: A New Method For Learning Rate Schedule.
+  https://arxiv.org/abs/2004.05909
 
   It is commonly observed that a monotonically decreasing learning rate, whose
   degree of change is carefully chosen, results in a better performing model.
@@ -288,7 +297,7 @@ class PolynomialDecay(LearningRateSchedule):
   def decayed_learning_rate(step):
     step = min(step, decay_steps)
     return ((initial_learning_rate - end_learning_rate) *
-            (1 - step / decay_steps) ^ (power)
+            (1 - (step / decay_steps) ^ k_decay) ^ (power)
            ) + end_learning_rate
   ```
 
@@ -299,7 +308,7 @@ class PolynomialDecay(LearningRateSchedule):
   def decayed_learning_rate(step):
     decay_steps = decay_steps * ceil(step / decay_steps)
     return ((initial_learning_rate - end_learning_rate) *
-            (1 - step / decay_steps) ^ (power)
+            (1 - (step / decay_steps) ^ k_decay) ^ (power)
            ) + end_learning_rate
   ```
 
@@ -313,9 +322,11 @@ class PolynomialDecay(LearningRateSchedule):
   starter_learning_rate = 0.1
   end_learning_rate = 0.01
   decay_steps = 10000
+  k_decay = 1.5
   learning_rate_fn = tf.keras.optimizers.schedules.PolynomialDecay(
       starter_learning_rate,
       decay_steps,
+      k_decay =1.5,
       end_learning_rate,
       power=0.5)
 
@@ -335,17 +346,18 @@ class PolynomialDecay(LearningRateSchedule):
     A 1-arg callable learning rate schedule that takes the current optimizer
     step and outputs the decayed learning rate, a scalar `Tensor` of the same
     type as `initial_learning_rate`.
-  """
 
-  def __init__(
-      self,
-      initial_learning_rate,
-      decay_steps,
-      end_learning_rate=0.0001,
-      power=1.0,
-      cycle=False,
-      name=None):
-    """Applies a polynomial decay to the learning rate.
+
+  """
+    def __init__(self,
+                 initial_learning_rate,
+                 decay_steps,
+                 end_learning_rate=0.0001,
+                 power=1.0,
+                 k_decay=1.5,
+                 cycle=False,
+                 name=None):
+        """Applies a polynomial decay to the learning rate.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` `Tensor` or a
@@ -356,62 +368,73 @@ class PolynomialDecay(LearningRateSchedule):
         Python number.  The minimal end learning rate.
       power: A scalar `float32` or `float64` `Tensor` or a
         Python number.  The power of the polynomial. Defaults to linear, 1.0.
+      k_decay: A scalar `float32` or `float64` `Tensor` or a Python number. The k values of
+        the polynomial of k-decay method. Defaults to 1.5.
       cycle: A boolean, whether or not it should cycle beyond decay_steps.
       name: String.  Optional name of the operation. Defaults to
         'PolynomialDecay'.
     """
-    super(PolynomialDecay, self).__init__()
+        super(PolynomialDecay, self).__init__()
 
-    self.initial_learning_rate = initial_learning_rate
-    self.decay_steps = decay_steps
-    self.end_learning_rate = end_learning_rate
-    self.power = power
-    self.cycle = cycle
-    self.name = name
+        self.initial_learning_rate = initial_learning_rate
+        self.decay_steps = decay_steps
+        self.end_learning_rate = end_learning_rate
+        self.power = power
+        self.k_decay = k_decay
+        self.cycle = cycle
+        self.name = name
 
-  def __call__(self, step):
-    with ops.name_scope_v2(self.name or "PolynomialDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
-          self.initial_learning_rate, name="initial_learning_rate")
-      dtype = initial_learning_rate.dtype
-      end_learning_rate = math_ops.cast(self.end_learning_rate, dtype)
-      power = math_ops.cast(self.power, dtype)
+    def __call__(self, step):
+        with ops.name_scope_v2(self.name or "PolynomialDecay") as name:
+            initial_learning_rate = ops.convert_to_tensor_v2(
+                self.initial_learning_rate, name="initial_learning_rate")
+            dtype = initial_learning_rate.dtype
+            end_learning_rate = math_ops.cast(self.end_learning_rate, dtype)
+            power = math_ops.cast(self.power, dtype)
+            k_decay = math_ops.cast(self.k_decay, dtype)
 
-      global_step_recomp = math_ops.cast(step, dtype)
-      decay_steps_recomp = math_ops.cast(self.decay_steps, dtype)
-      if self.cycle:
-        # Find the first multiple of decay_steps that is bigger than
-        # global_step. If global_step is zero set the multiplier to 1
-        multiplier = control_flow_ops.cond(
-            math_ops.equal(global_step_recomp, 0), lambda: 1.0,
-            lambda: math_ops.ceil(global_step_recomp / self.decay_steps))
-        decay_steps_recomp = math_ops.multiply(decay_steps_recomp, multiplier)
-      else:
-        # Make sure that the global_step used is not bigger than decay_steps.
-        global_step_recomp = math_ops.minimum(global_step_recomp,
-                                              decay_steps_recomp)
+            global_step_recomp = math_ops.cast(step, dtype)
+            decay_steps_recomp = math_ops.cast(self.decay_steps, dtype)
+            if self.cycle:
+                # Find the first multiple of decay_steps that is bigger than
+                # global_step. If global_step is zero set the multiplier to 1
+                multiplier = control_flow_ops.cond(
+                    math_ops.equal(global_step_recomp, 0), lambda: 1.0, lambda:
+                    math_ops.ceil(global_step_recomp / self.decay_steps))
+                decay_steps_recomp = math_ops.multiply(decay_steps_recomp,
+                                                       multiplier)
+            else:
+                # Make sure that the global_step used is not bigger than decay_steps.
+                global_step_recomp = math_ops.minimum(global_step_recomp,
+                                                      decay_steps_recomp)
 
-      p = math_ops.divide(global_step_recomp, decay_steps_recomp)
-      return math_ops.add(
-          math_ops.multiply(initial_learning_rate - end_learning_rate,
-                            math_ops.pow(1 - p, power)),
-          end_learning_rate,
-          name=name)
+            p = math_ops.pow(
+                math_ops.divide(global_step_recomp, decay_steps_recomp),
+                k_decay)
+            return math_ops.add(math_ops.multiply(
+                initial_learning_rate - end_learning_rate,
+                math_ops.pow(1 - p, power)),
+                                end_learning_rate,
+                                name=name)
 
-  def get_config(self):
-    return {
-        "initial_learning_rate": self.initial_learning_rate,
-        "decay_steps": self.decay_steps,
-        "end_learning_rate": self.end_learning_rate,
-        "power": self.power,
-        "cycle": self.cycle,
-        "name": self.name
-    }
+    def get_config(self):
+        return {
+            "initial_learning_rate": self.initial_learning_rate,
+            "decay_steps": self.decay_steps,
+            "end_learning_rate": self.end_learning_rate,
+            "power": self.power,
+            "k_decay": self.k_decay,
+            "cycle": self.cycle,
+            "name": self.name
+        }
 
 
 @keras_export("keras.optimizers.schedules.InverseTimeDecay")
 class InverseTimeDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses an inverse time decay schedule.
+    """A LearningRateSchedule that uses an inverse time decay schedule.
+
+  See [Tao Zhang & Wei Li, 2020], k-decay: A New Method For Learning Rate Schedule.
+  https://arxiv.org/abs/2004.05909
 
   When training a model, it is often recommended to lower the learning rate as
   the training progresses. This schedule applies the inverse decay function
@@ -426,14 +449,14 @@ class InverseTimeDecay(LearningRateSchedule):
 
   ```python
   def decayed_learning_rate(step):
-    return initial_learning_rate / (1 + decay_rate * step / decay_step)
+    return initial_learning_rate / (1 + decay_rate * (tep) / decay_step) ^ k_decay)
   ```
 
   or, if `staircase` is `True`, as:
 
   ```python
   def decayed_learning_rate(step):
-    return initial_learning_rate / (1 + decay_rate * floor(step / decay_step))
+    return initial_learning_rate / (1 + decay_rate * floor((step / decay_step) ^ k_decay))
   ```
 
   You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
@@ -445,8 +468,9 @@ class InverseTimeDecay(LearningRateSchedule):
   initial_learning_rate = 0.1
   decay_steps = 1.0
   decay_rate = 0.5
+  k_decay = 1.0
   learning_rate_fn = keras.optimizers.schedules.InverseTimeDecay(
-    initial_learning_rate, decay_steps, decay_rate)
+    initial_learning_rate, decay_steps, decay_rate ,k_decay)
 
   model.compile(optimizer=tf.keras.optimizers.SGD(
                     learning_rate=learning_rate_fn),
@@ -461,66 +485,73 @@ class InverseTimeDecay(LearningRateSchedule):
     step and outputs the decayed learning rate, a scalar `Tensor` of the same
     type as `initial_learning_rate`.
   """
-
-  def __init__(
-      self,
-      initial_learning_rate,
-      decay_steps,
-      decay_rate,
-      staircase=False,
-      name=None):
-    """Applies inverse time decay to the initial learning rate.
+    def __init__(self,
+                 initial_learning_rate,
+                 decay_steps,
+                 decay_rate,
+                 k_decay=1.0,
+                 staircase=False,
+                 name=None):
+        """Applies inverse time decay to the initial learning rate.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` `Tensor` or a
         Python number.  The initial learning rate.
       decay_steps: How often to apply decay.
       decay_rate: A Python number.  The decay rate.
+      k_decay: A scalar `float32` or `float64` `Tensor` or a Python number. The k values of
+        the polynomial of k-decay method. Defaults to 1.0.
       staircase: Whether to apply decay in a discrete staircase, as opposed to
         continuous, fashion.
       name: String.  Optional name of the operation.  Defaults to
         'InverseTimeDecay'.
     """
-    super(InverseTimeDecay, self).__init__()
+        super(InverseTimeDecay, self).__init__()
 
-    self.initial_learning_rate = initial_learning_rate
-    self.decay_steps = decay_steps
-    self.decay_rate = decay_rate
-    self.staircase = staircase
-    self.name = name
+        self.initial_learning_rate = initial_learning_rate
+        self.decay_steps = decay_steps
+        self.decay_rate = decay_rate
+        self.k_decay = k_decay
+        self.staircase = staircase
+        self.name = name
 
-  def __call__(self, step):
-    with ops.name_scope_v2(self.name or "InverseTimeDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
-          self.initial_learning_rate, name="initial_learning_rate")
-      dtype = initial_learning_rate.dtype
-      decay_steps = math_ops.cast(self.decay_steps, dtype)
-      decay_rate = math_ops.cast(self.decay_rate, dtype)
+    def __call__(self, step):
+        with ops.name_scope_v2(self.name or "InverseTimeDecay") as name:
+            initial_learning_rate = ops.convert_to_tensor_v2(
+                self.initial_learning_rate, name="initial_learning_rate")
+            dtype = initial_learning_rate.dtype
+            decay_steps = math_ops.cast(self.decay_steps, dtype)
+            k_decay = math_ops.cast(self.k_decay, dtype)
+            decay_rate = math_ops.cast(self.decay_rate, dtype)
 
-      global_step_recomp = math_ops.cast(step, dtype)
-      p = global_step_recomp / decay_steps
-      if self.staircase:
-        p = math_ops.floor(p)
-      const = math_ops.cast(constant_op.constant(1), dtype)
-      denom = math_ops.add(const, math_ops.multiply(decay_rate, p))
-      return math_ops.divide(initial_learning_rate, denom, name=name)
+            global_step_recomp = math_ops.cast(step, dtype)
+            p = math_ops.pow(global_step_recomp / decay_steps, k_decay)
+            if self.staircase:
+                p = math_ops.floor(p)
+            const = math_ops.cast(constant_op.constant(1), dtype)
+            denom = math_ops.add(const, math_ops.multiply(decay_rate, p))
+            return math_ops.divide(initial_learning_rate, denom, name=name)
 
-  def get_config(self):
-    return {
-        "initial_learning_rate": self.initial_learning_rate,
-        "decay_steps": self.decay_steps,
-        "decay_rate": self.decay_rate,
-        "staircase": self.staircase,
-        "name": self.name
-    }
+    def get_config(self):
+        return {
+            "initial_learning_rate": self.initial_learning_rate,
+            "decay_steps": self.decay_steps,
+            "decay_rate": self.decay_rate,
+            "k_decay": self.k_decay
+            "staircase": self.staircase,
+            "name": self.name
+        }
 
 
 @keras_export("keras.experimental.CosineDecay")
 class CosineDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses a cosine decay schedule.
+    """A LearningRateSchedule that uses a cosine decay schedule.
 
   See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
   with Warm Restarts. https://arxiv.org/abs/1608.03983
+
+  See [Tao Zhang & Wei Li, 2020], k-decay: A New Method For Learning Rate Schedule.
+  https://arxiv.org/abs/2004.05909
 
   When training a model, it is often recommended to lower the learning rate as
   the training progresses. This schedule applies a cosine decay function
@@ -558,62 +589,70 @@ class CosineDecay(LearningRateSchedule):
     step and outputs the decayed learning rate, a scalar `Tensor` of the same
     type as `initial_learning_rate`.
   """
-
-  def __init__(
-      self,
-      initial_learning_rate,
-      decay_steps,
-      alpha=0.0,
-      name=None):
-    """Applies cosine decay to the learning rate.
+    def __init__(self,
+                 initial_learning_rate,
+                 decay_steps,
+                 k_decay=1.0,
+                 alpha=0.0,
+                 name=None):
+        """Applies cosine decay to the learning rate.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` Tensor or a
         Python number. The initial learning rate.
       decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
         Number of steps to decay over.
+      k_decay: A scalar `float32` or `float64` `Tensor` or a Python number. The k values of
+        the polynomial of k-decay method. Defaults to 1.0.
       alpha: A scalar `float32` or `float64` Tensor or a Python number.
         Minimum learning rate value as a fraction of initial_learning_rate.
       name: String. Optional name of the operation.  Defaults to 'CosineDecay'.
     """
-    super(CosineDecay, self).__init__()
+        super(CosineDecay, self).__init__()
 
-    self.initial_learning_rate = initial_learning_rate
-    self.decay_steps = decay_steps
-    self.alpha = alpha
-    self.name = name
+        self.initial_learning_rate = initial_learning_rate
+        self.decay_steps = decay_steps
+        self.k_decay = k_decay
+        self.alpha = alpha
+        self.name = name
 
-  def __call__(self, step):
-    with ops.name_scope_v2(self.name or "CosineDecay"):
-      initial_learning_rate = ops.convert_to_tensor_v2(
-          self.initial_learning_rate, name="initial_learning_rate")
-      dtype = initial_learning_rate.dtype
-      decay_steps = math_ops.cast(self.decay_steps, dtype)
+    def __call__(self, step):
+        with ops.name_scope_v2(self.name or "CosineDecay"):
+            initial_learning_rate = ops.convert_to_tensor_v2(
+                self.initial_learning_rate, name="initial_learning_rate")
+            dtype = initial_learning_rate.dtype
+            decay_steps = math_ops.cast(self.decay_steps, dtype)
+            k_decay = math_ops.cast(self.k_decay, dtype)
 
-      global_step_recomp = math_ops.cast(step, dtype)
-      global_step_recomp = math_ops.minimum(global_step_recomp, decay_steps)
-      completed_fraction = global_step_recomp / decay_steps
-      cosine_decayed = 0.5 * (1.0 + math_ops.cos(
-          constant_op.constant(math.pi) * completed_fraction))
+            global_step_recomp = math_ops.cast(step, dtype)
+            global_step_recomp = math_ops.minimum(global_step_recomp,
+                                                  decay_steps)
+            completed_fraction = math_ops.pow(global_step_recomp / decay_steps, k_decay)
+            cosine_decayed = 0.5 * (1.0 + math_ops.cos(
+                constant_op.constant(math.pi) * completed_fraction))
 
-      decayed = (1 - self.alpha) * cosine_decayed + self.alpha
-      return math_ops.multiply(initial_learning_rate, decayed)
+            decayed = (1 - self.alpha) * cosine_decayed + self.alpha
+            return math_ops.multiply(initial_learning_rate, decayed)
 
-  def get_config(self):
-    return {
-        "initial_learning_rate": self.initial_learning_rate,
-        "decay_steps": self.decay_steps,
-        "alpha": self.alpha,
-        "name": self.name
-    }
+    def get_config(self):
+        return {
+            "initial_learning_rate": self.initial_learning_rate,
+            "decay_steps": self.decay_steps,
+            "k_decay": self.k_decay
+            "alpha": self.alpha,
+            "name": self.name
+        }
 
 
 @keras_export("keras.experimental.CosineDecayRestarts")
 class CosineDecayRestarts(LearningRateSchedule):
-  """A LearningRateSchedule that uses a cosine decay schedule with restarts.
+    """A LearningRateSchedule that uses a cosine decay schedule with restarts.
 
   See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
   with Warm Restarts. https://arxiv.org/abs/1608.03983
+
+  See [Tao Zhang & Wei Li, 2020], k-decay: A New Method For Learning Rate Schedule.
+  https://arxiv.org/abs/2004.05909
 
   When training a model, it is often recommended to lower the learning rate as
   the training progresses. This schedule applies a cosine decay function with
@@ -649,22 +688,23 @@ class CosineDecayRestarts(LearningRateSchedule):
     step and outputs the decayed learning rate, a scalar `Tensor` of the same
     type as `initial_learning_rate`.
   """
-
-  def __init__(
-      self,
-      initial_learning_rate,
-      first_decay_steps,
-      t_mul=2.0,
-      m_mul=1.0,
-      alpha=0.0,
-      name=None):
-    """Applies cosine decay with restarts to the learning rate.
+    def __init__(self,
+                 initial_learning_rate,
+                 first_decay_steps,
+                 k_decay=1.0,
+                 t_mul=2.0,
+                 m_mul=1.0,
+                 alpha=0.0,
+                 name=None):
+        """Applies cosine decay with restarts to the learning rate.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` Tensor or a Python
         number. The initial learning rate.
       first_decay_steps: A scalar `int32` or `int64` `Tensor` or a Python
         number. Number of steps to decay over.
+      k_decay: A scalar `float32` or `float64` `Tensor` or a Python number. The k values of
+        the polynomial of k-decay method. Defaults to 1.0.
       t_mul: A scalar `float32` or `float64` `Tensor` or a Python number.
         Used to derive the number of iterations in the i-th period
       m_mul: A scalar `float32` or `float64` `Tensor` or a Python number.
@@ -673,70 +713,74 @@ class CosineDecayRestarts(LearningRateSchedule):
         Minimum learning rate value as a fraction of the initial_learning_rate.
       name: String. Optional name of the operation.  Defaults to 'SGDRDecay'.
     """
-    super(CosineDecayRestarts, self).__init__()
+        super(CosineDecayRestarts, self).__init__()
 
-    self.initial_learning_rate = initial_learning_rate
-    self.first_decay_steps = first_decay_steps
-    self._t_mul = t_mul
-    self._m_mul = m_mul
-    self.alpha = alpha
-    self.name = name
+        self.initial_learning_rate = initial_learning_rate
+        self.first_decay_steps = first_decay_steps
+        self.k_decay = k_decay
+        self._t_mul = t_mul
+        self._m_mul = m_mul
+        self.alpha = alpha
+        self.name = name
 
-  def __call__(self, step):
-    with ops.name_scope_v2(self.name or "SGDRDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
-          self.initial_learning_rate, name="initial_learning_rate")
-      dtype = initial_learning_rate.dtype
-      first_decay_steps = math_ops.cast(self.first_decay_steps, dtype)
-      alpha = math_ops.cast(self.alpha, dtype)
-      t_mul = math_ops.cast(self._t_mul, dtype)
-      m_mul = math_ops.cast(self._m_mul, dtype)
+    def __call__(self, step):
+        with ops.name_scope_v2(self.name or "SGDRDecay") as name:
+            initial_learning_rate = ops.convert_to_tensor_v2(
+                self.initial_learning_rate, name="initial_learning_rate")
+            dtype = initial_learning_rate.dtype
+            first_decay_steps = math_ops.cast(self.first_decay_steps, dtype)
+            k_decay = math_ops.cast(self.k_decay, dtype)
+            alpha = math_ops.cast(self.alpha, dtype)
+            t_mul = math_ops.cast(self._t_mul, dtype)
+            m_mul = math_ops.cast(self._m_mul, dtype)
 
-      global_step_recomp = math_ops.cast(step, dtype)
-      completed_fraction = global_step_recomp / first_decay_steps
+            global_step_recomp = math_ops.cast(step, dtype)
+            completed_fraction = global_step_recomp / first_decay_steps
 
-      def compute_step(completed_fraction, geometric=False):
-        """Helper for `cond` operation."""
-        if geometric:
-          i_restart = math_ops.floor(
-              math_ops.log(1.0 - completed_fraction * (1.0 - t_mul)) /
-              math_ops.log(t_mul))
+            def compute_step(completed_fraction, geometric=False):
+                """Helper for `cond` operation."""
+                if geometric:
+                    i_restart = math_ops.floor(
+                        math_ops.log(1.0 - completed_fraction *
+                                     (1.0 - t_mul)) / math_ops.log(t_mul))
 
-          sum_r = (1.0 - t_mul**i_restart) / (1.0 - t_mul)
-          completed_fraction = (completed_fraction - sum_r) / t_mul**i_restart
+                    sum_r = (1.0 - t_mul**i_restart) / (1.0 - t_mul)
+                    completed_fraction = (completed_fraction -
+                                          sum_r) / t_mul**i_restart
 
-        else:
-          i_restart = math_ops.floor(completed_fraction)
-          completed_fraction -= i_restart
+                else:
+                    i_restart = math_ops.floor(completed_fraction)
+                    completed_fraction -= i_restart
 
-        return i_restart, completed_fraction
+                return i_restart, completed_fraction
 
-      i_restart, completed_fraction = control_flow_ops.cond(
-          math_ops.equal(t_mul, 1.0),
-          lambda: compute_step(completed_fraction, geometric=False),
-          lambda: compute_step(completed_fraction, geometric=True))
+            i_restart, completed_fraction = control_flow_ops.cond(
+                math_ops.equal(t_mul, 1.0),
+                lambda: compute_step(completed_fraction, geometric=False),
+                lambda: compute_step(completed_fraction, geometric=True))
 
-      m_fac = m_mul**i_restart
-      cosine_decayed = 0.5 * m_fac * (1.0 + math_ops.cos(
-          constant_op.constant(math.pi) * completed_fraction))
-      decayed = (1 - alpha) * cosine_decayed + alpha
+            m_fac = m_mul**i_restart
+            cosine_decayed = 0.5 * m_fac * (1.0 + math_ops.cos(
+                constant_op.constant(math.pi) * math_ops.pow(completed_fraction, k_decay)))
+            decayed = (1 - alpha) * cosine_decayed + alpha
 
-      return math_ops.multiply(initial_learning_rate, decayed, name=name)
+            return math_ops.multiply(initial_learning_rate, decayed, name=name)
 
-  def get_config(self):
-    return {
-        "initial_learning_rate": self.initial_learning_rate,
-        "first_decay_steps": self.first_decay_steps,
-        "t_mul": self._t_mul,
-        "m_mul": self._m_mul,
-        "alpha": self.alpha,
-        "name": self.name
-    }
+    def get_config(self):
+        return {
+            "initial_learning_rate": self.initial_learning_rate,
+            "first_decay_steps": self.first_decay_steps,
+            "k_decay": self.k_decay,
+            "t_mul": self._t_mul,
+            "m_mul": self._m_mul,
+            "alpha": self.alpha,
+            "name": self.name
+        }
 
 
 @keras_export("keras.experimental.LinearCosineDecay")
 class LinearCosineDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses a linear cosine decay schedule.
+    """A LearningRateSchedule that uses a linear cosine decay schedule.
 
   See [Bello et al., ICML2017] Neural Optimizer Search with RL.
   https://arxiv.org/abs/1709.07417
@@ -744,6 +788,9 @@ class LinearCosineDecay(LearningRateSchedule):
   For the idea of warm starts here controlled by `num_periods`,
   see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
   with Warm Restarts. https://arxiv.org/abs/1608.03983
+
+  See [Tao Zhang & Wei Li, 2020], k-decay: A New Method For Learning Rate Schedule.
+  https://arxiv.org/abs/2004.05909
 
   Note that linear cosine decay is more aggressive than cosine decay and
   larger initial learning rates can typically be used.
@@ -764,7 +811,7 @@ class LinearCosineDecay(LearningRateSchedule):
     step = min(step, decay_steps)
     linear_decay = (decay_steps - step) / decay_steps
     cosine_decay = 0.5 * (
-        1 + cos(pi * 2 * num_periods * step / decay_steps))
+        1 + cos(pi * 2 * num_periods * (step / decay_steps) ^k_decay ))
     decayed = (alpha + linear_decay) * cosine_decay + beta
     return initial_learning_rate * decayed
   ```
@@ -772,9 +819,10 @@ class LinearCosineDecay(LearningRateSchedule):
   Example usage:
   ```python
   decay_steps = 1000
+  k_decay = 1.0
   lr_decayed_fn = (
     tf.keras.experimental.LinearCosineDecay(
-      initial_learning_rate, decay_steps))
+      initial_learning_rate, decay_steps, k_decay)
   ```
 
   You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
@@ -787,22 +835,23 @@ class LinearCosineDecay(LearningRateSchedule):
     step and outputs the decayed learning rate, a scalar `Tensor` of the same
     type as `initial_learning_rate`.
   """
-
-  def __init__(
-      self,
-      initial_learning_rate,
-      decay_steps,
-      num_periods=0.5,
-      alpha=0.0,
-      beta=0.001,
-      name=None):
-    """Applies linear cosine decay to the learning rate.
+    def __init__(self,
+                 initial_learning_rate,
+                 decay_steps,
+                 k_decay = 1.0,
+                 num_periods=0.5,
+                 alpha=0.0,
+                 beta=0.001,
+                 name=None):
+        """Applies linear cosine decay to the learning rate.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` Tensor or a Python
         number. The initial learning rate.
       decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
         Number of steps to decay over.
+      k_decay: A scalar `float32` or `float64` `Tensor` or a Python number. The k values of
+        the polynomial of k-decay method. Defaults to 1.0.
       num_periods: Number of periods in the cosine part of the decay.
         See computation above.
       alpha: See computation above.
@@ -810,51 +859,57 @@ class LinearCosineDecay(LearningRateSchedule):
       name: String.  Optional name of the operation.  Defaults to
         'LinearCosineDecay'.
     """
-    super(LinearCosineDecay, self).__init__()
+        super(LinearCosineDecay, self).__init__()
 
-    self.initial_learning_rate = initial_learning_rate
-    self.decay_steps = decay_steps
-    self.num_periods = num_periods
-    self.alpha = alpha
-    self.beta = beta
-    self.name = name
+        self.initial_learning_rate = initial_learning_rate
+        self.decay_steps = decay_steps
+        self.k_decay = k_decay
+        self.num_periods = num_periods
+        self.alpha = alpha
+        self.beta = beta
+        self.name = name
 
-  def __call__(self, step):
-    with ops.name_scope_v2(self.name or "LinearCosineDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
-          self.initial_learning_rate, name="initial_learning_rate")
-      dtype = initial_learning_rate.dtype
-      decay_steps = math_ops.cast(self.decay_steps, dtype)
-      num_periods = math_ops.cast(self.num_periods, dtype)
-      alpha = math_ops.cast(self.alpha, dtype)
-      beta = math_ops.cast(self.beta, dtype)
+    def __call__(self, step):
+        with ops.name_scope_v2(self.name or "LinearCosineDecay") as name:
+            initial_learning_rate = ops.convert_to_tensor_v2(
+                self.initial_learning_rate, name="initial_learning_rate")
+            dtype = initial_learning_rate.dtype
+            decay_steps = math_ops.cast(self.decay_steps, dtype)
+            k_decay = math_ops.cast(self.k_decay, dtype)
+            num_periods = math_ops.cast(self.num_periods, dtype)
+            alpha = math_ops.cast(self.alpha, dtype)
+            beta = math_ops.cast(self.beta, dtype)
 
-      global_step_recomp = math_ops.cast(step, dtype)
-      global_step_recomp = math_ops.minimum(global_step_recomp, decay_steps)
-      linear_decayed = (decay_steps - global_step_recomp) / decay_steps
-      completed_fraction = global_step_recomp / decay_steps
-      fraction = 2.0 * num_periods * completed_fraction
-      cosine_decayed = 0.5 * (
-          1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
+            global_step_recomp = math_ops.cast(step, dtype)
+            global_step_recomp = math_ops.minimum(global_step_recomp,
+                                                  decay_steps)
+            linear_decayed = (decay_steps - global_step_recomp) / decay_steps
+            completed_fraction = math_ops.pow(global_step_recomp / decay_steps, k_decay)
+            fraction = 2.0 * num_periods * completed_fraction
+            cosine_decayed = 0.5 * (
+                1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
 
-      linear_cosine_decayed = (alpha + linear_decayed) * cosine_decayed + beta
-      return math_ops.multiply(initial_learning_rate, linear_cosine_decayed,
-                               name=name)
+            linear_cosine_decayed = (alpha +
+                                     linear_decayed) * cosine_decayed + beta
+            return math_ops.multiply(initial_learning_rate,
+                                     linear_cosine_decayed,
+                                     name=name)
 
-  def get_config(self):
-    return {
-        "initial_learning_rate": self.initial_learning_rate,
-        "decay_steps": self.decay_steps,
-        "num_periods": self.num_periods,
-        "alpha": self.alpha,
-        "beta": self.beta,
-        "name": self.name
-    }
+    def get_config(self):
+        return {
+            "initial_learning_rate": self.initial_learning_rate,
+            "decay_steps": self.decay_steps,
+            "k_decay": self.k_decay,
+            "num_periods": self.num_periods,
+            "alpha": self.alpha,
+            "beta": self.beta,
+            "name": self.name
+        }
 
 
 @keras_export("keras.experimental.NoisyLinearCosineDecay")
 class NoisyLinearCosineDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses a noisy linear cosine decay schedule.
+    """A LearningRateSchedule that uses a noisy linear cosine decay schedule.
 
   See [Bello et al., ICML2017] Neural Optimizer Search with RL.
   https://arxiv.org/abs/1709.07417
@@ -862,6 +917,9 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
   For the idea of warm starts here controlled by `num_periods`,
   see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
   with Warm Restarts. https://arxiv.org/abs/1608.03983
+
+  See [Tao Zhang & Wei Li, 2020], k-decay: A New Method For Learning Rate Schedule.
+  https://arxiv.org/abs/2004.05909
 
   Note that linear cosine decay is more aggressive than cosine decay and
   larger initial learning rates can typically be used.
@@ -882,7 +940,7 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
     step = min(step, decay_steps)
     linear_decay = (decay_steps - step) / decay_steps)
     cosine_decay = 0.5 * (
-        1 + cos(pi * 2 * num_periods * step / decay_steps))
+        1 + cos(pi * 2 * num_periods * (step / decay_steps) ^ k_decay ))
     decayed = (alpha + linear_decay + eps_t) * cosine_decay + beta
     return initial_learning_rate * decayed
   ```
@@ -907,24 +965,25 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
     step and outputs the decayed learning rate, a scalar `Tensor` of the same
     type as `initial_learning_rate`.
   """
-
-  def __init__(
-      self,
-      initial_learning_rate,
-      decay_steps,
-      initial_variance=1.0,
-      variance_decay=0.55,
-      num_periods=0.5,
-      alpha=0.0,
-      beta=0.001,
-      name=None):
-    """Applies noisy linear cosine decay to the learning rate.
+    def __init__(self,
+                 initial_learning_rate,
+                 decay_steps,
+                 k_decay = 1.0,
+                 initial_variance=1.0,
+                 variance_decay=0.55,
+                 num_periods=0.5,
+                 alpha=0.0,
+                 beta=0.001,
+                 name=None):
+        """Applies noisy linear cosine decay to the learning rate.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` Tensor or a Python
         number. The initial learning rate.
       decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
         Number of steps to decay over.
+      k_decay: A scalar `float32` or `float64` `Tensor` or a Python number. The k values of
+        the polynomial of k-decay method. Defaults to 1.0.
       initial_variance: initial variance for the noise. See computation above.
       variance_decay: decay for the noise's variance. See computation above.
       num_periods: Number of periods in the cosine part of the decay.
@@ -934,71 +993,76 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
       name: String.  Optional name of the operation.  Defaults to
         'NoisyLinearCosineDecay'.
     """
-    super(NoisyLinearCosineDecay, self).__init__()
+        super(NoisyLinearCosineDecay, self).__init__()
 
-    self.initial_learning_rate = initial_learning_rate
-    self.decay_steps = decay_steps
-    self.initial_variance = initial_variance
-    self.variance_decay = variance_decay
-    self.num_periods = num_periods
-    self.alpha = alpha
-    self.beta = beta
-    self.name = name
+        self.initial_learning_rate = initial_learning_rate
+        self.decay_steps = decay_steps
+        self.k_decay = k_decay
+        self.initial_variance = initial_variance
+        self.variance_decay = variance_decay
+        self.num_periods = num_periods
+        self.alpha = alpha
+        self.beta = beta
+        self.name = name
 
-  def __call__(self, step):
-    with ops.name_scope_v2(self.name or "NoisyLinearCosineDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2(
-          self.initial_learning_rate, name="initial_learning_rate")
-      dtype = initial_learning_rate.dtype
-      decay_steps = math_ops.cast(self.decay_steps, dtype)
-      initial_variance = math_ops.cast(self.initial_variance, dtype)
-      variance_decay = math_ops.cast(self.variance_decay, dtype)
-      num_periods = math_ops.cast(self.num_periods, dtype)
-      alpha = math_ops.cast(self.alpha, dtype)
-      beta = math_ops.cast(self.beta, dtype)
+    def __call__(self, step):
+        with ops.name_scope_v2(self.name or "NoisyLinearCosineDecay") as name:
+            initial_learning_rate = ops.convert_to_tensor_v2(
+                self.initial_learning_rate, name="initial_learning_rate")
+            dtype = initial_learning_rate.dtype
+            decay_steps = math_ops.cast(self.decay_steps, dtype)
+            k_decay = math_ops.cast(self.k_decay, dtype)
+            initial_variance = math_ops.cast(self.initial_variance, dtype)
+            variance_decay = math_ops.cast(self.variance_decay, dtype)
+            num_periods = math_ops.cast(self.num_periods, dtype)
+            alpha = math_ops.cast(self.alpha, dtype)
+            beta = math_ops.cast(self.beta, dtype)
 
-      global_step_recomp = math_ops.cast(step, dtype)
-      global_step_recomp = math_ops.minimum(global_step_recomp, decay_steps)
-      linear_decayed = (decay_steps - global_step_recomp) / decay_steps
-      variance = initial_variance / (
-          math_ops.pow(1.0 + global_step_recomp, variance_decay))
-      std = math_ops.sqrt(variance)
-      noisy_linear_decayed = (
-          linear_decayed + random_ops.random_normal(
-              linear_decayed.shape, stddev=std))
+            global_step_recomp = math_ops.cast(step, dtype)
+            global_step_recomp = math_ops.minimum(global_step_recomp,
+                                                  decay_steps)
+            linear_decayed = (decay_steps - global_step_recomp) / decay_steps
+            variance = initial_variance / (math_ops.pow(
+                1.0 + global_step_recomp, variance_decay))
+            std = math_ops.sqrt(variance)
+            noisy_linear_decayed = (
+                linear_decayed +
+                random_ops.random_normal(linear_decayed.shape, stddev=std))
 
-      completed_fraction = global_step_recomp / decay_steps
-      fraction = 2.0 * num_periods * completed_fraction
-      cosine_decayed = 0.5 * (
-          1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
-      noisy_linear_cosine_decayed = (
-          (alpha + noisy_linear_decayed) * cosine_decayed + beta)
+            completed_fraction = math_ops.pow(global_step_recomp / decay_steps, k_decay)
+            fraction = 2.0 * num_periods * completed_fraction
+            cosine_decayed = 0.5 * (
+                1.0 + math_ops.cos(constant_op.constant(math.pi) * fraction))
+            noisy_linear_cosine_decayed = (
+                (alpha + noisy_linear_decayed) * cosine_decayed + beta)
 
-      return math_ops.multiply(
-          initial_learning_rate, noisy_linear_cosine_decayed, name=name)
+            return math_ops.multiply(initial_learning_rate,
+                                     noisy_linear_cosine_decayed,
+                                     name=name)
 
-  def get_config(self):
-    return {
-        "initial_learning_rate": self.initial_learning_rate,
-        "decay_steps": self.decay_steps,
-        "initial_variance": self.initial_variance,
-        "variance_decay": self.variance_decay,
-        "num_periods": self.num_periods,
-        "alpha": self.alpha,
-        "beta": self.beta,
-        "name": self.name
-    }
+    def get_config(self):
+        return {
+            "initial_learning_rate": self.initial_learning_rate,
+            "decay_steps": self.decay_steps,
+            "k_decay": self.k_decay,
+            "initial_variance": self.initial_variance,
+            "variance_decay": self.variance_decay,
+            "num_periods": self.num_periods,
+            "alpha": self.alpha,
+            "beta": self.beta,
+            "name": self.name
+        }
 
 
 @keras_export("keras.optimizers.schedules.serialize")
 def serialize(learning_rate_schedule):
-  return generic_utils.serialize_keras_object(learning_rate_schedule)
+    return generic_utils.serialize_keras_object(learning_rate_schedule)
 
 
 @keras_export("keras.optimizers.schedules.deserialize")
 def deserialize(config, custom_objects=None):
-  return generic_utils.deserialize_keras_object(
-      config,
-      module_objects=globals(),
-      custom_objects=custom_objects,
-      printable_module_name="decay")
+    return generic_utils.deserialize_keras_object(
+        config,
+        module_objects=globals(),
+        custom_objects=custom_objects,
+        printable_module_name="decay")
