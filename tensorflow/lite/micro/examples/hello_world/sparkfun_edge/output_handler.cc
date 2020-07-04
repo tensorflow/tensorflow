@@ -22,7 +22,7 @@ This function uses the device's LEDs to visually indicate the current y value.
 The y value is in the range -1 <= y <= 1. The LEDs (red, green, blue,
 and yellow) are physically lined up in the following order:
 
-                         [ R G B Y ]
+                         [ R B G Y ]
 
 The following table represents how we will light the LEDs for different values:
 
