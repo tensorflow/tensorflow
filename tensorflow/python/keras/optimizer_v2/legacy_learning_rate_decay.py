@@ -185,6 +185,7 @@ def polynomial_decay(learning_rate,
                      decay_steps,
                      end_learning_rate=0.0001,
                      power=1.0,
+                     k_decay = 1.5,
                      cycle=False,
                      name=None):
   """Applies a polynomial decay to the learning rate.
