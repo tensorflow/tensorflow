@@ -178,8 +178,8 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 }
 
 BFCAllocator::ChunkHandle BFCAllocator::AllocateChunk() {
-  const int kInvalidChunkHandle_int = kInvalidChunkHandle;
-  if (free_chunks_list_ != kInvalidChunkHandle_int) {
+  const int free_chunks_list_int = free_chunks_list_;
+  if (free_chunks_list_int != kInvalidChunkHandle) {
     ChunkHandle h = free_chunks_list_;
     Chunk* c = ChunkFromHandle(h);
     free_chunks_list_ = c->next;
@@ -343,7 +343,6 @@ void BFCAllocator::DeallocateRegions(
 
     VLOG(2) << "Deallocate region with ptr = " << it->ptr();
     // Remove all chunk registrations from Bins.
-    const int kInvalidChunkHandle_int = kInvalidChunkHandle;
     ChunkHandle h = region_manager_.get_handle(it->ptr());
     while (h != kInvalidChunkHandle) {
       const Chunk* c = ChunkFromHandle(h);
