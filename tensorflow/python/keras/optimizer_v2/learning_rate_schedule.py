@@ -64,6 +64,9 @@ class LearningRateSchedule(object):
 @keras_export("keras.optimizers.schedules.ExponentialDecay")
 class ExponentialDecay(LearningRateSchedule):
     """A LearningRateSchedule that uses an exponential decay schedule.
+  
+  See [Tao Zhang & Wei Li, 2020], k-decay: A New Method For Learning Rate Schedule.
+  https://arxiv.org/abs/2004.05909
 
   When training a model, it is often recommended to lower the learning rate as
   the training progresses. This schedule applies an exponential decay function
