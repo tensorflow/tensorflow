@@ -175,7 +175,8 @@ Status GenArgMethods(const tf2xla::Config& config,
   size_t num_args = ps.parameters_size();
   // feed_size() + variable_size() is the maximum number of args as an
   // implementation may not create an argument for an unused variable.
-  if (config.feed_size() + config.variable_size() < num_args) {
+  const int num_args_int = num_args;
+  if (config.feed_size() + config.variable_size() < num_args_int) {
     return errors::InvalidArgument(
         "mismatch between feed_size(", config.feed_size(), ")+variable_size(",
         config.variable_size(), ") and num_args(", num_args, ")");
@@ -229,8 +230,9 @@ Status GenResultMethods(const tf2xla::Config& config,
   int readonly_variables = absl::c_count_if(
       config.variable(),
       [](const tf2xla::Variable& var) { return var.readonly(); });
+  const int num_results_int = num_results;
   if (config.fetch_size() + config.variable_size() - readonly_variables !=
-      num_results) {
+      num_results_int) {
     return errors::InvalidArgument("mismatch between fetch_size(",
                                    config.fetch_size(), ")+variable_size(",
                                    config.variable_size(), ") and tuple_size(",
@@ -274,7 +276,7 @@ Status GenResultMethods(const tf2xla::Config& config,
 Status GenVariableMethods(const tf2xla::Config& config,
                           const xla::ProgramShapeProto& ps, string* methods) {
   size_t num_args = ps.parameters_size();
-  for (int i = config.feed_size(); i < num_args; ++i) {
+  for (int i = config.feed_size(), iter_limit = num_args; i < iter_limit; ++i) {
     std::vector<std::pair<string, string>> rewrites;
     TF_RETURN_IF_ERROR(
         AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
@@ -401,7 +403,8 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
       ::xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
   std::vector<string> buffer_infos_as_strings =
       BufferInfosToCppExpression(buffer_infos);
-  if (result_index < 0 || result_index >= buffer_infos.size()) {
+  const long long int buffer_infos_size = buffer_infos.size();
+  if (result_index < 0 || result_index >= buffer_infos_size) {
     return errors::InvalidArgument("result index: ", result_index,
                                    " is outside the range of temp sizes: [0,",
                                    buffer_infos.size(), ")");
@@ -797,8 +800,8 @@ Status ParseCppClass(const string& cpp_class, string* class_name,
     // Allow a fully qualified name that starts with "::".
     parts.erase(parts.begin());
   }
-  for (int i = 0; i < parts.size(); ++i) {
-    if (i < parts.size() - 1) {
+  for (int i = 0, iter_limit = parts.size(); i < iter_limit; ++i) {
+    if (i < iter_limit - 1) {
       TF_RETURN_IF_ERROR(ValidateCppIdent(
           parts[i], "in namespace component of cpp_class: " + cpp_class));
       namespaces->push_back(parts[i]);
