@@ -339,8 +339,8 @@ def _cuda_include_path(repository_ctx, cuda_config):
       Returns:
         A list of the gcc host compiler include directories.
       """
-    nvcc_path = repository_ctx.path("%s/bin/nvcc%s" % (
-        cuda_config.cuda_toolkit_path,
+    nvcc_path = repository_ctx.path("%s/nvcc%s" % (
+        cuda_config.config["cuda_nvcc_dir"],
         ".exe" if cuda_config.cpu_value == "Windows" else "",
     ))
 
@@ -352,7 +352,7 @@ def _cuda_include_path(repository_ctx, cuda_config):
     for one_line in err_out(result).splitlines():
         if one_line.startswith("#$ _TARGET_DIR_="):
             target_dir = (
-                cuda_config.cuda_toolkit_path + "/" + one_line.replace(
+                cuda_config.config["cuda_nvcc_dir"] + "/" + one_line.replace(
                     "#$ _TARGET_DIR_=",
                     "",
                 ) + "/include"
@@ -360,7 +360,8 @@ def _cuda_include_path(repository_ctx, cuda_config):
     inc_entries = []
     if target_dir != "":
         inc_entries.append(realpath(repository_ctx, target_dir))
-    inc_entries.append(realpath(repository_ctx, cuda_config.cuda_toolkit_path + "/include"))
+    inc_entries.append(
+        realpath(repository_ctx, cuda_config.config["cuda_include_dir"]))
     return inc_entries
 
 def enable_cuda(repository_ctx):
@@ -647,7 +648,7 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
 
       Returns:
         A struct containing the following fields:
-          cuda_toolkit_path: The CUDA toolkit installation directory.
+          tf_cuda_paths: The CUDA toolkit installation directory.
           cudnn_install_basedir: The cuDNN installation directory.
           cuda_version: The version of CUDA on the system.
           cudnn_version: The version of cuDNN on the system.
@@ -656,7 +657,7 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
       """
     config = find_cuda_config(repository_ctx, find_cuda_config_script, ["cuda", "cudnn"])
     cpu_value = get_cpu_value(repository_ctx)
-    toolkit_path = config["cuda_toolkit_path"]
+    tf_cuda_paths = config["tf_cuda_paths"]
 
     is_windows = cpu_value == "Windows"
     cuda_version = config["cuda_version"].split(".")
@@ -689,7 +690,7 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
         cusparse_version = cuda_version
 
     return struct(
-        cuda_toolkit_path = toolkit_path,
+        tf_cuda_paths = tf_cuda_paths,
         cuda_version = cuda_version,
         cublas_version = cublas_version,
         cusolver_version = cusolver_version,
@@ -819,7 +820,7 @@ filegroup(name="cudnn-include")
             "%{cufft_version}": "",
             "%{cusparse_version}": "",
             "%{cudnn_version}": "",
-            "%{cuda_toolkit_path}": "",
+            "%{tf_cuda_paths}": "",
         },
         "cuda/cuda/cuda_config.h",
     )
@@ -958,7 +959,7 @@ def _create_local_cuda_repository(repository_ctx):
     cublas_include_path = cuda_config.config["cublas_include_dir"]
     cudnn_header_dir = cuda_config.config["cudnn_include_dir"]
     cupti_header_dir = cuda_config.config["cupti_include_dir"]
-    nvvm_libdevice_dir = cuda_config.config["nvvm_library_dir"]
+    cuda_libdevice_dir = cuda_config.config["cuda_libdevice_dir"]
 
     # Create genrule to copy files from the installed CUDA toolkit into execroot.
     copy_rules = [
@@ -971,7 +972,7 @@ def _create_local_cuda_repository(repository_ctx):
         make_copy_dir_rule(
             repository_ctx,
             name = "cuda-nvvm",
-            src_dir = nvvm_libdevice_dir,
+            src_dir = cuda_libdevice_dir,
             out_dir = "cuda/nvvm/libdevice",
         ),
         make_copy_dir_rule(
@@ -1067,10 +1068,10 @@ def _create_local_cuda_repository(repository_ctx):
         repository_ctx,
         name = "cuda-bin",
         srcs = [
-            cuda_config.cuda_toolkit_path + "/bin/" + "crt/link.stub",
-            cuda_config.cuda_toolkit_path + "/bin/" + "nvlink" + file_ext,
-            cuda_config.cuda_toolkit_path + "/bin/" + "fatbinary" + file_ext,
-            cuda_config.cuda_toolkit_path + "/bin/" + "bin2c" + file_ext,
+            cuda_config.config["cuda_link_stub_dir"] + "link.stub",
+            cuda_config.config["cuda_nvlink_dir"]    + "nvlink"    + file_ext,
+            cuda_config.config["cuda_fatbinary_dir"] + "fatbinary" + file_ext,
+            cuda_config.config["cuda_bin2c_dir"]     + "bin2c"     + file_ext,
         ],
         outs = [
             "cuda/bin/" + "crt/link.stub",
@@ -1161,10 +1162,10 @@ def _create_local_cuda_repository(repository_ctx):
     )
     cuda_defines = {}
     cuda_defines["%{builtin_sysroot}"] = tf_sysroot
-    cuda_defines["%{cuda_toolkit_path}"] = ""
+    cuda_defines["%{tf_cuda_paths}"] = ""
     cuda_defines["%{compiler}"] = "unknown"
     if is_cuda_clang:
-        cuda_defines["%{cuda_toolkit_path}"] = cuda_config.config["cuda_toolkit_path"]
+        cuda_defines["%{tf_cuda_paths}"] = cuda_config.config["tf_cuda_paths"]
         cuda_defines["%{compiler}"] = "clang"
 
     host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX)
@@ -1225,7 +1226,7 @@ def _create_local_cuda_repository(repository_ctx):
         cuda_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-fno-canonical-system-headers\""
 
         file_ext = ".exe" if is_windows(repository_ctx) else ""
-        nvcc_path = "%s/nvcc%s" % (cuda_config.config["cuda_binary_dir"], file_ext)
+        nvcc_path = "%s/nvcc%s" % (cuda_config.config["cuda_nvcc_dir"], file_ext)
         cuda_defines["%{compiler_deps}"] = ":crosstool_wrapper_driver_is_not_gcc"
         cuda_defines["%{win_compiler_deps}"] = ":windows_msvc_wrapper_files"
 
@@ -1279,7 +1280,7 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cufft_version}": cuda_config.cufft_version,
             "%{cusparse_version}": cuda_config.cusparse_version,
             "%{cudnn_version}": cuda_config.cudnn_version,
-            "%{cuda_toolkit_path}": cuda_config.cuda_toolkit_path,
+            "%{tf_cuda_paths}": cuda_config.tf_cuda_paths,
         },
     )
 

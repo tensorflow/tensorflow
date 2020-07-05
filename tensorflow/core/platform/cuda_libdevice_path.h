@@ -36,7 +36,9 @@ inline std::vector<string> CandidateCudaRoots(
   }
 
   // "." is our last resort, even though it probably won't work.
-  candidates.push_back(".");
+  if (use_working_directory) {
+    candidates.push_back(".");
+  }
 
   return candidates;
 }

@@ -836,11 +836,14 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
 def set_gcc_host_compiler_path(environ_cp):
   """Set GCC_HOST_COMPILER_PATH."""
   default_gcc_host_compiler_path = which('gcc') or ''
-  cuda_bin_symlink = '%s/bin/gcc' % environ_cp.get('CUDA_TOOLKIT_PATH')
-
-  if os.path.islink(cuda_bin_symlink):
-    # os.readlink is only available in linux
-    default_gcc_host_compiler_path = os.path.realpath(cuda_bin_symlink)
+  cuda_bin_symlinks = [
+      '%s/bin/gcc' % p
+      for p in environ_cp.get('TF_CUDA_PATHS').split(',')
+  ]
+  for cuda_bin_symlink in cuda_bin_symlinks:
+    if os.path.islink(cuda_bin_symlink):
+      # os.readlink is only available in linux
+      default_gcc_host_compiler_path = os.path.realpath(cuda_bin_symlink)
 
   gcc_host_compiler_path = prompt_loop_or_load_from_env(
       environ_cp,
@@ -985,19 +988,25 @@ def get_native_cuda_compute_capabilities(environ_cp):
   Returns:
     string of native cuda compute capabilities, separated by comma.
   """
-  device_query_bin = os.path.join(
-      environ_cp.get('CUDA_TOOLKIT_PATH'), 'extras/demo_suite/deviceQuery')
-  if os.path.isfile(device_query_bin) and os.access(device_query_bin, os.X_OK):
+  for cuda_toolkit_path in environ_cp.get('TF_CUDA_PATHS'):
+    device_query_bin = os.path.join(
+        cuda_toolkit_path, 'extras/demo_suite/deviceQuery')
+    if not os.path.isfile(device_query_bin):
+      continue
+    if not os.access(device_query_bin, os.X_OK):
+      continue
+
     try:
       output = run_shell(device_query_bin).split('\n')
-      pattern = re.compile('[0-9]*\\.[0-9]*')
-      output = [pattern.search(x) for x in output if 'Capability' in x]
-      output = ','.join(x.group() for x in output if x is not None)
     except subprocess.CalledProcessError:
-      output = ''
-  else:
-    output = ''
-  return output
+      continue
+
+    pattern = re.compile('[0-9]*\\.[0-9]*')
+    output = [pattern.search(x) for x in output if 'Capability' in x]
+    output = ','.join(x.group() for x in output if x is not None)
+    return output
+
+  return ''
 
 
 def set_tf_cuda_compute_capabilities(environ_cp):
@@ -1303,7 +1312,7 @@ def configure_ios():
 
 
 def validate_cuda_config(environ_cp):
-  """Run find_cuda_config.py and return cuda_toolkit_path, or None."""
+  """Run find_cuda_config.py and maybe set TF_CUDA_PATHS in environ_cp."""
 
   def maybe_encode_env(env):
     """Encodes unicode in env to str on Windows python 2.x."""
@@ -1346,6 +1355,9 @@ def validate_cuda_config(environ_cp):
   print('    %s' % config['cudnn_library_dir'])
   print('    %s' % config['cudnn_include_dir'])
 
+  print('Set TF_CUDA_PATHS to:')
+  print('    %s' % config['tf_cuda_paths'])
+
   if 'tensorrt_version' in config:
     print('Found TensorRT %s in:' % config['tensorrt_version'])
     print('    %s' % config['tensorrt_library_dir'])
@@ -1358,7 +1370,8 @@ def validate_cuda_config(environ_cp):
 
   print('\n')
 
-  environ_cp['CUDA_TOOLKIT_PATH'] = config['cuda_toolkit_path']
+  environ_cp['TF_CUDA_PATHS'] = config['tf_cuda_paths']
+
   return True
 
 

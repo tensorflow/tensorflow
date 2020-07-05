@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 
 #include <stdlib.h>
@@ -26,8 +27,8 @@ limitations under the License.
 namespace tensorflow {
 
 std::vector<string> CandidateCudaRoots() {
-  VLOG(3) << "CUDA root = " << TF_CUDA_TOOLKIT_PATH;
-  return {TF_CUDA_TOOLKIT_PATH};
+  VLOG(3) << "Candidate CUDA roots = " << TF_CUDA_PATHS;
+  return absl::StrSplit(TF_CUDA_PATHS, ",");
 }
 
 }  // namespace tensorflow
