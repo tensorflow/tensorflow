@@ -314,10 +314,10 @@ def ctc_greedy_decoder(inputs,
     sequence_length: 1-D `int32` vector containing sequence lengths, having size
       `[batch_size]`.
     merge_repeated: Boolean.  Default: True.
-    blank_index: (Optional). Default: -1. The class index to use for the blank label.
-      Negative values will start from num_classes, ie, -1 will reproduce the
-      ctc_greedy_decoder behavior of using num_classes - 1 for the blank symbol,
-      which, actually, corresponds to the default.
+    blank_index: (Optional). Default: -1. The class index to use for the blank
+      label. Negative values will start from num_classes, ie, -1 will reproduce
+      the ctc_greedy_decoder behavior of using num_classes - 1 for the blank
+      symbol, which, actually, corresponds to the default.
 
   Returns:
     A tuple `(decoded, neg_sum_logits)` where
