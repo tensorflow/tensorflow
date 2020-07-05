@@ -34,36 +34,10 @@ namespace tflite {
 // registered Ops as the template parameter.
 class MicroOpResolver : public OpResolver {
  public:
-  // TODO(b/149408647): The op_type parameter enables a gradual transfer to
-  // selective registration of the parse function. It should be removed once we
-  // no longer need to use ParseOpData (from flatbuffer_conversions.h) as part
-  // of the MicroMutableOpResolver.
   typedef TfLiteStatus (*BuiltinParseFunction)(const Operator* op,
-                                               BuiltinOperator op_type,
                                                ErrorReporter* error_reporter,
                                                BuiltinDataAllocator* allocator,
                                                void** builtin_data);
-
-  // Registers a Builtin Operator with the MicroOpResolver.
-  //
-  // Only the first call for a given BuiltinOperator enum will be successful.
-  // i.e. if this function is called again for a previously added
-  // BuiltinOperator, the MicroOpResolver will be unchanged and this function
-  // will return kTfLiteError.
-  //
-  // TODO(b/149408647): remove this API once the templated AddBuiltin API in
-  // MicroMutableOpResolver is properly implemented.
-  virtual TfLiteStatus AddBuiltin(tflite::BuiltinOperator op,
-                                  TfLiteRegistration* registration) = 0;
-
-  // Registers a Custom Operator with the MicroOpResolver.
-  //
-  // Only the first call for a given name will be successful. i.e. if this
-  // function is called again for a previously added Custom Operator, the
-  // MicroOpResolver will be unchanged and this function will return
-  // kTfLiteError.
-  virtual TfLiteStatus AddCustom(const char* name,
-                                 TfLiteRegistration* registration) = 0;
 
   // Returns the Op registration struct corresponding to the enum code from the
   // flatbuffer schema. Returns nullptr if the op is not found or if op ==

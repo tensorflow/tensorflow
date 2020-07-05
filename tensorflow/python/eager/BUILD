@@ -275,7 +275,7 @@ cuda_py_test(
         ":test",
         "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
     ],
 )
 
@@ -462,6 +462,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:sendrecv_ops_gen",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
@@ -559,6 +560,7 @@ py_library(
         "//tensorflow/python:graph_to_function_def",
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -586,6 +588,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:unconnected_gradients",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "@six_archive//:six",
     ],
@@ -612,6 +615,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
     ],
 )
 
@@ -768,7 +772,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
         "//tensorflow/python/training/tracking:base",
     ],
 )

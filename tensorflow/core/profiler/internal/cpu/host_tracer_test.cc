@@ -150,7 +150,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   ASSERT_EQ(space.planes_size(), 1);
   const auto& plane = space.planes(0);
   XPlaneVisitor xplane(&plane);
-  ASSERT_EQ(plane.name(), kHostThreads);
+  ASSERT_EQ(plane.name(), kHostThreadsPlaneName);
   ASSERT_EQ(plane.lines_size(), 1);
   ASSERT_EQ(plane.event_metadata_size(), 7);
   ASSERT_EQ(plane.stat_metadata_size(), 2);

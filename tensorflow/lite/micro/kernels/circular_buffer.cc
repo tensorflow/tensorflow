@@ -89,10 +89,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, 1, input->dims->data[2]);
   TF_LITE_ENSURE_EQ(context, output->dims->data[3], input->dims->data[3]);
 
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   // The circular buffer custom operator currently only supports int8.
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteInt8);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.

@@ -554,7 +554,7 @@ inline void TileGradientOp<Device, Tmultiples>::HandleCase(
     OpKernelContext* context, const std::vector<Tmultiples>& input_dims,
     const gtl::ArraySlice<Tmultiples>& multiples_array, Tensor* result) {
   LOG(FATAL) << "TileGradientOp: Invalid combination of Device, DT and NDIM: "
-             << MakeTypeIndex<Device>().name() << ", " << DataTypeString(DT)
+             << TypeIndex::Make<Device>().name() << ", " << DataTypeString(DT)
              << ", " << NDIM;
 }
 

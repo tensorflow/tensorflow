@@ -205,7 +205,7 @@ class RaggedWhereOpTest(test_util.TensorFlowTestCase,
           message='Input shapes do not match.'),
   ])
   def testRaggedWhereErrors(self, condition, error, message, x=None, y=None):
-    with self.assertRaisesRegexp(error, message):
+    with self.assertRaisesRegex(error, message):
       ragged_where_op.where(condition, x, y)
 
 

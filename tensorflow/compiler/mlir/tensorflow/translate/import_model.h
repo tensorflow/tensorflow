@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/loader.h"
@@ -67,6 +68,8 @@ ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
                           mlir::MLIRContext* context);
 
 // Serialize a MLIR module to a string.
+std::string MlirModuleToString(mlir::ModuleOp module,
+                               mlir::OpPrintingFlags flags);
 std::string MlirModuleToString(mlir::ModuleOp m, bool show_debug_info = false);
 
 }  // namespace tensorflow

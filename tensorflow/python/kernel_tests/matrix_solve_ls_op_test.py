@@ -107,7 +107,7 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
       np_ans = _SolveWithNumpy(x, y, l2_regularizer=l2_regularizer)
       np_r = np.dot(np.conj(a.T), b - np.dot(a, np_ans))
       np_r_norm = np.sqrt(np.sum(np.conj(np_r) * np_r))
-      if batch_shape is not ():
+      if batch_shape != ():
         a = np.tile(a, batch_shape + (1, 1))
         b = np.tile(b, batch_shape + (1, 1))
         np_ans = np.tile(np_ans, batch_shape + (1, 1))
@@ -335,7 +335,7 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
             ops.device("/cpu:0"):
           matrix, rhs = _GenerateTestData(matrix_shape, num_rhs)
           x = linalg_ops.matrix_solve_ls(matrix, rhs, regularizer)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(x),
@@ -350,7 +350,7 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
                 ops.device("/gpu:0"):
             matrix, rhs = _GenerateTestData(matrix_shape, num_rhs)
             x = linalg_ops.matrix_solve_ls(matrix, rhs, regularizer)
-            variables.global_variables_initializer().run()
+            self.evaluate(variables.global_variables_initializer())
             self.run_op_benchmark(
                 sess,
                 control_flow_ops.group(x),

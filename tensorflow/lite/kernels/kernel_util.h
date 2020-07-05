@@ -15,10 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_
 
-#include <algorithm>
+#include <stdint.h>
+
 #include <limits>
 
-#include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 
@@ -30,37 +30,35 @@ inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
 }
 inline const TfLiteTensor* GetInput(const TfLiteContext* context,
                                     const TfLiteNode* node, int index) {
-  return &context
-              ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
+  return &context->tensors[node->inputs->data[index]];
 }
 // Note: You must check if result is not null:
 // TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
 // TF_LITE_ENSURE(context, my_tensor != nullptr);
 inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
                                       const TfLiteNode* node, int index) {
-  TfLiteTensor* tensor =
-      &context->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
+  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
   return (tensor->is_variable) ? tensor : nullptr;
 }
 inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                                int index) {
-  return &context
-              ->tensors[flatbuffers::EndianScalar(node->outputs->data[index])];
+  return &context->tensors[node->outputs->data[index]];
 }
+#ifndef TF_LITE_STATIC_MEMORY
 inline TfLiteTensor* GetTemporary(TfLiteContext* context,
                                   const TfLiteNode* node, int index) {
-  return &context->tensors[flatbuffers::EndianScalar(
-      node->temporaries->data[index])];
+  return &context->tensors[node->temporaries->data[index]];
 }
 inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
                                             const TfLiteNode* node, int index) {
   return &context->tensors[node->intermediates->data[index]];
 }
-inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
-inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
 inline int NumIntermediates(const TfLiteNode* node) {
   return node->intermediates->size;
 }
+#endif  // TF_LITE_STATIC_MEMORY
+inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
+inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
 
 inline int64_t NumElements(const TfLiteIntArray* dims) {
   int64_t count = 1;
@@ -80,8 +78,7 @@ inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
   const bool use_tensor = index < node->inputs->size &&
                           node->inputs->data[index] != kTfLiteOptionalTensor;
   if (use_tensor) {
-    return &context
-                ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
+    return &context->tensors[node->inputs->data[index]];
   }
   return nullptr;
 }
@@ -174,7 +171,7 @@ void CalculateActivationRange(TfLiteFusedActivation activation,
   } else if (activation == kTfLiteActRelu6) {
     *activation_min = 0;
     *activation_max = 6;
-  } else if (activation == kTfLiteActRelu1) {
+  } else if (activation == kTfLiteActReluN1To1) {
     *activation_min = -1;
     *activation_max = 1;
   } else {

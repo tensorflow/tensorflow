@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -39,7 +41,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   for (int i = kInputTensor1 + 1; i < num_inputs; ++i) {
     const TfLiteTensor* input = GetInput(context, node, i);
     TF_LITE_ENSURE(context, HaveSameShapes(input1, input));
-    TF_LITE_ENSURE_EQ(context, input1->type, input->type);
+    TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input->type);
   }
 
   // Use the first input node's dimension to be the dimension of the output

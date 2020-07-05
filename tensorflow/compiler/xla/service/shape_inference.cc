@@ -256,6 +256,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLogistic:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
@@ -2126,8 +2127,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply, init_values, element_types,
                                         num_reduced_args));
 
-  std::set<int64> dimensions_to_reduce_set(dimensions_to_reduce.begin(),
-                                           dimensions_to_reduce.end());
+  absl::flat_hash_set<int64> dimensions_to_reduce_set;
+  for (int64 dim_to_reduce : dimensions_to_reduce) {
+    if (!dimensions_to_reduce_set.insert(dim_to_reduce).second) {
+      return InvalidArgument("Duplicate reduction dimension: %d",
+                             dim_to_reduce);
+    }
+  }
+
   std::vector<int64> new_dimensions;
   std::vector<bool> new_is_dynamic;
   for (int i = 0; i < arg.rank(); ++i) {
@@ -2248,12 +2255,17 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferSetDimensionSizeShape(
-    const Shape& shape, int64 dimension) {
+    const Shape& shape, const Shape& val_shape, int64 dimension) {
   if (dimension < 0 || dimension >= shape.rank()) {
     return InvalidArgument("SetDimensionSize dimension out of bounds: %d.",
                            dimension);
   }
 
+  if (val_shape.rank() != 0 || val_shape.element_type() != S32) {
+    return InvalidArgument(
+        "SetDimensionSize's value has to be S32 scalar, got %s",
+        val_shape.ToString());
+  }
   // TODO(b/119580730): Remove this restriction when very large dimension size
   // is needed.
   if (shape.dimensions(dimension) > std::numeric_limits<int32>::max()) {

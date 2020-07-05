@@ -59,6 +59,12 @@ void RecordTFDataBytesFetched(int64 num_bytes);
 // Records the time spent in ItertatorResource::GetNext() in microseconds.
 void RecordTFDataGetNextDuration(uint64 duration_us);
 
+// Records the time spent between IteratorResource::GetNext() calls
+// in microseconds. Time is measured from the point of returning data from
+// GetNext() to the point of new data being requested.
+// This elapsed time corresponds to time spent outside the GetNext() function.
+void RecordTFDataGetNextTimeBetween(uint64 duration_us);
+
 // Records the number of times each tf.data fingerprint is used
 // to measure duplicate pre-processing.
 //

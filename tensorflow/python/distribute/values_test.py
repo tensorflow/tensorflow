@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import copy
 import itertools
 import os
@@ -30,11 +29,14 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import test_util as ds_test_util
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import tpu_values
-from tensorflow.python.distribute import values
+from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -53,7 +55,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.saved_model.model_utils import mode_keys
+from tensorflow.python.saved_model import save_context
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
@@ -66,7 +68,7 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
   def testGetEager(self):
     one = constant_op.constant(1)
     two = constant_op.constant(2)
-    v = values.DistributedValues((one, two))
+    v = values_lib.DistributedValues((one, two))
     self.assertEqual(one, v._get())
     with distribute_lib.ReplicaContext(None, 1):
       self.assertEqual(two, v._get())
@@ -75,14 +77,15 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode(), ops.Graph().as_default():
       one = constant_op.constant(1)
       two = constant_op.constant(2)
-      v = values.DistributedValues((one, two))
+      v = values_lib.DistributedValues((one, two))
       self.assertEqual(one, v._get())
       with distribute_lib.ReplicaContext(None, 1):
         self.assertEqual(two, v._get())
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.all_strategies_minus_default,
+          distribution=(strategy_combinations.all_strategies_minus_default +
+                        strategy_combinations.multiworker_strategies),
           mode=["eager"]
       ))
   def testMakeDistributedValueFromTensor(self, distribution):
@@ -96,12 +99,13 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
     distributed_values = (
         distribution.experimental_distribute_values_from_function(value_fn))
     self.assertAllEqual(
-        distribution.experimental_local_results(distributed_values),
+        ds_test_util.gather(distribution, distributed_values),
         constant_op.constant(1., shape=(distribution.num_replicas_in_sync)))
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.all_strategies_minus_default,
+          distribution=(strategy_combinations.all_strategies_minus_default +
+                        strategy_combinations.multiworker_strategies),
           mode=["eager"]
       ))
   def testMakeDistributedValueSingleNumpyArrayConstant(self, distribution):
@@ -114,14 +118,14 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
 
     distributed_values = (
         distribution.experimental_distribute_values_from_function(value_fn))
-    local_results = distribution.experimental_local_results(distributed_values)
-    self.assertLen(local_results, distribution.num_replicas_in_sync)
-    for result in local_results:
-      self.assertAllEqual(result, [1., 2., 3.])
+    self.assertAllEqual(
+        ds_test_util.gather(distribution, distributed_values).numpy(),
+        [[1., 2., 3.]] * distribution.num_replicas_in_sync)
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.all_strategies_minus_default,
+          distribution=(strategy_combinations.all_strategies_minus_default +
+                        strategy_combinations.multiworker_strategies),
           mode=["eager"]
       ))
   def testMakeDistributedValueTupleConstant(self, distribution):
@@ -133,13 +137,18 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
       return tuple_value
     distributed_values = (
         distribution.experimental_distribute_values_from_function(value_fn))
-    local_results = distribution.experimental_local_results(distributed_values)
-    for result in local_results:
-      self.assertAllEqual(result, (1., 2., 3.))
+    distributed_values = ds_test_util.gather(distribution, distributed_values)
+
+    # Expected output for 2 replicas:
+    # ([1.0, 1.0], [2.0, 2.0], [3.0, 3.0])
+    expected = tuple([v for i in range(distribution.num_replicas_in_sync)]
+                     for v in tuple_value)
+    self.assertAllEqual(distributed_values, expected)
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.all_strategies_minus_default,
+          distribution=(strategy_combinations.all_strategies_minus_default +
+                        strategy_combinations.multiworker_strategies),
           mode=["eager"]
       ))
   def testMakeDistributedValueNestedStructurePerReplica(self, distribution):
@@ -150,14 +159,19 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
       per_replica = []
       for val in tuple_value:
         per_replica.append(val * ctx.replica_id_in_sync_group)
-      return per_replica
+      return tuple(per_replica)
     distributed_values = (
         distribution.experimental_distribute_values_from_function(value_fn))
-    for i in range(distribution.num_replicas_in_sync):
-      self.assertAllEqual(
-          values.select_replica(i, distributed_values),
-          (1. * i, 2. * i, 3. * i))
+    distributed_values = ds_test_util.gather(distribution, distributed_values)
 
+    # Expected output for 2 replicas:
+    # ([0.0, 1.0], [0.0, 2.0], [0.0, 3.0])
+    expected = tuple([v * i for i in range(distribution.num_replicas_in_sync)]
+                     for v in tuple_value)
+    self.assertAllEqual(distributed_values, expected)
+
+  # NOTE(priyag): Cannot test this with MultiWorkerMirroredStrategy because
+  # collective ops do not support SparseTensors.
   @combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.all_strategies_minus_default,
@@ -181,7 +195,8 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.all_strategies_minus_default,
+          distribution=(strategy_combinations.all_strategies_minus_default +
+                        strategy_combinations.multiworker_strategies),
           mode=["eager"]
       ))
   def testMakeDistributedValueExtractFromArray(self, distribution):
@@ -192,13 +207,14 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
       return multiple_values[ctx.replica_id_in_sync_group]
     distributed_values = (
         distribution.experimental_distribute_values_from_function(value_fn))
-    local_results = distribution.experimental_local_results(distributed_values)
-    for i in range(distribution.num_replicas_in_sync):
-      self.assertAllEqual(local_results[i], i)
+    distributed_values = ds_test_util.gather(distribution, distributed_values)
+    expected = range(distribution.num_replicas_in_sync)
+    self.assertAllEqual(distributed_values, expected)
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.all_strategies_minus_default,
+          distribution=(strategy_combinations.all_strategies_minus_default +
+                        strategy_combinations.multiworker_strategies),
           mode=["eager"]
       ))
   def testMakeDistributedValueAndRun(self, distribution):
@@ -216,38 +232,35 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
       def computation(x):
         return math_ops.square(x)
 
-      outputs = distribution.experimental_local_results(
-          distribution.run(computation,
-                           args=(distributed_values,)))
+      outputs = ds_test_util.gather(
+          distribution,
+          distribution.run(computation, args=(distributed_values,)))
       return outputs
 
-    local_results = run()
+    results = run()
 
-    for i in range(distribution.num_replicas_in_sync):
-      self.assertAllEqual(local_results[i], i**2)
+    expected = [i**2 for i in range(distribution.num_replicas_in_sync)]
+    self.assertAllEqual(results, expected)
 
   @combinations.generate(
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
               # TODO(b/137795644): support CentralStroageStrategy
               # strategy_combinations.central_storage_strategy_with_two_gpus,
-          ],
-          mode=["eager"]
-      ))
+          ] + strategy_combinations.multiworker_strategies,
+          mode=["eager"]))
   def testMakeDistributedValueDefaultDevicePlacement(self, distribution):
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
-    multiple_values = []
-    for i in range(distribution.num_replicas_in_sync):
-      multiple_values.append(constant_op.constant(1.0))
-
     def value_fn(ctx):
-      return multiple_values[ctx.replica_id_in_sync_group]
+      del ctx
+      return constant_op.constant(1.0)
     distributed_values = (
         distribution.experimental_distribute_values_from_function(value_fn))
-    for i in range(distribution.num_replicas_in_sync):
+    for i in range(len(distribution.extended.worker_devices)):
       self.assertAllEqual(distributed_values._values[i].device,
                           "/job:localhost/replica:0/task:0/device:CPU:0")
 
@@ -256,25 +269,24 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
               # TODO(b/137795644): support CentralStroageStrategy
               # strategy_combinations.central_storage_strategy_with_two_gpus,
-          ],
-          mode=["eager"]
-      ))
+          ] + strategy_combinations.multiworker_strategies,
+          mode=["eager"]))
   def testMakeDistributedValueExplicitDevicePlacement(self, distribution):
     if not tf2.enabled():
       self.skipTest("Only V2 is supported.")
     worker_devices = distribution.extended.worker_devices
-    multiple_values = []
-    for i in range(distribution.num_replicas_in_sync):
-      with ops.device(worker_devices[i]):
-        multiple_values.append(array_ops.identity(1.0))
-
     def value_fn(ctx):
-      return multiple_values[ctx.replica_id_in_sync_group]
+      # In multi client setup, worker_devices is just the devices on that
+      # worker.
+      worker_device_id = ctx.replica_id_in_sync_group % len(worker_devices)
+      with ops.device(worker_devices[worker_device_id]):
+        return array_ops.identity(1.0)
     distributed_values = (
         distribution.experimental_distribute_values_from_function(value_fn))
-    for i in range(distribution.num_replicas_in_sync):
+    for i in range(len(distribution.extended.worker_devices)):
       self.assertAllEqual(distributed_values._values[i].device,
                           worker_devices[i])
 
@@ -288,14 +300,14 @@ class DistributedDelegateTest(test.TestCase):
       def __init__(self, x):
         self.x = x
 
-    v = values.DistributedDelegate((Foo(7), Foo(8)))
+    v = values_lib.DistributedDelegate((Foo(7), Foo(8)))
     self.assertEqual(7, v.x)
     with self.assertRaises(AttributeError):
       _ = v.y
 
   @test_util.run_in_graph_and_eager_modes
   def testOperatorOverride(self):
-    v = values.DistributedDelegate((7, 8))
+    v = values_lib.DistributedDelegate((7, 8))
     # v should act like int(7).
     self.assertEqual(8, v + 1)
     self.assertEqual(10, 3 + v)
@@ -345,7 +357,7 @@ class DistributedDelegateTest(test.TestCase):
       def __init__(self, x):
         self.x = x
 
-    v = values.DistributedDelegate((Foo(7), Foo(8)))
+    v = values_lib.DistributedDelegate((Foo(7), Foo(8)))
     v_shallow_copy = copy.copy(v)
     self.assertEqual(v.x, v_shallow_copy.x)
     v_deep_copy = copy.deepcopy(v)
@@ -366,7 +378,7 @@ def _make_mirrored_val(init_val=5.0):
   for d, _ in zip(devices, ["v", "v/replica"]):
     with ops.device(d):
       v.append(constant_op.constant(init_val))
-  return values.Mirrored(v)
+  return values_lib.Mirrored(v)
 
 
 def _make_mirrored():
@@ -376,180 +388,19 @@ def _make_mirrored():
     with ops.device(d):
       v.append(variable_scope.get_variable(
           name=n, initializer=init, use_resource=True))
-  mirrored = values.MirroredVariable(
+  mirrored = values_lib.MirroredVariable(
       None, v, variable_scope.VariableAggregation.SUM)
   return mirrored
 
 
-class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
-
-  def _is_per_replica(self, result, expected, klass=values.PerReplica):
-    self.assertIsInstance(result, klass)
-    for i, exp in enumerate(expected):
-      self.assertEqual(exp, result.values[i])
-
-  def testNested(self):
-    result = values.regroup((_nested_value("1"), _nested_value("2")))
-    self.assertIsInstance(result, tuple)
-    self.assertLen(result, 3)
-    self._is_per_replica(result[0], ["a1", "a2"])
-    self._is_per_replica(result[2], ["h1", "h2"])
-
-    self.assertIsInstance(result[1], list)
-    self.assertLen(result[1], 3)
-    self._is_per_replica(result[1][0], ["b1", "b2"])
-    self._is_per_replica(result[1][2], ["g1", "g2"])
-
-    self.assertIsInstance(result[1][1], dict)
-    self.assertEqual(set(["c", "e"]), set(result[1][1].keys()))
-    self._is_per_replica(result[1][1]["c"], ["d1", "d2"])
-    self._is_per_replica(result[1][1]["e"], ["f1", "f2"])
-
-    # Also test that we can undo the merge using select_replica()
-    self.assertEqual(_nested_value("1"),
-                     values.select_replica(0, result))
-    self.assertEqual(_nested_value("2"),
-                     values.select_replica(1, result))
-    # select_device_mirrored() should fail due to non-mirrored values
-    with self.assertRaises(TypeError):
-      values.select_replica_mirrored(0, result)
-    with self.assertRaises(TypeError):
-      values.select_replica_mirrored(1, result)
-
-  def testRegroupKeepsDictBasedClass(self):
-    class DictBasedClass(dict):
-      """Dummy class inherited from a dict."""
-
-    result = values.regroup(
-        (DictBasedClass(a="a1", b="b1"), DictBasedClass(a="a2", b="b2")))
-    self.assertIsInstance(result, DictBasedClass)
-    self._is_per_replica(result["a"], ["a1", "a2"])
-    self._is_per_replica(result["b"], ["b1", "b2"])
-
-  def testWrapClass(self):
-    # Normally a mirrored value would be the same across devices, but
-    # for a test it is convenient to be able to tell the values apart.
-    result = values.regroup((_nested_value("1"), _nested_value("2")),
-                            values.Mirrored)
-    self.assertIsInstance(result, tuple)
-    self.assertLen(result, 3)
-    self._is_per_replica(result[0], ["a1", "a2"], values.Mirrored)
-    self._is_per_replica(result[2], ["h1", "h2"], values.Mirrored)
-
-    self.assertIsInstance(result[1], list)
-    self.assertLen(result[1], 3)
-    self._is_per_replica(result[1][0], ["b1", "b2"], values.Mirrored)
-    self._is_per_replica(result[1][2], ["g1", "g2"], values.Mirrored)
-
-    self.assertIsInstance(result[1][1], dict)
-    self.assertEqual(set(["c", "e"]), set(result[1][1].keys()))
-    self._is_per_replica(result[1][1]["c"], ["d1", "d2"], values.Mirrored)
-    self._is_per_replica(result[1][1]["e"], ["f1", "f2"], values.Mirrored)
-
-    # Also test that we can undo the merge using select_replica()
-    self.assertEqual(_nested_value("1"),
-                     values.select_replica(0, result))
-    self.assertEqual(_nested_value("2"),
-                     values.select_replica(1, result))
-    # Values are marked as mirrored, so select_device_mirrored() is allowed.
-    self.assertEqual(_nested_value("1"),
-                     values.select_replica_mirrored(0, result))
-    self.assertEqual(_nested_value("2"),
-                     values.select_replica_mirrored(1, result))
-
-  def testWrapAListOfTwoTuples(self):
-    result = values.regroup([("1", "2"), ("3", "4")])
-    self.assertIsInstance(result, tuple)
-    self.assertLen(result, 2)
-    self._is_per_replica(result[0], ("1", "3"), values.PerReplica)
-    self._is_per_replica(result[1], ("2", "4"), values.PerReplica)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.mirrored_strategy_with_one_cpu,
-          ],
-          mode=["graph", "eager"],
-      ))
-  def testMirroredContainer(self, distribution):
-    with distribution.scope():
-      v = variable_scope.variable(
-          1., aggregation=variable_scope.VariableAggregation.SUM)
-    self.assertTrue(values.is_distributed_variable(v))
-    self.assertTrue(values.is_distributed_variable(values.regroup(v.values)))
-
-  def testSameId(self):
-    foo = object()
-    result = values.regroup((("a", foo), ("b", foo)))
-    self.assertIsInstance(result, tuple)
-    self.assertLen(result, 2)
-    self._is_per_replica(result[0], ["a", "b"])
-    self.assertIs(foo, result[1])
-
-    # Test select_replica(), should undo the merge done by regroup().
-    result_0 = values.select_replica(0, result)
-    self.assertIsInstance(result_0, tuple)
-    self.assertLen(result_0, 2)
-    self.assertEqual("a", result_0[0])
-    self.assertIs(foo, result_0[1])
-    result_1 = values.select_replica(1, result)
-    self.assertIsInstance(result_1, tuple)
-    self.assertLen(result_1, 2)
-    self.assertEqual("b", result_1[0])
-    self.assertIs(foo, result_1[1])
-
-  def testOneDevice(self):
-    result = values.regroup((_nested_value("1"),))
-    # On one device regroup() and select_replica() are basically identity.
-    self.assertEqual(_nested_value("1"), result)
-    self.assertEqual(_nested_value("1"), values.select_replica(0, result))
-
-  def testNamedTuple(self):
-
-    # We include toy implementations of Scaffold and EstimatorSpec to
-    # avoid a dependency on Estimator here.
-
-    class Scaffold(object):
-      pass
-
-    class EstimatorSpec(collections.namedtuple(
-        "EstimatorSpec", ["mode", "loss", "train_op", "scaffold"])):
-
-      def __new__(cls, mode, loss, train_op, scaffold=None):
-        return super(EstimatorSpec, cls).__new__(
-            cls, mode=mode, loss=loss, train_op=train_op,
-            scaffold=scaffold or Scaffold())
-
-    with context.graph_mode(), ops.Graph().as_default():
-      created_estimator_specs = []
-
-      for device_id in range(3):
-        spec = EstimatorSpec(
-            mode=mode_keys.EstimatorModeKeys.TRAIN,
-            loss=constant_op.constant(device_id / 2),
-            train_op=array_ops.identity(constant_op.constant(device_id)))
-        created_estimator_specs.append(spec)
-
-      merged_estimator_spec = values.regroup(created_estimator_specs)
-
-      self.assertIsInstance(merged_estimator_spec, EstimatorSpec)
-      self.assertEqual(mode_keys.EstimatorModeKeys.TRAIN,
-                       merged_estimator_spec.mode)
-      for device_id in range(3):
-        self.assertEqual(created_estimator_specs[device_id].loss,
-                         merged_estimator_spec.loss.values[device_id])
-        self.assertEqual(created_estimator_specs[device_id].train_op,
-                         merged_estimator_spec.train_op.values[device_id])
-        # Scaffold is populated by `EstimatorSpec.__new__`.
-        self.assertEqual(created_estimator_specs[device_id].scaffold,
-                         merged_estimator_spec.scaffold.values[device_id])
-        self.assertIsInstance(created_estimator_specs[device_id].scaffold,
-                              Scaffold)
-        # Also test that we can undo the merge using select_replica()
-        self.assertEqual(created_estimator_specs[device_id],
-                         values.select_replica(device_id,
-                                               merged_estimator_spec))
+def mirrored_and_tpu_strategy_combinations():
+  return combinations.combine(
+      distribution=[
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.tpu_strategy,
+          strategy_combinations.tpu_strategy_packed_var,
+      ],
+      mode=["graph", "eager"])
 
 
 @combinations.generate(
@@ -558,6 +409,7 @@ class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
             strategy_combinations.mirrored_strategy_with_one_cpu,
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.tpu_strategy,
+            strategy_combinations.tpu_strategy_packed_var,
             strategy_combinations.central_storage_strategy_with_two_gpus,
         ],
         synchronization=[
@@ -628,7 +480,7 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     with distribution.scope():
       v = variables_lib.Variable(
           1., synchronization=synchronization, aggregation=aggregation)
-    self.assertIs(v, values.select_replica(0, v))
+    self.assertIs(v, distribute_utils.select_replica(0, v))
 
   def testIsTensorLike(self, distribution, synchronization, aggregation):
     if isinstance(distribution.extended,
@@ -704,6 +556,51 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
             distribution.experimental_local_results(distribution.run(assign)))
 
 
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_one_cpu,
+            strategy_combinations.tpu_strategy,
+        ],
+        mode=["eager"]))
+class PackedDistributedVariableTest(test.TestCase, parameterized.TestCase):
+
+  def testPackedVariable(self, distribution):
+    with distribution.scope():
+      v0 = variables_lib.Variable(0.)
+    self.assertIsNone(v0._packed_var)
+
+    distribution._enable_packed_variable_in_eager_mode = True
+    with distribution.scope():
+      v1 = variables_lib.Variable(0)
+      self.assertIsInstance(v1._packed_var, packed.PackedDistributedVariable)
+
+    devices = v1._devices
+    for i in range(1, len(devices)):
+      with distribute_lib.ReplicaContext(distribution, i):
+        v1.assign(i)
+    val = v1._get()
+    self.assertIsInstance(val, packed.PackedVarAndDevice)
+    self.assertEqual(val.device, devices[0])
+    self.assertEqual(self.evaluate(val.read_value()), 0)
+    for i in range(0, len(devices)):
+      with distribute_lib.ReplicaContext(distribution, i):
+        val = v1._get()
+        self.assertIsInstance(val, packed.PackedVarAndDevice)
+        self.assertEqual(val.device, devices[i])
+        self.assertEqual(self.evaluate(val.read_value()), i)
+
+  def testIgnorePackedVariableInSaveContext(self, distribution):
+    distribution._enable_packed_variable_in_eager_mode = True
+    with distribution.scope():
+      v = variables_lib.Variable(0)
+      self.assertIsInstance(
+          v._packed_variable, packed.PackedDistributedVariable)
+
+    with save_context.save_context():
+      self.assertIsNone(v._packed_variable)
+
+
 class MirroredVariableTest(test.TestCase, parameterized.TestCase):
 
   config = config_pb2.ConfigProto()
@@ -724,7 +621,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
   def testVariableOnAnotherDevice(self):
     v = variable_scope.get_variable(
         name="v", initializer=[1.], use_resource=True)
-    mirrored = values.MirroredVariable(
+    mirrored = values_lib.MirroredVariable(
         None, (v,), variable_scope.VariableAggregation.MEAN)
 
     self.assertEqual(v.name, mirrored.name)
@@ -881,7 +778,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       with ops.device("/device:GPU:0"):
         v = variable_scope.get_variable(
             name="v", initializer=1., use_resource=True)
-      mirrored = values.MirroredVariable(
+      mirrored = values_lib.MirroredVariable(
           distribution, (v,), variable_scope.VariableAggregation.MEAN)
       sess.run(variables_lib.global_variables_initializer())
       sess.run({"complicated": mirrored})
@@ -889,9 +786,33 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
+          ],
+          mode=["eager"]))
+  def testAssignValueInReplicaContextWithoutAggregation(self, distribution):
+    with distribution.scope():
+      v = variables_lib.Variable(1.0, name="foo")
+
+    @def_function.function
+    def mytest():
+      def model_fn():
+        v.assign(5.0)
+        return v.read_value()
+
+      return distribution.run(model_fn)
+
+    mytest()
+    self.assertAllEqual([5.0, 5.0], self.evaluate(v.values))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
               strategy_combinations.mirrored_strategy_with_one_cpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["graph", "eager"]))
   def testValueInReplicaContext(self, distribution):
@@ -917,6 +838,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_one_cpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["graph", "eager"]))
   def testAssignOutOfScope(self, distribution):
@@ -947,8 +869,8 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       return v.assign(ctx.replica_id_in_sync_group)
 
     # disallow assign() with distributed value in replica context.
-    with self.assertRaisesRegexp(ValueError,
-                                 "Cannot update non-float variables"):
+    with self.assertRaisesRegex(ValueError,
+                                "Cannot update non-float variables"):
       self.evaluate(
           distribution.experimental_local_results(
               distribution.run(assign)))
@@ -990,6 +912,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["eager"]))
   def testInitializedToSameValueInsideEagerRun(self, distribution):
@@ -1015,6 +938,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_one_cpu,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["graph", "eager"]))
   def testAggregationOnlyFirstReplica(self, distribution):
@@ -1042,6 +966,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["eager"]))
   def testInitScope(self, distribution):
@@ -1075,7 +1000,24 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
           ],
-          mode=["graph", "eager"]))
+          mode=["eager"]))
+  def testOperatorOverride(self, distribution):
+
+    with distribution.scope():
+      v = variable_scope.variable(
+          1, aggregation=variables_lib.VariableAggregation.MEAN)
+
+    self.assertEqual(2, self.evaluate(v + 1))
+
+    @def_function.function
+    def add():
+      return v + 1
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(distribution.run(add)))
+    self.assertAllEqual([2, 2], per_replica_results)
+
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testAssignAdd(self, distribution):
     with distribution.scope():
       v = variable_scope.variable(
@@ -1345,7 +1287,7 @@ def _make_replica_local(method, strategy=None):
   if (strategy is not None) and isinstance(strategy, _TPU_STRATEGIES):
     var_cls = tpu_values.TPUSyncOnReadVariable
   else:
-    var_cls = values.SyncOnReadVariable
+    var_cls = values_lib.SyncOnReadVariable
   replica_local = var_cls(strategy, v, method)
   return v, replica_local
 
@@ -1377,18 +1319,9 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
 
     v = variable_scope.get_variable(
         name="v", initializer=[1.], use_resource=True)
-    replica_local = values.SyncOnReadVariable(
+    replica_local = values_lib.SyncOnReadVariable(
         None, (v,), variable_scope.VariableAggregation.MEAN)
     self.assertEqual(2., self.evaluate(add1(replica_local)))
-
-
-def mirrored_and_tpu_strategy_combinations():
-  return combinations.combine(
-      distribution=[
-          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          strategy_combinations.tpu_strategy,
-      ],
-      mode=["graph", "eager"])
 
 
 # TODO(b/144432582): Add variable aggregation type to combinations to simplify
@@ -1404,6 +1337,7 @@ def strategy_and_run_tf_function_combinations():
       experimental_run_tf_function=[True, False]) + combinations.combine(
           distribution=[
               strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["graph", "eager"],
           experimental_run_tf_function=[True])
@@ -1439,6 +1373,20 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
       # Resources variable are converted to tensors as well when as_ref is True.
       self.assertIsInstance(converted, ops.Tensor)
       self.assertEqual(converted.dtype, replica_local.dtype)
+
+  @combinations.generate(combinations.combine(
+      distribution=[
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.tpu_strategy,
+          strategy_combinations.tpu_strategy_packed_var,
+      ], mode=["eager"]))
+  def testValueInCrossReplicaContext(self, distribution):
+    value_list, replica_local = _make_replica_local(
+        variable_scope.VariableAggregation.ONLY_FIRST_REPLICA, distribution)
+
+    self.assertIsInstance(replica_local.value(), ops.Tensor)
+    self.assertEqual(self.evaluate(replica_local.value()),
+                     self.evaluate(value_list[0].value()))
 
   @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveAndRestoreReplicaLocalSumOneGraph(self, distribution):
@@ -1752,8 +1700,8 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
                                          experimental_run_tf_function):
     aggregations = [
         variables_lib.VariableAggregation.SUM,
-        # variables_lib.VariableAggregation.MEAN,
-        # variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+        variables_lib.VariableAggregation.MEAN,
+        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
     ]
     for aggregation in aggregations:
       if isinstance(distribution, _TPU_STRATEGIES):
@@ -1882,6 +1830,39 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     vals = self.evaluate(v[0].values)
     self.assertAllEqual(vals[0], vals[1])
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.tpu_strategy,
+          ],
+          mode=["eager"]))
+  def testOperatorOverride(self, distribution):
+
+    with distribution.scope():
+      v = variable_scope.variable(
+          0.0,
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=variables_lib.VariableAggregation.MEAN)
+
+    @def_function.function
+    def assign():
+      ctx = distribution_strategy_context.get_replica_context()
+      replica_id = ctx.replica_id_in_sync_group
+      return v.assign(math_ops.cast(replica_id, dtypes.float32))
+
+    # Assign different replicas with different values.
+    distribution.run(assign)
+
+    self.assertEqual(1.5, self.evaluate(v + 1))
+
+    @def_function.function
+    def add():
+      return v + 1
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(distribution.run(add)))
+    self.assertAllEqual([1, 2], per_replica_results)
+
 
 @combinations.generate(
     combinations.combine(
@@ -1904,7 +1885,7 @@ class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
           aggregation=aggregation)
     self.evaluate(v.initializer)
 
-    delta = values.PerReplica([
+    delta = values_lib.PerReplica([
         indexed_slices.IndexedSlices(
             values=[[0.], [1.]], indices=[0, 1], dense_shape=(3,)),
         indexed_slices.IndexedSlices(
@@ -1922,7 +1903,7 @@ class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
           aggregation=aggregation)
     self.evaluate(v.initializer)
 
-    delta = values.PerReplica([
+    delta = values_lib.PerReplica([
         indexed_slices.IndexedSlices(
             values=[[0.], [1.]], indices=[0, 1], dense_shape=(3,)),
         indexed_slices.IndexedSlices(
@@ -1940,7 +1921,7 @@ class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
           aggregation=aggregation)
     self.evaluate(v.initializer)
 
-    delta = values.PerReplica([
+    delta = values_lib.PerReplica([
         indexed_slices.IndexedSlices(
             values=[[2.], [2.]], indices=[0, 1], dense_shape=(3,)),
         indexed_slices.IndexedSlices(
@@ -1958,7 +1939,7 @@ class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
           aggregation=aggregation)
     self.evaluate(v.initializer)
 
-    delta = values.PerReplica([
+    delta = values_lib.PerReplica([
         indexed_slices.IndexedSlices(
             values=[[2.], [3.]], indices=[0, 1], dense_shape=(3,)),
         indexed_slices.IndexedSlices(
@@ -1976,7 +1957,7 @@ class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
           aggregation=aggregation)
     self.evaluate(v.initializer)
 
-    delta = values.PerReplica([
+    delta = values_lib.PerReplica([
         indexed_slices.IndexedSlices(
             values=[[1.], [8.]], indices=[0, 1], dense_shape=(3,)),
         indexed_slices.IndexedSlices(
@@ -1994,7 +1975,7 @@ class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
           aggregation=aggregation)
     self.evaluate(v.initializer)
 
-    delta = values.PerReplica([
+    delta = values_lib.PerReplica([
         indexed_slices.IndexedSlices(
             values=[[1.], [8.]], indices=[0, 1], dense_shape=(3,)),
         indexed_slices.IndexedSlices(
@@ -2012,7 +1993,7 @@ class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
           aggregation=aggregation)
     self.evaluate(v.initializer)
 
-    delta = values.PerReplica([
+    delta = values_lib.PerReplica([
         indexed_slices.IndexedSlices(
             values=[[1.], [2.]], indices=[0, 1], dense_shape=(3,)),
         indexed_slices.IndexedSlices(
@@ -2042,17 +2023,19 @@ class MirroredTest(test.TestCase):
 
 class PerReplicaTest(test.TestCase, parameterized.TestCase):
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testTypeSpec(self):
     vals = (constant_op.constant(1.),)
-    per_replica = values.PerReplica(vals)
+    per_replica = values_lib.PerReplica(vals)
 
     spec = per_replica._type_spec
     self.assertEqual(spec._value_specs,
                      (tensor_spec.TensorSpec([], dtypes.float32),))
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testTypeSpecRoundTrip(self):
     vals = (constant_op.constant(1.),)
-    per_replica = values.PerReplica(vals)
+    per_replica = values_lib.PerReplica(vals)
 
     spec = per_replica._type_spec
     tensor_list = spec._to_components(per_replica)
@@ -2060,9 +2043,10 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(per_replica.values, reconstructed.values)
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testTypeSpecNest(self):
     vals = (constant_op.constant(1.), constant_op.constant([5., 6.0]),)
-    per_replica = values.PerReplica(vals)
+    per_replica = values_lib.PerReplica(vals)
 
     # Note: nest.map_structure exercises nest.flatten and
     # nest.pack_sequence_as.
@@ -2075,10 +2059,11 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testIsGraphTensor(self):
-    per_replica = values.PerReplica((constant_op.constant(1.),))
+    per_replica = values_lib.PerReplica((constant_op.constant(1.),))
     for t in nest.flatten(per_replica, expand_composites=True):
       self.assertEqual(hasattr(t, "graph"), not context.executing_eagerly())
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testDoesNotTriggerFunctionTracing(self):
     traces = []
 
@@ -2087,7 +2072,7 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
       traces.append(None)  # Only happens on trace.
       return x
 
-    per_replica = values.PerReplica((constant_op.constant(1.),))
+    per_replica = values_lib.PerReplica((constant_op.constant(1.),))
 
     # Trace once.
     f(per_replica)
@@ -2101,13 +2086,14 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
       per_replica = per_replica_spec._from_components(vals)
 
       output = f(per_replica)
-      self.assertIsInstance(output, values.PerReplica)
+      self.assertIsInstance(output, values_lib.PerReplica)
       self.assertAllEqual(output._values, per_replica._values)
       self.assertEmpty(traces)  # Make sure we're not re-tracing `f`.
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testFunctionCanReturnPerReplica(self):
     f = def_function.function(lambda x: x)
-    x = values.PerReplica((constant_op.constant(1.),))
+    x = values_lib.PerReplica((constant_op.constant(1.),))
     y = f(x)
     self.assertIsNot(x, y)
     nest.map_structure(self.assertAllEqual, x, y, expand_composites=True)
@@ -2115,8 +2101,8 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testCondWithTensorValues(self):
-    per_replica_1 = values.PerReplica((constant_op.constant("a"),))
-    per_replica_2 = values.PerReplica((constant_op.constant(["b", "c"]),))
+    per_replica_1 = values_lib.PerReplica((constant_op.constant("a"),))
+    per_replica_2 = values_lib.PerReplica((constant_op.constant(["b", "c"]),))
     condition = array_ops.placeholder_with_default(True, [])
 
     result = control_flow_ops.cond(
@@ -2127,8 +2113,8 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testCondWithValuesConvertibleToTensor(self):
-    per_replica_1 = values.PerReplica(("a",))
-    per_replica_2 = values.PerReplica(("b",))
+    per_replica_1 = values_lib.PerReplica(("a",))
+    per_replica_2 = values_lib.PerReplica(("b",))
     condition = array_ops.placeholder_with_default(True, [])
 
     result = control_flow_ops.cond(
@@ -2139,8 +2125,8 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
 
   @test_util.build_as_function_and_v1_graph
   def testCondWithValuesNotConvertibleToTensor(self):
-    per_replica_1 = values.PerReplica(({"a"},))
-    per_replica_2 = values.PerReplica(({"b", "c"},))
+    per_replica_1 = values_lib.PerReplica(({"a"},))
+    per_replica_2 = values_lib.PerReplica(({"b", "c"},))
     condition = array_ops.placeholder(dtypes.bool, [])
 
     with self.assertRaisesRegex(TypeError, "Could not build a TypeSpec for"):
@@ -2156,4 +2142,4 @@ def _make_index_slices(values, indices, dense_shape=None):
 
 
 if __name__ == "__main__":
-  test.main()
+  combinations.main()

@@ -30,7 +30,6 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
@@ -110,7 +109,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
       resource_variable_ops.assign_variable_op(handle, 1)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           "Trying to read variable with wrong dtype. "
           "Expected float got int32"):
@@ -204,7 +203,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           dtype=dtypes.int32, shape=[1], name="foo")
       resource_variable_ops.assign_variable_op(
           handle, constant_op.constant([1]))
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError, "Trying to assign variable with wrong "
           "dtype. Expected int32 got float"):
         resource_variable_ops.assign_variable_op(
@@ -963,8 +962,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       with variable_scope.variable_scope("foo"):
         var = variable_scope.get_variable("x", shape=[1, 1],
                                           dtype=dtypes.float32)
-        with self.assertRaisesRegexp(ValueError,
-                                     "Shapes.*and.*are incompatible"):
+        with self.assertRaisesRegex(ValueError,
+                                    "Shapes.*and.*are incompatible"):
           assign = var.assign(np.zeros(shape=[2, 2]))
           self.evaluate(assign)
 
@@ -1072,8 +1071,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5",
           container=ops.get_default_graph()._container)
       with self.assertRaisesOpError(
-          "(Resource .*/var5/.* does not exist|Read of uninitialized variable)"
-      ):
+          "(Resource .*/var5/.* does not exist|uninitialized)"):
         resource_variable_ops.read_variable_op(x, v.dtype.base_dtype).eval()
 
   @test_util.run_deprecated_v1
@@ -1126,7 +1124,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       v = resource_variable_ops.ResourceVariable(initial_value=zero)
       return (i + 1, v.read_value())
 
-    with self.assertRaisesRegexp(ValueError, "initializer"):
+    with self.assertRaisesRegex(ValueError, "initializer"):
       control_flow_ops.while_loop(cond, body, [0, 0])
 
   def testVariableEager(self):
@@ -1195,8 +1193,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                                                    name="var8")
       var_handle = var._handle
       del var
-      with self.assertRaisesRegexp(errors.NotFoundError,
-                                   r"Resource .* does not exist."):
+      with self.assertRaisesRegex(errors.NotFoundError,
+                                  r"Resource .* does not exist."):
         resource_variable_ops.destroy_resource_op(var_handle,
                                                   ignore_lookup_error=False)
 
@@ -1282,7 +1280,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     # The exact error and message differ between graph construction (where the
     # error is realized during shape inference at graph construction time) and
     # eager execution (where the error is realized during kernel execution).
-    with self.assertRaisesRegexp(Exception, r"shape.*2.*3"):
+    with self.assertRaisesRegex(Exception, r"shape.*2.*3"):
       state_ops.scatter_update(v, [0, 1], [0, 1, 2])
 
   @test_util.run_in_graph_and_eager_modes
@@ -1290,7 +1288,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
     self.evaluate(v.initializer)
     pattern = re.compile("shapes must be equal", re.IGNORECASE)
-    with self.assertRaisesRegexp(Exception, pattern):
+    with self.assertRaisesRegex(Exception, pattern):
       self.evaluate(v.assign_add(1))
 
   @test_util.run_in_graph_and_eager_modes
@@ -1512,42 +1510,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       result = resource_variable_ops.resource_gather(
           var.handle, indices, dtype=dtype)
     self.assertAllEqual(expected, result)
-
-
-class PerReplicaResourceHandleTest(test_util.TensorFlowTestCase):
-
-  def setUp(self):
-    super(PerReplicaResourceHandleTest, self).setUp()
-    cpus = config.list_physical_devices("CPU")
-    # Set 2 virtual CPUs
-    config.set_logical_device_configuration(cpus[0], [
-        context.LogicalDeviceConfiguration(),
-        context.LogicalDeviceConfiguration(),
-    ])
-
-  @test_util.disable_tfrt("Multiple device support. b/154956430")
-  def testAllowedDevices(self):
-    device0 = "/job:localhost/replica:0/task:0/device:CPU:0"
-    device1 = "/job:localhost/replica:0/task:0/device:CPU:1"
-    value0 = 1
-    value1 = 2
-    with context.eager_mode():
-      handle = resource_variable_ops.var_handle_op(
-          dtype=dtypes.int32, shape=[], allowed_devices=[device0, device1])
-      with ops.device(device0):
-        assign0 = resource_variable_ops.assign_variable_op(handle, value0)
-      with ops.device(device1):
-        assign1 = resource_variable_ops.assign_variable_op(handle, value1)
-      with ops.control_dependencies([assign0, assign1]):
-        with ops.device(device0):
-          read0 = resource_variable_ops.read_variable_op(
-              handle, dtype=dtypes.int32)
-        with ops.device(device1):
-          read1 = resource_variable_ops.read_variable_op(
-              handle, dtype=dtypes.int32)
-
-      self.assertAllEqual(value0, read0)
-      self.assertAllEqual(value1, read1)
 
 
 if __name__ == "__main__":

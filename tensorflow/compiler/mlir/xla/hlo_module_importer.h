@@ -22,8 +22,8 @@ limitations under the License.
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -54,7 +54,7 @@ class HloModuleImporter {
   // Map for tracking which MLIR function map to which HLO Computation. This
   // tracks functions as they are imported and provides a quick lookup for
   // functions invoked by control flow related operations (e.g. while, call).
-  std::unordered_map<xla::HloComputation*, mlir::FuncOp> function_map_;
+  std::unordered_map<const xla::HloComputation*, mlir::FuncOp> function_map_;
 };
 
 }  // namespace xla

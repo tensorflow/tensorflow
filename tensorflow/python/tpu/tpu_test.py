@@ -130,12 +130,12 @@ class TPUGraphPruneTest(test.TestCase):
           tpu._TPU_REPLICATE_ATTR)
       self.assertEqual(b"0", x)
       # Verify that ops "b" and "y" have TPU_REPLICATE_ATTR removed.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           "Operation \'import/b\' has no attr named \'_tpu_replicate\'"):
         graph.get_operation_by_name("import/b").get_attr(
             tpu._TPU_REPLICATE_ATTR)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           "Operation \'import/y\' has no attr named \'_tpu_replicate\'"):
         graph.get_operation_by_name("import/y").get_attr(

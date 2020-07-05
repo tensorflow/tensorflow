@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
 #include "absl/types/span.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/abstract_operation.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -91,8 +93,8 @@ Status EagerOperation::SetAttrShape(const char* attr_name, const int64_t* dims,
   return Status::OK();
 }
 
-Status EagerOperation::SetAttrFunction(
-    const char* attr_name, const AbstractOperationInterface* value) {
+Status EagerOperation::SetAttrFunction(const char* attr_name,
+                                       const AbstractOperation* value) {
   AttrValue attr_value;
   NameAttrList* func = attr_value.mutable_func();
   func->set_name(value->Name());
@@ -194,8 +196,7 @@ Status EagerOperation::SetAttrShapeList(const char* attr_name,
 }
 
 Status EagerOperation::SetAttrFunctionList(
-    const char* attr_name,
-    absl::Span<const AbstractOperationInterface*> values) {
+    const char* attr_name, absl::Span<const AbstractOperation*> values) {
   size_t num_values = values.size();
   std::unique_ptr<NameAttrList[]> funcs(new NameAttrList[num_values]);
   for (int i = 0; i < num_values; i++) {
@@ -253,14 +254,13 @@ Status EagerOperation::OutputLength(const char* output_name, int* length) {
   return Status::OK();
 }
 
-Status EagerOperation::AddInput(AbstractTensorHandleInterface* input) {
+Status EagerOperation::AddInput(AbstractTensorHandle* input) {
   TensorHandle* h = TensorHandleFromInterface(input);
   AddTensorHandle(h);
   return MaybeInferSingleInputAttrs(h);
 }
 
-Status EagerOperation::AddInputList(
-    absl::Span<AbstractTensorHandleInterface*> inputs) {
+Status EagerOperation::AddInputList(absl::Span<AbstractTensorHandle*> inputs) {
   for (auto& input : inputs) {
     TensorHandle* h = TensorHandleFromInterface(input);
     AddTensorHandle(h);

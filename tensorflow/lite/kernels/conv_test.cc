@@ -12,15 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdarg>
-#include <initializer_list>
+#include <stddef.h>
+#include <stdint.h>
 
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -141,7 +148,7 @@ class ConvolutionOpModel : public BaseConvolutionOpModel<float> {
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_CONVOLUTION_REF()},
     {"GenericOptimized", ops::builtin::Register_CONVOLUTION_GENERIC_OPT()},
-#ifndef TFLITE_WITH_RUY_ONLY
+#ifndef TFLITE_WITH_RUY
     {"MultithreadedOptimized",
      ops::builtin::Register_CONVOLUTION_MULTITHREADED_OPT()},
 #endif

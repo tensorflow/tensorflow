@@ -133,7 +133,7 @@ class TfInspectTest(test.TestCase):
     exception_message = (r"Some arguments \['n'\] do not have default value, "
                          "but they are positioned after those with default "
                          "values. This can not be expressed with ArgSpec.")
-    with self.assertRaisesRegexp(ValueError, exception_message):
+    with self.assertRaisesRegex(ValueError, exception_message):
       tf_inspect.getargspec(partial_func)
 
   def testGetArgSpecOnPartialInvalidArgspec(self):
@@ -147,7 +147,7 @@ class TfInspectTest(test.TestCase):
     exception_message = (r"Some arguments \['l'\] do not have default value, "
                          "but they are positioned after those with default "
                          "values. This can not be expressed with ArgSpec.")
-    with self.assertRaisesRegexp(ValueError, exception_message):
+    with self.assertRaisesRegex(ValueError, exception_message):
       tf_inspect.getargspec(partial_func)
 
   def testGetArgSpecOnPartialValidArgspec(self):

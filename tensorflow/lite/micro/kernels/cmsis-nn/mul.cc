@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/mul.h"
 
-#include "arm_nnfunctions.h"
+#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/mul.h"
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/memory_helpers.h"
 
 namespace tflite {
 namespace ops {
@@ -48,7 +49,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
@@ -59,6 +60,18 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
         input1->params.scale * input2->params.scale / output->params.scale;
     QuantizeMultiplier(real_multiplier, &data->output_multiplier,
                        &data->output_shift);
+  }
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input1 = GetInput(context, node, kInput1Tensor);
+  const TfLiteTensor* input2 = GetInput(context, node, kInput2Tensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  if (output->dims->size == 0) {
+    return AllocateOutputDimensionsFromInput(context, input1, input2, output);
   }
 
   return kTfLiteOk;
@@ -165,10 +178,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }
 }  // namespace mul
 
-TfLiteRegistration* Register_MUL() {
-  static TfLiteRegistration r = {nullptr /* Init */, nullptr /* Free */,
-                                 nullptr /* Prepare */, mul::Eval};
-  return &r;
+TfLiteRegistration Register_MUL() {
+  return {nullptr /* Init */, nullptr /* Free */, nullptr /* Prepare */,
+          mul::Eval};
 }
 
 }  // namespace micro

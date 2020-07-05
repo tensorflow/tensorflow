@@ -427,6 +427,7 @@ def compute_average_loss(per_example_loss,
 
   with losses_util.check_per_example_loss_rank(per_example_loss):
     if sample_weight is not None:
+      sample_weight = ops.convert_to_tensor(sample_weight)
       per_example_loss = losses_util.scale_losses_by_sample_weight(
           per_example_loss, sample_weight)
     per_example_loss = math_ops.cast(per_example_loss, input_dtype)
@@ -1615,16 +1616,11 @@ def fused_batch_norm(
       [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
       ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
-  if is_training and exponential_avg_factor == 1.0:
-    if (mean is not None) or (variance is not None):
-      raise ValueError("Both 'mean' and 'variance' must be None when "
-                       "is_training is True and "
-                       "exponential_avg_factor == 1.0.")
-  else:
-    if (mean is None) or (variance is None):
-      raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
-                       "is_training is False or "
-                       "exponential_avg_factor != 1.0.")
+  if (not is_training or exponential_avg_factor != 1.0) and (
+      (mean is None) or (variance is None)):
+    raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
+                     "is_training is False or "
+                     "exponential_avg_factor != 1.0.")
   x = ops.convert_to_tensor(x, name="input")
   scale = ops.convert_to_tensor(scale, name="scale")
   offset = ops.convert_to_tensor(offset, name="offset")

@@ -39,6 +39,10 @@ def write_build_info(filename, key_value_list):
   """
 
   build_info = {}
+
+  if cuda_config:
+    build_info.update(cuda_config.config)
+
   for arg in key_value_list:
     key, value = six.ensure_str(arg).split("=")
     if value.lower() == "true":
@@ -46,10 +50,7 @@ def write_build_info(filename, key_value_list):
     elif value.lower() == "false":
       build_info[key] = False
     else:
-      build_info[key] = value
-
-  if cuda_config:
-    build_info.update(cuda_config.config)
+      build_info[key] = value.format(**build_info)
 
   contents = """
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.

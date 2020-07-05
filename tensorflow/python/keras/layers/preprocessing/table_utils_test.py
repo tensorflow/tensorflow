@@ -114,7 +114,7 @@ class CategoricalEncodingInputTest(
 
     table = get_table(dtype=dtypes.int64, oov_tokens=[1, 2])
 
-    with self.assertRaisesRegexp(ValueError, "must be 1-dimensional"):
+    with self.assertRaisesRegex(ValueError, "must be 1-dimensional"):
       table.insert(key_data, value_data)
 
 

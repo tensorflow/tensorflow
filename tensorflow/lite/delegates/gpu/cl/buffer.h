@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
+#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -28,9 +29,28 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+struct BufferDescriptor : public GPUObjectDescriptor {
+  DataType element_type;
+  int element_size;
+  MemoryType memory_type = MemoryType::GLOBAL;
+  std::vector<std::string> attributes;
+
+  absl::Status PerformSelector(const std::string& selector,
+                               const std::vector<std::string>& args,
+                               const std::vector<std::string>& template_args,
+                               std::string* result) const override;
+
+  GPUResources GetGPUResources() const override;
+  absl::Status PerformReadSelector(const std::vector<std::string>& args,
+                                   std::string* result) const;
+  absl::Status PerformGetPtrSelector(
+      const std::vector<std::string>& args,
+      const std::vector<std::string>& template_args, std::string* result) const;
+};
+
 // Buffer represent linear GPU data storage with arbitrary data format.
 // Buffer is moveable but not copyable.
-class Buffer {
+class Buffer : public GPUObject {
  public:
   Buffer() {}  // just for using Buffer as a class members
   Buffer(cl_mem buffer, size_t size_in_bytes);
@@ -56,6 +76,9 @@ class Buffer {
   // Reads data from Buffer into CPU memory.
   template <typename T>
   absl::Status ReadData(CLCommandQueue* queue, std::vector<T>* result) const;
+
+  absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                               GPUResourcesWithValue* resources) const override;
 
  private:
   void Release();

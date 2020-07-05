@@ -17,14 +17,14 @@ limitations under the License.
 
 #include "llvm/Linker/Linker.h"
 #include "llvm/Transforms/IPO/Internalize.h"
-#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // from @llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 
 namespace xla {
@@ -35,9 +35,9 @@ namespace {
 std::unique_ptr<llvm::Module> MakeLLVMModule(mlir::OwningModuleRef module) {
   mlir::PassManager manager(module->getContext());
   manager.addPass(mlir::createConvertLinalgToLoopsPass());
-  manager.addPass(mlir::createConvertLinalgToLLVMPass());
+  manager.addPass(mlir::createLowerAffinePass());
+  manager.addPass(mlir::createLowerToCFGPass());
   manager.addPass(mlir::createConvertVectorToLLVMPass());
-  manager.addPass(mlir::createLowerToLLVMPass());
   CHECK(succeeded(manager.run(*module)));
   return mlir::translateModuleToLLVMIR(*module);
 }

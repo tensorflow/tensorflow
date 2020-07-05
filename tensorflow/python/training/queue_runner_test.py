@@ -126,7 +126,7 @@ class QueueRunnerTest(test.TestCase):
       self.assertEqual(10.0, self.evaluate(dequeue1))
       self.assertEqual(10.0, self.evaluate(dequeue1))
       # And queue1 should now be closed.
-      with self.assertRaisesRegexp(errors_impl.OutOfRangeError, "is closed"):
+      with self.assertRaisesRegex(errors_impl.OutOfRangeError, "is closed"):
         self.evaluate(dequeue1)
 
   def testRespectCoordShouldStop(self):
@@ -162,7 +162,7 @@ class QueueRunnerTest(test.TestCase):
       for t in threads:
         t.start()
       # The exception should be re-raised when joining.
-      with self.assertRaisesRegexp(ValueError, "Operation not in the graph"):
+      with self.assertRaisesRegex(ValueError, "Operation not in the graph"):
         coord.join()
 
   def testGracePeriod(self):
@@ -277,7 +277,7 @@ class QueueRunnerTest(test.TestCase):
     queue_runner_impl.add_queue_runner(qr)
     with self.cached_session():
       init_op.run()
-      with self.assertRaisesRegexp(TypeError, "tf.Session"):
+      with self.assertRaisesRegex(TypeError, "tf.Session"):
         queue_runner_impl.start_queue_runners("NotASession")
 
   def testStartQueueRunnersIgnoresMonitoredSession(self):

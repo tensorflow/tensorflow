@@ -144,7 +144,7 @@ void EncodeVariant(const T& value, string* buf);
 //   Variant y_type_unknown = serialized_proto_f;  // Store serialized Variant.
 //
 //   EXPECT_EQ(x.TypeName(), y_type_unknown.TypeName());  // Looks like Foo.
-//   EXPECT_EQ(MakeTypeIndex<VariantTensorDataProto>(),
+//   EXPECT_EQ(TypeIndex::Make<VariantTensorDataProto>(),
 //             y_type_unknown.TypeId());
 //
 class Variant {
@@ -227,7 +227,7 @@ class Variant {
   // of the original type when a TensorValueDataProto is stored as the
   // value.  In this case, it returns the TypeIndex of TensorValueDataProto.
   TypeIndex TypeId() const {
-    const TypeIndex VoidTypeIndex = MakeTypeIndex<void>();
+    const TypeIndex VoidTypeIndex = TypeIndex::Make<void>();
     if (is_empty()) {
       return VoidTypeIndex;
     }
@@ -244,7 +244,7 @@ class Variant {
   // otherwise.
   template <typename T>
   T* get() {
-    const TypeIndex TTypeIndex = MakeTypeIndex<T>();
+    const TypeIndex TTypeIndex = TypeIndex::Make<T>();
     if (is_empty() || (TTypeIndex != TypeId())) return nullptr;
     return std::addressof(static_cast<Variant::Value<T>*>(GetValue())->value);
   }
@@ -253,7 +253,7 @@ class Variant {
   // otherwise.
   template <typename T>
   const T* get() const {
-    const TypeIndex TTypeIndex = MakeTypeIndex<T>();
+    const TypeIndex TTypeIndex = TypeIndex::Make<T>();
     if (is_empty() || (TTypeIndex != TypeId())) return nullptr;
     return std::addressof(
         static_cast<const Variant::Value<T>*>(GetValue())->value);
@@ -333,7 +333,7 @@ class Variant {
 
     TypeIndex TypeId() const final {
       const TypeIndex value_type_index =
-          MakeTypeIndex<typename std::decay<T>::type>();
+          TypeIndex::Make<typename std::decay<T>::type>();
       return value_type_index;
     }
 

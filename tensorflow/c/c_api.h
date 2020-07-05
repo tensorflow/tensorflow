@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/c/tf_tstring.h"
 
 // --------------------------------------------------------------------------
 // C API for TensorFlow.
