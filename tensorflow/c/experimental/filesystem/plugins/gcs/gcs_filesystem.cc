@@ -73,6 +73,14 @@ void ParseGCSPath(const std::string& fname, bool object_empty_ok,
   }
 }
 
+/// Appends a trailing slash if the name doesn't already have one.
+static void MaybeAppendSlash(std::string* name) {
+  if (name->empty())
+    *name = "/";
+  else if (name->back() != '/')
+    name->push_back('/');
+}
+
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
@@ -459,6 +467,11 @@ void DeleteDir(const TF_Filesystem* filesystem, const char* path,
       return;
     }
     ++object_count;
+    // We consider a path is a non-empty directory in two cases:
+    // - There are more than two objects whose keys start with the name of this
+    // directory.
+    // - There is one object whose key contains the name of this directory ( but
+    // not equal ).
     if (object_count > 1 || metadata->name() != object) {
       TF_SetStatus(status, TF_FAILED_PRECONDITION,
                    "Cannot delete a non-empty directory.");
