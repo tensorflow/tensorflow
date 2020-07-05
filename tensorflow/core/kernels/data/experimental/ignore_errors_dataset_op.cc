@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace data {
@@ -24,18 +25,28 @@ namespace {
 class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit IgnoreErrorsDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx),
+        op_version_(ctx->def().op() == "IgnoreErrorsDatasetV2" ? 2 : 1) {}
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    *output = new Dataset(ctx, input);
+    bool log_warning = false;
+    if (op_version_ > 1) {
+      OP_REQUIRES_OK(
+          ctx, ParseScalarArgument<bool>(ctx, "log_warning", &log_warning));
+    }
+    *output = new Dataset(ctx, input, log_warning, op_version_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
-    explicit Dataset(OpKernelContext* ctx, const DatasetBase* input)
-        : DatasetBase(DatasetContext(ctx)), input_(input) {
+    explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
+                     bool log_warning, int op_version)
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          log_warning_(log_warning),
+          op_version_(op_version) {
       input_->Ref();
     }
 
@@ -69,8 +80,17 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
+      Node* log_warning = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
-      TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
+      TF_RETURN_IF_ERROR(b->AddScalar(log_warning_, &log_warning));
+      if (op_version_ > 1) {
+        TF_RETURN_IF_ERROR(b->AddDataset(this,
+                                         {std::make_pair(0, input_graph_node),
+                                          std::make_pair(1, log_warning)},
+                                         {}, {}, output));
+      } else {
+        TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
+      }
       return Status::OK();
     }
 
@@ -97,6 +117,10 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           }
           s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
           while (!s.ok() && !errors::IsCancelled(s)) {
+            if (dataset()->log_warning_) {
+              LOG(WARNING) << "Error raised with error message "
+                           << s.error_message();
+            }
             out_tensors->clear();
             s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
           }
@@ -142,10 +166,15 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
+    const bool log_warning_;
+    const int op_version_;
   };
+  const int op_version_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("IgnoreErrorsDataset").Device(DEVICE_CPU),
+                        IgnoreErrorsDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("IgnoreErrorsDatasetV2").Device(DEVICE_CPU),
                         IgnoreErrorsDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalIgnoreErrorsDataset").Device(DEVICE_CPU),

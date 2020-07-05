@@ -441,6 +441,14 @@ REGISTER_OP("ExperimentalIgnoreErrorsDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("IgnoreErrorsDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("log_warning : bool")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("IteratorGetDevice")
     .Input("resource: resource")
     .Output("device: string")
