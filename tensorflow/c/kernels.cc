@@ -276,17 +276,17 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
     shape.AddDim(dims[i]); 
   }
   tensorflow::Status s;
-  tensorflow::Tensor tensor_temp;  
-  TF_Tensor* tf_tensor_temp; 
-  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape, &tensor_temp);
+  tensorflow::Tensor tensor;  
+  TF_Tensor* tf_tensor; 
+  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape, &tensor);
   if (!s.ok()){ 
   	::tensorflow::Set_TF_Status_from_Status(status, s); 
   	return nullptr; 
   }
-  tf_tensor_temp = TF_TensorFromTensor(tensor_temp, &s); 
+  tf_tensor = TF_TensorFromTensor(tensor, &s); 
   if (!s.ok()){ 
     ::tensorflow::Set_TF_Status_from_Status(status, s); 
     return nullptr; 
   }  
-  return tf_tensor_temp; 
+  return tf_tensor; 
 }
