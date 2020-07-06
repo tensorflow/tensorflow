@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_C_API_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_C_API_H_
 
-#include "tensorflow/core/tpu/kernels/tpu_ops_common_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 typedef struct XLA_TpuProgram XLA_TpuProgram;

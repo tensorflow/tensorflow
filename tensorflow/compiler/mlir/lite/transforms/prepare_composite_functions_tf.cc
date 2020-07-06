@@ -46,7 +46,7 @@ limitations under the License.
 
 // The cmd line flag to turn on/off Tf.Text API fusion.
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> fuse_tftext(
+static llvm::cl::opt<bool> fuse_tftext_flag(
     "tfl-fuse-tftext", llvm::cl::value_desc("bool"),
     llvm::cl::desc("Fuse TF.Text API ops when it's true"),
     llvm::cl::init(false));
@@ -194,9 +194,12 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
     OpBuilder builder(func.getBody());
     if (failed(ConvertKerasLSTMLayer(func, &builder)))
       return signalPassFailure();
-  } else if (fuse_tftext && attr.getValue().startswith(kTfTextAPIPRefix)) {
-    if (failed(ConvertTFTextAPI(func, attr.getValue()))) {
-      return signalPassFailure();
+  } else if (fuse_tftext_flag ||
+             IsTfTextRegistered(tensorflow::OpRegistry::Global())) {
+    if (attr.getValue().startswith(kTfTextAPIPRefix)) {
+      if (failed(ConvertTFTextAPI(func, attr.getValue()))) {
+        return signalPassFailure();
+      }
     }
   }
 }

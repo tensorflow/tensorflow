@@ -440,8 +440,6 @@ class StridedSliceAssignOp : public OpKernel {
                           StridedSliceAssignOp<CPUDevice, type, true>)
 
 TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
-TF_CALL_uint32(REGISTER_STRIDED_SLICE);
-TF_CALL_uint64(REGISTER_STRIDED_SLICE);
 
 #undef REGISTER_STRIDED_SLICE
 

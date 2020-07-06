@@ -2715,6 +2715,19 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   return true;
 }
 
+llvm::Value* IrEmitter::EmitPrintf(absl::string_view fmt,
+                                   absl::Span<llvm::Value* const> arguments) {
+  llvm::Type* ptr_ty = b_.getInt8Ty()->getPointerTo();
+  std::vector<llvm::Value*> call_args;
+  call_args.push_back(b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)));
+  absl::c_copy(arguments, std::back_inserter(call_args));
+  return b_.CreateCall(
+      b_.GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
+          "printf", llvm::FunctionType::get(b_.getInt32Ty(), {ptr_ty},
+                                            /*isVarArg=*/true)),
+      call_args);
+}
+
 void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
                                      int64 element_count,
                                      PrimitiveType primitive_type,

@@ -215,6 +215,8 @@ TEST_F(QuantizeWeightsTest, HybridConv) {
       } else if (quant_tensor->buffer() != 0) {
         EXPECT_EQ(quant_tensor->type(), TensorType_INT8)
             << quant_tensor->name()->str();
+        auto shape = GetAsVector(quant_tensor->shape());
+        EXPECT_EQ(quant_tensor->quantization()->scale()->size(), shape[0]);
       } else {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
       }

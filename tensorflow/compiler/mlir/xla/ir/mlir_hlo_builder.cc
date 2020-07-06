@@ -18,10 +18,10 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -129,6 +129,22 @@ StatusOr<XlaOp> MlirHloBuilder::FftInternal(
       loc_, ty, GetValue(operand),
       builder_.getStringAttr(FftType_Name(fft_type)),
       GetI64ElementsAttr(fft_length, &builder_));
+  return MakeXlaOp(op);
+}
+
+StatusOr<XlaOp> MlirHloBuilder::CustomCallInternal(
+    const string& call_target_name, absl::Span<const XlaOp> operands,
+    const Shape& shape, const string& opaque,
+    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout) {
+  if (operand_shapes_with_layout.has_value())
+    return Unimplemented(
+        "CustomCall doesn't support operands shapes with layout");
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::CustomCallOp>(
+      loc_, ty, GetValues(operands), builder_.getStringAttr(call_target_name),
+      /*has_side_effect=*/builder_.getBoolAttr(false),
+      builder_.getStringAttr(opaque));
   return MakeXlaOp(op);
 }
 

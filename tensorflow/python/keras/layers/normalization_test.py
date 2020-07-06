@@ -302,40 +302,40 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     norm(inp)
     self.assertEqual(norm.fused, True)
 
-    with self.assertRaisesRegexp(ValueError, 'fused.*renorm'):
+    with self.assertRaisesRegex(ValueError, 'fused.*renorm'):
       normalization_v2.BatchNormalization(fused=True, renorm=True)
 
-    with self.assertRaisesRegexp(ValueError, 'fused.*when axis is 1 or 3'):
+    with self.assertRaisesRegex(ValueError, 'fused.*when axis is 1 or 3'):
       normalization_v2.BatchNormalization(fused=True, axis=2)
 
-    with self.assertRaisesRegexp(ValueError, 'fused.*when axis is 1 or 3'):
+    with self.assertRaisesRegex(ValueError, 'fused.*when axis is 1 or 3'):
       normalization_v2.BatchNormalization(fused=True, axis=[1, 3])
 
-    with self.assertRaisesRegexp(ValueError, 'fused.*virtual_batch_size'):
+    with self.assertRaisesRegex(ValueError, 'fused.*virtual_batch_size'):
       normalization_v2.BatchNormalization(fused=True, virtual_batch_size=2)
 
-    with self.assertRaisesRegexp(ValueError, 'fused.*adjustment'):
+    with self.assertRaisesRegex(ValueError, 'fused.*adjustment'):
       normalization_v2.BatchNormalization(fused=True,
                                           adjustment=lambda _: (1, 0))
 
     norm = normalization_v2.BatchNormalization(fused=True)
     self.assertEqual(norm.fused, True)
     inp = keras.layers.Input(shape=(4, 4))
-    with self.assertRaisesRegexp(ValueError, '4D input tensors'):
+    with self.assertRaisesRegex(ValueError, '4D input tensors'):
       norm(inp)
 
   def test_updates_in_wrap_function(self):
-    layer = normalization.BatchNormalization()
 
     def my_func():
+      layer = normalization.BatchNormalization()
       x = array_ops.ones((10, 1))
-      return layer(x, training=True)
+      y = layer(x, training=True)
+      # Updates should be tracked in a `wrap_function`.
+      self.assertLen(layer.updates, 2)
+      return y
 
     wrapped_fn = wrap_function.wrap_function(my_func, [])
     wrapped_fn()
-
-    # Updates should be tracked in a `wrap_function`.
-    self.assertLen(layer.updates, 2)
 
   @keras_parameterized.run_all_keras_modes
   def test_basic_batchnorm_v2_none_shape_and_virtual_batch_size(self):
@@ -392,15 +392,11 @@ class NormalizationLayersGraphModeOnlyTest(
       model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       model.train_on_batch(x, x)
 
-      self.assertLen(bn.updates, 4)
-
       # Test model-level reuse
       x3 = keras.layers.Input(shape=(10,))
       y3 = model(x3)
       new_model = keras.models.Model(x3, y3, name='new_model')
 
-      self.assertLen(new_model.updates, 6)
-      self.assertLen(model.updates, 6)
       new_model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       new_model.train_on_batch(x, x)
 
@@ -415,10 +411,7 @@ class NormalizationLayersGraphModeOnlyTest(
       model = keras.models.Model(a, b)
 
       model.trainable = False
-      assert not model.updates
-
       model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
-      assert not model.updates
 
       x1 = model.predict(val_a)
       model.train_on_batch(val_a, val_out)
@@ -427,7 +420,6 @@ class NormalizationLayersGraphModeOnlyTest(
 
       model.trainable = True
       model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
-      assert model.updates
 
       model.train_on_batch(val_a, val_out)
       x2 = model.predict(val_a)
@@ -435,7 +427,6 @@ class NormalizationLayersGraphModeOnlyTest(
 
       layer.trainable = False
       model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
-      assert not model.updates
 
       x1 = model.predict(val_a)
       model.train_on_batch(val_a, val_out)
@@ -602,19 +593,19 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testIncorrectAxisType(self):
-    with self.assertRaisesRegexp(
-        TypeError, r'Expected an int or a list/tuple of ints'):
+    with self.assertRaisesRegex(TypeError,
+                                r'Expected an int or a list/tuple of ints'):
       _ = normalization.LayerNormalization(axis={'axis': -1})
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInvalidAxis(self):
-    with self.assertRaisesRegexp(ValueError, r'Invalid axis: 3'):
+    with self.assertRaisesRegex(ValueError, r'Invalid axis: 3'):
       layer_norm = normalization.LayerNormalization(axis=3)
       layer_norm.build(input_shape=(2, 2, 2))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testDuplicateAxis(self):
-    with self.assertRaisesRegexp(ValueError, r'Duplicate axis:'):
+    with self.assertRaisesRegex(ValueError, r'Duplicate axis:'):
       layer_norm = normalization.LayerNormalization(axis=[-1, -1])
       layer_norm.build(input_shape=(2, 2, 2))
 

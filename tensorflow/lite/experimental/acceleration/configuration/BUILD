@@ -117,6 +117,11 @@ cc_library(
 cc_test(
     name = "nnapi_plugin_test",
     srcs = ["nnapi_plugin_test.cc"],
+    tags = [
+        "no_mac",
+        "no_windows",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":configuration_fbs",
         ":delegate_registry",

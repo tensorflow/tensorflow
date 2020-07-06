@@ -46,7 +46,7 @@ TEST(IsSourceCompatibleWithCudnnLibraryTest, Basic) {
       /*loaded_version=*/CudnnVersion(7, 0, 14)));
 
   // Returns true if the loaded version is equal or higher because minor version
-  // are backward compatible with CuDNN version 7.
+  // are backward compatible.
   EXPECT_TRUE(IsSourceCompatibleWithCudnnLibrary(
       /*source_version=*/CudnnVersion(7, 0, 14),
       /*loaded_version=*/CudnnVersion(7, 1, 14)));
@@ -56,15 +56,6 @@ TEST(IsSourceCompatibleWithCudnnLibraryTest, Basic) {
   EXPECT_FALSE(IsSourceCompatibleWithCudnnLibrary(
       /*source_version=*/CudnnVersion(7, 1, 15),
       /*loaded_version=*/CudnnVersion(7, 0, 14)));
-
-  // Returns false if minor versions are not matching for version 6. Before
-  // version 7, minor versions are also neither forward or backward compatible.
-  EXPECT_FALSE(IsSourceCompatibleWithCudnnLibrary(
-      /*source_version=*/CudnnVersion(6, 0, 14),
-      /*loaded_version=*/CudnnVersion(6, 1, 15)));
-  EXPECT_FALSE(IsSourceCompatibleWithCudnnLibrary(
-      /*source_version=*/CudnnVersion(6, 1, 14),
-      /*loaded_version=*/CudnnVersion(6, 0, 14)));
 }
 
 }  // namespace

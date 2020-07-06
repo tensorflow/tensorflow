@@ -30,10 +30,10 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -115,6 +115,9 @@ StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
   llvm::ArrayRef<mlir::NamedAttribute> attrs;
   auto function = mlir::FuncOp::create(mlir::UnknownLoc::get(context_),
                                        computation_name, func_type, attrs);
+  auto visibility = computation_name == "main" ? FuncOp::Visibility::Public
+                                               : FuncOp::Visibility::Private;
+  function.setVisibility(visibility);
   module_.push_back(function);
 
   // Add to the map right away for function calls.

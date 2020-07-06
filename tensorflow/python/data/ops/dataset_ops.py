@@ -2099,6 +2099,10 @@ name=None))
     >>> list(dataset.as_numpy_iterator())
     [1, 2, 3, 1, 2, 1, 2, 3, 4]
 
+    Note: `unbatch` requires a data copy to slice up the batched tensor into
+    smaller, unbatched tensors. When optimizing performance, try to avoid
+    unnecessary usage of `unbatch`.
+
     Returns:
       A `Dataset`.
     """

@@ -14,8 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/kernel_util.h"
 
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <initializer_list>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace tflite {

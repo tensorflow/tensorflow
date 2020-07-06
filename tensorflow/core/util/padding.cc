@@ -37,7 +37,7 @@ Status CheckValidPadding(Padding padding_type,
                          const std::vector<int64>& explicit_paddings,
                          int num_dims, TensorFormat data_format) {
   if (padding_type == Padding::EXPLICIT) {
-    if (explicit_paddings.size() != 2 * num_dims) {
+    if (static_cast<int>(explicit_paddings.size()) != 2 * num_dims) {
       return errors::InvalidArgument(
           "explicit_paddings attribute must contain ", 2 * num_dims,
           " values, but got: ", explicit_paddings.size());

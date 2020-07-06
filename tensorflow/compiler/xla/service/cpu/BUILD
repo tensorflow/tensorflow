@@ -30,6 +30,15 @@ filegroup(
     ]),
 )
 
+cc_library(
+    name = "test_header_helper",
+    testonly = True,
+    hdrs = ["test_target_triple_helper.h"],
+    deps = [
+        "//tensorflow/core:test",
+    ],
+)
+
 filegroup(
     name = "single_threaded_runtime_srcs",
     srcs = [
@@ -141,6 +150,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
+        "//tensorflow/compiler/xla/service:logistic_expander",
         "//tensorflow/compiler/xla/service:batch_dot_simplification",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
@@ -461,6 +471,7 @@ cc_library(
         ":cpu_runtime",
         ":ir_emission_utils",
         ":mlir_emitter",
+        ":mlir_matmul_codegen_strategy",
         ":target_machine_features",
         ":tiled_dot_emitter",
         ":vector_support_library",
@@ -1071,6 +1082,7 @@ tf_cc_test(
     deps = [
         ":cpu_compiler",
         ":cpu_transfer_manager",
+        ":test_header_helper",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -1091,12 +1103,33 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IPO",
         "@llvm-project//llvm:Linker",
+        "@llvm-project//mlir:CFGTransforms",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMTransforms",
-        "@llvm-project//mlir:LinalgToLLVM",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TargetLLVMIR",
+        "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
+    ],
+)
+
+cc_library(
+    name = "mlir_matmul_codegen_strategy",
+    srcs = ["mlir_matmul_codegen_strategy.cc"],
+    hdrs = ["mlir_matmul_codegen_strategy.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorOps",
+        "@llvm-project//mlir:VectorToSCF",
     ],
 )

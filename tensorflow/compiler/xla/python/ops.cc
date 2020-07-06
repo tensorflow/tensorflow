@@ -50,6 +50,11 @@ void BuildOpsSubmodule(py::module* m) {
       .value("ADJOINT", TriangularSolveOptions::ADJOINT);
 
   ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
+  ops.def("AllGather", &AllGather, py::arg("operand"),
+          py::arg("all_gather_dimension"), py::arg("shard_count"),
+          py::arg("replica_groups") = py::list(),
+          py::arg("channel_id") = absl::nullopt,
+          py::arg("shape_with_layout") = absl::nullopt);
   ops.def(
       "AllReduce",
       static_cast<XlaOp (*)(

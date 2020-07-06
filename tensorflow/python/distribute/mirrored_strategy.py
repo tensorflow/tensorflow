@@ -190,9 +190,8 @@ class MirroredStrategy(distribute_lib.Strategy):
 
   This strategy is typically used for training on one
   machine with multiple GPUs. For TPUs, use
-  `tf.distribute.experimental.TPUStrategy`. To use `MirroredStrategy` with
-  multiple workers, please refer to
-  `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
+  `tf.distribute.TPUStrategy`. To use `MirroredStrategy` with multiple workers,
+  please refer to `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
 
   For example, a variable created under a `MirroredStrategy` is a
   `MirroredVariable`. If no devices are specified in the constructor argument of
@@ -332,16 +331,16 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _initialize_single_worker(self, devices):
     """Initializes the object for single-worker training."""
     self._devices = tuple(device_util.canonicalize(d) for d in devices)
-    self._input_workers = input_lib.InputWorkers(
-        ((device_util.canonicalize("/device:CPU:0", devices[0]), devices),))
+    self._input_workers_devices = (
+        (device_util.canonicalize("/device:CPU:0", devices[0]), devices),)
     self._inferred_cross_device_ops = None if self._cross_device_ops else (
         cross_device_ops_lib.choose_the_best(devices))
     self._host_input_device = numpy_dataset.SingleDevice(
-        self._input_workers.worker_devices[0])
+        self._input_workers_devices[0][0])
     self._is_multi_worker_training = False
     logging.info("Using MirroredStrategy with devices %r", devices)
     device_spec = tf_device.DeviceSpec.from_string(
-        self._input_workers.worker_devices[0])
+        self._input_workers_devices[0][0])
     # Ensures when we enter strategy.scope() we use the correct default device
     if device_spec.job is not None and device_spec.job != "localhost":
       self._default_device = "/job:%s/replica:%d/task:%d" % (
@@ -369,7 +368,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._host_input_device = numpy_dataset.SingleDevice(workers[0])
 
     self._devices = tuple(devices)
-    self._input_workers = input_lib.InputWorkers(worker_devices)
+    self._input_workers_devices = worker_devices
     self._is_multi_worker_training = True
 
     if len(workers) > 1:
@@ -385,6 +384,18 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
 
     logging.info("Using MirroredStrategy with remote devices %r", devices)
+
+  def _input_workers_with_options(self, options=None):
+    if not options or options.experimental_prefetch_to_device:
+      return input_lib.InputWorkers(self._input_workers_devices)
+    else:
+      return input_lib.InputWorkers(
+          [(host_device, (host_device,) * len(compute_devices)) for
+           host_device, compute_devices in self._input_workers_devices])
+
+  @property
+  def _input_workers(self):
+    return self._input_workers_with_options()
 
   def _get_variable_creator_initial_value(self,
                                           replica_id,
@@ -476,10 +487,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                                            input_contexts,
                                            self._container_strategy())
 
-  def _experimental_distribute_dataset(self, dataset):
+  def _experimental_distribute_dataset(self, dataset, options):
     return input_lib.get_distributed_dataset(
         dataset,
-        self._input_workers,
+        self._input_workers_with_options(options),
         self._container_strategy(),
         split_batch_by=self._num_replicas_in_sync)
 
@@ -487,9 +498,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return numpy_dataset.one_host_numpy_dataset(
         numpy_input, self._host_input_device, session)
 
-  def _experimental_distribute_datasets_from_function(self, dataset_fn):
+  def _experimental_distribute_datasets_from_function(self, dataset_fn,
+                                                      options):
     input_contexts = []
-    num_workers = self._input_workers.num_workers
+    input_workers = self._input_workers_with_options(options)
+    num_workers = input_workers.num_workers
     for i in range(num_workers):
       input_contexts.append(distribute_lib.InputContext(
           num_input_pipelines=num_workers,
@@ -498,7 +511,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
     return input_lib.get_distributed_datasets_from_function(
         dataset_fn,
-        self._input_workers,
+        input_workers,
         input_contexts,
         self._container_strategy())
 
@@ -578,7 +591,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     if not destinations:
       # TODO(josh11b): Use current logical device instead of 0 here.
       destinations = self._devices
-    return self._get_cross_device_ops().broadcast(tensor, destinations)
+    return self._get_cross_device_ops(tensor).broadcast(tensor, destinations)
 
   def _call_for_each_replica(self, fn, args, kwargs):
     return mirrored_run.call_for_each_replica(
@@ -607,7 +620,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     updated_config.isolate_session_state = True
     return updated_config
 
-  def _get_cross_device_ops(self):
+  def _get_cross_device_ops(self, value):
+    del value  # Unused.
     return self._cross_device_ops or self._inferred_cross_device_ops
 
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
@@ -622,7 +636,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # be 0.
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
-    return self._get_cross_device_ops().reduce(
+    return self._get_cross_device_ops(value).reduce(
         reduce_op,
         value,
         destinations=destinations,
@@ -630,9 +644,15 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs,
                        experimental_hints):
-    return self._get_cross_device_ops().batch_reduce(reduce_op,
-                                                     value_destination_pairs,
-                                                     experimental_hints)
+    cross_device_ops = None
+    for value, _ in value_destination_pairs:
+      if cross_device_ops is None:
+        cross_device_ops = self._get_cross_device_ops(value)
+      elif cross_device_ops is not self._get_cross_device_ops(value):
+        raise ValueError("inputs to batch_reduce_to must be either all on the "
+                         "the host or all on the compute devices")
+    return cross_device_ops.batch_reduce(reduce_op, value_destination_pairs,
+                                         experimental_hints)
 
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.

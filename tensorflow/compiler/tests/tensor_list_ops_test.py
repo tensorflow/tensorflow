@@ -103,8 +103,8 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
       l = list_ops.tensor_list_push_back(
           l, constant_op.constant(1.0, shape=(7, 15)))
       _, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Set the max number of elements"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "Set the max number of elements"):
         self.assertAllEqual(sess.run(e), 1.0 * np.ones((7, 15)))
 
   def testEmptyTensorListMax(self):
@@ -174,7 +174,7 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
           element_dtype=dtypes.float32, element_shape=None, max_num_elements=2)
       l = list_ops.tensor_list_push_back(l, [3.0, 4.0])
       # Pushing an element with a different shape should raise an error.
-      with self.assertRaisesRegexp(errors.InternalError, "shape"):
+      with self.assertRaisesRegex(errors.InternalError, "shape"):
         l = list_ops.tensor_list_push_back(l, 5.)
         self.evaluate(
             list_ops.tensor_list_stack(l, element_dtype=dtypes.float32))

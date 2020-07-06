@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"               // TF:local_config_mlir
 #include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "llvm/ADT/EquivalenceClasses.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/cycle_detector.h"
 
 // This pass has similar functionality of the fusion pass in XLA stack.
@@ -487,7 +487,7 @@ struct XlaHloFusion : public mlir::PassWrapper<XlaHloFusion, FunctionPass> {
     }
 
     // process each block and do fusion within a block.
-    for (Block& block : func.getBlocks()) {
+    for (Block& block : func) {
       SmallVector<Operation*, 4> op_list;
       for (Operation& op : block) {
         op_list.push_back(&op);

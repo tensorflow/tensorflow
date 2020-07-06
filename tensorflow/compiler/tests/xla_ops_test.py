@@ -211,6 +211,24 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                [7, 7, 7, 7, 7], [7, 2, 3, 7, 7], [7, 7, 7, 7, 7]],
               dtype=dtype))
 
+  def testPadNegative(self):
+    for dtype in self.numeric_types:
+
+      def pad_fn(x):
+        return xla.pad(
+            x,
+            padding_value=7,
+            padding_low=[0, -1],
+            padding_high=[1, -2],
+            padding_interior=[1, 2])
+
+      self._assertOpOutputMatchesExpected(
+          pad_fn,
+          args=(np.arange(6, dtype=np.int32).astype(dtype).reshape([2, 3]),),
+          expected=np.array(
+              [[7, 7, 1, 7], [7, 7, 7, 7], [7, 7, 4, 7], [7, 7, 7, 7]],
+              dtype=dtype))
+
   @test_util.disable_mlir_bridge('Not supported yet')
   def testReduce(self):
     for dtype in set(self.numeric_types).intersection(
@@ -325,7 +343,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
             np.array([5, 7]), np.array([2, 3, 4]))
       with self.assertRaises(errors.InvalidArgumentError) as invalid_arg_error:
         session.run(output)
-      self.assertRegexpMatches(
+      self.assertRegex(
           invalid_arg_error.exception.message,
           (r'start_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and start_indices has shape \[2\].*'))
@@ -339,7 +357,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
             np.array([5, 7, 3]), np.array([2, 3]))
       with self.assertRaises(errors.InvalidArgumentError) as invalid_arg_error:
         session.run(output)
-      self.assertRegexpMatches(
+      self.assertRegex(
           invalid_arg_error.exception.message,
           (r'size_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and size_indices has shape \[2\].*'))

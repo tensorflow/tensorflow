@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_c_api.h"
@@ -91,6 +92,10 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
       const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
       TpuProgramGroup* tpu_program);
 
+  TpuProgramGroup() = default;
+  TpuProgramGroup(TpuProgramGroup&& other);
+  TpuProgramGroup& operator=(TpuProgramGroup&&) = delete;
+
   size_t program_count() const override { return tpu_programs_.size(); }
 
   int64_t program_size() const override;
@@ -136,23 +141,28 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
     host_transfer_info_ = host_transfer_info;
   }
 
-  const xla::HloProto& hlo_metadata() const { return hlo_metadata_; }
-  void set_hlo_metadata(const xla::HloProto& hlo_metadata) {
-    hlo_metadata_ = hlo_metadata;
-  }
-
-  xla::HloProto hlo_metadata(int core_index) const;
-  std::vector<std::shared_ptr<const xla::HloProto>> hlo_metadatas()
-      const override;
+  void set_hlo_metadata(const xla::HloProto& hlo_metadata);
+  absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
 
  private:
+  void RefreshHloMetadatasPtrs();
+
   std::vector<bool> may_modify_variables_;
   tf2xla::HostComputeMetadata host_compute_metadata_;
 
   std::vector<XLA_TpuProgram*> tpu_programs_;  // Not owned.
   TPUExecutableInfoProto executable_info_;
   TPUHostTransferInfoProto host_transfer_info_;
-  xla::HloProto hlo_metadata_;
+
+  // To be consistent with the TpuProgramGroupInterface::hlo_metadatas()
+  // signature, we store HloProto values in hlo_metadatas_ when
+  // set_hlo_metadata(...) is called, and return their pointers from
+  // hlo_metadatas_ptrs_ when hlo_metadatas() is called. hlo_metadata_ptrs_ is
+  // refreshed whenever hlo_metadatas_ is set or the object is moved.
+  std::vector<xla::HloProto> hlo_metadatas_;  // Owned.
+  std::vector<const xla::HloProto*> hlo_metadatas_ptrs_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(TpuProgramGroup);
 };
 
 }  // namespace tpu

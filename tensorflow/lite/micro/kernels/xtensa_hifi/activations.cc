@@ -222,28 +222,26 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace activations
 
-TfLiteRegistration* Register_RELU() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/activations::ReluPrepare,
-                                 /*invoke=*/activations::ReluEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_RELU() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/activations::ReluPrepare,
+          /*invoke=*/activations::ReluEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-TfLiteRegistration* Register_RELU6() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/activations::Relu6Prepare,
-                                 /*invoke=*/activations::Relu6Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_RELU6() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/activations::Relu6Prepare,
+          /*invoke=*/activations::Relu6Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

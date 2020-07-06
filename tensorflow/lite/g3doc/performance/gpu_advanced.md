@@ -233,8 +233,8 @@ the future.
 
 The GPU delegate already supports
 [float16 quantized](https://www.tensorflow.org/lite/performance/post_training_float16_quant)
-models. There is experimental support on Android to run 8-bit quantized as well.
-This includes all flavors of quantization, including:
+models. There is experimental support on Android and iOS to run 8-bit quantized
+as well. This includes all flavors of quantization, including:
 
 *   Models trained with
     [Quantization-aware training](https://www.tensorflow.org/lite/convert/quantization)
@@ -314,7 +314,7 @@ avoidable memory copies.
 Assuming the image input is in GPU memory, it must first be converted to a
 `MTLBuffer` object for Metal. You can associate a TfLiteTensor to a
 user-prepared `MTLBuffer` with `TFLGpuDelegateBindMetalBufferToTensor()`. Note
-that `TFLGpuDelegateBindMetalBufferToTensor()` must be called before
+that `TFLGpuDelegateBindMetalBufferToTensor()` must be called after
 `Interpreter::ModifyGraphWithDelegate()`. Additionally, the inference output is,
 by default, copied from GPU memory to CPU memory. This behavior can be turned
 off by calling `Interpreter::SetAllowBufferHandleOutput(true)` during
@@ -328,10 +328,18 @@ initialization.
 
 // Prepare GPU delegate.
 auto* delegate = TFLGpuDelegateCreate(nullptr);
-interpreter->SetAllowBufferHandleOutput(true);  // disable default gpu->cpu copy
-if (!TFLGpuDelegateBindMetalBufferToTensor(delegate, interpreter->inputs()[0], user_provided_input_buffer)) return false;
-if (!TFLGpuDelegateBindMetalBufferToTensor(delegate, interpreter->outputs()[0], user_provided_output_buffer)) return false;
+
 if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
+
+interpreter->SetAllowBufferHandleOutput(true);  // disable default gpu->cpu copy
+if (!TFLGpuDelegateBindMetalBufferToTensor(
+        delegate, interpreter->inputs()[0], user_provided_input_buffer)) {
+  return false;
+}
+if (!TFLGpuDelegateBindMetalBufferToTensor(
+        delegate, interpreter->outputs()[0], user_provided_output_buffer)) {
+  return false;
+}
 
 // Run inference.
 if (interpreter->Invoke() != kTfLiteOk) return false;
@@ -340,6 +348,10 @@ if (interpreter->Invoke() != kTfLiteOk) return false;
 Note: Once the default behavior is turned off, copying the inference output from
 GPU memory to CPU memory requires an explicit call to
 `Interpreter::EnsureTensorDataIsReadable()` for each output tensor.
+
+Note: This also works for quantized models, but you still need to a **float32
+sized buffer with float32 data**, because the buffer will be bound to the
+internal dequantized buffer.
 
 ## Tips and Tricks
 

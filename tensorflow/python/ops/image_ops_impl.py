@@ -2634,6 +2634,23 @@ def decode_image(contents,
     ValueError: On incorrect number of channels.
   """
   with ops.name_scope(name, 'decode_image'):
+    if compat.forward_compatible(2020, 7, 14):
+      channels = 0 if channels is None else channels
+      if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
+        dest_dtype = dtype
+        dtype = dtypes.uint16
+        return convert_image_dtype(gen_image_ops.decode_image(
+            contents=contents,
+            channels=channels,
+            expand_animations=expand_animations,
+            dtype=dtype), dest_dtype)
+      else:
+        return gen_image_ops.decode_image(
+            contents=contents,
+            channels=channels,
+            expand_animations=expand_animations,
+            dtype=dtype)
+
     if channels not in (None, 0, 1, 3, 4):
       raise ValueError('channels must be in (None, 0, 1, 3, 4)')
     substr = string_ops.substr(contents, 0, 3)
@@ -3642,20 +3659,25 @@ def ssim(img1,
     values are in range (-1, 1], when pixel values are non-negative. Returns
     a tensor with shape: broadcast(img1.shape[:-3], img2.shape[:-3]).
   """
-  _, _, checks = _verify_compatible_image_shapes(img1, img2)
-  with ops.control_dependencies(checks):
-    img1 = array_ops.identity(img1)
+  with ops.name_scope(None, 'SSIM', [img1, img2]):
+    # Convert to tensor if needed.
+    img1 = ops.convert_to_tensor(img1, name='img1')
+    img2 = ops.convert_to_tensor(img2, name='img2')
+    # Shape checking.
+    _, _, checks = _verify_compatible_image_shapes(img1, img2)
+    with ops.control_dependencies(checks):
+      img1 = array_ops.identity(img1)
 
-  # Need to convert the images to float32.  Scale max_val accordingly so that
-  # SSIM is computed correctly.
-  max_val = math_ops.cast(max_val, img1.dtype)
-  max_val = convert_image_dtype(max_val, dtypes.float32)
-  img1 = convert_image_dtype(img1, dtypes.float32)
-  img2 = convert_image_dtype(img2, dtypes.float32)
-  ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val, filter_size,
-                                          filter_sigma, k1, k2)
-  # Compute average over color channels.
-  return math_ops.reduce_mean(ssim_per_channel, [-1])
+    # Need to convert the images to float32.  Scale max_val accordingly so that
+    # SSIM is computed correctly.
+    max_val = math_ops.cast(max_val, img1.dtype)
+    max_val = convert_image_dtype(max_val, dtypes.float32)
+    img1 = convert_image_dtype(img1, dtypes.float32)
+    img2 = convert_image_dtype(img2, dtypes.float32)
+    ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val, filter_size,
+                                            filter_sigma, k1, k2)
+    # Compute average over color channels.
+    return math_ops.reduce_mean(ssim_per_channel, [-1])
 
 
 # Default values obtained by Wang et al.
@@ -4556,7 +4578,7 @@ def non_max_suppression_padded(boxes,
     sorted_input: a boolean indicating whether the input boxes and scores
       are sorted in descending order by the score.
     canonicalized_coordinates: if box coordinates are given as
-    `[y_min, x_min, y_max, x_max]`, settign to True eliminate redundant
+    `[y_min, x_min, y_max, x_max]`, setting to True eliminate redundant
      computation to canonicalize box coordinates.
     tile_size: an integer representing the number of boxes in a tile, i.e.,
       the maximum number of boxes per image that can be used to suppress other
@@ -4564,8 +4586,8 @@ def non_max_suppression_padded(boxes,
       potentially more redundant work.
   Returns:
     idx: a tensor with a shape of [..., num_boxes] representing the
-      indices selected by non-max suppression. The leadign dimensions
-      are the batch dimensions of the input boxes. All numbers are are within
+      indices selected by non-max suppression. The leading dimensions
+      are the batch dimensions of the input boxes. All numbers are within
       [0, num_boxes). For each image (i.e., idx[i]), only the first num_valid[i]
       indices (i.e., idx[i][:num_valid[i]]) are valid.
     num_valid: a tensor of rank 0 or higher with a shape of [...]
@@ -4667,7 +4689,11 @@ def non_max_suppression_padded_v2(boxes,
 
   Args:
     boxes: a tensor of rank 2 or higher with a shape of [..., num_boxes, 4].
-      Dimensions except the last two are batch dimensions.
+      Dimensions except the last two are batch dimensions. The last dimension
+      represents box coordinates, given as [y_1, x_1, y_2, x_2]. The coordinates
+      on each dimension can be given in any order
+      (see also `canonicalized_coordinates`) but must describe a box with
+      a positive area.
     scores: a tensor of rank 1 or higher with a shape of [..., num_boxes].
     max_output_size: a scalar integer `Tensor` representing the maximum number
       of boxes to be selected by non max suppression.
@@ -4681,7 +4707,7 @@ def non_max_suppression_padded_v2(boxes,
     sorted_input: a boolean indicating whether the input boxes and scores
       are sorted in descending order by the score.
     canonicalized_coordinates: if box coordinates are given as
-    `[y_min, x_min, y_max, x_max]`, settign to True eliminate redundant
+    `[y_min, x_min, y_max, x_max]`, setting to True eliminate redundant
      computation to canonicalize box coordinates.
     tile_size: an integer representing the number of boxes in a tile, i.e.,
       the maximum number of boxes per image that can be used to suppress other
@@ -4689,8 +4715,8 @@ def non_max_suppression_padded_v2(boxes,
       potentially more redundant work.
   Returns:
     idx: a tensor with a shape of [..., num_boxes] representing the
-      indices selected by non-max suppression. The leadign dimensions
-      are the batch dimensions of the input boxes. All numbers are are within
+      indices selected by non-max suppression. The leading dimensions
+      are the batch dimensions of the input boxes. All numbers are within
       [0, num_boxes). For each image (i.e., idx[i]), only the first num_valid[i]
       indices (i.e., idx[i][:num_valid[i]]) are valid.
     num_valid: a tensor of rank 0 or higher with a shape of [...]

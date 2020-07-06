@@ -46,6 +46,11 @@ EagerExecutor::~EagerExecutor() {
   tensorflow::mutex_lock l(node_queue_mutex_);
   state_ = ExecutorState::kShutDown;
   nodes_pending_.notify_all();
+  for (const auto& cleanups_for_key : cleanups_) {
+    for (const std::function<void()>& cleanup : cleanups_for_key.second) {
+      cleanup();
+    }
+  }
 }
 
 Status EagerExecutor::ShutDown() {
@@ -412,5 +417,11 @@ Status EagerExecutor::MoveToUnfinished(core::RefCountPtr<NodeItem> item,
 
   return Status::OK();
 }
+
+void EagerExecutor::AddCleanup(intptr_t key, std::function<void()> callback) {
+  cleanups_[key].push_back(callback);
+}
+
+void EagerExecutor::RemoveCleanups(intptr_t key) { cleanups_.erase(key); }
 
 }  // namespace tensorflow

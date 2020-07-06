@@ -21,6 +21,12 @@ namespace tflite {
 namespace benchmark {
 using BenchmarkParam = tflite::tools::ToolParam;
 using BenchmarkParams = tflite::tools::ToolParams;
+
+#define LOG_BENCHMARK_PARAM(params, type, name, prefix, suffix, verbose) \
+  do {                                                                   \
+    TFLITE_MAY_LOG(INFO, verbose || params.HasValueSet<type>(name))      \
+        << prefix << params.Get<type>(name) << suffix;                   \
+  } while (0)
 }  // namespace benchmark
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_TOOLS_BENCHMARK_BENCHMARK_PARAMS_H_

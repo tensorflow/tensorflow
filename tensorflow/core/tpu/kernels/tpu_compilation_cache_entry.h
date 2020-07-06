@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-// A version of `CompilationCacheEntry` that exposes Tpu binary program
+// A version of `CompilationCacheEntry` to access Tpu binary program
 // `XLA_TpuProgram`.
 class TpuCompilationCacheEntry {
  public:
@@ -40,28 +40,6 @@ class TpuCompilationCacheEntry {
  private:
   const TpuProgramGroup* tpu_program_group_;
   int core_index_;
-};
-
-// Base class for a reference to a cached proto. A unique_ptr to a
-// CompilationCacheEntryRef is returned by all the cache Lookup methods below,
-// and ensures the underlying proto is not garbage-collected until the client
-// discards the ptr.
-class CompilationCacheEntryRef {
- public:
-  virtual ~CompilationCacheEntryRef() = default;
-
-  // Returns a CompilationCacheEntry that should not be used beyond the lifetime
-  // of the CompilationCacheEntryRef.
-  virtual TpuCompilationCacheEntry get() = 0;
-};
-
-// Base class that holds references to compiled protos so that the protos are
-// not garbage-collected before being used by execute ops. Use
-// TpuCompilationCache::MakePerStepRefHolder to create an instance of a concrete
-// ref holder object.
-class CompilationRefHolder : public ResourceBase {
- public:
-  ~CompilationRefHolder() override = default;
 };
 
 }  // namespace tpu

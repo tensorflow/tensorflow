@@ -13,11 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Currently, this test only passes when TensorFlow passes with CUDA, because
-// otherwise the optimizer will not turn clearlist nodes to float16. When
-// looking at clearlist nodes, this optimizer checks if the nodes have a float16
-// GPU OpKernel, but without CUDA there are no GPU OpKernels at all.
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM || \
+    (INTEL_MKL && defined(ENABLE_INTEL_MKL_BFLOAT16))
 
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
 
@@ -69,6 +66,31 @@ Tensor GenerateRandomTensorInRange(const TensorShape& shape, double minval,
         (random::New64() % 65536 / 65536.0) * (maxval - minval) + minval;
   return tensor;
 }
+
+void VerifyGraphsEquivalent(const GraphDef& original_graph,
+                            const GraphDef& optimized_graph,
+                            const string& func) {
+  EXPECT_EQ(original_graph.node_size(), optimized_graph.node_size()) << func;
+  GraphView optimized_view(&optimized_graph);
+  for (int i = 0; i < original_graph.node_size(); ++i) {
+    const NodeDef& original = original_graph.node(i);
+    const NodeDef& optimized = *optimized_view.GetNode(original.name());
+    EXPECT_EQ(original.name(), optimized.name()) << func;
+    EXPECT_EQ(original.op(), optimized.op()) << func;
+    EXPECT_EQ(original.input_size(), optimized.input_size()) << func;
+    if (original.input_size() == optimized.input_size()) {
+      for (int j = 0; j < original.input_size(); ++j) {
+        EXPECT_EQ(original.input(j), optimized.input(j)) << func;
+      }
+    }
+  }
+}
+
+// Currently, this test suite only passes when TensorFlow passes with CUDA,
+// because otherwise the optimizer will not turn clearlist nodes to float16.
+// When looking at clearlist nodes, this optimizer checks if the nodes have a
+// float16 GPU OpKernel, but without CUDA there are no GPU OpKernels at all.
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 const std::pair<int, int> kMinGPUArch = {7, 0};
 
@@ -184,25 +206,6 @@ class AutoMixedPrecisionTest : public GrapplerTest {
   bool gpu_available_;
 };
 
-void VerifyGraphsEquivalent(const GraphDef& original_graph,
-                            const GraphDef& optimized_graph,
-                            const string& func) {
-  EXPECT_EQ(original_graph.node_size(), optimized_graph.node_size()) << func;
-  GraphView optimized_view(&optimized_graph);
-  for (int i = 0; i < original_graph.node_size(); ++i) {
-    const NodeDef& original = original_graph.node(i);
-    const NodeDef& optimized = *optimized_view.GetNode(original.name());
-    EXPECT_EQ(original.name(), optimized.name()) << func;
-    EXPECT_EQ(original.op(), optimized.op()) << func;
-    EXPECT_EQ(original.input_size(), optimized.input_size()) << func;
-    if (original.input_size() == optimized.input_size()) {
-      for (int j = 0; j < original.input_size(); ++j) {
-        EXPECT_EQ(original.input(j), optimized.input(j)) << func;
-      }
-    }
-  }
-}
-
 TEST_F(AutoMixedPrecisionTest, NoOp) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input = ops::Const(s.WithOpName("input"), 1.234f, {32});
@@ -287,10 +290,10 @@ TEST_F(AutoMixedPrecisionTest, Simple) {
   Output clr2 = ops::Relu(s.WithOpName("clr2"), gry1);
   Output wht1 = ops::MatMul(s.WithOpName("wht1"), clr2, clr2);
   Output clr3 = ops::Relu(s.WithOpName("clr3"), wht1);
-  Output blk2 = ops::Log(s.WithOpName("blk2"), clr3);
-  Output clr4 = ops::Relu(s.WithOpName("clr4"), blk2);
-  Output blk3 = ops::SparseMatMul(s.WithOpName("blk3"), clr4, clr4);
-  Output clr5 = ops::Relu(s.WithOpName("clr5"), blk3);
+  Output gry2 = ops::Log(s.WithOpName("gry2"), clr3);
+  Output clr4 = ops::Relu(s.WithOpName("clr4"), gry2);
+  Output blk2 = ops::SparseMatMul(s.WithOpName("blk2"), clr4, clr4);
+  Output clr5 = ops::Relu(s.WithOpName("clr5"), blk2);
   Output fetch = ops::Identity(s.WithOpName("fetch"), clr5);
 
   GrapplerItem item;
@@ -313,10 +316,10 @@ TEST_F(AutoMixedPrecisionTest, Simple) {
   EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("blk2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("gry2")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("blk3")->attr().at("Ta").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("blk3")->attr().at("Tb").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("blk2")->attr().at("Ta").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("blk2")->attr().at("Tb").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr5")->attr().at("T").type(), DT_FLOAT);
 
   auto tensors = EvaluateNodes(output, item.fetch);
@@ -1164,8 +1167,191 @@ TEST_F(AutoMixedPrecisionTest, TanhOp) {
       });
 }
 
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if INTEL_MKL
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+
+class AutoMixedPrecisionMklTest : public GrapplerTest {
+ protected:
+  void SetUp() override {
+    virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 0));
+    TF_CHECK_OK(virtual_cluster_->Provision());
+  }
+  void TearDown() override { TF_CHECK_OK(virtual_cluster_->Shutdown()); }
+
+  std::unique_ptr<Cluster> virtual_cluster_;
+};
+
+TEST_F(AutoMixedPrecisionMklTest, AlreadyBf16) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f, {32, 32});
+  Output cst1 = ops::Cast(s.WithOpName("cst1"), input, DT_BFLOAT16);
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), cst1, cst1);
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), wht1);
+  Output cst2 = ops::Cast(s.WithOpName("cst2"), clr1, DT_FLOAT);
+  Output clr2 = ops::Relu(s.WithOpName("clr2"), cst2);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), clr2);
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::MKL};
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+  VLOG(1) << output.DebugString();
+
+  VerifyGraphsEquivalent(item.graph, output, __FUNCTION__);
+  GraphView output_view(&output);
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("cst1")->attr().at("DstT").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("cst2")->attr().at("SrcT").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("cst2")->attr().at("DstT").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
+}
+
+TEST_F(AutoMixedPrecisionMklTest, Simple) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output blk1 = ops::Exp(s.WithOpName("blk1"), input);
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), blk1);
+  Output gry1 = ops::Sqrt(s.WithOpName("gry1"), clr1);
+  Output clr2 = ops::Relu(s.WithOpName("clr2"), gry1);
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), clr2, clr2);
+  Output clr3 = ops::Relu(s.WithOpName("clr3"), wht1);
+  Output blk2 = ops::Log(s.WithOpName("blk2"), clr3);
+  Output clr4 = ops::Relu(s.WithOpName("clr4"), blk2);
+  Output blk3 = ops::SparseMatMul(s.WithOpName("blk3"), clr4, clr4);
+  Output clr5 = ops::Relu(s.WithOpName("clr5"), blk3);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), clr5);
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::MKL};
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  VLOG(1) << output.DebugString();
+
+  GraphView output_view(&output);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
+  EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("blk1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("blk2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("blk3")->attr().at("Ta").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("blk3")->attr().at("Tb").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("clr5")->attr().at("T").type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 5e-4);
+  }
+}
+
+TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  tensorflow::Input shape = {32, 32};
+  auto tl1 = ops::TensorListReserve(s.WithOpName("tl1"), {32, 32}, 8, DT_FLOAT);
+  Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
+  Output idx1 = ops::Const(s.WithOpName("idx1"), 1);
+  Output idx2 = ops::Const(s.WithOpName("idx2"), 2);
+  Output idx3 = ops::Const(s.WithOpName("idx3"), 3);
+  auto tl1w1 =
+      ops::TensorListSetItem(s.WithOpName("tl1w1"), tl1.handle, idx1, input);
+  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
+  auto tl1w2 =
+      ops::TensorListSetItem(s.WithOpName("tl1w2"), tl1.handle, idx2, wht1);
+  // Ensure that TensorListResize doesn't cause any problems.
+  Output tl1rs =
+      ops::TensorListResize(s.WithOpName("tl1rs"), tl1w2.output_handle, 6);
+  Output tl1r1 = ops::TensorListGetItem(s.WithOpName("tl1r1"), tl1rs, idx2,
+                                        shape, DT_FLOAT)
+                     .item;
+  Output gry1 = ops::Mul(s.WithOpName("gry1"), tl1r1, tl1r1);
+  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
+  auto tl1w3 =
+      ops::TensorListSetItem(s.WithOpName("tl1w3"), tl1.handle, idx3, wht2);
+  Output tl1r2 =
+      ops::TensorListGetItem(s.WithOpName("tl1r2"), tl1w3.output_handle, idx3,
+                             shape, DT_FLOAT)
+          .item;
+  auto tl2 = ops::TensorListReserve(s.WithOpName("tl2"), shape, 8, DT_FLOAT);
+  auto tl2w1 =
+      ops::TensorListSetItem(s.WithOpName("tl2w1"), tl2.handle, idx1, input);
+  Output tl2r1 =
+      ops::TensorListGetItem(s.WithOpName("tl2r1"), tl2w1.output_handle, idx1,
+                             shape, DT_FLOAT)
+          .item;
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), tl1r2);
+  Output fetch2 = ops::Identity(s.WithOpName("fetch2"), tl2r1);
+
+  GrapplerItem item;
+  item.fetch = {"fetch1", "fetch2"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  AutoMixedPrecision optimizer{AutoMixedPrecisionMode::MKL};
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  VLOG(1) << output.DebugString();
+
+  GraphView output_view(&output);
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
+  const char* type_key = "element_dtype";
+  EXPECT_EQ(output_view.GetNode("tl1")->attr().at(type_key).type(),
+            DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("tl1w1")->attr().at(type_key).type(),
+            DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("tl1w2")->attr().at(type_key).type(),
+            DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("tl1r1")->attr().at(type_key).type(),
+            DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("tl1w3")->attr().at(type_key).type(),
+            DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("tl2")->attr().at(type_key).type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("tl2w1")->attr().at(type_key).type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("tl2r1")->attr().at(type_key).type(), DT_FLOAT);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(tensors.size(), tensors_expected.size());
+  EXPECT_EQ(tensors.size(), item.fetch.size());
+  for (int i = 0; i < item.fetch.size(); ++i) {
+    test::ExpectClose(tensors_expected[i], tensors[i], -1, 1e-2);
+  }
+}
+
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
+#endif  // INTEL_MKL
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM || (INTEL_MKL &&
+        // defined(ENABLE_INTEL_MKL_BFLOAT16))

@@ -4637,12 +4637,6 @@ def softsign(x):
   return nn.softsign(x)
 
 
-def _backtrack_identity(tensor):
-  while tensor.op.type == 'Identity':
-    tensor = tensor.op.inputs[0]
-  return tensor
-
-
 @keras_export('keras.backend.categorical_crossentropy')
 @dispatch.add_dispatch_support
 def categorical_crossentropy(target, output, from_logits=False, axis=-1):
@@ -4695,17 +4689,16 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
     return nn.softmax_cross_entropy_with_logits_v2(
         labels=target, logits=output, axis=axis)
 
-  if not isinstance(output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Softmax':
-      # When softmax activation function is used for output operation, we
-      # use logits from the softmax function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      # See b/117284466
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      return nn.softmax_cross_entropy_with_logits_v2(
-          labels=target, logits=output, axis=axis)
+  if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Softmax'):
+    # When softmax activation function is used for output operation, we
+    # use logits from the softmax function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    # See b/117284466
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    return nn.softmax_cross_entropy_with_logits_v2(
+        labels=target, logits=output, axis=axis)
 
   # scale preds so that the class probas of each sample sum to 1
   output = output / math_ops.reduce_sum(output, axis, True)
@@ -4740,17 +4733,16 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   target = ops.convert_to_tensor_v2(target)
   output = ops.convert_to_tensor_v2(output)
 
-  if not from_logits and not isinstance(
-      output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Softmax':
-      # When softmax activation function is used for output operation, we
-      # use logits from the softmax function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      # See b/117284466
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      from_logits = True
+  if (not from_logits and
+      not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Softmax'):
+    # When softmax activation function is used for output operation, we
+    # use logits from the softmax function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    # See b/117284466
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    from_logits = True
 
   if not from_logits:
     epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
@@ -4821,15 +4813,14 @@ def binary_crossentropy(target, output, from_logits=False):
   if from_logits:
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
-  if not isinstance(output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Sigmoid':
-      # When sigmoid activation function is used for output operation, we
-      # use logits from the sigmoid function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
+  if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Sigmoid'):
+    # When sigmoid activation function is used for output operation, we
+    # use logits from the sigmoid function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
   epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
   output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
@@ -6063,7 +6054,7 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
               the log probability of each decoded sequence.
   """
   input_shape = shape(y_pred)
-  samples, steps = input_shape[0], input_shape[1]
+  num_samples, num_steps = input_shape[0], input_shape[1]
   y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
   input_length = math_ops.cast(input_length, dtypes_module.int32)
 
@@ -6076,11 +6067,12 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
         sequence_length=input_length,
         beam_width=beam_width,
         top_paths=top_paths)
-  decoded_dense = [
-      sparse_ops.sparse_to_dense(
-          st.indices, (samples, steps), st.values, default_value=-1)
-      for st in decoded
-  ]
+  decoded_dense = []
+  for st in decoded:
+    st = sparse_tensor.SparseTensor(
+        st.indices, st.values, (num_samples, num_steps))
+    decoded_dense.append(
+        sparse_ops.sparse_tensor_to_dense(sp_input=st, default_value=-1))
   return (decoded_dense, log_prob)
 
 

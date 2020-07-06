@@ -103,20 +103,6 @@ static Tensor GetFilterSizesTensor(const Conv2DDimensions& dims) {
                                 dims.input_depth, dims.filter_count});
 }
 
-#if defined(INTEL_MKL_DNN_ONLY)
-static Tensor NonMklTensor() {
-  MklDnnShape non_mkl_shape;
-  non_mkl_shape.SetMklTensor(false);
-
-  auto size = static_cast<int64>(non_mkl_shape.GetSerializeBufferSize());
-  Tensor tensor(DT_UINT8, {size});
-
-  non_mkl_shape.SerializeMklDnnShape(tensor.flat<uint8>().data(),
-                                     size * sizeof(uint8));
-  return tensor;
-}
-#endif
-
 static Graph* DefaultConv2D(const Conv2DDimensions& dims) {
   auto* graph = new Graph(OpRegistry::Global());
 
@@ -148,7 +134,8 @@ static Graph* MklConv2D(const Conv2DDimensions& dims) {
   Node* input = test::graph::Constant(graph, input_t, "input");
   Node* filter = test::graph::Constant(graph, filter_t, "filter");
 
-  Node* not_mkl_shape = test::graph::Constant(graph, NonMklTensor(), "not_mkl");
+  Node* not_mkl_shape =
+      test::graph::Constant(graph, GetMklMetaTensor(), "not_mkl");
 
   Node* conv2d;
   TF_CHECK_OK(NodeBuilder(graph->NewName("mkl_conv_2d"), "_MklConv2D")
@@ -207,7 +194,8 @@ static Graph* MklConv2DBwdInput(const Conv2DDimensions& dims) {
   Node* out_backprop =
       test::graph::Constant(graph, out_backprop_t, "out_backprop");
 
-  Node* not_mkl_shape = test::graph::Constant(graph, NonMklTensor(), "not_mkl");
+  Node* not_mkl_shape =
+      test::graph::Constant(graph, GetMklMetaTensor(), "not_mkl");
 
   Node* conv2d_bwd_input;
   TF_CHECK_OK(NodeBuilder(graph->NewName("conv_2d_bwd_input"),
@@ -271,7 +259,8 @@ static Graph* MklConv2DBwdFilter(const Conv2DDimensions& dims) {
   Node* out_backprop =
       test::graph::Constant(graph, out_backprop_t, "out_backprop");
 
-  Node* not_mkl_shape = test::graph::Constant(graph, NonMklTensor(), "not_mkl");
+  Node* not_mkl_shape =
+      test::graph::Constant(graph, GetMklMetaTensor(), "not_mkl");
 
   Node* conv2d_bwd_filter;
   TF_CHECK_OK(NodeBuilder(graph->NewName("conv_2d_bwd_filter"),

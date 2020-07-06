@@ -732,13 +732,11 @@ def assert_no_new_tensors(f):
     """Finds existing Tensors, runs the test, checks for new Tensors."""
 
     def _is_tensorflow_object(obj):
-      if not hasattr(obj, "__class__"):
-        return False
       try:
         return isinstance(obj,
                           (ops.Tensor, variables.Variable,
                            tensor_shape.Dimension, tensor_shape.TensorShape))
-      except ReferenceError:
+      except (ReferenceError, AttributeError):
         # If the object no longer exists, we don't care about it.
         return False
 
@@ -1934,6 +1932,9 @@ class TensorFlowTestCase(googletest.TestCase):
       # Constant folding secretly runs code on TF:Classic CPU, so we also
       # disable it here.
       pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
+
+    if is_mlir_bridge_enabled():
+      context.context().enable_mlir_bridge = True
 
     self._threads = []
     self._tempdir = None

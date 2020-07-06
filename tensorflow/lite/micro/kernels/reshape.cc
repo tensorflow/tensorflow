@@ -61,7 +61,7 @@ TfLiteStatus ReshapeOutput(TfLiteContext* context, TfLiteNode* node) {
     num_output_elements *= output_shape->data[stretch_dim];
   }
 
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_EQ(context, num_input_elements, num_output_elements);
   return kTfLiteOk;
 }
@@ -89,16 +89,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace reshape
 
-TfLiteRegistration* Register_RESHAPE() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/reshape::Prepare,
-                                 /*invoke=*/reshape::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_RESHAPE() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/reshape::Prepare,
+          /*invoke=*/reshape::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

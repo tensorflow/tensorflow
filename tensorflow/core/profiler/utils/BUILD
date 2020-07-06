@@ -77,6 +77,17 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "op_metrics_db_utils_test",
+    srcs = ["op_metrics_db_utils_test.cc"],
+    deps = [
+        ":op_metrics_db_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+    ],
+)
+
 cc_library(
     name = "op_utils",
     srcs = ["op_utils.cc"],
@@ -145,6 +156,9 @@ cc_library(
 cc_library(
     name = "trace_utils",
     hdrs = ["trace_utils.h"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
@@ -233,6 +247,7 @@ cc_library(
     deps = [
         ":xplane_builder",
         ":xplane_schema",
+        ":xplane_utils",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",

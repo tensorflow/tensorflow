@@ -130,13 +130,13 @@ class LinearOperatorToeplitzTest(
     return operator, matrix
 
   def test_scalar_row_col_raises(self):
-    with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
+    with self.assertRaisesRegex(ValueError, "must have at least 1 dimension"):
       linear_operator_toeplitz.LinearOperatorToeplitz(1., 1.)
 
-    with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
+    with self.assertRaisesRegex(ValueError, "must have at least 1 dimension"):
       linear_operator_toeplitz.LinearOperatorToeplitz([1.], 1.)
 
-    with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
+    with self.assertRaisesRegex(ValueError, "must have at least 1 dimension"):
       linear_operator_toeplitz.LinearOperatorToeplitz(1., [1.])
 
   def test_tape_safe(self):
