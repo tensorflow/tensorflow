@@ -4541,10 +4541,10 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Returns:
       A tensor.
   """
-  if hasattr(x, "dtype"):
-    dtype = x.dtype
-  else:
-    dtype = floatx()
+  # While x can be a tensor or variable, we also see cases where 
+  # numpy arrays, lists, tuples are passed as well.
+  # lists, tuples do not have 'dtype' attribute.
+  dtype = getattr(x, 'dtype', floatx())
   if alpha != 0.:
     if max_value is None and threshold == 0:
       return nn.leaky_relu(x, alpha=alpha)
