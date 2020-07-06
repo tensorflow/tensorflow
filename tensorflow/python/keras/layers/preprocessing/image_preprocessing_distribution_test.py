@@ -42,8 +42,9 @@ class ImagePreprocessingDistributionTest(
   def test_distribution(self, distribution):
     # TODO(b/159738418): large image input causes OOM in ubuntu multi gpu.
     np_images = np.random.random((32, 32, 32, 3)).astype(np.float32)
-    image_dataset = dataset_ops.Dataset.from_tensor_slices(np_images).batch(
-        16, drop_remainder=True)
+    np_labels = np.random.random((32, 1)).astype(np.float32)
+    image_dataset = dataset_ops.Dataset.from_tensor_slices((np_images, np_labels))
+    image_dataset = image_dataset.batch(16, drop_remainder=True)
 
     with distribution.scope():
       input_data = keras.Input(shape=(32, 32, 3), dtype=dtypes.float32)
@@ -60,7 +61,8 @@ class ImagePreprocessingDistributionTest(
       cls_layer = keras.layers.Dense(units=1, activation="sigmoid")
       output = cls_layer(output)
       model = keras.Model(inputs=input_data, outputs=output)
-    model.compile(loss="binary_crossentropy")
+    model.compile(loss="binary_crossentropy", optimizer='sgd')
+    model.fit(image_dataset, epochs=1)
     _ = model.predict(image_dataset)
 
 
