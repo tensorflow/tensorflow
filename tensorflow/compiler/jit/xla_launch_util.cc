@@ -476,10 +476,36 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     stream->ThenRecordEvent(definition_event.get());
   }
 
+  std::vector<TensorShape> output_tensor_shapes;
+  output_tensor_shapes.reserve(ctx->num_outputs());
+  if (output.on_host_shape().is_dynamic()) {
+    TF_ASSIGN_OR_RETURN(
+        auto transfer_manager,
+        xla::TransferManager::GetForPlatform(stream->parent()->platform()));
+
+    xla::Shape output_host_shape = output.on_host_shape();
+    xla::Shape output_device_shape = output.on_device_shape();
+    TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
+        stream, &output, &output_host_shape, &output_device_shape));
+
+    output.set_shapes(output_host_shape, output_device_shape);
+    for (int i = 0; i < ctx->num_outputs(); ++i) {
+      const xla::Shape& subshape =
+          xla::ShapeUtil::GetSubshape(output_host_shape, {i});
+      TensorShape shape;
+      TF_RETURN_IF_ERROR(XLAShapeToTensorShape(subshape, &shape));
+      output_tensor_shapes.push_back(shape);
+    }
+  } else {
+    for (int i = 0; i < ctx->num_outputs(); ++i) {
+      output_tensor_shapes.push_back(compilation_result->outputs[i].shape);
+    }
+  }
+
   // Copy XLA results to the OpOutputList.
   int output_num = 0;
   for (int i = 0; i < ctx->num_outputs(); ++i) {
-    const TensorShape& shape = compilation_result->outputs[i].shape;
+    const TensorShape& shape = output_tensor_shapes[i];
     const DataType& type = compilation_result->outputs[i].type;
     VLOG(2) << "Retval " << i << " shape " << shape.DebugString() << " type "
             << DataTypeString(type);
