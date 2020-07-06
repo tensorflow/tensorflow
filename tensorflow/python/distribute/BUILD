@@ -1740,7 +1740,6 @@ cuda_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:run_config",
-        "//tensorflow/python/keras/layers:core",
         "@absl_py//absl/testing:parameterized",
     ],
 )
