@@ -43,16 +43,6 @@ static void SummaryScalarOp_Delete(void* kernel) {
 bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2);
 static tensorflow::string SingleTag(TF_Tensor* tags); 
 
-template <typename T> 
-float get_float_value(T* element){ 
-  return static_cast<float>(*element); 
-}
-
-template<>
-float get_float_value(Eigen::half* element){
-  return Eigen::half_impl::half_to_float(*element);  
-}
-
 template<typename T>
 static void SummaryScalarOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   TF_Tensor* tags;
@@ -82,18 +72,21 @@ static void SummaryScalarOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
       tensorflow::Summary::Value* v = s.add_value();
       const tensorflow::tstring& Ttags_i = tags_array[i];  
       v->set_tag(Ttags_i.data(), Ttags_i.size());
-      v->set_simple_value(get_float_value(&values_array[i]));
+      v->set_simple_value(float(values_array[i]));
     }
-    TF_Tensor* summary_tensor = TF_AllocateOutput(ctx, 0 
+    TF_Tensor* summary_tensor = TF_AllocateOutput(ctx, 0,
         TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
         sizeof(tensorflow::tstring), status);
     if (TF_GetCode(status) == TF_OK) {
       tensorflow::tstring summary_tstring;
       SerializeToTString(s, &summary_tstring);
-      *(TF_TensorData(summary_tensor)) = &summary_tstring; 
-      TF_SetOutput(ctx, 0, summary_tensor, status); 
+      TF_TString* output_tf_tstring = reinterpret_cast<TF_TString*>(TF_TensorData(summary_tensor)); 
+      TF_TString_Init(output_tf_tstring); 
+      tensorflow::tstring* output_tstring = reinterpret_cast<tensorflow::tstring*>(output_tf_tstring); 
+      *output_tstring = summary_tstring; // may want to use std::move 
     } 
     TF_DeleteTensor(summary_tensor);
+
   }
   if (TF_GetCode(status) != TF_OK) {
     TF_OpKernelContext_Failure(ctx, status);
