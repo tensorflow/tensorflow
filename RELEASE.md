@@ -169,7 +169,7 @@
       * Add support for selective registration of flex ops.
       * Add missing kernels for flex delegate whitelisted ops.
       * Fix issue when using direct `ByteBuffer` inputs with graphs that have dynamic shapes.
-      * Fix error checking supported operations in a model containing `HardSwish`.  
+      * Fix error checking supported operations in a model containing `HardSwish`. 
  
 ### TPU Enhancements
   * 3D mesh support
@@ -183,7 +183,10 @@
   * Implement stable `argmin` and `argmax`
 
 ### Tracing and Debugging
-  * Add a `TFE_Py_Execute` traceme.    
+  * Add a `TFE_Py_Execute` traceme.
+  
+### Packaging Support 
+  * Added `tf.sysconfig.get_build_info()`. Returns a dict that describes the currently installed TensorFlow package, e.g. the NVIDIA CUDA and NVIDIA CuDNN versions that the package was built to support.
   
 ## Thanks to our Contributors
 
