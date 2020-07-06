@@ -212,16 +212,15 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
 }
 }  // namespace reduce
 
-TfLiteRegistration* Register_MEAN() {
-  static TfLiteRegistration r = {/*init=*/reduce::InitMean,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/reduce::PrepareMeanOrSum,
-                                 /*invoke=*/reduce::EvalMean,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_MEAN() {
+  return {/*init=*/reduce::InitMean,
+          /*free=*/nullptr,
+          /*prepare=*/reduce::PrepareMeanOrSum,
+          /*invoke=*/reduce::EvalMean,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 }  // namespace micro
 }  // namespace ops

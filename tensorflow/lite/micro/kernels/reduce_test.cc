@@ -143,18 +143,18 @@ void TestMeanOpQuantized(const int* input_dims_data, const float* input_data,
   const int input_dims_count = ElementCount(*input_dims);
 
   // Allocate arrays for quantized tensors
-  T output_data_quant[output_dims_count];
-  T input_data_quant[input_dims_count];
-  T expected_output_data_quant[output_dims_count];
+  T* output_data_quant = new T[output_dims_count];
+  T* input_data_quant = new T[input_dims_count];
+  T* expected_output_data_quant = new T[output_dims_count];
 
   // Initialize tensors
   constexpr int tensors_size = 3;
   TfLiteTensor tensors[] = {
       CreateQuantizedTensor(input_data, input_data_quant, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
-      CreateInt32Tensor(axis_data, axis_dims, "axis_tensor"),
+                            input_scale, input_zero_point),
+      CreateInt32Tensor(axis_data, axis_dims),
       CreateQuantizedTensor(output_data_quant, output_dims, output_scale,
-                            output_zero_point, "output_tensor"),
+                            output_zero_point),
   };
 
   // Quantize expected output
