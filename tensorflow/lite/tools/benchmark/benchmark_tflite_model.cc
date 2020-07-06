@@ -293,7 +293,13 @@ void BenchmarkTfLiteModel::CleanUp() {
   inputs_data_.clear();
 }
 
-BenchmarkTfLiteModel::~BenchmarkTfLiteModel() { CleanUp(); }
+BenchmarkTfLiteModel::~BenchmarkTfLiteModel() {
+  CleanUp();
+
+  // Destory the owned interpreter earlier than other objects (specially
+  // 'owned_delegates_').
+  interpreter_.reset();
+}
 
 std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
   std::vector<Flag> flags = BenchmarkModel::GetFlags();
