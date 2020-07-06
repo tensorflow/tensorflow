@@ -294,7 +294,7 @@ std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db) {
     absl::StrAppend(&expensive_functions, "\"", candidates[i].function_name,
                     "\"");
   }
-  const int candidates_size  = candidates.size();
+  const int64 candidates_size  = candidates.size();
   if (candidates_size > num_functions_shown)
     absl::StrAppend(&expensive_functions, " and more");
   return absl::StrCat("Expensive tf-functions detected (", expensive_functions,
