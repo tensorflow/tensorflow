@@ -4579,11 +4579,11 @@ def non_max_suppression_padded(boxes,
    Raises:
     ValueError: When set pad_to_max_output_size to False for batched input.
   """
-  # if no new arguments are used and no later than 2020/4/20, use the old
-  # version to give us time to fix TFLite conversion
+  # if no new arguments are used and no later than 2020/6/23, use the old
+  # version to give us time to fix TFLite conversion after the TF 2.3 release.
   if (not sorted_input) and \
       (not canonicalized_coordinates) and \
-      tile_size == 512 and not compat.forward_compatible(2020, 4, 20):
+      tile_size == 512 and not compat.forward_compatible(2020, 6, 23):
     return non_max_suppression_padded_v1(
         boxes, scores, max_output_size, iou_threshold, score_threshold,
         pad_to_max_output_size, name)
