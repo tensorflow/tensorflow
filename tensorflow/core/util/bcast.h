@@ -139,7 +139,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
     if (x[i] != x[0]) {
       all_equal = false;
     }
-    int x_i_size = x[i].size();
+    const int x_i_size = x[i].size();
     if (x_i_size > largest_rank) {
       largest_rank = x[i].size();
     }
