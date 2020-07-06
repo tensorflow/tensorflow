@@ -29,6 +29,7 @@ namespace micro {
 namespace dequantize {
 
 struct OpData {
+  tflite::DequantizationParams quantization_params;
   // The scaling factor from input to output (aka the 'real multiplier') can
   // be represented as a fixed point multiplier plus a left shift.
   int32_t output_multiplier;
@@ -69,6 +70,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplier(effective_output_scale, &data->output_multiplier,
                        &data->output_shift);
   }
+
+  data->quantization_params.zero_point = input->params.zero_point;
+  data->quantization_params.scale = static_cast<double>(input->params.scale);
   return kTfLiteOk;
 }
 
@@ -80,24 +84,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
 
   if (output->type == kTfLiteFloat32) {
-    tflite::DequantizationParams op_params;
-    op_params.zero_point = input->params.zero_point;
-    op_params.scale = static_cast<double>(input->params.scale);
     switch (input->type) {
       case kTfLiteUInt8:
         reference_ops::Dequantize(
-            op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-            GetTensorShape(output), GetTensorData<float>(output));
+            data->quantization_params, GetTensorShape(input),
+            GetTensorData<uint8_t>(input), GetTensorShape(output),
+            GetTensorData<float>(output));
         break;
       case kTfLiteInt8:
         reference_ops::Dequantize(
-            op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-            GetTensorShape(output), GetTensorData<float>(output));
+            data->quantization_params, GetTensorShape(input),
+            GetTensorData<int8_t>(input), GetTensorShape(output),
+            GetTensorData<float>(output));
         break;
       case kTfLiteInt16:
         reference_ops::Dequantize(
-            op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
-            GetTensorShape(output), GetTensorData<float>(output));
+            data->quantization_params, GetTensorShape(input),
+            GetTensorData<int16_t>(input), GetTensorShape(output),
+            GetTensorData<float>(output));
         break;
       default:
         TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
