@@ -341,23 +341,21 @@ tf_native_cc_binary(
     ],
 )
 
-genrule(
+gentbl(
     name = "operator_writer_inc",
-    srcs = [
+    tbl_outs = [("", "operator_writers.inc")],
+    tblgen = ":operator_writer_gen",
+    td_file = "//tensorflow/compiler/mlir/hlo:include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
+    # TODO(aminim): Figure out why td_relative_includes doesn't work here.
+    td_includes = [
+        "tensorflow/compiler/mlir/hlo/include",
+    ],
+    td_srcs = [
+        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
-        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
-        "//tensorflow/compiler/mlir/hlo:include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
     ],
-    outs = ["operator_writers.inc"],
-    cmd = ("$(location :operator_writer_gen) " +
-           "-I external/llvm-project/mlir/include " +
-           "-I tensorflow/compiler/mlir " +
-           "-I tensorflow/compiler/mlir/hlo/include " +
-           "$(location //tensorflow/compiler/mlir/hlo:include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td) " +
-           " -o $@"),
-    tools = [":operator_writer_gen"],
 )
 
 cc_library(
