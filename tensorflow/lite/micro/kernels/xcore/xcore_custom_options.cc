@@ -87,7 +87,7 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
         pad->left = vec[1].AsInt32();
         pad->zero_point = vec[2].AsInt32();
       }
-    } else if (key.compare("plan") == 0) {
+    } else if (key.compare("par") == 0) {
       if (plan) {
         const auto &plan_map = values[i].AsMap();
         auto plan_keys = plan_map.Keys();
@@ -118,6 +118,13 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
             }
           }
         }
+      }
+    } else if (key.compare("mem") == 0) {
+      if (plan) {
+        const auto &vec = values[i].AsVector();  // values represent [weights
+                                                 // scratch, bias scratch]
+        plan->SetWeightsScratch(vec[0].AsInt32());
+        plan->SetBiasScratch(vec[1].AsInt32());
       }
     }
   }
