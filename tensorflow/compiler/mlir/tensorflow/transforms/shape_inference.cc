@@ -1038,6 +1038,13 @@ LogicalResult ShapeInference::PropagateShapeIntoAttachedFunctions(
     return PropagateShapeToFunctions(
         module, drop_begin(if_op.getOperandTypes(), 1),
         {if_op.then_branch(), if_op.else_branch()}, max_iteration);
+  } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
+    SmallVector<StringRef, 4> branches;
+    for (Attribute branch : case_op.branches())
+      branches.push_back(branch.cast<FlatSymbolRefAttr>().getValue());
+    return PropagateShapeToFunctions(module,
+                                     drop_begin(case_op.getOperandTypes(), 1),
+                                     branches, max_iteration);
   } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
     return PropagateShapeToFunctions(module, while_op.getOperandTypes(),
                                      {while_op.cond(), while_op.body()},
