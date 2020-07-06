@@ -1086,11 +1086,8 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     cudnnRNNAlgo_t rnn_algo = ToCudnnRNNAlgo(algorithm_config.algorithm());
 
     // TODO: allow the user to choose an algorithm.
-    int unified_size = hidden_size;
-    bool use_projection = cell_size != 0 && hidden_size < cell_size;
-    if (use_projection) {
-      unified_size = cell_size;
-    }
+    auto proj_size = hidden_size;
+    hidden_size = std::max(hidden_size, cell_size);
 
     // Require explicit algorithm config to enable tensor cores. Some configs
     // return CUDNN_NOT_SUPPORTED when tensor ops are enabled (which is against
@@ -1100,8 +1097,9 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     // GetRnnAlgorithms() (which are non-default and explicitly set whether to
     // use tensor ops). CuDNN 7.2.1 fixed this issue.
     // TODO(csigg): Minimal support cuDNN version is 7.3, clean up.
-    bool allow_tensor_ops =
-        data_type != CUDNN_DATA_FLOAT || tensorflow::tf32_execution_allowed();
+    bool allow_tensor_ops = data_type == CUDNN_DATA_HALF;
+    if (data_type == CUDNN_DATA_FLOAT)
+      allow_tensor_ops = tensorflow::tf32_execution_allowed();
     bool use_tensor_ops =
         algorithm_config.algorithm().has_value()
             ? algorithm_config.algorithm()->tensor_ops_enabled()
@@ -1111,9 +1109,10 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
                           "Algo requests disallowed tensor op evaluation.");
     }
 
-#if CUDNN_VERSION >= 8000
     cudnnMathType_t math_type =
-        use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_FMA_MATH;
+        use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH;
+
+#if CUDNN_VERSION >= 8000
     cudnnRNNBiasMode_t bias_mode = CUDNN_RNN_DOUBLE_BIAS;
     uint32_t aux_flags = 0;
     if (use_padded_io) aux_flags |= CUDNN_RNN_PADDED_IO_ENABLED;
@@ -1124,26 +1123,23 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
         /*dataType=*/data_type, /*mathPrec=*/compute_type,
         /*mathType=*/math_type,
         /*inputSize=*/input_size,
-        /*hiddenSize=*/hidden_size, /*projSize=*/cell_size,
+        /*hiddenSize=*/hidden_size, /*projSize=*/proj_size,
         /*numLayers=*/num_layers,
         /*dropoutDesc=*/dropout_desc.handle(),
         /*auxFlags=*/aux_flags));
 #else
-    cudnnMathType_t math_type =
-        use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH;
     RETURN_IF_CUDNN_ERROR(cudnnSetRNNDescriptor_v6(
         cudnn.handle(), /*rnnDesc=*/rnn_desc.get(),
-        /*hiddenSize=*/unified_size, /*numLayers=*/num_layers,
+        /*hiddenSize=*/hidden_size, /*numLayers=*/num_layers,
         /*dropoutDesc=*/dropout_desc.handle(), /*inputMode=*/input_mode,
         /*direction=*/direction_mode, /*mode=*/rnn_mode, /*algo=*/rnn_algo,
         /*dataType=*/compute_type));
     CHECK_CUDNN_OK(cudnnSetRNNMatrixMathType(rnn_desc.get(), math_type));
-#endif
 
-    if (use_projection) {
+    if (proj_size < hidden_size) {
       RETURN_IF_CUDNN_ERROR(cudnnSetRNNProjectionLayers(
           cudnn.handle(), /*rnnDesc=*/rnn_desc.get(),
-          /*recProjSize=*/hidden_size, /*outProjSize=*/0));
+          /*recProjSize=*/proj_size, /*outProjSize=*/0));
     }
 
     // TODO: For now, we only use cudnnRNN**Ex API to process padded inputs.
@@ -1153,6 +1149,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
       RETURN_IF_CUDNN_ERROR(
           cudnnSetRNNPaddingMode(rnn_desc.get(), CUDNN_RNN_PADDED_IO_ENABLED));
     }
+#endif
 
     port::StatusOr<PersistentRnnPlan> rnn_plan_wrapper;
     PersistentRnnPlan rnn_plan;
