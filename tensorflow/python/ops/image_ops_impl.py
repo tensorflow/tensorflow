@@ -878,31 +878,24 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   `target_height` by `target_width`.
 
   Usage Example:
-
-  >>> x = [[[1., 2., 3.],
-  ...       [4., 5., 6.]],
-  ...       [[7., 8., 9.],
-  ...       [10., 11., 12.]]]
-  >>> padded_image = tf.image.pad_to_bounding_box(x, 1, 1, 4, 4)
-  >>> padded_image
-  <tf.Tensor: shape=(4, 4, 3), dtype=float32, numpy=
-  array([[[ 0.,  0.,  0.],
-  [ 0.,  0.,  0.],
-  [ 0.,  0.,  0.],
-  [ 0.,  0.,  0.]],
-  [[ 0.,  0.,  0.],
-  [ 1.,  2.,  3.],
-  [ 4.,  5.,  6.],
-  [ 0.,  0.,  0.]],
-  [[ 0.,  0.,  0.],
-  [ 7.,  8.,  9.],
-  [10., 11., 12.],
-  [ 0.,  0.,  0.]],
-  [[ 0.,  0.,  0.],
-  [ 0.,  0.,  0.],
-  [ 0.,  0.,  0.],
-  [ 0.,  0.,  0.]]], dtype=float32)>
-
+  t = tf.constant([[1, 2, 3], [4, 5, 6]])
+  offset_height = tf.constant(1), 
+  offset_width = tf.constant(1)
+  target_height = tf.constant(4)
+  target-width = tf.constant(7)
+  #constant_values = 0
+  tf.pad(t, paddings, "CONSTANT")  # [[0, 0, 0, 0, 0, 0, 0],
+                                   #  [0, 0, 1, 2, 3, 0, 0],
+                                   #  [0, 0, 4, 5, 6, 0, 0],
+                                   #  [0, 0, 0, 0, 0, 0, 0]]
+  tf.pad(t, paddings, "REFLECT")  # [[6, 5, 4, 5, 6, 5, 4],
+                                  #  [3, 2, 1, 2, 3, 2, 1],
+                                  #  [6, 5, 4, 5, 6, 5, 4],
+                                  #  [3, 2, 1, 2, 3, 2, 1]]
+  tf.pad(t, paddings, "SYMMETRIC")  # [[2, 1, 1, 2, 3, 3, 2],
+                                    #  [2, 1, 1, 2, 3, 3, 2],
+                                    #  [5, 4, 4, 5, 6, 6, 5],
+                                    #  [5, 4, 4, 5, 6, 6, 5]]
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
