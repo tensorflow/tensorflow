@@ -646,15 +646,12 @@ void QuantizationDriver::PreprocessConstantOps() {
       Operation *user = use.getOwner();
       int operand_num = use.getOperandNumber();
 
-      // Only duplicate if there are more than one use.
-      if (indexed_use.index() > 0) {
-        cst = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
-      }
-
       if (biases.find(operand_num) == biases.end() &&
-          !llvm::dyn_cast<mlir::SameScalesOpInterface>(user)) {
+          !llvm::dyn_cast<mlir::SameScalesOpInterface>(user) &&
+          !llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
         // Needs to scan the content to get the quantiztion parameters if there
         // are no quantization parameters (FakeQuant ops).
+        // For this case, the weight isn't duplicated.
         weights_.insert(cst);
         auto affine_user =
             llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
@@ -668,6 +665,10 @@ void QuantizationDriver::PreprocessConstantOps() {
         // This is a bias, so the quantization parameter isn't determined by the
         // local content. Same if the user can have quantization parameter
         // propagated from other places.
+        // Duplicate this constant in case it is shared by different users.
+        if (indexed_use.index() > 0) {
+          cst = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+        }
         user->setOperand(operand_num, cst);
       }
     }
