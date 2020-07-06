@@ -93,19 +93,10 @@ class ExperimentalCompileTest(test.TestCase):
       xla_func = def_function.function(fn, experimental_compile=True)
       inputs = array_ops.placeholder(dtypes.float32, [5])
       x = xla_func(inputs)
-<<<<<<< HEAD
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "not compilable"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "not compilable"):
         with session.Session(graph=g) as sess:
           sess.run(x, feed_dict={inputs: [1, 2, 2, 3, 3]})
-=======
-      # XLA support is not yet enabled for TF ROCm
-      if not test.is_built_with_rocm():
-        with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                    "not compilable"):
-          with session.Session(graph=g) as sess:
-            sess.run(x, feed_dict={inputs: [1, 2, 2, 3, 3]})
->>>>>>> google_upstream/master
 
 
 if __name__ == "__main__":

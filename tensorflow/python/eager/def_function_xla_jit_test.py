@@ -132,14 +132,8 @@ class DefFunctionTest(test.TestCase):
 
     func = def_function.function(fn2, experimental_compile=False)
     inputs = constant_op.constant([1, 2, 2, 3, 3])
-<<<<<<< HEAD
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   'not compilable'):
-=======
-    if not test.is_built_with_rocm():
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  'not compilable'):
->>>>>>> google_upstream/master
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'not compilable'):
         func(inputs)
 
   def testUnsupportedOps(self):
