@@ -3940,15 +3940,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
     disabled = def_function.function(func, experimental_follow_type_hints=False)
 
-    enabled(1) # Initial call gets traced
+    enabled(1)  # Initial call gets traced
     enabled(2)
     enabled(3)
     self.assertEqual(trace_count[0], 1)
 
     trace_count = [0]
     disabled(1)
-    disabled(2) # Retrace
-    disabled(3) # Retrace
+    disabled(2)  # Retrace
+    disabled(3)  # Retrace
     self.assertEqual(trace_count[0], 3)
 
   def testFollowTypeHintsTraceWithArgs(self):
@@ -3969,7 +3969,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     trace_count = [0]
     disabled(args)
-    disabled(args2) # Retrace
+    disabled(args2)  # Retrace
     self.assertEqual(trace_count[0], 2)
 
   def testFollowTypeHintsTraceWithKwargs(self):
@@ -3987,7 +3987,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     trace_count = [0]
     disabled(1, x=1, y=1.0, z="one")
-    disabled(2, x=2, y=2.0, z="two") # Retrace
+    disabled(2, x=2, y=2.0, z="two")  # Retrace
     self.assertEqual(trace_count[0], 2)
 
   def testFollowTypeHintsTraceWithMultipleInputTypes(self):
@@ -4006,8 +4006,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     trace_count = [0]
     disabled(1, constant_op.constant(1), "str", x=4.0)
-    disabled(2, constant_op.constant(2), "str2", x=5.0) # Retrace
-    self.assertEqual(trace_count[0], 2) # pylint: disable=bad-whitespace
+    disabled(2, constant_op.constant(2), "str2", x=5.0)  # Retrace
+    self.assertEqual(trace_count[0], 2)
 
   def testFollowTypeHintsTraceWithOnlyArgNamed(self):
     trace_count = [0]
@@ -4018,7 +4018,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(1, 3, x=4.0, y="str")
-    enabled(2, 4, x=4.0, y="str") # Retrace
+    enabled(2, 4, x=4.0, y="str")  # Retrace
     self.assertEqual(trace_count[0], 2)
 
   def testFollowTypeHintsTraceWithNotAllNamed(self):
@@ -4030,9 +4030,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(1, 2, 3)
-    enabled(1, 20, 3) # No retrace - change in ops.Tensor typed arg
-    enabled(2, 2, 3) # Retrace - change in untyped arg
-    enabled(2, 2, 4) # Retrace - change in typed arg
+    enabled(1, 20, 3)  # No retrace - change in ops.Tensor typed arg
+    enabled(2, 2, 3)  # Retrace - change in untyped arg
+    enabled(2, 2, 4)  # Retrace - change in typed arg
     self.assertEqual(trace_count[0], 3)
 
   def testFollowTypeHintsTraceWithOnlyArgsNamed(self):
@@ -4044,8 +4044,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(1, 20, 3, 4, 5, 6)
-    enabled(1, 20, 3, 4, 5, 60) # No retrace - change in *args
-    enabled(1, 30, 7, 8, 9, 10) # Retrace - change in args
+    enabled(1, 20, 3, 4, 5, 60)  # No retrace - change in *args
+    enabled(1, 30, 7, 8, 9, 10)  # Retrace - change in args
     self.assertEqual(trace_count[0], 2)
 
   def testFollowTypeHintsTraceWithOnlyKwargsNamed(self):
@@ -4057,9 +4057,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(1, 2, 3, 4, 5, 6, a=1.0, b=2.0, c=3.0)
-    enabled(1, 2, 3, 4, 5, 6, a=1.5, b=2.5, c=3.5) # No retrace - change in **kwargs
-    enabled(100, 2, 3, 4, 5, 6, a=1.0, b=2.0, c=3.0) # Retrace - change in args
-    enabled(1, 2, 3, 4, 5, 100, a=1.0, b=2.0, c=3.0) # Retrace - change in *args
+    enabled(1, 2, 3, 4, 5, 6, a=1.5, b=2.5, c=3.5)  # No retrace - change in **kwargs
+    enabled(100, 2, 3, 4, 5, 6, a=1.0, b=2.0, c=3.0)  # Retrace - change in args
+    enabled(1, 2, 3, 4, 5, 100, a=1.0, b=2.0, c=3.0)  # Retrace - change in *args
     self.assertEqual(trace_count[0], 3)
 
   def testFollowTypeHintsTraceWithArgsEquals(self):
@@ -4071,9 +4071,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(x=1, y=2, z=3)
-    enabled(x=1, y=3, z=3) # Retrace - change in args
-    enabled(x=2, y=2, z=4) # No retrace - change in args and **kwargs
-    enabled(x=2, y=2, z=4, u=5) # Retrace - change in **kwargs
+    enabled(x=1, y=3, z=3)  # Retrace - change in args
+    enabled(x=2, y=2, z=4)  # No retrace - change in args and **kwargs
+    enabled(x=2, y=2, z=4, u=5)  # Retrace - change in **kwargs
     self.assertEqual(trace_count[0], 3)
 
   def testFollowTypeHintsTraceWithArgsEqualsTypedKwargs(self):
@@ -4085,10 +4085,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(x=1, y=2, z=3)
-    enabled(x=1, y=3, z=3) # Retrace
-    enabled(x=1, y=2, z=4) # No retrace
-    enabled(x=2, y=2, z=4) # Retrace
-    enabled(x=2, y=2, z=4, u=5) # Retrace
+    enabled(x=1, y=3, z=3)  # Retrace
+    enabled(x=1, y=2, z=4)  # No retrace
+    enabled(x=2, y=2, z=4)  # Retrace
+    enabled(x=2, y=2, z=4, u=5)  # Retrace
     self.assertEqual(trace_count[0], 4)
 
   def testFollowTypeHintsTraceWithArgsEqualsTypedArgs(self):
@@ -4100,10 +4100,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(x=1, y=2, z=3)
-    enabled(x=1, y=3, z=3) # Retrace
-    enabled(x=1, y=2, z=4) # Retrace
-    enabled(x=2, y=2, z=3) # No retrace
-    enabled(x=2, y=2, z=4, u=5) # Retrace
+    enabled(x=1, y=3, z=3)  # Retrace
+    enabled(x=1, y=2, z=4)  # Retrace
+    enabled(x=2, y=2, z=3)  # No retrace
+    enabled(x=2, y=2, z=4, u=5)  # Retrace
     self.assertEqual(trace_count[0], 4)
 
   def testFollowTypeHintsTraceWithKwOnlyArgsBasic(self):
@@ -4115,8 +4115,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(a=1, b=2)
-    enabled(a=2, b=2) # No retrace
-    enabled(a=1, b=1) # Retrace
+    enabled(a=2, b=2)  # No retrace
+    enabled(a=1, b=1)  # Retrace
     self.assertEqual(trace_count[0], 2)
 
   def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedArg(self):
@@ -4128,11 +4128,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
-    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7) # No retrace
-    enabled(1000, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7) # No retrace
-    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
-    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7) # Retrace
-    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70) # Retrace
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1000, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70)  # Retrace
     self.assertEqual(trace_count[0], 4)
 
   def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedArgs(self):
@@ -4144,11 +4144,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
-    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
-    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7) # No retrace
-    enabled(1, 200, 300, 400, kwonly=5, kwarg1=6, kwarg2=7) # No retrace
-    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7) # Retrace
-    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70) # Retrace
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1, 200, 300, 400, kwonly=5, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70)  # Retrace
     self.assertEqual(trace_count[0], 4)
 
   def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedKwOnlyArg(self):
@@ -4160,11 +4160,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
-    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
-    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
-    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7) # No retrace
-    enabled(1, 2, 3, 4, kwonly=500, kwarg1=6, kwarg2=7) # No retrace
-    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70) # Retrace
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1, 2, 3, 4, kwonly=500, kwarg1=6, kwarg2=7)  # No retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70)  # Retrace
     self.assertEqual(trace_count[0], 4)
 
   def testFollowTypeHintsTraceWithArgsKwOnlyArgsKwargsAndTypedKwargs(self):
@@ -4176,11 +4176,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled = def_function.function(func, experimental_follow_type_hints=True)
 
     enabled(1, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)
-    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
-    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7) # Retrace
-    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7) # Retrace
-    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70) # No retrace
-    enabled(1, 2, 3, 4, kwonly=5, kwarg1=600, kwarg2=700) # No retrace
+    enabled(100, 2, 3, 4, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 20, 30, 40, kwonly=5, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=50, kwarg1=6, kwarg2=7)  # Retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70)  # No retrace
+    enabled(1, 2, 3, 4, kwonly=5, kwarg1=600, kwarg2=700)  # No retrace
     self.assertEqual(trace_count[0], 4)
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
