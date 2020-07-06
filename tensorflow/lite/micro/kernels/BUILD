@@ -78,12 +78,9 @@ cc_library(
     #build_for_embedded = True,
     copts = micro_copts(),
     visibility = [
-        # Needed for micro:op_resolvers but visibility can not be
-        # finer-grained than a package.
-        #":micro_top_level",
-        # Currently setting to public for legacy reasons. Can be made more
-        # restrictive once cl/314173854 lands.
-        "//visibility:public",
+        # Needed for micro:op_resolvers but visibility can not be finer-grained
+        # than a package.
+        ":micro_top_level",
     ],
     deps = [
         ":activation_utils",
