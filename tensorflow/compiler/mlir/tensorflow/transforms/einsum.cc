@@ -73,7 +73,7 @@ bool tokenizeEquation(const llvm::StringRef& equation,
   int index = 0;
   int variable_count = 0;
   llvm::Regex r("[[:alpha:]]");
-  while (index < equation.size()) {
+  while (index < static_cast<int>(equation.size())) {
     if (r.match(equation.substr(index, 1))) {
       const char ltr = equation[index];
       auto itr = label_axis_mapping.find(ltr);
@@ -90,7 +90,7 @@ bool tokenizeEquation(const llvm::StringRef& equation,
       }
     } else if (equation.substr(index, 1).contains(",")) {
       tokens->push_back(COMMA);
-    } else if ((index < (equation.size() - 1)) &&
+    } else if ((index < static_cast<int>(equation.size() - 1)) &&
                (equation.substr(index, 2).contains("->"))) {
       tokens->push_back(ARROW);
       index++;
@@ -157,7 +157,7 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
   auto perm_attr = DenseElementsAttr::get(perm_type, permutation);
   auto perm_op = rewriter->create<ConstantOp>(loc, perm_type, perm_attr);
   std::vector<int64_t> transposed_shape(shape.begin(), shape.end());
-  for (int i = 0; i < shape.size(); ++i) {
+  for (int i = 0, iter_limit = shape.size(); i < iter_limit; ++i) {
     transposed_shape[i] = shape[permutation[i]];
   }
   auto transposed_type =
@@ -177,7 +177,7 @@ TF::SumOp createSumOp(Value value, Location loc,
   auto redux_op = rewriter->create<ConstantOp>(loc, redux_type, redux_attr);
   std::vector<int64_t> sum_shape(shape.size() - redux_axes.size());
   int count = 0;
-  for (int i = 0; i < shape.size(); ++i) {
+  for (int i = 0, iter_limit = shape.size(); i < iter_limit; ++i) {
     if (std::find(redux_axes.begin(), redux_axes.end(), i) ==
         redux_axes.end()) {
       sum_shape[count] = shape[i];
