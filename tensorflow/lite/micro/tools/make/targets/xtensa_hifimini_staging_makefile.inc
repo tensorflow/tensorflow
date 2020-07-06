@@ -1,11 +1,11 @@
-# Settings for Xtensa XPG toolchain.
+# Settings for Xtensa toolchain for hifimini_staging kernels.
 # REQUIRED:
 #   - RI2019.2 Toolkit (for xt-clang/xt-clang++).
 #   - XTENSA_CORE: The name of the core to use, will cause a compiler exception
 #                  without providing a core.
 
-ifeq ($(TARGET), xtensa-xpg)
-  TARGET_ARCH := xtensa-xpg
+ifeq ($(TARGET), xtensa_hifimini_staging)
+  TARGET_ARCH := xtensa_hifimini_staging
 
   PLATFORM_ARGS = \
     -DTF_LITE_MCU_DEBUG_LOG \
@@ -29,7 +29,7 @@ ifeq ($(TARGET), xtensa-xpg)
 
   LDFLAGS += -Wl,-gc-sections
 
-  TEST_SCRIPT := tensorflow/lite/micro/testing/test_xtensa_xpg_binary.sh
+  TEST_SCRIPT := tensorflow/lite/micro/testing/test_xtensa_hifimini_staging_binary.sh
 
   # TODO(b/156962140): This manually maintained list of excluded examples is
   # quite error prone.

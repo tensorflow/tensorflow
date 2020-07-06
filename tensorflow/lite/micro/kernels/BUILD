@@ -15,6 +15,11 @@ config_setting(
     define_values = {"tflm_build": "xtensa_hifimini"},
 )
 
+config_setting(
+    name = "xtensa_hifimini_staging",
+    define_values = {"tflm_build": "xtensa_hifimini_staging"},
+)
+
 package_group(
     name = "micro_top_level",
     packages = ["//tensorflow/lite/micro"],
@@ -71,6 +76,20 @@ cc_library(
             "xtensa_hifimini/quantize.cc",
             "xtensa_hifimini/softmax.cc",
             "xtensa_hifimini/svdf.cc",
+        ],
+        ":xtensa_hifimini_staging": [
+            # TODO(b/144176795): finer granularity would help reduce the
+            # duplication of srcs in the BUILD rules (in this case conv.cc and
+            # depthwise_conv.cc). We are falling back to reference kernels in
+            # case the optimized kernels are not implemented to match the
+            # behavior that we get with the Makefiles.
+            "conv.cc",
+            "depthwise_conv.cc",
+            "xtensa_hifimini/fixedpoint_utils.h",
+            "xtensa_hifimini_staging/fully_connected.cc",
+            "xtensa_hifimini_staging/quantize.cc",
+            "xtensa_hifimini_staging/softmax.cc",
+            "xtensa_hifimini_staging/svdf.cc",
         ],
     }),
     hdrs = ["micro_ops.h"],

@@ -1,6 +1,6 @@
-ifneq ($(filter xtensa-xpg, $(ALL_TAGS)),)
+ifneq ($(filter xtensa_hifimini_staging, $(ALL_TAGS)),)
 
-    XTENSA_PATH = $(MAKEFILE_DIR)/../../kernels/xtensa_hifimini
+    XTENSA_PATH = $(MAKEFILE_DIR)/../../kernels/xtensa_hifimini_staging
 
     ifneq (,$(filter xtensa_hifimini%, $(ALL_TAGS)))
 
