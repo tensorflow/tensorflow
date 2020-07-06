@@ -91,13 +91,13 @@ BFCAllocator::~BFCAllocator() {
 
 BFCAllocator::Chunk* BFCAllocator::ChunkFromHandle(ChunkHandle h) {
   DCHECK_GE(h, 0);
-  DCHECK_LT(h, chunks_.size());
+  DCHECK_LT(h, static_cast<int>(chunks_.size()));
   return &(chunks_[h]);
 }
 
 const BFCAllocator::Chunk* BFCAllocator::ChunkFromHandle(ChunkHandle h) const {
   DCHECK_GE(h, 0);
-  DCHECK_LT(h, chunks_.size());
+  DCHECK_LT(h, static_cast<int>(chunks_.size()));
   return &(chunks_[h]);
 }
 
