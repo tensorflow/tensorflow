@@ -721,7 +721,8 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
     DefaultValuedAttr<StrArrayAttr, "{}">:$host_compute_core,
     DefaultValuedAttr<StrArrayAttr, "{}">:$padding_map,
     DefaultValuedAttr<StrAttr, "STEP_MARK_AT_ENTRY">:$step_marker_location,
-    DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement
+    DefaultValuedAttr<BoolAttr, "false">:$allow_soft_placement,
+    DefaultValuedAttr<BoolAttr, "false">:$use_spmd_for_xla_partitioning
   );
 
   let results = (outs);
