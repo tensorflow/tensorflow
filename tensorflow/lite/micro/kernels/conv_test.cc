@@ -321,7 +321,7 @@ TF_LITE_MICRO_TEST(SimpleTestDilatedQuantized) {
   int32_t bias_quantized[tflite::testing::kBiasElements];
   uint8_t golden_quantized[output_elements];
 
-  TfLiteConvParams conv_params{tflite::testing::common_conv_params};
+  TfLiteConvParams conv_params = tflite::testing::common_conv_params;
   conv_params.dilation_width_factor = 3;
   conv_params.dilation_height_factor = 2;
 
@@ -387,7 +387,7 @@ TF_LITE_MICRO_TEST(SimpleTestDilatedQuantizedPerChannel) {
   int zero_points[tflite::testing::kBiasElements + 1];
   float scales[tflite::testing::kBiasElements + 1];
 
-  TfLiteConvParams conv_params{tflite::testing::common_conv_params};
+  TfLiteConvParams conv_params = tflite::testing::common_conv_params;
   conv_params.dilation_width_factor = 3;
   conv_params.dilation_height_factor = 2;
 
