@@ -42,22 +42,16 @@ namespace tpu {
 Status InitializeTpuLibrary(void* library_handle) {
   return errors::Unimplemented("You must statically link in a TPU library.");
 }
-#else
+#else  // PLATFORM_GOOGLE
 #include "tensorflow/core/tpu/tpu_library_init_fns.inc"
 
 Status InitializeTpuLibrary(void* library_handle) {
-  bool shared_object_loaded = true;
-  if (library_handle == nullptr) {
-    library_handle = dlopen(nullptr, RTLD_NOW);
-    shared_object_loaded = false;
-  }
-
   Status s = InitializeTpuStructFns(library_handle);
 
   // TPU platform registration must only be performed after the library is
   // loaded. We do not want to register a TPU platform in XLA without the
   // supporting library providing the necessary APIs.
-  if (shared_object_loaded && s.ok()) {
+  if (s.ok()) {
     // TODO(frankchn): Make initialization actually work
     // Initialize TPU platform when the platform code is loaded from a library.
     // InitializeApiFn()->TfTpu_InitializeFn();
@@ -67,7 +61,18 @@ Status InitializeTpuLibrary(void* library_handle) {
 
   return s;
 }
-#endif
+
+bool FindAndLoadTpuLibrary() {
+  void* library = dlopen("libtftpu.so", RTLD_NOW);
+  if (library) {
+    InitializeTpuLibrary(library);
+  }
+  return true;
+}
+
+static bool tpu_library_finder = FindAndLoadTpuLibrary();
+
+#endif  // PLATFORM_GOOGLE
 
 }  // namespace tpu
 }  // namespace tensorflow
