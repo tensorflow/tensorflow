@@ -95,5 +95,30 @@ std::ostream& operator<<(std::ostream& os, ComputationType ty) {
   return os << ComputationTypeString(ty);
 }
 
+string DataTypeString(DataType ty) {
+  switch (ty) {
+    case DataType::kF16:
+      return "f16";
+    case DataType::kF32:
+      return "f32";
+    case DataType::kF64:
+      return "f64";
+    case DataType::kI8:
+      return "i8";
+    case DataType::kI32:
+      return "i32";
+    case DataType::kComplexF32:
+      return "complex f32";
+    case DataType::kComplexF64:
+      return "complex f64";
+    default:
+      LOG(FATAL) << "Unknown DataType " << static_cast<int32>(ty);
+  }
+}
+
+std::ostream& operator<<(std::ostream& os, DataType ty) {
+  return os << DataTypeString(ty);
+}
+
 }  // namespace blas
 }  // namespace stream_executor

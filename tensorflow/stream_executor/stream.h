@@ -1665,6 +1665,56 @@ class Stream {
                        const DeviceMemory<std::complex<double>> &a, int lda,
                        DeviceMemory<std::complex<double>> *b, int ldb);
 
+  // See BlasSupport::DoBlatLtMatmul.
+  Stream& ThenBlasLtMatmul(
+      const blas::IBlasLtMatmulPlan* plan,
+      const HostOrDeviceScalar<int32>& alpha, const DeviceMemory<int8>& a,
+      const DeviceMemory<int8>& b, const HostOrDeviceScalar<int32>& beta,
+      DeviceMemory<int32>* c, ScratchAllocator* scratch_allocator,
+      const blas::IBlasLtMatmulAlgorithm* algorithm,
+      blas::ProfileResult* output_profile_result = nullptr);
+  Stream& ThenBlasLtMatmul(
+      const blas::IBlasLtMatmulPlan* plan,
+      const HostOrDeviceScalar<Eigen::half>& alpha,
+      const DeviceMemory<Eigen::half>& a, const DeviceMemory<Eigen::half>& b,
+      const HostOrDeviceScalar<Eigen::half>& beta, DeviceMemory<Eigen::half>* c,
+      ScratchAllocator* scratch_allocator,
+      const blas::IBlasLtMatmulAlgorithm* algorithm,
+      blas::ProfileResult* output_profile_result = nullptr);
+  Stream& ThenBlasLtMatmul(
+      const blas::IBlasLtMatmulPlan* plan,
+      const HostOrDeviceScalar<float>& alpha, const DeviceMemory<float>& a,
+      const DeviceMemory<float>& b, const HostOrDeviceScalar<float>& beta,
+      DeviceMemory<float>* c, ScratchAllocator* scratch_allocator,
+      const blas::IBlasLtMatmulAlgorithm* algorithm,
+      blas::ProfileResult* output_profile_result = nullptr);
+  Stream& ThenBlasLtMatmul(
+      const blas::IBlasLtMatmulPlan* plan,
+      const HostOrDeviceScalar<double>& alpha, const DeviceMemory<double>& a,
+      const DeviceMemory<double>& b, const HostOrDeviceScalar<double>& beta,
+      DeviceMemory<double>* c, ScratchAllocator* scratch_allocator,
+      const blas::IBlasLtMatmulAlgorithm* algorithm,
+      blas::ProfileResult* output_profile_result = nullptr);
+  Stream& ThenBlasLtMatmul(
+      const blas::IBlasLtMatmulPlan* plan,
+      const HostOrDeviceScalar<std::complex<float>>& alpha,
+      const DeviceMemory<std::complex<float>>& a,
+      const DeviceMemory<std::complex<float>>& b,
+      const HostOrDeviceScalar<std::complex<float>>& beta,
+      DeviceMemory<std::complex<float>>* c, ScratchAllocator* scratch_allocator,
+      const blas::IBlasLtMatmulAlgorithm* algorithm,
+      blas::ProfileResult* output_profile_result = nullptr);
+  Stream& ThenBlasLtMatmul(
+      const blas::IBlasLtMatmulPlan* plan,
+      const HostOrDeviceScalar<std::complex<double>>& alpha,
+      const DeviceMemory<std::complex<double>>& a,
+      const DeviceMemory<std::complex<double>>& b,
+      const HostOrDeviceScalar<std::complex<double>>& beta,
+      DeviceMemory<std::complex<double>>* c,
+      ScratchAllocator* scratch_allocator,
+      const blas::IBlasLtMatmulAlgorithm* algorithm,
+      blas::ProfileResult* output_profile_result = nullptr);
+
   // See FftSupport::DoFft.
   Stream &ThenFft(fft::Plan *plan,
                   const DeviceMemory<std::complex<float>> &input,

@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "third_party/gpus/cuda/include/cublasLt.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/host_or_device_scalar.h"
@@ -70,6 +72,9 @@ class CUDABlas : public blas::BlasSupport {
   // enqueue dispatch) at a given time. As a result, this generally must be
   // invoked before calling into cuBLAS.
   bool SetStream(Stream *stream) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Returns the underlying CUDA stream.
+  cudaStream_t CUDAStream(Stream* stream);
 
   // A helper function that calls the real cuBLAS function together with error
   // handling.
@@ -134,6 +139,26 @@ class CUDABlas : public blas::BlasSupport {
                                    const T &beta, DeviceMemory<T> *y, int incy,
                                    blas::ProfileResult *output_profile_result);
 
+  // Helper function for implementing DoBlasLtMatmul.
+  template <typename ABType, typename CDType, typename ScaleType>
+  bool DoBlasLtMatmulInternal(
+      Stream* stream, const blas::IBlasLtMatmulPlan* plan,
+      const HostOrDeviceScalar<ScaleType>& alpha, const DeviceMemory<ABType>& a,
+      const DeviceMemory<ABType>& b, const HostOrDeviceScalar<ScaleType>& beta,
+      const DeviceMemory<CDType>& c, DeviceMemory<CDType>* d,
+      ScratchAllocator* scratch_allocator,
+      const blas::IBlasLtMatmulAlgorithm* algorithm,
+      blas::ProfileResult* output_profile_result);
+
+  // Helper function for implementing DoBlasLtMatmulInternal.
+  template <typename ABType, typename CDType, typename ScaleType>
+  bool DoBlasLtMatmulInternalImpl(
+      Stream* stream, bool err_on_failure, const blas::IBlasLtMatmulPlan* plan,
+      const HostOrDeviceScalar<ScaleType>& alpha, const ABType* a,
+      const ABType* b, const HostOrDeviceScalar<ScaleType>& beta,
+      const CDType* c, CDType* d, ScratchAllocator* scratch_allocator,
+      const blas::IBlasLtMatmulAlgorithm* algorithm);
+
   // Guards the cuBLAS handle for this device.
   absl::Mutex mu_;
 
@@ -143,6 +168,11 @@ class CUDABlas : public blas::BlasSupport {
 
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ TF_GUARDED_BY(mu_);
+
+#if CUDA_VERSION >= 11000
+  // cuBLASLt library handle on the device.
+  cublasLtHandle_t blasLt_ GUARDED_BY(mu_);
+#endif
 
   SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
 };

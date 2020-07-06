@@ -4801,6 +4801,143 @@ Stream &Stream::ThenBlasGemmStridedBatched(
               c, ldc, stride_c, batch_count);
 }
 
+Stream& Stream::ThenBlasLtMatmul(const blas::IBlasLtMatmulPlan* plan,
+                                 const HostOrDeviceScalar<int32>& alpha,
+                                 const DeviceMemory<int8>& a,
+                                 const DeviceMemory<int8>& b,
+                                 const HostOrDeviceScalar<int32>& beta,
+                                 DeviceMemory<int32>* c,
+                                 ScratchAllocator* scratch_allocator,
+                                 const blas::IBlasLtMatmulAlgorithm* algorithm,
+                                 blas::ProfileResult* output_profile_result) {
+  VLOG_CALL(PARAM(plan), PARAM(alpha), PARAM(a), PARAM(b), PARAM(beta),
+            PARAM(c), PARAM(algorithm));
+
+  ThenBlasWithProfileImpl<
+      const blas::IBlasLtMatmulPlan*, const HostOrDeviceScalar<int32>&,
+      const DeviceMemory<int8>&, const DeviceMemory<int8>&,
+      const HostOrDeviceScalar<int32>&, DeviceMemory<int32>*, ScratchAllocator*,
+      const blas::IBlasLtMatmulAlgorithm*>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasLtMatmul, plan, alpha, a, b, beta,
+              c, scratch_allocator, algorithm, output_profile_result);
+}
+
+Stream& Stream::ThenBlasLtMatmul(const blas::IBlasLtMatmulPlan* plan,
+                                 const HostOrDeviceScalar<Eigen::half>& alpha,
+                                 const DeviceMemory<Eigen::half>& a,
+                                 const DeviceMemory<Eigen::half>& b,
+                                 const HostOrDeviceScalar<Eigen::half>& beta,
+                                 DeviceMemory<Eigen::half>* c,
+                                 ScratchAllocator* scratch_allocator,
+                                 const blas::IBlasLtMatmulAlgorithm* algorithm,
+                                 blas::ProfileResult* output_profile_result) {
+  VLOG_CALL(PARAM(plan), PARAM(alpha), PARAM(a), PARAM(b), PARAM(beta),
+            PARAM(c), PARAM(algorithm));
+
+  ThenBlasWithProfileImpl<
+      const blas::IBlasLtMatmulPlan*, const HostOrDeviceScalar<Eigen::half>&,
+      const DeviceMemory<Eigen::half>&, const DeviceMemory<Eigen::half>&,
+      const HostOrDeviceScalar<Eigen::half>&, DeviceMemory<Eigen::half>*,
+      ScratchAllocator*, const blas::IBlasLtMatmulAlgorithm*>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasLtMatmul, plan, alpha, a, b, beta,
+              c, scratch_allocator, algorithm, output_profile_result);
+}
+
+Stream& Stream::ThenBlasLtMatmul(const blas::IBlasLtMatmulPlan* plan,
+                                 const HostOrDeviceScalar<float>& alpha,
+                                 const DeviceMemory<float>& a,
+                                 const DeviceMemory<float>& b,
+                                 const HostOrDeviceScalar<float>& beta,
+                                 DeviceMemory<float>* c,
+                                 ScratchAllocator* scratch_allocator,
+                                 const blas::IBlasLtMatmulAlgorithm* algorithm,
+                                 blas::ProfileResult* output_profile_result) {
+  VLOG_CALL(PARAM(plan), PARAM(alpha), PARAM(a), PARAM(b), PARAM(beta),
+            PARAM(c), PARAM(algorithm));
+
+  ThenBlasWithProfileImpl<
+      const blas::IBlasLtMatmulPlan*, const HostOrDeviceScalar<float>&,
+      const DeviceMemory<float>&, const DeviceMemory<float>&,
+      const HostOrDeviceScalar<float>&, DeviceMemory<float>*, ScratchAllocator*,
+      const blas::IBlasLtMatmulAlgorithm*>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasLtMatmul, plan, alpha, a, b, beta,
+              c, scratch_allocator, algorithm, output_profile_result);
+}
+
+Stream& Stream::ThenBlasLtMatmul(const blas::IBlasLtMatmulPlan* plan,
+                                 const HostOrDeviceScalar<double>& alpha,
+                                 const DeviceMemory<double>& a,
+                                 const DeviceMemory<double>& b,
+                                 const HostOrDeviceScalar<double>& beta,
+                                 DeviceMemory<double>* c,
+                                 ScratchAllocator* scratch_allocator,
+                                 const blas::IBlasLtMatmulAlgorithm* algorithm,
+                                 blas::ProfileResult* output_profile_result) {
+  VLOG_CALL(PARAM(plan), PARAM(alpha), PARAM(a), PARAM(b), PARAM(beta),
+            PARAM(c), PARAM(algorithm));
+
+  ThenBlasWithProfileImpl<
+      const blas::IBlasLtMatmulPlan*, const HostOrDeviceScalar<double>&,
+      const DeviceMemory<double>&, const DeviceMemory<double>&,
+      const HostOrDeviceScalar<double>&, DeviceMemory<double>*,
+      ScratchAllocator*, const blas::IBlasLtMatmulAlgorithm*>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasLtMatmul, plan, alpha, a, b, beta,
+              c, scratch_allocator, algorithm, output_profile_result);
+}
+
+Stream& Stream::ThenBlasLtMatmul(
+    const blas::IBlasLtMatmulPlan* plan,
+    const HostOrDeviceScalar<std::complex<float>>& alpha,
+    const DeviceMemory<std::complex<float>>& a,
+    const DeviceMemory<std::complex<float>>& b,
+    const HostOrDeviceScalar<std::complex<float>>& beta,
+    DeviceMemory<std::complex<float>>* c, ScratchAllocator* scratch_allocator,
+    const blas::IBlasLtMatmulAlgorithm* algorithm,
+    blas::ProfileResult* output_profile_result) {
+  VLOG_CALL(PARAM(plan), PARAM(alpha), PARAM(a), PARAM(b), PARAM(beta),
+            PARAM(c), PARAM(algorithm));
+
+  ThenBlasWithProfileImpl<const blas::IBlasLtMatmulPlan*,
+                          const HostOrDeviceScalar<std::complex<float>>&,
+                          const DeviceMemory<std::complex<float>>&,
+                          const DeviceMemory<std::complex<float>>&,
+                          const HostOrDeviceScalar<std::complex<float>>&,
+                          DeviceMemory<std::complex<float>>*, ScratchAllocator*,
+                          const blas::IBlasLtMatmulAlgorithm*>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasLtMatmul, plan, alpha, a, b, beta,
+              c, scratch_allocator, algorithm, output_profile_result);
+}
+
+Stream& Stream::ThenBlasLtMatmul(
+    const blas::IBlasLtMatmulPlan* plan,
+    const HostOrDeviceScalar<std::complex<double>>& alpha,
+    const DeviceMemory<std::complex<double>>& a,
+    const DeviceMemory<std::complex<double>>& b,
+    const HostOrDeviceScalar<std::complex<double>>& beta,
+    DeviceMemory<std::complex<double>>* c, ScratchAllocator* scratch_allocator,
+    const blas::IBlasLtMatmulAlgorithm* algorithm,
+    blas::ProfileResult* output_profile_result) {
+  VLOG_CALL(PARAM(plan), PARAM(alpha), PARAM(a), PARAM(b), PARAM(beta),
+            PARAM(c), PARAM(algorithm));
+
+  ThenBlasWithProfileImpl<const blas::IBlasLtMatmulPlan*,
+                          const HostOrDeviceScalar<std::complex<double>>&,
+                          const DeviceMemory<std::complex<double>>&,
+                          const DeviceMemory<std::complex<double>>&,
+                          const HostOrDeviceScalar<std::complex<double>>&,
+                          DeviceMemory<std::complex<double>>*,
+                          ScratchAllocator*,
+                          const blas::IBlasLtMatmulAlgorithm*>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasLtMatmul, plan, alpha, a, b, beta,
+              c, scratch_allocator, algorithm, output_profile_result);
+}
+
 Stream &Stream::ThenSetRngSeed(const uint8 *seed, uint64 seed_bytes) {
   VLOG_CALL(PARAM(seed), PARAM(seed_bytes));
 

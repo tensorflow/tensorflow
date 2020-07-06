@@ -336,6 +336,49 @@ bool StreamExecutor::GetBlasGemmAlgorithms(
   return blas_support->GetBlasGemmAlgorithms(out_algorithms);
 }
 
+std::unique_ptr<blas::IBlasLtMatmulPlan> StreamExecutor::CreateBlasLtMatmulPlan(
+    blas::DataType ab_type, blas::DataType cd_type,
+    blas::ComputationType computation_type, blas::PointerMode pointer_mode,
+    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+    uint64 k, int64 lda, int64 ldb, int64 ldc) {
+  blas::BlasSupport *blas_support = AsBlas();
+  if (!blas_support) {
+    return nullptr;
+  }
+  return blas_support->CreateBlasLtMatmulPlan(
+      ab_type, cd_type, computation_type, pointer_mode, transa, transb, m, n, k,
+      lda, ldb, ldc);
+}
+
+std::unique_ptr<blas::IBlasLtMatmulPlan>
+StreamExecutor::CreateBlasLtMatmulPlanStridedBatched(
+    blas::DataType ab_type, blas::DataType cd_type,
+    blas::ComputationType computation_type, blas::PointerMode pointer_mode,
+    blas::Transpose transa, blas::Transpose transb, uint64 m, uint64 n,
+    uint64 k, uint64 batch_count, int64 lda, int64 stride_a, int64 ldb,
+    int64 stride_b, int64 ldc, int64 stride_c) {
+  blas::BlasSupport *blas_support = AsBlas();
+  if (!blas_support) {
+    return nullptr;
+  }
+  return blas_support->CreateBlasLtMatmulPlanStridedBatched(
+      ab_type, cd_type, computation_type, pointer_mode, transa, transb, m, n, k,
+      batch_count, lda, stride_a, ldb, stride_b, ldc, stride_c);
+}
+
+bool StreamExecutor::GetBlasLtMatmulAlgorithms(
+    const blas::IBlasLtMatmulPlan* plan, size_t max_workspace_size,
+    int max_algorithm_count,
+    std::vector<std::unique_ptr<blas::IBlasLtMatmulAlgorithm>>*
+        out_algorithms) {
+  blas::BlasSupport *blas_support = AsBlas();
+  if (!blas_support) {
+    return false;
+  }
+  return blas_support->GetBlasLtMatmulAlgorithms(
+      plan, max_workspace_size, max_algorithm_count, out_algorithms);
+}
+
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
 StreamExecutor::createRnnDescriptor(
     int num_layers, int hidden_size, int input_size, int cell_size,
