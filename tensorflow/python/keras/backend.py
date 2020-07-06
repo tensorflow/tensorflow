@@ -4541,10 +4541,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Returns:
       A tensor.
   """
-  if isinstance(x, (ops.Tensor,
-                    variables_module.Variable,
-                    sparse_tensor.SparseTensor,
-                    np.ndarray)):
+  if hasattr(x, "dtype"):
     dtype = x.dtype
   else:
     dtype = floatx()
