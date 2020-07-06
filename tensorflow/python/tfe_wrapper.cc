@@ -1169,7 +1169,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
     PyCapsule_SetName(pycapsule.ptr(), "used_dltensor");
     PyCapsule_SetDestructor(pycapsule.ptr(), nullptr);
-    return py::handle(EagerTensorFromHandle(thandle));
+    
+    PyObject* pyhandle = EagerTensorFromHandle(thandle);
+    return tensorflow::PyoOrThrow(pyhandle);
   });
 
   m.def("TFE_Py_RegisterCustomDevice", [](const py::handle& context,
