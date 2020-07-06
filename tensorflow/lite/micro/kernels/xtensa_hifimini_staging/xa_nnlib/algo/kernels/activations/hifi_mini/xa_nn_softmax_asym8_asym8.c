@@ -498,7 +498,7 @@ WORD32 xa_nn_vec_softmax_asym8u_8(UWORD8 *__restrict__ pOut,
     ae_p24x2s p_min = AE_ZEROP48();
     ae_p24x2s p_max = AE_MOVPA24(255);
 
-    for (i = 0; i<vec_length> > 1; i++) {
+    for (i = 0; i<vec_length >> 1; i++) {
       int out;
 
       p_exp = *(ae_p24x2f *)&pExp[2 * i];
@@ -713,7 +713,7 @@ WORD32 xa_nn_vec_softmax_asym8s_8(WORD8 *__restrict__ pOut,
     ae_p24x2s p_min = AE_MOVPA24(-128);
     ae_p24x2s p_max = AE_MOVPA24(127);
 
-    for (i = 0; i<vec_length> > 1; i++) {
+    for (i = 0; i<vec_length >> 1; i++) {
       int out;
 
       p_exp = *(ae_p24x2f *)&pExp[2 * i];
@@ -928,7 +928,7 @@ WORD32 xa_nn_vec_softmax_asym8s_16(WORD16 *__restrict__ pOut,
     ae_p24x2s p_min = AE_MOVPA24(-32768);
     ae_p24x2s p_max = AE_MOVPA24(32767);
 
-    for (i = 0; i<vec_length> > 1; i++) {
+    for (i = 0; i<vec_length >> 1; i++) {
       int out;
 
       p_exp = *(ae_p24x2f *)&pExp[2 * i];
