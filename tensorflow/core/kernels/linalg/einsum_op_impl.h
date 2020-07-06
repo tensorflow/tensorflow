@@ -549,6 +549,7 @@ struct EinsumHelper {
   static Status ContractOperands(OpKernelContext* ctx,
                                  absl::Span<const Tensor> inputs,
                                  absl::Span<const bool> swap_free_and_contract,
+                                 bool use_autotune,
                                  Tensor* output) {
     if (inputs.size() == 1)
       return CopyFrom(inputs[0], inputs[0].shape(), output);
@@ -583,7 +584,7 @@ struct EinsumHelper {
         ReshapeToRank3(*output, bcast.output_batch_size(), &output_reshaped));
     LaunchBatchMatMul<Device, T>::Launch(ctx, lhs, rhs, /*adj_x=*/false,
                                          /*adj_y=*/false, trans_x, trans_y,
-                                         bcast, &output_reshaped);
+                                         bcast, use_autotune, &output_reshaped);
     return Status::OK();
   }
 };
@@ -598,6 +599,7 @@ class EinsumOp : public OpKernel {
                equation_, &input_labels_, &output_labels_, &label_types_,
                &input_label_counts_, &output_label_counts_,
                &input_has_ellipsis_, &output_has_ellipsis_));
+    use_autotune_ = MatmulAutotuneEnable();
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -640,7 +642,7 @@ class EinsumOp : public OpKernel {
     Tensor contraction_output_reshaped;
     OP_REQUIRES_OK(ctx, EinsumHelper::ContractOperands<Device, T>(
                             ctx, inputs_reduced, swap_free_and_contract,
-                            &contraction_output_reshaped));
+                            use_autotune_, &contraction_output_reshaped));
 
     // Copy the batch labels from the contraction output. Recover the batch
     // shape, which may have been broadcasted.
@@ -738,6 +740,7 @@ class EinsumOp : public OpKernel {
   LabelCounts output_label_counts_;
   gtl::InlinedVector<bool, 2> input_has_ellipsis_;
   bool output_has_ellipsis_ = false;
+  bool use_autotune_;
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

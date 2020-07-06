@@ -243,6 +243,42 @@ void LogFusedConvForwardAutotuneResults(
 Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
                               se::dnn::AlgorithmConfig* algo);
 
+// Get a workspace limit from the environment variable, which is in MB.
+// Return the workspace memory limit in bytes. If no value is set, return the
+// default value.
+int64 GetWorkspaceLimit(const string& envvar_in_mb,
+                        int64 default_value_in_bytes);
+
+// Get the Dnn workspace limit from the environment variable, which is in MB.
+// Return the workspace memory limit in bytes. If no value is set, return the
+// default value.
+int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
+                           int64 default_value_in_bytes);
+
+// A class to provide scratch-space allocator for Stream-Executor callbacks in
+// CUDA libraries (CUDNN etc.).
+// TensorFlow is responsible for releasing the temporary buffers after
+// the kernel finishes.
+class GpuScratchAllocator : public se::ScratchAllocator {
+ public:
+  virtual ~GpuScratchAllocator() {}
+
+  GpuScratchAllocator(int64 memory_limit, OpKernelContext* context);
+
+  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
+
+  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+      int64 byte_size) override;
+
+  int64 TotalByteSize() { return total_byte_size_; }
+
+ private:
+  int64 memory_limit_;
+  int64 total_byte_size_;
+  OpKernelContext* context_;
+  std::vector<Tensor> allocated_tensors_;
+};
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
