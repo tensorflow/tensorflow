@@ -3399,9 +3399,11 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
   mlir::OpBuilder builder(module_->getBodyRegion());
   module_->setAttr("tf_saved_model.semantics", builder.getUnitAttr());
 
+  module_->setAttr("tf_saved_model.under_construction", builder.getUnitAttr());
   TF_RETURN_IF_ERROR(ExecutorDialectToFunctional());
   TF_RETURN_IF_ERROR(RemoveVariablesInSessionInitializer());
   TF_RETURN_IF_ERROR(LiftVariables());
+  module_->removeAttr("tf_saved_model.under_construction");
 
   SortSavedModelModule(*module_);
   MarkSavedModelFunctionVisibility(*module_);

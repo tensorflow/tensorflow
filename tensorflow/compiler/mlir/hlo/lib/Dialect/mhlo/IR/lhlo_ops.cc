@@ -86,6 +86,46 @@ static LogicalResult Verify(DynamicMemRefCastOp op) {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// ReshapeMemrefCastOp
+//===----------------------------------------------------------------------===//
+
+Value ReshapeMemRefCastOp::getViewSource() { return operand(); }
+
+static LogicalResult Verify(ReshapeMemRefCastOp op) {
+  Type operandType = op.operand().getType();
+  Type resultType = op.result().getType();
+
+  Type operandElementType = operandType.cast<ShapedType>().getElementType();
+  Type resultElementType = resultType.cast<ShapedType>().getElementType();
+  if (operandElementType != resultElementType)
+    return op.emitOpError(
+        "element types of source and destination memref "
+        "types should be the same");
+
+  if (auto operandMemRefType = operandType.dyn_cast<MemRefType>())
+    if (!operandMemRefType.getAffineMaps().empty())
+      return op.emitOpError(
+          "operand memref type should have identity affine map");
+
+  int64_t shapeSize = op.shape().getType().cast<MemRefType>().getDimSize(0);
+  auto resultMemRefType = resultType.dyn_cast<MemRefType>();
+  if (resultMemRefType) {
+    if (shapeSize == ShapedType::kDynamicSize)
+      return op.emitOpError(
+          "cannot use shape operand with dynamic length to "
+          "cast statically-ranked memref type");
+    if (shapeSize != resultMemRefType.getRank())
+      return op.emitOpError(
+          "length of shape operand differs from the result's memref rank");
+
+    if (!resultMemRefType.getAffineMaps().empty())
+      return op.emitOpError(
+          "result memref type should have identity affine map");
+  }
+  return success();
+}
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
 

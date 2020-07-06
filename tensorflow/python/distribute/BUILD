@@ -1165,6 +1165,7 @@ distribute_py_test(
         ":combinations",
         ":distribute_lib",
         ":strategy_combinations",
+        ":test_util",
         ":tpu_strategy",
         ":tpu_values",
         ":values",
@@ -1195,6 +1196,30 @@ distribute_py_test(
         "//tensorflow/python/saved_model/model_utils:mode_keys",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/types",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "distribute_utils_test",
+    srcs = ["distribute_utils_test.py"],
+    main = "distribute_utils_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_rocm",
+    ],
+    deps = [
+        ":combinations",
+        ":distribute_utils",
+        ":strategy_combinations",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model/model_utils:mode_keys",
         "@absl_py//absl/testing:parameterized",
     ],
 )

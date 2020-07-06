@@ -151,7 +151,7 @@ static void SyncImpl(const std::string& bucket, const std::string& object,
       *offset = static_cast<int64_t>(metadata->size());
     }
     outfile->clear();
-    outfile->seekp(std::ios::end);
+    outfile->seekp(0, std::ios::end);
     TF_SetStatus(status, TF_OK, "");
   } else {
     std::string temporary_object =
@@ -275,11 +275,6 @@ uint64_t Length(const TF_ReadOnlyMemoryRegion* region) {
 // SECTION 4. Implementation for `TF_Filesystem`, the actual filesystem
 // ----------------------------------------------------------------------------
 namespace tf_gcs_filesystem {
-typedef struct GCSFile {
-  gcs::Client gcs_client;  // owned
-  bool compose;
-} GCSFile;
-
 // TODO(vnvo2409): Add lazy-loading and customizing parameters.
 void Init(TF_Filesystem* filesystem, TF_Status* status) {
   google::cloud::StatusOr<gcs::Client> client =

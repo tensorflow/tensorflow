@@ -133,6 +133,19 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
+  // expected-error@+1 {{'tf.resource_name' attribute is not allowed unless it is being under construction}}
+  func @f(
+    %arg0: tensor<f32> {tf.resource_name = "resource"}
+  ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
+    return
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
   "tf_saved_model.global_tensor"() { sym_name = "some_constant", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
 
   // expected-error@+1 {{all 'tf_saved_model.index_path' arg attributes should precede all 'tf_saved_model.bound_input' arg attributes}}
@@ -294,7 +307,7 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-module attributes {tf_saved_model.semantics} {
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
   // expected-error@+1 {{exported function @f should be public}}
   func @f(

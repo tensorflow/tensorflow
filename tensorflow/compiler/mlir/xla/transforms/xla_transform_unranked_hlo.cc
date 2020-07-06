@@ -31,13 +31,21 @@ namespace mlir {
 namespace xla_hlo {
 namespace {
 
+// TODO(frgossen): Make it variadic.
 template <typename OpTy>
-inline void AddLegalOpOnRankedTensor(ConversionTarget *conversionTarget) {
-  conversionTarget->addDynamicallyLegalOp<OpTy>([](OpTy op) {
-    return op.getOperand().getType().template cast<TensorType>().hasRank();
+inline void AddLegalOpOnRankedTensor(ConversionTarget *target) {
+  target->addDynamicallyLegalOp<OpTy>([](OpTy op) {
+    return llvm::all_of((op.getOperation())->getOperandTypes(),
+                        [&](Type t) { return t.isa<RankedTensorType>(); });
   });
 }
 
+/// Unary element-wise operations on unranked tensors can be applied to the
+/// flattened tensor with the same effect.
+/// This pattern rewrites every such operation to
+///   (i)   flatten the input tensor,
+///   (ii)  apply the unary operation, and
+///   (iii) restore the original shape.
 template <typename OpTy>
 struct UnaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
   explicit UnaryElementwiseOpConversion(MLIRContext *context)
@@ -80,38 +88,96 @@ struct UnaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
   }
 };
 
+/// Binary element-wise operation on unranked tensors can be applied to the
+/// flattened operand tensors with the same effect.
+/// This pattern rewrites every such operation to
+///   (i)   flatten the operand tensors,
+///   (ii)  apply the binary operation, and
+//    (iii) restore the original shape.
+template <typename OpTy>
+struct BinaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
+  explicit BinaryElementwiseOpConversion(MLIRContext *context)
+      : OpRewritePattern<OpTy>(context) {}
+
+  LogicalResult matchAndRewrite(OpTy op,
+                                PatternRewriter &rewriter) const override {
+    // Don't apply conversion unless both operands are unranked.
+    if (op.lhs().getType().template isa<RankedTensorType>() ||
+        op.rhs().getType().template isa<RankedTensorType>()) {
+      return failure();
+    }
+
+    // Flatten operands.
+    Type shapeTy = shape::ShapeType::get(rewriter.getContext());
+    auto loc = op.getLoc();
+    Value shapeLhs = rewriter.create<shape::ShapeOfOp>(loc, op.lhs());
+    Value shapeRhs = rewriter.create<shape::ShapeOfOp>(loc, op.rhs());
+    Value shape = rewriter.create<shape::AnyOp>(loc, shapeTy,
+                                                ValueRange{shapeLhs, shapeRhs});
+    Value numElements = rewriter.create<shape::NumElementsOp>(loc, shape);
+    Value numElementsAsIndex =
+        rewriter.create<shape::SizeToIndexOp>(loc, numElements);
+    Value flatShape =
+        rewriter.create<TensorFromElementsOp>(loc, numElementsAsIndex);
+    TensorType lhsTy = op.lhs().getType().template cast<TensorType>();
+    Type flatLhsTy = RankedTensorType::get({ShapedType::kDynamicSize},
+                                           lhsTy.getElementType());
+    Value flatLhs =
+        rewriter.create<DynamicReshapeOp>(loc, flatLhsTy, op.lhs(), flatShape);
+    TensorType rhsTy = op.rhs().getType().template cast<TensorType>();
+    Type flatRhsTy = RankedTensorType::get({ShapedType::kDynamicSize},
+                                           rhsTy.getElementType());
+    Value flatRhs =
+        rewriter.create<DynamicReshapeOp>(loc, flatRhsTy, op.rhs(), flatShape);
+
+    // Apply actual operation to flattened operands.
+    Value flatResult = rewriter.create<OpTy>(loc, flatLhs, flatRhs);
+
+    // Restore original shape.
+    auto extentTensorTy = RankedTensorType::get({ShapedType::kDynamicSize},
+                                                rewriter.getIndexType());
+    Value shapeAsExtentTensor =
+        rewriter.create<shape::ToExtentTensorOp>(loc, extentTensorTy, shape);
+    Value result = rewriter.create<DynamicReshapeOp>(
+        loc, op.getType(), flatResult, shapeAsExtentTensor);
+    rewriter.replaceOp(op, result);
+
+    return success();
+  }
+};
+
 struct TransformUnrankedHloPass
     : public PassWrapper<TransformUnrankedHloPass, FunctionPass> {
   void runOnFunction() override {
-    ConversionTarget conversionTarget(getContext());
-    OwningRewritePatternList conversionPatterns;
-    SetupTransformUnrankedHloLegality(&getContext(), &conversionTarget);
-    PopulateTransformUnrankedHloPatterns(&getContext(), &conversionPatterns);
+    // Setup conversion target.
+    MLIRContext &ctx = getContext();
+    ConversionTarget target(ctx);
+    target.addLegalDialect<XlaHloDialect, StandardOpsDialect,
+                           shape::ShapeDialect>();
+    target.addLegalOp<FuncOp>();
+    AddLegalOpOnRankedTensor<SqrtOp>(&target);
+    AddLegalOpOnRankedTensor<AddOp>(&target);
 
-    if (failed(applyPartialConversion(getFunction(), conversionTarget,
-                                      conversionPatterns)))
+    // Populate rewrite patterns.
+    OwningRewritePatternList patterns;
+    PopulateTransformUnrankedHloPatterns(&ctx, &patterns);
+
+    // Apply transformation.
+    if (failed(applyFullConversion(getFunction(), target, patterns)))
       return signalPassFailure();
   }
 };
 
 }  // namespace
 
-void SetupTransformUnrankedHloLegality(MLIRContext *context,
-                                       ConversionTarget *conversionTarget) {
-  conversionTarget->addLegalDialect<XlaHloDialect, StandardOpsDialect,
-                                    shape::ShapeDialect>();
-
-  // Targeted operations are only legal when they operate on ranked tensors.
-  AddLegalOpOnRankedTensor<SqrtOp>(conversionTarget);
-}
-
 void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
                                           OwningRewritePatternList *patterns) {
-  patterns->insert<UnaryElementwiseOpConversion<SqrtOp>>(context);
-}
-
-std::unique_ptr<OperationPass<FuncOp>> createTransformUnrankedHloPass() {
-  return absl::make_unique<TransformUnrankedHloPass>();
+  // TODO(frgossen): Populate all unary and binary operations.
+  // clang-format off
+  patterns->insert<
+      BinaryElementwiseOpConversion<AddOp>,
+      UnaryElementwiseOpConversion<SqrtOp>>(context);
+  // clang-format on
 }
 
 static PassRegistration<TransformUnrankedHloPass> transform_unranked_hlo_pass(

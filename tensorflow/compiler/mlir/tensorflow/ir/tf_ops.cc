@@ -2198,7 +2198,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 
 void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  results.insert<LogOfSoftmax>(context);
+  results.insert<LogOfSoftmax, LogToLog1p>(context);
 }
 
 //===----------------------------------------------------------------------===//

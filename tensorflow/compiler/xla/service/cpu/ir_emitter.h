@@ -420,6 +420,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                             const llvm_ir::IrArray& target_array,
                             const llvm_ir::IrArray& source_array);
 
+  // Emits printing during the execution.
+  llvm::Value* EmitPrintf(absl::string_view fmt,
+                          absl::Span<llvm::Value* const> arguments);
+
   // Assignment of the buffers needed by the computation and their shape
   // information.
   const BufferAssignment& assignment_;

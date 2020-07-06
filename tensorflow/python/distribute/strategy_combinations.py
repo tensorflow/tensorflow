@@ -410,6 +410,12 @@ multidevice_strategies = [
     tpu_strategy_one_step
 ]
 
+multiworker_strategies = [
+    multi_worker_mirrored_2x1_cpu,
+    multi_worker_mirrored_2x1_gpu,
+    multi_worker_mirrored_2x2_gpu
+]
+
 
 def strategy_minus_tpu_combinations():
   return combinations.combine(

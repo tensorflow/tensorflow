@@ -93,17 +93,16 @@ class GCSFilesystemTest : public ::testing::Test {
 };
 std::string GCSFilesystemTest::tmp_dir_;
 
-::testing::AssertionResult WriteToServer(const std::string& path, size_t length,
-                                         gcs::Client* gcs_client,
+::testing::AssertionResult WriteToServer(const std::string& path, size_t offset,
+                                         size_t length, gcs::Client* gcs_client,
                                          TF_Status* status) {
   std::string bucket, object;
   ParseGCSPath(path, false, &bucket, &object, status);
-  if (TF_GetCode(status) != TF_OK) {
+  if (TF_GetCode(status) != TF_OK)
     return ::testing::AssertionFailure() << TF_Message(status);
-  }
 
   auto writer = gcs_client->WriteObject(bucket, object);
-  writer.write(content, length);
+  writer.write(content + offset, length);
   writer.Close();
   if (writer.metadata()) {
     return ::testing::AssertionSuccess();
@@ -113,18 +112,35 @@ std::string GCSFilesystemTest::tmp_dir_;
   }
 }
 
-::testing::AssertionResult CompareSubString(int64_t offset, size_t n,
+::testing::AssertionResult CompareSubString(int64_t offset, size_t length,
                                             absl::string_view result,
                                             size_t read) {
   // Result isn't a null-terminated string so we have to wrap it inside a
   // `string_view`
-  if (n == read && content_view.substr(offset, n) ==
-                       absl::string_view(result).substr(0, read)) {
+  if (length == read && content_view.substr(offset, length) ==
+                            absl::string_view(result).substr(0, read))
     return ::testing::AssertionSuccess();
-  } else {
+  else
     return ::testing::AssertionFailure()
            << "Result: " << absl::string_view(result).substr(0, read)
-           << " Read:" << read;
+           << " Read: " << read;
+}
+
+::testing::AssertionResult CompareWithServer(const std::string& path,
+                                             size_t offset, size_t length,
+                                             gcs::Client* gcs_client,
+                                             TF_Status* status) {
+  std::string bucket, object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK)
+    return ::testing::AssertionFailure() << TF_Message(status);
+
+  auto reader = gcs_client->ReadObject(bucket, object);
+  if (!reader) {
+    return ::testing::AssertionFailure() << reader.status().message();
+  } else {
+    std::string content{std::istreambuf_iterator<char>{reader}, {}};
+    return CompareSubString(offset, length, content, content.length());
   }
 }
 
@@ -162,9 +178,10 @@ TEST_F(GCSFilesystemTest, RandomAccessFile) {
   ASSERT_EQ(TF_GetCode(status_), TF_NOT_FOUND) << TF_Message(status_);
   TF_SetStatus(status_, TF_OK, "");
 
-  auto gcs_client = static_cast<gcs::Client*>(filesystem_->plugin_filesystem);
-  ASSERT_TRUE(
-      WriteToServer(filepath, content_view.length(), gcs_client, status_));
+  auto gcs_file =
+      static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
+  ASSERT_TRUE(WriteToServer(filepath, 0, content_view.length(),
+                            &gcs_file->gcs_client, status_));
 
   read = tf_random_access_file::Read(file, 0, content_view.length(), result,
                                      status_);
@@ -180,9 +197,100 @@ TEST_F(GCSFilesystemTest, RandomAccessFile) {
   ASSERT_EQ(TF_GetCode(status_), TF_OUT_OF_RANGE) << TF_Message(status_);
   ASSERT_TRUE(CompareSubString(content_view.length() - 2, 2, result, read));
 
-  delete result;
+  delete[] result;
   tf_random_access_file::Cleanup(file);
   delete file;
+}
+
+TEST_F(GCSFilesystemTest, WritableFile) {
+  std::string filepath = GetURIForPath("a_file");
+  TF_WritableFile* file = new TF_WritableFile;
+  tf_gcs_filesystem::NewWritableFile(filesystem_, filepath.c_str(), file,
+                                     status_);
+  ASSERT_TF_OK(status_);
+  tf_writable_file::Append(file, content, 4, status_);
+  ASSERT_TF_OK(status_);
+  auto length = tf_writable_file::Tell(file, status_);
+  ASSERT_EQ(length, 4);
+  ASSERT_TF_OK(status_);
+  tf_writable_file::Flush(file, status_);
+  ASSERT_TF_OK(status_);
+
+  auto gcs_file =
+      static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
+  ASSERT_TRUE(
+      CompareWithServer(filepath, 0, 4, &gcs_file->gcs_client, status_));
+
+  tf_writable_file::Append(file, content + 4, 4, status_);
+  ASSERT_TF_OK(status_);
+  length = tf_writable_file::Tell(file, status_);
+  ASSERT_EQ(length, 8);
+  ASSERT_TF_OK(status_);
+  tf_writable_file::Flush(file, status_);
+  ASSERT_TF_OK(status_);
+  ASSERT_TRUE(
+      CompareWithServer(filepath, 0, 8, &gcs_file->gcs_client, status_));
+
+  tf_writable_file::Close(file, status_);
+  ASSERT_TF_OK(status_);
+  tf_writable_file::Cleanup(file);
+
+  // Testing for compose objects
+  gcs_file->compose = true;
+  filepath = GetURIForPath("b_file");
+  tf_gcs_filesystem::NewWritableFile(filesystem_, filepath.c_str(), file,
+                                     status_);
+  ASSERT_TF_OK(status_);
+  tf_writable_file::Append(file, content, 4, status_);
+  ASSERT_TF_OK(status_);
+  length = tf_writable_file::Tell(file, status_);
+  ASSERT_EQ(length, 4);
+  ASSERT_TF_OK(status_);
+  tf_writable_file::Flush(file, status_);
+  ASSERT_TF_OK(status_);
+  ASSERT_TRUE(
+      CompareWithServer(filepath, 0, 4, &gcs_file->gcs_client, status_));
+
+  tf_writable_file::Append(file, content + 4, 4, status_);
+  ASSERT_TF_OK(status_);
+  length = tf_writable_file::Tell(file, status_);
+  ASSERT_EQ(length, 8);
+  ASSERT_TF_OK(status_);
+  tf_writable_file::Flush(file, status_);
+  ASSERT_TF_OK(status_);
+  ASSERT_TRUE(
+      CompareWithServer(filepath, 0, 8, &gcs_file->gcs_client, status_));
+
+  tf_writable_file::Close(file, status_);
+  ASSERT_TF_OK(status_);
+  tf_writable_file::Cleanup(file);
+  delete file;
+}
+
+TEST_F(GCSFilesystemTest, ReadOnlyMemoryRegion) {
+  std::string path = GetURIForPath("a_file");
+  auto gcs_file =
+      static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
+  ASSERT_TRUE(WriteToServer(path, 0, 0, &gcs_file->gcs_client, status_));
+  TF_ReadOnlyMemoryRegion* region = new TF_ReadOnlyMemoryRegion;
+  tf_gcs_filesystem::NewReadOnlyMemoryRegionFromFile(filesystem_, path.c_str(),
+                                                     region, status_);
+  ASSERT_EQ(TF_GetCode(status_), TF_INVALID_ARGUMENT) << TF_Message(status_);
+
+  TF_SetStatus(status_, TF_OK, "");
+  ASSERT_TRUE(WriteToServer(path, 0, content_view.length(),
+                            &gcs_file->gcs_client, status_));
+  tf_gcs_filesystem::NewReadOnlyMemoryRegionFromFile(filesystem_, path.c_str(),
+                                                     region, status_);
+  ASSERT_TF_OK(status_);
+  auto length = tf_read_only_memory_region::Length(region);
+  ASSERT_EQ(length, content_view.length());
+  auto data =
+      static_cast<const char*>(tf_read_only_memory_region::Data(region));
+  ASSERT_TRUE(CompareSubString(0, content_view.length(), data, length));
+
+  tf_read_only_memory_region::Cleanup(region);
+  delete region;
 }
 
 }  // namespace
