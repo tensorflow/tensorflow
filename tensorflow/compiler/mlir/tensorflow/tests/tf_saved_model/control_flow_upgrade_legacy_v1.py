@@ -47,9 +47,9 @@ def Test():
       outputs={'result': tensor_info_result},
       method_name='some_function')
 
-  return {'key': signature_def}
+  return {'key': signature_def}, None, None
 
 
 if __name__ == '__main__':
   common_v1.set_tf_options()
-  common_v1.do_test(Test())
+  common_v1.do_test(Test)
