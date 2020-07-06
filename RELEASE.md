@@ -3,7 +3,7 @@
 ## Major Features and Improvements
   * `tf.data` adds two new mechanisms to solve input pipeline bottlenecks and save resources:
     * [snapshot](https://www.tensorflow.org/api_docs/python/tf/data/experimental/snapshot)
-    * [tf.data service](https://www.tensorflow.org/api_docs/python/tf/data/experimental/service/distribute). 
+    * [tf.data service](https://www.tensorflow.org/api_docs/python/tf/data/experimental/service). 
 
   In addition checkout the detailed [guide](https://www.tensorflow.org/guide/data_performance_analysis) for analyzing input pipeline performance with TF Profiler.
 
