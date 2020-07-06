@@ -610,3 +610,14 @@ func @testBatchToSpaceDynamicCrops(%arg0: tensor<?x?x?x?xf32>, %arg1: tensor<*xi
   %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 8 : i64} : (tensor<?x?x?x?xf32>, tensor<*xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
+
+// CHECK-LABEL: @erase_tf_var_is_initialized
+func @erase_tf_var_is_initialized(%arg0 : tensor<!tf.resource<tensor<f32>>>) -> tensor<i1> {
+  %vh = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
+  %is = "tf.VarIsInitializedOp"(%vh) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<i1>
+  %res = "tf.UnknownOp"(%vh) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<i1>
+  return %res : tensor<i1>
+}
+// Unused VarIsInitializedOp is erased.
+// CHECK: tf.VarHandleOp
+// CHECK-NEXT: tf.UnknownOp

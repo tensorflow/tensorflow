@@ -27,6 +27,19 @@ assignees:
 # A list of assignees for compiler folder
 compiler_assignees:
    - joker-eph
+# filesystem path
+filesystem_path:
+   - tensorflow/c/experimental/filesystem
+# security path
+security_path:
+   - tensorflow/security
+# words checklist
+segfault_memory:
+   - segfault
+   - memory leaks
+# assignees
+filesystem_security_assignee:
+   - mihaimaruseac
 # Cuda Comment
 cuda_comment: >
    From the template it looks like you are installing **TensorFlow** (TF) prebuilt binaries:

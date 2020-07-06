@@ -126,10 +126,11 @@ struct DynamicMemRefCastOpConverter
 
 }  // namespace
 
-void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
+void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
+                                          LLVMTypeConverter *converter,
                                           OwningRewritePatternList *patterns) {
   patterns->insert<DynamicMemRefCastOpConverter, StaticMemRefCastOpConverter>(
-      *converter, LowerToLLVMOptions());
+      *converter, options);
 }
 
 }  // namespace xla_lhlo

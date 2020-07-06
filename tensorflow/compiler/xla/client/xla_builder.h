@@ -733,13 +733,14 @@ class XlaBuilder {
   // broadcast_dimensions specifies which dimensions to use for broadcasting
   // when the operation is between tensors of different ranks. The direction is
   // only used if opcode is kCompare.
-  XlaOp BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
-                 absl::Span<const int64> broadcast_dimensions,
-                 absl::optional<ComparisonDirection> direction = absl::nullopt);
+  XlaOp BinaryOp(
+      HloOpcode binop, XlaOp lhs, XlaOp rhs,
+      absl::Span<const int64> broadcast_dimensions,
+      absl::optional<Comparison::Direction> direction = absl::nullopt);
 
   // Internal helper method for binary op compare without broadcast dimensions.
   virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
-                                  ComparisonDirection direction);
+                                  Comparison::Direction direction);
 
   // Internal helper method that does the building for an arbitrary binary op
   // with same ranked operands that doesn't broadcast.
@@ -1072,6 +1073,7 @@ class XlaBuilder {
   friend XlaOp Round(XlaOp operand);
   friend XlaOp Log(XlaOp operand);
   friend XlaOp Log1p(XlaOp operand);
+  friend XlaOp Logistic(XlaOp operand);
   friend XlaOp Sign(XlaOp operand);
   friend XlaOp Clz(XlaOp operand);
   friend XlaOp Cos(XlaOp operand);
@@ -1912,6 +1914,9 @@ XlaOp Log(XlaOp operand);
 
 // Enqueues an log1p instruction (log(x+1)) onto the computation.
 XlaOp Log1p(XlaOp operand);
+
+// Enqueues a logistic instruction onto the computation.
+XlaOp Logistic(XlaOp operand);
 
 // Enqueues a sign instruction onto the computation.
 XlaOp Sign(XlaOp operand);

@@ -77,7 +77,7 @@ class ScatterTest(test.TestCase):
             ref.batch_scatter_update(ops.IndexedSlices(indices, updates))
           else:
             tf_scatter(ref, indices, updates).eval()
-          self.assertAllClose(ref.eval(), new)
+          self.assertAllClose(ref, new)
 
   @test_util.run_deprecated_v1
   def testVariableRankUpdate(self):

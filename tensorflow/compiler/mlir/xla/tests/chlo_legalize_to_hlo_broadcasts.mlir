@@ -1,4 +1,4 @@
-// RUN: xla-opt -test-xla-chlo-legalize-to-hlo -split-input-file -verify-diagnostics %s -o - | FileCheck %s
+// RUN: xla-opt -test-xla-chlo-legalize-to-hlo -cse -split-input-file -verify-diagnostics %s -o - | FileCheck %s
 
 // Check the non-broadcast case for each registered op, then just check a
 // representative op for detailed broadcast semantics.
@@ -14,14 +14,18 @@ func @addWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<
 // CHECK-SAME: %[[ARG0:.+]]: tensor<?xf32>
 // CHECK-SAME: %[[ARG1:.+]]: tensor<?x?xf32>
 func @dynamicBroadcast(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  // CHECK-DAG: %[[ARG0_S:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK-DAG: %[[ARG1_S:.+]] = shape.shape_of %[[ARG1]]
-  // CHECK-DAG: %[[RESULT_S:.+]] = "shape.broadcast"(%[[ARG0_S]], %[[ARG1_S]])
-  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_S]]
-  // CHECK-DAG: %[[ARG0_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<1> : tensor<1xi64>}
-  // CHECK-DAG: %[[ARG1_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
-  // CHECK-DAG: %[[RESULT:.+]] = xla_hlo.add %[[ARG0_B]], %[[ARG1_B]]
-  // CHECK: return %[[RESULT]] : tensor<?x?xf32>
+  // CHECK-DAG:  %[[ARG0_S:.+]] = shape.shape_of %[[ARG0]]
+  // CHECK-DAG:  %[[ARG1_S:.+]] = shape.shape_of %[[ARG1]]
+  // CHECK-NEXT: %[[WITNESS:.+]] = shape.cstr_broadcastable %[[ARG0_S]], %[[ARG1_S]]
+  // CHECK-NEXT: %[[FINAL_RESULT:.+]] = shape.assuming %[[WITNESS]]
+  // CHECK-DAG:    %[[RESULT_S:.+]] = "shape.broadcast"(%[[ARG0_S]], %[[ARG1_S]])
+  // CHECK:        %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_S]]
+  // CHECK-DAG:    %[[ARG0_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-DAG:    %[[ARG1_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK-NEXT:   %[[RESULT:.+]] = xla_hlo.add %[[ARG0_B]], %[[ARG1_B]]
+  // CHECK-NEXT:   shape.assuming_yield %[[RESULT]]
+  // CHECK-NEXT: }
+  // CHECK-NEXT:      return %[[FINAL_RESULT]] : tensor<?x?xf32>
   %0 = xla_chlo.broadcast_add %arg0, %arg1 : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   return %0 : tensor<?x?xf32>
 }
@@ -31,14 +35,18 @@ func @dynamicBroadcast(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?
 // CHECK-SAME: %[[ARG0:.+]]: tensor<?xf32>
 // CHECK-SAME: %[[ARG1:.+]]: tensor<?x?xf32>
 func @dynamicBroadcastComplex(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xcomplex<f32>> {
-  // CHECK-DAG: %[[ARG0_S:.+]] = shape.shape_of %[[ARG0]]
-  // CHECK-DAG: %[[ARG1_S:.+]] = shape.shape_of %[[ARG1]]
-  // CHECK-DAG: %[[RESULT_S:.+]] = "shape.broadcast"(%[[ARG0_S]], %[[ARG1_S]])
-  // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_S]]
-  // CHECK-DAG: %[[ARG0_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
-  // CHECK-DAG: %[[ARG1_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
-  // CHECK-DAG: %[[RESULT:.+]] = "xla_hlo.complex"(%[[ARG0_B]], %[[ARG1_B]]) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xcomplex<f32>>
-  // CHECK: return %[[RESULT]] : tensor<?x?xcomplex<f32>>
+  // CHECK-DAG:  %[[ARG0_S:.+]] = shape.shape_of %[[ARG0]]
+  // CHECK-DAG:  %[[ARG1_S:.+]] = shape.shape_of %[[ARG1]]
+  // CHECK-NEXT: %[[WITNESS:.+]] = shape.cstr_broadcastable %[[ARG0_S]], %[[ARG1_S]]
+  // CHECK-NEXT: %[[FINAL_RESULT:.+]] = shape.assuming %[[WITNESS]]
+  // CHECK-NEXT:   %[[RESULT_S:.+]] = "shape.broadcast"(%[[ARG0_S]], %[[ARG1_S]])
+  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_S]]
+  // CHECK-DAG:    %[[ARG0_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  // CHECK-DAG:    %[[ARG1_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  // CHECK-NEXT:   %[[RESULT:.+]] = "xla_hlo.complex"(%[[ARG0_B]], %[[ARG1_B]]) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xcomplex<f32>>
+  // CHECK-NEXT:   shape.assuming_yield %[[RESULT]]
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return %[[FINAL_RESULT]] : tensor<?x?xcomplex<f32>>
   %0 = xla_chlo.broadcast_complex %arg0, %arg1 : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xcomplex<f32>>
   return %0 : tensor<?x?xcomplex<f32>>
 }
@@ -50,12 +58,16 @@ func @dynamicBroadcastComplex(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> t
 func @dynamicBroadcastCompare(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xi1> {
   // CHECK-DAG: %[[ARG0_S:.+]] = shape.shape_of %[[ARG0]]
   // CHECK-DAG: %[[ARG1_S:.+]] = shape.shape_of %[[ARG1]]
-  // CHECK-DAG: %[[RESULT_S:.+]] = "shape.broadcast"(%[[ARG0_S]], %[[ARG1_S]])
+  // CHECK: %[[WITNESS:.+]] = shape.cstr_broadcastable %[[ARG0_S]], %[[ARG1_S]]
+  // CHECK: %[[FINAL_RESULT:.+]] = shape.assuming %[[WITNESS]]
+  // CHECK: %[[RESULT_S:.+]] = "shape.broadcast"(%[[ARG0_S]], %[[ARG1_S]])
   // CHECK: %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_S]]
   // CHECK-DAG: %[[ARG0_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
   // CHECK-DAG: %[[ARG1_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
-  // CHECK-DAG: %[[RESULT:.+]] = "xla_hlo.compare"(%[[ARG0_B]], %[[ARG1_B]]) {comparison_direction = "EQ"} : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xi1>
-  // CHECK: return %[[RESULT]] : tensor<?x?xi1>
+  // CHECK: %[[RESULT:.+]] = "xla_hlo.compare"(%[[ARG0_B]], %[[ARG1_B]]) {comparison_direction = "EQ"} : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xi1>
+  // CHECK: shape.assuming_yield %[[RESULT]]
+  // CHECK-NEXT: }
+  // CHECK: return %[[FINAL_RESULT]] : tensor<?x?xi1>
   %0 = xla_chlo.broadcast_compare %arg0, %arg1 {comparison_direction = "EQ"} : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xi1>
   return %0 : tensor<?x?xi1>
 }

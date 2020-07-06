@@ -785,14 +785,14 @@ void PortableMeanStddevNormalization(const float* input_vector,
   }
 }
 
-void PortableTwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
-                                   const int8_t* recurrent, int8_t recurrent_zp,
-                                   int32_t input_effective_scale_a,
-                                   int32_t input_effective_scale_b,
-                                   int32_t recurrent_effective_scale_a,
-                                   int32_t recurrent_effective_scale_b,
-                                   int32_t n_batch, int32_t n_cell,
-                                   int16_t* output) {
+void PortableTwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
+                                  const int8_t* recurrent, int8_t recurrent_zp,
+                                  int32_t input_effective_scale_a,
+                                  int32_t input_effective_scale_b,
+                                  int32_t recurrent_effective_scale_a,
+                                  int32_t recurrent_effective_scale_b,
+                                  int32_t n_batch, int32_t n_cell,
+                                  int16_t* output) {
   const int32_t int16_max = std::numeric_limits<int16>::max();
   const int32_t int16_min = std::numeric_limits<int16>::min();
   for (int i = 0; i < n_batch * n_cell; ++i) {

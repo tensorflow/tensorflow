@@ -256,6 +256,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLogistic:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:

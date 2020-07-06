@@ -127,7 +127,7 @@ Value SkipIdentity(Value v, bool allow_other_use,
   while (auto result = v.dyn_cast<OpResult>()) {
     if (!(allow_other_use || v.hasOneUse())) break;
     auto op = result.getDefiningOp();
-    if (!llvm::isa<TF::IdentityOp>(op) && !llvm::isa<TF::IdentityNOp>(op)) {
+    if (!llvm::isa<TF::IdentityOp, TF::IdentityNOp>(op)) {
       break;
     }
     v = op->getOperand(result.getResultNumber());

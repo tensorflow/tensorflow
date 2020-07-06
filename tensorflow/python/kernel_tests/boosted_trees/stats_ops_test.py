@@ -214,7 +214,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
     stats_summaries = self._get_stats_summary_for_split()
     stats_summaries = self.add_f_dim_and_append_zeros(stats_summaries)
 
-    with self.assertRaisesRegexp(Exception, 'Incorrect split type'):
+    with self.assertRaisesRegex(Exception, 'Incorrect split type'):
       self.evaluate(
           boosted_trees_ops.calculate_best_feature_split_v2(
               node_id_range,

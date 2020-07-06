@@ -44,73 +44,17 @@ FLT4 clamped_value = min((FLT4)(args.max), max((FLT4)(args.min), in_out_value));
 FLT4 quantized_value = round((clamped_value - (FLT4)(args.min)) / (FLT4)(args.scale));
 FLT4 dequantized_value = quantized_value * (FLT4)(args.scale) + (FLT4)(args.min);
 in_out_value = dequantized_value;)";
-  min_ = FLT(scalar_precision, attr.min);
-  max_ = FLT(scalar_precision, attr.max);
-  scale_ = FLT(scalar_precision, attr.scale);
 }
 
 QuantizeAndDequantize::QuantizeAndDequantize(QuantizeAndDequantize&& operation)
-    : ElementwiseOperation(std::move(operation)),
-      min_(std::move(operation.min_)),
-      max_(std::move(operation.max_)),
-      scale_(std::move(operation.scale_)) {}
+    : ElementwiseOperation(std::move(operation)) {}
 
 QuantizeAndDequantize& QuantizeAndDequantize::operator=(
     QuantizeAndDequantize&& operation) {
   if (this != &operation) {
-    min_ = std::move(operation.min_);
-    max_ = std::move(operation.max_);
-    scale_ = std::move(operation.scale_);
     ElementwiseOperation::operator=(std::move(operation));
   }
   return *this;
-}
-
-void QuantizeAndDequantize::SetLinkIndex(int index) {
-  min_.SetName(absl::StrCat("quantize_and_dequantize_min_", index));
-  max_.SetName(absl::StrCat("quantize_and_dequantize_max_", index));
-  scale_.SetName(absl::StrCat("quantize_and_dequantize_scale_", index));
-}
-
-std::string QuantizeAndDequantize::GetCoreCode(
-    const LinkingContext& context) const {
-  std::string scale_string, max_string, min_string;
-  if (!scale_.Active()) {
-    scale_string = "(FLT4)(1.0f)";
-  } else {
-    scale_string = absl::StrCat("(FLT4)(", scale_.GetName(), ")");
-  }
-  if (!max_.Active()) {
-    max_string = "(FLT4)(0.0f)";
-  } else {
-    max_string = absl::StrCat("(FLT4)(", max_.GetName(), ")");
-  }
-  if (!min_.Active()) {
-    min_string = "(FLT4)(0.0f)";
-  } else {
-    min_string = absl::StrCat("(FLT4)(", min_.GetName(), ")");
-  }
-  std::string clamped_value = absl::StrCat(
-      "min(", max_string, ", max(", min_string, ", ", context.var_name, "))");
-  std::string quantized_value = absl::StrCat(
-      "round((", clamped_value, " - ", min_string, ") / ", scale_string, ")");
-  std::string dequantized_value =
-      absl::StrCat(quantized_value, " * ", scale_string, " + ", min_string);
-
-  return absl::StrCat(context.var_name, " = ", dequantized_value, ";\n");
-}
-
-std::string QuantizeAndDequantize::GetArgsDeclaration() const {
-  return absl::StrCat(",\n    ", min_.GetDeclaration(), ",\n    ",
-                      max_.GetDeclaration(), ",\n    ",
-                      scale_.GetDeclaration());
-}
-
-absl::Status QuantizeAndDequantize::BindArguments(CLKernel* kernel) {
-  RETURN_IF_ERROR(kernel->SetBytesAuto(min_));
-  RETURN_IF_ERROR(kernel->SetBytesAuto(max_));
-  RETURN_IF_ERROR(kernel->SetBytesAuto(scale_));
-  return absl::OkStatus();
 }
 
 absl::Status CreateQuantizeAndDequantize(
@@ -133,7 +77,6 @@ absl::Status CreateQuantizeAndDequantize(
   } else {
     *result = QuantizeAndDequantize(definition, attr, scalar_precision);
   }
-  result->SetLinkIndex(0);
   return absl::OkStatus();
 }
 

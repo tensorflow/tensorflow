@@ -131,26 +131,26 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(network.get_layer(index=1), dense_a)
 
     # test invalid get_layer by index
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Was asked to retrieve layer at index ' + str(3) +
         ' but model only has ' + str(len(network.layers)) + ' layers.'):
       network.get_layer(index=3)
 
     # test that only one between name and index is requested
-    with self.assertRaisesRegexp(ValueError,
-                                 'Provide only a layer name or a layer index'):
+    with self.assertRaisesRegex(ValueError,
+                                'Provide only a layer name or a layer index'):
       network.get_layer(index=1, name='dense_b')
 
     # test that a name or an index must be provided
-    with self.assertRaisesRegexp(ValueError,
-                                 'Provide either a layer name or layer index.'):
+    with self.assertRaisesRegex(ValueError,
+                                'Provide either a layer name or layer index.'):
       network.get_layer()
 
     # test various get_layer by name
     self.assertEqual(network.get_layer(name='dense_a'), dense_a)
 
     # test invalid get_layer by name
-    with self.assertRaisesRegexp(ValueError, 'No such layer: dense_c.'):
+    with self.assertRaisesRegex(ValueError, 'No such layer: dense_c.'):
       network.get_layer(name='dense_c')
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -969,6 +969,77 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
 
+  @combinations.generate(combinations.keras_mode_combinations())
+  def test_call_kwarg_dtype_serialization(self):
+
+    class Double(layers.Layer):
+
+      def call(self, x1, dtype=None):
+        return math_ops.cast(x1 + x1, dtype=dtype)
+
+    input1 = input_layer_lib.Input(10)
+    outputs = Double()(input1, dtype=dtypes.float16)
+    model = training_lib.Model([input1], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10))],
+        y=6 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that input was correctly doubled.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    # Check the output dtype
+    self.assertEqual(model(array_ops.ones(3, 3)).dtype, dtypes.float16)
+
+    model = training_lib.Model.from_config(
+        model.get_config(), custom_objects={'Double': Double})
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10))],
+        y=6 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that input was correctly doubled.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    # Check the output dtype
+    self.assertEqual(model(array_ops.ones(3, 3)).dtype, dtypes.float16)
+
+  @combinations.generate(combinations.keras_mode_combinations())
+  def test_call_kwarg_nonserializable(self):
+
+    class Double(layers.Layer):
+
+      def call(self, x1, kwarg=None):
+        return x1 + x1
+
+    class NonSerializable(object):
+
+      def __init__(self, foo=None):
+        self.foo = foo
+
+    input1 = input_layer_lib.Input(10)
+    outputs = Double()(input1, kwarg=NonSerializable())
+    model = training_lib.Model([input1], outputs)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10))],
+        y=6 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that input was correctly doubled.
+    self.assertEqual(history.history['loss'][0], 0.0)
+    with self.assertRaisesRegex(
+        TypeError, 'Layer double was passed non-JSON-serializable arguments.'):
+      model.get_config()
+
   @combinations.generate(combinations.times(
       combinations.keras_mode_combinations(),
       combinations.keras_tensor_combinations()))
@@ -1203,7 +1274,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       def __init__(self):
         self._foo = [layers.Dense(10), layers.Dense(10)]
 
-    with self.assertRaisesRegexp(RuntimeError, 'forgot to call'):
+    with self.assertRaisesRegex(RuntimeError, 'forgot to call'):
       MyNetwork()
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -1220,12 +1291,12 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     inputs = input_layer_lib.Input(shape=(32,))
     outputs = layers.Dense(4)(inputs)
 
-    with self.assertRaisesRegexp(TypeError,
-                                 'got an unexpected keyword argument'):
+    with self.assertRaisesRegex(TypeError,
+                                'got an unexpected keyword argument'):
       model = training_lib.Model(
           inputs, outputs, name='m', trainable=False, dtype='int64')
-    with self.assertRaisesRegexp(TypeError,
-                                 'got an unexpected keyword argument'):
+    with self.assertRaisesRegex(TypeError,
+                                'got an unexpected keyword argument'):
       model = training_lib.Model(
           inputs, outputs, name='m', trainable=False, dynamic=False)
 
@@ -1860,7 +1931,7 @@ class WeightAccessTest(keras_parameterized.TestCase):
     x3 = layers.Dense(1)
     model = sequential.Sequential([x1, x2, x3])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Weights for model .* have not yet been created'):
       _ = model.weights
 
@@ -1876,7 +1947,7 @@ class WeightAccessTest(keras_parameterized.TestCase):
 
     model = SubclassModel()
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Weights for model .* have not yet been created'):
       _ = model.weights
 
@@ -2116,13 +2187,13 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
 
     if context.executing_eagerly():
       # In v2, construction still works when no `training` is specified
-      # When no value passed during construction, it uses the runtime value.
+      # When no value passed during construction, it uses the local default.
       inputs = input_layer_lib.Input(10)
       outputs = my_layer(inputs)
       network = functional.Functional(inputs, outputs)
       self.assertAllEqual(network(x, training=True), _call(x, True))
       self.assertAllEqual(network(x, training=False), _call(x, False))
-      self.assertAllEqual(network(x), _call(x, False))
+      self.assertAllEqual(network(x), _call(x, True))  # Use local default
 
     # `None` value passed positionally during construction is ignored at runtime
     inputs = input_layer_lib.Input(10)
@@ -2131,7 +2202,7 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     self.assertAllEqual(network(x, training=True), _call(x, True))
     self.assertAllEqual(network(x, training=False), _call(x, False))
     if context.executing_eagerly():
-      self.assertAllEqual(network(x), _call(x, False))
+      self.assertAllEqual(network(x), _call(x, True))  # Use local default
     else:
       # in v1 training would have defaulted to using the `None` inside the layer
       # if training is not passed at runtime
@@ -2144,7 +2215,7 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     self.assertAllEqual(network(x, training=True), _call(x, True))
     self.assertAllEqual(network(x, training=False), _call(x, False))
     if context.executing_eagerly():
-      self.assertAllEqual(network(x), _call(x, False))
+      self.assertAllEqual(network(x), _call(x, True))  # Use local default
     else:
       # in v1 training would have defaulted to using the `None` inside the layer
       # if training is not passed at runtime

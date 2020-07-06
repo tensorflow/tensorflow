@@ -81,9 +81,9 @@ class MapFnTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testMapOverScalarErrors(self):
-    with self.assertRaisesRegexp(ValueError, "not scalars"):
+    with self.assertRaisesRegex(ValueError, "not scalars"):
       map_fn.map_fn(lambda x: x, [1, 2])
-    with self.assertRaisesRegexp(ValueError, "not a scalar"):
+    with self.assertRaisesRegex(ValueError, "not a scalar"):
       map_fn.map_fn(lambda x: x, 1)
 
   @test_util.run_deprecated_v1
@@ -155,7 +155,7 @@ class MapFnTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testMap_MultiOutputMismatchedDtype(self):
     nums = np.array([1, 2, 3, 4, 5, 6])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"two structures don't have the same nested structure"):
       # lambda emits tuple, but dtype is a list
       map_fn.map_fn(
@@ -236,6 +236,12 @@ class MapFnTest(test.TestCase):
                                  constant_op.constant([]))
       self.assertAllEqual([0, 3, 2], map_return.get_shape().dims)
       self.assertAllEqual([0, 3, 2], self.evaluate(map_return).shape)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMapEmptyList(self):
+    x = []
+    with self.assertRaisesRegex(ValueError, r"elems must be a Tensor or"):
+      _ = map_fn.map_fn(lambda e: e, x)
 
 
 if __name__ == "__main__":

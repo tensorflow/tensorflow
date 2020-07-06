@@ -91,44 +91,19 @@ cc_library(
 )
 
 cc_library(
-    name = "partition_assignment",
+    name = "launch_dimensions",
     srcs = [
-        "partition_assignment.cc",
+        "launch_dimensions.cc",
     ],
     hdrs = [
-        "partition_assignment.h",
+        "launch_dimensions.h",
     ],
     deps = [
+        ":gpu_device_info",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor_no_cuda",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings:str_format",
     ],
 )
-
-# TODO(b/29140563) This target is flaky, disabled until flakiness is
-# root-caused. Failed on 2016-06-08.
-#tf_cc_test(
-#    name = "partition_assignment_test",
-#    srcs = [
-#        "partition_assignment_test.cc",
-#    ],
-#    tags = tf_cuda_tests_tags(),
-#    deps = [
-#        ":partition_assignment",
-#        "//tensorflow/core:stream_executor_no_cuda",
-#        "//tensorflow/compiler/xla:shape_util",
-#        "//tensorflow/compiler/xla:xla_data_proto",
-#        "//tensorflow/compiler/xla/service:gpu_plugin",
-#        "//tensorflow/compiler/xla/service:hlo",
-#        "//tensorflow/compiler/xla/tests:hlo_test_base",
-#        "//tensorflow/core:test_main",
-#    ],
-#)
 
 tf_cc_test(
     name = "custom_call_test",
@@ -246,6 +221,11 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_device_info",
+    hdrs = ["gpu_device_info.h"],
+)
+
+cc_library(
     name = "ir_emitter",
     srcs = [
         "ir_emitter.cc",
@@ -269,9 +249,9 @@ cc_library(
         ":gpu_executable",
         ":hlo_to_ir_bindings",
         ":ir_emission_utils",
+        ":launch_dimensions",
         ":nccl_all_reduce_thunk",
         ":parallel_loop_emitter",
-        ":partition_assignment",
         ":target_util",
         ":thunk",
         ":thunk_emitter",
@@ -319,7 +299,7 @@ cc_library(
     srcs = ["parallel_loop_emitter.cc"],
     hdrs = ["parallel_loop_emitter.h"],
     deps = [
-        ":partition_assignment",
+        ":launch_dimensions",
         ":target_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -572,7 +552,7 @@ cc_library(
         ":ir_emission_utils",
         ":nccl_all_reduce_thunk",  # fixdeps: keep
         ":outfeed_manager",
-        ":partition_assignment",
+        ":launch_dimensions",
         ":stream_assignment",
         ":stream_executor_util",
         ":thunk",
@@ -636,6 +616,7 @@ cc_library(
     hdrs = ["ir_emission_utils.h"],
     deps = [
         ":backend_configs_cc",
+        ":gpu_device_info",
         ":target_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
@@ -1152,14 +1133,12 @@ cc_library(
     deps = [
         ":alias_passthrough_params",
         ":cudnn_batchnorm_rewriter",
-        ":cudnn_pad_for_convolutions",
         ":fusion_merger",
         ":gemm_rewriter",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
-        ":gpu_conv_padding_legalization",
-        ":gpu_conv_rewriter",
         ":gpu_copy_insertion",
+        ":gpu_device_info",
         ":gpu_executable",
         ":gpu_hlo_schedule",
         ":gpu_layout_assignment",
@@ -1169,8 +1148,8 @@ cc_library(
         ":instruction_fusion",
         ":ir_emission_utils",
         ":ir_emitter",
+        ":launch_dimensions",
         ":multi_output_fusion",
-        ":partition_assignment",
         ":reduction_degenerate_dim_remover",
         ":reduction_dimension_grouper",
         ":reduction_layout_normalizer",
@@ -1207,11 +1186,11 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_util",
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/service:logistic_expander",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
         "//tensorflow/compiler/xla/service:rng_expander",
         "//tensorflow/compiler/xla/service:slice_sinker",
@@ -1232,11 +1211,8 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:stream_executor_headers",
-        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
     ],
 )
@@ -1530,7 +1506,7 @@ cc_library(
     srcs = if_cuda_is_configured(["buffer_comparator.cc"]),
     hdrs = if_cuda_is_configured(["buffer_comparator.h"]),
     deps = if_cuda_is_configured([
-        ":partition_assignment",
+        ":launch_dimensions",
         ":stream_executor_util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",

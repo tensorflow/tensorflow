@@ -84,10 +84,6 @@ from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
-# The default value of `experimental_new_converter`.
-_USE_EXPERIMENTAL_NEW_CONVERTER = True
-
-
 @_tf_export("lite.Optimize")
 class Optimize(enum.Enum):
   """Enum defining the optimizations to apply when generating tflite graphs.
@@ -380,7 +376,7 @@ class QuantizationMode(object):
     })
 
     for node_def in self._graph_def.node:
-      if any(op in node_def.name for op in training_quant_ops):
+      if node_def.op in training_quant_ops:
         return True
     return False
 
@@ -393,7 +389,7 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.optimizations = []
     self.representative_dataset = None
-    self.experimental_new_converter = _USE_EXPERIMENTAL_NEW_CONVERTER
+    self.experimental_new_converter = True
     self._experimental_new_quantizer = False
     self._experimental_calibrate_only = False
     # The 'GraphDebugInfo'  contains the stack traces of all the original nodes
@@ -539,7 +535,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       training integer quantization. (default tf.float32, must be in
       {tf.float32, tf.int8, tf.uint8})
     experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion.
+      MLIR-based conversion instead of TOCO conversion. (default True)
   """
 
   def __init__(self):
@@ -621,7 +617,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
           "experimental_new_converter=True. "
           "The old converter (TOCO) is deprecated.")
     else:
-      logging.info("Using experimental converter: If you encountered a problem "
+      logging.info("Using new converter: If you encounter a problem "
                    "please file a bug. You can opt-out "
                    "by setting experimental_new_converter=False")
 

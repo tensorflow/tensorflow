@@ -33,12 +33,15 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -67,281 +70,6 @@ StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
                       HloModule::CreateModuleConfigFromProto(
                           module_proto, ::xla::GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(module_proto, module_config);
-}
-
-// This class will process an HloModule with the supplied BufferAssignment and
-// populate the MLIR ModuleOp with the computation converted in the LHLO
-// dialect.
-class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
- public:
-  // Main entry point of the processing: after this call the MLIR ModuleOp is
-  // populated with the computation from the HloModule. The returned `Status`
-  // indicates success or failure in the conversion.
-  Status Run();
-
-  LhloDialectEmitter(const BufferAssignment& assignment,
-                     const HloModule& hlo_module, ModuleOp module)
-      : assignment_(std::move(assignment)),
-        hlo_module_(hlo_module),
-        module_(module),
-        builder_(module.getContext()),
-        i8_type_(builder_.getIntegerType(8)) {}
-
- private:
-  Status DefaultAction(HloInstruction* instr) final;
-
-  // Computation parameters don't need any specific handling when they are
-  // visited, they are already processed when we enter a new computation.
-  Status HandleParameter(HloInstruction* instr) final { return Status::OK(); }
-
-  // Helper function to create view in a buffer for a given slice. The view is
-  // cached in the `slices_` map.
-  Value GetOrCreateView(const BufferAllocation::Slice& slice);
-
-  // Helper function to create view in a buffer for a given instruction result.
-  StatusOr<Value> GetOrCreateView(const HloInstruction* instr);
-
-  // Return an MLIR location for an HLO instruction.
-  Location getLocation(HloInstruction* inst) {
-    return NameLoc::get(builder_.getIdentifier(inst->name()),
-                        builder_.getContext());
-  }
-
-  // This map provides access to MLIR buffers for each HLO buffer allocation.
-  // The MLIR buffers are all `memref<{size}xi8>` and correspond to function
-  // parameters. It is populated at the beginning of the processing with all the
-  // buffer allocations and is unchanged afterward. Every HLOInstruction is
-  // using a "slice" of the buffer allocation and providing shape, layout, and
-  // Dtype. An MLIR view is used separately to model slices into the allocations
-  // (see below).
-  llvm::DenseMap<const BufferAllocation*, Value> allocations_;
-
-  // This map provides access to MLIR buffers for each HLO buffer slice. A slice
-  // is contained in a BufferAllocation, and has an offset and a size.
-  // The MLIR buffers are all `memref<{size}xi8>`. If the slice is the entire
-  // BufferAllocation then the MLIR buffer corresponds to function
-  // parameter for the allocation, otherwise it will map to a ViewOp in the
-  // allocation. It is populated lazily in the `GetOrCreateView()` helper as we
-  // process every instruction.
-  using SliceKey = std::tuple<const BufferAllocation*, int64_t, int64_t>;
-  llvm::DenseMap<SliceKey, Value> slices_;
-
-  // The BufferAssignment computed by XLA ahead of time.
-  const BufferAssignment& assignment_;
-
-  // The HLO module that will be converted.
-  const HloModule& hlo_module_;
-
-  // This is the MLIR module in which a function will be created for every HLO
-  // computation.
-  ModuleOp module_;
-
-  // The builder keeps track of the current insertion point in the MLIR module.
-  OpBuilder builder_;
-  // Convenient "cached" access to this widely used MLIR type (i8).
-  Type i8_type_;
-};
-
-Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
-  llvm::SmallVector<Value, 4> operands(instr->operand_count() + 1);
-  for (int arg_idx = 0; arg_idx < instr->operand_count(); ++arg_idx) {
-    TF_ASSIGN_OR_RETURN(operands[arg_idx],
-                        GetOrCreateView(instr->operand(arg_idx)));
-  }
-
-  TF_ASSIGN_OR_RETURN(operands.back(), GetOrCreateView(instr));
-  Location loc = getLocation(instr);
-  ArrayRef<std::pair<Identifier, Attribute>> attrs;
-  ArrayRef<Type> rets{};
-
-  using ::xla::HloOpcode;
-  switch (instr->opcode()) {
-    case HloOpcode::kAbs:
-      builder_.create<xla_lhlo::AbsOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kAdd:
-      builder_.create<xla_lhlo::AddOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kAnd:
-      builder_.create<xla_lhlo::AndOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kCeil:
-      builder_.create<xla_lhlo::CeilOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kComplex:
-      builder_.create<xla_lhlo::ComplexOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kCopy:
-      builder_.create<xla_lhlo::CopyOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kCos:
-      builder_.create<xla_lhlo::CosOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kDivide:
-      builder_.create<xla_lhlo::DivOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kExp:
-      builder_.create<xla_lhlo::ExpOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kImag:
-      builder_.create<xla_lhlo::ImagOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kLog:
-      builder_.create<xla_lhlo::LogOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kMaximum:
-      builder_.create<xla_lhlo::MaxOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kMinimum:
-      builder_.create<xla_lhlo::MinOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kMultiply:
-      builder_.create<xla_lhlo::MulOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kNegate:
-      builder_.create<xla_lhlo::NegOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kReal:
-      builder_.create<xla_lhlo::RealOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kRemainder:
-      builder_.create<xla_lhlo::RemOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kRsqrt:
-      builder_.create<xla_lhlo::RsqrtOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kSelect:
-      builder_.create<xla_lhlo::SelectOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kSign:
-      builder_.create<xla_lhlo::SignOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kSqrt:
-      builder_.create<xla_lhlo::SqrtOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kSubtract:
-      builder_.create<xla_lhlo::SubOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    case HloOpcode::kTanh:
-      builder_.create<xla_lhlo::TanhOp>(loc, rets, operands, attrs);
-      return Status::OK();
-    default:
-      llvm::errs() << instr->ToString();
-      return tensorflow::errors::Internal(
-          absl::StrCat("LHLO opcode ", ::xla::HloOpcodeString(instr->opcode()),
-                       " is not supported."));
-  }
-  return Status::OK();
-}
-
-Value LhloDialectEmitter::GetOrCreateView(
-    const BufferAllocation::Slice& slice) {
-  // Check if we already have a view for this slice, otherwise we need to create
-  // a new one.
-  SliceKey slice_key(slice.allocation(), slice.offset(), slice.size());
-  auto slice_view_it = slices_.find(slice_key);
-  if (slice_view_it != slices_.end()) return slice_view_it->second;
-
-  // Check if we can just use the entire allocation before creating a view.
-  Value alloc_buffer = allocations_[slice.allocation()];
-  if (slice.offset() == 0 && slice.size() == slice.allocation()->size()) {
-    slices_.insert({slice_key, alloc_buffer});
-    return alloc_buffer;
-  }
-
-  // Create the view for this slice size, possible with an affine map to model
-  // the offset. The result is cached in the slices_ map.
-  // The std.view result type does not carry the static offset: this is not
-  // useful information. Rather, the view op must have the static offset.
-  auto slice_type = MemRefType::get({slice.size()}, i8_type_, {});
-
-  Value byte_shift =
-      builder_.create<ConstantIndexOp>(alloc_buffer.getLoc(), slice.offset());
-  auto slice_view =
-      builder_.create<ViewOp>(alloc_buffer.getLoc(), slice_type, alloc_buffer,
-                              byte_shift, /*sizes=*/ArrayRef<Value>{});
-  slices_.insert({slice_key, slice_view});
-  return slice_view;
-}
-
-// Returns a view for the result of an instruction.
-// We first get a view for the slice in the allocation, and then may need to
-// create another view to adjust the slice for the shape of the instruction.
-StatusOr<Value> LhloDialectEmitter::GetOrCreateView(
-    const HloInstruction* instr) {
-  const Shape& target_shape = instr->shape();
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
-                      assignment_.GetUniqueTopLevelSlice(instr));
-  Value slice_view = GetOrCreateView(out_slice);
-  TF_ASSIGN_OR_RETURN(Type out_type, ::xla::ConvertShapeToType<MemRefType>(
-                                         target_shape, builder_));
-  Value byte_shift =
-      builder_.create<ConstantIndexOp>(builder_.getUnknownLoc(), 0);
-  if (slice_view.getType() != out_type)
-    slice_view =
-        builder_.create<ViewOp>(builder_.getUnknownLoc(), out_type, slice_view,
-                                byte_shift, /*sizes=*/ArrayRef<Value>{});
-  return slice_view;
-}
-
-Status LhloDialectEmitter::Run() {
-  HloComputation* computation = hlo_module_.entry_computation();
-  std::string function_name =
-      computation->name().empty() ? "__compute" : computation->name();
-
-  // Create the function as () -> (), we'll compute the arguments from the
-  // buffer allocation and update the type then.
-  auto func_op = FuncOp::create(builder_.getUnknownLoc(), function_name,
-                                builder_.getFunctionType({}, {}));
-  Block* block = func_op.addEntryBlock();
-
-  // The function signature will be composed of:
-  // - one memref for each of the parameters.
-  // - one memref for each other buffer allocation.
-  llvm::SmallVector<MutableDictionaryAttr, 8> args_attrs;
-  for (const HloInstruction* param : computation->parameter_instructions()) {
-    TF_ASSIGN_OR_RETURN(auto arg_type, ::xla::ConvertShapeToType<MemRefType>(
-                                           param->shape(), builder_));
-    // First map parameters to memrefs on the operation.
-    block->addArgument(arg_type);
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
-                        assignment_.GetUniqueTopLevelSlice(param));
-    allocations_[slice.allocation()] = block->getArguments().back();
-    args_attrs.emplace_back();
-    args_attrs.back().set(builder_.getIdentifier("xla_lhlo.params"),
-                          builder_.getIndexAttr(param->parameter_number()));
-  }
-
-  for (const BufferAllocation& alloc : assignment_.Allocations()) {
-    if (alloc.is_entry_computation_parameter()) continue;
-    block->addArgument(MemRefType::get({alloc.size()}, i8_type_));
-    allocations_[&alloc] = block->getArguments().back();
-    args_attrs.emplace_back();
-    args_attrs.back().set(builder_.getIdentifier("xla_lhlo.alloc"),
-                          builder_.getIndexAttr(alloc.index()));
-    if (alloc.maybe_live_out())
-      args_attrs.back().set(builder_.getIdentifier("xla_lhlo.liveout"),
-                            builder_.getBoolAttr(true));
-  }
-
-  FunctionType function_type = builder_.getFunctionType(
-      llvm::to_vector<8>(block->getArgumentTypes()), {});
-  func_op.setType(function_type);
-  func_op.setAllArgAttrs(args_attrs);
-
-  SymbolTable symbol_table(module_);
-  symbol_table.insert(func_op);
-  builder_.setInsertionPointToEnd(block);
-
-  const ::xla::HloInstructionSequence* schedule =
-      assignment_.hlo_ordering().SequentialOrder(*computation);
-  if (!schedule)
-    return ::xla::Unimplemented("Missing sequential order for the computation");
-
-  const std::vector<HloInstruction*>& ordering = schedule->instructions();
-  TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, ordering));
-  builder_.create<ReturnOp>(builder_.getUnknownLoc());
-  return Status::OK();
 }
 
 // Convert the MLIR `module` from HLO dialect to LHLO dialect using XLA for the
@@ -442,13 +170,261 @@ class XlaHloToLhloPass
 
 }  // namespace
 
+template <typename OpType>
+StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
+    HloInstruction* instr) {
+  Location loc = getLocation(instr);
+  ArrayRef<std::pair<Identifier, Attribute>> attrs;
+  ArrayRef<Type> rets{};
+
+  llvm::SmallVector<Value, 4> operands;
+  for (const HloInstruction* operand : instr->operands()) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
+  }
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands));
+
+  return builder_.create<OpType>(loc, rets, operands, attrs);
+}
+
+Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
+  using ::xla::HloOpcode;
+  switch (instr->opcode()) {
+    case HloOpcode::kAbs:
+      return CreateOpWithoutAttrs<xla_lhlo::AbsOp>(instr).status();
+    case HloOpcode::kAdd:
+      return CreateOpWithoutAttrs<xla_lhlo::AddOp>(instr).status();
+    case HloOpcode::kAnd:
+      return CreateOpWithoutAttrs<xla_lhlo::AndOp>(instr).status();
+    case HloOpcode::kCeil:
+      return CreateOpWithoutAttrs<xla_lhlo::CeilOp>(instr).status();
+    case HloOpcode::kComplex:
+      return CreateOpWithoutAttrs<xla_lhlo::ComplexOp>(instr).status();
+    case HloOpcode::kCopy:
+      return CreateOpWithoutAttrs<xla_lhlo::CopyOp>(instr).status();
+    case HloOpcode::kCos:
+      return CreateOpWithoutAttrs<xla_lhlo::CosOp>(instr).status();
+    case HloOpcode::kDivide:
+      return CreateOpWithoutAttrs<xla_lhlo::DivOp>(instr).status();
+    case HloOpcode::kExp:
+      return CreateOpWithoutAttrs<xla_lhlo::ExpOp>(instr).status();
+    case HloOpcode::kImag:
+      return CreateOpWithoutAttrs<xla_lhlo::ImagOp>(instr).status();
+    case HloOpcode::kLog:
+      return CreateOpWithoutAttrs<xla_lhlo::LogOp>(instr).status();
+    case HloOpcode::kMaximum:
+      return CreateOpWithoutAttrs<xla_lhlo::MaxOp>(instr).status();
+    case HloOpcode::kMinimum:
+      return CreateOpWithoutAttrs<xla_lhlo::MinOp>(instr).status();
+    case HloOpcode::kMultiply:
+      return CreateOpWithoutAttrs<xla_lhlo::MulOp>(instr).status();
+    case HloOpcode::kNegate:
+      return CreateOpWithoutAttrs<xla_lhlo::NegOp>(instr).status();
+    case HloOpcode::kReal:
+      return CreateOpWithoutAttrs<xla_lhlo::RealOp>(instr).status();
+    case HloOpcode::kRemainder:
+      return CreateOpWithoutAttrs<xla_lhlo::RemOp>(instr).status();
+    case HloOpcode::kRsqrt:
+      return CreateOpWithoutAttrs<xla_lhlo::RsqrtOp>(instr).status();
+    case HloOpcode::kSelect:
+      return CreateOpWithoutAttrs<xla_lhlo::SelectOp>(instr).status();
+    case HloOpcode::kSign:
+      return CreateOpWithoutAttrs<xla_lhlo::SignOp>(instr).status();
+    case HloOpcode::kSqrt:
+      return CreateOpWithoutAttrs<xla_lhlo::SqrtOp>(instr).status();
+    case HloOpcode::kSubtract:
+      return CreateOpWithoutAttrs<xla_lhlo::SubOp>(instr).status();
+    case HloOpcode::kTanh:
+      return CreateOpWithoutAttrs<xla_lhlo::TanhOp>(instr).status();
+    default:
+      llvm::errs() << instr->ToString();
+      return tensorflow::errors::Internal(
+          absl::StrCat("LHLO opcode ", ::xla::HloOpcodeString(instr->opcode()),
+                       " is not supported."));
+  }
+  return Status::OK();
+}
+
+StatusOr<mlir::Operation*> LhloDialectEmitter::EmitSortOp(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto sort, CreateOpWithoutAttrs<xla_lhlo::SortOp>(instr));
+  auto* sort_instr = ::xla::Cast<::xla::HloSortInstruction>(instr);
+  sort.dimensionAttr(builder_.getI64IntegerAttr(sort_instr->sort_dimension()));
+  sort.is_stableAttr(builder_.getBoolAttr(sort_instr->is_stable()));
+  TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
+      *sort_instr->called_computations()[0], &sort.comparator(), &builder_));
+  return sort.getOperation();
+}
+
+Status LhloDialectEmitter::HandleSort(HloInstruction* instr) {
+  return EmitSortOp(instr).status();
+}
+
+Status LhloDialectEmitter::CreateView(const HloInstruction* instr,
+                                      const Shape& current_shape,
+                                      ::xla::ShapeIndex* current_shape_index,
+                                      SmallVectorImpl<Value>* values) {
+  if (current_shape.IsTuple()) {
+    for (int i = 0; i < current_shape.tuple_shapes().size(); i++) {
+      current_shape_index->push_back(i);
+      TF_RETURN_IF_ERROR(CreateView(instr, current_shape.tuple_shapes(i),
+                                    current_shape_index, values));
+      current_shape_index->pop_back();
+    }
+    return Status::OK();
+  }
+
+  TF_ASSIGN_OR_RETURN(Type out_type, ::xla::ConvertShapeToType<MemRefType>(
+                                         current_shape, builder_));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                      assignment_.GetUniqueSlice(instr, *current_shape_index));
+  Value alloc = allocations_[slice.allocation()];
+  if (alloc.getType() == out_type) {
+    values->push_back(alloc);
+    return Status::OK();
+  }
+
+  Value byte_shift =
+      builder_.create<ConstantIndexOp>(alloc.getLoc(), slice.offset());
+  values->push_back(builder_.create<ViewOp>(builder_.getUnknownLoc(), out_type,
+                                            alloc, byte_shift,
+                                            /*sizes=*/ValueRange{}));
+  return Status::OK();
+}
+
+// Returns a view for the result of an instruction.
+// We first get a view for the slice in the allocation, and then may need to
+// create another view to adjust the slice for the shape of the instruction.
+Status LhloDialectEmitter::GetOrCreateView(const HloInstruction* instr,
+                                           SmallVectorImpl<Value>* values) {
+  // In terms of cache key, we have several choices:
+  // * Use `instr`. It's the easiest, but it creates different cache entries for
+  // aliased buffers, which could have been deduplicated.
+  // * Use the actual content as the key, aka a tree of allocation slices.
+  // * Somewhere in the middle, use the allocation slice for the instruction. If
+  // `instr` is a tuple, the key is the allocated buffer for the tuple itself
+  // (an array of pointers).
+  //
+  // We choose the third approach for simplicity.
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                      assignment_.GetUniqueTopLevelSlice(instr));
+  SliceKey slice_key(slice.allocation(), slice.offset(), slice.size());
+  auto result = slices_.try_emplace(slice_key, llvm::SmallVector<Value, 4>{});
+  llvm::SmallVectorImpl<Value>& new_values = result.first->second;
+  if (result.second) {
+    ::xla::ShapeIndex shape_index;
+    TF_RETURN_IF_ERROR(
+        CreateView(instr, instr->shape(), &shape_index, &new_values));
+  }
+  values->insert(values->end(), new_values.begin(), new_values.end());
+  return Status::OK();
+}
+
+Status LhloDialectEmitter::Initialize() {
+  std::string function_name =
+      computation_.name().empty() ? "__compute" : computation_.name();
+
+  // Create the function as () -> (), we'll compute the arguments from the
+  // buffer allocation and update the type then.
+  auto func_op = FuncOp::create(builder_.getUnknownLoc(), function_name,
+                                builder_.getFunctionType({}, {}));
+  Block* block = func_op.addEntryBlock();
+
+  llvm::SmallVector<const BufferAllocation*, 8> ordered_allocations;
+  for (const BufferAllocation& alloc : assignment_.Allocations())
+    ordered_allocations.push_back(&alloc);
+
+  // Sort the rather arbitrarily ordered allocations to match the input/output
+  // parameters. Specifically We want to sort buffer allocations in the
+  // following order:
+  // * Parameters always order before non-parameters.
+  // * Different parameters order by parameter number.
+  // * Different allocations for the same parameter order by the shape index.
+  //
+  // TODO(timshen): there should be only one non-parameter buffer, the temp
+  // buffer. Check on that.
+  const auto allocation_comparator = [](const BufferAllocation* lhs,
+                                        const BufferAllocation* rhs) {
+    if (lhs->is_entry_computation_parameter() !=
+        rhs->is_entry_computation_parameter()) {
+      return lhs->is_entry_computation_parameter() >
+             rhs->is_entry_computation_parameter();
+    }
+    if (lhs->is_entry_computation_parameter()) {
+      return std::tuple<int, const ::xla::ShapeIndex&>(
+                 lhs->parameter_number(), lhs->param_shape_index()) <
+             std::tuple<int, const ::xla::ShapeIndex&>(
+                 rhs->parameter_number(), rhs->param_shape_index());
+    }
+    return false;
+  };
+
+  std::stable_sort(ordered_allocations.begin(), ordered_allocations.end(),
+                   allocation_comparator);
+
+  // The function signature will be composed of:
+  // - one memref for each of the parameters.
+  // - one memref for each other buffer allocation.
+  llvm::SmallVector<MutableDictionaryAttr, 8> args_attrs;
+  for (const BufferAllocation* alloc : ordered_allocations) {
+    if (alloc->is_entry_computation_parameter()) {
+      const ::xla::Shape& buffer_shape = ::xla::ShapeUtil::GetSubshape(
+          computation_.parameter_instruction(alloc->parameter_number())
+              ->shape(),
+          alloc->param_shape_index());
+
+      TF_ASSIGN_OR_RETURN(auto arg_type, ::xla::ConvertShapeToType<MemRefType>(
+                                             buffer_shape, builder_));
+
+      // First map parameters to memrefs on the operation.
+      block->addArgument(arg_type);
+      allocations_[alloc] = block->getArguments().back();
+      args_attrs.emplace_back();
+      args_attrs.back().set(builder_.getIdentifier("xla_lhlo.params"),
+                            builder_.getIndexAttr(alloc->parameter_number()));
+    } else {
+      block->addArgument(MemRefType::get({alloc->size()}, i8_type_));
+      allocations_[alloc] = block->getArguments().back();
+      args_attrs.emplace_back();
+      args_attrs.back().set(builder_.getIdentifier("xla_lhlo.alloc"),
+                            builder_.getIndexAttr(alloc->index()));
+      if (alloc->maybe_live_out())
+        args_attrs.back().set(builder_.getIdentifier("xla_lhlo.liveout"),
+                              builder_.getBoolAttr(true));
+    }
+  }
+
+  FunctionType function_type = builder_.getFunctionType(
+      llvm::to_vector<8>(block->getArgumentTypes()), {});
+  func_op.setType(function_type);
+  func_op.setAllArgAttrs(args_attrs);
+
+  SymbolTable symbol_table(module_);
+  symbol_table.insert(func_op);
+  builder_.setInsertionPointToEnd(block);
+
+  auto return_op = builder_.create<ReturnOp>(builder_.getUnknownLoc());
+  builder_ = mlir::OpBuilder(return_op);
+
+  return Status::OK();
+}
+
 std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
   return std::make_unique<XlaHloToLhloPass>();
 }
 
 Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
-  return LhloDialectEmitter(assignment, hlo_module, module).Run();
+  HloComputation* computation = hlo_module.entry_computation();
+
+  LhloDialectEmitter emitter(assignment, *computation, module);
+  TF_RETURN_IF_ERROR(emitter.Initialize());
+
+  const ::xla::HloInstructionSequence* schedule =
+      assignment.hlo_ordering().SequentialOrder(*computation);
+  if (!schedule)
+    return ::xla::Unimplemented("Missing sequential order for the computation");
+  const std::vector<HloInstruction*>& ordering = schedule->instructions();
+  return computation->AcceptOrdered(&emitter, ordering);
 }
 
 static PassRegistration<XlaHloToLhloPass> registration(

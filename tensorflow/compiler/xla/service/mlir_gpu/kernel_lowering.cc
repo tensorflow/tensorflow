@@ -174,8 +174,7 @@ struct DeadTempBufferRemoval
     for (auto result : op->getResults()) {
       if (!llvm::all_of(result.getUsers(), [&](mlir::Operation* op) {
             // Store and Dealloc is OK.
-            if (llvm::isa<mlir::StoreOp>(op) ||
-                llvm::isa<mlir::DeallocOp>(op)) {
+            if (llvm::isa<mlir::StoreOp, mlir::DeallocOp>(op)) {
               return true;
             }
             // Load without uses is also ok.
@@ -225,8 +224,8 @@ struct MoveScalarComputationsIntoGpuLaunch
     : mlir::PassWrapper<MoveScalarComputationsIntoGpuLaunch,
                         mlir::FunctionPass> {
   static bool isInliningBeneficiary(mlir::Operation* op) {
-    return llvm::isa<mlir::ConstantOp>(op) || llvm::isa<mlir::DimOp>(op) ||
-           llvm::isa<mlir::SelectOp>(op) || llvm::isa<mlir::CmpIOp>(op);
+    return llvm::isa<mlir::ConstantOp, mlir::DimOp, mlir::SelectOp,
+                     mlir::CmpIOp>(op);
   }
 
   static bool extractBeneficiaryOps(
@@ -577,7 +576,8 @@ Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   // Some basic cleanup.
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
-  kernelPm.addPass(::mlir::createStripDebugInfoPass());
+  // Remove all location information to prevent a debug build.
+  pm.addPass(::mlir::createStripDebugInfoPass());
 
   if (failed(pm.run(module))) {
     return InternalError("Lowering to NVVM IR failed.");

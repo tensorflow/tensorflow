@@ -36,12 +36,14 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -214,18 +216,6 @@ static Type GetShapeStrippedType(TypeAttr type_attr) {
   } else {
     return type;
   }
-}
-
-bool NotFromQuantOpDifferentQuant(Value val, TypeAttr qtype_attr) {
-  auto val_defn_op = val.getDefiningOp();
-  TFL::QuantizeOp q_op = llvm::dyn_cast_or_null<TFL::QuantizeOp>(val_defn_op);
-  if (!q_op) return true;
-
-  // Ignore shape details - weŕe really only trying to
-  // check if quantization is the same.
-  auto stripped_src_qtype = GetShapeStrippedType(q_op.qtypeAttr());
-  auto stripped_qtype = GetShapeStrippedType(qtype_attr);
-  return stripped_src_qtype == stripped_qtype;
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"

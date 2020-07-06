@@ -2217,6 +2217,25 @@ def assert_scalar(tensor, name=None, message=None):
 def ensure_shape(x, shape, name=None):
   """Updates the shape of a tensor and checks at runtime that the shape holds.
 
+  For example:
+
+  >>> @tf.function(input_signature=[tf.TensorSpec(shape=None, dtype=tf.float32)])
+  ... def f(tensor):
+  ...   return tf.ensure_shape(tensor, [3, 3])
+  >>>
+  >>> f(tf.zeros([3, 3])) # Passes
+  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+  array([[0., 0., 0.],
+         [0., 0., 0.],
+         [0., 0., 0.]], dtype=float32)>
+  >>> f([1, 2, 3]) # fails
+  Traceback (most recent call last):
+  ...
+  InvalidArgumentError:  Shape of tensor x [3] is not compatible with expected shape [3,3].
+
+  The above example raises `tf.errors.InvalidArgumentError`,
+  because the shape (3,) is not compatible with the shape (None, 3, 3)
+
   With eager execution this is a shape assertion, that returns the input:
 
   >>> x = tf.constant([1,2,3])
@@ -2303,8 +2322,10 @@ def ensure_shape(x, shape, name=None):
     name: A name for this operation (optional). Defaults to "EnsureShape".
 
   Returns:
-    A `Tensor`. Has the same type and contents as `x`. At runtime, raises a
-    `tf.errors.InvalidArgumentError` if `shape` is incompatible with the shape
+    A `Tensor`. Has the same type and contents as `x`.
+
+  Raises:
+    tf.errors.InvalidArgumentError: If `shape` is incompatible with the shape
     of `x`.
   """
   if not isinstance(shape, tensor_shape.TensorShape):

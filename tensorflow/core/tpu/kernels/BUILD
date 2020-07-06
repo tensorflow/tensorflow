@@ -1,4 +1,5 @@
 # TPU Kernel Implementations
+
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
@@ -27,10 +28,12 @@ cc_library(
     srcs = ["tpu_compile_op_common.cc"],
     hdrs = ["tpu_compile_op_common.h"],
     deps = [
+        ":tpu_compile_op_options",
         ":tpu_compile_op_support",
         ":tpu_mesh_state_interface",
         ":tpu_program_group_interface",
         ":tpu_util",
+        ":tpu_util_c_api_hdrs",
         ":tpu_util_hdrs",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
@@ -46,9 +49,11 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
+        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
@@ -86,8 +91,8 @@ cc_library(
     hdrs = ["tpu_compile_c_api.h"],
     deps = [
         ":tpu_mesh_state_c_api_hdrs",
-        ":tpu_ops_common_c_api_hdrs",
         ":tpu_program_c_api_hdrs",
+        ":tpu_util_c_api_hdrs",
         "//tensorflow/core/tpu:libtftpu_header",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
@@ -192,18 +197,29 @@ cc_library(
 
 cc_library(
     name = "tpu_compilation_cache_lookup",
-    srcs = ["tpu_compilation_cache_lookup.cc"],
     hdrs = [
         "tpu_compilation_cache_lookup.h",
     ],
     deps = [
-        ":tpu_compilation_cache_entry",
-        ":tpu_compilation_cache_external",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_proto_cc",
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
+    name = "tpu_compilation_cache_local_lookup",
+    srcs = ["tpu_compilation_cache_local_lookup.cc"],
+    hdrs = ["tpu_compilation_cache_local_lookup.h"],
+    deps = [
+        ":tpu_compilation_cache_entry",
+        ":tpu_compilation_cache_external",
+        ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_lookup",
+        ":tpu_compilation_cache_proto_cc",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -367,7 +383,6 @@ cc_library(
 
 cc_library(
     name = "tpu_util_hdrs",
-    srcs = [],
     hdrs = ["tpu_util.h"],
     deps = [
         ":tpu_compilation_cache_key",
@@ -391,16 +406,10 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_ops_common_c_api_hdrs",
-    hdrs = ["tpu_ops_common_c_api.h"],
-    alwayslink = True,
-)
-
-cc_library(
     name = "tpu_program_c_api_hdrs",
     hdrs = ["tpu_program_c_api.h"],
     deps = [
-        ":tpu_ops_common_c_api_hdrs",
+        ":tpu_util_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
     alwayslink = True,

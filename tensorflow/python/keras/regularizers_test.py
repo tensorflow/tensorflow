@@ -203,6 +203,18 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     with self.assertRaisesRegex(ValueError, 'Could not interpret regularizer'):
       keras.regularizers.get(0)
 
+  @parameterized.named_parameters([
+      ('l1', regularizers.l1(l1=None), 0.01),
+      ('l2', regularizers.l2(l2=None), 0.01),
+      ('l1_l2', regularizers.l1_l2(l1=None, l2=None), 0.),
+  ])
+  def test_default_value_when_init_with_none(self, regularizer, expected_value):
+    expected_value = np.asarray(expected_value)
+    if hasattr(regularizer, 'l1'):
+      self.assertAllClose(regularizer.l1, expected_value)
+    if hasattr(regularizer, 'l2'):
+      self.assertAllClose(regularizer.l2, expected_value)
+
 
 if __name__ == '__main__':
   test.main()

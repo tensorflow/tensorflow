@@ -48,7 +48,7 @@ struct AnnotateParameterReplication
 // tf.IdentityOp or a tf.ReadVariableOp.
 Value SkipIdentityAndReadVariable(Value v) {
   while (auto op = v.getDefiningOp()) {
-    if (!(isa<TF::IdentityOp>(op) || isa<TF::ReadVariableOp>(op))) break;
+    if (!isa<TF::IdentityOp, TF::ReadVariableOp>(op)) break;
     v = op->getOperand(0);
   }
   return v;

@@ -153,36 +153,6 @@ absl::Status CLKernel::SetBytesAuto(const void* ptr, int length) {
   return absl::OkStatus();
 }
 
-template <>
-absl::Status CLKernel::SetBytes<FLT>(int index, const FLT& value) const {
-  return SetBytes(index, value.GetData(), value.GetSize());
-}
-
-template <>
-absl::Status CLKernel::SetBytes<FLT2>(int index, const FLT2& value) const {
-  return SetBytes(index, value.GetData(), value.GetSize());
-}
-
-template <>
-absl::Status CLKernel::SetBytes<FLT4>(int index, const FLT4& value) const {
-  return SetBytes(index, value.GetData(), value.GetSize());
-}
-
-template <>
-absl::Status CLKernel::SetBytesAuto<FLT>(const FLT& value) {
-  return SetBytesAuto(value.GetData(), value.GetSize());
-}
-
-template <>
-absl::Status CLKernel::SetBytesAuto<FLT2>(const FLT2& value) {
-  return SetBytesAuto(value.GetData(), value.GetSize());
-}
-
-template <>
-absl::Status CLKernel::SetBytesAuto<FLT4>(const FLT4& value) {
-  return SetBytesAuto(value.GetData(), value.GetSize());
-}
-
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

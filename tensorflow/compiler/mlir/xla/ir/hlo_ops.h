@@ -62,7 +62,7 @@ enum Kind {
 };
 }  // namespace HLOTypes
 
-class TokenType : public Type::TypeBase<TokenType, Type> {
+class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
  public:
   using Base::Base;
 

@@ -237,11 +237,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "f632d82e43ffc46adfac9043beace700b0265748075e7edc0701d81380258038",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-386d809bde475c65b7940f290efe80e6a05878c4",
+        sha256 = "6248a3e48a8c4876e04c233956f73b7d09017e29f458b368aa97f8b9092d46e0",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-7222f0b6b58759b2207e6ec3224adb246fd23349",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/386d809bde475c65b7940f290efe80e6a05878c4/eigen-386d809bde475c65b7940f290efe80e6a05878c4.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/386d809bde475c65b7940f290efe80e6a05878c4/eigen-386d809bde475c65b7940f290efe80e6a05878c4.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/7222f0b6b58759b2207e6ec3224adb246fd23349/eigen-7222f0b6b58759b2207e6ec3224adb246fd23349.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/7222f0b6b58759b2207e6ec3224adb246fd23349/eigen-7222f0b6b58759b2207e6ec3224adb246fd23349.tar.gz",
         ],
     )
 
@@ -710,8 +710,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "f1c671925b1c60ded3e4e7b3c6b1ec984b2d9b93"
-    LLVM_SHA256 = "57fc8f0ab46bdfdff52b03c2196d658c094bc4179cd1cf9495becf6a8466123a"
+    LLVM_COMMIT = "7d9518c8000bcd742b364a390bc79560f736dc96"
+    LLVM_SHA256 = "16d355eb56dc38802a11dac0a6ddeda3b527fe989e2074b3b6380ba978648499"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -802,11 +802,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "nccl_archive",
         build_file = clean_dep("//third_party:nccl/archive.BUILD"),
         patch_file = clean_dep("//third_party/nccl:archive.patch"),
-        sha256 = "67e15ce3d12ba9ea1e0cb239599202b0f61c146149699341043c072de388e90a",
-        strip_prefix = "nccl-5949d96f36d050e59d05872f8bbffd2549318e95",
+        sha256 = "b8eaed1fb2d0cc2f951625dc4e17185bab9ff3ab188ba4d34a6e3a01ce9f0d57",
+        strip_prefix = "nccl-195232556936b39b01cc908296e1650b80d4a3e9",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/5949d96f36d050e59d05872f8bbffd2549318e95.tar.gz",
-            "https://github.com/nvidia/nccl/archive/5949d96f36d050e59d05872f8bbffd2549318e95.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/195232556936b39b01cc908296e1650b80d4a3e9.tar.gz",
+            "https://github.com/nvidia/nccl/archive/195232556936b39b01cc908296e1650b80d4a3e9.tar.gz",
         ],
     )
 

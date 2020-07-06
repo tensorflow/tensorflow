@@ -311,7 +311,8 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
     SchedNonBlockingClosureAfter(
         timeout_microseconds, [is_callback_called, done] {
-          if (!is_callback_called->load()) {
+          auto should_call_callback = !is_callback_called->exchange(true);
+          if (should_call_callback) {
             auto status =
                 Status(error::DEADLINE_EXCEEDED,
                        "Collective has timed out waiting for other workers.");

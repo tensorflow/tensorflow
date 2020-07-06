@@ -282,7 +282,7 @@ class TestEinsumLayerAPI(keras_parameterized.TestCase):
     input_tensor = keras.Input(shape=(32,))
     layer = einsum_dense.EinsumDense(
         equation="ab,bc->ac", output_shape=64, bias_axes="y")
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, ".*is not a part of the output specification.*"):
       _ = layer(input_tensor)
 
@@ -290,7 +290,7 @@ class TestEinsumLayerAPI(keras_parameterized.TestCase):
     input_tensor = keras.Input(shape=(32, 64))
     layer = einsum_dense.EinsumDense(
         equation="abc,cd->abd", output_shape=(10, 96))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, ".*Input shape and output shape do not match at shared "
         "dimension 'b'.*"):
       _ = layer(input_tensor)
@@ -298,7 +298,7 @@ class TestEinsumLayerAPI(keras_parameterized.TestCase):
   def test_unspecified_output_dim_fails(self):
     input_tensor = keras.Input(shape=(32,))
     layer = einsum_dense.EinsumDense(equation="ab,bc->cd", output_shape=64)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, ".*Dimension 'd' was specified in the output 'cd' but has "
         "no corresponding dim.*"):
       _ = layer(input_tensor)
@@ -306,8 +306,8 @@ class TestEinsumLayerAPI(keras_parameterized.TestCase):
   def test_unspecified_weight_dim_fails(self):
     input_tensor = keras.Input(shape=(32,))
     layer = einsum_dense.EinsumDense(equation="ab,zd->ad", output_shape=64)
-    with self.assertRaisesRegexp(
-        ValueError, ".*Weight dimension 'z' did not have a match "):
+    with self.assertRaisesRegex(ValueError,
+                                ".*Weight dimension 'z' did not have a match "):
       _ = layer(input_tensor)
 
 

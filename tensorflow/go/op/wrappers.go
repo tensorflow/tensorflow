@@ -707,7 +707,7 @@ func OneHot(scope *Scope, indices tf.Output, depth tf.Output, on_value tf.Output
 	return op.Output(0)
 }
 
-// Extract `patches` from `input` and put them in the "depth" output dimension. 3D extension of `extract_image_patches`.
+// Extract `patches` from `input` and put them in the `"depth"` output dimension. 3D extension of `extract_image_patches`.
 //
 // Arguments:
 //	input: 5-D Tensor with shape `[batch, in_planes, in_rows, in_cols, depth]`.
@@ -716,11 +716,11 @@ func OneHot(scope *Scope, indices tf.Output, depth tf.Output, on_value tf.Output
 // `input`. Must be: `[1, stride_planes, stride_rows, stride_cols, 1]`.
 //	padding: The type of padding algorithm to use.
 //
-// We specify the size-related attributes as:
+// The size-related attributes are specified as follows:
 //
 // ```python
-//       ksizes = [1, ksize_planes, ksize_rows, ksize_cols, 1]
-//       strides = [1, stride_planes, strides_rows, strides_cols, 1]
+// ksizes = [1, ksize_planes, ksize_rows, ksize_cols, 1]
+// strides = [1, stride_planes, strides_rows, strides_cols, 1]
 // ```
 //
 // Returns 5-D Tensor with shape `[batch, out_planes, out_rows, out_cols,

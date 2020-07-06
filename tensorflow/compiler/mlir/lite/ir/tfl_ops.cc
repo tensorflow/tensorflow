@@ -138,6 +138,11 @@ bool IsI32Type(Type element_type) {
   return element_type.isInteger(32) && !element_type.isUnsignedInteger();
 }
 
+// Return true when the given element_type is I64.
+bool IsI64Type(Type element_type) {
+  return element_type.isInteger(64) && !element_type.isUnsignedInteger();
+}
+
 // Return true if the given Add operation has the CPU kernel supported shapes.
 bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
@@ -174,7 +179,8 @@ bool VerifySubOpShapeConstraints(SubOp op) {
   // Allows F32, QUI8, and QI16 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to five dimension or have same shapes.
   if (element_type.isF32() || IsI32Type(element_type) ||
-      IsQUI8Type(element_type) || IsQI16Type(element_type)) {
+      IsI64Type(element_type) || IsQUI8Type(element_type) ||
+      IsQI16Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/5);
@@ -2207,7 +2213,8 @@ struct WhileResultOperandsMatchAndImplicitCapture
 
   LogicalResult matchAndRewrite(WhileOp while_op,
                                 PatternRewriter &rewriter) const override {
-    // Replace values simply passed through the body with extern values. The
+    // Replace values simply passed through the body with extern values
+    // (in both body and condition regions as well as while result). The
     // block arguments of body and while match and so the corresponding cond
     // argument can be easily found.
     bool unchanged = true;
@@ -2215,18 +2222,23 @@ struct WhileResultOperandsMatchAndImplicitCapture
     auto &cond_block = while_op.cond().front();
     auto &yield = *body_block.getTerminator();
     for (auto ba : body_block.getArguments()) {
-      if (ba == yield.getOperand(ba.getArgNumber())) {
+      int arg_no = ba.getArgNumber();
+      if (ba == yield.getOperand(arg_no)) {
         unchanged = false;
-        auto value = while_op.getOperand(ba.getArgNumber());
+        auto value = while_op.getOperand(arg_no);
         ba.replaceAllUsesWith(value);
-        cond_block.getArgument(ba.getArgNumber()).replaceAllUsesWith(value);
+        cond_block.getArgument(arg_no).replaceAllUsesWith(value);
+
+        // This could be relaxed and casts inserted.
+        if (while_op.getResult(arg_no).getType() == value.getType())
+          while_op.getResult(arg_no).replaceAllUsesWith(value);
       }
     }
 
     // The While ops operands and result types need to match
     SmallVector<Value, 4> new_operands;
     SmallVector<Value, 4> new_body_yield;
-    SmallVector<bool, 4> const_operand(while_op.getNumOperands(), false);
+    SmallVector<bool, 4> removed_operand(while_op.getNumOperands(), false);
     llvm::SmallVector<Type, 4> types;
     new_operands.reserve(while_op.getNumOperands());
     new_body_yield.reserve(while_op.getNumOperands());
@@ -2240,15 +2252,13 @@ struct WhileResultOperandsMatchAndImplicitCapture
       auto value = while_op.getOperand(while_index);
       if (body_block.getArgument(arg_index).use_empty() &&
           cond_block.getArgument(arg_index).use_empty() &&
-          // This could be relaxed and casts inserted.
-          while_op.getResult(while_index).getType() == value.getType()) {
+          while_op.getResult(arg_index).use_empty()) {
         unchanged = false;
         body_block.eraseArgument(arg_index);
         cond_block.eraseArgument(arg_index);
 
-        // Mark operand as constant and replace all uses with input to while.
-        while_op.getResult(while_index).replaceAllUsesWith(value);
-        const_operand[while_index] = true;
+        // Mark operand for removal.
+        removed_operand[while_index] = true;
       } else {
         new_operands.push_back(value);
         new_body_yield.push_back(yield.getOperand(while_index));
@@ -2270,7 +2280,7 @@ struct WhileResultOperandsMatchAndImplicitCapture
     for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
     int new_index = 0;
     for (int op_index = 0, e = op->getNumResults(); op_index < e; ++op_index) {
-      if (const_operand[op_index]) continue;
+      if (removed_operand[op_index]) continue;
       op->getResult(op_index).replaceAllUsesWith(new_op->getResult(new_index));
       ++new_index;
     }

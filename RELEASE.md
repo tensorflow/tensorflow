@@ -6,6 +6,11 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* The byte layout for string tensors across the C-API has been updated to match
+  TF Core/C++; i.e., a contiguous array of `tensorflow::tstring`/`TF_TString`s.
+* C-API functions `TF_StringDecode`, `TF_StringEncode`, and
+  `TF_StringEncodedSize` are no longer relevant and have been removed; see
+  core/platform/ctstring.h for string access/modification in C.
 
 ## Known Caveats
 
@@ -24,7 +29,8 @@
 * TF Core:
     * <ADD RELEASE NOTES HERE>
 * `tf.data`:
-    * <ADD RELEASE NOTES HERE>
+    * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
+  the complement of `select_cols`; at most one of these should be specified.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:
@@ -50,7 +56,7 @@
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 # Release 2.3.0
 
@@ -64,6 +70,9 @@ This release contains contributions from many people at Google, as well as:
     `tf.compat.v1.image.extract_glimpse` does not change. The behavior of
     exsiting C++ kernel `ExtractGlimpse` does not change as well, so saved
     models will not be impacted.
+
+## Bug Fixes and Other Changes
+* Mutable tables now restore checkpointed values when loaded from SavedModel.
 
 # Release 2.1.1
 

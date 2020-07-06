@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -161,6 +162,7 @@ Arguments::Arguments(Arguments&& args)
       image2d_arrays_(std::move(args.image2d_arrays_)),
       images3d_(std::move(args.images3d_)),
       image_buffers_(std::move(args.image_buffers_)),
+      custom_memories_(std::move(args.custom_memories_)),
       object_refs_(std::move(args.object_refs_)),
       objects_(std::move(args.objects_)) {}
 Arguments& Arguments::operator=(Arguments&& args) {
@@ -176,6 +178,7 @@ Arguments& Arguments::operator=(Arguments&& args) {
     image2d_arrays_ = std::move(args.image2d_arrays_);
     images3d_ = std::move(args.images3d_);
     image_buffers_ = std::move(args.image_buffers_);
+    custom_memories_ = std::move(args.custom_memories_);
     object_refs_ = std::move(args.object_refs_);
     objects_ = std::move(args.objects_);
   }
@@ -215,15 +218,22 @@ void Arguments::AddImageBuffer(const std::string& name,
   image_buffers_[name] = desc;
 }
 
+void Arguments::AddCustomMemory(const std::string& name,
+                                const GPUCustomMemoryDescriptor& desc) {
+  custom_memories_[name] = desc;
+}
+
 void Arguments::AddObjectRef(const std::string& name, AccessType access_type,
                              GPUObjectDescriptorPtr&& descriptor_ptr) {
-  object_refs_[name] = {access_type, std::move(descriptor_ptr)};
+  descriptor_ptr->SetAccess(access_type);
+  object_refs_[name] = {std::move(descriptor_ptr)};
 }
 
 void Arguments::AddObject(const std::string& name, AccessType access_type,
                           GPUObjectPtr&& object,
                           GPUObjectDescriptorPtr&& descriptor_ptr) {
-  objects_[name] = {access_type, std::move(object), std::move(descriptor_ptr)};
+  descriptor_ptr->SetAccess(access_type);
+  objects_[name] = {std::move(object), std::move(descriptor_ptr)};
 }
 
 void Arguments::AddGPUResources(const std::string& name,
@@ -248,6 +258,9 @@ void Arguments::AddGPUResources(const std::string& name,
   }
   for (const auto& r : resources.image_buffers) {
     AddImageBuffer(absl::StrCat(name, "_", r.first), r.second);
+  }
+  for (const auto& r : resources.custom_memories) {
+    AddCustomMemory(absl::StrCat(name, "_", r.first), r.second);
   }
 }
 
@@ -345,6 +358,17 @@ absl::Status Arguments::SetImageBuffer(const std::string& name, cl_mem memory) {
   return absl::OkStatus();
 }
 
+absl::Status Arguments::SetCustomMemory(const std::string& name,
+                                        cl_mem memory) {
+  auto it = custom_memories_.find(name);
+  if (it == custom_memories_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No custom memory argument with name - ", name));
+  }
+  it->second.memory = memory;
+  return absl::OkStatus();
+}
+
 absl::Status Arguments::SetObjectRef(const std::string& name,
                                      const GPUObject* object) {
   auto it = object_refs_.find(name);
@@ -352,7 +376,10 @@ absl::Status Arguments::SetObjectRef(const std::string& name,
     return absl::NotFoundError(
         absl::StrCat("No object ref with name - ", name));
   }
-  return SetGPUResources(name, object->GetGPUResources(it->second.access_type));
+  GPUResourcesWithValue resources;
+  RETURN_IF_ERROR(
+      object->GetGPUResources(it->second.descriptor.get(), &resources));
+  return SetGPUResources(name, resources);
 }
 
 absl::Status Arguments::SetGPUResources(
@@ -379,6 +406,10 @@ absl::Status Arguments::SetGPUResources(
   for (const auto& r : resources.image_buffers) {
     RETURN_IF_ERROR(SetImageBuffer(absl::StrCat(name, "_", r.first), r.second));
   }
+  for (const auto& r : resources.custom_memories) {
+    RETURN_IF_ERROR(
+        SetCustomMemory(absl::StrCat(name, "_", r.first), r.second));
+  }
   return absl::OkStatus();
 }
 
@@ -403,7 +434,7 @@ absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
       return absl::InvalidArgumentError(
           absl::StrCat("Object reference name collision. Name - ", name));
     }
-    object_refs_[name] = {v.second.access_type, std::move(v.second.descriptor)};
+    object_refs_[name] = {std::move(v.second.descriptor)};
   }
   for (auto& v : args.objects_) {
     object_names.push_back(v.first);
@@ -412,7 +443,7 @@ absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
       return absl::InvalidArgumentError(
           absl::StrCat("Object name collision. Name - ", name));
     }
-    objects_[name] = {v.second.access_type, std::move(v.second.obj_ptr),
+    objects_[name] = {std::move(v.second.obj_ptr),
                       std::move(v.second.descriptor)};
   }
   for (const auto& v : args.int_values_) {
@@ -439,6 +470,9 @@ absl::Status Arguments::Merge(Arguments&& args, const std::string& postfix) {
   for (const auto& v : args.image_buffers_) {
     AddImageBuffer(RenameArg(object_names, postfix, v.first), v.second);
   }
+  for (const auto& v : args.custom_memories_) {
+    AddCustomMemory(RenameArg(object_names, postfix, v.first), v.second);
+  }
   return absl::OkStatus();
 }
 
@@ -457,21 +491,15 @@ std::string Arguments::GetListOfArgs() {
   for (auto& t : buffers_) {
     const std::string type_name =
         t.second.data_type == DataType::FLOAT32 ? "float" : "half";
-    std::string memory_type;
-    switch (t.second.memory_type) {
-      case MemoryType::GLOBAL:
-        memory_type = "__global";
-        break;
-      case MemoryType::CONSTANT:
-        memory_type = "__constant";
-        break;
-      case MemoryType::LOCAL:
-        memory_type = "__local";
-        break;
+    std::string attributes;
+    for (const auto& attr : t.second.attributes) {
+      attributes += absl::StrCat("  __attribute__((", attr, "))");
     }
-    AppendArgument(absl::StrCat(memory_type, " ", type_name,
-                                t.second.element_size, "* ", t.first),
-                   &result);
+    AppendArgument(
+        absl::StrCat(MemoryTypeToCLType(t.second.memory_type), " ",
+                     ToCLDataType(t.second.data_type, t.second.element_size),
+                     "* ", t.first, attributes),
+        &result);
   }
   for (auto& t : image_buffers_) {
     AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
@@ -492,6 +520,9 @@ std::string Arguments::GetListOfArgs() {
     AppendArgument(absl::StrCat(GetImageModifier(t.second.access_type),
                                 " image3d_t ", t.first),
                    &result);
+  }
+  for (auto& t : custom_memories_) {
+    AppendArgument(absl::StrCat(t.second.type_name, " ", t.first), &result);
   }
   for (int i = 0; i < shared_int4s_data_.size() / 4; ++i) {
     AppendArgument(absl::StrCat("int4 shared_int4_", i), &result);
@@ -547,6 +578,16 @@ absl::Status Arguments::Bind(cl_kernel kernel, int offset) {
     offset++;
   }
   for (auto& t : images3d_) {
+    const int error_code =
+        clSetKernelArg(kernel, offset, sizeof(cl_mem), &t.second.memory);
+    if (error_code != CL_SUCCESS) {
+      return absl::UnknownError(absl::StrCat(
+          "Failed to set kernel arguments - ", CLErrorCodeToString(error_code),
+          "(at index - ", offset, ")"));
+    }
+    offset++;
+  }
+  for (auto& t : custom_memories_) {
     const int error_code =
         clSetKernelArg(kernel, offset, sizeof(cl_mem), &t.second.memory);
     if (error_code != CL_SUCCESS) {
@@ -686,23 +727,20 @@ absl::Status Arguments::ResolveSelector(
     const std::vector<std::string>& args,
     const std::vector<std::string>& template_args, std::string* result) {
   const GPUObjectDescriptor* desc_ptr;
-  AccessType access_type;
   if (auto it = object_refs_.find(object_name); it != object_refs_.end()) {
     desc_ptr = it->second.descriptor.get();
-    access_type = it->second.access_type;
   } else if (auto it = objects_.find(object_name); it != objects_.end()) {
     desc_ptr = it->second.descriptor.get();
-    access_type = it->second.access_type;
   } else {
     return absl::NotFoundError(
         absl::StrCat("No object with name - ", object_name));
   }
-  auto names = desc_ptr->GetGPUResources(access_type).GetNames();
+  auto names = desc_ptr->GetGPUResources().GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
   if (tensor_desc && selector == "Write") {
     if (auto it = linkables.find(object_name); it != linkables.end()) {
-      if (access_type != AccessType::WRITE &&
-          access_type != AccessType::READ_WRITE) {
+      if (desc_ptr->GetAccess() != AccessType::WRITE &&
+          desc_ptr->GetAccess() != AccessType::READ_WRITE) {
         return absl::FailedPreconditionError(absl::StrCat(
             "Object with name - ", object_name, " should have Write access."));
       }
@@ -751,8 +789,8 @@ absl::Status Arguments::ResolveSelectorsPass(
         next = (*code)[next_position];
       }
       if (next != '(') {
-        return absl::NotFoundError(
-            absl::StrCat("Expected ( after function ", selector_name, " call"));
+        return absl::NotFoundError(absl::StrCat(
+            "Expected ( after ", object_name, ".", selector_name, " call"));
       }
       std::vector<std::string> args;
       size_t close_bracket_pos;
@@ -776,14 +814,14 @@ absl::Status Arguments::ResolveSelectorsPass(
 
 absl::Status Arguments::AddObjectArgs() {
   for (auto& t : objects_) {
-    AddGPUResources(t.first,
-                    t.second.descriptor->GetGPUResources(t.second.access_type));
-    RETURN_IF_ERROR(SetGPUResources(
-        t.first, t.second.obj_ptr->GetGPUResources(t.second.access_type)));
+    AddGPUResources(t.first, t.second.descriptor->GetGPUResources());
+    GPUResourcesWithValue resources;
+    RETURN_IF_ERROR(t.second.obj_ptr->GetGPUResources(t.second.descriptor.get(),
+                                                      &resources));
+    RETURN_IF_ERROR(SetGPUResources(t.first, resources));
   }
   for (auto& t : object_refs_) {
-    AddGPUResources(t.first,
-                    t.second.descriptor->GetGPUResources(t.second.access_type));
+    AddGPUResources(t.first, t.second.descriptor->GetGPUResources());
   }
   return absl::OkStatus();
 }

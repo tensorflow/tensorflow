@@ -138,17 +138,17 @@ index 550cfcd0c..8fea91950 100644
    return ncclSuccess;
  }
  
-@@ -640,8 +641,8 @@ ncclResult_t ncclTopoGetXmlFromGpu(struct ncclXmlNode* pciNode, nvmlDevice_t nvm
-     if (index == -1) {
-       const char* busId;
-       NCCLCHECK(xmlGetAttr(sub, "target", &busId));
--      char* path;
--      NCCLCHECK(getPciPath(busId, &path));
-+      char path[PATH_MAX+1];
-+      NCCLCHECK(getPciPath(busId, path));
-       NCCLCHECK(ncclTopoSetAttrFromSys(sub, path, "class", "tclass"));
+@@ -644,8 +644,8 @@ ncclResult_t ncclTopoGetXmlFromGpu(struct ncclXmlNode* pciNode, nvmlDevice_t nvm
+         // Remote NVLink device is not visible inside this VM. Assume NVSwitch.
+         NCCLCHECK(xmlSetAttr(sub, "tclass", "0x068000"));
+       } else {
+-        char* path;
+-        NCCLCHECK(getPciPath(busId, &path));
++        char path[PATH_MAX+1];
++        NCCLCHECK(getPciPath(busId, path));
+         NCCLCHECK(ncclTopoSetAttrFromSys(sub, path, "class", "tclass"));
+       }
      }
-   }
 
 From f02d51952ac587237ea5f7c607a5b379381d09d7 Mon Sep 17 00:00:00 2001
 From: Danilo <doak@google.com>

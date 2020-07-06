@@ -39,6 +39,20 @@ ConvertExecutionPrefence(
   }
 }
 
+inline int ConvertExecutionPriority(
+    NNAPIExecutionPriority from_compatibility_priority) {
+  switch (from_compatibility_priority) {
+    case NNAPIExecutionPriority_NNAPI_PRIORITY_LOW:
+      return ANEURALNETWORKS_PRIORITY_LOW;
+    case NNAPIExecutionPriority_NNAPI_PRIORITY_MEDIUM:
+      return ANEURALNETWORKS_PRIORITY_MEDIUM;
+    case NNAPIExecutionPriority_NNAPI_PRIORITY_HIGH:
+      return ANEURALNETWORKS_PRIORITY_HIGH;
+    default:
+      return ANEURALNETWORKS_PRIORITY_DEFAULT;
+  }
+}
+
 class NnapiPlugin : public DelegatePluginInterface {
  public:
   TfLiteDelegatePtr Create() override {
@@ -80,6 +94,8 @@ class NnapiPlugin : public DelegatePluginInterface {
         ConvertExecutionPrefence(nnapi_settings->execution_preference());
     options_.disallow_nnapi_cpu =
         !nnapi_settings->allow_nnapi_cpu_on_android_10_plus();
+    options_.execution_priority =
+        ConvertExecutionPriority(nnapi_settings->execution_priority());
   }
 
  private:

@@ -32,8 +32,14 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
+
+// This includes the interface class definition. It couldn't be in a namespace
+// because the table gen doesn't emit the namespace when it is used.
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_interface.cc.inc"
+
 namespace quant {
 
 const float kNearZeroTolerance = 1.0e-6;
@@ -470,7 +476,7 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
       // We don't propagate this parameter down if it has multiple operands.
       // We want to use the result parameter scales instead.
 
-      if (user->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>() &&
+      if (llvm::dyn_cast<SameScalesOpInterface>(user) &&
           !PreferResultScale(user)) {
         for (Value res : user->getResults()) {
           if (res.hasOneUse()) {
@@ -501,7 +507,7 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
     all_stats_ops.pop_back();
 
     if (auto def = stats_op.arg().getDefiningOp()) {
-      if (def->hasTrait<OpTrait::quant::SameOperandsAndResultsScale>()) {
+      if (llvm::dyn_cast<SameScalesOpInterface>(def)) {
         for (auto input : def->getOperands()) {
           if (auto next_stats = llvm::dyn_cast_or_null<quant::StatisticsOp>(
                   input.getDefiningOp())) {
@@ -523,6 +529,57 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
 
   // Returns false if the steps finish without errors.
   return false;
+}
+
+LogicalResult VerifySameScales(Operation* op) {
+  auto same_scale_op = llvm::cast<SameScalesOpInterface>(op);
+
+  llvm::SmallVector<QuantizedType, 4> collected_quant_params;
+  for (auto input : op->getOperands()) {
+    auto quant_params =
+        UniformQuantizedType::getQuantizedElementType(input.getType());
+    // Skip non-quantizable operands.
+    if (quant_params) {
+      collected_quant_params.push_back(quant_params);
+    }
+  }
+
+  for (auto output : op->getResults()) {
+    auto quant_params =
+        UniformQuantizedType::getQuantizedElementType(output.getType());
+    // Skip non-quantizable results.
+    if (quant_params) {
+      collected_quant_params.push_back(quant_params);
+    }
+  }
+
+  if (collected_quant_params.size() <= 1) return success();
+  for (int i = 1; i < collected_quant_params.size(); i++) {
+    auto expected_params = collected_quant_params[0];
+    auto compared_paras = collected_quant_params[i];
+    // Same quantization parameters are always ok.
+    if (expected_params == compared_paras) continue;
+    // If the quantization parameters are not the same, as long as it has the
+    // same storage type and the op interface doesn't require same scale
+    // constraint for this storage type, it is still ok.
+    if ((expected_params.isSigned() == compared_paras.isSigned() &&
+         expected_params.getStorageTypeIntegralWidth() ==
+             compared_paras.getStorageTypeIntegralWidth()) &&
+        !same_scale_op.RequiredSameOperandsAndResultsScale(
+            expected_params.isSigned(),
+            expected_params.getStorageTypeIntegralWidth()))
+      continue;
+
+    std::string err_msg =
+        "quantization parameters violate the same scale constraint: ";
+    llvm::raw_string_ostream os(err_msg);
+    collected_quant_params[0].print(os);
+    os << " vs. ";
+    collected_quant_params[i].print(os);
+    os.flush();
+    return op->emitOpError(err_msg);
+  }
+  return success();
 }
 }  // namespace quant
 }  // namespace mlir

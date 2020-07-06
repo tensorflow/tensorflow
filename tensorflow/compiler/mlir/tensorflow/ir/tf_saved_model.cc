@@ -91,6 +91,16 @@ static LogicalResult Verify(SessionInitializerOp session_initializer) {
     return session_initializer.emitOpError()
            << "the initializer function should have no output";
 
+  auto exported_names = GetExportedNames(init_func_op);
+
+  if (exported_names.empty())
+    return session_initializer.emitOpError()
+           << "the initializer function should be exported";
+
+  if (exported_names.size() != 1)
+    return session_initializer.emitOpError()
+           << "the initializer function should have only one exported names";
+
   return success();
 }
 
@@ -427,6 +437,17 @@ class OptimizeSessionInitializerPattern
 void SessionInitializerOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<OptimizeSessionInitializerPattern>(context);
+}
+
+llvm::Optional<StringRef> GetSessionInitializerExportedName(ModuleOp op) {
+  auto session_initializer_op = GetSessionInitializerOp(op);
+  if (!session_initializer_op) return llvm::None;
+
+  SymbolTable symbol_table(op);
+  auto init_func_op =
+      symbol_table.lookup<mlir::FuncOp>(session_initializer_op.initializer());
+  auto exported_names = GetExportedNames(init_func_op);
+  return exported_names[0];
 }
 
 }  // namespace tf_saved_model

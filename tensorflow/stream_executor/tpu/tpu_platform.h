@@ -38,7 +38,6 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
                           SE_Event*>;
 
   static const ::stream_executor::Platform::Id kId;
-  static constexpr char kName[] = "TPU";
 
   using Status = ::stream_executor::port::Status;
   template <typename T>
@@ -114,6 +113,12 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   EventMap* event_map() { return &event_map_; }
 
+  // Returns the number of TPUs per host.
+  static Status TpusPerHost(int* tpus);
+
+  // Returns the memory capacity of the TPUs on this host.
+  static Status TpuMemoryLimit(int64* memory_limit);
+
  private:
   SE_Platform* platform_;
 
@@ -122,7 +127,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   EventMap event_map_;
 };
 
-void RegisterTpuPlatform();
+bool RegisterTpuPlatform();
 
 }  // namespace tensorflow
 

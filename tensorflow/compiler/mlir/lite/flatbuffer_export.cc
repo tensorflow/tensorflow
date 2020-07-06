@@ -190,9 +190,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
 }
 
 static bool IsConst(Operation* op) {
-  return isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
-         isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op) ||
-         isa<tfl::SparseConstOp>(op) || isa<tfl::SparseQConstOp>(op);
+  return isa<mlir::ConstantOp, mlir::TF::ConstOp, tfl::ConstOp, tfl::QConstOp,
+             tfl::SparseConstOp, tfl::SparseQConstOp>(op);
 }
 
 template <typename T>

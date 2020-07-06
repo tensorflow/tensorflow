@@ -94,11 +94,13 @@ def initialize_rbe_configs():
     )
 
     tensorflow_rbe_config(
-        name = "ubuntu16.04-py3_opt-gcc5-rocm",
-        compiler = "gcc",
-        os = "ubuntu16.04",
-        python_versions = ["3"],
-        rocm_version = "2.5",  # Any version will do.
+        name = "ubuntu18.04-gcc7_manylinux2010-rocm",
+        compiler = "/dt7/usr/bin/gcc",
+        compiler_prefix = "/usr/bin",
+        rocm_version = "3.5",  # Any version will do.
+        os = "ubuntu18.04-manylinux2010-multipython",
+        python_versions = ["2.7", "3.5", "3.6", "3.7", "3.8"],
+        python_install_path = "/usr/local",
     )
 
     tensorflow_rbe_win_config(

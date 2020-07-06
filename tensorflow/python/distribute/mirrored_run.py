@@ -83,7 +83,7 @@ def call_for_each_replica(strategy, fn, args=None, kwargs=None):
         "overhead currently. We will be working on improving "
         "this in the future, but for now please wrap "
         "`call_for_each_replica` or `experimental_run` or "
-        "`experimental_run_v2` inside a tf.function to get "
+        "`run` inside a tf.function to get "
         "the best performance." % strategy.__class__.__name__, 5)
   else:
     # When a tf.function is wrapped to trigger _call_for_each_replica (see

@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_C_API_H_
 
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
-#include "tensorflow/core/tpu/kernels/tpu_ops_common_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
@@ -35,7 +35,7 @@ struct CompilationCacheKeyProperty {
   const char* mlir_module;
   const int32_t* device_ids;
   size_t device_ids_size;
-  size_t guaranteed_constants_size;
+  int32_t guaranteed_constants_size;
   uint64_t function_library_fingerprint;
   int32_t num_cores_per_replica;
   int32_t num_replicas;

@@ -302,6 +302,7 @@ TEST(NNAPIDelegate, StatefulDelegateWithCompilationCaching) {
 // Sanity check for the state-ful NNAPI delegate with QoS hints.
 TEST(NNAPIDelegate, StatefulDelegateWithQoS) {
   StatefulNnApiDelegate::Options options;
+  options.accelerator_name = "nnapi-reference";
   options.execution_priority = ANEURALNETWORKS_PRIORITY_HIGH;
   options.max_compilation_timeout_duration_ns = UINT64_MAX;
   options.max_execution_timeout_duration_ns = UINT64_MAX;

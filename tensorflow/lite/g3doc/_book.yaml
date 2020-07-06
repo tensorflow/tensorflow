@@ -86,6 +86,8 @@ upper_tabs:
         path: /lite/convert/rnn
       - title: "Add metadata"
         path: /lite/convert/metadata
+      - title: "Composite operation fusion"
+        path: /lite/convert/operation_fusion
       - title: "1.x compatibility"
         path: /lite/convert/1x_compatibility
 

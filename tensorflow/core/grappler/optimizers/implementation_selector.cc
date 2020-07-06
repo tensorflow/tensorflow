@@ -130,7 +130,7 @@ string FindForwardNode(utils::MutableNodeView* backward_node) {
 void UpdateForwardIdentityNodeDtype(utils::MutableNodeView* forward_node,
                                     const DataTypeVector& dtypes) {
   const auto& fanouts_vector = forward_node->GetRegularFanouts();
-  for (int pos = 0; pos < fanouts_vector.size(); ++pos) {
+  for (int pos = 0, pos_limit = fanouts_vector.size(); pos < pos_limit; ++pos) {
     const auto& fanouts_at_pos = fanouts_vector[pos];
     for (const auto& fanout : fanouts_at_pos) {
       if ("Identity" == fanout.node_view()->GetOp()) {

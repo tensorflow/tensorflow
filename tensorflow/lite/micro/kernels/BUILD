@@ -24,6 +24,7 @@ cc_library(
     name = "micro_ops",
     srcs = [
         "activations.cc",
+        "hard_swish.cc",
         "add.cc",
         "arg_min_max.cc",
         "ceil.cc",
@@ -97,6 +98,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/micro:memory_helpers",
         "//tensorflow/lite/micro:micro_utils",
     ] + select({
         "//conditions:default": [],
@@ -567,6 +569,17 @@ tflite_micro_cc_test(
 tflite_micro_cc_test(
     name = "tanh_test",
     srcs = ["tanh_test.cc"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "hard_swish_test",
+    srcs = ["hard_swish_test.cc"],
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",

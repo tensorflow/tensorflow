@@ -197,20 +197,33 @@ void TpuProgramGroup::UnloadAndDestroyPrograms() {
   return Status::OK();
 }
 
-xla::HloProto TpuProgramGroup::hlo_metadata(int core_index) const {
-  CHECK_GE(core_index, 0);
-  CHECK_LT(core_index, program_count());
-  TpuSerializedProto serialized_hlo_proto;
-  auto cleanup = gtl::MakeCleanup([serialized_hlo_proto]() {
-    StreamExecutor_Tpu_FreeSerializedProto(&serialized_hlo_proto);
-  });
-  TpuProgram_GetHloMetadata(tpu_programs_[core_index], &serialized_hlo_proto);
-  return stream_executor::tpu::DeserializeProto<xla::HloProto>(
-      serialized_hlo_proto);
+TpuProgramGroup::TpuProgramGroup(TpuProgramGroup&& other)
+    : may_modify_variables_(std::move(other.may_modify_variables_)),
+      host_compute_metadata_(std::move(other.host_compute_metadata_)),
+      tpu_programs_(std::move(other.tpu_programs_)),
+      executable_info_(std::move(other.executable_info_)),
+      host_transfer_info_(std::move(other.host_transfer_info_)),
+      hlo_metadatas_(std::move(other.hlo_metadatas_)) {
+  RefreshHloMetadatasPtrs();
+}
+
+void TpuProgramGroup::set_hlo_metadata(const xla::HloProto& hlo_metadata) {
+  // TODO(henrytan): initialize hlo_metadatas_ for multi program support.
+  if (hlo_metadatas_.empty()) {
+    hlo_metadatas_.push_back(hlo_metadata);
+  }
+  RefreshHloMetadatasPtrs();
 }
 
 absl::Span<const xla::HloProto* const> TpuProgramGroup::hlo_metadatas() const {
-  return absl::MakeConstSpan(hlo_metadatas_);
+  return hlo_metadatas_ptrs_;
+}
+
+void TpuProgramGroup::RefreshHloMetadatasPtrs() {
+  hlo_metadatas_ptrs_.reserve(hlo_metadatas_.size());
+  for (const auto& hlo_metadata_internal_ : hlo_metadatas_) {
+    hlo_metadatas_ptrs_.push_back(&hlo_metadata_internal_);
+  }
 }
 
 }  // namespace tpu

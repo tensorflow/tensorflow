@@ -64,13 +64,13 @@ class BucketizationOpTest(xla_test.XLATestCase):
       p = array_ops.placeholder(dtypes.int32)
       with self.test_scope():
         op = math_ops._bucketize(p, boundaries=[0, 8, 3, 11])
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Expected sorted boundaries"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Expected sorted boundaries"):
         sess.run(op, {p: [-5, 0]})
 
   def testBoundariesNotList(self):
     with self.session():
-      with self.assertRaisesRegexp(TypeError, "Expected list.*"):
+      with self.assertRaisesRegex(TypeError, "Expected list.*"):
         p = array_ops.placeholder(dtypes.int32)
         with self.test_scope():
           math_ops._bucketize(p, boundaries=0)

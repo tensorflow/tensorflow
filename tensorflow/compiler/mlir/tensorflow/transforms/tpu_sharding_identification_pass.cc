@@ -67,7 +67,7 @@ void GetAdjacentXlaShardingOp(Operation* op,
     return;
   }
 
-  if (llvm::isa<TF::IdentityOp>(op) || llvm::isa<TF::CastOp>(op)) {
+  if (llvm::isa<TF::IdentityOp, TF::CastOp>(op)) {
     for (auto user : op->getUsers())
       GetAdjacentXlaShardingOp(user, sharding_op);
   }

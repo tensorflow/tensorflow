@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/network_tester/network_model.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -62,6 +63,13 @@ inline void print_output_data(TfLiteTensor* output) {
 }
 #endif
 
+template <typename T>
+void check_output_elem(TfLiteTensor* output, const T* expected_output_data,
+                       const int index) {
+  TF_LITE_MICRO_EXPECT_EQ(tflite::GetTensorData<T>(output)[index],
+                          expected_output_data[index]);
+}
+
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestInvoke) {
@@ -91,7 +99,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   for (int n = 0; n < NUM_INFERENCES; n++) {
     for (int i = 0; i < interpreter.inputs_size(); ++i) {
       TfLiteTensor* input = interpreter.input(i);
-      memcpy(input->data.uint8, input_data[i], input->bytes);
+      memcpy(input->data.data, input_data[i], input->bytes);
     }
     TfLiteStatus invoke_status = interpreter.Invoke();
     if (invoke_status != kTfLiteOk) {
@@ -120,9 +128,8 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 #ifndef NO_COMPARE_OUTPUT_DATA
     for (int i = 0; i < interpreter.outputs_size(); i++) {
       TfLiteTensor* output = interpreter.output(i);
-      for (int j = 0; j < output->bytes; ++j) {
-        TF_LITE_MICRO_EXPECT_EQ(output->data.uint8[j],
-                                expected_output_data[i][j]);
+      for (int j = 0; j < tflite::ElementCount(*(output->dims)); ++j) {
+        check_output_elem(output, expected_output_data[i], j);
       }
     }
 #endif

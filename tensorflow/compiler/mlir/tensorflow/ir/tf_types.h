@@ -110,9 +110,10 @@ namespace detail {
 //   - `static unsigned getTypeKind()` that returns the (fixed) kind of the
 //     type.
 template <typename Derived>
-class TensorFlowTypeImpl : public Type::TypeBase<Derived, TensorFlowType> {
+class TensorFlowTypeImpl
+    : public Type::TypeBase<Derived, TensorFlowType, TypeStorage> {
  public:
-  using Base = typename Type::TypeBase<Derived, TensorFlowType>;
+  using Base = typename Type::TypeBase<Derived, TensorFlowType, TypeStorage>;
   using TFBase = TensorFlowTypeImpl<Derived>;
   using Base::Base;
 

@@ -37,7 +37,7 @@ absl::Status ObjectReader::ReadNonConstantTensor(
   }
 
   if (tensor_to_value->find(tensor_idx) == tensor_to_value->end()) {
-    const TfLiteTensor& tflite_tensor = context->tensors[tensor_idx];
+    TfLiteTensor& tflite_tensor = context->tensors[tensor_idx];
     if (tflite::IsConstantTensor(&tflite_tensor)) {
       return absl::InvalidArgumentError(absl::StrCat(
           "ReadNonConstantTensor: value is a constant tensor: ", tensor_idx));
@@ -58,6 +58,7 @@ absl::Status ObjectReader::ReadNonConstantTensor(
                 &fp_tensor_index) != kTfLiteOk) {
           return absl::InternalError("Could not add new tensor to graph");
         }
+
         // Remember this tensor for later.
         (*quant_conversion_map)[fp_tensor_index] = tensor_idx;
         (*quant_conversion_map)[tensor_idx] = fp_tensor_index;
@@ -67,6 +68,9 @@ absl::Status ObjectReader::ReadNonConstantTensor(
             ConvertTfLiteTensorToTensorRef(*fp_tflite_tensor, &value->tensor));
         value->tensor.ref = fp_tensor_index;
         value->quant_params.emplace();
+        // tflite_tensor from the outer scope is invalidated due to calling
+        // CreateNewTensorWithDifferentType
+        tflite_tensor = context->tensors[tensor_idx];
         RETURN_IF_ERROR(
             PopulateQuantParams(tflite_tensor, &value->quant_params.value()));
         (*tensor_to_value)[fp_tensor_index] = value;

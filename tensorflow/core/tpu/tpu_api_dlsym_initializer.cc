@@ -19,15 +19,17 @@ limitations under the License.
 
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
+#endif
 
-#define TFTPU_SET_FN(Struct, FnName)                                       \
-  Struct->FnName##Fn =                                                     \
-      reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName)); \
-  if (!(Struct->FnName##Fn)) {                                             \
-    LOG(ERROR) << #FnName " not available in this library.";               \
+#define TFTPU_SET_FN(Struct, FnName)                                         \
+  Struct->FnName##Fn =                                                       \
+      reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName));   \
+  if (!(Struct->FnName##Fn)) {                                               \
+    LOG(ERROR) << #FnName " not available in this library.";                 \
+    return errors::Unimplemented(#FnName " not available in this library."); \
   }
 
 // Reminder: Update tpu_library_loader_windows.cc if you are adding new publicly
@@ -36,6 +38,11 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
+#if defined(PLATFORM_GOOGLE)
+Status InitializeTpuLibrary(void* library_handle) {
+  return errors::Unimplemented("You must statically link in a TPU library.");
+}
+#else
 #include "tensorflow/core/tpu/tpu_library_init_fns.inc"
 
 Status InitializeTpuLibrary(void* library_handle) {
@@ -45,20 +52,22 @@ Status InitializeTpuLibrary(void* library_handle) {
     shared_object_loaded = false;
   }
 
-  TF_RETURN_IF_ERROR(InitializeTpuStructFns(library_handle));
+  Status s = InitializeTpuStructFns(library_handle);
 
-  if (shared_object_loaded) {
+  // TPU platform registration must only be performed after the library is
+  // loaded. We do not want to register a TPU platform in XLA without the
+  // supporting library providing the necessary APIs.
+  if (shared_object_loaded && s.ok()) {
     // TODO(frankchn): Make initialization actually work
     // Initialize TPU platform when the platform code is loaded from a library.
     // InitializeApiFn()->TfTpu_InitializeFn();
 
-    // We should only register the TPU platform when the library is loaded.
-    // TODO(frankchn): Resolve the circular dependency and register the platform
-    // RegisterTpuPlatform();
+    RegisterTpuPlatform();
   }
 
-  return Status::OK();
+  return s;
 }
+#endif
 
 }  // namespace tpu
 }  // namespace tensorflow

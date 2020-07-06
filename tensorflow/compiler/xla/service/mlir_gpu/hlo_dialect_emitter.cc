@@ -183,6 +183,28 @@ Status HloDialectEmitter::HandleConstant(HloInstruction* instr) {
   return Status::OK();
 }
 
+Status HloDialectEmitter::HandleGather(HloInstruction* instr) {
+  HloGatherInstruction* gather = static_cast<HloGatherInstruction*>(instr);
+  mlir::xla_hlo::GatherDimensionNumbers dimension_numbers =
+      xla::CreateGatherDimensionNumbers(gather->gather_dimension_numbers(),
+                                        builder_);
+  mlir::DenseIntElementsAttr slice_sizes = CreateDenseIntElementsAttrFromVector(
+      llvm::SmallVector<int64, 4>{gather->gather_slice_sizes().begin(),
+                                  gather->gather_slice_sizes().end()},
+      builder_);
+  mlir::BoolAttr indices_are_sorted =
+      builder_.getBoolAttr(gather->indices_are_sorted());
+
+  TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
+                                         instr->shape(), builder_));
+
+  instruction_to_values_[instr] = builder_.create<hlo::GatherOp>(
+      getLocation(instr), res_type, instruction_to_values_[instr->operand(0)],
+      instruction_to_values_[instr->operand(1)], dimension_numbers, slice_sizes,
+      indices_are_sorted);
+  return Status::OK();
+}
+
 Status HloDialectEmitter::HandleReduce(HloInstruction* instr) {
   llvm::SmallVector<Value, 4> operands;
   for (auto operand : instr->operands()) {

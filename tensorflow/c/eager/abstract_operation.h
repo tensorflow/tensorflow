@@ -30,7 +30,7 @@ namespace tensorflow {
 // tracing or immediate execution mode.
 class AbstractOperation {
  protected:
-  enum AbstractOperationKind { kTracing, kImmediateExecution };
+  enum AbstractOperationKind { kGraph, kMlir, kEager, kTfrt };
   explicit AbstractOperation(AbstractOperationKind kind) : kind_(kind) {}
   virtual ~AbstractOperation() {}
 
@@ -122,7 +122,7 @@ struct AbstractOperationDeleter {
 };
 }  // namespace internal
 
-using AbstractOpPtr =
+using AbstractOperationPtr =
     std::unique_ptr<AbstractOperation, internal::AbstractOperationDeleter>;
 
 }  // namespace tensorflow

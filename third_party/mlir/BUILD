@@ -1507,6 +1507,7 @@ cc_library(
         ":StandardToLLVM",
         ":Support",
         ":Transforms",
+        "@llvm-project//llvm:Support",
     ],
 )
 

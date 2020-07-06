@@ -42,11 +42,15 @@ void ExpectClose(const Tensor& x, const Tensor& y, double atol, double rtol) {
       << "typed_atol is negative: " << typed_atol;
   ASSERT_GE(typed_rtol, static_cast<RealType>(0.0))
       << "typed_rtol is negative: " << typed_rtol;
+  const int max_failures = 10;
+  int num_failures = 0;
   for (int i = 0; i < size; ++i) {
     EXPECT_TRUE(
         internal::Helper<T>::IsClose(Tx[i], Ty[i], typed_atol, typed_rtol))
-        << "index = " << i << " x = " << Tx[i] << " y = " << Ty[i]
-        << " typed_atol = " << typed_atol << " typed_rtol = " << typed_rtol;
+        << "index = " << (++num_failures, i) << " x = " << Tx[i]
+        << " y = " << Ty[i] << " typed_atol = " << typed_atol
+        << " typed_rtol = " << typed_rtol;
+    ASSERT_LT(num_failures, max_failures) << "Too many mismatches, giving up.";
   }
 }
 

@@ -280,6 +280,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   return node_def;
 }
 
+// TODO(b/160014479): Support exporting function result attributes as optional
+// attributes.
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     mlir::FuncOp function, Value operand, unsigned index,
     llvm::StringRef name) {
