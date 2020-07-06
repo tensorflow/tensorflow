@@ -658,7 +658,9 @@ def TL_WhileRegionOp : TF_Op<"WhileRegion",
 
   This implies that the operand and result types for tf.WhileRegion should be
   the same. Note that the condition and body regions can implicitly capture
-  loop invariant values directly.
+  loop invariant values directly. In canonical form, iteration variables that
+  pass through the loop body unmodified are converted to implicitly captured
+  references to their values outside the loop.
   }];
 
   let arguments = (ins
@@ -676,6 +678,8 @@ def TL_WhileRegionOp : TF_Op<"WhileRegion",
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
   let verifier = [{ return Verify(*this); }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_TensorListReserveOp : TF_TensorListInitOp<"TensorListReserve"> {

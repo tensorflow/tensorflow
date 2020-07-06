@@ -4275,6 +4275,117 @@ LogicalResult WhileRegionOp::moveOutOfLoop(
 }
 
 //===----------------------------------------------------------------------===//
+// WhileRegionOp canonicalization
+//===----------------------------------------------------------------------===//
+namespace {
+// Eliminate values that pass through the WhileRegionOp body.
+struct WhileRegionEliminatePassThrough
+    : public OpRewritePattern<WhileRegionOp> {
+  using OpRewritePattern<WhileRegionOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(WhileRegionOp while_op,
+                                PatternRewriter &rewriter) const override {
+    // Replace values that simply passthrough the body with extern values. The
+    // block arguments of body and while match and so the corresponding cond
+    // argument can be easily found.
+    int old_num_operands = while_op.getNumOperands();
+    int new_num_operands = old_num_operands;
+    auto &body_block = while_op.body().front();
+    auto &cond_block = while_op.cond().front();
+    auto &yield = *body_block.getTerminator();
+
+    // Bit mask indicating which operands will be removed.
+    SmallVector<bool, 16> removed_operand(old_num_operands, false);
+
+    for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
+      auto body_arg = body_block.getArgument(op_idx);
+      if (body_arg == yield.getOperand(op_idx)) {
+        // Replace the use of the passthrough value with the while operand
+        // in the body and condition regions, as well as the while output (if
+        // type match)
+        // TODO(jurahul): Use PatternRewriter API for IR modification.
+        auto value = while_op.getOperand(op_idx);
+        if (body_arg.getType() == value.getType())
+          body_arg.replaceAllUsesWith(value);
+
+        auto cond_arg = cond_block.getArgument(op_idx);
+        if (cond_arg.getType() == value.getType())
+          cond_arg.replaceAllUsesWith(value);
+
+        auto result = while_op.getResult(op_idx);
+        if (result.getType() == value.getType())
+          result.replaceAllUsesWith(value);
+      }
+
+      // Now check if the operand is unused in both regions as well as the
+      // result. If so, mark it for removal.
+      if (body_block.getArgument(op_idx).use_empty() &&
+          cond_block.getArgument(op_idx).use_empty() &&
+          while_op.getResult(op_idx).use_empty()) {
+        removed_operand[op_idx] = true;
+        new_num_operands--;
+      }
+    }
+
+    if (new_num_operands == old_num_operands) return failure();
+
+    // Compress the operands, region arguments, and outputs.
+    SmallVector<Value, 4> new_while_operands;
+    SmallVector<Type, 4> new_result_types;
+    new_while_operands.reserve(new_num_operands);
+    new_result_types.reserve(new_num_operands);
+
+    // Build new operands and result type.
+    int next_idx = 0;
+    for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
+      if (removed_operand[op_idx]) continue;
+      new_while_operands.push_back(while_op.getOperand(op_idx));
+      new_result_types.push_back(while_op.getResult(op_idx).getType());
+      next_idx++;
+    }
+
+    // Create the new while operation.
+    auto new_while_op =
+        rewriter.create<WhileRegionOp>(while_op.getLoc(), new_result_types,
+                                       new_while_operands, while_op.getAttrs());
+
+    // Move region bodies to the new while.
+    rewriter.inlineRegionBefore(while_op.cond(), new_while_op.cond(),
+                                new_while_op.cond().end());
+    rewriter.inlineRegionBefore(while_op.body(), new_while_op.body(),
+                                new_while_op.body().end());
+
+    auto &new_cond_block = new_while_op.cond().front();
+    auto &new_body_block = new_while_op.body().front();
+    auto &new_yield = *new_body_block.getTerminator();
+
+    // Build a vector of new results. Also patch up the region bodies and yield.
+    SmallVector<Value, 4> new_results;
+    next_idx = 0;
+    for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
+      if (removed_operand[op_idx]) {
+        new_cond_block.eraseArgument(next_idx);
+        new_body_block.eraseArgument(next_idx);
+        new_yield.eraseOperand(next_idx);
+        new_results.push_back(nullptr);
+      } else {
+        new_results.push_back(new_while_op.getResult(next_idx++));
+      }
+    }
+
+    rewriter.replaceOp(while_op, new_results);
+    return success();
+  }
+};
+
+}  // anonymous namespace
+
+void WhileRegionOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<WhileRegionEliminatePassThrough>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // XdivyOp
 //===----------------------------------------------------------------------===//
 
