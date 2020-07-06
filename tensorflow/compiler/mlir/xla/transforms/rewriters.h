@@ -24,6 +24,7 @@ limitations under the License.
 
 namespace mlir {
 class LLVMTypeConverter;
+class LowerToLLVMOptions;
 class OwningRewritePatternList;
 class BufferAssignmentPlacer;
 namespace xla_hlo {
@@ -77,7 +78,8 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
 namespace xla_lhlo {
 
 /// Collect a set of patterns to convert from the LHLO dialect to LLVM.
-void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
+void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
+                                          LLVMTypeConverter *converter,
                                           OwningRewritePatternList *patterns);
 
 }  // namespace xla_lhlo

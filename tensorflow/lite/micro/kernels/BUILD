@@ -98,6 +98,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/micro:memory_helpers",
         "//tensorflow/lite/micro:micro_utils",
     ] + select({
         "//conditions:default": [],

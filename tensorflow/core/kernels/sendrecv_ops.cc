@@ -123,6 +123,8 @@ string SendOp::TraceString(OpKernelContext* ctx, bool verbose) {
 
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_CPU), SendOp);
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_DEFAULT), SendOp);
+REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_TPU_SYSTEM), SendOp);
+REGISTER_KERNEL_BUILDER(Name("_HostSend").Device(DEVICE_TPU_SYSTEM), SendOp);
 
 // Public alias. Added for use in Lingvo.
 REGISTER_KERNEL_BUILDER(Name("Send").Device(DEVICE_CPU), SendOp);
@@ -215,6 +217,8 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_CPU), RecvOp);
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_DEFAULT), RecvOp);
+REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_TPU_SYSTEM), RecvOp);
+REGISTER_KERNEL_BUILDER(Name("_HostRecv").Device(DEVICE_TPU_SYSTEM), RecvOp);
 
 // Public alias. Added for use in Lingvo.
 REGISTER_KERNEL_BUILDER(Name("Recv").Device(DEVICE_CPU), RecvOp);

@@ -422,7 +422,8 @@ func @case_memref(%index: memref<i32>, %operand_1: memref<f32>, %operand_2: memr
       "xla_lhlo.add"(%arg0, %arg0, %out) : (memref<f32>, memref<f32>, memref<f32>) -> ()
       "xla_lhlo.terminator"() : () -> ()
     }
-  ) : (memref<i32>, memref<f32>, memref<f32>, memref<f32>, memref<f32>) -> ()
+  ) {operand_segment_sizes = dense<[1, 3, 1]> : vector<3xi32>}
+  : (memref<i32>, memref<f32>, memref<f32>, memref<f32>, memref<f32>) -> ()
   return
 }
 
@@ -784,10 +785,11 @@ func @fft_memrefs(%arg0: memref<3x9xf32>, %arg_out: memref<3x5xcomplex<f32>>) ->
 // CHECK-LABEL: func @batch_norm_grad_memrefs
 func @batch_norm_grad_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf32>, %arg2: memref<8xf32>,
                               %arg3: memref<8xf32>, %arg4: memref<8x8x8x8xf32>,
-                              %arg_out: tuple<memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>>) -> () {
-  "xla_lhlo.batch_norm_grad"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg_out) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64}
+                              %grad_operand: memref<8x8x8x8xf32>, %grad_scale: memref<8xf32>,
+                              %grad_offset: memref<8xf32>) -> () {
+  "xla_lhlo.batch_norm_grad"(%arg0, %arg1, %arg2, %arg3, %arg4, %grad_operand, %grad_scale, %grad_offset) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64}
       : (memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>, memref<8xf32>, memref<8x8x8x8xf32>,
-         tuple<memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>>) -> ()
+         memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>) -> ()
   return
 }
 
@@ -805,9 +807,10 @@ func @batch_norm_inference_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf
 
 // CHECK-LABEL: func @batch_norm_training_memrefs
 func @batch_norm_training_memrefs(%arg0: memref<8x8x8x8xf32>, %arg1: memref<8xf32>, %arg2: memref<8xf32>,
-                                  %arg_out: tuple<memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>>) -> () {
-  "xla_lhlo.batch_norm_training"(%arg0, %arg1, %arg2, %arg_out) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64}
-      : (memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>, tuple<memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>>) -> ()
+                                  %output: memref<8x8x8x8xf32>, %batch_mean: memref<8xf32>,
+                                  %batch_var: memref<8xf32>) -> () {
+  "xla_lhlo.batch_norm_training"(%arg0, %arg1, %arg2, %output, %batch_mean, %batch_var) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64}
+      : (memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>, memref<8x8x8x8xf32>, memref<8xf32>, memref<8xf32>) -> ()
   return
 }
 
@@ -861,6 +864,17 @@ func @while_memrefs(%arg0: memref<i64>, %arg_out: memref<i64>) -> () {
     { ^bb0(%arg: memref<i64>, %cond: memref<i1>): "xla_lhlo.terminator"() : () -> () },
     { ^bb0(%arg: memref<i64>, %body_out: memref<i64>): "xla_lhlo.terminator"() : () -> () }
   ) : (memref<i64>, memref<i64>) -> ()
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @while_memrefs
+func @while_memrefs(%arg0: memref<i64>, %arg1: memref<5xf32>, %arg0_out: memref<i64>, %arg1_out: memref<5xf32>) -> () {
+  "xla_lhlo.while"(%arg0, %arg1, %arg0_out, %arg1_out) (
+    { ^bb0(%cur0: memref<i64>, %cur1: memref<5xf32>, %cond: memref<i1>): "xla_lhlo.terminator"() : () -> () },
+    { ^bb0(%cur0: memref<i64>, %cur1: memref<5xf32>, %body_out0: memref<i64>, %body_out1: memref<5xf32>): "xla_lhlo.terminator"() : () -> () }
+  ) : (memref<i64>, memref<5xf32>, memref<i64>, memref<5xf32>) -> ()
   return
 }
 
@@ -930,12 +944,12 @@ func @rng_get_and_update_state_memrefs(%state: memref<1xui64>) -> () {
 
 // CHECK-LABEL: func @sort_memrefs
 func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
-                   %arg_out: tuple<memref<16x16xf32>, memref<16x16xf16>>) -> () {
-  "xla_lhlo.sort"(%arg0, %arg1, %arg_out) ( {
+                   %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
+  "xla_lhlo.sort"(%arg0, %arg1, %out0, %out1) ( {
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
     %7 = "xla_hlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "xla_hlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = 1 : i64, is_stable = true} : (memref<16x16xf32>, memref<16x16xf16>, tuple<memref<16x16xf32>, memref<16x16xf16>>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   return
 }
 
@@ -943,12 +957,12 @@ func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
 
 // CHECK-LABEL: func @sort_memrefs
 func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
-                   %arg_out: tuple<memref<16x16xf32>, memref<16x16xf16>>) -> () {
-  "xla_lhlo.sort"(%arg0, %arg1, %arg_out) ( {
+                   %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
+  "xla_lhlo.sort"(%arg0, %arg1, %out0, %out1) ( {
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
     %7 = "xla_hlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "xla_hlo.return"(%7) : (tensor<i1>) -> ()
-  }) {dimension = 1 : i64} : (memref<16x16xf32>, memref<16x16xf16>, tuple<memref<16x16xf32>, memref<16x16xf16>>) -> ()
+  }) {dimension = 1 : i64} : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   return
 }
 
@@ -956,11 +970,11 @@ func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
 
 // CHECK-LABEL: func @sort_memrefs
 func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
-                   %arg_out: tuple<memref<16x16xf32>, memref<16x16xf16>>) -> () {
-  "xla_lhlo.sort"(%arg0, %arg1, %arg_out) ( {
+                   %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
+  "xla_lhlo.sort"(%arg0, %arg1, %out0, %out1) ( {
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
     %7 = "xla_hlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
     "xla_hlo.return"(%7) : (tensor<i1>) -> ()
-  }) : (memref<16x16xf32>, memref<16x16xf16>, tuple<memref<16x16xf32>, memref<16x16xf16>>) -> ()
+  }) : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   return
 }

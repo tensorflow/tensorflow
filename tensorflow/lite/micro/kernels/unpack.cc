@@ -101,16 +101,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace
 }  // namespace unpack
 
-TfLiteRegistration* Register_UNPACK() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/unpack::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_UNPACK() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/unpack::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

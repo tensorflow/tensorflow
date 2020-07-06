@@ -51,7 +51,7 @@ limitations under the License.
 #include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -576,7 +576,8 @@ Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   // Some basic cleanup.
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
-  kernelPm.addPass(::mlir::createStripDebugInfoPass());
+  // Remove all location information to prevent a debug build.
+  pm.addPass(::mlir::createStripDebugInfoPass());
 
   if (failed(pm.run(module))) {
     return InternalError("Lowering to NVVM IR failed.");

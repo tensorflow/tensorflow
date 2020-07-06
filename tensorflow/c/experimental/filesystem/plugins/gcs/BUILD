@@ -30,6 +30,7 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@com_github_googlecloudplatform_google_cloud_cpp//:storage_client",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -43,10 +44,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "file_block_cache",
+    hdrs = ["file_block_cache.h"],
+    deps = [
+        "//tensorflow/c:tf_status",
+    ],
+)
+
 tf_cc_test(
     name = "gcs_filesystem_test",
     srcs = [
-        "gcs_filesystem.cc",
         "gcs_filesystem_test.cc",
     ],
     tags = [
@@ -58,5 +66,6 @@ tf_cc_test(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:test",
+        "@com_google_absl//absl/strings",
     ],
 )

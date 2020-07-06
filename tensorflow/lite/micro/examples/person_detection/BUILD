@@ -57,7 +57,6 @@ tflite_micro_cc_test(
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
-        "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/micro/testing:micro_test",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -133,7 +132,6 @@ cc_binary(
         "//tensorflow/lite/micro:micro_error_reporter",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:op_resolvers",
-        "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

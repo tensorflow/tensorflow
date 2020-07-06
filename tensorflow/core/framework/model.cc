@@ -1320,14 +1320,14 @@ Model::CollectTunableParameters(std::shared_ptr<Node> node) {
 }
 
 absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-Model::CollectEssentialParallelism(std::shared_ptr<Node> node) {
+Model::CollectEssentialParallelism(
+    std::shared_ptr<Node> node,
+    const absl::flat_hash_map<string, std::shared_ptr<Parameter>>& parameters) {
   // Parallelism parameter is considered to be essential if the corresponding
   // transformations's processing time is greater than essential rate times the
   // average transformation self processing time.
   constexpr double kEssentialRate = 0.3L;
 
-  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
-  node->CollectTunableParameters(&parameters);
   absl::flat_hash_map<string, double> processing_times;
   double processing_time = node->TotalProcessingTime(&processing_times);
   double uniform_share =
@@ -1350,7 +1350,7 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget) {
   }
   VLOG(2) << "Starting optimization of tunable parameters with GradientDescent";
   auto parameters = CollectTunableParameters(snapshot);
-  auto essential_parameters = CollectEssentialParallelism(snapshot);
+  auto essential_parameters = CollectEssentialParallelism(snapshot, parameters);
   // We add the number of model's buffered bytes because it is excluded from the
   // memory budget, but it is included in the maximum number of buffered bytes.
   ram_budget += TotalBufferedBytes(snapshot);

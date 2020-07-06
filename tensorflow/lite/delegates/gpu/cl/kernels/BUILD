@@ -536,7 +536,6 @@ cc_library(
     srcs = ["convolution_transposed_thin.cc"],
     hdrs = ["convolution_transposed_thin.h"],
     deps = [
-        ":flt_type",
         ":gpu_operation",
         ":util",
         ":work_group_picking",
@@ -682,17 +681,6 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
-    name = "flt_type",
-    srcs = ["flt_type.cc"],
-    hdrs = ["flt_type.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/cl:precision",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -927,7 +915,6 @@ cc_library(
     srcs = ["prelu.cc"],
     hdrs = ["prelu.h"],
     deps = [
-        ":flt_type",
         ":gpu_operation",
         ":util",
         "//tensorflow/lite/delegates/gpu/cl:cl_context",
@@ -965,7 +952,6 @@ cc_library(
     srcs = ["quantize_and_dequantize.cc"],
     hdrs = ["quantize_and_dequantize.h"],
     deps = [
-        ":flt_type",
         ":gpu_operation",
         ":util",
         "//tensorflow/lite/delegates/gpu/cl:cl_context",
@@ -1004,7 +990,6 @@ cc_library(
     srcs = ["relu.cc"],
     hdrs = ["relu.h"],
     deps = [
-        ":flt_type",
         ":gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/common:operations",

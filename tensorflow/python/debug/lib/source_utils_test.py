@@ -287,8 +287,8 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
   def testLoadNonexistentNonParPathFailsWithIOError(self):
     bad_path = os.path.join(self.get_temp_dir(), "nonexistent.py")
-    with self.assertRaisesRegexp(
-        IOError, "neither exists nor can be loaded.*par.*"):
+    with self.assertRaisesRegex(IOError,
+                                "neither exists nor can be loaded.*par.*"):
       source_utils.load_source(bad_path)
 
   def testLoadingPythonSourceFileInParFileSucceeds(self):
@@ -315,8 +315,8 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
       zf.write(temp_file_path, os.path.join("tensorflow_models", "model.py"))
 
     source_path = os.path.join(par_path, "tensorflow_models", "nonexistent.py")
-    with self.assertRaisesRegexp(
-        IOError, "neither exists nor can be loaded.*par.*"):
+    with self.assertRaisesRegex(IOError,
+                                "neither exists nor can be loaded.*par.*"):
       source_utils.load_source(source_path)
 
 

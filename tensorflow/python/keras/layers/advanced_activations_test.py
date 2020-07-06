@@ -76,12 +76,12 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
       self.assertTrue('Relu6' in keras.layers.ReLU(max_value=6)(x).name)
 
   def test_relu_with_invalid_arg(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'max_value of Relu layer cannot be negative value: -10'):
       testing_utils.layer_test(keras.layers.ReLU,
                                kwargs={'max_value': -10},
                                input_shape=(2, 3, 4))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'negative_slope of Relu layer cannot be negative value: -2'):
       with self.cached_session():

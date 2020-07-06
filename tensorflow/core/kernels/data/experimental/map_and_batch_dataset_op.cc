@@ -36,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 namespace data {
@@ -242,6 +244,10 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         batch_results_.pop_front();
         cond_var_->notify_all();
       }
+      profiler::TraceMe traceme([&] {
+        return profiler::TraceMeEncode("MapAndBatchConsume",
+                                       {{"element_id", result->id}});
+      });
       return ProcessResult(ctx, result, out_tensors, end_of_sequence);
     }
 
@@ -314,7 +320,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // BatchResult encapsulates the output batch, as well as ancillary
     // metadata required to execute the fused map-and-batch operation.
     struct BatchResult {
-      explicit BatchResult(int64 batch_size) {
+      explicit BatchResult(int64 batch_size, int64 id = -1) : id(id) {
         end_of_input = false;
         num_calls = batch_size;
         num_elements = 0;
@@ -348,6 +354,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       int64 status_offset TF_GUARDED_BY(mu);
       // Counts the number of outstanding calls for this batch.
       int64 num_calls;  // access guarded by owner's mutex
+      int64 id = -1;
     };
 
     void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
@@ -370,6 +377,10 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     void CallFunction(std::shared_ptr<IteratorContext> ctx,
                       const std::shared_ptr<BatchResult>& result, int64 offset)
         TF_LOCKS_EXCLUDED(*mu_) {
+      profiler::TraceMe traceme([&] {
+        return profiler::TraceMeEncode("MapAndBatchProduce",
+                                       {{"element_id", result->id}});
+      });
       // Get the next input element.
       std::vector<Tensor> input_element;
       bool end_of_input = false;
@@ -583,6 +594,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
                 (batch_results_.size() == max_batch_results_ &&
                  call_counter_ % dataset()->batch_size_ == 0));
       };
+      // Counts the total number of batches to use as an id of BatchResult.
+      int64 num_total_batches = 1;
       while (true) {
         {
           mutex_lock l(*mu_);
@@ -607,8 +620,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
           while (!busy()) {
             if (call_counter_ % dataset()->batch_size_ == 0) {
-              batch_results_.push_back(
-                  std::make_shared<BatchResult>(dataset()->batch_size_));
+              batch_results_.push_back(std::make_shared<BatchResult>(
+                  dataset()->batch_size_, num_total_batches++));
             }
             int64 offset = call_counter_++ % dataset()->batch_size_;
             new_calls.emplace_back(batch_results_.back(), offset);

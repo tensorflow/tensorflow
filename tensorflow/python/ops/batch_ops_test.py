@@ -345,8 +345,8 @@ class BatchOpsTest(test.TestCase):
           captured_tensors=computation.captured_inputs,
           Tout=[o.type for o in computation.definition.signature.output_arg])
 
-      with self.assertRaisesRegexp(InvalidArgumentError,
-                                   ".*2 arguments.*but 1.*"):
+      with self.assertRaisesRegex(InvalidArgumentError,
+                                  ".*2 arguments.*but 1.*"):
         sess.run([result], feed_dict={inp: [2]})
 
   def testBatchFunctionOpWithLargeBatchSplitted(self):

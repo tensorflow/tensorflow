@@ -108,282 +108,287 @@ class MicroMutableOpResolver : public MicroOpResolver {
   // MicroMutableOpResolver object.
 
   TfLiteStatus AddAbs() {
-    return AddBuiltin(BuiltinOperator_ABS, *tflite::ops::micro::Register_ABS(),
+    return AddBuiltin(BuiltinOperator_ABS, tflite::ops::micro::Register_ABS(),
                       ParseAbs);
   }
 
   TfLiteStatus AddAdd() {
-    return AddBuiltin(BuiltinOperator_ADD, *tflite::ops::micro::Register_ADD(),
+    return AddBuiltin(BuiltinOperator_ADD, tflite::ops::micro::Register_ADD(),
                       ParseAdd);
   }
 
   TfLiteStatus AddArgMax() {
     return AddBuiltin(BuiltinOperator_ARG_MAX,
-                      *tflite::ops::micro::Register_ARG_MAX(), ParseArgMax);
+                      tflite::ops::micro::Register_ARG_MAX(), ParseArgMax);
   }
 
   TfLiteStatus AddArgMin() {
     return AddBuiltin(BuiltinOperator_ARG_MIN,
-                      *tflite::ops::micro::Register_ARG_MIN(), ParseArgMin);
+                      tflite::ops::micro::Register_ARG_MIN(), ParseArgMin);
   }
 
   TfLiteStatus AddAveragePool2D() {
     return AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D,
-                      *tflite::ops::micro::Register_AVERAGE_POOL_2D(),
+                      tflite::ops::micro::Register_AVERAGE_POOL_2D(),
                       ParsePool);
   }
 
   TfLiteStatus AddCeil() {
-    return AddBuiltin(BuiltinOperator_CEIL,
-                      *tflite::ops::micro::Register_CEIL(), ParseCeil);
+    return AddBuiltin(BuiltinOperator_CEIL, tflite::ops::micro::Register_CEIL(),
+                      ParseCeil);
+  }
+
+  TfLiteStatus AddCircularBuffer() {
+    return AddCustom("CIRCULAR_BUFFER",
+                     tflite::ops::micro::Register_CIRCULAR_BUFFER());
   }
 
   TfLiteStatus AddConcatenation() {
     return AddBuiltin(BuiltinOperator_CONCATENATION,
-                      *tflite::ops::micro::Register_CONCATENATION(),
+                      tflite::ops::micro::Register_CONCATENATION(),
                       ParseConcatenation);
   }
 
   TfLiteStatus AddConv2D() {
     return AddBuiltin(BuiltinOperator_CONV_2D,
-                      *tflite::ops::micro::Register_CONV_2D(), ParseConv2D);
+                      tflite::ops::micro::Register_CONV_2D(), ParseConv2D);
   }
 
   TfLiteStatus AddCos() {
-    return AddBuiltin(BuiltinOperator_COS, *tflite::ops::micro::Register_COS(),
+    return AddBuiltin(BuiltinOperator_COS, tflite::ops::micro::Register_COS(),
                       ParseCos);
   }
 
   TfLiteStatus AddDepthwiseConv2D() {
     return AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
-                      *tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
+                      tflite::ops::micro::Register_DEPTHWISE_CONV_2D(),
                       ParseDepthwiseConv2D);
   }
 
   TfLiteStatus AddDequantize() {
     return AddBuiltin(BuiltinOperator_DEQUANTIZE,
-                      *tflite::ops::micro::Register_DEQUANTIZE(),
+                      tflite::ops::micro::Register_DEQUANTIZE(),
                       ParseDequantize);
   }
 
   TfLiteStatus AddEqual() {
     return AddBuiltin(BuiltinOperator_EQUAL,
-                      *tflite::ops::micro::Register_EQUAL(), ParseEqual);
+                      tflite::ops::micro::Register_EQUAL(), ParseEqual);
   }
 
   TfLiteStatus AddFloor() {
     return AddBuiltin(BuiltinOperator_FLOOR,
-                      *tflite::ops::micro::Register_FLOOR(), ParseFloor);
+                      tflite::ops::micro::Register_FLOOR(), ParseFloor);
   }
 
   TfLiteStatus AddFullyConnected() {
     return AddBuiltin(BuiltinOperator_FULLY_CONNECTED,
-                      *tflite::ops::micro::Register_FULLY_CONNECTED(),
+                      tflite::ops::micro::Register_FULLY_CONNECTED(),
                       ParseFullyConnected);
   }
 
   TfLiteStatus AddGreater() {
     return AddBuiltin(BuiltinOperator_GREATER,
-                      *tflite::ops::micro::Register_GREATER(), ParseGreater);
+                      tflite::ops::micro::Register_GREATER(), ParseGreater);
   }
 
   TfLiteStatus AddGreaterEqual() {
     return AddBuiltin(BuiltinOperator_GREATER_EQUAL,
-                      *tflite::ops::micro::Register_GREATER_EQUAL(),
+                      tflite::ops::micro::Register_GREATER_EQUAL(),
                       ParseGreaterEqual);
   }
 
   TfLiteStatus AddHardSwish() {
     return AddBuiltin(BuiltinOperator_HARD_SWISH,
-                      *tflite::ops::micro::Register_HARD_SWISH(),
+                      tflite::ops::micro::Register_HARD_SWISH(),
                       ParseHardSwish);
   }
 
   TfLiteStatus AddL2Normalization() {
     return AddBuiltin(BuiltinOperator_L2_NORMALIZATION,
-                      *tflite::ops::micro::Register_L2_NORMALIZATION(),
+                      tflite::ops::micro::Register_L2_NORMALIZATION(),
                       ParseL2Normalization);
   }
 
   TfLiteStatus AddLess() {
-    return AddBuiltin(BuiltinOperator_LESS,
-                      *tflite::ops::micro::Register_LESS(), ParseLess);
+    return AddBuiltin(BuiltinOperator_LESS, tflite::ops::micro::Register_LESS(),
+                      ParseLess);
   }
 
   TfLiteStatus AddLessEqual() {
     return AddBuiltin(BuiltinOperator_LESS_EQUAL,
-                      *tflite::ops::micro::Register_LESS_EQUAL(),
+                      tflite::ops::micro::Register_LESS_EQUAL(),
                       ParseLessEqual);
   }
 
   TfLiteStatus AddLog() {
-    return AddBuiltin(BuiltinOperator_LOG, *tflite::ops::micro::Register_LOG(),
+    return AddBuiltin(BuiltinOperator_LOG, tflite::ops::micro::Register_LOG(),
                       ParseLog);
   }
 
   TfLiteStatus AddLogicalAnd() {
     return AddBuiltin(BuiltinOperator_LOGICAL_AND,
-                      *tflite::ops::micro::Register_LOGICAL_AND(),
+                      tflite::ops::micro::Register_LOGICAL_AND(),
                       ParseLogicalAnd);
   }
 
   TfLiteStatus AddLogicalNot() {
     return AddBuiltin(BuiltinOperator_LOGICAL_NOT,
-                      *tflite::ops::micro::Register_LOGICAL_NOT(),
+                      tflite::ops::micro::Register_LOGICAL_NOT(),
                       ParseLogicalNot);
   }
 
   TfLiteStatus AddLogicalOr() {
     return AddBuiltin(BuiltinOperator_LOGICAL_OR,
-                      *tflite::ops::micro::Register_LOGICAL_OR(),
+                      tflite::ops::micro::Register_LOGICAL_OR(),
                       ParseLogicalOr);
   }
 
   TfLiteStatus AddLogistic() {
     return AddBuiltin(BuiltinOperator_LOGISTIC,
-                      *tflite::ops::micro::Register_LOGISTIC(), ParseLogistic);
+                      tflite::ops::micro::Register_LOGISTIC(), ParseLogistic);
   }
 
   TfLiteStatus AddMaximum() {
     return AddBuiltin(BuiltinOperator_MAXIMUM,
-                      *tflite::ops::micro::Register_MAXIMUM(), ParseMaximum);
+                      tflite::ops::micro::Register_MAXIMUM(), ParseMaximum);
   }
 
   TfLiteStatus AddMaxPool2D() {
     return AddBuiltin(BuiltinOperator_MAX_POOL_2D,
-                      *tflite::ops::micro::Register_MAX_POOL_2D(), ParsePool);
+                      tflite::ops::micro::Register_MAX_POOL_2D(), ParsePool);
   }
 
   TfLiteStatus AddMean() {
-    return AddBuiltin(BuiltinOperator_MEAN,
-                      *tflite::ops::micro::Register_MEAN(), ParseReducer);
+    return AddBuiltin(BuiltinOperator_MEAN, tflite::ops::micro::Register_MEAN(),
+                      ParseReducer);
   }
 
   TfLiteStatus AddMinimum() {
     return AddBuiltin(BuiltinOperator_MINIMUM,
-                      *tflite::ops::micro::Register_MINIMUM(), ParseMinimum);
+                      tflite::ops::micro::Register_MINIMUM(), ParseMinimum);
   }
 
   TfLiteStatus AddMul() {
-    return AddBuiltin(BuiltinOperator_MUL, *tflite::ops::micro::Register_MUL(),
+    return AddBuiltin(BuiltinOperator_MUL, tflite::ops::micro::Register_MUL(),
                       ParseMul);
   }
 
   TfLiteStatus AddNeg() {
-    return AddBuiltin(BuiltinOperator_NEG, *tflite::ops::micro::Register_NEG(),
+    return AddBuiltin(BuiltinOperator_NEG, tflite::ops::micro::Register_NEG(),
                       ParseNeg);
   }
 
   TfLiteStatus AddNotEqual() {
     return AddBuiltin(BuiltinOperator_NOT_EQUAL,
-                      *tflite::ops::micro::Register_NOT_EQUAL(), ParseNotEqual);
+                      tflite::ops::micro::Register_NOT_EQUAL(), ParseNotEqual);
   }
 
   TfLiteStatus AddPack() {
-    return AddBuiltin(BuiltinOperator_PACK,
-                      *tflite::ops::micro::Register_PACK(), ParsePack);
+    return AddBuiltin(BuiltinOperator_PACK, tflite::ops::micro::Register_PACK(),
+                      ParsePack);
   }
 
   TfLiteStatus AddPad() {
-    return AddBuiltin(BuiltinOperator_PAD, *tflite::ops::micro::Register_PAD(),
+    return AddBuiltin(BuiltinOperator_PAD, tflite::ops::micro::Register_PAD(),
                       ParsePad);
   }
 
   TfLiteStatus AddPadV2() {
     return AddBuiltin(BuiltinOperator_PADV2,
-                      *tflite::ops::micro::Register_PADV2(), ParsePadV2);
+                      tflite::ops::micro::Register_PADV2(), ParsePadV2);
   }
 
   TfLiteStatus AddPrelu() {
     return AddBuiltin(BuiltinOperator_PRELU,
-                      *tflite::ops::micro::Register_PRELU(), ParsePrelu);
+                      tflite::ops::micro::Register_PRELU(), ParsePrelu);
   }
 
   TfLiteStatus AddQuantize() {
     return AddBuiltin(BuiltinOperator_QUANTIZE,
-                      *tflite::ops::micro::Register_QUANTIZE(), ParseQuantize);
+                      tflite::ops::micro::Register_QUANTIZE(), ParseQuantize);
   }
 
   TfLiteStatus AddRelu() {
-    return AddBuiltin(BuiltinOperator_RELU,
-                      *tflite::ops::micro::Register_RELU(), ParseRelu);
+    return AddBuiltin(BuiltinOperator_RELU, tflite::ops::micro::Register_RELU(),
+                      ParseRelu);
   }
 
   TfLiteStatus AddRelu6() {
     return AddBuiltin(BuiltinOperator_RELU6,
-                      *tflite::ops::micro::Register_RELU6(), ParseRelu6);
+                      tflite::ops::micro::Register_RELU6(), ParseRelu6);
   }
 
   TfLiteStatus AddReshape() {
     return AddBuiltin(BuiltinOperator_RESHAPE,
-                      *tflite::ops::micro::Register_RESHAPE(), ParseReshape);
+                      tflite::ops::micro::Register_RESHAPE(), ParseReshape);
   }
 
   TfLiteStatus AddResizeNearestNeighbor() {
     return AddBuiltin(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
-                      *tflite::ops::micro::Register_RESIZE_NEAREST_NEIGHBOR(),
+                      tflite::ops::micro::Register_RESIZE_NEAREST_NEIGHBOR(),
                       ParseResizeNearestNeighbor);
   }
 
   TfLiteStatus AddRound() {
     return AddBuiltin(BuiltinOperator_ROUND,
-                      *tflite::ops::micro::Register_ROUND(), ParseRound);
+                      tflite::ops::micro::Register_ROUND(), ParseRound);
   }
 
   TfLiteStatus AddRsqrt() {
     return AddBuiltin(BuiltinOperator_RSQRT,
-                      *tflite::ops::micro::Register_RSQRT(), ParseRsqrt);
+                      tflite::ops::micro::Register_RSQRT(), ParseRsqrt);
   }
 
   TfLiteStatus AddSin() {
-    return AddBuiltin(BuiltinOperator_SIN, *tflite::ops::micro::Register_SIN(),
+    return AddBuiltin(BuiltinOperator_SIN, tflite::ops::micro::Register_SIN(),
                       ParseSin);
   }
 
   TfLiteStatus AddSoftmax() {
     return AddBuiltin(BuiltinOperator_SOFTMAX,
-                      *tflite::ops::micro::Register_SOFTMAX(), ParseSoftmax);
+                      tflite::ops::micro::Register_SOFTMAX(), ParseSoftmax);
   }
 
   TfLiteStatus AddSplit() {
     return AddBuiltin(BuiltinOperator_SPLIT,
-                      *tflite::ops::micro::Register_SPLIT(), ParseSplit);
+                      tflite::ops::micro::Register_SPLIT(), ParseSplit);
   }
 
   TfLiteStatus AddSqrt() {
-    return AddBuiltin(BuiltinOperator_SQRT,
-                      *tflite::ops::micro::Register_SQRT(), ParseSqrt);
+    return AddBuiltin(BuiltinOperator_SQRT, tflite::ops::micro::Register_SQRT(),
+                      ParseSqrt);
   }
 
   TfLiteStatus AddSquare() {
     return AddBuiltin(BuiltinOperator_SQUARE,
-                      *tflite::ops::micro::Register_SQUARE(), ParseSquare);
+                      tflite::ops::micro::Register_SQUARE(), ParseSquare);
   }
 
   TfLiteStatus AddStridedSlice() {
     return AddBuiltin(BuiltinOperator_STRIDED_SLICE,
-                      *tflite::ops::micro::Register_STRIDED_SLICE(),
+                      tflite::ops::micro::Register_STRIDED_SLICE(),
                       ParseStridedSlice);
   }
 
   TfLiteStatus AddSub() {
-    return AddBuiltin(BuiltinOperator_SUB, *tflite::ops::micro::Register_SUB(),
+    return AddBuiltin(BuiltinOperator_SUB, tflite::ops::micro::Register_SUB(),
                       ParseSub);
   }
 
   TfLiteStatus AddSvdf() {
-    return AddBuiltin(BuiltinOperator_SVDF,
-                      *tflite::ops::micro::Register_SVDF(), ParseSvdf);
+    return AddBuiltin(BuiltinOperator_SVDF, tflite::ops::micro::Register_SVDF(),
+                      ParseSvdf);
   }
 
   TfLiteStatus AddTanh() {
-    return AddBuiltin(BuiltinOperator_TANH,
-                      *tflite::ops::micro::Register_TANH(), ParseTanh);
+    return AddBuiltin(BuiltinOperator_TANH, tflite::ops::micro::Register_TANH(),
+                      ParseTanh);
   }
 
   TfLiteStatus AddUnpack() {
     return AddBuiltin(BuiltinOperator_UNPACK,
-                      *tflite::ops::micro::Register_UNPACK(), ParseUnpack);
+                      tflite::ops::micro::Register_UNPACK(), ParseUnpack);
   }
 
   unsigned int GetRegistrationLength() { return registrations_len_; }

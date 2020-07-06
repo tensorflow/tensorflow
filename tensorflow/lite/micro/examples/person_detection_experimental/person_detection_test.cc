@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/person_detection_experimental/no_person_image_data.h"
 #include "tensorflow/lite/micro/examples/person_detection_experimental/person_detect_model_data.h"
 #include "tensorflow/lite/micro/examples/person_detection_experimental/person_image_data.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"

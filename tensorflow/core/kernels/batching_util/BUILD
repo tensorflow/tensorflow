@@ -49,6 +49,7 @@ cc_library(
     hdrs = ["batch_scheduler.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 

@@ -211,11 +211,11 @@ func @switch_with_control_inputs_functional(%arg0: tensor<i1>, %arg1: !tf_execut
 func @switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {
 
-// CHECK: tf_executor.SwitchN %{{.*}}, %{{.*}} of 5 : tensor<*xf32>
-     %1:6 = tf_executor.SwitchN %arg1, %arg0 of 5 : tensor<*xf32>
+// CHECK: tf_executor._SwitchN %{{.*}}, %{{.*}} of 5 : tensor<*xf32>
+     %1:6 = tf_executor._SwitchN %arg1, %arg0 of 5 : tensor<*xf32>
 
-// CHECK: tf_executor.SwitchN %{{.*}}, %{{.*}} of 12 (%{{.*}}) : tensor<*xf32>
-     %2:13 = tf_executor.SwitchN %arg1, %arg0 of 12 (%1#5) : tensor<*xf32>
+// CHECK: tf_executor._SwitchN %{{.*}}, %{{.*}} of 12 (%{{.*}}) : tensor<*xf32>
+     %2:13 = tf_executor._SwitchN %arg1, %arg0 of 12 (%1#5) : tensor<*xf32>
 
      tf_executor.fetch %2#0 : tensor<*xf32>
   }

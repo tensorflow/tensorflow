@@ -218,6 +218,10 @@ class MultiProcessRunner(object):
     # This flag will be set to True once terminate_all() is called.
     self._all_forced_terminated = False
 
+  def set_args(self, args=None, kwargs=None):
+    self._args = args or self._args
+    self._kwargs = kwargs or self._kwargs
+
   def _continuously_readline_from_sub(self, pipe_r, task_type, task_id):
     """Function to continuously read lines from subprocesses."""
     with os.fdopen(pipe_r.fileno(), 'r', closefd=False) as reader:
@@ -412,6 +416,23 @@ class MultiProcessRunner(object):
     p = self._processes.get((task_type, task_id), None)
     return p.pid if p else None
 
+  def get_process_exit_code(self, task_type, task_id):
+    """Returns the subprocess exit code given the task type and task id.
+
+    Args:
+      task_type: The task type.
+      task_id: The task id.
+
+    Returns:
+      The subprocess exit code; `None` if the subprocess has not exited yet.
+
+    Raises:
+      KeyError: If the corresponding subprocess is not found with `task_type`
+        and `task_id`.
+    """
+    p = self._processes[(task_type, task_id)]
+    return p.exitcode if p else None
+
   def _join_or_terminate(self, task_type, task_id, process, timeout):
     """Joins a process. If it times out, terminate all procsses."""
     logging.info('joining %s-%d', task_type, task_id)
@@ -546,6 +567,29 @@ class MultiProcessRunner(object):
         logging.info('Attempting to kill %s-%d but it does not exist.',
                      task_type, task_id)
     self._all_forced_terminated = True
+
+  def get_manager(self):
+    """Returns the multiprocessing manager object for concurrency tools.
+
+    The manager object is useful as it controls a server process that holds
+    the python objects that can be shared across processes. This can be used
+    for parent-subprocess communication:
+
+    ```python
+    mpr = multi_process_runner.MultiProcessRunner(...)
+    manager = mpr.get_manager()
+    some_event_happening_in_subprocess = manager.Event()
+    mpr.set_args(args=(some_event_happening_in_subprocess,))
+    mpr.start()
+    some_event_happening_in_subprocess.wait()
+    # Do something that only should after some event happens in subprocess.
+    ```
+
+    Note that the user of multi_process_runner should not create additional
+    `multiprocessing.Manager()` objects; doing so can result in segfault in
+    some cases.
+    """
+    return self._manager
 
 
 class _Process(multi_process_lib.Process):

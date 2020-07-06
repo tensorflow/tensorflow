@@ -52,7 +52,7 @@ class OutfeedReceiverForPython {
                std::shared_ptr<Literal> literal) {
           this->Callback(device, consumer_id, std::move(literal));
         };
-    std::vector<PjRtClient*> client_ptrs(clients.size());
+    std::vector<PjRtClient*> client_ptrs(clients_.size());
     absl::c_transform(clients_, client_ptrs.begin(),
                       [](const std::shared_ptr<PyClient>& client) {
                         return client->pjrt_client();

@@ -70,7 +70,15 @@ class SimpleDelegateKernelInterface {
 // - CreateDelegateKernelInterface
 class SimpleDelegateInterface {
  public:
-  SimpleDelegateInterface() {}
+  // Options for configuring a delegate.
+  struct Options {
+    // Maximum number of delegated subgraph, values <=0 means unlimited.
+    int max_delegated_partitions = 0;
+
+    // The minimum number of nodes allowed in a delegated graph, values <=0
+    // means unlimited.
+    int min_nodes_per_partition = 0;
+  };
 
   virtual ~SimpleDelegateInterface() {}
 
@@ -95,6 +103,9 @@ class SimpleDelegateInterface {
   // Caller takes ownership of the returned object.
   virtual std::unique_ptr<SimpleDelegateKernelInterface>
   CreateDelegateKernelInterface() = 0;
+
+  // Returns SimpleDelegateInterface::Options which has the delegate options.
+  virtual SimpleDelegateInterface::Options DelegateOptions() const = 0;
 };
 
 // Factory class that provides static methods to deal with SimpleDelegate
