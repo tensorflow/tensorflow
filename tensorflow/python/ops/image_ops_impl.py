@@ -882,17 +882,20 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   offset_height = tf.constant(1), 
   offset_width = tf.constant(1)
   target_height = tf.constant(4)
-  target-width = tf.constant(7)
+  target_width = tf.constant(7)
   #constant_values = 0
-  tf.pad(t, paddings, "CONSTANT")  # [[0, 0, 0, 0, 0, 0, 0],
+  tf.image.pad_to_bounding_box(t, offset_height=offset_height, offset_width=offset_width, target_height=target_height, target_width=target_width, mode="CONSTANT")  
+                                   # [[0, 0, 0, 0, 0, 0, 0],
                                    #  [0, 0, 1, 2, 3, 0, 0],
                                    #  [0, 0, 4, 5, 6, 0, 0],
                                    #  [0, 0, 0, 0, 0, 0, 0]]
-  tf.pad(t, paddings, "REFLECT")  # [[6, 5, 4, 5, 6, 5, 4],
+  tf.image.pad_to_bounding_box(t, offset_height=offset_height, offset_width=offset_width, target_height=target_height, target_width=target_width, mode="REFLECT")  
+                                  # [[6, 5, 4, 5, 6, 5, 4],
                                   #  [3, 2, 1, 2, 3, 2, 1],
                                   #  [6, 5, 4, 5, 6, 5, 4],
                                   #  [3, 2, 1, 2, 3, 2, 1]]
-  tf.pad(t, paddings, "SYMMETRIC")  # [[2, 1, 1, 2, 3, 3, 2],
+  tf.image.pad_to_bounding_box(t, offset_height=offset_height, offset_width=offset_width, target_height=target_height, target_width=target_width, mode="SYMETRIC")  
+                                    # [[2, 1, 1, 2, 3, 3, 2],
                                     #  [2, 1, 1, 2, 3, 3, 2],
                                     #  [5, 4, 4, 5, 6, 6, 5],
                                     #  [5, 4, 4, 5, 6, 6, 5]]
