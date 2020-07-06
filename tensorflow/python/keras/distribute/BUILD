@@ -297,6 +297,25 @@ distribute_py_test(
 )
 
 distribute_py_test(
+    name = "keras_metrics_test",
+    srcs = ["keras_metrics_test.py"],
+    main = "keras_metrics_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:metrics",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
     name = "keras_rnn_model_correctness_test",
     size = "medium",
     srcs = ["keras_rnn_model_correctness_test.py"],
