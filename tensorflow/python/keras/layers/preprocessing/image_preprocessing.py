@@ -1328,9 +1328,11 @@ class _RandomGenerator(stateful_random_ops.Generator):
 
 def make_generator(seed=None):
   if seed:
-    return _RandomGenerator.from_seed(seed)
+    rng = _RandomGenerator.from_seed(seed)
   else:
-    return _RandomGenerator.from_non_deterministic_state()
+    rng = _RandomGenerator.from_non_deterministic_state()
+  K.track_variable(rng._state_var)
+  return rng
 
 
 def get_interpolation(interpolation):
