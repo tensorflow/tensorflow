@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the operations used in the LXLA dialect.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_LHLO_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_IR_LHLO_OPS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_OPS_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -49,4 +49,4 @@ class XlaLhloDialect : public Dialect {
 }  // namespace xla_lhlo
 }  // end namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_IR_LHLO_OPS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_OPS_H_

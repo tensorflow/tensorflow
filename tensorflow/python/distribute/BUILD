@@ -1201,6 +1201,30 @@ distribute_py_test(
 )
 
 distribute_py_test(
+    name = "distribute_utils_test",
+    srcs = ["distribute_utils_test.py"],
+    main = "distribute_utils_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_rocm",
+    ],
+    deps = [
+        ":combinations",
+        ":distribute_utils",
+        ":strategy_combinations",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model/model_utils:mode_keys",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
     name = "ps_values_test",
     size = "medium",
     srcs = ["ps_values_test.py"],
@@ -1716,7 +1740,6 @@ cuda_py_test(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/estimator:run_config",
-        "//tensorflow/python/keras/layers:core",
         "@absl_py//absl/testing:parameterized",
     ],
 )

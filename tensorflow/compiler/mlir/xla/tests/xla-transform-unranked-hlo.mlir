@@ -24,6 +24,7 @@ func @sqr_transform_result(%a: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // -----
+
 // Check transformation of unranked code.
 // CHECK-LABEL: @sqrt
 // CHECK-SAME: (%[[A:.*]]: tensor<*xf32>)
@@ -42,6 +43,7 @@ func @sqrt(%a: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // -----
+
 // Not transformed when ranked.
 // CHECK-LABEL: @sqrt_ranked
 // CHECK-SAME: (%[[A:.*]]: tensor<3x?xf32>)
@@ -53,6 +55,7 @@ func @sqrt_ranked(%a: tensor<3x?xf32>) -> tensor<3x?xf32> {
 }
 
 // -----
+
 // Not transformed when statically shaped.
 // CHECK-LABEL: @sqrt_static
 // CHECK-SAME: (%[[A:.*]]: tensor<2x3xf32>)
@@ -61,4 +64,25 @@ func @sqrt_static(%a: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK-NEXT: return %[[B]] : tensor<2x3xf32>
   %b = "xla_hlo.sqrt"(%a) : (tensor<2x3xf32>) -> tensor<2x3xf32>
   return %b : tensor<2x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @add_unranked
+// CHECK-SAME:  (%[[A:.*]]: tensor<*xf32>, %[[B:.*]]: tensor<*xf32>) -> tensor<*xf32>
+func @add_unranked(%a : tensor<*xf32>, %b : tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[SHAPE_A:.*]] = shape.shape_of %[[A]]
+  // CHECK: %[[SHAPE_B:.*]] = shape.shape_of %[[B]]
+  // CHECK: %[[SHAPE:.*]] = shape.any %[[SHAPE_A]], %[[SHAPE_B]]
+  // CHECK: %[[NUM_ELEMENTS:.*]] = shape.num_elements %[[SHAPE]]
+  // CHECK: %[[NUM_ELEMENTS_AS_INDEX:.*]] = shape.size_to_index %[[NUM_ELEMENTS]]
+  // CHECK: %[[FLAT_SHAPE:.*]] = tensor_from_elements(%[[NUM_ELEMENTS_AS_INDEX]]) : tensor<1xindex>
+  // CHECK: %[[FLAT_A:.*]] = "xla_hlo.dynamic_reshape"(%[[A]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: %[[FLAT_B:.*]] = "xla_hlo.dynamic_reshape"(%[[B]], %[[FLAT_SHAPE]]) : (tensor<*xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: %[[FLAT_RESULT:.*]] = xla_hlo.add %[[FLAT_A]], %[[FLAT_B]] : tensor<?xf32>
+  // CHECK: %[[SHAPE_AS_EXTENT_TENSOR:.*]] = shape.to_extent_tensor %[[SHAPE]] : tensor<?xindex>
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.dynamic_reshape"(%[[FLAT_RESULT]], %[[SHAPE_AS_EXTENT_TENSOR]]) : (tensor<?xf32>, tensor<?xindex>) -> tensor<*xf32>
+  // CHECK: return %[[RESULT]] : tensor<*xf32>
+  %result = xla_hlo.add %a, %b : tensor<*xf32>
+  return %result : tensor<*xf32>
 }

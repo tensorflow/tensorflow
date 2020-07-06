@@ -42,10 +42,36 @@ namespace mlir {
 
 namespace quant {
 
-const float kNearZeroTolerance = 1.0e-6;
+constexpr double kNearZeroTolerance = 1.0e-6;
+constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
+
+// This method expands the range to be larger than or equal to 1.0e-6, if it is
+// very small (< 1.0e-6). This is to prevent very large quantized value by this
+// range.
+static void ExpandVerySmallRange(ArrayRef<double> mins, ArrayRef<double> maxs,
+                                 SmallVectorImpl<double>* effective_mins,
+                                 SmallVectorImpl<double>* effective_maxs) {
+  for (auto arg : llvm::zip(mins, maxs)) {
+    double min = std::get<0>(arg);
+    double max = std::get<1>(arg);
+    // The range is wide, then use the same min/max.
+    if ((max - min) > kNearZeroTolerance) {
+      effective_mins->push_back(min);
+      effective_maxs->push_back(max);
+      continue;
+    }
+
+    // The range is small. Expands the range to stride 0.0 and also at least
+    // 1.0e-6.
+    effective_mins->push_back(std::min(min, -kSmallestHalfRange));
+    effective_maxs->push_back(std::max(max, kSmallestHalfRange));
+  }
+}
 
 // Returns the quantized type for the
 // input_type/min/max/storag_type_width/narrow_range.
+// This is entry point to the Quant dialect and used for both quantizing
+// activations and weights.
 static Type GetQuantizedType(Builder builder, Type input_type,
                              ArrayRef<double> min, ArrayRef<double> max,
                              int quant_dim, int storage_type_width,
@@ -53,11 +79,17 @@ static Type GetQuantizedType(Builder builder, Type input_type,
   auto converter =
       quant::ExpressedToQuantizedConverter::forInputType(input_type);
 
+  // Expand the range to prevent extremely small scales and large quantized
+  // integers which can cause overflow. This leads to scale
+  // 7.843137254901961e-9 with 8 bits.
+  SmallVector<double, 4> effective_mins, effective_maxs;
+  ExpandVerySmallRange(min, max, &effective_mins, &effective_maxs);
+
   quant::QuantizedType quantizedEleType;
   if (min.size() == 1 && max.size() == 1 && quant_dim == -1) {
     quantizedEleType = quant::fakeQuantAttrsToType(
-        builder.getUnknownLoc(), storage_type_width, min[0], max[0],
-        narrow_range, converter.expressedType, is_signed);
+        builder.getUnknownLoc(), storage_type_width, effective_mins[0],
+        effective_maxs[0], narrow_range, converter.expressedType, is_signed);
   } else if (min.size() == max.size()) {
     auto shape = input_type.dyn_cast<ShapedType>();
     if (!shape || shape.getRank() <= quant_dim ||
@@ -66,8 +98,8 @@ static Type GetQuantizedType(Builder builder, Type input_type,
     }
     // TODO(b/141508873): the quantization dim is set to the last dimension.
     quantizedEleType = quant::fakeQuantAttrsToType(
-        builder.getUnknownLoc(), storage_type_width, quant_dim, min, max,
-        narrow_range, converter.expressedType, is_signed);
+        builder.getUnknownLoc(), storage_type_width, quant_dim, effective_mins,
+        effective_maxs, narrow_range, converter.expressedType, is_signed);
   }
   if (!quantizedEleType) return {};
   return converter.convert(quantizedEleType);
@@ -221,6 +253,50 @@ TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
   return TypeAttr::get(final_type);
 }
 
+static void ExtractMinMaxFromAttr(DenseFPElementsAttr values, int dim_size,
+                                  int slice_size, bool symmetric,
+                                  SmallVector<double, 4>& mins,
+                                  SmallVector<double, 4>& maxs) {
+  // If all the element values are same we don't need to scan the content.
+  if (values.isSplat()) {
+    double single_value =
+        FloatAttr::getValueAsDouble(values.getSplatValue<llvm::APFloat>());
+
+    // When the single value isn't 0.0, we expand it to a range to include
+    // this single value and 0.0. This will give us a scale and zero point
+    // works for both this value and 0.0.
+    if (single_value < 0.0) {
+      mins[0] = single_value;
+      maxs[0] = symmetric ? -single_value : 0.0;
+    } else if (single_value > 0.0) {
+      mins[0] = symmetric ? -single_value : 0.0;
+      maxs[0] = single_value;
+    } else {
+      mins[0] = maxs[0] = single_value;
+    }
+    for (int i = 1; i < dim_size; ++i) {
+      mins[i] = mins[0];
+      maxs[i] = maxs[0];
+    }
+  } else {
+    int64_t flatten_index = 0;
+    for (auto it = values.begin(), e = values.end(); it != e;
+         ++it, ++flatten_index) {
+      double ele_value = FloatAttr::getValueAsDouble(*it);
+      int slice_index = flatten_index / slice_size;
+      int channel_index = slice_index % dim_size;
+      mins[channel_index] = std::min(mins[channel_index], ele_value);
+      maxs[channel_index] = std::max(maxs[channel_index], ele_value);
+    }
+    if (symmetric) {
+      for (int i = 0; i < dim_size; ++i) {
+        maxs[i] = std::max(std::abs(mins[i]), std::abs(maxs[i]));
+        mins[i] = -maxs[i];
+      }
+    }
+  }
+}
+
 Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
                                       unsigned num_bits, bool is_signed,
                                       bool narrow_range) {
@@ -228,43 +304,18 @@ Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
   // `symmetric` can only be used when it is `signed` and `narrow_range`.
   if (symmetric && (!is_signed || !narrow_range)) return {};
 
-  double min = std::numeric_limits<double>::max();
-  double max = std::numeric_limits<double>::min();
+  SmallVector<double, 4> mins(1, std::numeric_limits<double>::max());
+  SmallVector<double, 4> maxs(1, std::numeric_limits<double>::min());
   auto fp = attr.dyn_cast<DenseFPElementsAttr>();
   if (!fp) return {};
 
-  // If all the element values are same we don't need to scan the content.
-  if (fp.isSplat()) {
-    double single_value =
-        FloatAttr::getValueAsDouble(fp.getSplatValue<llvm::APFloat>());
-    // When the single value isn't 0.0, we expand it to a range to include
-    // this single value and 0.0. This will give us a scale and zero point
-    // works for both this value and 0.0.
-    if (single_value < 0.0) {
-      min = single_value;
-      max = symmetric ? -single_value : 0.0;
-    } else if (single_value > 0.0) {
-      min = symmetric ? -single_value : 0.0;
-      max = single_value;
-    } else {
-      min = max = single_value;
-    }
-  } else {
-    for (auto it = fp.begin(), e = fp.end(); it != e; ++it) {
-      double ele_value = FloatAttr::getValueAsDouble(*it);
-      min = std::min(min, ele_value);
-      max = std::max(max, ele_value);
-      if (symmetric) {
-        max = std::max(std::abs(min), std::abs(max));
-        // In case the scale is extremely small, a fixed scale is used.
-        if (max < kNearZeroTolerance) max = 1.0;
-        min = -max;
-      }
-    }
-  }
+  // Computes the effective min/max values of the attribute values.
+  ExtractMinMaxFromAttr(fp, /*dim_size=*/1, /*slice_size=*/1, symmetric, mins,
+                        maxs);
+
   auto type =
-      GetQuantizedType(builder, attr.getType(), min, max, /*quant_dim=*/-1,
-                       num_bits, narrow_range, is_signed);
+      GetQuantizedType(builder, attr.getType(), mins[0], maxs[0],
+                       /*quant_dim=*/-1, num_bits, narrow_range, is_signed);
   if (auto ele_type = type.dyn_cast_or_null<TensorType>())
     return ele_type.getElementType();
 
@@ -284,53 +335,15 @@ Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
   int dim_size = shape[quant_dim];
   int slice_size = std::accumulate(std::next(shape.begin(), quant_dim + 1),
                                    shape.end(), 1, std::multiplies<int64_t>());
-  SmallVector<double, 4> min(dim_size, std::numeric_limits<double>::max());
-  SmallVector<double, 4> max(dim_size, std::numeric_limits<double>::min());
+  SmallVector<double, 4> mins(dim_size, std::numeric_limits<double>::max());
+  SmallVector<double, 4> maxs(dim_size, std::numeric_limits<double>::min());
   auto fp = attr.dyn_cast<DenseFPElementsAttr>();
   if (!fp) return {};
 
-  // If all the element values are same we don't need to scan the content.
-  if (fp.isSplat()) {
-    double single_value =
-        FloatAttr::getValueAsDouble(fp.getSplatValue<llvm::APFloat>());
-    // When the single value isn't 0.0, we expand it to a range to include
-    // this single value and 0.0. This will give us a scale and zero point
-    // works for both this value and 0.0.
-    if (single_value < 0.0) {
-      min[0] = single_value;
-      max[0] = symmetric ? -single_value : 0.0;
-    } else if (single_value > 0.0) {
-      min[0] = symmetric ? -single_value : 0.0;
-      max[0] = single_value;
-    } else {
-      // If the tensor contents are all 0.0f, a fixed range is used to avoid
-      // INF error.
-      min[0] = -1.0;
-      max[0] = 1.0;
-    }
-    for (int i = 1; i < dim_size; ++i) {
-      min[i] = min[0];
-      max[i] = max[0];
-    }
-  } else {
-    int64_t flatten_index = 0;
-    for (auto it = fp.begin(), e = fp.end(); it != e; ++it, ++flatten_index) {
-      double ele_value = FloatAttr::getValueAsDouble(*it);
-      int slice_index = flatten_index / slice_size;
-      int channel_index = slice_index % dim_size;
-      min[channel_index] = std::min(min[channel_index], ele_value);
-      max[channel_index] = std::max(max[channel_index], ele_value);
-    }
-    if (symmetric) {
-      for (int i = 0; i < dim_size; ++i) {
-        max[i] = std::max(std::abs(min[i]), std::abs(max[i]));
-        // In case the scale is extremely small, a fixed scale is used.
-        if (max[i] < kNearZeroTolerance) max[i] = 1.0;
-        min[i] = -max[i];
-      }
-    }
-  }
-  auto type = GetQuantizedType(builder, attr.getType(), min, max, quant_dim,
+  // Computes the effective min/max values of the attribute values.
+  ExtractMinMaxFromAttr(fp, dim_size, slice_size, symmetric, mins, maxs);
+
+  auto type = GetQuantizedType(builder, attr.getType(), mins, maxs, quant_dim,
                                num_bits, narrow_range, is_signed);
   if (auto ele_type = type.dyn_cast_or_null<TensorType>())
     return ele_type.getElementType();

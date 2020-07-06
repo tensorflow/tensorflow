@@ -111,3 +111,53 @@ func @Int64SliceBeginSize(%arg0: tensor<4x128x32xf32>) -> tensor<1x128x32xf32> {
 // CHECK:  [[VAL_2:%.*]] = constant dense<[1, 128, 32]> : tensor<3xi32>
 // CHECK:  [[VAL_3:%.*]] = "tfl.slice"(%arg0, [[VAL_1]], [[VAL_2]]) : (tensor<4x128x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x128x32xf32>
 }
+
+// -----
+
+// CHECK-LABEL: @WhileCanonicalizeBug
+// Make sure that second output of the tf.while is not incorrectly inferred as
+// pass through just because the corresponding input is not used in either
+// condition or body. The tensor<f32> result of the loop can be either %arg1
+// (if the body never executes, or 22.0 if the body executes atleast once).
+func @WhileCanonicalizeBug(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %0:2 = "tfl.while"(%arg0, %arg1) ( {
+  ^bb0(%arg2: tensor<i32>, %arg3: tensor<f32>):
+    %limit = constant dense<100> : tensor<i32>
+    %test = "tfl.less"(%arg0, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "tfl.yield"(%test) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg2: tensor<i32>, %arg3: tensor<f32>):
+    %cst = constant dense<22.0> : tensor<f32>
+    %stride = constant dense<1> : tensor<i32>
+    %inc = tfl.add %arg2, %stride {fused_activation_function = "NONE"} : tensor<i32>
+    "tfl.yield"(%inc, %cst) : (tensor<i32>, tensor<f32>) -> ()
+  }) : (tensor<i32>, tensor<f32>) -> (tensor<i32>, tensor<f32>)
+  // CHECK: return %0#1 : tensor<f32>
+  return %0#1 : tensor<f32>
+}
+
+// -----
+
+// Test case to test bug due to checking
+// `while_op.getResult(arg_index).use_empty()` instead of
+// `while_op.getResult(while_index).use_empty()` in the tfl.while
+// canonicalization.
+// arg0 is a pass through. After first iteration, arg_index = 0
+// and while_index = 1. Make arg1 use empty in block and condition, but not in
+// result. Canonicalize will think it can remove both slot#0 and slot#1 and do
+// so without replacing all operands, and in assert builds it will fail an
+// assert failure ( op->use_empty() && "expected 'op' to have no uses")
+// CHECK-LABEL: WhileCanonicalizeBug1
+func @WhileCanonicalizeBug1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %0:2 = "tfl.while"(%arg0, %arg1) ( {
+  ^bb0(%carg0: tensor<f32>, %carg1: tensor<f32>):
+    %limit = constant dense<100> : tensor<i32>
+    %test = "tfl.less"(%limit, %limit) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "tfl.yield"(%test) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%barg0: tensor<f32>, %barg1: tensor<f32>):
+    %cst = constant dense<22.0> : tensor<f32>
+    "tfl.yield"(%barg0, %cst) : (tensor<f32>, tensor<f32>) -> ()
+  }) : (tensor<f32>, tensor<f32>) -> (tensor<f32>, tensor<f32>)
+  return %0#1 : tensor<f32>
+}

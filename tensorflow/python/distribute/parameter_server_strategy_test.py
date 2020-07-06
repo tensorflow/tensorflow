@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import functools
 import threading
 
 from absl.testing import parameterized
@@ -43,13 +44,14 @@ from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
@@ -450,10 +452,14 @@ class ParameterServerStrategyTestBase(
          self.cached_session(target=master_target,
                              config=sess_config) as sess, \
          d.scope():
-      l = core.Dense(1, use_bias=False)
+      initializer = functools.partial(
+          init_ops_v2.GlorotUniform(), (1, 1), dtype=dtypes.float32)
+      kernel = variables.Variable(
+          initial_value=initializer, name='kernel', trainable=True)
 
       def loss_fn(x):
-        y = array_ops.reshape(l(x), []) - constant_op.constant(1.)
+        y = array_ops.reshape(
+            math_ops.matmul(x, kernel), []) - constant_op.constant(1.)
         return y * y
 
       # TODO(yuefengz, apassos): eager.backprop.implicit_grad is not safe for

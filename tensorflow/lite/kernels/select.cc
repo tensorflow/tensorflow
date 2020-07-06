@@ -38,13 +38,15 @@ enum KernelType {
 
 struct OpData {
   bool requires_broadcast;
-  bool has_rank_one_input_condition;
+  // True if input condition is scalar or input condition has rank one and
+  // matches the first dimension of other inputs.
+  bool has_low_rank_input_condition;
 };
 
 void* SelectInit(TfLiteContext* context, const char* buffer, size_t length) {
   auto* data = new OpData;
   data->requires_broadcast = false;
-  data->has_rank_one_input_condition = false;
+  data->has_low_rank_input_condition = false;
   return data;
 }
 
@@ -76,10 +78,13 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
   if (!same_shape) {
     switch (kernel_type) {
       case kVersionOne: {
-        data->has_rank_one_input_condition =
+        bool is_input_condition_scalar = NumDimensions(input_condition) == 0;
+        bool has_rank_one_input_condition =
             NumDimensions(input_condition) == 1 &&
             SizeOfDimension(input_condition, 0) == SizeOfDimension(input_x, 0);
-        TF_LITE_ENSURE(context, data->has_rank_one_input_condition);
+        data->has_low_rank_input_condition =
+            is_input_condition_scalar || has_rank_one_input_condition;
+        TF_LITE_ENSURE(context, data->has_low_rank_input_condition);
 
         output_size = TfLiteIntArrayCopy(input_x->dims);
 
@@ -151,7 +156,7 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;                                                     \
   }
 
-  if (data->has_rank_one_input_condition) {
+  if (data->has_low_rank_input_condition) {
     TF_LITE_SWITCH(input_x->type, RankOneSelect);
   } else if (data->requires_broadcast) {
     TF_LITE_SWITCH(input_x->type, BroadcastSelect4DSlow);
@@ -170,7 +175,8 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
 // true or the value of 'y' if false. There are valid condition input sizes:
 //
 // 1. Either the same shape (in which case the select is elementwise), or
-// 2. condition must be Rank 1 and match over the first dimension.
+// 2. condition must be Rank 1 and match over the first dimension, or
+// 3. condition is scalar
 TfLiteRegistration* Register_SELECT() {
   static TfLiteRegistration r = {select::SelectInit, select::SelectFree,
                                  select::SelectPrepare<select::kVersionOne>,

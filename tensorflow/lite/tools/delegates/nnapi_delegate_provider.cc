@@ -62,7 +62,7 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(ToolParams* params) const {
     CreateFlag<std::string>("nnapi_execution_priority", params,
                             "The model execution priority in nnapi, and it "
                             "should be one of the following: default, low, "
-                            "medium, high."),
+                            "medium and high. This requires Android 11+."),
     CreateFlag<std::string>(
         "nnapi_accelerator_name", params,
         "the name of the nnapi accelerator to use (requires Android Q+)"),
