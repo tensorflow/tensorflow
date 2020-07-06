@@ -3002,6 +3002,13 @@ filegroup(
         "lib/gif/testdata/optimized.gif",
         # BMP data
         "lib/bmp/testdata/lena.bmp",
+        "lib/bmp/testdata/rgb_small.bmp",
+        "lib/bmp/testdata/rgb_small_255.bmp",
+        "lib/bmp/testdata/rgba_small.bmp",
+        "lib/bmp/testdata/rgba_small_255.bmp",
+        "lib/bmp/testdata/grayscale_small.bmp",
+        "lib/bmp/testdata/grayscale_small_3channels.bmp",
+        "lib/bmp/testdata/grayscale_small_4channels.bmp",
         # SSIM, PSNR data
         "lib/ssim/testdata/checkerboard1.png",
         "lib/ssim/testdata/checkerboard2.png",
