@@ -91,13 +91,13 @@ BFCAllocator::~BFCAllocator() {
 
 BFCAllocator::Chunk* BFCAllocator::ChunkFromHandle(ChunkHandle h) {
   DCHECK_GE(h, 0);
-  DCHECK_LT(h, static_cast<int>(chunks_.size()));
+  DCHECK_LT(h, chunks_.size());
   return &(chunks_[h]);
 }
 
 const BFCAllocator::Chunk* BFCAllocator::ChunkFromHandle(ChunkHandle h) const {
   DCHECK_GE(h, 0);
-  DCHECK_LT(h, static_cast<int>(chunks_.size()));
+  DCHECK_LT(h, chunks_.size());
   return &(chunks_[h]);
 }
 
@@ -178,8 +178,7 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 }
 
 BFCAllocator::ChunkHandle BFCAllocator::AllocateChunk() {
-  const int free_chunks_list_int = free_chunks_list_;
-  if (free_chunks_list_int != kInvalidChunkHandle) {
+  if (free_chunks_list_ != kInvalidChunkHandle) {
     ChunkHandle h = free_chunks_list_;
     Chunk* c = ChunkFromHandle(h);
     free_chunks_list_ = c->next;
@@ -283,7 +282,7 @@ bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes)
   for (const AllocationRegion& region : region_manager_.regions()) {
     ChunkHandle h = region_manager_.get_handle(region.ptr());
     bool any_use = false;
-    while (static_cast<int>(h) != kInvalidChunkHandle) {
+    while (h != kInvalidChunkHandle) {
       const Chunk* c = ChunkFromHandle(h);
       if (c->in_use()) {
         any_use = true;
@@ -604,7 +603,7 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
   new_chunk->prev = h;
   new_chunk->next = h_neighbor;
   c->next = h_new_chunk;
-  if (static_cast<int>(h_neighbor) != kInvalidChunkHandle) {
+  if (h_neighbor != kInvalidChunkHandle) {
     Chunk* c_neighbor = ChunkFromHandle(h_neighbor);
     c_neighbor->prev = h_new_chunk;
   }
@@ -629,7 +628,7 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
 
   // Find the chunk from the ptr.
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
-  CHECK(static_cast<int>(h) != kInvalidChunkHandle);
+  CHECK(h != kInvalidChunkHandle);
   // Record chunk information before it's freed.
   Chunk* chunk = ChunkFromHandle(h);
   void* chunk_ptr = chunk->ptr;
@@ -675,7 +674,7 @@ void BFCAllocator::Merge(BFCAllocator::ChunkHandle h1,
   BFCAllocator::ChunkHandle h3 = c2->next;
   c1->next = h3;
   CHECK(c2->prev == h1);
-  if (static_cast<int>(h3) != kInvalidChunkHandle) {
+  if (h3 != kInvalidChunkHandle) {
     BFCAllocator::Chunk* c3 = ChunkFromHandle(h3);
     c3->prev = h1;
   }
@@ -755,7 +754,7 @@ BFCAllocator::ChunkHandle BFCAllocator::TryToCoalesce(ChunkHandle h,
   ChunkHandle coalesced_chunk = h;
 
   // If the next chunk is free, merge it into c and delete it.
-  if (static_cast<int>(c->next) != kInvalidChunkHandle && !ChunkFromHandle(c->next)->in_use()) {
+  if (c->next != kInvalidChunkHandle && !ChunkFromHandle(c->next)->in_use()) {
     Chunk* n = ChunkFromHandle(c->next);
     if ((n->freed_at_count == 0) || ignore_freed_at) {
       VLOG(4) << "Merging c->next " << n->ptr << " with c " << c->ptr;
@@ -765,7 +764,7 @@ BFCAllocator::ChunkHandle BFCAllocator::TryToCoalesce(ChunkHandle h,
   }
 
   // If the previous chunk is free, merge c into it and delete c.
-  if (static_cast<int>(c->prev) != kInvalidChunkHandle && !ChunkFromHandle(c->prev)->in_use()) {
+  if (c->prev != kInvalidChunkHandle && !ChunkFromHandle(c->prev)->in_use()) {
     Chunk* n = ChunkFromHandle(c->prev);
     if ((n->freed_at_count == 0) || ignore_freed_at) {
       VLOG(4) << "Merging c " << c->ptr << " into c->prev " << n->ptr;
@@ -804,7 +803,7 @@ bool BFCAllocator::MergeTimestampedChunks(size_t required_bytes) {
     // It's possible this chunk has already been merged so refetch and retest
     // the handle.
     h = region_manager_.get_handle(c->ptr);
-    if (static_cast<int>(h) == kInvalidChunkHandle) {
+    if (h == kInvalidChunkHandle) {
       continue;
     }
     if (c->in_use() || (c->bin_num == kInvalidBinNum)) {
@@ -839,7 +838,7 @@ bool BFCAllocator::MergeTimestampedChunks(size_t required_bytes) {
     // merged and deallocated in a prior iteration so refetch the handle and
     // retest.
     ChunkHandle h = region_manager_.get_handle(ptr);
-    if (static_cast<int>(h) == kInvalidChunkHandle) continue;
+    if (h == kInvalidChunkHandle) continue;
     if (required_bytes == 0 || !satisfied) {
       Chunk* c = ChunkFromHandle(h);
       DCHECK_NE(c->bin_num, kInvalidBinNum);
@@ -871,7 +870,7 @@ size_t BFCAllocator::RequestedSize(const void* ptr) const {
   CHECK(ptr);
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
-  CHECK(static_cast<int>(h) != kInvalidChunkHandle)
+  CHECK(h != kInvalidChunkHandle)
       << "Asked for requested size of pointer we never allocated: " << ptr;
   const BFCAllocator::Chunk* c = ChunkFromHandle(h);
   return c->requested_size;
@@ -880,7 +879,7 @@ size_t BFCAllocator::RequestedSize(const void* ptr) const {
 size_t BFCAllocator::AllocatedSize(const void* ptr) const {
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
-  CHECK(static_cast<int>(h) != kInvalidChunkHandle)
+  CHECK(h != kInvalidChunkHandle)
       << "Asked for allocated size of pointer we never allocated: " << ptr;
   const BFCAllocator::Chunk* c = ChunkFromHandle(h);
   return c->size;
@@ -889,7 +888,7 @@ size_t BFCAllocator::AllocatedSize(const void* ptr) const {
 int64 BFCAllocator::AllocationId(const void* ptr) const {
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
-  CHECK(static_cast<int>(h) != kInvalidChunkHandle)
+  CHECK(h != kInvalidChunkHandle)
       << "Asked for allocation id of pointer we never allocated: " << ptr;
   const BFCAllocator::Chunk* c = ChunkFromHandle(h);
   return c->allocation_id;
@@ -944,7 +943,7 @@ string BFCAllocator::RenderOccupancy() {
   for (const auto& region : region_manager_.regions()) {
     ChunkHandle h = region_manager_.get_handle(region.ptr());
     // Then render each chunk left to right.
-    while (static_cast<int>(h) != kInvalidChunkHandle) {
+    while (h != kInvalidChunkHandle) {
       Chunk* c = ChunkFromHandle(h);
       if (c->in_use()) {
         // Render the wasted space
@@ -1006,7 +1005,7 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
   for (const auto& region : region_manager_.regions()) {
     LOG(INFO) << "Next region of size " << region.memory_size();
     ChunkHandle h = region_manager_.get_handle(region.ptr());
-    while (static_cast<int>(h) != kInvalidChunkHandle) {
+    while (h != kInvalidChunkHandle) {
       const Chunk* c = ChunkFromHandle(h);
       if (c->in_use()) {
         in_use_by_size[c->size]++;
@@ -1101,7 +1100,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
   // Record state of every defined Chunk.
   for (const auto& region : region_manager_.regions()) {
     ChunkHandle h = region_manager_.get_handle(region.ptr());
-    while (static_cast<int>(h) != kInvalidChunkHandle) {
+    while (h != kInvalidChunkHandle) {
       const Chunk* c = ChunkFromHandle(h);
       MemChunk* mc = md.add_chunk();
       mc->set_in_use(c->in_use());
@@ -1155,7 +1154,7 @@ BFCAllocator::get_bin_debug_info() {
   std::array<BinDebugInfo, kNumBins> bin_infos;
   for (const auto& region : region_manager_.regions()) {
     ChunkHandle h = region_manager_.get_handle(region.ptr());
-    while (static_cast<int>(h) != kInvalidChunkHandle) {
+    while (h != kInvalidChunkHandle) {
       const Chunk* c = ChunkFromHandle(h);
       BinNum bin_num = BinNumForSize(c->size);
       BinDebugInfo& bin_info = bin_infos[bin_num];
