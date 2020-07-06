@@ -142,7 +142,8 @@ mlir::OwningModuleRef SavedModelObjectGraphToMlirImport(
 mlir::OwningModuleRef SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
-    absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context,
+    bool upgrade_legacy) {
   tensorflow::SavedModelBundle bundle;
   tensorflow::SessionOptions session_options;
   // Force saved model states to be restored to CPU.
@@ -156,7 +157,8 @@ mlir::OwningModuleRef SavedModelSignatureDefsToMlirImport(
     return nullptr;
   }
 
-  auto module_or = ConvertSavedModelV1ToMlir(bundle, exported_names, context);
+  auto module_or = ConvertSavedModelV1ToMlir(bundle, exported_names, context,
+                                             upgrade_legacy);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
     return nullptr;

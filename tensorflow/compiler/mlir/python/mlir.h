@@ -57,7 +57,8 @@ std::string ExperimentalConvertSavedModelToMlir(
 //   A string of textual MLIR representing the raw imported SavedModel.
 std::string ExperimentalConvertSavedModelV1ToMlir(
     const std::string &saved_model_path, const std::string &tags,
-    bool lift_variables, bool show_debug_info, TF_Status *status);
+    bool lift_variables, bool upgrade_legacy, bool show_debug_info,
+    TF_Status *status);
 
 std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
                                         const std::string &pass_pipeline,
