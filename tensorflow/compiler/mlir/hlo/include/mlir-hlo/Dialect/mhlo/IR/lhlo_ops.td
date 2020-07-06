@@ -415,6 +415,82 @@ def HLO_DynamicMemRefCastOp: Op<LHLO_Dialect, "dynamic_memref_cast",
 }
 
 //===----------------------------------------------------------------------===//
+// ReshapeMemRefCastOp
+//===----------------------------------------------------------------------===//
+
+def ReshapeMemRefCastOp: Op<LHLO_Dialect, "reshape_memref_cast", [
+    DeclareOpInterfaceMethods<ViewLikeOpInterface>,
+    NoSideEffect]>  {
+  let summary = "reshape memref cast operation";
+  let description = [{
+    The `reshape_memref_cast` operation converts a memref from one type to an
+    equivalent type with a provided shape. The data is never copied or moved.
+    The source and destination types are compatible if both have the same
+    element type, address space and identity layout map. The following
+    combinations are possible:
+
+    a. Both are ranked memref types.
+
+    ```mlir
+    // Reshape statically-shaped memref.
+    %dst = reshape_memref_cast %src(%shape)
+             : (memref<4x1xf32>, memref<1xi32>) to memref<4xf32>
+    %dst0 = reshape_memref_cast %src(%shape0)
+             : (memref<4x1xf32>, memref<2xi32>) to memref<2x2xf32>
+    ```
+
+    b. Source type is ranked, destination type is unranked.
+
+    ```mlir
+    // Reshape dynamically-shaped 1D memref.
+    %dst = reshape_memref_cast %src(%shape)
+             : (memref<?xf32>, memref<?xi32>) to memref<*xf32>
+    ```
+
+    c. Source type is unranked, destination type is ranked.
+
+    ```mlir
+    // Flatten unranked memref.
+    %dst = reshape_memref_cast %src(%shape)
+             : (memref<*xf32>, memref<1xi32>) to memref<?xf32>
+    ```
+
+    d. Both are unranked memref types.
+
+    ```mlir
+    // Reshape unranked memref.
+    %dst = reshape_memref_cast %src(%shape)
+             : (memref<*xf32>, memref<?xi32>) to memref<*xf32>
+    ```
+  }];
+
+  let arguments = (ins
+    AnyRankedOrUnrankedMemRef:$operand,
+    MemRefRankOf<[AnySignlessInteger], [1]>:$shape
+  );
+  let results = (outs AnyRankedOrUnrankedMemRef:$result);
+
+  let builders = [OpBuilder<
+    "OpBuilder &builder, OperationState &result, MemRefType resultType, " #
+    "Value operand, Value shape", [{
+       result.addOperands(operand);
+       result.addOperands(shape);
+       result.types.push_back(resultType);
+     }]>];
+
+  let extraClassDeclaration = [{
+    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
+  }];
+
+  let verifier = [{ return Verify(*this); }];
+  let assemblyFormat = [{
+    $operand `(` $shape `)` attr-dict `:` `(` type($operand) `,` type($shape)
+    `)` `->` type($result)
+  }];
+}
+
+
+//===----------------------------------------------------------------------===//
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 

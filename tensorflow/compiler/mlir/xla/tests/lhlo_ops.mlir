@@ -475,6 +475,71 @@ func @dynamic_memref_cast_incompatible_result_type(%in: memref<?xf32>) {
            : memref<?xf32> -> memref<?x?xf32, offset: 0, strides: [?, ?]>
   return
 }
+// -----
+
+// CHECK-LABEL: func @reshape_memref_cast(
+func @reshape_memref_cast(%unranked: memref<*xf32>, %shape1: memref<1xi32>,
+         %shape2: memref<2xi32>, %shape3: memref<?xi32>) {
+  // CHECK-SAME: [[UNRANKED:%.*]]: memref<*xf32>, [[SHAPE_1:%.*]]: memref<1xi32>,
+  // CHECK-SAME: [[SHAPE_2:%.*]]: memref<2xi32>, [[SHAPE_3:%.*]]: memref<?xi32>
+
+  // CHECK-NEXT: [[DYN_VEC:%.*]] = xla_lhlo.reshape_memref_cast [[UNRANKED]]
+  // CHECK-SAME:     : (memref<*xf32>, memref<1xi32>) -> memref<?xf32>
+  %dyn_vec = xla_lhlo.reshape_memref_cast %unranked(%shape1)
+               : (memref<*xf32>, memref<1xi32>) -> memref<?xf32>
+
+  // CHECK-NEXT: [[DYN_MAT:%.*]] = xla_lhlo.reshape_memref_cast [[DYN_VEC]]
+  // CHECK-SAME:     : (memref<?xf32>, memref<2xi32>) -> memref<?x?xf32>
+  %dyn_mat = xla_lhlo.reshape_memref_cast %dyn_vec(%shape2)
+               : (memref<?xf32>, memref<2xi32>) -> memref<?x?xf32>
+
+  // CHECK-NEXT: {{%.*}} = xla_lhlo.reshape_memref_cast [[DYN_MAT]]
+  // CHECK-SAME:     : (memref<?x?xf32>, memref<?xi32>) -> memref<*xf32>
+  %new_unranked = xla_lhlo.reshape_memref_cast %dyn_mat(%shape3)
+               : (memref<?x?xf32>, memref<?xi32>) -> memref<*xf32>
+  return
+}
+
+// -----
+
+func @reshape_memref_cast_element_type_mismatch(
+       %buf: memref<*xf32>, %shape: memref<1xi32>) {
+  // expected-error @+1 {{element types of source and destination memref types should be the same}}
+  xla_lhlo.reshape_memref_cast %buf(%shape)
+    : (memref<*xf32>, memref<1xi32>) -> memref<?xi32>
+}
+
+// -----
+
+func @reshape_memref_cast_dst_ranked_shape_unranked(
+       %buf: memref<*xf32>, %shape: memref<?xi32>) {
+  // expected-error @+1 {{cannot use shape operand with dynamic length to cast statically-ranked memref type}}
+  xla_lhlo.reshape_memref_cast %buf(%shape)
+    : (memref<*xf32>, memref<?xi32>) -> memref<?xf32>
+  return
+}
+
+// -----
+
+func @reshape_memref_cast_dst_shape_rank_mismatch(
+       %buf: memref<*xf32>, %shape: memref<1xi32>) {
+  // expected-error @+1 {{length of shape operand differs from the result's memref rank}}
+  xla_lhlo.reshape_memref_cast %buf(%shape)
+    : (memref<*xf32>, memref<1xi32>) -> memref<?x?xf32>
+  return
+}
+
+// -----
+
+func @reshape_memref_cast_affine_map_is_not_identity(
+        %buf: memref<4x4xf32, offset: 0, strides: [3, 2]>,
+        %shape: memref<1xi32>) {
+  // expected-error @+1 {{operand memref type should have identity affine map}}
+  xla_lhlo.reshape_memref_cast %buf(%shape)
+    : (memref<4x4xf32, offset: 0, strides: [3, 2]>, memref<1xi32>)
+    -> memref<8xf32>
+  return
+}
 
 // -----
 
