@@ -680,3 +680,40 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "all_xla_passes_for_testing",
+    visibility = [
+        "//tensorflow/compiler/mlir:__subpackages__",
+    ],
+    deps = [
+        ":chlo_legalize_to_hlo",
+        ":hlo_dialect_registration",
+        ":hlo_legalize_to_lhlo",
+        ":lhlo",
+        ":lhlo_copy_removal",
+        ":lhlo_fuse_linalg",
+        ":lhlo_legalize_to_affine",
+        ":lhlo_legalize_to_gpu",
+        ":lhlo_legalize_to_parallel_loops",
+        ":xla_hlo_fusion",
+        ":xla_legalize_control_flow",
+        ":xla_legalize_tanh_to_approximation",
+        ":xla_legalize_to_linalg",
+        ":xla_legalize_to_standard",
+        ":xla_lower",
+        ":xla_sink_constants_to_control_flow",
+        ":xla_test_passes",
+        ":xla_transform_unranked_hlo",
+    ],
+)
+
+cc_binary(
+    name = "mlir-hlo-opt",
+    deps = [
+        ":all_xla_passes_for_testing",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:MlirOptMain",
+    ],
+)
