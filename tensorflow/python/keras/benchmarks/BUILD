@@ -68,3 +68,23 @@ cuda_py_test(
         "//tensorflow:tensorflow_py",
     ],
 )
+
+py_test(
+    name = "keras_examples_benchmark_test",
+    size = "medium",
+    srcs = ["keras_examples_benchmark_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "benchmark_util",
+    srcs = ["benchmark_util.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
