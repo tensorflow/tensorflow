@@ -72,6 +72,8 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
   DummyDevice dummy_device(nullptr);
   params.device = &dummy_device;
   params.op_kernel = kernel.get();
+  AllocatorAttributes alloc_attrs; 
+  params.output_attr_array = &alloc_attrs;
   gtl::InlinedVector<TensorValue, 4> inputs;
   inputs.emplace_back(tags);
   inputs.emplace_back(values);
@@ -84,11 +86,12 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
     Summary summary; 
     ParseProtoUnlimited(&summary, ctx.mutable_output(0)->scalar<tstring>()());
     EXPECT_SummaryMatches(summary, expected_summary);
+    
   } 
 }
 
 TEST(ScalarSummaryOpTest, Test) {
-  int vectorSize = 2; 
+  int vectorSize = 3; 
   Tensor tags(DT_STRING, {vectorSize}); 
   Tensor values(DT_FLOAT, {vectorSize}); 
   tags.vec<tstring>()(0) = "tag1";
@@ -126,9 +129,9 @@ TEST(ScalarSummaryOpTest, SimpleHalf) {
   tags.vec<tstring>()(0) = "tag1";
   tags.vec<tstring>()(1) = "tag2";
   tags.vec<tstring>()(2) = "tag3";
-  values.vec<Eigen::half>()(0) = static_cast<Eigen::half>(1.0); 
-  values.vec<Eigen::half>()(1) = static_cast<Eigen::half>(-2.0);
-  values.vec<Eigen::half>()(2) = static_cast<Eigen::half>(10000.0);
+  values.vec<Eigen::half>()(0) = Eigen::half(1.0); 
+  values.vec<Eigen::half>()(1) = Eigen::half(-2.0);
+  values.vec<Eigen::half>()(2) = Eigen::half(10000.0);
   TestScalarSummaryOp(&tags, &values, R"(
                       value { tag: 'tag1' simple_value: 1.0 }
                       value { tag: 'tag2' simple_value: -2.0}

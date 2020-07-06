@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include <string>
 
 // Macro to control visibility of exported symbols in the shared library (.so,
 // .dylib, .dll).
@@ -150,6 +151,8 @@ TF_CAPI_EXPORT extern void TF_TensorBitcastFrom(const TF_Tensor* from,
 
 // Returns bool iff this tensor is aligned.
 TF_CAPI_EXPORT extern bool TF_TensorIsAligned(const TF_Tensor*);
+
+TF_CAPI_EXPORT extern std::string TF_ShapeDebugString(const TF_Tensor*); 
 
 #ifdef __cplusplus
 } /* end extern "C" */

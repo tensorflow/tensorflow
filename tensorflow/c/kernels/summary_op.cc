@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include <typeinfo>
 
 static void* SummaryScalarOp_Create(TF_OpKernelConstruction* ctx) {
   void* ptr; 
@@ -41,6 +42,16 @@ static void SummaryScalarOp_Delete(void* kernel) {
 // Helper functions for compute method 
 bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2);
 static tensorflow::string SingleTag(TF_Tensor* tags); 
+
+template <typename T> 
+float get_float_value(T* element){ 
+  return static_cast<float>(*element); 
+}
+
+template<>
+float get_float_value(Eigen::half* element){
+  return Eigen::half_impl::half_to_float(*element);  
+}
 
 template<typename T>
 static void SummaryScalarOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
@@ -68,18 +79,24 @@ static void SummaryScalarOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
     auto values_array = static_cast<T*>(TF_TensorData(values)); 
     // Copy tags and values into summary protobuf 
     for (int i = 0; i < TF_TensorElementCount(tags); ++i) { 
-      tensorflow::Summary::Value* v = s.add_value(); 
-      v->set_tag(tags_array[i].data(), tags_array[i].size());
-      v->set_simple_value(float(values_array[i]));
+      tensorflow::Summary::Value* v = s.add_value();
+      const tensorflow::tstring& Ttags_i = tags_array[i];  
+      v->set_tag(Ttags_i.data(), Ttags_i.size());
+      v->set_simple_value(get_float_value(&values_array[i]));
     }
-    TF_Tensor* summary_tensor = TF_AllocateOutput(ctx, 0, 
+    TF_Tensor* summary_tensor = TF_AllocateOutput(ctx, 0 
         TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
-        sizeof(TF_TString), status);
+        sizeof(tensorflow::tstring), status);
     if (TF_GetCode(status) == TF_OK) {
-      SerializeToTString(s, static_cast<tensorflow::tstring*>
-                        (TF_TensorData(summary_tensor)));
+      tensorflow::tstring summary_tstring;
+      SerializeToTString(s, &summary_tstring);
+      *(TF_TensorData(summary_tensor)) = &summary_tstring; 
+      TF_SetOutput(ctx, 0, summary_tensor, status); 
     } 
     TF_DeleteTensor(summary_tensor);
+  }
+  if (TF_GetCode(status) != TF_OK) {
+    TF_OpKernelContext_Failure(ctx, status);
   }
   TF_DeleteStatus(status);
   TF_DeleteTensor(tags);
