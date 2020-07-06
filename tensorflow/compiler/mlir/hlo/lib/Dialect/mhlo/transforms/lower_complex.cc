@@ -32,8 +32,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 using mlir::FunctionPass;
 using mlir::OwningRewritePatternList;
@@ -54,7 +54,7 @@ namespace mlir {
 namespace xla {
 namespace {
 
-#include "tensorflow/compiler/mlir/xla/transforms/generated_lower_complex.inc"
+#include "tensorflow/compiler/mlir/hlo/lib/Dialect/mhlo/transforms/generated_lower_complex.inc"
 
 }  // end anonymous namespace
 

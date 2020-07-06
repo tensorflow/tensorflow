@@ -20,31 +20,19 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 
 namespace mlir {
 namespace xla_hlo {
 
 namespace {
 
-struct TestMaterializeBroadcastsPass
-    : public PassWrapper<TestMaterializeBroadcastsPass, FunctionPass> {
-  void runOnFunction() override {
-    ConversionTarget conversionTarget(getContext());
-    OwningRewritePatternList conversionPatterns;
-
-    // Consider the xla_hlo dialect legal for tests.
-    conversionTarget.addLegalDialect<XlaHloDialect>();
-    // The conversion uses helpers from the Standard dialect.
-    conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
-
-    SetupMaterializeBroadcastsLegality(&getContext(), &conversionTarget);
-    PopulateMaterializeBroadcastsPatterns(&getContext(), &conversionPatterns);
-
-    if (failed(applyPartialConversion(getFunction(), conversionTarget,
-                                      conversionPatterns))) {
-      return signalPassFailure();
-    }
+struct TestUnfuseBatchNormPass
+    : public PassWrapper<TestUnfuseBatchNormPass, OperationPass<>> {
+  void runOnOperation() override {
+    OwningRewritePatternList patterns;
+    PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
+    applyPatternsAndFoldGreedily(getOperation(), patterns);
   }
 };
 
@@ -53,6 +41,6 @@ struct TestMaterializeBroadcastsPass
 }  // namespace xla_hlo
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::xla_hlo::TestMaterializeBroadcastsPass>
-    pass("test-xla-materialize-broadcasts",
-         "Test pass for materializing 'broadcast_dimensions' attributes");
+static mlir::PassRegistration<mlir::xla_hlo::TestUnfuseBatchNormPass> pass(
+    "test-xla-unfuse-batch-norm",
+    "Test pass for materializing 'broadcast_dimensions' attributes");

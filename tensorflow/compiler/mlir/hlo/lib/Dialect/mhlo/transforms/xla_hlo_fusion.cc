@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "llvm/ADT/EquivalenceClasses.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/cycle_detector.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/cycle_detector.h"
 
 // This pass has similar functionality of the fusion pass in XLA stack.
 // However, unlike XLA, it targets the fully dynamic shape scenario.

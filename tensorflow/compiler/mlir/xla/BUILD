@@ -52,11 +52,10 @@ cc_library(
     ],
     hdrs = [
         "transforms/passes.h",
-        "transforms/rewriters.h",
     ],
     deps = [
-        ":chlo_legalize_to_hlo",
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:chlo_legalize_to_hlo",
         "//tensorflow/compiler/mlir/hlo:convert_op_folder",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
@@ -117,273 +116,6 @@ cc_library(
 )
 
 cc_library(
-    name = "xla_sink_constants_to_control_flow",
-    srcs = ["transforms/sink_constants_to_control_flow.cc"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "map_xla_to_scalar_op",
-    hdrs = ["transforms/map_xla_to_scalar_op.h"],
-    deps = [
-        ":map_hlo_to_lhlo_op",
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:StandardOps",
-    ],
-)
-
-cc_library(
-    name = "map_hlo_to_lhlo_op",
-    hdrs = ["transforms/map_hlo_to_lhlo_op.h"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-    ],
-)
-
-cc_library(
-    name = "lhlo_legalize_to_affine",
-    srcs = ["transforms/lhlo_legalize_to_affine.cc"],
-    deps = [
-        ":map_xla_to_scalar_op",
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "//tensorflow/compiler/xla:status",
-        "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Affine",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "lhlo_legalize_to_parallel_loops",
-    srcs = ["transforms/lhlo_legalize_to_parallel_loops.cc"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "lhlo_legalize_to_llvm",
-    srcs = ["transforms/lhlo_legalize_to_llvm.cc"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMTransforms",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "xla_legalize_to_linalg",
-    srcs = ["transforms/xla_legalize_to_linalg.cc"],
-    hdrs = ["transforms/rewriters.h"],
-    deps = [
-        ":map_xla_to_scalar_op",
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "xla_transform_unranked_hlo",
-    srcs = ["transforms/xla_transform_unranked_hlo.cc"],
-    hdrs = ["transforms/rewriters.h"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "@com_google_absl//absl/memory",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "lhlo_legalize_to_gpu",
-    srcs = ["transforms/lhlo_legalize_to_gpu.cc"],
-    deps = [
-        ":map_xla_to_scalar_op",
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgOps",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "lhlo_fuse_linalg",
-    srcs = ["transforms/lhlo_fuse_linalg.cc"],
-    hdrs = ["transforms/passes.h"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "lhlo_copy_removal",
-    srcs = ["transforms/lhlo_copy_removal.cc"],
-    hdrs = ["transforms/passes.h"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "hlo_legalize_to_lhlo",
-    srcs = ["transforms/hlo_legalize_to_lhlo.cc"],
-    hdrs = [
-        "transforms/passes.h",
-        "transforms/rewriters.h",
-    ],
-    deps = [
-        ":map_hlo_to_lhlo_op",
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "cycle_detector",
-    srcs = ["transforms/cycle_detector.cc"],
-    hdrs = ["transforms/cycle_detector.h"],
-    deps = [
-        "@llvm-project//llvm:Support",
-    ],
-    alwayslink = 1,
-)
-
-tf_cc_test(
-    name = "cycle_detector_test",
-    srcs = ["transforms/cycle_detector_test.cc"],
-    deps = [
-        ":cycle_detector",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-cc_library(
-    name = "xla_hlo_fusion",
-    srcs = ["transforms/xla_hlo_fusion.cc"],
-    deps = [
-        ":cycle_detector",
-        "//tensorflow/compiler/mlir/hlo",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-    ],
-    alwayslink = 1,
-)
-
-gentbl(
-    name = "xla_legalize_to_standard_inc_gen",
-    tbl_outs = [
-        ("-gen-rewriters", "transforms/generated_legalize_to_standard.inc"),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "transforms/legalize_to_standard_patterns.td",
-    td_relative_includes = [
-        "../hlo/include",
-    ],
-    td_srcs = [
-        "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
-        "@llvm-project//mlir:StdOpsTdFiles",
-    ],
-)
-
-cc_library(
-    name = "xla_legalize_control_flow",
-    srcs = ["transforms/legalize_control_flow.cc"],
-    hdrs = ["transforms/passes.h"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "xla_hlo_to_lhlo_with_xla",
     srcs = ["transforms/xla_hlo_to_lhlo_with_xla.cc"],
     hdrs = ["transforms/xla_hlo_to_lhlo_with_xla.h"],
@@ -403,146 +135,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "xla_legalize_to_standard",
-    srcs = ["transforms/legalize_to_standard.cc"],
-    hdrs = ["transforms/passes.h"],
-    deps = [
-        ":xla_legalize_tanh_to_approximation",
-        ":xla_legalize_to_standard_inc_gen",
-        "//tensorflow/compiler/mlir/hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "xla_legalize_tanh_to_approximation",
-    srcs = ["transforms/legalize_tanh_to_approximation.cc"],
-    hdrs = [
-        "transforms/passes.h",
-        "transforms/rewriters.h",
-    ],
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-gentbl(
-    name = "xla_lower_complex_inc_gen",
-    tbl_outs = [
-        ("-gen-rewriters", "transforms/generated_lower_complex.inc"),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "transforms/lower_complex_patterns.td",
-    td_relative_includes = [
-        "../hlo/include",
-    ],
-    td_srcs = [
-        "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:StdOpsTdFiles",
-    ],
-)
-
-cc_library(
-    name = "xla_lower",
-    srcs = [
-        "transforms/generated_lower_complex.inc",
-        "transforms/lower_complex.cc",
-        "transforms/lower_general_dot.cc",
-    ],
-    hdrs = [
-        "transforms/passes.h",
-        "transforms/rewriters.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "xla_materialize_broadcasts",
-    srcs = ["transforms/materialize_broadcasts.cc"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
-    name = "xla_unfuse_batch_norm",
-    srcs = ["transforms/unfuse_batch_norm.cc"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
-    name = "chlo_legalize_to_hlo",
-    srcs = ["transforms/chlo_legalize_to_hlo.cc"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
-    name = "xla_test_passes",
-    srcs = [
-        "transforms/chlo_legalize_to_hlo_pass.cc",
-        "transforms/lhlo_legalize_to_llvm_pass.cc",
-        "transforms/materialize_broadcasts_pass.cc",
-        "transforms/rewriters.h",
-        "transforms/test_infer_shaped_type_pass.cc",
-        "transforms/unfuse_batch_norm_pass.cc",
-    ],
-    deps = [
-        ":chlo_legalize_to_hlo",  # build-cleaner: keep
-        ":lhlo_legalize_to_llvm",  # build-cleaner: keep
-        ":xla_materialize_broadcasts",  # build-cleaner: keep
-        ":xla_unfuse_batch_norm",  # build-cleaner: keep
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:InferTypeOpInterface",
-        "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:LLVMTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Shape",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -774,28 +366,28 @@ cc_library(
         "//tensorflow/compiler/mlir:__subpackages__",
     ],
     deps = [
-        ":chlo_legalize_to_hlo",
-        ":hlo_legalize_to_lhlo",
-        ":lhlo_copy_removal",
-        ":lhlo_fuse_linalg",
-        ":lhlo_legalize_to_affine",
-        ":lhlo_legalize_to_gpu",
-        ":lhlo_legalize_to_parallel_loops",
-        ":xla_hlo_fusion",
         ":xla_hlo_to_lhlo_with_xla",
-        ":xla_legalize_control_flow",
-        ":xla_legalize_tanh_to_approximation",
         ":xla_legalize_tf",
         ":xla_legalize_tf_with_tf2xla",
-        ":xla_legalize_to_linalg",
-        ":xla_legalize_to_standard",
-        ":xla_lower",
-        ":xla_sink_constants_to_control_flow",
-        ":xla_test_passes",
-        ":xla_transform_unranked_hlo",
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:chlo_legalize_to_hlo",
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_copy_removal",
+        "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
+        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
+        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
+        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_parallel_loops",
+        "//tensorflow/compiler/mlir/hlo:xla_hlo_fusion",
+        "//tensorflow/compiler/mlir/hlo:xla_legalize_control_flow",
+        "//tensorflow/compiler/mlir/hlo:xla_legalize_tanh_to_approximation",
+        "//tensorflow/compiler/mlir/hlo:xla_legalize_to_linalg",
+        "//tensorflow/compiler/mlir/hlo:xla_legalize_to_standard",
+        "//tensorflow/compiler/mlir/hlo:xla_lower",
+        "//tensorflow/compiler/mlir/hlo:xla_sink_constants_to_control_flow",
+        "//tensorflow/compiler/mlir/hlo:xla_test_passes",
+        "//tensorflow/compiler/mlir/hlo:xla_transform_unranked_hlo",
     ],
 )
 

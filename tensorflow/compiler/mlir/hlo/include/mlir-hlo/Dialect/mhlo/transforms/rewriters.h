@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_REWRITERS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_REWRITERS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_
 
 #include <memory>
 
@@ -103,4 +103,4 @@ void PopulateTanhToApproximationPatterns(MLIRContext *context,
 }  // namespace xla
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_REWRITERS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_
