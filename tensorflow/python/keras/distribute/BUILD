@@ -115,6 +115,26 @@ cuda_py_test(
 )
 
 distribute_py_test(
+    name = "ctl_correctness_test",
+    srcs = ["ctl_correctness_test.py"],
+    main = "ctl_correctness_test.py",
+    shard_count = 5,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+    ],
+)
+
+distribute_py_test(
     name = "custom_training_loop_models_test",
     srcs = ["custom_training_loop_models_test.py"],
     main = "custom_training_loop_models_test.py",

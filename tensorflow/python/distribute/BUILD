@@ -1618,26 +1618,6 @@ distribute_py_test(
     ],
 )
 
-distribute_py_test(
-    name = "ctl_correctness_test",
-    srcs = ["ctl_correctness_test.py"],
-    main = "ctl_correctness_test.py",
-    shard_count = 5,
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:keras_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:util",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
 cuda_py_test(
     name = "collective_all_reduce_strategy_test",
     srcs = ["collective_all_reduce_strategy_test.py"],
