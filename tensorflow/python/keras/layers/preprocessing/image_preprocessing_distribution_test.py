@@ -42,7 +42,7 @@ class ImagePreprocessingDistributionTest(
   def test_distribution(self, distribution):
     # TODO(b/159738418): large image input causes OOM in ubuntu multi gpu.
     np_images = np.random.random((32, 32, 32, 3)).astype(np.float32)
-    np_labels = np.random.random((32, 1)).astype(np.float32)
+    np_labels = np.random.random((32, 1)).astype(np.int64)
     image_dataset = dataset_ops.Dataset.from_tensor_slices((np_images, np_labels))
     image_dataset = image_dataset.batch(16, drop_remainder=True)
 
