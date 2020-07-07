@@ -4011,7 +4011,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testFollowTypeHintsTraceWithOnlyArgNamed(self):
     trace_count = [0]
-    def func(t: ops.Tensor, i: int = 1, **kwargs):
+    def func(t: ops.Tensor, i: int = 1, **kwargs):  # pylint: disable=bad-whitespace
       trace_count[0] += 1
       return t
 
@@ -4064,7 +4064,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testFollowTypeHintsTraceWithArgsEquals(self):
     trace_count = [0]
-    def func(x: ops.Tensor = 0, y: int = 1, **kwargs: ops.Tensor):
+    def func(x: ops.Tensor = 0, y: int = 1,  # pylint: disable=bad-whitespace
+             **kwargs: ops.Tensor):
       trace_count[0] += 1
       return x
 
@@ -4108,7 +4109,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testFollowTypeHintsTraceWithKwOnlyArgsBasic(self):
     trace_count = [0]
-    def func(*, a: ops.Tensor = None, b=1):
+    def func(*, a: ops.Tensor = None, b=1):  # pylint: disable=bad-whitespace
       trace_count[0] += 1
       return a
 
