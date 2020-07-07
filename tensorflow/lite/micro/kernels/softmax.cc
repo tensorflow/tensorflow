@@ -137,9 +137,6 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration Register_SOFTMAX() {
-  // TODO(b/149408647): Once we remove AddBuiltin from MicroOpResolver and
-  // completely switch to the templated AddBuiltin from MicroMutableOpResolver,
-  // this struct no longer needs to be static and can be returned by value.
   return {/*init=*/nullptr,
           /*free=*/nullptr,
           /*prepare=*/activations::SoftmaxPrepare,
