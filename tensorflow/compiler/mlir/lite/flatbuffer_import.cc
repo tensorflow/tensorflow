@@ -127,7 +127,7 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   mlir::IntegerType storage_type;
   if (tensor.type == tflite::TensorType_UINT8) {
     is_signed = false;
-    storage_type = builder.getIntegerType(8);
+    storage_typfe = builder.getIntegerType(8);
   } else {
     auto raw_elem_type = ConvertElementType(tensor.type, builder);
     if (!raw_elem_type.isa<mlir::IntegerType>()) {
@@ -334,7 +334,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
 
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
-      for (int i = 0, iter_limit = elem_count; i < iter_limita; i++) {
+      for (int i = 0, iter_limit = elem_count; i < iter_limit; i++) {
         uint32_t bit_repr =
             llvm::support::endian::readNext<uint32_t, llvm::support::little,
                                             llvm::support::unaligned>(data);
