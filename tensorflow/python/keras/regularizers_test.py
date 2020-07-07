@@ -83,7 +83,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
     self.assertEqual(len(model.losses), 1)
     model.fit(x_train, y_train, batch_size=10, epochs=1, verbose=0)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters([
       ('l1', regularizers.l1()),
       ('l2', regularizers.l2()),
@@ -126,7 +126,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         model.get_config(), custom_objects={'my_regularizer': my_regularizer})
     self.assertEqual(model2.layers[1].kernel_regularizer, my_regularizer)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters([
       ('l1', regularizers.l1()),
       ('l2', regularizers.l2()),
@@ -144,7 +144,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertLen(model.losses, 5)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters([
       ('l1', regularizers.l1()),
       ('l2', regularizers.l2()),
@@ -166,7 +166,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
         run_eagerly=testing_utils.should_run_eagerly())
     self.assertLen(model.losses, 6)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   @parameterized.named_parameters([
       ('l1', regularizers.l1()),
       ('l2', regularizers.l2()),
@@ -202,6 +202,18 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
   def test_deserialization_error(self):
     with self.assertRaisesRegex(ValueError, 'Could not interpret regularizer'):
       keras.regularizers.get(0)
+
+  @parameterized.named_parameters([
+      ('l1', regularizers.l1(l1=None), 0.01),
+      ('l2', regularizers.l2(l2=None), 0.01),
+      ('l1_l2', regularizers.l1_l2(l1=None, l2=None), 0.),
+  ])
+  def test_default_value_when_init_with_none(self, regularizer, expected_value):
+    expected_value = np.asarray(expected_value)
+    if hasattr(regularizer, 'l1'):
+      self.assertAllClose(regularizer.l1, expected_value)
+    if hasattr(regularizer, 'l2'):
+      self.assertAllClose(regularizer.l2, expected_value)
 
 
 if __name__ == '__main__':

@@ -42,6 +42,7 @@ SimpleMemoryAllocator::SimpleMemoryAllocator(ErrorReporter* error_reporter,
 /* static */
 SimpleMemoryAllocator* SimpleMemoryAllocator::Create(
     ErrorReporter* error_reporter, uint8_t* buffer_head, size_t buffer_size) {
+  TFLITE_DCHECK(error_reporter != nullptr);
   TFLITE_DCHECK(buffer_head != nullptr);
   SimpleMemoryAllocator tmp =
       SimpleMemoryAllocator(error_reporter, buffer_head, buffer_size);

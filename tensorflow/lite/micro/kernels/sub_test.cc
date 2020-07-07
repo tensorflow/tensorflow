@@ -89,18 +89,14 @@ void ValidateSubGoldens(TfLiteTensor* tensors, int tensors_size,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
@@ -129,9 +125,9 @@ void TestSubFloat(const int* input1_dims_data, const float* input1_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input1_data, input1_dims, "input1_tensor"),
-      CreateFloatTensor(input2_data, input2_dims, "input2_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input1_data, input1_dims),
+      CreateFloatTensor(input2_data, input2_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   ValidateSubGoldens(tensors, tensors_size, expected_output, output_data,
@@ -156,15 +152,14 @@ void TestSubQuantized(const int* input1_dims_data, const float* input1_data,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      tflite::testing::CreateQuantizedTensor(
-          input1_data, input1_quantized, input1_dims, input1_scale,
-          input1_zero_point, "input1_tensor"),
-      tflite::testing::CreateQuantizedTensor(
-          input2_data, input2_quantized, input2_dims, input2_scale,
-          input2_zero_point, "input2_tensor"),
+      tflite::testing::CreateQuantizedTensor(input1_data, input1_quantized,
+                                             input1_dims, input1_scale,
+                                             input1_zero_point),
+      tflite::testing::CreateQuantizedTensor(input2_data, input2_quantized,
+                                             input2_dims, input2_scale,
+                                             input2_zero_point),
       tflite::testing::CreateQuantizedTensor(output_data, output_dims,
-                                             output_scale, output_zero_point,
-                                             "output_tensor"),
+                                             output_scale, output_zero_point),
   };
   tflite::AsymmetricQuantize(golden, golden_quantized,
                              ElementCount(*output_dims), output_scale,
@@ -202,7 +197,7 @@ TF_LITE_MICRO_TEST(FloatSubActivationRelu1) {
   float output_data[output_dims_count];
   tflite::testing::TestSubFloat(inout_shape, input1_values, inout_shape,
                                 input2_values, inout_shape, golden_values,
-                                kTfLiteActRelu1, output_data);
+                                kTfLiteActReluN1To1, output_data);
 }
 
 TF_LITE_MICRO_TEST(FloatSubVariousInputShapes) {
@@ -314,7 +309,7 @@ TF_LITE_MICRO_TEST(QuantizedSubActivationRelu1Uint8) {
       inout_shape, input1_values, input1_quantized, scales[0], zero_points[0],
       inout_shape, input2_values, input2_quantized, scales[1], zero_points[1],
       inout_shape, golden_values, golden_quantized, scales[2], zero_points[2],
-      kTfLiteActRelu1, output);
+      kTfLiteActReluN1To1, output);
 }
 
 TF_LITE_MICRO_TEST(QuantizedSubActivationRelu1Int8) {
@@ -335,7 +330,7 @@ TF_LITE_MICRO_TEST(QuantizedSubActivationRelu1Int8) {
       inout_shape, input1_values, input1_quantized, scales[0], zero_points[0],
       inout_shape, input2_values, input2_quantized, scales[1], zero_points[1],
       inout_shape, golden_values, golden_quantized, scales[2], zero_points[2],
-      kTfLiteActRelu1, output);
+      kTfLiteActReluN1To1, output);
 }
 
 TF_LITE_MICRO_TEST(QuantizedSubVariousInputShapesUint8) {

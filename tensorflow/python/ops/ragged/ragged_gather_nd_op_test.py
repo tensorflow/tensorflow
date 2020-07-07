@@ -210,10 +210,10 @@ class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
     indices1 = array_ops.placeholder(dtypes.int32, shape=None)
     indices2 = array_ops.placeholder(dtypes.int32, shape=[None])
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'indices.rank be statically known.'):
+    with self.assertRaisesRegex(ValueError,
+                                'indices.rank be statically known.'):
       ragged_gather_ops.gather_nd(params, indices1)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'indices.shape\[-1\] must be statically known.'):
       ragged_gather_ops.gather_nd(params, indices2)
 
@@ -236,7 +236,7 @@ class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
                                     indices,
                                     message=None,
                                     error=ValueError):
-    with self.assertRaisesRegexp(error, message):
+    with self.assertRaisesRegex(error, message):
       ragged_gather_ops.gather_nd(params, indices)
 
 

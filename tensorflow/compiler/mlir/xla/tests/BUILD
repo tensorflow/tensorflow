@@ -24,13 +24,13 @@ tf_cc_test(
     name = "mlir_hlo_builder_test",
     srcs = ["mlir_hlo_builder_test.cc"],
     deps = [
-        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/xla:mlir_hlo_builder",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )

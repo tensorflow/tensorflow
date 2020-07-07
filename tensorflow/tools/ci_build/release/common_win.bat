@@ -30,7 +30,7 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PIP_EXE% install future>=0.17.1 --no-deps
 %PIP_EXE% install --ignore-installed --force-reinstall --upgrade tf-estimator-nightly --no-deps
 %PIP_EXE% install tb-nightly --no-deps
-%PIP_EXE% install numpy --upgrade --no-deps
+%PIP_EXE% install numpy==1.16.0 --upgrade --no-deps
 %PIP_EXE% install opt_einsum --upgrade
 %PIP_EXE% install pandas --upgrade --no-deps
 %PIP_EXE% install protobuf --upgrade --no-deps
@@ -73,7 +73,7 @@ SET PATH=%CUDNN_INSTALL_PATH%\bin;%PATH%
 @REM Setup Bazel
 @REM
 :: Download Bazel from github and make sure its found in PATH.
-SET BAZEL_VERSION=2.0.0
+SET BAZEL_VERSION=3.1.0
 md C:\tools\bazel\
 wget -q https://github.com/bazelbuild/bazel/releases/download/%BAZEL_VERSION%/bazel-%BAZEL_VERSION%-windows-x86_64.exe -O C:/tools/bazel/bazel.exe
 SET PATH=C:\tools\bazel;%PATH%

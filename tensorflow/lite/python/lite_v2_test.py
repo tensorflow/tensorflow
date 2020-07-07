@@ -769,6 +769,37 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     converter.convert()
     self._assertValidDebugInfo(converter._debug_info)
 
+  @test_util.run_v2_only
+  def testKerasFallbackPath(self):
+    """Test keras model which failed when exporting to the saved model."""
+    input_data = tf.constant(
+        np.array(np.random.random_sample((20)), dtype=np.float32))
+
+    class Model(tf.keras.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        # A None name will cause a failure in exporting to a saved model.
+        self.shared_weights = self.add_weight(
+            name=None,
+            shape=(20, 1),
+            dtype=tf.float32,
+            initializer=tf.random_normal_initializer(
+                mean=0.0, stddev=300**(-0.5)))
+
+      def call(self, x):
+        return tf.add(self.shared_weights, x)
+
+    # Building the model.
+    model = Model()
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit(input_data, input_data, epochs=1)
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_keras_model(model)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
 
 class ControlFlowTest(lite_v2_test_util.ModelTest):
 
@@ -799,7 +830,6 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -826,7 +856,6 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -856,7 +885,6 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -880,7 +908,6 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -910,7 +937,6 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
@@ -932,7 +958,6 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
@@ -956,7 +981,6 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
 
@@ -993,7 +1017,6 @@ class GrapplerTest(lite_v2_test_util.ModelTest):
     np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
 
     # Enable hybrid quantization, same result
-    converter.experimental_new_converter = True
     converter.optimizations = [lite.Optimize.DEFAULT]
     hybrid_tflite_model = converter.convert()
     actual_value = self._evaluateTFLiteModel(hybrid_tflite_model, [input_data])
@@ -1017,7 +1040,6 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     concrete_func = model.get_concrete_function()
 
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -1059,12 +1081,10 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     concrete_func, _ = self._getQuantizedModel()
     float_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func])
-    float_converter.experimental_new_converter = True
     float_tflite_model = float_converter.convert()
 
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func])
-    quantized_converter.experimental_new_converter = True
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_tflite_model = quantized_converter.convert()
 
@@ -1084,14 +1104,12 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     concrete_func, calibration_gen = self._getQuantizedModel()
     float_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func])
-    float_converter.experimental_new_converter = True
     float_tflite_model = float_converter.convert()
 
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions(
         [concrete_func])
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
-    quantized_converter.experimental_new_converter = True
     quantized_tflite_model = quantized_converter.convert()
 
     # The default input and output types should be float.
@@ -1121,7 +1139,6 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     concrete_func = model.get_concrete_function()
 
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.

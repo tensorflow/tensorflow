@@ -36,6 +36,8 @@ class TensorFlowSavedModelDialect : public Dialect {
                                             NamedAttribute named_attr) override;
   LogicalResult verifyOperationAttribute(Operation *op,
                                          NamedAttribute named_attr) override;
+
+  static StringRef getDialectNamespace() { return "tf_saved_model"; }
 };
 
 // Declares the operations for this dialect using the generated header.
@@ -57,9 +59,16 @@ bool HasTfSavedModelSemantics(ModuleOp module);
 GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
                                 const SymbolTable &symbol_table);
 
-// Gets the type that an exported function arg that is bound to `global_tensor`
-// should have.
-Type GetBoundInputArgTypeFor(GlobalTensorOp global_tensor);
+// Gets the type that an exported function arg that is bound to symbol ops such
+// as `global_tensor` and `asset` should have.
+Type GetBoundInputArgTypeFor(mlir::Operation *op);
+
+// Returns the session initializer of this module if it exists. Returns null
+// otherwise.
+SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op);
+
+// Returns the exported name for the session initializer function.
+llvm::Optional<StringRef> GetSessionInitializerExportedName(mlir::ModuleOp op);
 
 }  // namespace tf_saved_model
 }  // namespace mlir

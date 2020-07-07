@@ -199,9 +199,10 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   RegisterDialects();
   mlir::MLIRContext context;
   GraphImportConfig import_config;
-  // TODO(b/150959075): Running functionalization before TPU cluster formation
-  // is not semantics preserving and should be disabled for now.
-  import_config.upgrade_legacy = false;
+  import_config.upgrade_legacy = true;
+  // Restrict functionalization to TPU nodes to avoid problems in v1 session
+  // runtime.
+  import_config.restrict_functionalization_to_tpu_nodes = true;
   TF_ASSIGN_OR_RETURN(
       auto module_ref,
       ConvertGraphToMlir(**options.graph, debug_info, *options.flib_def,

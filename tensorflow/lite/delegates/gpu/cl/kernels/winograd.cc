@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
@@ -36,7 +35,6 @@ namespace {
 
 std::string GetWinograd4x4To36Code(
     const OperationDef& op_def,
-    const std::vector<ElementwiseOperation*>& linked_operations,
     Arguments* args) {
   std::string c = GetCommonDefines(op_def.precision);
 
@@ -82,12 +80,7 @@ std::string GetWinograd4x4To36Code(
   args->AddInt("tiles_total");
   args->AddInt("tiles_x");
 
-  std::string linked_args = GetArgsDeclaration(linked_operations);
-  if (linked_args[0] == ',') {
-    linked_args[0] = ' ';
-  }
   c += "__kernel void main_function(\n";
-  c += linked_args;
   c += "$0) {\n";
   c += "  int DST_X = get_global_id(0);\n";
   c += "  int DST_Y = get_global_id(1);\n";
@@ -181,14 +174,12 @@ std::string GetWinograd4x4To36Code(
   const LinkingContext context{"r0", "DST_X", "DST_Y", "DST_Z"};
   c += "  {\n";
   c += "    FLT4 r0 = TO_FLT4(I0 + Bt[2] * I2 + Bt[4] * I4);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
   c += "    FLT4 r0 = TO_FLT4(Bt[7] * I1 + Bt[8] * I2 + Bt[9] * I3 + Bt[10] * "
        "I4);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
@@ -196,7 +187,6 @@ std::string GetWinograd4x4To36Code(
   c += "    FLT4 r0 = TO_FLT4(Bt[13] * I1 + Bt[14] * I2 + Bt[15] * I3 + Bt[16] "
        "* "
        "I4);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
@@ -204,7 +194,6 @@ std::string GetWinograd4x4To36Code(
   c += "    FLT4 r0 = TO_FLT4(Bt[19] * I1 + Bt[20] * I2 + Bt[21] * I3 + Bt[22] "
        "* "
        "I4);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
@@ -212,13 +201,11 @@ std::string GetWinograd4x4To36Code(
   c += "    FLT4 r0 = TO_FLT4(Bt[25] * I1 + Bt[26] * I2 + Bt[27] * I3 + Bt[28] "
        "* "
        "I4);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
   c += "  {\n";
   c += "    FLT4 r0 = TO_FLT4(Bt[31] * I1 + Bt[33] * I3 + I5);\n";
-  c += PostProcess(linked_operations, context);
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
   c += "    DST_Y++;\n";
   c += "  }\n";
@@ -226,20 +213,8 @@ std::string GetWinograd4x4To36Code(
   return c;
 }
 
-std::string GetWinograd36To4x4Code(
-    const OperationDef& op_def, const LinearStorage& at_arr,
-    const LinearStorage& biases,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor(
-      "src_data",
-      WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
-      op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor(
-      "dst_data",
-      WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
-      op_def.dst_tensors[0]);
-
-  const std::string batch_id = op_def.IsBatchSupported() ? "batch_id" : "";
+std::string GetWinograd36To4x4Code(const OperationDef& op_def,
+                                   Arguments* args) {
   std::string c = GetCommonDefines(op_def.precision);
 
   switch (op_def.precision) {
@@ -256,6 +231,15 @@ std::string GetWinograd36To4x4Code(
                                   ? DataType::FLOAT16
                                   : DataType::FLOAT32;
 
+  std::string cl_type = accum_type == DataType::FLOAT16 ? "half" : "float";
+  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
+  src_desc->SetStateVar("ACCUM_FLT", cl_type);
+  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
+  args->AddObjectRef(
+      "dst_tensor", AccessType::WRITE,
+      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
+  args->AddInt("tiles_x");
+
   auto at_mat = AtMatrixForWinograd4x4To6x6();
   c += "constant ACCUM_FLT At[24] = {\n";
   for (int y = 0; y < 4; ++y) {
@@ -268,30 +252,21 @@ std::string GetWinograd36To4x4Code(
   c += "};\n";
 
   c += "__kernel void main_function(\n";
-  c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  c += at_arr.GetDeclaration() + ",\n";
-  c += biases.GetDeclaration();
-  c += GetArgsDeclaration(linked_operations);
-  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int4 src_size,                              \n";
-  c += "    int4 dst_size,                              \n";
-  c += "    int tiles_x                                 \n";
-  c += ") {\n";
+  c += "$0) {\n";
   c += "  int tile_id = get_global_id(0);\n";
   c += "  int DST_Y = get_global_id(1);\n";
   c += "  int DST_Z = get_global_id(2);\n";
-  c += "  int tile_x = (tile_id % tiles_x) * 4;\n";
-  c += "  int tile_y = (tile_id / tiles_x) * 4 + DST_Y;\n";
-  c += "  if (tile_x >= dst_size.x || tile_y >= dst_size.y || DST_Z >= "
-       "dst_size.z) {\n";
+  c += "  int tile_x = (tile_id % args.tiles_x) * 4;\n";
+  c += "  int tile_y = (tile_id / args.tiles_x) * 4 + DST_Y;\n";
+
+  c += "  if (tile_x >= args.dst_tensor.Width() || tile_y >= "
+       "args.dst_tensor.Height() || DST_Z >= args.dst_tensor.Slices()) {\n";
   c += "    return; \n";
   c += "  }\n";
   c += "  ACCUM_FLT4 I0, I1, I2, I3, I4, I5;\n";
   c += "  ACCUM_FLT at_ar[6];\n";
-  c += "  ACCUM_FLT4 t00 = TO_ACCUM_TYPE(" +
-       at_arr.ReadLinearFLT4("DST_Y * 2 + 0") + ");\n";
-  c += "  ACCUM_FLT4 t01 = TO_ACCUM_TYPE(" +
-       at_arr.ReadLinearFLT4("DST_Y * 2 + 1") + ");\n";
+  c += "  ACCUM_FLT4 t00 = TO_ACCUM_TYPE(args.at.Read(DST_Y * 2 + 0));\n";
+  c += "  ACCUM_FLT4 t01 = TO_ACCUM_TYPE(args.at.Read(DST_Y * 2 + 1));\n";
   c += "  at_ar[0] = t00.x;\n";
   c += "  at_ar[1] = t00.y;\n";
   c += "  at_ar[2] = t00.z;\n";
@@ -303,10 +278,8 @@ std::string GetWinograd36To4x4Code(
   for (int x = 0; x < 6; ++x) {
     const std::string yc = std::to_string(x);
     const std::string src = "src" + std::to_string(x);
-    c += "    ACCUM_FLT4 " + src + " = " +
-         src_tensor.ReadAsTypeWHSB(accum_type, "tile_id", yc, "DST_Z",
-                                   batch_id) +
-         ";\n";
+    c += "    ACCUM_FLT4 " + src +
+         " = args.src_tensor.Read<ACCUM_FLT>(tile_id, " + yc + ", DST_Z);\n";
     c += "    I" + std::to_string(x) + " = at * " + src + ";\n";
   }
   c += "  }\n";
@@ -316,46 +289,35 @@ std::string GetWinograd36To4x4Code(
     for (int x = 0; x < 6; ++x) {
       const std::string yc = std::to_string(y * 6 + x);
       const std::string src = "src" + std::to_string(x);
-      c += "    ACCUM_FLT4 " + src + " = " +
-           src_tensor.ReadAsTypeWHSB(accum_type, "tile_id", yc, "DST_Z",
-                                     batch_id) +
-           ";\n";
+      c += "    ACCUM_FLT4 " + src +
+           " = args.src_tensor.Read<ACCUM_FLT>(tile_id, " + yc + ", DST_Z);\n";
       c += "    I" + std::to_string(x) + " += at * " + src + ";\n";
     }
     c += "  }\n";
   }
   c += "  ACCUM_FLT4 t0 = I1 + I2;\n";
   c += "  ACCUM_FLT4 t1 = I3 + I4;\n";
-  c += "  FLT4 bias_val = " + biases.ReadLinearFLT4("DST_Z") + ";\n";
+  c += "  FLT4 bias_val = args.biases.Read(DST_Z);\n";
   c += "  {\n";
-  const LinkingContext context{"r0", "tile_x", "tile_y", "DST_Z"};
   c += "    FLT4 r0 = TO_FLT4(I0 + t0 + t1) + bias_val;\n";
-  c += PostProcess(linked_operations, context);
-  c += "    " +
-       dst_tensor.WriteWHSB("r0", "tile_x", "tile_y", "DST_Z", batch_id);
+  c += "    args.dst_tensor.Write(r0, tile_x, tile_y, DST_Z);\n";
   c += "    tile_x++;\n";
   c += "  }\n";
   c += "  ACCUM_FLT4 t2 = I1 - I2;\n";
   c += "  ACCUM_FLT4 t3 = I3 - I4;\n";
-  c += "  if (tile_x < dst_size.x) {\n";
+  c += "  if (tile_x < args.dst_tensor.Width()) {\n";
   c += "    FLT4 r0 = TO_FLT4(t2 * At[7] + t3 * At[9]) + bias_val;\n";
-  c += PostProcess(linked_operations, context);
-  c += "    " +
-       dst_tensor.WriteWHSB("r0", "tile_x", "tile_y", "DST_Z", batch_id);
+  c += "    args.dst_tensor.Write(r0, tile_x, tile_y, DST_Z);\n";
   c += "    tile_x++;\n";
   c += "  }\n";
-  c += "  if (tile_x < dst_size.x) {\n";
+  c += "  if (tile_x < args.dst_tensor.Width()) {\n";
   c += "    FLT4 r0 = TO_FLT4(t0 * At[13] + t1 * At[15]) + bias_val;\n";
-  c += PostProcess(linked_operations, context);
-  c += "    " +
-       dst_tensor.WriteWHSB("r0", "tile_x", "tile_y", "DST_Z", batch_id);
+  c += "    args.dst_tensor.Write(r0, tile_x, tile_y, DST_Z);\n";
   c += "    tile_x++;\n";
   c += "  }\n";
-  c += "  if (tile_x < dst_size.x) {\n";
+  c += "  if (tile_x < args.dst_tensor.Width()) {\n";
   c += "    FLT4 r0 = TO_FLT4(t2 * At[19] + t3 * At[21] + I5) + bias_val;\n";
-  c += PostProcess(linked_operations, context);
-  c += "    " +
-       dst_tensor.WriteWHSB("r0", "tile_x", "tile_y", "DST_Z", batch_id);
+  c += "    args.dst_tensor.Write(r0, tile_x, tile_y, DST_Z);\n";
   c += "    tile_x++;\n";
   c += "  }\n";
   c += "}\n";
@@ -389,10 +351,13 @@ absl::Status Winograd4x4To36::Compile(const CreationContext& creation_context) {
     options.push_back(CompilerOptions::POWERVR_FP16);
   }
   RETURN_IF_ERROR(UploadBt(creation_context.context));
-  std::string code =
-      GetWinograd4x4To36Code(definition_, linked_operations_, &args_);
-  RETURN_IF_ERROR(args_.TransformToCLCode(&code));
-  code = absl::Substitute(code, args_.GetListOfArgs());
+  std::string code = GetWinograd4x4To36Code(definition_, &args_);
+  std::string element_wise_code;
+  RETURN_IF_ERROR(
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                          {{"dst_tensor", element_wise_code}},
+                                          &code));
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_));
@@ -413,15 +378,15 @@ absl::Status Winograd4x4To36::UploadBt(CLContext* context) {
     bt_aligned.data[y * 8 + 7] = 0.0f;
   }
 
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::TEXTURE_2D;
-  create_info.data_type = definition_.GetDataType();
-  create_info.name = "bt_arr";
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition_.GetDataType();
 
   LinearStorage lt;
-  RETURN_IF_ERROR(CreateLinearStorage(create_info, bt_aligned, context, &lt));
+  RETURN_IF_ERROR(CreateLinearStorage(desc, bt_aligned, context, &lt));
   args_.AddObject("bt", AccessType::READ,
-                  absl::make_unique<LinearStorage>(std::move(lt)));
+                  absl::make_unique<LinearStorage>(std::move(lt)),
+                  absl::make_unique<TensorLinearDescriptor>(desc));
   return absl::OkStatus();
 }
 
@@ -444,10 +409,8 @@ absl::Status Winograd4x4To36::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("padding_y", -padding_.prepended.h));
   RETURN_IF_ERROR(args_.SetInt("tiles_total", tiles_total));
   RETURN_IF_ERROR(args_.SetInt("tiles_x", tiles_x));
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
-  return absl::OkStatus();
+  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
+  return args_.Bind(kernel_.kernel());
 }
 
 int3 Winograd4x4To36::GetGridSize() const {
@@ -485,15 +448,11 @@ absl::Status CreateWinograd4x4To36(const CreationContext& creation_context,
 
 Winograd36To4x4::Winograd36To4x4(Winograd36To4x4&& operation)
     : GPUOperation(std::move(operation)),
-      at_(std::move(operation.at_)),
-      biases_(std::move(operation.biases_)),
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
 
 Winograd36To4x4& Winograd36To4x4::operator=(Winograd36To4x4&& operation) {
   if (this != &operation) {
-    at_ = std::move(operation.at_);
-    biases_ = std::move(operation.biases_);
     kernel_ = std::move(operation.kernel_);
     std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
@@ -507,8 +466,13 @@ absl::Status Winograd36To4x4::Compile(const CreationContext& creation_context) {
       creation_context.device->IsPowerVR()) {
     options.push_back(CompilerOptions::POWERVR_FP16);
   }
-  const auto code =
-      GetWinograd36To4x4Code(definition_, at_, biases_, linked_operations_);
+  std::string code = GetWinograd36To4x4Code(definition_, &args_);
+  std::string element_wise_code;
+  RETURN_IF_ERROR(
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                          {{"dst_tensor", element_wise_code}},
+                                          &code));
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_));
@@ -529,11 +493,15 @@ absl::Status Winograd36To4x4::UploadAt(CLContext* context) {
     at_aligned.data[y * 8 + 7] = 0.0f;
   }
 
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::TEXTURE_2D;
-  create_info.data_type = definition_.GetDataType();
-  create_info.name = "at_arr";
-  return CreateLinearStorage(create_info, at_aligned, context, &at_);
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition_.GetDataType();
+  LinearStorage lt;
+  RETURN_IF_ERROR(CreateLinearStorage(desc, at_aligned, context, &lt));
+  args_.AddObject("at", AccessType::READ,
+                  absl::make_unique<LinearStorage>(std::move(lt)),
+                  absl::make_unique<TensorLinearDescriptor>(desc));
+  return absl::OkStatus();
 }
 
 int3 Winograd36To4x4::SelectBestWorkGroup() {
@@ -544,17 +512,12 @@ int3 Winograd36To4x4::SelectBestWorkGroup() {
 }
 
 absl::Status Winograd36To4x4::BindArguments() {
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(at_.GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
+  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
+  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   const int tiles_x = DivideRoundUp(dst_[0]->Width(), 4);
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(tiles_x));
-  return absl::OkStatus();
+  RETURN_IF_ERROR(args_.SetInt("tiles_x", tiles_x));
+  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
+  return args_.Bind(kernel_.kernel());
 }
 
 int3 Winograd36To4x4::GetGridSize() const {
@@ -589,12 +552,15 @@ absl::Status CreateWinograd36To4x4(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
     Winograd36To4x4* result) {
   *result = Winograd36To4x4(definition);
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::TEXTURE_2D;
-  create_info.data_type = definition.GetDataType();
-  create_info.name = "biases";
-  RETURN_IF_ERROR(CreateLinearStorage(
-      create_info, biases, creation_context.context, &result->biases_));
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition.GetDataType();
+  LinearStorage lt;
+  RETURN_IF_ERROR(
+      CreateLinearStorage(desc, biases, creation_context.context, &lt));
+  result->args_.AddObject("biases", AccessType::READ,
+                          absl::make_unique<LinearStorage>(std::move(lt)),
+                          absl::make_unique<TensorLinearDescriptor>(desc));
   return result->UploadAt(creation_context.context);
 }
 

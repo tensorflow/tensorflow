@@ -95,10 +95,10 @@ cc_library(
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
         "//tensorflow:android_arm": [
-            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//tensorflow:android_arm64": [
-            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
     }),
@@ -151,6 +151,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":delegate_provider_hdr",
+        "//tensorflow/lite/delegates/external:external_delegate",
     ],
     alwayslink = 1,
 )

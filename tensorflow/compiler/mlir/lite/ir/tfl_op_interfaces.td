@@ -41,22 +41,6 @@ def TFL_StatefulOp : OpInterface<"StatefulOpInterface"> {
 }
 
 //===----------------------------------------------------------------------===//
-// TFL op interface for output channel index.
-
-def TFL_ChannelDimIndexInterface : OpInterface<"ChannelDimIndexInterface"> {
-  let description = [{
-    Interface for defining the index of out channel index.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      [{Returns the dimension index of the output channels.}],
-      "int", "GetChannelDimIndex", (ins)
-    >,
-  ];
-}
-
-//===----------------------------------------------------------------------===//
 // TFL op interface for sparse operands.
 
 def TFL_SparseOp : OpInterface<"SparseOpInterface"> {
@@ -94,8 +78,7 @@ def TFL_RuntimeVerification : OpInterface<"TflRuntimeVerifyOpInterface"> {
   let methods = [
     StaticInterfaceMethod<
       [{Returns whether the op's operands/results are supported by runtime.}],
-      "LogicalResult", "VerifyTflRuntimeConstraints",
-      (ins "Operation*":$op, "bool":$failure_on_operand_type_mismatch)
+      "LogicalResult", "VerifyTflRuntimeConstraints", (ins "Operation*":$op)
     >,
   ];
 }

@@ -31,14 +31,15 @@ namespace {
 // Good results for ~1024 x 1024 sizes, for other can be written more
 // optimized shaders
 
-std::string GetFullyConnectedKernelCode(
-    const OperationDef& op_def, const LinearStorage& biases,
-    const std::vector<ElementwiseOperation*>& linked_operations,
-    const int3& work_group_size) {
-  TensorCodeGenerator src_tensor("src_data", WHSPoint{"1", "1", "depthes.x"},
-                                 op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", WHSPoint{"1", "1", "depthes.y"},
-                                 op_def.dst_tensors[0]);
+std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
+                                        const int3& work_group_size,
+                                        Arguments* args) {
+  args->AddObjectRef(
+      "src_tensor", AccessType::READ,
+      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
+  args->AddObjectRef(
+      "dst_tensor", AccessType::WRITE,
+      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
 
   std::string c = GetCommonDefines(op_def.precision);
   switch (op_def.precision) {
@@ -54,21 +55,16 @@ std::string GetFullyConnectedKernelCode(
   const std::string wg_x = std::to_string(work_group_size.x);
   const std::string wg_y = std::to_string(work_group_size.y);
   c += "__kernel void main_function(\n";
-  c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  c += "    __global FLT16* filters,      \n";
-  c += biases.GetDeclaration();
-  c += GetArgsDeclaration(linked_operations);
-  c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
-  c += "    int2 depthes                  \n";
-  c += ") {\n";
+  c += "$0) {\n";
   c += "  int gid = get_global_id(0);\n";
-  c += "  bool inside = gid < depthes.y;\n";
-  c += "  gid = min(gid, depthes.y - 1);\n";
+  c += "  bool inside = gid < args.dst_tensor.Slices();\n";
+  c += "  gid = min(gid, args.dst_tensor.Slices() - 1);\n";
   c += "  int2 tid = (int2)(get_local_id(0), get_local_id(1));\n";
   c += "  ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);\n";
-  c += "  for (uint c = tid.y; c < depthes.x; c += " + wg_y + ") {\n";
-  c += "    FLT4 v = " + src_tensor.ReadWHS("0", "0", "c") + ";\n";
-  c += "    FLT16 w = filters[c * depthes.y + gid];\n";
+  c += "  for (uint c = tid.y; c < args.src_tensor.Slices(); c += " + wg_y +
+       ") {\n";
+  c += "    FLT4 v = args.src_tensor.Read(0, 0, c);\n";
+  c += "    FLT16 w = args.weights.Read(c * args.dst_tensor.Slices() + gid);\n";
   c += "    s.x += dot(v, w.s0123);\n";
   c += "    s.y += dot(v, w.s4567);\n";
   c += "    s.z += dot(v, w.s89ab);\n";
@@ -81,10 +77,8 @@ std::string GetFullyConnectedKernelCode(
   for (int i = 1; i < work_group_size.y; ++i) {
     c += "    s += temp[tid.x][" + std::to_string(i) + "];\n";
   }
-  c += "    FLT4 r0 = TO_FLT4(s) + " + biases.ReadLinearFLT4("gid") + ";\n";
-  const LinkingContext context{"r0", "0", "0", "gid"};
-  c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.WriteWHS("r0", "0", "0", "gid") + "\n";
+  c += "    FLT4 r0 = TO_FLT4(s) + args.biases.Read(gid);\n";
+  c += "    args.dst_tensor.Write(r0, 0, 0, gid);\n";
   c += "  }\n";
   c += "}\n";
 
@@ -97,15 +91,11 @@ FullyConnected::FullyConnected(const OperationDef& definition)
 
 FullyConnected::FullyConnected(FullyConnected&& kernel)
     : GPUOperation(std::move(kernel)),
-      weights_(std::move(kernel.weights_)),
-      biases_(std::move(kernel.biases_)),
       kernel_(std::move(kernel.kernel_)),
       work_group_size_(kernel.work_group_size_) {}
 
 FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
   if (this != &kernel) {
-    weights_ = std::move(kernel.weights_);
-    biases_ = std::move(kernel.biases_);
     kernel_ = std::move(kernel.kernel_);
     std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
@@ -120,8 +110,14 @@ absl::Status FullyConnected::Compile(const CreationContext& creation_context) {
   do {
     work_group_size_ = {wg_width, wg_height, 1};
     wg_width /= 2;
-    const auto code = GetFullyConnectedKernelCode(
-        definition_, biases_, linked_operations_, work_group_size_);
+    std::string code =
+        GetFullyConnectedKernelCode(definition_, work_group_size_, &args_);
+    std::string element_wise_code;
+    RETURN_IF_ERROR(
+        MergeOperations(linked_operations_, &args_, &element_wise_code));
+    RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                            {{"dst_tensor", element_wise_code}},
+                                            &code));
     auto status = creation_context.cache->GetOrCreateCLKernel(
         code, "main_function", *creation_context.context,
         *creation_context.device, &kernel_);
@@ -138,14 +134,10 @@ absl::Status FullyConnected::Compile(const CreationContext& creation_context) {
 }
 
 absl::Status FullyConnected::AddToQueue(CLCommandQueue* queue) {
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(
-      kernel_.SetBytesAuto(int2(src_[0]->Slices(), dst_[0]->Slices())));
+  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
+  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
+  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
   return queue->DispatchImplicit(kernel_, {dst_[0]->Slices(), 1, 1},
                                  work_group_size_);
 }
@@ -157,13 +149,18 @@ absl::Status CreateFullyConnected(const CreationContext& creation_context,
   *result = FullyConnected(definition);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type = LinearStorageType::TEXTURE_2D;
-  create_info.data_type = definition.GetDataType();
-  create_info.name = "biases";
-  create_info.aligned_size = attr.weights.shape.o;
-  RETURN_IF_ERROR(CreateLinearStorage(
-      create_info, attr.bias, creation_context.context, &result->biases_));
+
+  TensorLinearDescriptor desc;
+  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.element_type = definition.GetDataType();
+
+  LinearStorage lt;
+  RETURN_IF_ERROR(
+      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
+  result->args_.AddObject("biases", AccessType::READ,
+                          absl::make_unique<LinearStorage>(std::move(lt)),
+                          absl::make_unique<TensorLinearDescriptor>(desc));
+
   return absl::OkStatus();
 }
 

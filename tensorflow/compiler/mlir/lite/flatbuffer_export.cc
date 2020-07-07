@@ -190,9 +190,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
 }
 
 static bool IsConst(Operation* op) {
-  return isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
-         isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op) ||
-         isa<tfl::SparseConstOp>(op) || isa<tfl::SparseQConstOp>(op);
+  return isa<mlir::ConstantOp, mlir::TF::ConstOp, tfl::ConstOp, tfl::QConstOp,
+             tfl::SparseConstOp, tfl::SparseQConstOp>(op);
 }
 
 template <typename T>
@@ -240,10 +239,10 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
   }
 
   for (auto fn : module.getOps<FuncOp>()) {
-    if (fn.getBlocks().size() != 1) {
+    if (!llvm::hasSingleElement(fn)) {
       return fn.emitError("should have exactly one basic block"), false;
     }
-    auto& bb = fn.getBlocks().front();
+    auto& bb = fn.front();
 
     for (auto arg : bb.getArguments()) {
       if (!HasValidTFLiteType(arg, fn))
@@ -1089,7 +1088,7 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
           dict_attr.get("outputs").dyn_cast_or_null<mlir::StringAttr>()) {
     str.getValue().split(output_names, ',', /*MaxSplit=*/-1,
                          /*KeepEmpty=*/false);
-    auto term = fn.getBlocks().back().getTerminator();
+    auto term = fn.back().getTerminator();
     if (output_names.size() != term->getNumOperands()) {
       fn.emitWarning() << "output names (" << output_names.size()
                        << ") != terminator operands (" << term->getNumOperands()
@@ -1406,22 +1405,67 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
       for (int j = 0; j < segments.size(); j++) {
         vector_segments[j] = segments[j].dyn_cast<mlir::IntegerAttr>().getInt();
       }
-      auto array_segments =
-          tflite::CreateInt32Vector(builder_,
-                                    builder_.CreateVector(vector_segments))
-              .Union();
+      tflite::SparseIndexVector segments_type;
+      BufferOffset<void> array_segments;
+      // The segment array is sorted.
+      // TODO(b/147449640): Clean this up with util functions.
+      int max_of_segments = vector_segments[segments.size() - 1];
+      if (max_of_segments <= UINT8_MAX) {
+        segments_type = tflite::SparseIndexVector_Uint8Vector;
+        std::vector<uint8_t> uint8_vector(vector_segments.begin(),
+                                          vector_segments.end());
+        array_segments = tflite::CreateUint8Vector(
+                             builder_, builder_.CreateVector(uint8_vector))
+                             .Union();
+      } else if (max_of_segments <= UINT16_MAX) {
+        segments_type = tflite::SparseIndexVector_Uint16Vector;
+        std::vector<uint16_t> uint16_vector(vector_segments.begin(),
+                                            vector_segments.end());
+        array_segments = tflite::CreateUint16Vector(
+                             builder_, builder_.CreateVector(uint16_vector))
+                             .Union();
+      } else {
+        segments_type = tflite::SparseIndexVector_Int32Vector;
+        array_segments = tflite::CreateInt32Vector(
+                             builder_, builder_.CreateVector(vector_segments))
+                             .Union();
+      }
+
       auto indices = dim_metadata.indices();
       std::vector<int> vector_indices(indices.size(), 0);
+      int max_of_indices = 0;
       for (int j = 0; j < indices.size(); j++) {
         vector_indices[j] = indices[j].dyn_cast<mlir::IntegerAttr>().getInt();
+        if (vector_indices[j] > max_of_indices) {
+          max_of_indices = vector_indices[j];
+        }
       }
-      auto array_indices = tflite::CreateInt32Vector(
-                               builder_, builder_.CreateVector(vector_indices))
-                               .Union();
+      tflite::SparseIndexVector indices_type;
+      BufferOffset<void> array_indices;
+      if (max_of_indices <= UINT8_MAX) {
+        indices_type = tflite::SparseIndexVector_Uint8Vector;
+        std::vector<uint8_t> uint8_vector(vector_indices.begin(),
+                                          vector_indices.end());
+        array_indices = tflite::CreateUint8Vector(
+                            builder_, builder_.CreateVector(uint8_vector))
+                            .Union();
+      } else if (max_of_indices <= UINT16_MAX) {
+        indices_type = tflite::SparseIndexVector_Uint16Vector;
+        std::vector<uint16_t> uint16_vector(vector_indices.begin(),
+                                            vector_indices.end());
+        array_indices = tflite::CreateUint16Vector(
+                            builder_, builder_.CreateVector(uint16_vector))
+                            .Union();
+      } else {
+        indices_type = tflite::SparseIndexVector_Int32Vector;
+        array_indices = tflite::CreateInt32Vector(
+                            builder_, builder_.CreateVector(vector_indices))
+                            .Union();
+      }
+
       fb_dim_metadata[i] = tflite::CreateDimensionMetadata(
-          builder_, tflite::DimensionType_SPARSE_CSR, 0,
-          tflite::SparseIndexVector_Int32Vector, array_segments,
-          tflite::SparseIndexVector_Int32Vector, array_indices);
+          builder_, tflite::DimensionType_SPARSE_CSR, 0, segments_type,
+          array_segments, indices_type, array_indices);
     }
   }
 

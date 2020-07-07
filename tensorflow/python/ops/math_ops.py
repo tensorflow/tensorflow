@@ -886,6 +886,8 @@ def cast(x, dtype, name=None):
   returned value is set to `0`. The handling of complex types here matches the
   behavior of numpy.
 
+  Note casting nan and inf values to integral types has undefined behavior.
+
   Args:
     x: A `Tensor` or `SparseTensor` or `IndexedSlices` of numeric type. It could
       be `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`,
@@ -1416,8 +1418,28 @@ truncatemod = gen_math_ops.truncate_mod
 floormod = gen_math_ops.floor_mod
 
 
+@tf_export("__operators__.add", v1=[])
+@dispatch.add_dispatch_support
 def _add_dispatch(x, y, name=None):
-  """Dispatches to add for strings and add_v2 for all other types."""
+  """The operation invoked by the `Tensor.__add__` operator.
+
+    Purpose in the API:
+
+      This method is exposed in TensorFlow's API so that library developers
+      can register dispatching for `Tensor.__add__` to allow it to handle
+      custom composite tensors & other custom objects.
+
+      The API symbol is not intended to be called by users directly and does
+      appear in TensorFlow's generated documentation.
+
+  Args:
+    x: The left-hand side of the `+` operator.
+    y: The right-hand side of the `+` operator.
+    name: an optional name for the operation.
+
+  Returns:
+    The result of the elementwise `+` operation.
+  """
   if not isinstance(y, ops.Tensor) and not isinstance(
       y, sparse_tensor.SparseTensor):
     y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
@@ -1630,8 +1652,33 @@ def not_equal(x, y, name=None):
   return gen_math_ops.not_equal(x, y, name=name)
 
 
+@tf_export("__operators__.eq", v1=[])
+@dispatch.add_dispatch_support
 def tensor_equals(self, other):
-  """Compares two tensors element-wise for equality."""
+  """The operation invoked by the `Tensor.__eq__` operator.
+
+  Compares two tensors element-wise for equality if they are
+  broadcast-compatible; or returns False if they are not broadcast-compatible.
+  (Note that this behavior differs from `tf.math.equal`, which raises an
+  exception if the two tensors are not broadcast-compatible.)
+
+  Purpose in the API:
+
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__eq__` to allow it to handle
+    custom composite tensors & other custom objects.
+
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
+
+  Args:
+    self: The left-hand side of the `==` operator.
+    other: The right-hand side of the `==` operator.
+
+  Returns:
+    The result of the elementwise `==` operation, or `False` if the arguments
+    are not broadcast-compatible.
+  """
   if other is None:
     return False
   g = getattr(self, "graph", None)
@@ -1643,8 +1690,33 @@ def tensor_equals(self, other):
     return self is other
 
 
+@tf_export("__operators__.ne", v1=[])
+@dispatch.add_dispatch_support
 def tensor_not_equals(self, other):
-  """Compares two tensors element-wise for equality."""
+  """The operation invoked by the `Tensor.__ne__` operator.
+
+  Compares two tensors element-wise for inequality if they are
+  broadcast-compatible; or returns True if they are not broadcast-compatible.
+  (Note that this behavior differs from `tf.math.not_equal`, which raises an
+  exception if the two tensors are not broadcast-compatible.)
+
+  Purpose in the API:
+
+    This method is exposed in TensorFlow's API so that library developers
+    can register dispatching for `Tensor.__ne__` to allow it to handle
+    custom composite tensors & other custom objects.
+
+    The API symbol is not intended to be called by users directly and does
+    appear in TensorFlow's generated documentation.
+
+  Args:
+    self: The left-hand side of the `!=` operator.
+    other: The right-hand side of the `!=` operator.
+
+  Returns:
+    The result of the elementwise `!=` operation, or `True` if the arguments
+    are not broadcast-compatible.
+  """
   if other is None:
     return True
   if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():
@@ -1753,28 +1825,23 @@ if not six.PY2:
                                           _range_tensor_conversion_function)
 
 # Reduction operations
-def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-name
-  """Returns range(0, rank(x)) if reduction_indices is None."""
-  # TODO(aselle): Remove this after deprecation
-  if reduction_indices is not None:
-    if axis is not None:
-      raise ValueError("Can't specify both axis' and 'reduction_indices'.")
-    axis = reduction_indices
+def _ReductionDims(x, axis):  # pylint: disable=invalid-name
+  """Returns range(0, rank(x)) if axis is None."""
   if axis is not None:
     return axis
   else:
-    # Fast path: avoid creating Rank and Range ops if ndims is known.
+    x_rank = None
     if isinstance(x, ops.Tensor):
-      rank = x.shape.rank
-      if rank is not None:
-        return constant_op.constant(np.arange(rank, dtype=np.int32))
+      x_rank = x.shape.rank
     elif (isinstance(x, sparse_tensor.SparseTensor) and
           x.dense_shape.shape.is_fully_defined()):
-      rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
-      return constant_op.constant(np.arange(rank, dtype=np.int32))
-
-    # Otherwise, we rely on Range and Rank to do the right thing at run-time.
-    return range(0, array_ops.rank(x))
+      x_rank = x.dense_shape.shape.dims[0].value  # sparse.dense_shape is 1-D.
+    # Fast path: avoid creating Rank and Range ops if ndims is known.
+    if x_rank:
+      return constant_op.constant(np.arange(x_rank, dtype=np.int32))
+    else:
+      # Otherwise, we rely on Range and Rank to do the right thing at run-time.
+      return range(0, array_ops.rank(x))
 
 
 def _has_fully_defined_shape(tensor):
@@ -1805,8 +1872,8 @@ def reduce_sum_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -1855,8 +1922,8 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -1932,8 +1999,8 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2128,8 +2195,8 @@ def reduce_mean_v1(input_tensor,
   Reduces `input_tensor` along the dimensions given in `axis` by computing the
   mean of elements across the dimensions in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a tensor with a single
   element is returned.
@@ -2190,8 +2257,8 @@ def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
   Reduces `input_tensor` along the dimensions given in `axis` by computing the
   mean of elements across the dimensions in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions are retained
-  with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a tensor with a single
   element is returned.
@@ -2249,8 +2316,8 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2310,8 +2377,8 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2404,8 +2471,8 @@ def reduce_prod_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2450,8 +2517,8 @@ def reduce_min_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2488,8 +2555,8 @@ def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2537,8 +2604,8 @@ def reduce_max_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2575,8 +2642,8 @@ def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2642,8 +2709,8 @@ def reduce_all_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2682,15 +2749,15 @@ def reduce_all_v1(input_tensor,
   return reduce_all(input_tensor, axis, keepdims, name)
 
 
-@tf_export("reduce_all", "math.reduce_all", v1=[])
+@tf_export("math.reduce_all", "reduce_all", v1=[])
 @dispatch.add_dispatch_support
 def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the "logical and" of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2742,8 +2809,8 @@ def reduce_any_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2789,8 +2856,8 @@ def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2842,8 +2909,8 @@ def reduce_logsumexp_v1(input_tensor,
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -2891,8 +2958,8 @@ def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
 
   Reduces `input_tensor` along the dimensions given in `axis`.
   Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
-  entry in `axis`. If `keepdims` is true, the reduced dimensions
-  are retained with length 1.
+  of the entries in `axis`, which must be unique. If `keepdims` is true, the
+  reduced dimensions are retained with length 1.
 
   If `axis` has no entries, all dimensions are reduced, and a
   tensor with a single element is returned.
@@ -3831,11 +3898,18 @@ def reduced_shape(input_shape, axes):
   Returns:
     A 1-D Tensor, the output shape as if keepdims were set to True.
   """
-  if context.executing_eagerly():
-    input_shape = input_shape.numpy()
-    axes = axes.numpy()
-    input_shape[axes] = 1
-    return input_shape
+  # TODO(allenl): Refactor `reduced_shape` to take the tensor corresponding to
+  # `input_shape` rather than `tf.shape` of it. Then we can check if the shape
+  # is fully defined here, which may be faster executing eagerly than running
+  # `tf.shape` and then fetching its constant value.
+  constant_input_shape = tensor_util.constant_value(input_shape)
+  if constant_input_shape is not None:
+    constant_axes = tensor_util.constant_value(axes)
+    if constant_axes is not None:
+      constant_axes = np.array(constant_axes, dtype=np.int32)
+      constant_input_shape = np.array(constant_input_shape, dtype=np.int32)
+      constant_input_shape[constant_axes] = 1
+      return constant_input_shape
 
   # Example:
   # cast needed for SparseTensor reductions

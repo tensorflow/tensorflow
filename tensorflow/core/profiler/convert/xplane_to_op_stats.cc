@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
+#include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -95,8 +96,7 @@ void SetRunEnvironment(int32 accelerator_count, RunEnvironment* env) {
 }
 
 void ProcessHostPlane(const XPlane* host_plane, bool use_device_step_events,
-                      OpMetricsDb* op_metrics_db, StepEvents* step_events,
-                      TfFunctionDb* tf_function_db) {
+                      OpMetricsDb* op_metrics_db, StepEvents* step_events) {
   absl::flat_hash_map<int64, TfOp> tf_ops =
       CollectTfOpsFromHostThreadsXPlane(*host_plane);
   OpMetricsDbCombiner combiner(op_metrics_db);
@@ -107,27 +107,34 @@ void ProcessHostPlane(const XPlane* host_plane, bool use_device_step_events,
     CombineStepEvents(ConvertHostThreadsXLineToStepEvents(
                           line, use_device_step_events, *step_events),
                       step_events);
-    CombineTfFunctionDb(ConvertHostThreadsXLineToTfFunctionDb(line),
-                        tf_function_db);
   });
 }
 
 }  // namespace
 
-void PropagateXSpaceErrorsToOpStats(const XSpace& space, OpStats* op_stats) {
-  if (space.errors().empty()) return;
-  absl::flat_hash_set<std::string> unique_errors;
-  unique_errors.insert(space.errors().begin(), space.errors().end());
-  *op_stats->mutable_errors() = {unique_errors.begin(), unique_errors.end()};
+void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
+                                         OpStats* op_stats) {
+  if (!space.errors().empty()) {
+    absl::flat_hash_set<std::string> unique_errors;
+    unique_errors.insert(space.errors().begin(), space.errors().end());
+    *op_stats->mutable_diagnostics()->mutable_errors() = {unique_errors.begin(),
+                                                          unique_errors.end()};
+  }
+  if (!space.warnings().empty()) {
+    absl::flat_hash_set<std::string> unique_warnings;
+    unique_warnings.insert(space.warnings().begin(), space.warnings().end());
+    *op_stats->mutable_diagnostics()->mutable_warnings() = {
+        unique_warnings.begin(), unique_warnings.end()};
+  }
 }
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space) {
-  const XPlane* host_plane = FindPlaneWithName(space, kHostThreads);
+  const XPlane* host_plane = FindPlaneWithName(space, kHostThreadsPlaneName);
   std::vector<const XPlane*> device_planes =
       FindPlanesWithPrefix(space, kGpuPlanePrefix);
   OpStats op_stats;
   StepEvents step_events;
-  PropagateXSpaceErrorsToOpStats(space, &op_stats);
+  PropagateXSpaceDiagnosticsToOpStats(space, &op_stats);
   // Convert device planes.
   OpMetricsDbCombiner op_metrics_db_combiner(
       op_stats.mutable_device_op_metrics_db());
@@ -156,8 +163,7 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
   bool has_device = !device_planes.empty();
   if (host_plane) {
     ProcessHostPlane(host_plane, has_device,
-                     op_stats.mutable_host_op_metrics_db(), &step_events,
-                     op_stats.mutable_tf_function_db());
+                     op_stats.mutable_host_op_metrics_db(), &step_events);
   }
   StepEvents nonoverlapped_step_events = ToNonOverlappedStepEvents(step_events);
   *op_stats.mutable_step_db() =

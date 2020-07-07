@@ -30,6 +30,8 @@ class NnapiDelegateProvider : public DelegateProvider {
     default_params_.AddParam("use_nnapi", ToolParam::Create<bool>(false));
     default_params_.AddParam("nnapi_execution_preference",
                              ToolParam::Create<std::string>(""));
+    default_params_.AddParam("nnapi_execution_priority",
+                             ToolParam::Create<std::string>(""));
     default_params_.AddParam("nnapi_accelerator_name",
                              ToolParam::Create<std::string>(""));
     default_params_.AddParam("disable_nnapi_cpu",
@@ -41,7 +43,7 @@ class NnapiDelegateProvider : public DelegateProvider {
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -57,6 +59,10 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(ToolParams* params) const {
                             "execution preference for nnapi delegate. Should "
                             "be one of the following: fast_single_answer, "
                             "sustained_speed, low_power, undefined"),
+    CreateFlag<std::string>("nnapi_execution_priority", params,
+                            "The model execution priority in nnapi, and it "
+                            "should be one of the following: default, low, "
+                            "medium and high. This requires Android 11+."),
     CreateFlag<std::string>(
         "nnapi_accelerator_name", params,
         "the name of the nnapi accelerator to use (requires Android Q+)"),
@@ -70,33 +76,30 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(ToolParams* params) const {
   return flags;
 }
 
-void NnapiDelegateProvider::LogParams(const ToolParams& params) const {
+void NnapiDelegateProvider::LogParams(const ToolParams& params,
+                                      bool verbose) const {
 #if defined(__ANDROID__)
-  TFLITE_LOG(INFO) << "Use nnapi : [" << params.Get<bool>("use_nnapi") << "]";
-  if (params.Get<bool>("use_nnapi")) {
-    if (!params.Get<std::string>("nnapi_execution_preference").empty()) {
-      TFLITE_LOG(INFO) << "nnapi execution preference: ["
-                       << params.Get<std::string>("nnapi_execution_preference")
-                       << "]";
-    }
-    std::string log_string = "nnapi accelerator name: [" +
-                             params.Get<std::string>("nnapi_accelerator_name") +
-                             "]";
-    std::string string_device_names_list = nnapi::GetStringDeviceNamesList();
-    // Print available devices when possible
-    if (!string_device_names_list.empty()) {
-      log_string += " (Available: " + string_device_names_list + ")";
-    }
-    TFLITE_LOG(INFO) << log_string;
-    if (params.Get<bool>("disable_nnapi_cpu")) {
-      TFLITE_LOG(INFO) << "disable_nnapi_cpu: ["
-                       << params.Get<bool>("disable_nnapi_cpu") << "]";
-    }
-    if (params.Get<bool>("nnapi_allow_fp16")) {
-      TFLITE_LOG(INFO) << "Allow fp16 in NNAPI: ["
-                       << params.Get<bool>("nnapi_allow_fp16") << "]";
-    }
+  LOG_TOOL_PARAM(params, bool, "use_nnapi", "Use NNAPI", verbose);
+  if (!params.Get<bool>("use_nnapi")) return;
+
+  LOG_TOOL_PARAM(params, std::string, "nnapi_execution_preference",
+                 "NNAPI execution preference", verbose);
+  LOG_TOOL_PARAM(params, std::string, "nnapi_execution_priority",
+                 "Model execution priority in nnapi", verbose);
+  LOG_TOOL_PARAM(params, std::string, "nnapi_accelerator_name",
+                 "NNAPI accelerator name", verbose);
+
+  std::string string_device_names_list = nnapi::GetStringDeviceNamesList();
+  // Print available devices when possible as it's informative.
+  if (!string_device_names_list.empty()) {
+    TFLITE_LOG(INFO) << "NNAPI accelerators available: ["
+                     << string_device_names_list << "]";
   }
+
+  LOG_TOOL_PARAM(params, bool, "disable_nnapi_cpu", "Disable NNAPI cpu",
+                 verbose);
+  LOG_TOOL_PARAM(params, bool, "nnapi_allow_fp16", "Allow fp16 in NNAPI",
+                 verbose);
 #endif
 }
 
@@ -145,6 +148,28 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
       }
       options.execution_preference = execution_preference;
     }
+
+    std::string string_execution_priority =
+        params.Get<std::string>("nnapi_execution_priority");
+    // Only set execution priority if user explicitly passes one. Otherwise,
+    // leave it as whatever NNAPI has as the default.
+    if (!string_execution_priority.empty()) {
+      int execution_priority = 0;
+      if (string_execution_priority == "default") {
+        execution_priority = ANEURALNETWORKS_PRIORITY_DEFAULT;
+      } else if (string_execution_priority == "low") {
+        execution_priority = ANEURALNETWORKS_PRIORITY_LOW;
+      } else if (string_execution_priority == "medium") {
+        execution_priority = ANEURALNETWORKS_PRIORITY_MEDIUM;
+      } else if (string_execution_priority == "high") {
+        execution_priority = ANEURALNETWORKS_PRIORITY_HIGH;
+      } else {
+        TFLITE_LOG(WARN) << "The provided value (" << string_execution_priority
+                         << ") is not a valid nnapi execution priority.";
+      }
+      options.execution_priority = execution_priority;
+    }
+
     int max_delegated_partitions = params.Get<int>("max_delegated_partitions");
     if (max_delegated_partitions > 0) {
       options.max_number_delegated_partitions = max_delegated_partitions;

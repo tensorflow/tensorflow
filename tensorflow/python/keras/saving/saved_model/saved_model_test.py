@@ -26,6 +26,7 @@ from __future__ import print_function
 
 import os
 import shutil
+import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -105,6 +106,11 @@ class LayerWithUpdate(keras.layers.Layer):
     if training:
       self.add_update(self.v.assign_add(1.))
     return inputs * 2.
+
+
+@generic_utils.register_keras_serializable('Testing')
+class GlobalLayerThatShouldFailIfNotAdded(keras.layers.Layer):
+  _must_restore_from_config = True
 
 
 @keras_parameterized.run_all_keras_modes
@@ -330,6 +336,35 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllEqual([None, 2, 3], loaded.input_spec['b'].shape)
     self.assertEqual('float16', loaded.input_spec['b'].dtype)
 
+  def test_must_restore_from_config_fails_if_layer_is_not_in_scope(self):
+
+    class LayerThatShouldFailIfNotAdded(keras.layers.Layer):
+      _must_restore_from_config = True
+
+    layer = LayerThatShouldFailIfNotAdded()
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(layer, saved_model_dir)
+    with self.assertRaisesRegex(RuntimeError, 'Unable to restore a layer of'):
+      _ = keras_load.load(saved_model_dir)
+
+  def test_must_restore_from_config_custom_object_scope(self):
+
+    class LayerThatShouldFailIfNotAdded(keras.layers.Layer):
+      _must_restore_from_config = True
+
+    layer = LayerThatShouldFailIfNotAdded()
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(layer, saved_model_dir)
+    with generic_utils.CustomObjectScope(
+        {'LayerThatShouldFailIfNotAdded': LayerThatShouldFailIfNotAdded}):
+      _ = keras_load.load(saved_model_dir)
+
+  def test_must_restore_from_config_registration(self):
+    layer = GlobalLayerThatShouldFailIfNotAdded()
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(layer, saved_model_dir)
+    _ = keras_load.load(saved_model_dir)
+
   def test_multi_input_model(self):
     input_1 = keras.layers.Input(shape=(3,))
     input_2 = keras.layers.Input(shape=(5,))
@@ -375,9 +410,16 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         keras.layers.BatchNormalization(input_shape=(1,)))
     self.evaluate(variables.variables_initializer(model.variables))
     saved_model_dir = self._save_model_dir()
-    model.save(saved_model_dir, save_format='tf')
-    loaded = keras_load.load(saved_model_dir)
-    self.evaluate(variables.variables_initializer(loaded.variables))
+
+    with self.captureWritesToStream(sys.stderr) as captured_logs:
+      model.save(saved_model_dir, save_format='tf')
+      loaded = keras_load.load(saved_model_dir)
+
+    # Assert that saving does not log deprecation warnings
+    # (even if it needs to set learning phase for compat reasons)
+    if context.executing_eagerly():
+      self.assertNotIn('deprecated', captured_logs.contents())
+
     input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
     input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
     self.assertAllClose(self.evaluate(loaded.layers[-1].moving_mean), [0])
@@ -731,6 +773,26 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllClose(layer.states, loaded_layer.states)
     self.assertAllClose(model(input_arr), loaded(input_arr))
 
+  def testSaveStatelessConvLSTM2D(self):
+    data_format = 'channels_first'
+    batch, timesteps, channels, rows, cols = 12, 10, 8, 4, 4
+    input_arr = np.ones(
+        (batch, timesteps, channels, rows, cols)).astype('float32')
+    layer = keras.layers.ConvLSTM2D(
+        filters=16, kernel_size=(1, 1), data_format=data_format)
+    x = keras.Input(batch_shape=(batch, timesteps, channels, rows, cols))
+    y = layer(x)
+    model = keras.Model(x, y)
+
+    predict_1 = model(input_arr)
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+    del model
+
+    loaded = keras_load.load(saved_model_dir)
+    predict_2 = loaded(input_arr)
+    self.assertAllClose(predict_1, predict_2)
+
   def testSaveWithRaggedInputs(self):
 
     class EmbeddingMerger(keras.layers.Layer):
@@ -766,6 +828,35 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     loaded = keras_load.load(saved_model_dir)
     self.evaluate(variables.variables_initializer(loaded.variables))
     self.assertAllClose(model.predict(f), loaded.predict(f))
+
+  def test_load_with_partially_failed_serialization(self):
+
+    class BadCustomLayer(keras.layers.Layer):
+
+      def __call__(self, inputs):
+        return inputs
+
+    class Model(keras.models.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        self.layer = BadCustomLayer()
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec([None, 1])])
+      def call(self, inputs):
+        return self.layer(inputs)
+
+    model = Model()
+    inp = constant_op.constant([[1.0]])
+    model(inp)
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllEqual([[1.0]], self.evaluate(loaded(inp)))
+    with self.assertRaisesRegex(ValueError, 'call function was not serialized'):
+      loaded.layer(inp)
 
 
 class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
@@ -947,8 +1038,8 @@ class MetricTest(test.TestCase, parameterized.TestCase):
 
       self.evaluate([v.initializer for v in metric.variables])
 
-      with self.assertRaisesRegexp(ValueError,
-                                   'Unable to restore custom object'):
+      with self.assertRaisesRegex(ValueError,
+                                  'Unable to restore custom object'):
         self._test_metric_save_and_load(metric, save_dir, num_tensor_args)
       with generic_utils.CustomObjectScope({'CustomMetric': CustomMetric}):
         loaded = self._test_metric_save_and_load(

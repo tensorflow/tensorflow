@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -29,7 +28,6 @@ namespace {
 
 std::string GetSoftmaxKernelCode(
     const OperationDef& op_def,
-    const std::vector<ElementwiseOperation*>& linked_operations,
     Arguments* args) {
   auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
   if (op_def.IsBatchSupported()) {
@@ -43,12 +41,7 @@ std::string GetSoftmaxKernelCode(
   args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
 
   std::string c = GetCommonDefines(op_def.precision);
-  std::string linked_args = GetArgsDeclaration(linked_operations);
-  if (linked_args[0] == ',') {
-    linked_args[0] = ' ';
-  }
   c += "__kernel void main_function(\n";
-  c += linked_args;
   c += "$0) {\n";
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
@@ -66,7 +59,6 @@ std::string GetSoftmaxKernelCode(
   c += "    float4 t = args.src_tensor.Read<float>(X, Y, d);\n";
   c += "    t = exp(t) / sum;\n";
   c += "    FLT4 result = TO_FLT4(t);\n";
-  c += PostProcess(linked_operations, {"result", "X", "Y", "d"});
   c += "    args.dst_tensor.Write(result, X, Y, d);\n";
   c += "  }\n";
   c += "}\n";
@@ -89,10 +81,13 @@ Softmax& Softmax::operator=(Softmax&& kernel) {
 }
 
 absl::Status Softmax::Compile(const CreationContext& creation_context) {
-  std::string code =
-      GetSoftmaxKernelCode(definition_, linked_operations_, &args_);
-  RETURN_IF_ERROR(args_.TransformToCLCode(&code));
-  code = absl::Substitute(code, args_.GetListOfArgs());
+  std::string code = GetSoftmaxKernelCode(definition_, &args_);
+  std::string element_wise_code;
+  RETURN_IF_ERROR(
+      MergeOperations(linked_operations_, &args_, &element_wise_code));
+  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
+                                          {{"dst_tensor", element_wise_code}},
+                                          &code));
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
@@ -101,10 +96,8 @@ absl::Status Softmax::Compile(const CreationContext& creation_context) {
 absl::Status Softmax::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
   RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
-  return absl::OkStatus();
+  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
+  return args_.Bind(kernel_.kernel());
 }
 
 int3 Softmax::GetGridSize() const {

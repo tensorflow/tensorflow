@@ -12,73 +12,37 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_COMPILATION_CACHE_ENTRY_H_
-#define EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_COMPILATION_CACHE_ENTRY_H_
+#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_H_
+#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_H_
 
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
-#include "tensorflow/core/tpu/kernels/tpu_program.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 
 namespace tensorflow {
 namespace tpu {
 
-class CompilationCacheEntry {
+// A version of `CompilationCacheEntry` to access Tpu binary program
+// `XLA_TpuProgram`.
+class TpuCompilationCacheEntry {
  public:
-  explicit CompilationCacheEntry(
-      std::unique_ptr<const TpuProgram> tpu_program)
-      : tpu_program_(std::move(tpu_program)) {}
-
+  explicit TpuCompilationCacheEntry(
+      const TpuProgramGroupInterface* tpu_program_group, int core_index);
   // Constructor for an empty entry.
-  CompilationCacheEntry()
-      : tpu_program_(nullptr) {}
-
-  const TPUExecutableInfoProto* get_executable_info() const {
-    return &tpu_program_->executable_info();
-  }
-
-  const TPUHostTransferInfoProto* get_host_transfer_info() const {
-    return &tpu_program_->host_transfer_info();
-  }
-
-  const xla::HloProto* get_hlo_metadata() const {
-    return &tpu_program_->hlo_metadata();
-  }
-
-  // TODO(henrytan,jiawenhao): When should we expect more than one
-  // XLA_TpuProgram* per TpuProgram? Remove the program_count CHECK below then.
-  const XLA_TpuProgram* get_tpu_program() const {
-    CHECK_EQ(tpu_program_->program_count(), 1);
-    return tpu_program_->tpu_programs()[0];
-  }
+  TpuCompilationCacheEntry();
+  const TPUExecutableInfoProto* get_executable_info() const;
+  const TPUHostTransferInfoProto* get_host_transfer_info() const;
+  const xla::HloProto* get_hlo_metadata() const;
+  // TODO(henrytan): maybe nicer to return C++ wrapper of `XLA_TpuProgram`
+  const XLA_TpuProgram* get_tpu_program() const;
 
  private:
-  std::unique_ptr<const TpuProgram> tpu_program_;
-};
-
-// Base class for a reference to a cached proto. A unique_ptr to a
-// CompilationCacheEntryRef is returned by all the cache Lookup methods below,
-// and ensures the underlying proto is not garbage-collected until the client
-// discards the ptr.
-class CompilationCacheEntryRef {
- public:
-  virtual ~CompilationCacheEntryRef() = default;
-
-  // Returns a CompilationCacheEntry that should not be used beyond the lifetime
-  // of the CompilationCacheEntryRef.
-  virtual CompilationCacheEntry get() = 0;
-};
-
-// Base class that holds references to compiled protos so that the protos are
-// not garbage-collected before being used by execute ops. Use
-// TpuCompilationCache::MakePerStepRefHolder to create an instance of a concrete
-// ref holder object.
-class CompilationRefHolder : public ResourceBase {
- public:
-  ~CompilationRefHolder() override = default;
+  const TpuProgramGroup* tpu_program_group_;
+  int core_index_;
 };
 
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // EXPERIMENTAL_BRAIN_TPU_1VM_MINIEXECUTOR_TPU_COMPILATION_CACHE_ENTRY_H_
+#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_H_

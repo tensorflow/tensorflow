@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
@@ -27,14 +28,14 @@ limitations under the License.
 namespace tensorflow {
 
 using Status = stream_executor::port::Status;
-template <typename T>
-using StatusOr = stream_executor::port::StatusOr<T>;
 
 TpuTransferManager::TpuTransferManager() {
-  manager_ = TpuTransferManager_New();
+  manager_ = tpu::ExecutorApiFn()->TpuTransferManager_NewFn();
 }
 
-TpuTransferManager::~TpuTransferManager() { TpuTransferManager_Free(manager_); }
+TpuTransferManager::~TpuTransferManager() {
+  tpu::ExecutorApiFn()->TpuTransferManager_FreeFn(manager_);
+}
 
 stream_executor::Platform::Id TpuTransferManager::PlatformId() const {
   return TpuPlatform::kId;
@@ -47,8 +48,8 @@ xla::Shape TpuTransferManager::HostShapeToDeviceShape(
 
   TpuConversions::XlaShapeToCShape(host_shape, &c_host_shape);
 
-  TpuTransferManager_HostShapeToDeviceShape(manager_, &c_host_shape,
-                                            &c_device_shape);
+  tpu::ExecutorApiFn()->TpuTransferManager_HostShapeToDeviceShapeFn(
+      manager_, &c_host_shape, &c_device_shape);
   xla::Shape device_shape = TpuConversions::CShapeToXlaShape(&c_device_shape);
   TpuConversions::CShapeCleanup(&c_host_shape);
   TpuConversions::CShapeCleanup(&c_device_shape);
@@ -68,7 +69,7 @@ Status TpuTransferManager::TransferLiteralToDeviceAsync(
   TpuConversions::XLAShapedBufferToCShapedBuffer(device_buffer,
                                                  &c_device_buffer);
 
-  TpuTransferManager_TransferLiteralToDeviceAsync(
+  tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralToDeviceAsyncFn(
       manager_,
       TpuPlatform::GetRegisteredPlatform()->stream_map()->at(
           stream->implementation()),
@@ -114,7 +115,7 @@ void TpuTransferManager::TransferLiteralFromDevice(
   XLA_Literal c_literal;
   TpuConversions::XLALiteralToCLiteral(literal, &c_literal);
 
-  TpuTransferManager_TransferLiteralFromDevice(
+  tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralFromDeviceFn(
       manager_,
       TpuPlatform::GetRegisteredPlatform()->stream_map()->at(
           stream->implementation()),
@@ -129,7 +130,8 @@ int64 TpuTransferManager::GetByteSizeRequirement(
   TpuConversions::XlaShapeToCShape(shape, &c_shape);
 
   int64 size_in_bytes =
-      TpuTransferManager_GetByteSizeRequirement(manager_, &c_shape);
+      tpu::ExecutorApiFn()->TpuTransferManager_GetByteSizeRequirementFn(
+          manager_, &c_shape);
 
   TpuConversions::CShapeCleanup(&c_shape);
   return size_in_bytes;
@@ -153,7 +155,7 @@ Status TpuTransferManager::WriteSingleTupleIndexTable(
                                   region->payload()};
   StatusHelper status;
 
-  TpuTransferManager_WriteSingleTupleIndexTable(
+  tpu::ExecutorApiFn()->TpuTransferManager_WriteSingleTupleIndexTableFn(
       manager_,
       TpuPlatform::GetRegisteredPlatform()->stream_map()->at(
           stream->implementation()),

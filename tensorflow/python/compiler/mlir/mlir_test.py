@@ -32,8 +32,8 @@ class MLIRImportTest(test.TestCase):
     self.assertIn('func @main', mlir_module)
 
   def test_invalid_pbtxt(self):
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'Could not parse input proto'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not parse input proto'):
       mlir.convert_graph_def('some invalid proto')
 
 

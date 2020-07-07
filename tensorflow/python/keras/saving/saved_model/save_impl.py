@@ -414,7 +414,7 @@ class LayerCallCollection(object):
       if self._expects_training_arg:
         def trace_with_training(value, fn=fn):
           utils.set_training_arg(value, self._training_arg_index, args, kwargs)
-          with K.learning_phase_scope(value):
+          with K.deprecated_internal_learning_phase_scope(value):
             fn.get_concrete_function(*args, **kwargs)
 
         trace_with_training(True)

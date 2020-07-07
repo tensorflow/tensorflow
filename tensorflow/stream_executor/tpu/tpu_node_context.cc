@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_node_context_c_api.h"
@@ -27,31 +28,42 @@ namespace tpu {
 using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
 
-/*static*/ StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Initialize(
+/*static*/
+StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Create(
     int device_ordinal) {
   StatusHelper status;
   XLA_TpuNodeContext* node_context =
-      TpuNodeContext_Create(device_ordinal, status.c_status);
+      tpu::NodeContextApiFn()->TpuNodeContext_CreateFn(device_ordinal,
+                                                       status.c_status);
   if (!status.status().ok()) {
-    TpuNodeContext_Free(node_context);
+    tpu::NodeContextApiFn()->TpuNodeContext_FreeFn(node_context);
     return status.status();
   }
   return std::make_unique<TpuNodeContext>(device_ordinal, node_context);
 }
 
-TpuNodeContext::~TpuNodeContext() { TpuNodeContext_Free(node_context_); }
+TpuNodeContext::~TpuNodeContext() {
+  tpu::NodeContextApiFn()->TpuNodeContext_FreeFn(node_context_);
+}
+
+/* static */
+Status TpuNodeContext::Initialize(int device_ordinal) {
+  StatusHelper status;
+  TpuNodeContext_Initialize(device_ordinal, status.c_status);
+  return status.status();
+}
 
 /* static */
 Status TpuNodeContext::StopChipHeartbeats() {
   StatusHelper status;
-  TpuNodeContext_StopChipHeartbeats(status.c_status);
+  tpu::NodeContextApiFn()->TpuNodeContext_StopChipHeartbeatsFn(status.c_status);
   return status.status();
 }
 
 /* static */
 Status TpuNodeContext::CloseTpuHost() {
   StatusHelper status;
-  TpuNodeContext_CloseTpuHost(status.c_status);
+  tpu::NodeContextApiFn()->TpuNodeContext_CloseTpuHostFn(status.c_status);
   return status.status();
 }
 

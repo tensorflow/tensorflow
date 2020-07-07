@@ -37,35 +37,35 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       with self.session(use_gpu=True):
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
         x = inplace_ops.inplace_update(x, [3], array_ops.ones([1, 3], dtype))
         y[3, :] = 1
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
         x = inplace_ops.inplace_update(x, [-1],
                                        array_ops.ones([1, 3], dtype) * 2)
         y[-1, :] = 2
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
         x = inplace_ops.inplace_update(x, 5, array_ops.ones([3], dtype) * 7)
         y[5, :] = 7
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
 
   @test_util.run_deprecated_v1
   def testBasicUpdateBool(self):
     with self.session(use_gpu=True):
       x = array_ops.ones([7, 3], dtypes.bool)
       y = np.ones([7, 3], dtypes.bool.as_numpy_dtype)
-      self.assertAllClose(x.eval(), y)
+      self.assertAllClose(x, y)
       x = inplace_ops.inplace_update(x, [3], array_ops.ones([1, 3],
                                                             dtypes.bool))
       y[3, :] = True
-      self.assertAllClose(x.eval(), y)
+      self.assertAllClose(x, y)
       x = inplace_ops.inplace_update(x, [-1],
                                      array_ops.zeros([1, 3], dtypes.bool))
       y[-1, :] = False
-      self.assertAllClose(x.eval(), y)
+      self.assertAllClose(x, y)
       x = inplace_ops.inplace_update(x, 5, array_ops.zeros([3], dtypes.bool))
       y[5, :] = False
-      self.assertAllClose(x.eval(), y)
+      self.assertAllClose(x, y)
 
   @test_util.run_deprecated_v1
   def testBasicAdd(self):
@@ -73,19 +73,19 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       with self.cached_session(use_gpu=True):
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
         x = array_ops.inplace_add(x, [3], array_ops.ones([1, 3], dtype))
         y[3, :] += 1
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
         x = inplace_ops.inplace_add(x, [-1], array_ops.ones([1, 3], dtype) * 2)
         y[-1, :] += 2
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
         x = inplace_ops.inplace_add(x, 5, array_ops.ones([3], dtype) * 7)
         y[5, :] += 7
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
         x = inplace_ops.inplace_add(x, None, array_ops.ones([7, 3], dtype) * 99)
         y[:, :] += 99
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
 
   @test_util.run_deprecated_v1
   def testBasicSub(self):
@@ -93,19 +93,19 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
       with self.cached_session(use_gpu=True):
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
         x = inplace_ops.inplace_sub(x, [3], array_ops.ones([1, 3], dtype))
         y[3, :] -= 1
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
         x = inplace_ops.inplace_sub(x, [-1], array_ops.ones([1, 3], dtype) * 2)
         y[-1, :] -= 2
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
         x = inplace_ops.inplace_sub(x, 5, array_ops.ones([3], dtype) * 7)
         y[5, :] -= 7
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
         x = inplace_ops.inplace_sub(x, None, array_ops.ones([7, 3], dtype) * 99)
         y[:, :] -= 99
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
 
   @test_util.run_deprecated_v1
   def testRandom(self):
@@ -126,7 +126,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
         elif op == 2:
           x = inplace_ops.inplace_sub(x, idx, val)
           y[idx, :] -= val
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
 
   @test_util.run_deprecated_v1
   def testRandom1D(self):
@@ -147,7 +147,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
         elif op == 2:
           x = inplace_ops.inplace_sub(x, idx, val)
           y[idx] -= val
-        self.assertAllClose(x.eval(), y)
+        self.assertAllClose(x, y)
 
   def testAlias(self):
     with self.session(use_gpu=True) as sess:
@@ -160,14 +160,14 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
 
   def testError(self):
     with self.cached_session():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "must be a vector"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "must be a vector"):
         _ = inplace_ops.inplace_update([[1.]], [[0]], [[10]]).eval()
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "x and v shape doesn't match"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "x and v shape doesn't match"):
         _ = inplace_ops.inplace_update([[1.]], [0], [10]).eval()
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "i and x shape doesn't match"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "i and x shape doesn't match"):
         _ = inplace_ops.inplace_update([[1.]], [0, 1], [[10]]).eval()
 
   @test_util.run_deprecated_v1
@@ -214,11 +214,11 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
         with self.cached_session(use_gpu=True):
           x = array_ops.zeros([7, 0], dtype)
           y = np.zeros([7, 0], dtype.as_numpy_dtype)
-          self.assertAllClose(x.eval(), y)
+          self.assertAllClose(x, y)
           x = op_fn(x, [3], array_ops.ones([1, 0], dtype))
-          self.assertAllClose(x.eval(), y)
+          self.assertAllClose(x, y)
           x = op_fn(x, None, array_ops.ones([1, 0], dtype))
-          self.assertAllClose(x.eval(), y)
+          self.assertAllClose(x, y)
 
 
 if __name__ == "__main__":

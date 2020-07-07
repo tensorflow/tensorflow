@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/micro/micro_allocator.h"
 #include "tensorflow/lite/micro/micro_op_resolver.h"
+#include "tensorflow/lite/micro/micro_profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -75,26 +76,32 @@ MicroInterpreter::MicroInterpreter(const Model* model,
                                    const MicroOpResolver& op_resolver,
                                    uint8_t* tensor_arena,
                                    size_t tensor_arena_size,
-                                   ErrorReporter* error_reporter)
+                                   ErrorReporter* error_reporter,
+                                   tflite::Profiler* profiler)
     : model_(model),
       op_resolver_(op_resolver),
       error_reporter_(error_reporter),
-      allocator_(*MicroAllocator::Create(&context_, model, tensor_arena,
-                                         tensor_arena_size, error_reporter)),
+      allocator_(*MicroAllocator::Create(tensor_arena, tensor_arena_size,
+                                         error_reporter)),
+      tensors_allocated_(false),
+      initialization_status_(kTfLiteError),
       context_helper_(error_reporter_, &allocator_) {
-  Init();
+  Init(profiler);
 }
 
 MicroInterpreter::MicroInterpreter(const Model* model,
-                                   const MicroOpResolver* op_resolver,
+                                   const MicroOpResolver& op_resolver,
                                    MicroAllocator* allocator,
-                                   ErrorReporter* error_reporter)
+                                   ErrorReporter* error_reporter,
+                                   tflite::Profiler* profiler)
     : model_(model),
-      op_resolver_(*op_resolver),
+      op_resolver_(op_resolver),
       error_reporter_(error_reporter),
       allocator_(*allocator),
+      tensors_allocated_(false),
+      initialization_status_(kTfLiteError),
       context_helper_(error_reporter_, &allocator_) {
-  Init();
+  Init(profiler);
 }
 
 MicroInterpreter::~MicroInterpreter() {
@@ -112,7 +119,7 @@ MicroInterpreter::~MicroInterpreter() {
   }
 }
 
-void MicroInterpreter::Init() {
+void MicroInterpreter::Init(tflite::Profiler* profiler) {
   const flatbuffers::Vector<flatbuffers::Offset<SubGraph>>* subgraphs =
       model_->subgraphs();
   if (subgraphs->size() != 1) {
@@ -126,19 +133,7 @@ void MicroInterpreter::Init() {
   context_.impl_ = static_cast<void*>(&context_helper_);
   context_.ReportError = context_helper_.ReportOpError;
   context_.recommended_num_threads = 1;
-
-  // If the system is big endian then convert weights from the flatbuffer from
-  // little to big endian on startup so that it does not need to be done during
-  // inference.
-  // NOTE: This requires that the flatbuffer is held in memory which can be
-  // modified by this process.
-  if (!FLATBUFFERS_LITTLEENDIAN) {
-    for (size_t t = 0; t < tensors_size(); ++t) {
-      TfLiteTensor* thisTensor = &context_.tensors[t];
-      if (thisTensor->allocation_type == kTfLiteMmapRo)
-        CorrectTensorEndianness(thisTensor);
-    }
-  }
+  context_.profiler = profiler;
 
   initialization_status_ = kTfLiteOk;
 }
@@ -181,8 +176,26 @@ void MicroInterpreter::CorrectTensorDataEndianness(T* data, int32_t size) {
 }
 
 TfLiteStatus MicroInterpreter::AllocateTensors() {
-  TF_LITE_ENSURE_OK(&context_, allocator_.PrepareFromFlatbuffer(
-                                   op_resolver_, &node_and_registrations_));
+  if (allocator_.StartModelAllocation(model_, &context_, op_resolver_,
+                                      &node_and_registrations_) != kTfLiteOk) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Failed starting model allocation.\n");
+    initialization_status_ = kTfLiteError;
+    return kTfLiteError;
+  }
+
+  // If the system is big endian then convert weights from the flatbuffer from
+  // little to big endian on startup so that it does not need to be done during
+  // inference.
+  // NOTE: This requires that the flatbuffer is held in memory which can be
+  // modified by this process.
+  if (!FLATBUFFERS_LITTLEENDIAN) {
+    for (size_t t = 0; t < tensors_size(); ++t) {
+      TfLiteTensor* thisTensor = &context_.tensors[t];
+      if (thisTensor->allocation_type == kTfLiteMmapRo)
+        CorrectTensorEndianness(thisTensor);
+    }
+  }
 
   // Only allow AllocatePersistentBuffer in Init stage.
   context_.AllocatePersistentBuffer = context_helper_.AllocatePersistentBuffer;
@@ -237,7 +250,8 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   context_.RequestScratchBufferInArena = nullptr;
   context_.GetScratchBuffer = context_helper_.GetScratchBuffer;
 
-  TF_LITE_ENSURE_OK(&context_, allocator_.FinishTensorAllocation());
+  TF_LITE_ENSURE_OK(&context_,
+                    allocator_.FinishModelAllocation(model_, &context_));
   tensors_allocated_ = true;
   return kTfLiteOk;
 }
@@ -260,7 +274,16 @@ TfLiteStatus MicroInterpreter::Invoke() {
     auto* registration = node_and_registrations_[i].registration;
 
     if (registration->invoke) {
-      TfLiteStatus invoke_status = registration->invoke(&context_, node);
+      TfLiteStatus invoke_status;
+#ifndef NDEBUG  // Omit profiler overhead from release builds.
+      // The case where profiler == nullptr is handled by ScopedOperatorProfile.
+      tflite::Profiler* profiler =
+          reinterpret_cast<tflite::Profiler*>(context_.profiler);
+      ScopedOperatorProfile scoped_profiler(
+          profiler, OpNameFromRegistration(registration), i);
+#endif
+      invoke_status = registration->invoke(&context_, node);
+
       if (invoke_status == kTfLiteError) {
         TF_LITE_REPORT_ERROR(
             error_reporter_,

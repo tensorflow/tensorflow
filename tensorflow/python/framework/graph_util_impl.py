@@ -23,15 +23,18 @@ import re
 
 import six
 
-from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
+
+# A normal import here would generate circular dependencies.
+convert_to_constants = lazy_loader.LazyLoader(
+    "convert_to_constants", globals(),
+    "tensorflow.python.framework.convert_to_constants")
 
 _VARIABLE_OPS = {
     "Assign",
@@ -237,76 +240,6 @@ def tensor_shape_from_node_def_name(graph, input_name):
   return shape
 
 
-def _update_resource_identities(resource_identities, output_graph_def,
-                                variable_names_whitelist,
-                                variable_names_blacklist):
-  """Updates the type of DT_RESOURCE Identity ops.
-
-  Updates the type of the `resource_identities` to the type of the node that
-  feed into it if the node is not an input to any other node. Valid nodes are
-  generally colocated nodes.
-
-  Args:
-    resource_identities: List of NodeDef protos that are Identity ops with the
-      type DT_RESOURCE.
-    output_graph_def: GraphDef proto.
-    variable_names_whitelist: The set of variable names to convert (by default,
-                              all variables are converted).
-    variable_names_blacklist: The set of variable names to omit converting
-                              to constants.
-  """
-  # Identify the nodes in the graph and the nodes consuming each node.
-  map_name_to_node = {}
-  map_name_to_inputs = {}
-  for node in output_graph_def.node:
-    map_name_to_node[node.name] = node
-    for unparsed_input_name in node.input:
-      if not unparsed_input_name.startswith("^"):
-        parsed_input_name = _node_name(unparsed_input_name)
-        if parsed_input_name not in map_name_to_inputs:
-          map_name_to_inputs[parsed_input_name] = []
-        map_name_to_inputs[parsed_input_name].append(node.name)
-
-  for node in resource_identities:
-    # Validate the node is not an input to other nodes.
-    if node.name in map_name_to_inputs:
-      continue
-
-    # Get the type of the Identity node by tracing back through the nodes until
-    # we come to a non-Identity or non-control flow node or the type of the node
-    # is not DT_RESOURCE.
-    input_node = map_name_to_node[_node_name(node.input[0])]
-    while (input_node.op in _CONTROL_FLOW_OP_NAMES_OR_IDENTITY and
-           input_node.attr["T"].type == dtypes.resource):
-      input_node = map_name_to_node[_node_name(input_node.input[0])]
-
-    # Update the type of the Identity node if an Identity, control flow, or
-    # VarHandleOp node with a type that is not DT_RESOURCE is found.
-    debugging_message = str.encode(
-        "This Identity's type was changed from DT_RESOURCE during graph "
-        "freezing.")
-    if input_node.attr["T"].type != dtypes.resource:
-      if (input_node.op in _CONTROL_FLOW_OP_NAMES_OR_IDENTITY
-          and _should_convert(
-              input_node.input[0],
-              variable_names_whitelist,
-              variable_names_blacklist)):
-        node.attr["T"].CopyFrom(input_node.attr["T"])
-        node.attr["_debugging"].s = debugging_message
-      elif (input_node.op == "VarHandleOp"
-            and _should_convert(
-                input_node.name,
-                variable_names_whitelist,
-                variable_names_blacklist)):
-        node.attr["T"].CopyFrom(input_node.attr["dtype"])
-        node.attr["_debugging"].s = debugging_message
-
-
-def _should_convert(name, whitelist, blacklist):
-  return ((whitelist is None or name in whitelist)
-          and (blacklist is None or name not in blacklist))
-
-
 @deprecation.deprecated(
     date=None,
     instructions="Use `tf.compat.v1.graph_util.convert_variables_to_constants`")
@@ -339,190 +272,16 @@ def convert_variables_to_constants(sess,
     RuntimeError: if a DT_RESOURCE op is found whose ancestor Variables are both
       blacklisted AND whitelisted for freezing.
   """
-
-  get_input_name = lambda node, index=0: node.input[index].split(":")[0]
-
-  def create_const_op(node_name, dtype, data, data_shape=None):
-    """Creates a Const op."""
-    output_node = node_def_pb2.NodeDef()
-    output_node.op = "Const"
-    output_node.name = node_name
-    output_node.attr["dtype"].CopyFrom(dtype)
-    output_node.attr["value"].CopyFrom(
-        attr_value_pb2.AttrValue(
-            tensor=tensor_util.make_tensor_proto(
-                data, dtype=dtype.type, shape=data_shape)))
-    return output_node
-
-  # This graph only includes the nodes needed to evaluate the output nodes, and
-  # removes unneeded nodes like those involved in saving and assignment.
-  inference_graph = extract_sub_graph(input_graph_def, output_node_names)
-
-  # Identify the ops in the graph.
-  map_name_to_node = {
-      node.name: node for node in inference_graph.node
-  }
-
-  # Get list of variables.
-  variable_names = []
-  variable_dict_names = []
-  resource_op_types = {}
-
-  for node in inference_graph.node:
-    if node.op in ["Variable", "VariableV2", "VarHandleOp"]:
-      variable_name = node.name
-      if not _should_convert(
-          variable_name, variable_names_whitelist, variable_names_blacklist):
-        continue
-      variable_dict_names.append(variable_name)
-      if node.op == "VarHandleOp":
-        variable_names.append(variable_name + "/Read/ReadVariableOp:0")
-      else:
-        variable_names.append(variable_name + ":0")
-    elif node.op in ["ReadVariableOp", "ResourceGather", "ResourceGatherNd"]:
-      # There can be one or more Identity or control flow ops in between the
-      # ReadVariableOp and VarHandleOp. Store the ops with the associated
-      # dtypes.
-      source_op_names = [get_input_name(node)]
-      candidate_resource_op_types = {}
-      while (source_op_names and map_name_to_node[source_op_names[0]].op in
-             _CONTROL_FLOW_OP_NAMES_OR_IDENTITY):
-        source_op_name = source_op_names.pop()
-        current_node = map_name_to_node[source_op_name]
-
-        if (source_op_name not in resource_op_types and
-            source_op_name not in candidate_resource_op_types):
-          candidate_resource_op_types[source_op_name] = node.attr["dtype"]
-          source_op_names.append(get_input_name(current_node))
-
-        if current_node == "Merge":
-          merge_resource_name = get_input_name(current_node, index=1)
-          if (merge_resource_name not in resource_op_types
-              and merge_resource_name not in candidate_resource_op_types):
-            candidate_resource_op_types[merge_resource_name] = (
-                node.attr["dtype"])
-            source_op_names.append(
-                get_input_name(map_name_to_node[merge_resource_name]))
-
-      should_convert_all = None
-      for source_node in source_op_names:
-        if map_name_to_node[source_node].op != "VarHandleOp":
-          raise ValueError("Cannot find the variable that is an input "
-                           "to the ReadVariableOp.")
-        should_convert_node = _should_convert(
-            source_node, variable_names_whitelist, variable_names_blacklist)
-        if should_convert_all is None:
-          should_convert_all = should_convert_node
-        elif should_convert_all != should_convert_node:
-          raise RuntimeError(
-              "Found DT_RESOURCE node whose ancestor Variables are both "
-              "blacklisted AND whitelisted for freezing.  Originating "
-              "descendant node: {}.  Ancestor variables: {}.".format(
-                  node.name, source_op_names))
-      if should_convert_all in (None, True):
-        resource_op_types.update(candidate_resource_op_types)
-
-  # Gets map of variables and the associated data.
-  if variable_names:
-    returned_variables = sess.run(variable_names)
-  else:
-    returned_variables = []
-  variables_data_map = dict(zip(variable_dict_names, returned_variables))
-  logging.info("Froze %d variables.", len(returned_variables))
-
-  def _should_convert_ancestor(node):
-    input_node = map_name_to_node[_node_name(node.input[0])]
-    while (input_node.op in _CONTROL_FLOW_OP_NAMES_OR_IDENTITY and
-           input_node.attr["T"].type == dtypes.resource):
-      input_node = map_name_to_node[_node_name(input_node.input[0])]
-    return _should_convert(input_node.name,
-                           variable_names_whitelist,
-                           variable_names_blacklist)
-
-  # Reconstruct the graph with constants in place of variables.
-  output_graph_def = graph_pb2.GraphDef()
-  how_many_converted = 0
-  for input_node in inference_graph.node:
-    output_node = node_def_pb2.NodeDef()
-    if input_node.name in variables_data_map:
-      data = variables_data_map[input_node.name]
-      output_node = create_const_op(input_node.name, input_node.attr["dtype"],
-                                    data, data.shape)
-      how_many_converted += 1
-    elif input_node.name in resource_op_types:
-      # Converts the type of the ops between the ReadVariableOp and VarHandleOp
-      # from RESOURCE_DT to the appropriate type based on the input they are
-      # referencing. Do not copy shapes due to incorrect shape info.
-      output_node.op = input_node.op
-      output_node.name = input_node.name
-      for in_node in input_node.input:
-        output_node.input.append(in_node)
-      for attr_name in input_node.attr:
-        if str(attr_name) != "_output_shapes":
-          output_node.attr[attr_name].CopyFrom(input_node.attr[attr_name])
-      output_node.attr["T"].CopyFrom(resource_op_types[input_node.name])
-    elif (input_node.op == "ReadVariableOp"
-          and _should_convert_ancestor(input_node)):
-      # The first branch converts all VarHandleOps of ResourceVariables to
-      # constants, so we need to convert the associated ReadVariableOps to
-      # Identity ops.
-      output_node.op = "Identity"
-      output_node.name = input_node.name
-      output_node.input.extend([input_node.input[0]])
-      output_node.attr["T"].CopyFrom(input_node.attr["dtype"])
-      if "_class" in input_node.attr:
-        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
-    elif (input_node.op == "ResourceGather"
-          and _should_convert_ancestor(input_node)):
-      # The first branch converts all VarHandleOps of ResourceGather to
-      # constants, so we need to convert the associated ResourceGather to Gather
-      # ops with a Const axis feeding into it.
-      if input_node.attr["batch_dims"].i != 0:
-        raise ValueError("batch_dims != 0 is not supported by freeze_graph.")
-      axis_data = input_node.attr["batch_dims"].i
-      axis_node_name = input_node.name + "/axis"
-      axis_dtype = input_node.attr["Tindices"]
-      output_axis_node = create_const_op(axis_node_name, axis_dtype, axis_data)
-      output_graph_def.node.extend([output_axis_node])
-
-      output_node.op = "GatherV2"
-      output_node.name = input_node.name
-      output_node.input.extend(
-          [input_node.input[0], input_node.input[1], axis_node_name])
-      output_node.attr["Tparams"].CopyFrom(input_node.attr["dtype"])
-      output_node.attr["Tindices"].CopyFrom(input_node.attr["Tindices"])
-      output_node.attr["Taxis"].CopyFrom(axis_dtype)
-      if "_class" in input_node.attr:
-        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
-    elif (input_node.op == "ResourceGatherNd"
-          and _should_convert_ancestor(input_node)):
-      output_node.op = "GatherNd"
-      output_node.name = input_node.name
-      output_node.input.extend(
-          [input_node.input[0], input_node.input[1]])
-      output_node.attr["Tparams"].CopyFrom(input_node.attr["dtype"])
-      output_node.attr["Tindices"].CopyFrom(input_node.attr["Tindices"])
-      if "_class" in input_node.attr:
-        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
-    else:
-      output_node.CopyFrom(input_node)
-    output_graph_def.node.append(output_node)
-
-  # Update the types of the DT_RESOURCE Identity nodes that do not have an
-  # associated ReadVariableOp.
-  resource_identities = []
-  for node in output_graph_def.node:
-    if node.op == "Identity" and node.attr["T"].type == dtypes.resource:
-      resource_identities.append(node)
-  if resource_identities:
-    _update_resource_identities(resource_identities,
-                                output_graph_def,
-                                variable_names_whitelist,
-                                variable_names_blacklist)
-
-  output_graph_def.library.CopyFrom(inference_graph.library)
-  logging.info("Converted %d variables to const ops.", how_many_converted)
-  return output_graph_def
+  ret = convert_to_constants.convert_variables_to_constants_from_session_graph(
+      session=sess,
+      graph_def=input_graph_def,
+      output_node_names=output_node_names,
+      variable_names_whitelist=variable_names_whitelist,
+      variable_names_blacklist=variable_names_blacklist)
+  # The previous code logic generated an empty versions field, we clear it here
+  # to maintain backwards compatibility.
+  ret.versions.Clear()
+  return ret
 
 
 @deprecation.deprecated(

@@ -18,6 +18,7 @@ load(
     "tf_opts_nortti_if_lite_protos",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
+load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "if_mlir_generated_gpu_kernels_enabled")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
@@ -88,8 +89,8 @@ config_setting(
     # sparse matrix multiplications. You will also need appropriate -mavx*
     # options, as required by specific op you use.
     name = "xsmm",
-    values = {
-        "define": "tensorflow_xsmm=1",
+    define_values = {
+        "tensorflow_xsmm": "1",
     },
 )
 
@@ -98,8 +99,8 @@ config_setting(
     # use libxsmm for forward convolutions. You will also need appropriate
     # -mavx* # options, as required by specific op you use.
     name = "xsmm_convolutions",
-    values = {
-        "define": "tensorflow_xsmm_convolutions=1",
+    define_values = {
+        "tensorflow_xsmm_convolutions": "1",
     },
 )
 
@@ -109,8 +110,8 @@ config_setting(
     # backward convolutions (and possibly more in the future). You will also
     # need appropriate -mavx* options, as required by specific op you use.
     name = "xsmm_backward_convolutions",
-    values = {
-        "define": "tensorflow_xsmm_backward_convolutions=1",
+    define_values = {
+        "tensorflow_xsmm_backward_convolutions": "1",
     },
 )
 
@@ -121,8 +122,8 @@ config_setting(
     # (https://en.wikipedia.org/wiki/CPUID). Default Eigen contraction kernel is
     # Eigen::internal::gebp_kernel (general block-panel kernel).
     name = "no_mkldnn_contraction_kernel",
-    values = {
-        "define": "tensorflow_mkldnn_contraction_kernel=0",
+    define_values = {
+        "tensorflow_mkldnn_contraction_kernel": "0",
     },
 )
 
@@ -409,6 +410,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:op_requires",
     ],
 )
 
@@ -660,10 +662,14 @@ cc_library(
         ":concat_lib_hdrs",
         ":ops_util_hdrs",
         ":split_lib_hdrs",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
         "//tensorflow/core/kernels/batching_util:shared_batch_scheduler_hdrs",
+        "//tensorflow/core/util:incremental_barrier",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -1754,6 +1760,7 @@ tf_cuda_cc_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.cc"],
+    tags = ["no_cuda11"],  # b/159664089
     deps = [
         ":conv_ops",
         ":image",
@@ -3002,7 +3009,6 @@ cc_library(
         ":attention_ops",
         ":colorspace_op",
         ":crop_and_resize_op",
-        ":decode_bmp_op",
         ":decode_image_op",
         ":draw_bounding_box_op",
         ":encode_jpeg_op",
@@ -3033,6 +3039,7 @@ IMAGE_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:png_internal",
     "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core/util/tensor_bundle",
 ]
 
 tf_kernel_library(
@@ -3075,12 +3082,6 @@ tf_kernel_library(
     name = "crop_and_resize_op",
     prefix = "crop_and_resize_op",
     deps = IMAGE_DEPS + ["//tensorflow/core:framework_internal"],
-)
-
-tf_kernel_library(
-    name = "decode_bmp_op",
-    prefix = "decode_bmp_op",
-    deps = IMAGE_DEPS,
 )
 
 tf_kernel_library(
@@ -3569,6 +3570,7 @@ tf_cc_tests(
 cc_library(
     name = "linalg",
     deps = [
+        ":banded_triangular_solve_op",
         ":cholesky_grad",
         ":cholesky_op",
         ":determinant_op",
@@ -3740,6 +3742,12 @@ tf_kernel_library(
     name = "matrix_square_root_op",
     prefix = "matrix_square_root_op",
     deps = LINALG_DEPS,
+)
+
+tf_kernel_library(
+    name = "banded_triangular_solve_op",
+    prefix = "banded_triangular_solve_op",
+    deps = LINALG_DEPS + [":fill_functor"],
 )
 
 tf_kernel_library(
@@ -4134,8 +4142,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cwise_op",
+    copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]),
     prefix = "cwise_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_op"]),
 )
 
 tf_kernel_library(
@@ -4390,6 +4399,26 @@ tf_cuda_cc_test(
     deps = [
         ":batch_matmul_op",
         ":broadcast_to_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "banded_triangular_solve_op_test",
+    size = "small",
+    srcs = ["banded_triangular_solve_op_test.cc"],
+    deps = [
+        ":banded_triangular_solve_op",
+        ":matrix_set_diag_op",
+        ":matrix_triangular_solve_op",
         ":ops_testutil",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -4850,7 +4879,9 @@ tf_kernel_library(
         "topk_op_gpu_double.cu.cc",
         "topk_op_gpu_float.cu.cc",
         "topk_op_gpu_half.cu.cc",
+        "topk_op_gpu_uint64.cu.cc",
         "topk_op_gpu_int64.cu.cc",
+        "topk_op_gpu_uint32.cu.cc",
         "topk_op_gpu_int32.cu.cc",
         "topk_op_gpu_int16.cu.cc",
         "topk_op_gpu_uint16.cu.cc",
@@ -6106,6 +6137,7 @@ tf_kernel_library(
     ]),
     prefix = "parameterized_truncated_normal_op",
     deps = [
+        ":stateless_random_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -6612,6 +6644,9 @@ filegroup(
 filegroup(
     name = "android_extended_ops_headers",
     srcs = [
+        "adjust_contrast_op.h",
+        "adjust_hue_op.h",
+        "adjust_saturation_op.h",
         "argmax_op.h",
         "avgpooling_op.h",
         "batch_matmul_op_impl.h",
@@ -6627,10 +6662,13 @@ filegroup(
         "data_format_ops.h",
         "depthtospace_op.h",
         "depthwise_conv_op.h",
+        "diag_op.h",
+        "dilation_ops.h",
         "extract_image_patches_op.h",
         "fake_quant_ops_functor.h",
         "fused_batch_norm_op.h",
         "gemm_functors.h",
+        "image_ops.h",
         "image_resizer_state.h",
         "initializable_lookup_table.h",
         "inplace_ops.cc",
@@ -6638,6 +6676,8 @@ filegroup(
         "lookup_table_init_op.h",
         "lookup_table_op.h",
         "lookup_util.h",
+        "linalg_ops_common.h",
+        "list_kernels.h",
         "matrix_diag_op.h",
         "matrix_set_diag_op.h",
         "maxpooling_op.h",
@@ -6660,6 +6700,7 @@ filegroup(
         "resize_nearest_neighbor_op.h",
         "reverse_op.h",
         "save_restore_tensor.h",
+        "scan_ops.h",
         "scatter_nd_op.h",
         "scatter_nd_op_cpu_impl.h",
         "segment_reduction_ops.h",
@@ -6673,6 +6714,7 @@ filegroup(
         "string_util.h",
         "string_to_hash_bucket_op.h",
         "tensor_array.h",
+        "tensor_list.h",
         "tile_functor.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
@@ -6702,6 +6744,7 @@ filegroup(
         "conv_grad_filter_ops.cc",
         "conv_grad_input_ops.cc",
         "conv_grad_ops.h",
+        "conv_grad_ops_3d.cc",
         "conv_grad_shape_utils.h",
         "conv_grad_shape_utils.cc",
         "conv_ops.cc",
@@ -6717,10 +6760,12 @@ filegroup(
         "cwise_op_abs.cc",
         "cwise_op_add_1.cc",
         "cwise_op_add_2.cc",
+        "cwise_op_atan.cc",
         "cwise_op_bitwise_and.cc",
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
         "cwise_op_ceil.cc",
+        "cwise_op_complex.cc",
         "cwise_op_conj.cc",
         "cwise_op_cos.cc",
         "cwise_op_cosh.cc",
@@ -6751,7 +6796,8 @@ filegroup(
         "cwise_op_minimum.cc",
         "cwise_op_mul_1.cc",
         "cwise_op_mul_2.cc",
-        "cwise_op_neg.cc",
+        "cwise_op_neg_1.cc",
+        "cwise_op_neg_2.cc",
         "cwise_op_pow.cc",
         "cwise_op_real.cc",
         "cwise_op_reciprocal.cc",
@@ -6814,18 +6860,26 @@ filegroup(
 filegroup(
     name = "android_extended_ops_group2",
     srcs = [
+        "adjust_contrast_op.cc",
+        "adjust_hue_op.cc",
+        "adjust_saturation_op.cc",
+        "base64_ops.cc",
         "batchtospace_op.cc",
         "broadcast_to_op.cc",
         "bucketize_op.cc",
         "ctc_decoder_ops.cc",
-        "decode_bmp_op.cc",
         "depthtospace_op.cc",
+        "diag_op.cc",
+        "dilation_ops.cc",
         "dynamic_stitch_op.cc",
         "extract_image_patches_op.cc",
         "fft_ops.cc",
+        "image_ops.cc",
         "in_topk_op.cc",
         "in_topk_op.h",
         "initializable_lookup_table.cc",
+        "linalg_ops_common.cc",
+        "list_kernels.cc",
         "logging_ops.cc",
         "logging_ops.h",
         "lookup_table_init_op.cc",
@@ -6833,6 +6887,7 @@ filegroup(
         "lookup_util.cc",
         "lrn_op.cc",
         "matrix_diag_op.cc",
+        "matrix_inverse_op.cc",
         "matrix_set_diag_op.cc",
         "maxpooling_op.cc",
         "mfcc.cc",
@@ -6853,9 +6908,11 @@ filegroup(
         "queue_base.cc",
         "queue_op.cc",
         "queue_ops.cc",
+        "ragged_range_op.cc",
         "random_op.cc",
         "random_op_cpu.h",
         "random_poisson_op.cc",
+        "reduce_join_op.cc",
         "reduction_ops_all.cc",
         "reduction_ops_any.cc",
         "reduction_ops_common.cc",
@@ -6864,15 +6921,18 @@ filegroup(
         "reduction_ops_min.cc",
         "reduction_ops_prod.cc",
         "reduction_ops_sum.cc",
+        "regex_replace_op.cc",
         "relu_op.cc",
         "reshape_util.cc",
         "resize_bilinear_op.cc",
         "resize_nearest_neighbor_op.cc",
         "restore_op.cc",
         "reverse_op.cc",
+        "sample_distorted_bounding_box_op.cc",
         "save_op.cc",
         "save_restore_tensor.cc",
         "save_restore_v2_ops.cc",
+        "scan_ops.cc",
         "scatter_nd_op.cc",
         "scatter_nd_op_cpu_impl_0.cc",
         "scatter_nd_op_cpu_impl_1.cc",
@@ -6905,10 +6965,13 @@ filegroup(
         "stateless_random_ops.cc",
         "string_join_op.cc",
         "string_util.cc",
+        "string_split_op.cc",
         "string_to_hash_bucket_op.cc",
+        "substr_op.cc",
         "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
+        "tensor_list.cc",
         "tile_functor_cpu.h",
         "tile_functor_cpu_bfloat16.cc",
         "tile_functor_cpu_bool.cc",
@@ -6939,6 +7002,7 @@ filegroup(
         "training_ops.cc",
         "transpose_functor_cpu.cc",
         "transpose_op.cc",
+        "unicode_ops.cc",
         "unique_op.cc",
         "where_op.cc",
         "xent_op.cc",
@@ -7114,6 +7178,7 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@fft2d",
         "@gemmlowp",
+        "@icu//:common",
     ],
     alwayslink = 1,
 )
@@ -8108,6 +8173,27 @@ tf_cc_test_mkl(
     ],
 )
 
+tf_cc_test_mkl(
+    name = "mkl_relu_op_test",
+    size = "small",
+    srcs = ["mkl_relu_op_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_mkl_kernel_library(
     name = "mkl_tfconv_op",
     prefix = "mkl_tfconv",
@@ -8708,7 +8794,8 @@ exports_files([
     "cwise_op_mod.cc",
     "cwise_op_mul_1.cc",
     "cwise_op_mul_2.cc",
-    "cwise_op_neg.cc",
+    "cwise_op_neg_1.cc",
+    "cwise_op_neg_2.cc",
     "cwise_op_not_equal_to_1.cc",
     "cwise_op_not_equal_to_2.cc",
     "cwise_op_round.cc",

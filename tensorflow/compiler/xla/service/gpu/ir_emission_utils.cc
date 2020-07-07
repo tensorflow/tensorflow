@@ -129,7 +129,7 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 std::array<int64, 3> GetReductionTiling(
     const ReductionDimensions& reduction_dimensions,
     int smallest_input_dtype_bits,
-    const stream_executor::DeviceDescription* device_description) {
+    absl::optional<CudaComputeCapability> cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
     int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
@@ -140,9 +140,9 @@ std::array<int64, 3> GetReductionTiling(
         0) {
       return {tile_z, 1, 64};
     }
-    int cc_major = 0, cc_minor = 0;
-    if (device_description != nullptr) {
-      device_description->cuda_compute_capability(&cc_major, &cc_minor);
+    int cc_major = 0;
+    if (cuda_compute_capability) {
+      cc_major = cuda_compute_capability->cc_major;
     }
     int unroll_x = 8;
     if (cc_major >= 6 && smallest_input_dtype_bits == 16) {
@@ -226,6 +226,11 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
       dims_to_keep.push_back(dim);
     }
   }
+
+  // We support fast codegen for three cases:
+  // 1) Row reduction: (K, R)
+  // 2) Column reduction: (K, R, K)
+  // 3) "Batched" row reduction: (R, K, R)
   if (!LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
                                             dims_to_keep) &&
       !LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),

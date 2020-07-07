@@ -359,7 +359,7 @@ class RendezvousNcclAllReduce : public RendezvousBase {
       : RendezvousBase(k) {}
 
  protected:
-  StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
+  StatusOr<ParticipantImplOutput> RunCollectiveOp(
       const AllReduceParticipantData& participant) override;
 
   void CleanupImpl(std::shared_ptr<NcclClique> handle,
@@ -380,7 +380,7 @@ GlobalRendezvousMap() {
 }
 
 StatusOr<RendezvousNcclAllReduce::ParticipantImplOutput>
-RendezvousNcclAllReduce::SubmitParticipantImpl(
+RendezvousNcclAllReduce::RunCollectiveOp(
     const AllReduceParticipantData& participant) {
   // We pull into our thread a) the communication handle and b) whether we're
   // the "primary" thread for this rendezvous -- the "primary" thread has some
@@ -622,8 +622,8 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
             << ", local participants: "
             << absl::StrJoin(local_participants, ",");
   }
-  AllReduceParticipantData participant(rendezvous_key);
-  participant.device_ordinal = local_device_ordinal;
+  AllReduceParticipantData participant(rendezvous_key, local_device_ordinal,
+                                       params.stream);
   for (size_t i = 0; i < buffers_.size(); ++i) {
     const NcclAllReduceThunk::Buffer& buffer = buffers_[i];
     AllReduceParticipantData::Buffer pbuffer;
@@ -636,7 +636,6 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
         hlo_instruction()->operand(i)->shape().element_type();
     participant.buffers.push_back(pbuffer);
   }
-  participant.stream = params.stream;
   participant.local_devices = std::move(local_devices);
   participant.nccl_unique_id_callback = params.nccl_unique_id_callback;
   auto reduction_kind =

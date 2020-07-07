@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/flt_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
@@ -58,8 +57,9 @@ class ConvolutionTransposedThin : public GPUOperation {
   ConvolutionTransposedThin(const OperationDef& definition,
                             const ConvolutionTransposedAttributes& attr);
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                          const tflite::gpu::Tensor<Linear, T>& biases,
+                          CLContext* context);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
@@ -67,9 +67,6 @@ class ConvolutionTransposedThin : public GPUOperation {
 
   absl::Status BindArguments();
   int3 GetGridSize() const;
-
-  Buffer weights_buf_;
-  FLT4 bias_value_;
 
   int2 kernel_size_;
   int src_channels_;
@@ -80,25 +77,50 @@ class ConvolutionTransposedThin : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvolutionTransposedThin::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+absl::Status ConvolutionTransposedThin::UploadData(
+    const tflite::gpu::Tensor<OHWI, T>& weights,
+    const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
   const int src_depth = DivideRoundUp(src_channels_, 4);
-  const int elements_count =
-      kernel_size_.x * kernel_size_.y * src_depth * 4 * dst_channels_;
+  const int flt4_count =
+      kernel_size_.x * kernel_size_.y * src_depth * dst_channels_;
 
-  const int float4_size =
-      definition_.precision == CalculationsPrecision::F32 ? 16 : 8;
-  if (definition_.GetDataType() == DataType::FLOAT32) {
-    std::vector<float4> gpu_data(elements_count);
+  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+
+  BufferDescriptor desc;
+  desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+  desc.element_size = 4;
+  desc.memory_type = MemoryType::CONSTANT;
+
+  Buffer weights_buffer;
+  if (f32_weights) {
+    std::vector<float4> gpu_data(flt4_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
-                                context, &weights_buf_);
+    float4 bias_value(0.0f);
+    for (int i = 0; i < weights.shape.o; ++i) {
+      bias_value[i] = biases.data[i];
+    }
+    gpu_data.push_back(bias_value);
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(float4) * gpu_data.size(),
+                                         gpu_data.data(), context,
+                                         &weights_buffer));
   } else {
-    std::vector<half4> gpu_data(elements_count);
+    std::vector<half4> gpu_data(flt4_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
-                                context, &weights_buf_);
+    half4 bias_value(0.0f);
+    for (int i = 0; i < weights.shape.o; ++i) {
+      bias_value[i] = biases.data[i];
+    }
+    gpu_data.push_back(bias_value);
+    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(half4) * gpu_data.size(),
+                                         gpu_data.data(), context,
+                                         &weights_buffer));
   }
+
+  args_.AddObject("weights", AccessType::READ,
+                  absl::make_unique<Buffer>(std::move(weights_buffer)),
+                  absl::make_unique<BufferDescriptor>(desc));
+
+  return absl::OkStatus();
 }
 
 template <DataType S, typename T>

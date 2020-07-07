@@ -127,7 +127,7 @@ class TFL_OperandsHaveSameShapesOrBroadcastableShape<
     list<int> indices, int max_bcast_rank> :
   TFL_RuntimePredOpTrait<"operands do not have the same shape or "
       "broadcastable shapes within the rank " # max_bcast_rank,
-    CPred<"TFL::IsOperandsHaveSameShapesOrBroadcastableShape("
+    CPred<"TFL::VerifyOperandsHaveSameShapesOrBroadcastableShape("
             "$_op, llvm::ArrayRef<unsigned>({" # StrJoinInt<indices>.result #
             "}), " # max_bcast_rank # ")">>;
 
@@ -435,8 +435,8 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index> :
     TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
-    TFL_ChannelDimIndexInterface, AffineOpCoefficient<index, 1>,
-    TFL_GpuTargetOp]> {
+    AffineQuantizedOpInterface, AffineOpCoefficient<index, 1>,
+    TFL_GpuTargetOp, TFL_SparseOp]> {
   let summary = opSummary # " operator";
 
   let description = [{
@@ -491,7 +491,8 @@ an output element, this operation computes \\(y = |x|\\).
 }
 
 def TFL_AddOp : TFL_Op<"add", [
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
+      CPred<"TFL::VerifyAddOpShapeConstraints(llvm::cast<AddOp>($_op))">>,
     ResultsBroadcastableShape,
     NoSideEffect,
     Commutative,
@@ -570,7 +571,10 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     TFL_OperandHasRank<2, 4>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 2>>,
-    TFL_GpuTargetOp]> {
+    AccumulatorUniformScale<3, 1, 2>,
+    AffineQuantizedOpInterface, AffineOpCoefficient<0, 2>,
+    TFL_GpuTargetOp,
+    TFL_SparseOp]> {
   let summary = "Transpose convolution operator";
 
   let description = [{
@@ -592,6 +596,17 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
   let hasOptions = 1;
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // AffineQuantizedOpInterface:
+    int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return 0; }
+    int GetAffineOperandIndex() { return 2; }
+    // SparseOpInterface:
+    std::vector<int> GetSparseOperands() { return {1}; }
+    std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
+    std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
+  }];
 }
 
 def TFL_AveragePool2DOp:
@@ -724,6 +739,15 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
   let hasFolder = 1;
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // SameScalesOpInterface:
+    bool RequiredSameOperandsAndResultsScale(bool sign, int bit_width) {
+      // uint8 doesn't require same operands and results scales.
+      bool is_uint8 = !sign && (bit_width == 8);
+      return !is_uint8;
+    }
+  }];
 }
 
 def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
@@ -823,8 +847,13 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
   let extraClassDeclaration = [{
-    // ChannelDimIndexInterface:
+    // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return 0; }
+    // SparseOpInterface:
+    std::vector<int> GetSparseOperands() { return {1}; }
+    std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
+    std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
   }];
 }
 
@@ -863,8 +892,13 @@ def TFL_DepthwiseConv2DOp :
   );
 
   let extraClassDeclaration = [{
-    // ChannelDimIndexInterface:
+    // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 3; }
+    int GetQuantizationDimIndex() { return 3; }    
+    // SparseOpInterface:
+    std::vector<int> GetSparseOperands() { return {1}; }
+    std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
+    std::vector<std::vector<int>> GetQuantizedBlockSize() { return {}; }
   }];
 }
 
@@ -880,7 +914,7 @@ def TFL_FullyConnectedOptionsWeightFormatAttr :
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
-    TFL_ChannelDimIndexInterface,
+    AffineQuantizedOpInterface,
     AffineOpCoefficient<-1, 1>,
     TFL_SparseOp,
     TFL_GpuTargetOp]> {
@@ -906,8 +940,9 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   let hasOptions = 1;
 
   let extraClassDeclaration = [{
-    // ChannelDimIndexInterface:
+    // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return -1; }
     // SparseOpInterface:
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {{1, 4}}; }
@@ -936,14 +971,14 @@ in the batch dimensions and broadcasting.
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32]>:$x,
-    TFL_TensorOf<[F32]>:$y,
+    TFL_TensorOf<[F32, QI8]>:$x,
+    TFL_TensorOf<[F32, QI8]>:$y,
     DefaultValuedAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedAttr<BoolAttr, "false">:$adj_y
   );
 
    let results = (outs
-    TFL_TensorOf<[F32]>:$output
+    TFL_TensorOf<[F32, QI8]>:$output
   );
 
   let hasOptions = 1;
@@ -1641,6 +1676,7 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [
 }
 
 def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
+    FixedOutputRangeInterface,
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
@@ -1662,6 +1698,36 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
   let hasOptions = 1;
 
   let customOption = "L2NormOptions";
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = output().getType().cast<ShapedType>();
+    if (!result_type.getElementType().isa<FloatType>()) return {};
+    Builder builder(result_type.getContext());
+
+    // Only support 8-bits
+    if (bit_width != 8) return {};
+    IntegerType storage_type = builder.getIntegerType(bit_width);
+
+    double scale = 1.0 / 128;
+    int64_t zero_point, storage_min, storage_max;
+    if (is_signed) {
+      zero_point = 0;
+      storage_min = -128;
+      storage_max = 127;
+    } else {
+      zero_point = 128;
+      storage_min = 0;
+      storage_max = 255;
+    }
+
+    return quant::UniformQuantizedType::getChecked(
+        is_signed, storage_type, result_type.getElementType(), scale,
+        zero_point, storage_min, storage_max, builder.getUnknownLoc());
+  }
+  }];
 }
 
 def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [
@@ -2171,7 +2237,8 @@ def TFL_MulOp : TFL_Op<"mul", [
     NoSideEffect,
     Commutative,
     BinaryOpSameElementTypeConstraint,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
+      CPred<"TFL::VerifyMulOpShapeConstraints(llvm::cast<MulOp>($_op))">>,
     TFL_GpuTargetOp]> {
   let summary = "Multiplication operator";
 
@@ -2832,7 +2899,8 @@ def TFL_SquareOp: TFL_Op<"square", [
 def TFL_SubOp : TFL_Op<"sub", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
+      CPred<"TFL::VerifySubOpShapeConstraints(llvm::cast<SubOp>($_op))">>,
     NoSideEffect]> {
   let summary = "Subtraction operator";
 
@@ -2841,11 +2909,11 @@ def TFL_SubOp : TFL_Op<"sub", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$lhs,
-    TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$rhs,
+    ins TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$lhs,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$rhs,
     TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, QI8, QUI8, QI16]>:$output);
 
   let hasFolder = 1;
 

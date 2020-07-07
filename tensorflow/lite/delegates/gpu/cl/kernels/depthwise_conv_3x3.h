@@ -71,9 +71,6 @@ class DepthwiseConv3x3 : public GPUOperation {
 
   bool weights_are_buffer_;
   bool local_mem_uploads_;
-  Texture2D weights_tex2d_;
-  Buffer weights_buf_;
-  cl_mem weights_;
 
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
@@ -90,17 +87,19 @@ absl::Status DepthwiseConv3x3::UploadWeightsAndBiases(
   const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
   const int float4_size = fp32_weights ? 16 : 8;
 
+  Texture2D weights_tex2d;
+  Buffer weights_buf;
   if (fp32_weights) {
     std::vector<float4> gpu_data(elements_count);
     RearrangeWeightsAndBiasesData(weights, biases, absl::MakeSpan(gpu_data));
     if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
-                                           &weights_buf_));
+                                           &weights_buf));
     } else {
       RETURN_IF_ERROR(CreateTexture2DRGBA(
           definition_.GetDataType(), texture_width, texture_height,
-          gpu_data.data(), context, &weights_tex2d_));
+          gpu_data.data(), context, &weights_tex2d));
     }
   } else {
     std::vector<half4> gpu_data(elements_count);
@@ -108,18 +107,27 @@ absl::Status DepthwiseConv3x3::UploadWeightsAndBiases(
     if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
-                                           &weights_buf_));
+                                           &weights_buf));
     } else {
       RETURN_IF_ERROR(CreateTexture2DRGBA(
           definition_.GetDataType(), texture_width, texture_height,
-          gpu_data.data(), context, &weights_tex2d_));
+          gpu_data.data(), context, &weights_tex2d));
     }
   }
 
   if (weights_are_buffer_) {
-    weights_ = weights_buf_.GetMemoryPtr();
+    BufferDescriptor desc;
+    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.element_size = 4;
+    args_.AddObject("weights", AccessType::READ,
+                    absl::make_unique<Buffer>(std::move(weights_buf)),
+                    absl::make_unique<BufferDescriptor>(desc));
   } else {
-    weights_ = weights_tex2d_.GetMemoryPtr();
+    Texture2DDescriptor desc;
+    desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    args_.AddObject("weights", AccessType::READ,
+                    absl::make_unique<Texture2D>(std::move(weights_tex2d)),
+                    absl::make_unique<Texture2DDescriptor>(desc));
   }
 
   return absl::OkStatus();

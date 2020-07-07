@@ -1392,7 +1392,7 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(m.dtype, dtypes.float32)
       self.assertEmpty(m.variables)
 
-      with self.assertRaisesRegexp(ValueError, 'does not have any result yet'):
+      with self.assertRaisesRegex(ValueError, 'does not have any result yet'):
         m.result()
 
       self.evaluate(m([[3], [5], [3]]))
@@ -1469,7 +1469,7 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
   def test_invalid_value_shape(self):
     m = metrics.MeanTensor(dtype=dtypes.float64)
     m([1])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'MeanTensor input values must always have the same shape'):
       m([1, 5])
 

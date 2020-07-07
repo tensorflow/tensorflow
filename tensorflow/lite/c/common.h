@@ -205,6 +205,7 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 // the current function, while also reporting the location of the error.
 // `a` and `b` may be evaluated more than once, so no side effects or
 // extremely expensive computations should be done.
+// NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
 #define TF_LITE_ENSURE_EQ(context, a, b)                                   \
   do {                                                                     \
     if ((a) != (b)) {                                                      \
@@ -374,6 +375,7 @@ typedef struct TfLiteSparsity {
 
 // An tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
+#ifndef TF_LITE_STATIC_MEMORY
 typedef struct TfLiteTensor {
   // The data type specification for data stored in `data`. This affects
   // what member of `data` union should be used.
@@ -439,31 +441,6 @@ typedef struct TfLiteTensor {
   const TfLiteIntArray* dims_signature;
 } TfLiteTensor;
 
-#ifndef TF_LITE_STATIC_MEMORY
-// Free data memory of tensor `t`.
-void TfLiteTensorDataFree(TfLiteTensor* t);
-
-// Free quantization data.
-void TfLiteQuantizationFree(TfLiteQuantization* quantization);
-
-// Free sparsity parameters.
-void TfLiteSparsityFree(TfLiteSparsity* sparsity);
-
-// Free memory of tensor `t`.
-void TfLiteTensorFree(TfLiteTensor* t);
-
-// Set all of a tensor's fields (and free any previously allocated data).
-void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
-                       TfLiteQuantizationParams quantization, char* buffer,
-                       size_t size, TfLiteAllocationType allocation_type,
-                       const void* allocation, bool is_variable,
-                       TfLiteTensor* tensor);
-
-// Resize the allocated data of a (dynamic) tensor. Tensors with allocation
-// types other than kTfLiteDynamic will be ignored.
-void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
-#endif  // TF_LITE_STATIC_MEMORY
-
 // A structure representing an instance of a node.
 // This structure only exhibits the inputs, outputs and user defined data, not
 // other features like the type.
@@ -500,6 +477,112 @@ typedef struct TfLiteNode {
   // WARNING: This is an experimental interface that is subject to change.
   struct TfLiteDelegate* delegate;
 } TfLiteNode;
+#else
+// NOTE: This flag is opt-in only at compile time.
+//
+// Specific reduced TfLiteTensor struct for TF Micro runtime. This struct
+// contains only the minimum fields required to initialize and prepare a micro
+// inference graph. The fields in this struct have been ordered from
+// largest-to-smallest for optimal struct sizeof.
+//
+// This struct does not use:
+// - allocation
+// - buffer_handle
+// - data_is_stale
+// - delegate
+// - dims_signature
+// - name
+// - sparsity
+typedef struct TfLiteTensor {
+  // TODO(b/155784997): Consider consolidating these quantization fields:
+  // Quantization information. Replaces params field above.
+  TfLiteQuantization quantization;
+
+  // Quantization information.
+  TfLiteQuantizationParams params;
+
+  // A union of data pointers. The appropriate type should be used for a typed
+  // tensor based on `type`.
+  TfLitePtrUnion data;
+
+  // A pointer to a structure representing the dimensionality interpretation
+  // that the buffer should have. NOTE: the product of elements of `dims`
+  // and the element datatype size should be equal to `bytes` below.
+  TfLiteIntArray* dims;
+
+  // The number of bytes required to store the data of this Tensor. I.e.
+  // (bytes of each element) * dims[0] * ... * dims[n-1].  For example, if
+  // type is kTfLiteFloat32 and dims = {3, 2} then
+  // bytes = sizeof(float) * 3 * 2 = 4 * 3 * 2 = 24.
+  size_t bytes;
+
+  // The data type specification for data stored in `data`. This affects
+  // what member of `data` union should be used.
+  TfLiteType type;
+
+  // How memory is mapped
+  //  kTfLiteMmapRo: Memory mapped read only.
+  //  i.e. weights
+  //  kTfLiteArenaRw: Arena allocated read write memory
+  //  (i.e. temporaries, outputs).
+  TfLiteAllocationType allocation_type;
+
+  // True if the tensor is a variable.
+  bool is_variable;
+} TfLiteTensor;
+
+// Specific reduced TfLiteNode struct for TF Micro runtime. This struct contains
+// only the minimum fields required to represent a node.
+//
+// This struct does not use:
+// - delegate
+// - intermediates
+// - temporaries
+typedef struct TfLiteNode {
+  // Inputs to this node expressed as indices into the simulator's tensors.
+  TfLiteIntArray* inputs;
+
+  // Outputs to this node expressed as indices into the simulator's tensors.
+  TfLiteIntArray* outputs;
+
+  // Opaque data provided by the node implementer through `Registration.init`.
+  void* user_data;
+
+  // Opaque data provided to the node if the node is a builtin. This is usually
+  // a structure defined in builtin_op_data.h
+  void* builtin_data;
+
+  // Custom initial data. This is the opaque data provided in the flatbuffer.
+  // WARNING: This is an experimental interface that is subject to change.
+  const void* custom_initial_data;
+  int custom_initial_data_size;
+} TfLiteNode;
+#endif  // TF_LITE_STATIC_MEMORY
+
+#ifndef TF_LITE_STATIC_MEMORY
+// Free data memory of tensor `t`.
+void TfLiteTensorDataFree(TfLiteTensor* t);
+
+// Free quantization data.
+void TfLiteQuantizationFree(TfLiteQuantization* quantization);
+
+// Free sparsity parameters.
+void TfLiteSparsityFree(TfLiteSparsity* sparsity);
+
+// Free memory of tensor `t`.
+void TfLiteTensorFree(TfLiteTensor* t);
+
+// Set all of a tensor's fields (and free any previously allocated data).
+void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
+                       TfLiteQuantizationParams quantization, char* buffer,
+                       size_t size, TfLiteAllocationType allocation_type,
+                       const void* allocation, bool is_variable,
+                       TfLiteTensor* tensor);
+
+// Resize the allocated data of a (dynamic) tensor. Tensors with allocation
+// types other than kTfLiteDynamic will be ignored.
+void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
+#endif  // TF_LITE_STATIC_MEMORY
 
 // WARNING: This is an experimental interface that is subject to change.
 //

@@ -22,6 +22,8 @@ import json
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
 from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
@@ -51,11 +53,13 @@ class Normalization(CombinerPreprocessingLayer):
 
   Attributes:
       axis: Integer or tuple of integers, the axis or axes that should be
-        normalized (typically the features axis). We will normalize each element
-        in the specified axis. If set to 'None', the layer will perform scalar
-        normalization (diving the input by a single scalar value). 0 (the batch
-        axis) is not allowed.
-
+        "kept". These axes are not be summed over when calculating the
+        normalization statistics. By default the last axis, the `features` axis
+        is kept and any `space` or `time` axes are summed. Each element in the
+        the axes that are kept is normalized independently. If `axis` is set to
+        'None', the layer will perform scalar normalization (diving the input
+        by a single scalar value). The `batch` axis, 0, is always summed over
+        (`axis=0` is not allowed).
 
   Examples:
 
@@ -77,28 +81,47 @@ class Normalization(CombinerPreprocessingLayer):
     # time, the dtype value will change to reflect it.
     dtype = dtype or K.floatx()
 
+    # Standardize `axis` to a tuple.
+    if axis is None:
+      axis = ()
+    elif isinstance(axis, int):
+      axis = (axis,)
+    else:
+      axis = tuple(axis)
+
     super(Normalization, self).__init__(
         combiner=_NormalizingCombiner(axis), dtype=dtype, **kwargs)
 
-    if axis == 0:
+    if 0 in axis:
       raise ValueError('The argument \'axis\' may not be 0.')
 
     self.axis = axis
 
   def build(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    if len(input_shape) == 1:
+      input_shape = input_shape + [1]
+
+    ndim = len(input_shape)
+
+    # Sort `self.axis` to avoid transposing `mean_and_var_shape`.
+    # Negative axes are not sortable until you know the number of dimensions.
+    original_axis = self.axis
+    self.axis = tuple(sorted(self.axis,
+                             key=lambda a: a if a >= 0 else ndim + a))
+
+    if any(a < 1-ndim for a in self.axis) or any(a >= ndim for a in self.axis):
+      raise ValueError('All `axis` values must be in '
+                       'the range [1-ndim, ndim-1].\n'
+                       'Got:\n'
+                       '    ndim: {}\n'
+                       '    axis: {}'.format(ndim, original_axis))
 
     self._broadcast_shape = [1 for _ in range(len(input_shape))]
-    if isinstance(self.axis, (tuple, list)):
-      mean_and_var_shape = []
-      for i in self.axis:
-        mean_and_var_shape.append(input_shape[i])
-        self._broadcast_shape[i] = input_shape[i]
-    else:
-      if self.axis is None:
-        mean_and_var_shape = ()
-      else:
-        mean_and_var_shape = input_shape[self.axis]
-        self._broadcast_shape[self.axis] = input_shape[self.axis]
+    mean_and_var_shape = []
+    for i in self.axis:
+      mean_and_var_shape.append(input_shape[i])
+      self._broadcast_shape[i] = input_shape[i]
 
     # count is not used in this class's call() method, but is used to re-create
     # the accumulator during multiple calls to 'adapt'.
@@ -122,6 +145,9 @@ class Normalization(CombinerPreprocessingLayer):
     super(Normalization, self).build(input_shape)
 
   def call(self, inputs):
+    inputs = ops.convert_to_tensor_v2(inputs)
+    if inputs.shape.rank == 1:
+      inputs = array_ops.expand_dims(inputs, 1)
     # If the inputs are not floats, cast them to floats. This avoids issues
     # with int-float multiplication and division below.
     if inputs.dtype != K.floatx():
@@ -169,12 +195,17 @@ class _NormalizingCombiner(Combiner):
 
   def compute(self, values, accumulator=None):
     """Compute a step in this computation, returning a new accumulator."""
+    values = np.array(values)
+    if values.ndim == 1:
+      values = np.expand_dims(values, 1)
+
+    # `np.delete` ignores negative indexes, so use a mask to delete items.
+    axis_mask = np.ones([values.ndim], dtype=bool)
+    axis_mask[np.array(self.axis, dtype=np.int32)] = False
 
     # This is the shape of all reduced axes (not specified in 'axis').
-    if self.axis is None:
-      reduction_counts = values.shape
-    else:
-      reduction_counts = np.delete(values.shape, self.axis)
+
+    reduction_counts = np.array(values.shape)[axis_mask]
     # We get the number of elements that will be reduced by multiplying all
     # values of 'shape' corresponding to the reduced axes.
     count = np.prod(reduction_counts, dtype=np.int64)
@@ -182,10 +213,7 @@ class _NormalizingCombiner(Combiner):
     # We want to reduce across dimensions except those specified in 'axis'
     # when using np.mean or np.variance; create the tuple of axes to reduce
     # over here.
-    if self.axis is None:
-      reduction_axes = None
-    else:
-      reduction_axes = tuple(np.delete(range(values.ndim), self.axis))
+    reduction_axes = tuple(np.arange(values.ndim)[axis_mask])
 
     mean = np.mean(values, axis=reduction_axes, dtype=np.float64)
     variance = np.var(values, axis=reduction_axes, dtype=np.float64)

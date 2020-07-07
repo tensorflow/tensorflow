@@ -292,13 +292,17 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([[1, 2]], dtype=dtype),
           expected=np.array([[0.540297, -0.41614]], dtype=dtype))
 
+      # Confirm that log1p will remain precise across a range of small values.
       self._assertOpOutputMatchesExpected(
           math_ops.log1p,
-          np.array([[1e-14, 1e-15, 0.6]], dtype=dtype),
-          expected=np.log1p(np.array([[1e-14, 1e-15, 0.6]],
-                                     dtype=dtype)).astype(dtype),
-          rtol=1e-4,
-          atol=1e-6)
+          np.array([[1e-14, 1e-15, 0.6, 2] + [x * 1e-5 for x in range(1, 20)]],
+                   dtype=dtype),
+          expected=np.log1p(
+              np.array(
+                  [[1e-14, 1e-15, 0.6, 2] + [x * 1e-5 for x in range(1, 20)]],
+                  dtype=dtype)).astype(dtype),
+          rtol=1e-15 if dtype == np.float64 else 1e-4,
+          atol=1e-15 if dtype == np.float64 else 1e-4)
 
       self._assertOpOutputMatchesExpected(
           math_ops.rint,
@@ -918,16 +922,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1, 0x100000003f800000], np.int64),
           expected=np.array([1, 0x100000003f800000], np.uint64))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.InvertPermutation compilation")
   def testInvertPermutation(self):
     self._assertOpOutputMatchesExpected(
         array_ops.invert_permutation,
         np.array([1, 2, 0], np.int32),
         expected=np.array([2, 0, 1], dtype=np.int32))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.InvertPermutation compilation")
   def testInvertPermutationTwiceIsNoop(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.invert_permutation(array_ops.invert_permutation(x)),
@@ -1144,8 +1144,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
         rtol=rtol,
         atol=atol)
 
-  @test_util.disable_mlir_bridge(
-      "bf16 type not supported in CreateDenseElementsAttrFromLiteral")
   def testSoftplus(self):
     for dtype in self.float_types & {dtypes.float32, dtypes.float64}:
       self._assertSoftplusMatchesExpected([[-2, 0, 8]], dtype)

@@ -48,7 +48,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, output->type == kTfLiteFloat32 ||
                               output->type == kTfLiteUInt8 ||
                               output->type == kTfLiteInt8);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, output->params.scale, (1. / 128.));
@@ -118,8 +118,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                            depth, GetTensorData<int8>(input),
                                            GetTensorData<int8>(output));
   } else {
-    TF_LITE_KERNEL_LOG(context, "Output type is %d, requires float.",
-                         output->type);
+    TF_LITE_KERNEL_LOG(context, "Output type is %s, requires float.",
+                       TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
 
@@ -128,22 +128,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace l2norm
 
-TfLiteRegistration* Register_L2NORM_REF() {
-    static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/l2norm::Prepare,
-                                 /*invoke=*/l2norm::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-
-  return &r;
+TfLiteRegistration Register_L2NORM_REF() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/l2norm::Prepare,
+          /*invoke=*/l2norm::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-TfLiteRegistration* Register_L2_NORMALIZATION() {
-  return Register_L2NORM_REF();
-}
+TfLiteRegistration Register_L2_NORMALIZATION() { return Register_L2NORM_REF(); }
 
 }  // namespace micro
 }  // namespace ops

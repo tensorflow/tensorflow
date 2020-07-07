@@ -34,13 +34,13 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -185,44 +185,83 @@ class DistributedIteratorTestBase(test.TestCase):
       if not ops.executing_eagerly_outside_functions():
         evaluate(control_flow_ops.group(iterator.initializer))
 
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        computed_value = evaluate(
-            [values.select_replica(r,
-                                   next_element) for r in range(len(devices))])
-        self.assertEqual(len(expected_value), len(computed_value))
-        for i in range(len(expected_value)):
-          self.assertAllEqual(expected_value[i], computed_value[i])
+      def test_get_next(iterator):
+        for expected_value in expected_values:
+          next_element = iterator.get_next()
+          computed_value = evaluate([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))
+          ])
 
-      with self.assertRaises(errors.OutOfRangeError):
-        next_element = iterator.get_next()
-        evaluate(
-            [values.select_replica(r,
-                                   next_element) for r in range(len(devices))])
+          self.assertEqual(len(expected_value), len(computed_value))
+          for i in range(len(expected_value)):
+            self.assertAllEqual(expected_value[i], computed_value[i])
 
-      # After re-initializing the iterator, should be able to iterate again.
-      if not ops.executing_eagerly_outside_functions():
-        evaluate(control_flow_ops.group(iterator.initializer))
+        with self.assertRaises(errors.OutOfRangeError):
+          next_element = iterator.get_next()
+          evaluate([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))
+          ])
+
+        # After re-initializing the iterator, should be able to iterate again.
+        if not ops.executing_eagerly_outside_functions():
+          evaluate(control_flow_ops.group(iterator.initializer))
+        else:
+          if api_type == "wrap_into_iterator":
+            self.skipTest("unsupported test combination")
+          else:
+            iterator = iter(dataset)
+
+        for expected_value in expected_values:
+          next_element = iterator.get_next()
+          computed_value = evaluate([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))
+          ])
+          self.assertEqual(len(expected_value), len(computed_value))
+          for i in range(len(expected_value)):
+            self.assertAllEqual(expected_value[i], computed_value[i])
+
+      def test_get_next_as_optional(iterator):
+        for expected_value in expected_values:
+          next_element = iterator.get_next_as_optional()
+          computed_value = evaluate([
+              distribute_utils.select_replica(r, next_element.get_value())
+              for r in range(len(devices))
+          ])
+
+          self.assertEqual(len(expected_value), len(computed_value))
+          for i in range(len(expected_value)):
+            self.assertAllEqual(expected_value[i], computed_value[i])
+
+        next_element = iterator.get_next_as_optional()
+        self.assertFalse(self.evaluate(next_element.has_value()))
+        with self.assertRaises(errors.InvalidArgumentError):
+          evaluate([
+              distribute_utils.select_replica(r, next_element.get_value())
+              for r in range(len(devices))
+          ])
+
+      test_get_next(iterator)
+
+      # re-initializing the iterator
+      if not tf2.enabled():
+        self.skipTest("Not testing get_next_as_optional in TF1")
       else:
         if api_type == "wrap_into_iterator":
           self.skipTest("unsupported test combination")
         else:
           iterator = iter(dataset)
 
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        computed_value = evaluate(
-            [values.select_replica(r,
-                                   next_element) for r in range(len(devices))])
-        self.assertEqual(len(expected_value), len(computed_value))
-        for i in range(len(expected_value)):
-          self.assertAllEqual(expected_value[i], computed_value[i])
+      test_get_next_as_optional(iterator)
 
     if iteration_type == "for_loop" and context.executing_eagerly():
       actual_values = []
       for x in dataset:
         computed_value = self.evaluate(
-            [values.select_replica(r, x) for r in range(len(devices))])
+            [distribute_utils.select_replica(r, x)
+             for r in range(len(devices))])
         actual_values.append(computed_value)
       for i, expected_value in enumerate(expected_values):
         self.assertEqual(len(expected_value), len(actual_values[i]))
@@ -699,24 +738,29 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     # Assert that the tensors are rebatched and sparsity is preserved.
     per_replica_batch = defun(lambda x: next(iter(x)))(dataset)
     self.assertAllEqual(
-        values.select_replica(0, per_replica_batch["dense"]),
+        distribute_utils.select_replica(0, per_replica_batch["dense"]),
         [[0., 0., 0.], [1., 0., 0.], [2., 2., 0.], [3., 3., 3.]])
     self.assertAllEqual(
-        values.select_replica(1, per_replica_batch["dense"]),
+        distribute_utils.select_replica(1, per_replica_batch["dense"]),
         [[0., 0., 0.], [5., 0., 0.], [6., 6., 0.], [7., 7., 7.]])
     # Transitively check the ragged and sparse tensors by densification.
     for i in range(2):
       self.assertLen(
-          values.select_replica(i, per_replica_batch["ragged"]).values, 6)
+          distribute_utils.select_replica(i,
+                                          per_replica_batch["ragged"]).values,
+          6)
       self.assertAllEqual(
-          values.select_replica(i, per_replica_batch["ragged"]).to_tensor(),
-          values.select_replica(i, per_replica_batch["dense"]))
+          distribute_utils.select_replica(
+              i, per_replica_batch["ragged"]).to_tensor(),
+          distribute_utils.select_replica(i, per_replica_batch["dense"]))
       self.assertLen(
-          values.select_replica(i, per_replica_batch["sparse"]).indices, 6)
+          distribute_utils.select_replica(i,
+                                          per_replica_batch["sparse"]).indices,
+          6)
       self.assertAllEqual(
           sparse_ops.sparse_tensor_to_dense(
-              values.select_replica(i, per_replica_batch["sparse"])),
-          values.select_replica(i, per_replica_batch["dense"]))
+              distribute_utils.select_replica(i, per_replica_batch["sparse"])),
+          distribute_utils.select_replica(i, per_replica_batch["dense"]))
     # Iterate through all the batches and sum them up.
     def sum_batch(per_replica_features):
       """Sums the `PerReplica` values in the `per_replica_features` map."""

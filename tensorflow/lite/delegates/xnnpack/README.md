@@ -86,6 +86,10 @@ benefit from XNNPACK delegate.
 
 Below is the list of current operators and limitations:
 
+### `ABS`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `ADD`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -99,6 +103,10 @@ Below is the list of current operators and limitations:
 * 1x1 pooling is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+### `CEIL`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `CONV_2D`
 
@@ -130,7 +138,15 @@ Below is the list of current operators and limitations:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+### `FLOOR`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `HARD_SWISH`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
+### `LEAKY_RELU`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
@@ -149,6 +165,16 @@ Below is the list of current operators and limitations:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+### `MEAN`
+
+* The first input and the output must be a 4D tensors in 32-bit
+  floating-point format.
+* The second input (the input with the axes specification) must be static
+  (use `kTfLiteMmapRo` allocation type).
+* Only [1, 2] or [2, 1] axes specification (i.e. reduction across spatial
+  dimensions) is supported.
+* Only `keep_dims = True` parameter value is supported.
+
 ### `MINIMUM`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -158,6 +184,10 @@ Below is the list of current operators and limitations:
 * Inputs and outputs must be in 32-bit floating-point format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+### `NEG`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `PAD`
 
@@ -185,10 +215,18 @@ Below is the list of current operators and limitations:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+### `ROUND`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `SOFTMAX`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
+
+### `SQUARE`
+
+* Inputs and outputs must be in 32-bit floating-point format.
 
 ### `SQUARED_DIFFERENCE`
 
@@ -199,6 +237,43 @@ Below is the list of current operators and limitations:
 * Inputs and outputs must be in 32-bit floating-point format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+### Sparse Inference (experimental)
+
+XNNPACK backend supports sparse inference for CNN models described in the
+[Fast Sparse ConvNets](https://arxiv.org/abs/1911.09723) paper. This
+functionality must be enabled at build-time via
+`--define xnn_enable_sparse=true` Bazel flag. Sparse inference is restricted
+to subgraphs with the following operators:
+
+* Sparse subgraph must start with a 3x3 stride-2 `CONV_2D` operator with
+  padding 1 on each side, no dilation, and 3 input channels.
+* Sparse subgraph must end with a `MEAN` operator that does reduction across
+  spatial axes.
+* Sparse subgraph may contain the following operators:
+  * `CONV_2D` with 1x1 kernel and no padding. It is important to have high
+    sparsity (at least 70%) in the filter of this operator to get speedup
+    over dense inference.
+  * `DEPTHWISE_CONV_2D` with 3x3 kernel, stride 1, no dilation, and padding 1
+    on each side.
+  * `DEPTHWISE_CONV_2D` with 3x3 kernel, stride 2, no dilation, and padding 1
+    on each side.
+  * `DEPTHWISE_CONV_2D` with 5x5 kernel, stride 1, no dilation, and padding 2
+    on each side.
+  * `DEPTHWISE_CONV_2D` with 5x5 kernel, stride 2, no dilation, and padding 2
+    on each side.
+  * `ADD` and `MUL` operators where both inputs are 4D tensors. If one of the
+    inputs to `ADD` or `MUL` is a constant tensor, it must be representable as
+    either a scalar, or a 1D vector.
+  * Unary elementwise operators `ABS`, `CEIL`, `FLOOR`, `HARD_SWISH`,
+    `LEAKY_RELU`, `LOGISTIC`, `NEG`, `RELU`, `RELU6`, `RELU_N1_TO_1`, `ROUND`,
+    and `SQUARE`.
+
+Pre-trained [Fast Sparse ConvNets models](https://github.com/google-research/google-research/tree/master/fastconvnets)
+provide examples that satisfy these constrains.
+
+In addition to acceleration, sparse models get the compression benefit by
+storing only non-zero values in the [TensorFlow Lite file format](https://github.com/tensorflow/tensorflow/blob/4aea552e064cf92330e07e83a3b5a1ca2a7034d0/tensorflow/lite/schema/schema.fbs#L84-L109).
 
 ### Other limitations
 

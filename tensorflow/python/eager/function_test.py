@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import functools
 import itertools
 import multiprocessing.pool
@@ -168,7 +169,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(values, [1, 2, 1, 2])  # And again.
 
   def testCannotAddExitCallbackWhenNotInFunctionScope(self):
-    with self.assertRaisesRegexp(RuntimeError, 'when not building a function.'):
+    with self.assertRaisesRegex(RuntimeError, 'when not building a function.'):
       ops.add_exit_callback_to_default_func_graph(lambda: None)
 
   def testVariable(self):
@@ -185,7 +186,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     r1 = add(v)
     self.assertEqual(2.0, self.evaluate(r1))
     c = constant_op.constant(1.0)
-    with self.assertRaisesRegexp(AttributeError, 'no attribute'):
+    with self.assertRaisesRegex(AttributeError, 'no attribute'):
       add(c)
 
   def testPackedVariable(self):
@@ -223,6 +224,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       return read0, read1, read2, read3
 
+    arg_attrs = read_var.get_concrete_function().function_def.arg_attr
+    self.assertLen(arg_attrs, 2)
+    self.assertEqual(arg_attrs[0].attr['_composite_device'].s,
+                     compat.as_bytes(packed_var_0.device))
+    self.assertEqual(arg_attrs[1].attr['_composite_device'].s,
+                     compat.as_bytes(packed_var_1.device))
+
     self.assertAllEqual(read_var(), (1 + 5, 2 + 5, 3 + 6, 4 + 6))
 
   def testImplementsAttributeBasic(self):
@@ -256,8 +264,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           experimental_implements='func')(lambda x, y: x + y + z)
       a = array_ops.ones((1.0,))
       b = array_ops.ones((1.0,))
-      with self.assertRaisesRegexp(AssertionError,
-                                   'variables are always captured'):
+      with self.assertRaisesRegex(AssertionError,
+                                  'variables are always captured'):
         v(a, b)
       functions = ops.get_default_graph().as_graph_def().library.function
       self.assertEmpty(functions)
@@ -616,7 +624,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegexp(ValueError, r'Got type: set'):
+    with self.assertRaisesRegex(ValueError, r'Got type: set'):
       f(set([]))
 
   def testFuncName(self):
@@ -1089,7 +1097,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def tensor_init():
-      with self.assertRaisesRegexp(ValueError, error_msg):
+      with self.assertRaisesRegex(ValueError, error_msg):
         resource_variable_ops.ResourceVariable(constant_op.constant(2.0))
 
     tensor_init()
@@ -1573,7 +1581,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           False)  # use_locking
       return None
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         'Cannot place the graph because a reference or resource edge connects '
         'colocation groups with incompatible assigned devices'):
@@ -2044,10 +2052,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([3, 1], func([[0], [1.0], [1]]))
     self.assertAllEqual([2, 2], func(numpy.array([[1, 1], [2, 2]])))
 
-    with self.assertRaisesRegexp(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(ValueError, 'incompatible'):
       func([0.0, 1.0, 2.0])  # Wrong shape.
 
-    with self.assertRaisesRegexp(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(ValueError, 'incompatible'):
       func([['wrong dtype']])
 
   def testNoKeywordOnlyArgumentsWithInputSignature(self):
@@ -2056,7 +2064,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     func = eval('lambda x, *, y: x')  # pylint: disable=eval-used
     signature = [tensor_spec.TensorSpec(None, dtypes.int32)]
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Cannot define a TensorFlow function from a Python '
         'function with keyword-only arguments when input_signature is '
         'provided.'):
@@ -2152,13 +2160,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Signatures must consist exclusively of `TensorSpec` objects.
     signature = [(2, 3), tensor_spec.TensorSpec([2, 3], dtypes.float32)]
-    with self.assertRaisesRegexp(TypeError, 'Invalid input_signature.*'):
+    with self.assertRaisesRegex(TypeError, 'Invalid input_signature.*'):
       def_function.function(foo, input_signature=signature)
 
     # Signatures must be either lists or tuples on their outermost levels.
     signature = {'t1': tensor_spec.TensorSpec([], dtypes.float32)}
-    with self.assertRaisesRegexp(TypeError, 'input_signature must be either a '
-                                 'tuple or a list.*'):
+    with self.assertRaisesRegex(
+        TypeError, 'input_signature must be either a '
+        'tuple or a list.*'):
       function.defun(foo, input_signature=signature)
 
   @test_util.run_in_graph_and_eager_modes
@@ -2171,23 +2180,23 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = def_function.function(foo, input_signature=signature)
 
     # Invalid shapes.
-    with self.assertRaisesRegexp(ValueError, 'Python inputs incompatible.*'):
+    with self.assertRaisesRegex(ValueError, 'Python inputs incompatible.*'):
       defined(array_ops.ones([3]))
 
-    with self.assertRaisesRegexp(ValueError, 'Python inputs incompatible.*'):
+    with self.assertRaisesRegex(ValueError, 'Python inputs incompatible.*'):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r'takes 1 positional arguments \(as specified by the '
         r'input_signature\) but 2 were given'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
-    with self.assertRaisesRegexp(ValueError,
-                                 'Structure of Python function inputs.*'):
+    with self.assertRaisesRegex(ValueError,
+                                'Structure of Python function inputs.*'):
       defined()
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'inputs incompatible with input_signature'):
+    with self.assertRaisesRegex(ValueError,
+                                'inputs incompatible with input_signature'):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
@@ -2201,12 +2210,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = function.defun(foo, input_signature=signature)
     a = array_ops.ones([1])
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'Structure of Python function inputs.*'):
+    with self.assertRaisesRegex(ValueError,
+                                'Structure of Python function inputs.*'):
       defined([a, a, a], [a])
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'Structure of Python function inputs.*'):
+    with self.assertRaisesRegex(ValueError,
+                                'Structure of Python function inputs.*'):
       defined([a], [a, a, a])
     defined([a, a], [a, a])
 
@@ -2221,12 +2230,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return -1.0 * a
 
     x = constant_op.constant(1.0)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, 'got keyword argument `training` '
         'that was not included in input_signature'):
       foo(x, training=True)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, 'got keyword argument `training` '
         'that was not included in input_signature'):
       foo(x, training=False)
@@ -2335,17 +2344,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # Different number of rows
     rt3 = ragged_factory_ops.constant([[1, 2], [3, 4], [5], [6]])
-    with self.assertRaisesRegexp(ValueError, 'incompatible'):
+    with self.assertRaisesRegex(ValueError, 'incompatible'):
       defined(rt3)
 
     # Different dtype
     rt4 = ragged_factory_ops.constant([[1.0, 2.0], [], [3.0]])
-    with self.assertRaisesRegexp(ValueError, 'Structure .* does not match'):
+    with self.assertRaisesRegex(ValueError, 'Structure .* does not match'):
       defined(rt4)
 
     # Different rank
     rt5 = ragged_factory_ops.constant([[[1]], [[2]], [[3]]])
-    with self.assertRaisesRegexp(ValueError, 'does not match'):
+    with self.assertRaisesRegex(ValueError, 'does not match'):
       defined(rt5)
 
   def testInputSignatureWithVariableArgs(self):
@@ -2502,15 +2511,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # pylint: disable=protected-access
         self.assertLen(graph._functions, 2)
         functions = list(graph._functions.values())
-        self.assertRegexpMatches(
-            functions[0].definition.signature.name, '.*matmul.*')
+        self.assertRegex(functions[0].definition.signature.name, '.*matmul.*')
         attrs = functions[0].definition.attr
         self.assertLen(attrs, 2)
         self.assertEqual(attrs['experimental_1'].s, b'value1')
         self.assertEqual(attrs['experimental_2'].i, 2)
 
-        self.assertRegexpMatches(
-            functions[1].definition.signature.name, '.*add.*')
+        self.assertRegex(functions[1].definition.signature.name, '.*add.*')
         attrs = functions[1].definition.attr
         self.assertLen(attrs, 2)
         self.assertEqual(attrs['experimental_3'].b, True)
@@ -2522,8 +2529,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def add(x, y):
       return math_ops.add(x, y)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 '.*Unsupported attribute type.*'):
+    with self.assertRaisesRegex(ValueError, '.*Unsupported attribute type.*'):
       with context.graph_mode(), self.cached_session():
         with ops.get_default_graph().as_default():
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
@@ -2562,8 +2568,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
             '.*inference.*backward.*add.*',
         ]
         for i in range(len(functions)):
-          self.assertRegexpMatches(captured_function_names[i],
-                                   expected_func_name_regex[i])
+          self.assertRegex(captured_function_names[i],
+                           expected_func_name_regex[i])
 
         # Check the forward and backward function has the correct attributes.
         self.assertEqual(
@@ -2641,7 +2647,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         for expected, found in zip(
             expected_func_name_regex,
             captured_function_names):
-          self.assertRegexpMatches(found, expected)
+          self.assertRegex(found, expected)
 
         composite_t, composite_double = composite(t, t)
         double = add(t, t)
@@ -2799,8 +2805,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     if not context.executing_eagerly():
       self.skipTest('eager only')
 
-    context.context().set_optimizer_experimental_options(
-        {'min_graph_nodes': -1, 'implementation_selector': True})
+    # testSharedRendezvous sets the disable_meta_optimizer flag to True
+    # if that subtest runs before this one, then having that set to True
+    # will cause this subtest to fail. To avoid that scenario, explicitly
+    # set the disable_meta_optimizer flag to false here
+    context.context().set_optimizer_experimental_options({
+        'min_graph_nodes': -1,
+        'implementation_selector': True,
+        'disable_meta_optimizer': False
+    })
 
     @function.defun_with_attributes(
         attributes={'api_implements': 'foo',
@@ -2923,30 +2936,57 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # should only get a miss if the aliasing changed.
     defined(x, y, z)
     self.assertLen(total_function_cache(defined), 1)
-
-    # Calling again is a cache hit
     defined(x, y, z)
     self.assertLen(total_function_cache(defined), 1)
 
-    # Re-arranging arguments doesn't change signature
+    # Re-arranging arguments causes cache miss
     defined(z, y, x)
-    self.assertLen(total_function_cache(defined),
-                   1 if ops.Tensor._USE_EQUALITY else 2)
+    self.assertLen(total_function_cache(defined), 2)
+    defined(z, y, x)
+    self.assertLen(total_function_cache(defined), 2)
 
     # Aliasing causes cache miss
     defined(x, x, z)
-    self.assertLen(total_function_cache(defined),
-                   2 if ops.Tensor._USE_EQUALITY else 3)
+    self.assertLen(total_function_cache(defined), 3)
+    defined(x, x, z)
+    self.assertLen(total_function_cache(defined), 3)
 
-    # Re-arranging arguments doesn't change signature
+    # Re-arranging arguments causes cache miss
     defined(y, y, z)
-    self.assertLen(total_function_cache(defined),
-                   2 if ops.Tensor._USE_EQUALITY else 4)
+    self.assertLen(total_function_cache(defined), 4)
+    defined(y, y, z)
+    self.assertLen(total_function_cache(defined), 4)
 
     # Different alias positions causes cache miss
     defined(z, y, y)
-    self.assertLen(total_function_cache(defined),
-                   3 if ops.Tensor._USE_EQUALITY else 5)
+    self.assertLen(total_function_cache(defined), 5)
+    defined(z, y, y)
+    self.assertLen(total_function_cache(defined), 5)
+
+    x_copy = copy.deepcopy(x)
+
+    # Deep copy causes cache miss
+    defined(x_copy, y, z)
+    self.assertLen(total_function_cache(defined), 6)
+    defined(x_copy, y, z)
+    self.assertLen(total_function_cache(defined), 6)
+
+  def testVariableRetracing(self):
+    v1 = variables.Variable(1.)
+    v2 = variables.Variable(1.)
+    v3 = copy.deepcopy(variables.Variable(1.))
+
+    var_dict = {id(v1): constant_op.constant(1),
+                id(v2): constant_op.constant(2),
+                id(v3): constant_op.constant(3)}
+
+    @function.defun
+    def lookup_tensor(v):
+      return var_dict[id(v)]
+
+    self.assertEqual(1, lookup_tensor(v1).numpy())
+    self.assertEqual(2, lookup_tensor(v2).numpy())
+    self.assertEqual(3, lookup_tensor(v3).numpy())
 
   def testDecoratedMethodInspect(self):
 
@@ -2969,7 +3009,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     expected_msg = '.*() should not modify'
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def append(l):
@@ -2977,7 +3017,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       append(get_list())
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def extend(l):
@@ -2985,7 +3025,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       extend(get_list())
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def insert(l):
@@ -2993,7 +3033,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       insert(get_list())
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def pop(l):
@@ -3001,7 +3041,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       pop(get_list())
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def reverse(l):
@@ -3009,7 +3049,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       reverse(get_list())
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def remove(l):
@@ -3020,7 +3060,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # `list.clear` is a method that is in Py3 but not Py2
     if sys.version.startswith('3'):
 
-      with self.assertRaisesRegexp(ValueError, expected_msg):
+      with self.assertRaisesRegex(ValueError, expected_msg):
 
         @def_function.function
         def clear(l):
@@ -3029,7 +3069,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         clear(get_list())
 
     # One last test for keyword arguments
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def kwdappend(**kwargs):
@@ -3045,7 +3085,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     expected_msg = '.* should not modify'
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def clear(m):
@@ -3053,7 +3093,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       clear(get_dict())
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def pop(m):
@@ -3061,7 +3101,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       pop(get_dict())
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def popitem(m):
@@ -3069,7 +3109,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       popitem(get_dict())
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def update(m):
@@ -3077,7 +3117,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       update(get_dict())
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegex(ValueError, expected_msg):
 
       @def_function.function
       def setdefault(m):
@@ -3086,8 +3126,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       setdefault(get_dict())
 
   def testFunctionModifiesInputNest(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'modify.* should not modify'):
+    with self.assertRaisesRegex(ValueError, 'modify.* should not modify'):
 
       @def_function.function
       def modify(n):
@@ -3101,8 +3140,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       modify(nested_input)
 
-    with self.assertRaisesRegexp(
-        ValueError, 'modify_same_flat.* should not modify'):
+    with self.assertRaisesRegex(ValueError,
+                                'modify_same_flat.* should not modify'):
 
       # The flat list doesn't change whereas the true structure changes
       @def_function.function
@@ -3124,7 +3163,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         5,
         add_five(constant_op.constant(0, dtype=dtypes.int32)).numpy())
 
-    with self.assertRaisesRegexp(errors.NotFoundError, 'NON_EXISTENT_EXECUTOR'):
+    with self.assertRaisesRegex(errors.NotFoundError, 'NON_EXISTENT_EXECUTOR'):
       with context.function_executor_type('NON_EXISTENT_EXECUTOR'):
         add_five(constant_op.constant(0, dtype=dtypes.int32))
 
@@ -3188,7 +3227,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     with ops.device('GPU:0'):
       x = func()
-      self.assertRegexpMatches(x.device, 'GPU')
+      self.assertRegex(x.device, 'GPU')
 
   @test_util.run_in_graph_and_eager_modes
   def testShapeCaching(self):
@@ -3257,7 +3296,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def g():
       f_concrete(constant_op.constant([1., 2.]))
 
-    with self.assertRaisesRegexp(ValueError, 'argument_name'):
+    with self.assertRaisesRegex(ValueError, 'argument_name'):
       g()
 
   @test_util.run_in_graph_and_eager_modes
@@ -3664,7 +3703,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x
 
     conc = func.get_concrete_function(*conc_args, **conc_kwargs)
-    with self.assertRaisesRegexp(exception, error):
+    with self.assertRaisesRegex(exception, error):
       self.evaluate(conc(*call_args, **call_kwargs))
 
   # pylint: disable=g-long-lambda
@@ -3767,7 +3806,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # Remove _function_spec, to disable the structured signature.
     conc._set_function_spec(None)  # pylint: disable=protected-access
 
-    with self.assertRaisesRegexp(exception, error):
+    with self.assertRaisesRegex(exception, error):
       self.evaluate(conc(*call_args, **call_kwargs))
 
   @test_util.run_in_graph_and_eager_modes
@@ -3804,14 +3843,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                   r'    kangaroo: int32 Tensor, shape=\(3,\)\n'
                   r'  Returns:\n'
                   r'    int32 Tensor, shape=\(\)')
-    self.assertRegexpMatches(
-        c1.pretty_printed_signature(verbose=False), c1_summary)
-    self.assertRegexpMatches(
+    self.assertRegex(c1.pretty_printed_signature(verbose=False), c1_summary)
+    self.assertRegex(
         c1.pretty_printed_signature(verbose=True),
         c1_summary + '\n' + c1_details)
-    self.assertRegexpMatches(
+    self.assertRegex(
         repr(c1), r'<ConcreteFunction func\(x, kangaroo, octopus=7\) at .*>')
-    self.assertRegexpMatches(
+    self.assertRegex(
         str(c1), 'ConcreteFunction {}\n{}'.format(c1_summary, c1_details))
 
     c2 = func.get_concrete_function(scalar, ragged, 3)
@@ -3821,8 +3859,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                   r'    kangaroo: RaggedTensorSpec\(.*\)\n'
                   r'  Returns:\n'
                   r'    int32 Tensor, shape=\(\)')
-    self.assertRegexpMatches(c2.pretty_printed_signature(),
-                             c2_summary + '\n' + c2_details)
+    self.assertRegex(c2.pretty_printed_signature(),
+                     c2_summary + '\n' + c2_details)
 
     c3 = func.get_concrete_function({'a': scalar, 'b': [ragged, ragged]})
     c3_summary = r'func\(x, kangaroo=None, octopus=7\)'
@@ -3840,8 +3878,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # python 3.5 does not gurantee deterministic iteration of dict contents
     # which can lead mismatch on pretty_printed_signature output for "Args"
     if sys.version_info >= (3, 6):
-      self.assertRegexpMatches(c3.pretty_printed_signature(),
-                               c3_summary + '\n' + c3_details)
+      self.assertRegex(c3.pretty_printed_signature(),
+                       c3_summary + '\n' + c3_details)
 
     # pylint: disable=keyword-arg-before-vararg
     @def_function.function
@@ -3855,6 +3893,39 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c5 = func2.get_concrete_function(8, vector)
     c5_summary = 'func2(x=8, y)'
     self.assertEqual(c5.pretty_printed_signature(verbose=False), c5_summary)
+
+  def testPrettyPrintedExplicitSignatureWithKeywordArg(self):  # b/159639913
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec(None)])
+    def fn(a, b=1):
+      return a + b
+
+    concrete_fn = fn.get_concrete_function()
+    self.assertEqual(concrete_fn.pretty_printed_signature(False), 'fn(a)')
+    self.assertEqual(
+        concrete_fn.pretty_printed_signature(True), 'fn(a)\n'
+        '  Args:\n'
+        '    a: float32 Tensor, shape=<unknown>\n'
+        '  Returns:\n'
+        '    float32 Tensor, shape=<unknown>')
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIndexedSlicesAsGradientsForConcreteFunctions(self):
+
+    @def_function.function
+    def summing_rnn(inputs):
+      return math_ops.reduce_sum(inputs, axis=1)
+
+    @def_function.function
+    def gradients(inputs):
+      with backprop.GradientTape() as tape:
+        tape.watch(inputs)
+        hidden = summing_rnn(inputs)
+        hidden = array_ops.gather(hidden, constant_op.constant([0]))
+        loss = math_ops.reduce_mean(hidden)
+      return tape.gradient(loss, inputs)
+
+    gradients(constant_op.constant([[[1.0], [2.0]]]))  # No error is raised
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
@@ -3873,9 +3944,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     m1, m2 = func(t, t, transpose_a=True)
     self.assertAllEqual(m1.numpy(), [[10, 14], [14, 20]])
-    self.assertRegexpMatches(m1.backing_device, 'CPU')
+    self.assertRegex(m1.backing_device, 'CPU')
     self.assertAllEqual(m2.numpy(), [[10, 14], [14, 20]])
-    self.assertRegexpMatches(m2.backing_device, 'GPU')
+    self.assertRegex(m2.backing_device, 'GPU')
 
   @test_util.run_gpu_only
   def testEmptyBody(self):
@@ -3890,9 +3961,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     m1, m2 = func(a, b)
     self.assertAllEqual(m1.numpy(), 5.0)
-    self.assertRegexpMatches(m1.backing_device, 'GPU')
+    self.assertRegex(m1.backing_device, 'GPU')
     self.assertAllEqual(m2.numpy(), 3.0)
-    self.assertRegexpMatches(m2.backing_device, 'CPU')
+    self.assertRegex(m2.backing_device, 'CPU')
 
   @test_util.run_gpu_only
   def testMultiDeviceInt32(self):
@@ -3926,16 +3997,16 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     m1, m2 = func(int_cpu, resource, int_gpu)
     self.assertAllEqual(m1.numpy(), 22)
-    self.assertRegexpMatches(m1.backing_device, 'CPU')
+    self.assertRegex(m1.backing_device, 'CPU')
     self.assertAllEqual(m2.numpy(), 39)
-    self.assertRegexpMatches(m2.backing_device, 'CPU')
+    self.assertRegex(m2.backing_device, 'CPU')
 
     # flip arguments
     m1, m2 = func(int_gpu, resource, int_cpu)
     self.assertAllEqual(m1.numpy(), 38)
-    self.assertRegexpMatches(m1.backing_device, 'CPU')
+    self.assertRegex(m1.backing_device, 'CPU')
     self.assertAllEqual(m2.numpy(), 23)
-    self.assertRegexpMatches(m2.backing_device, 'CPU')
+    self.assertRegex(m2.backing_device, 'CPU')
 
   @test_util.run_gpu_only
   def testMultiDeviceColocateWith(self):
@@ -3957,9 +4028,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
       ra, rb = func(a, b)
       self.assertEqual(ra.numpy(), 2.0)
-      self.assertRegexpMatches(ra.backing_device, dev1)
+      self.assertRegex(ra.backing_device, dev1)
       self.assertEqual(rb.numpy(), 30.0)
-      self.assertRegexpMatches(rb.backing_device, dev2)
+      self.assertRegex(rb.backing_device, dev2)
 
   @test_util.run_gpu_only
   def testMultiDeviceResources(self):
@@ -3980,17 +4051,17 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     r1, r2 = func(c1, g1)
     self.assertEqual(r1.numpy(), 10.0)
-    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertRegex(r1.backing_device, 'CPU')
     self.assertEqual(r2.numpy(), 21.0)
-    self.assertRegexpMatches(r2.backing_device, 'GPU')
+    self.assertRegex(r2.backing_device, 'GPU')
 
     # Call with flipped inputs. Check that we look at resource's
     # device and reinstantiates the function when inputs' devices change.
     r1, r2 = func(g1, c1)
     self.assertEqual(r1.numpy(), 15.0)
-    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertRegex(r1.backing_device, 'CPU')
     self.assertEqual(r2.numpy(), 14.0)
-    self.assertRegexpMatches(r2.backing_device, 'GPU')
+    self.assertRegex(r2.backing_device, 'GPU')
 
   @test_util.run_gpu_only
   def testOutputResources(self):
@@ -4009,12 +4080,12 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     r1, res1, r2, res2 = func(c1, g1)
     self.assertEqual(r1.numpy(), 10.0)
-    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertRegex(r1.backing_device, 'CPU')
     self.assertEqual(r2.numpy(), 21.0)
-    self.assertRegexpMatches(r2.backing_device, 'GPU')
+    self.assertRegex(r2.backing_device, 'GPU')
 
     def check_handle(handle, expected_value):
-      self.assertRegexpMatches(handle.backing_device, 'CPU')
+      self.assertRegex(handle.backing_device, 'CPU')
       tensor = gen_resource_variable_ops.read_variable_op(
           handle, dtypes.float32)
       self.assertEqual(tensor.numpy(), expected_value)
@@ -4030,9 +4101,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     # for ops consuming handles returned from defuns.
     r1, res1, r2, res2 = func(g1, c1)
     self.assertEqual(r1.numpy(), 15.0)
-    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertRegex(r1.backing_device, 'CPU')
     self.assertEqual(r2.numpy(), 14.0)
-    self.assertRegexpMatches(r2.backing_device, 'GPU')
+    self.assertRegex(r2.backing_device, 'GPU')
     check_handle(res1, 3.0)
     check_handle(res2, 2.0)
 
@@ -4064,7 +4135,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     r1 = outer(g1)
 
     self.assertEqual(r1.numpy(), 6.0)
-    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertRegex(r1.backing_device, 'CPU')
 
   @test_util.run_gpu_only
   def testReturnResourceFromNestedFunctionCall(self):
@@ -4095,10 +4166,10 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     r1, res1 = outer(g1)
 
     self.assertEqual(r1.numpy(), 10.0)
-    self.assertRegexpMatches(r1.backing_device, 'CPU')
+    self.assertRegex(r1.backing_device, 'CPU')
 
     def check_handle(handle, expected_value):
-      self.assertRegexpMatches(handle.backing_device, 'CPU')
+      self.assertRegex(handle.backing_device, 'CPU')
       tensor = gen_resource_variable_ops.read_variable_op(
           handle, dtypes.float32)
       self.assertEqual(tensor.numpy(), expected_value)
@@ -4124,9 +4195,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     # Make sure tensors are on expected devices.
     for tensor in [cc0, cc1]:
-      self.assertRegexpMatches(tensor.backing_device, 'CPU:0')
+      self.assertRegex(tensor.backing_device, 'CPU:0')
     for tensor in [cg0, cg1]:
-      self.assertRegexpMatches(tensor.backing_device, 'GPU:0')
+      self.assertRegex(tensor.backing_device, 'GPU:0')
 
     @function.defun
     def func(rc0, cc0, cg0, rc1, cg1, rg0, rg1, cc1):
@@ -4143,10 +4214,10 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
       return r1, r2, m2, m1
 
     r1, r2, m2, m1 = func(rc0, cc0, cg0, rc1, cg1, rg0, rg1, cc1)
-    self.assertRegexpMatches(m1.backing_device, 'CPU')
-    self.assertRegexpMatches(r1.backing_device, 'CPU')
-    self.assertRegexpMatches(m2.backing_device, 'GPU')
-    self.assertRegexpMatches(r2.backing_device, 'GPU')
+    self.assertRegex(m1.backing_device, 'CPU')
+    self.assertRegex(r1.backing_device, 'CPU')
+    self.assertRegex(m2.backing_device, 'GPU')
+    self.assertRegex(r2.backing_device, 'GPU')
     self.assertEqual(m1.numpy(), 34.0)
     self.assertEqual(r1.numpy(), 55000.0 + 3.0 * 19.0)
     self.assertEqual(m2.numpy(), 55.0)
@@ -4256,12 +4327,12 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     # dtype mismatch
     value = constant_op.constant(1)
-    with self.assertRaisesRegexp(ValueError, 'Value .* to a tensor with dtype'):
+    with self.assertRaisesRegex(ValueError, 'Value .* to a tensor with dtype'):
       lazy_capture(2.0)
 
     # shape mismatch
     value = constant_op.constant([1.0])
-    with self.assertRaisesRegexp(ValueError, 'Value .* shape'):
+    with self.assertRaisesRegex(ValueError, 'Value .* shape'):
       lazy_capture(2.0)
 
   def testDeferredCaptureReturnNestWithCompositeTensor(self):

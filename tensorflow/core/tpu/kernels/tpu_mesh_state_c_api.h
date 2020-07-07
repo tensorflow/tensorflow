@@ -15,16 +15,29 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_MESH_STATE_C_API_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_MESH_STATE_C_API_H_
 
+#include "tensorflow/core/tpu/libtftpu.h"
+
 typedef struct XLA_TpuMeshState XLA_TpuMeshState;
 
+extern "C" {
+
 // Creates a new TPU mesh state object.
-XLA_TpuMeshState* TpuMeshState_Create();
+TFTPU_CAPI_EXPORT XLA_TpuMeshState* TpuMeshState_Create();
 
 // Deletes the given TPU `mesh_state` object. Once deleted the object is
 // unusable.
-void TpuMeshState_Free(XLA_TpuMeshState* mesh_state);
+TFTPU_CAPI_EXPORT void TpuMeshState_Free(XLA_TpuMeshState* mesh_state);
 
 // Returns a pointer to an opaque mesh data structure used internally.
-void* TpuMeshState_MeshCommonState(XLA_TpuMeshState* mesh_state);
+TFTPU_CAPI_EXPORT void* TpuMeshState_MeshCommonState(
+    XLA_TpuMeshState* mesh_state);
+
+}  // extern "C"
+
+struct TfTpu_MeshStateApiFn {
+  TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_MeshCommonState);
+};
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_MESH_STATE_C_API_H_

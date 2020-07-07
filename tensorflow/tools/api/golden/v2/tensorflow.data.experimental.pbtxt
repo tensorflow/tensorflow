@@ -145,6 +145,10 @@ tf_module {
     argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "load"
+    argspec: "args=[\'path\', \'element_spec\', \'compression\', \'reader_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "make_batched_features_dataset"
     argspec: "args=[\'file_pattern\', \'batch_size\', \'features\', \'reader\', \'label_key\', \'reader_args\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'reader_num_threads\', \'parser_num_threads\', \'sloppy_ordering\', \'drop_final_batch\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'True\', \'10000\', \'None\', \'None\', \'None\', \'None\', \'False\', \'False\'], "
   }
@@ -179,6 +183,10 @@ tf_module {
   member_method {
     name: "sample_from_datasets"
     argspec: "args=[\'datasets\', \'weights\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'dataset\', \'path\', \'compression\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "scan"
