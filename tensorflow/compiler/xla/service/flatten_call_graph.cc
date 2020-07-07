@@ -71,7 +71,7 @@ Status FlattenNode(const CallGraphNode& node) {
   HloComputation* computation = node.computation();
   HloModule* module = computation->parent();
   // Clone callee for all call-sites except the first one.
-  for (int i = 0; i < node.caller_callsites().size(); ++i) {
+  for (int i = 0, iter_limit = node.caller_callsites().size(); i < iter_limit; ++i) {
     CallSite call_site = node.caller_callsites()[i];
     // Only consider sequential call contexts.
     if (call_site.context() == CallContext::kParallel) {

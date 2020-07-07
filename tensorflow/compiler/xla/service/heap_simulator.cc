@@ -941,7 +941,7 @@ HeapSimulator::Result ChooseBestHeapAlgorithm::Finish() {
   std::vector<Result> results(algorithms_.size());
   int64 min_size = INT64_MAX;
   int min_size_index = -1;
-  for (int i = 0; i < algorithms_.size(); ++i) {
+  for (int i = 0, iter_limit = algorithms_.size(); i < iter_limit; ++i) {
     results[i] = algorithms_[i]->Finish();
     if (results[i].heap_size < min_size) {
       min_size = results[i].heap_size;

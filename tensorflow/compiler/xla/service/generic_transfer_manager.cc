@@ -120,8 +120,9 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
       [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
         se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
         if (device_subshape.IsArray()) {
+          const int64 device_memory_size = device_memory.size();
           TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
-                       device_memory.size());
+                       device_memory_size);
           // Element is array-shaped: transfer array data to device buffer.
           const auto subliteral = LiteralSlice(literal, index);
           Literal relayed_out_literal;
