@@ -1686,7 +1686,7 @@ bool LiteralBase::IsR1Iota() const {
       case U32:
         return Get<uint32>({idx}) == idx;
       case U64:
-        return static_cast<int64>(Get<uint64>({idx})) == idx;
+        return Get<uint64>({idx}) == idx;
       case S8:
         return Get<int8>({idx}) == idx;
       case S16:
