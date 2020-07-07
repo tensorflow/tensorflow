@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/core/tpu/tpu_system_device.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/stream_executor/tpu/tpu_system_device.h"
 #endif
 
 #define TFTPU_SET_FN(Struct, FnName)                                         \
