@@ -1404,7 +1404,6 @@ py_library(
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/keras/optimizer_v2",
     ],
 )
 
