@@ -29,6 +29,8 @@ py_test(
     srcs = ["keras_cpu_benchmark_test.py"],
     python_version = "PY3",
     deps = [
+        ":benchmark_util",
+        "//tensorflow/python/keras",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
