@@ -897,7 +897,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraphMatMul) {
   
   TF_DeleteOutputList(func_outputs);
   TF_DeleteExecutionContext(eager_execution_ctx);
-  //TF_DeleteExecutionContext(graph_ctx);
+  TF_DeleteExecutionContext(graph_ctx);
   TF_DeleteAbstractFunction(func);
 }
 
