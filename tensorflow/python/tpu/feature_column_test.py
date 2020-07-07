@@ -161,8 +161,8 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertItemsEqual(('embedding_weights:0',),
                           tuple([v.name for v in global_vars]))
     with _initialized_session():
-      self.assertAllEqual(embedding_values, global_vars[0].eval())
-      self.assertAllEqual(expected_lookups, embedding_lookup.eval())
+      self.assertAllEqual(embedding_values, global_vars[0])
+      self.assertAllEqual(expected_lookups, embedding_lookup)
 
 
 class SharedEmbeddingColumnTest(test.TestCase):
@@ -307,9 +307,9 @@ class SharedEmbeddingColumnTest(test.TestCase):
                           tuple([v.name for v in global_vars]))
     embedding_var = global_vars[0]
     with _initialized_session():
-      self.assertAllEqual(embedding_values, embedding_var.eval())
-      self.assertAllEqual(expected_lookups_a, embedding_lookup_a.eval())
-      self.assertAllEqual(expected_lookups_b, embedding_lookup_b.eval())
+      self.assertAllEqual(embedding_values, embedding_var)
+      self.assertAllEqual(expected_lookups_a, embedding_lookup_a)
+      self.assertAllEqual(expected_lookups_b, embedding_lookup_b)
 
 
 if __name__ == '__main__':

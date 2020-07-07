@@ -110,11 +110,11 @@ class ConstantInitializersTest(InitializersTest):
   @test_util.run_in_graph_and_eager_modes
   def testConstantInvalidValue(self):
     c = constant_op.constant([1.0, 2.0, 3.0])
-    with self.assertRaisesRegexp(
-        TypeError, r"Invalid type for initial value: .*Tensor.*"):
+    with self.assertRaisesRegex(TypeError,
+                                r"Invalid type for initial value: .*Tensor.*"):
       init_ops_v2.constant_initializer(c)
     v = variables.Variable([3.0, 2.0, 1.0])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"Invalid type for initial value: .*Variable.*"):
       init_ops_v2.constant_initializer(v)
 

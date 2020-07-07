@@ -93,8 +93,8 @@ class ExperimentalCompileTest(test.TestCase):
       xla_func = def_function.function(fn, experimental_compile=True)
       inputs = array_ops.placeholder(dtypes.float32, [5])
       x = xla_func(inputs)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "not compilable"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "not compilable"):
         with session.Session(graph=g) as sess:
           sess.run(x, feed_dict={inputs: [1, 2, 2, 3, 3]})
 

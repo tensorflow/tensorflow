@@ -57,6 +57,12 @@ struct GraphImportConfig {
   // If true, upgrade legacy features of the graph (for instance, functionalize
   // control-flow).
   bool upgrade_legacy = false;
+  // If true, functionalization is restricted to TPU nodes. This is only needed
+  // if upgrade_legacy is true and if upgrading legacy features of the graph
+  // (which includes functionalization) runs before TPU cluster extraction, as
+  // for example in the MLIR-based TPU bridge. Otherwise, this parameter should
+  // stay false.
+  bool restrict_functionalization_to_tpu_nodes = false;
   // If true, enables shape inference on input.
   // TODO(jpienaar): This will be removed shortly.
   bool enable_shape_inference = true;

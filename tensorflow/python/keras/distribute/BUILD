@@ -120,6 +120,7 @@ distribute_py_test(
     main = "custom_training_loop_models_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_cuda11",
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.
@@ -268,6 +269,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
         "no_windows_gpu",
         "notsan",
     ],

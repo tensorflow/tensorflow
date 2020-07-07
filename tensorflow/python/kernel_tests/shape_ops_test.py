@@ -256,12 +256,12 @@ class ShapeOpsTest(test.TestCase):
   def testExpandDimsScalar(self):
     with self.cached_session():
       inp = constant_op.constant(7)
-      self.assertAllEqual([7], array_ops.expand_dims(inp, 0).eval())
-      self.assertAllEqual([7], array_ops.expand_dims(inp, -1).eval())
+      self.assertAllEqual([7], array_ops.expand_dims(inp, 0))
+      self.assertAllEqual([7], array_ops.expand_dims(inp, -1))
 
       inp = constant_op.constant(True)
-      self.assertAllEqual([True], array_ops.expand_dims(inp, 0).eval())
-      self.assertAllEqual([True], array_ops.expand_dims(inp, -1).eval())
+      self.assertAllEqual([True], array_ops.expand_dims(inp, 0))
+      self.assertAllEqual([True], array_ops.expand_dims(inp, -1))
 
   def testExpandDimsDimType(self):
     for dtype in [dtypes.int32, dtypes.int64]:

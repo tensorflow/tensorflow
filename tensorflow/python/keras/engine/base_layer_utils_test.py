@@ -90,13 +90,13 @@ class OpLayerTest(keras_parameterized.TestCase):
     self.assertAllClose(expected, output)
 
   def test_ragged_op_layer(self):
-    with self.assertRaisesRegexp(ValueError, 'Keras automatic op wrapping'):
+    with self.assertRaisesRegex(ValueError, 'Keras automatic op wrapping'):
       int_values = keras.Input(shape=(None,), dtype=dtypes.int32, ragged=True)
       float_values = math_ops.cast(int_values, dtypes.float32)
       _ = keras.Model(int_values, float_values)
 
   def test_sparse_op_layer(self):
-    with self.assertRaisesRegexp(ValueError, 'Keras automatic op wrapping'):
+    with self.assertRaisesRegex(ValueError, 'Keras automatic op wrapping'):
       int_values = keras.Input(shape=(None,), dtype=dtypes.int32, sparse=True)
       float_values = math_ops.cast(int_values, dtypes.float32)
       _ = keras.Model(int_values, float_values)

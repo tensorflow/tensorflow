@@ -61,7 +61,7 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuDnnPlugin);
 
 namespace {
 
-static_assert(CUDNN_VERSION >= 6000, "cuDNN needs to be version 6.0 or higher");
+static_assert(CUDNN_VERSION >= 7300, "cuDNN needs to be version 7.3 or higher");
 
 // Exits the program if 'expr' doesn't return CUDNN_STATUS_SUCCESS.
 #define CHECK_CUDNN_OK(expr) CHECK_EQ(expr, CUDNN_STATUS_SUCCESS)
@@ -115,12 +115,10 @@ std::string ToString(cudnnStatus_t status) {
       return "CUDNN_STATUS_LICENSE_ERROR";
     case CUDNN_STATUS_RUNTIME_PREREQUISITE_MISSING:
       return "CUDNN_STATUS_RUNTIME_PREREQUISITE_MISSING";
-#if CUDNN_VERSION >= 7000
     case CUDNN_STATUS_RUNTIME_IN_PROGRESS:
       return "CUDNN_STATUS_RUNTIME_IN_PROGRESS";
     case CUDNN_STATUS_RUNTIME_FP_OVERFLOW:
       return "CUDNN_STATUS_RUNTIME_FP_OVERFLOW";
-#endif
     default:
       return absl::StrCat("<unknown cudnn status: ", static_cast<int>(status),
                           ">");
@@ -309,12 +307,11 @@ port::Status CudnnSupport::Init() {
       const std::string error = absl::StrCat(
           "Loaded runtime CuDNN library: ", loaded_version.ToString(),
           " but source was compiled with: ", source_version.ToString(),
-          ".  CuDNN library major and minor version needs to match or have "
-          "higher minor version in case of CuDNN 7.0 or later version. If "
-          "using a binary install, upgrade your CuDNN library.  If building "
-          "from sources, make sure the library loaded at runtime is "
-          "compatible "
-          "with the version specified during compile configuration.");
+          ".  CuDNN library needs to have matching major version and equal or "
+          "higher minor version. If using a binary install, upgrade your CuDNN "
+          "library.  If building from sources, make sure the library loaded at "
+          "runtime is compatible with the version specified during compile "
+          "configuration.");
       LOG(ERROR) << error;
       cudnnDestroy(cudnn_handle);
       return port::Status(port::error::INTERNAL, error);
@@ -359,13 +356,11 @@ struct TensorDescriptorDeleter {
     CHECK_CUDNN_OK(cudnnDestroyTensorDescriptor(descriptor));
   }
 };
-#if CUDNN_VERSION >= 7201
 struct RNNDataDescriptorDeleter {
   void operator()(cudnnRNNDataDescriptor_t descriptor) const {
     CHECK_CUDNN_OK(cudnnDestroyRNNDataDescriptor(descriptor));
   }
 };
-#endif
 struct FilterDescriptorDeleter {
   void operator()(cudnnFilterDescriptor_t descriptor) const {
     CHECK_CUDNN_OK(cudnnDestroyFilterDescriptor(descriptor));
@@ -418,10 +413,8 @@ struct CtcLossDescriptorDeleter {
 // RAII wrappers for cuDNN types.
 using TensorDescriptor =
     std::unique_ptr<cudnnTensorStruct, TensorDescriptorDeleter>;
-#if CUDNN_VERSION >= 7201
 using RNNDataDescriptor =
     std::unique_ptr<cudnnRNNDataStruct, RNNDataDescriptorDeleter>;
-#endif
 using FilterDescriptor =
     std::unique_ptr<cudnnFilterStruct, FilterDescriptorDeleter>;
 using ConvolutionDescriptor =
@@ -447,13 +440,11 @@ TensorDescriptor CreateTensorDescriptor() {
   CHECK_CUDNN_OK(cudnnCreateTensorDescriptor(&result));
   return TensorDescriptor(result);
 }
-#if CUDNN_VERSION >= 7201
 RNNDataDescriptor CreateRNNDataDescriptor() {
   cudnnRNNDataDescriptor_t result;
   CHECK_CUDNN_OK(cudnnCreateRNNDataDescriptor(&result));
   return RNNDataDescriptor(result);
 }
-#endif
 FilterDescriptor CreateFilterDescriptor() {
   cudnnFilterDescriptor_t result;
   CHECK_CUDNN_OK(cudnnCreateFilterDescriptor(&result));
@@ -718,7 +709,6 @@ class CudnnConvolutionDescriptor {
   }
 
   void set_use_tensor_op_math(bool use_tensor_op_math) {
-#if CUDNN_VERSION >= 7000
     cudnnMathType_t math_type =
 #if CUDNN_VERSION >= 8000
         (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_FMA_MATH);
@@ -726,7 +716,6 @@ class CudnnConvolutionDescriptor {
         (use_tensor_op_math ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH);
 #endif
     CHECK_CUDNN_OK(cudnnSetConvolutionMathType(handle_.get(), math_type));
-#endif
   }
 
   cudnnConvolutionDescriptor_t handle() const { return handle_.get(); }
@@ -749,9 +738,7 @@ static bool IsTensorMathOpSet(const CudnnConvolutionDescriptor& conv) {
 #endif
 }
 
-static bool TensorOpMathAvailable(int cc_major) {
-  return cc_major >= 7 && CUDNN_VERSION >= 7000;
-}
+static bool TensorOpMathAvailable(int cc_major) { return cc_major >= 7; }
 
 static bool IsTensorMathAllowed(Stream* stream, dnn::DataType input_type) {
   int cc_major, cc_minor;
@@ -862,11 +849,9 @@ class CudnnActivationDescriptor {
     double relu_ceiling = 0.0;
     cudnnActivationMode_t mode;
     switch (activation_mode) {
-#if CUDNN_VERSION >= 7100
       case dnn::ActivationMode::kNone:
         mode = CUDNN_ACTIVATION_IDENTITY;
         break;
-#endif
       case dnn::ActivationMode::kRelu6:
         relu_ceiling = 6.0;
         mode = CUDNN_ACTIVATION_CLIPPED_RELU;
@@ -1106,33 +1091,68 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     if (use_projection) {
       unified_size = cell_size;
     }
+
+    // Require explicit algorithm config to enable tensor cores. Some configs
+    // return CUDNN_NOT_SUPPORTED when tensor ops are enabled (which is against
+    // the idiom that enabling tensor ops is only a hint: see nvbugs/2172799).
+    // We can only reasonably expect the user to handle the subsequent failure
+    // in profile mode, which is run with algorithms returned from
+    // GetRnnAlgorithms() (which are non-default and explicitly set whether to
+    // use tensor ops). CuDNN 7.2.1 fixed this issue.
+    // TODO(csigg): Minimal support cuDNN version is 7.3, clean up.
+    bool allow_tensor_ops =
+        data_type != CUDNN_DATA_FLOAT || tensorflow::tf32_execution_allowed();
+    bool use_tensor_ops =
+        algorithm_config.algorithm().has_value()
+            ? algorithm_config.algorithm()->tensor_ops_enabled()
+            : allow_tensor_ops;
+    if (use_tensor_ops && !allow_tensor_ops) {
+      return port::Status(port::error::INVALID_ARGUMENT,
+                          "Algo requests disallowed tensor op evaluation.");
+    }
+
+#if CUDNN_VERSION >= 8000
+    cudnnMathType_t math_type =
+        use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_FMA_MATH;
+    cudnnRNNBiasMode_t bias_mode = CUDNN_RNN_DOUBLE_BIAS;
+    uint32_t aux_flags = 0;
+    if (use_padded_io) aux_flags |= CUDNN_RNN_PADDED_IO_ENABLED;
+    RETURN_IF_CUDNN_ERROR(cudnnSetRNNDescriptor_v8(
+        /*rnnDesc=*/rnn_desc.get(), /*algo=*/rnn_algo, /*cellMode=*/rnn_mode,
+        /*biasMode=*/bias_mode, /*dirMode=*/direction_mode,
+        /*inputMode=*/input_mode,
+        /*dataType=*/data_type, /*mathPrec=*/compute_type,
+        /*mathType=*/math_type,
+        /*inputSize=*/input_size,
+        /*hiddenSize=*/hidden_size, /*projSize=*/cell_size,
+        /*numLayers=*/num_layers,
+        /*dropoutDesc=*/dropout_desc.handle(),
+        /*auxFlags=*/aux_flags));
+#else
+    cudnnMathType_t math_type =
+        use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH;
     RETURN_IF_CUDNN_ERROR(cudnnSetRNNDescriptor_v6(
         cudnn.handle(), /*rnnDesc=*/rnn_desc.get(),
         /*hiddenSize=*/unified_size, /*numLayers=*/num_layers,
         /*dropoutDesc=*/dropout_desc.handle(), /*inputMode=*/input_mode,
         /*direction=*/direction_mode, /*mode=*/rnn_mode, /*algo=*/rnn_algo,
         /*dataType=*/compute_type));
+    CHECK_CUDNN_OK(cudnnSetRNNMatrixMathType(rnn_desc.get(), math_type));
+#endif
+
     if (use_projection) {
-#if CUDNN_VERSION >= 7101
       RETURN_IF_CUDNN_ERROR(cudnnSetRNNProjectionLayers(
           cudnn.handle(), /*rnnDesc=*/rnn_desc.get(),
           /*recProjSize=*/hidden_size, /*outProjSize=*/0));
-#else
-      return port::Status(port::error::INVALID_ARGUMENT,
-                          "No supported cudnnSetRNNProjectionLayers when "
-                          "CUDNN_VERSION < 7.1.1");
-#endif
     }
 
     // TODO: For now, we only use cudnnRNN**Ex API to process padded inputs.
     // But in the future if these APIs are used to process full length arrays,
     // we need to distinguish when to set it.
-#if CUDNN_VERSION >= 7201
     if (use_padded_io) {
       RETURN_IF_CUDNN_ERROR(
           cudnnSetRNNPaddingMode(rnn_desc.get(), CUDNN_RNN_PADDED_IO_ENABLED));
     }
-#endif
 
     port::StatusOr<PersistentRnnPlan> rnn_plan_wrapper;
     PersistentRnnPlan rnn_plan;
@@ -1154,37 +1174,6 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
                         CudnnRnnParamsDescriptor::Create(
                             cudnn, input_size, data_type, rnn_desc.get(),
                             rnn_mode, direction_mode, num_layers));
-
-#if CUDNN_VERSION >= 7000
-    // Require explicit algorithm config to enable tensor cores. Some configs
-    // return CUDNN_NOT_SUPPORTED when tensor ops are enabled (which is against
-    // the idiom that enabling tensor ops is only a hint: see nvbugs/2172799).
-    // We can only reasonably expect the user to handle the subsequent failure
-    // in profile mode, which is run with algorithms returned from
-    // GetRnnAlgorithms() (which are non-default and explicitly set whether to
-    // use tensor ops). CuDNN 7.2.1 fixed this issue
-    bool allow_tensor_ops =
-        data_type != CUDNN_DATA_FLOAT || tensorflow::tf32_execution_allowed();
-    bool use_tensor_ops;
-    if (algorithm_config.algorithm().has_value()) {
-      use_tensor_ops = algorithm_config.algorithm()->tensor_ops_enabled();
-    } else {
-      use_tensor_ops = CUDNN_VERSION >= 7201 && allow_tensor_ops;
-    }
-
-    if (use_tensor_ops && !allow_tensor_ops) {
-      return port::Status(port::error::INVALID_ARGUMENT,
-                          "Algo requests disallowed tensor op evaluation.");
-    }
-
-    cudnnMathType_t math_type;
-#if CUDNN_VERSION >= 8000
-    math_type = use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_FMA_MATH;
-#else
-    math_type = use_tensor_ops ? CUDNN_TENSOR_OP_MATH : CUDNN_DEFAULT_MATH;
-#endif
-    CHECK_CUDNN_OK(cudnnSetRNNMatrixMathType(rnn_desc.get(), math_type));
-#endif  // CUDNN_VERSION >= 7000
 
     return CudnnRnnDescriptor(cudnn, std::move(rnn_desc), std::move(rnn_plan),
                               num_layers, hidden_size, input_size, cell_size,
@@ -1281,7 +1270,6 @@ port::Status CheckAndFetchProjectionWeights(
     const TensorDescriptor& input_desc, const FilterDescriptor& filter_desc,
     const FilterDescriptor& region_desc_handle,
     dnn::RnnDescriptor::ParamsRegions* weights) {
-#if CUDNN_VERSION >= 7101
   int hidden_size_v;
   int num_layers_v;
   cudnnDropoutDescriptor_t dropout_desc;
@@ -1345,7 +1333,6 @@ port::Status CheckAndFetchProjectionWeights(
                                                size};
     weights->push_back(region);
   }
-#endif  // CUDNN_VERSION >= 7101
   return port::Status::OK();
 }
 
@@ -1452,18 +1439,14 @@ class CudnnRnnSequenceTensorDescriptor
   CudnnRnnSequenceTensorDescriptor(GpuExecutor* parent, int max_seq_length,
                                    int batch_size, int data_size,
                                    cudnnDataType_t data_type,
-#if CUDNN_VERSION >= 7201
                                    RNNDataDescriptor data_handle,
-#endif
                                    TensorDescriptor handle)
       : max_seq_length_(max_seq_length),
         batch_size_(batch_size),
         data_size_(data_size),
         data_type_(data_type),
         handle_(std::move(handle)),
-#if CUDNN_VERSION >= 7201
         rnn_data_handle_(std::move(data_handle)),
-#endif
         handles_(max_seq_length, handle_.get()) {
   }
 
@@ -1484,9 +1467,7 @@ class CudnnRnnSequenceTensorDescriptor
         /*strideA=*/strides));
     return CudnnRnnSequenceTensorDescriptor(parent, max_seq_length, batch_size,
                                             data_size, data_type,
-#if CUDNN_VERSION >= 7201
                                             nullptr,
-#endif
                                             std::move(tensor_desc));
   }
 
@@ -1494,7 +1475,6 @@ class CudnnRnnSequenceTensorDescriptor
       GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
       const absl::Span<const int>& seq_lengths, bool time_major,
       cudnnDataType_t data_type) {
-#if CUDNN_VERSION >= 7201
     CHECK_GT(max_seq_length, 0);
     int dims[] = {batch_size, data_size, 1};
     int strides[] = {dims[1] * dims[2], dims[2], 1};
@@ -1522,29 +1502,18 @@ class CudnnRnnSequenceTensorDescriptor
     return CudnnRnnSequenceTensorDescriptor(
         parent, max_seq_length, batch_size, data_size, data_type,
         std::move(data_desc), std::move(tensor_desc));
-#else
-    return port::Status(port::error::INVALID_ARGUMENT,
-                        "No supported cudnnSetRNNDataDescriptor when "
-                        "CUDNN_VERSION < 7.2.1");
-#endif
   }
 
   const cudnnTensorDescriptor_t* handles() const { return handles_.data(); }
-#if CUDNN_VERSION >= 7201
   const cudnnRNNDataDescriptor_t data_handle() const {
     return rnn_data_handle_.get();
   }
-#endif
 
   int max_seq_length() const { return max_seq_length_; }
   int batch_size() const { return batch_size_; }
   int data_size() const { return data_size_; }
   bool is_var_seq_lengths() const {
-#if CUDNN_VERSION >= 7201
     return rnn_data_handle_ != nullptr;
-#else
-    return false;
-#endif
   }
 
  private:
@@ -1553,9 +1522,7 @@ class CudnnRnnSequenceTensorDescriptor
   int data_size_;
   cudnnDataType_t data_type_;
   TensorDescriptor handle_;
-#if CUDNN_VERSION >= 7201
   RNNDataDescriptor rnn_data_handle_;
-#endif
   std::vector<cudnnTensorDescriptor_t> handles_;  // Copies of handle_.
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnSequenceTensorDescriptor);
 };
@@ -1816,7 +1783,6 @@ port::Status CudnnSupport::DoRnnForwardImpl(
 
   if (!is_training) {
     if (input_desc.is_var_seq_lengths()) {
-#if CUDNN_VERSION >= 7201
       RETURN_IF_CUDNN_ERROR(cudnnRNNForwardInferenceEx(
           /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
           /*xDesc=*/input_desc.data_handle(), /*x=*/input_data.opaque(),
@@ -1831,11 +1797,6 @@ port::Status CudnnSupport::DoRnnForwardImpl(
           nullptr,
           /*workspace=*/workspace.opaque(),
           /*workSpaceSizeInBytes=*/workspace.size()));
-#else
-      return port::Status(port::error::INVALID_ARGUMENT,
-                          "No supported cudnnRNNForwardInferenceEx when "
-                          "CUDNN_VERSION < 7.2.1");
-#endif
     } else {
       RETURN_IF_CUDNN_ERROR(cudnnRNNForwardInference(
           /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -1852,7 +1813,6 @@ port::Status CudnnSupport::DoRnnForwardImpl(
     }
   } else {
     if (input_desc.is_var_seq_lengths()) {
-#if CUDNN_VERSION >= 7201
       // cudnnSetRNNPaddingMode(rnn_desc.handle(), CUDNN_RNN_PADDED_IO_ENABLED);
       RETURN_IF_CUDNN_ERROR(cudnnRNNForwardTrainingEx(
           /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -1870,11 +1830,6 @@ port::Status CudnnSupport::DoRnnForwardImpl(
           /*workSpaceSizeInBytes=*/workspace.size(),
           /*reserveSpace=*/reserve_space.opaque(),
           /*reserveSpaceSizeInBytes=*/reserve_space.size()));
-#else
-      return port::Status(port::error::INVALID_ARGUMENT,
-                          "No supported cudnnRNNForwardTrainingEx when "
-                          "CUDNN_VERSION < 7.2.1");
-#endif
     } else {
       RETURN_IF_CUDNN_ERROR(cudnnRNNForwardTraining(
           /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -1958,7 +1913,6 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
   }
 
   if (input_desc.is_var_seq_lengths()) {
-#if CUDNN_VERSION >= 7201
     RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardDataEx(
         /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
         /*yDesc=*/output_desc.data_handle(), /*y=*/output_data.opaque(),
@@ -1981,11 +1935,6 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
         /*workSpaceSizeInBytes=*/workspace.size(),
         /*reserveSpace=*/reserve_space_data->opaque(),
         /*reserveSpaceSizeInBytes=*/reserve_space_data->size()));
-#else
-    return port::Status(port::error::INVALID_ARGUMENT,
-                        "No supported cudnnRNNBackwardDataEx when "
-                        "CUDNN_VERSION < 7.2.1");
-#endif
   } else {
     RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardData(
         /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -2015,7 +1964,6 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
     // Clear the dw to zeros.
     stream->ThenMemZero(params_backprop_data, params_backprop_data->size());
     if (input_desc.is_var_seq_lengths()) {
-#if CUDNN_VERSION >= 7201
       RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardWeightsEx(
           /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
           /*xDesc=*/input_desc.data_handle(), /*x=*/input_data.opaque(),
@@ -2028,11 +1976,6 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
           /*dw=*/params_backprop_data->opaque(),
           /*reserveSpace=*/reserve_space_data->opaque(),
           /*reserveSpaceSizeInBytes=*/reserve_space_data->size()));
-#else
-      return port::Status(port::error::INVALID_ARGUMENT,
-                          "No supported cudnnRNNBackwardWeightsEx when "
-                          "CUDNN_VERSION < 7.2.1");
-#endif
     } else {
       // make the backward weight call
       RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardWeights(
@@ -2935,7 +2878,7 @@ class CudnnEnvVar {
 // algorithm through an env-var "TF_ENABLE_FFT_TILING_FORWARD=1".
 struct FftTilingForward {
   static constexpr const char* kName = "TF_ENABLE_FFT_TILING_FORWARD";
-  static constexpr bool kDefaultFlag = CUDNN_VERSION >= 7000;
+  static constexpr bool kDefaultFlag = true;
 };
 
 // A helper struct to decide whether to enable the WINOGRAD_NONFUSED algorithms.
@@ -3014,34 +2957,6 @@ dnn::DataType GetConvAccumulatorType(dnn::DataType data_type) {
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }
 }
-
-// Determines whether we can safely perform a winograd non-fused convolution for
-// the given input and output shapes.  This works around b/68264959, an integer
-// overflow in cuDNNv5 and cuDNNv6.
-#if CUDNN_VERSION >= 7000
-bool ShouldIncludeWinogradNonfusedAlgo(const dnn::BatchDescriptor&,
-                                       const dnn::BatchDescriptor&) {
-  return true;
-}
-#else
-bool ShouldIncludeWinogradNonfusedAlgo(
-    const dnn::BatchDescriptor& input_desc,
-    const dnn::BatchDescriptor& output_desc) {
-  int64 batch = input_desc.count();
-  int64 in_depths = input_desc.feature_map_count();
-  int64 in_rows = input_desc.height();
-  int64 in_cols = input_desc.ndims() == 1 ? 1 : input_desc.width();
-  int64 out_depths = output_desc.feature_map_count();
-
-  int64 total_size = port::MathUtil::CeilOfRatio(batch, int64{16}) *
-                     std::max(in_depths, out_depths) * in_cols * in_rows *
-                     sizeof(float);
-
-  const int64 threshold = 1L << 31;
-  return total_size < threshold;
-}
-#endif
-
 }  // namespace
 
 port::Status CudnnSupport::DoPrepareForConvolution(
@@ -3147,41 +3062,6 @@ port::Status CudnnSupport::DoConvolve(
   }
 
   const auto get_fwd_bugs = [&]() -> port::Status {
-    // Report an error if we might be hitting a cuDNN bug that accesses illegal
-    // memory. See nvbugs/2138754, b/80018418.
-    if (CUDNN_VERSION < 7300) {
-      if (algorithm_desc.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING) {
-        return port::Status::OK();
-      }
-      if (input_descriptor.ndims() < 3) {
-        return port::Status::OK();
-      }
-      // Checks that a*b is within the valid range (as provided by NVIDIA).
-      const auto check_sizes = [](size_t a, size_t b) {
-        if ((a * b * 4608 - 1) >> 31 == 0) {
-          return port::Status::OK();
-        }
-        return port::Status(
-            port::error::FAILED_PRECONDITION,
-            "This configuration potentially accesses illegal memory.");
-      };
-      SE_RETURN_IF_ERROR(check_sizes(input_descriptor.feature_map_count(),
-                                     output_descriptor.feature_map_count()));
-      SE_RETURN_IF_ERROR(check_sizes(input_descriptor.count(),
-                                     input_descriptor.feature_map_count()));
-      SE_RETURN_IF_ERROR(check_sizes(input_descriptor.count(),
-                                     output_descriptor.feature_map_count()));
-      return port::Status::OK();
-    }
-    if (algorithm_desc.algo_id() ==
-            CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
-        !ShouldIncludeWinogradNonfusedAlgo(input_descriptor,
-                                           output_descriptor)) {
-      return port::Status(
-          port::error::FAILED_PRECONDITION,
-          "This configuration has potential integer overflow in "
-          "cuDNNv5 and cuDNNv6. See b/68264959.");
-    }
     if (CUDNN_VERSION < 8000) {
       if (algorithm_desc.algo_id() ==
               CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM &&
@@ -3196,91 +3076,10 @@ port::Status CudnnSupport::DoConvolve(
   };
 
   auto get_bwd_data_bugs = [&]() -> port::Status {
-    if (algorithm_desc.algo_id() ==
-            CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
-        !ShouldIncludeWinogradNonfusedAlgo(input_descriptor,
-                                           output_descriptor)) {
-      return port::Status(
-          port::error::FAILED_PRECONDITION,
-          "This configuration has potential integer overflow in "
-          "cuDNNv5 and cuDNNv6. See b/68264959.");
-    }
-
-    // Cudnn 7.1.4 has a bug if the workspace of the following convolution is
-    // not zero-initialized, nvbugs/2254619.
-    if (CUDNN_VERSION >= 7000 && CUDNN_VERSION < 7300 &&
-        algorithm_desc.algo_id() == CUDNN_CONVOLUTION_BWD_DATA_ALGO_1 &&
-        cudnn_type == CUDNN_DATA_HALF && algorithm_desc.tensor_ops_enabled() &&
-        input_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
-        filter_descriptor.layout() == dnn::FilterLayout::kOutputInputYX &&
-        output_descriptor.layout() == dnn::DataLayout::kBatchDepthYX &&
-        (convolution_descriptor.vertical_filter_stride() > 1 ||
-         convolution_descriptor.horizontal_filter_stride() > 1)) {
-      stream->ThenMemZero(&scratch_memory, scratch_memory.size());
-    }
     return port::Status::OK();
   };
 
   const auto get_bwd_filter_bugs = [&]() -> port::Status {
-    // Report an error if we might be hitting a cuDNN bug that produces
-    // incorrect results. See nvbugs/2072856
-    if (CUDNN_VERSION < 7300) {
-      SE_RETURN_IF_ERROR([&] {
-        if (algorithm_desc.algo_id() !=
-            CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING) {
-          return port::Status::OK();
-        }
-        if (output_descriptor.height() > 1 && output_descriptor.width() > 1) {
-          return port::Status::OK();
-        }
-        int convolution_size = output_descriptor.height() > 1
-                                   ? filter_descriptor.input_filter_height()
-                                   : filter_descriptor.input_filter_width();
-        if (convolution_size <= 32) {
-          return port::Status::OK();
-        }
-        cudnnConvolutionMode_t convolution_mode;
-        cudnnDataType_t compute_type;
-        RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionNdDescriptor(
-            conv.handle(), 0, nullptr, nullptr, nullptr, nullptr,
-            &convolution_mode, &compute_type));
-        if (convolution_mode != CUDNN_CONVOLUTION) {
-          return port::Status::OK();
-        }
-        return port::Status(
-            port::error::FAILED_PRECONDITION,
-            "This configuration potentially produces incorrect results.");
-      }());
-    }
-
-    if (algorithm_desc.algo_id() ==
-            CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
-        !ShouldIncludeWinogradNonfusedAlgo(input_descriptor,
-                                           output_descriptor)) {
-      return port::Status(
-          port::error::FAILED_PRECONDITION,
-          "This configuration has potential integer overflow in "
-          "cuDNNv5 and cuDNNv6. See b/68264959.");
-    }
-
-    // Zero out the result buffer for strided conv backward filter for NHWC
-    // layouts. cuDNN 7.1.4 and 7.2 has non-determinisic bug if the buffer is
-    // not zeroed.
-    //
-    // This wrong result caused by the bug is very flaky. It needs to be run for
-    // up to 20 times to produce a mismatch.
-    //
-    // See nvbugs/2379553.
-    if (CUDNN_VERSION >= 7100 && CUDNN_VERSION < 7300 &&
-        algorithm_desc.algo_id() == CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1 &&
-        cudnn_type == CUDNN_DATA_HALF &&
-        input_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
-        filter_descriptor.layout() == dnn::FilterLayout::kOutputYXInput &&
-        output_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
-        (convolution_descriptor.vertical_filter_stride() > 1 ||
-         convolution_descriptor.horizontal_filter_stride() > 1)) {
-      stream->ThenMemZero(&filter_data, filter_data.size());
-    }
     return port::Status::OK();
   };
 
@@ -3439,13 +3238,6 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
           << "\noutput_nd.handle() = " << output_nd.handle()
           << "\noutput_data->opaque() = " << output_data->opaque();
 
-  if (algo_desc.algo_id() == CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
-      !ShouldIncludeWinogradNonfusedAlgo(conv_input_descriptor,
-                                         output_descriptor)) {
-    return port::Status(port::error::FAILED_PRECONDITION,
-                        "This configuration has potential integer overflow in "
-                        "cuDNNv5 and cuDNNv6. See around b/68264959.");
-  }
   if (IsTensorMathOpSet(conv) != algo_desc.tensor_ops_enabled()) {
     return port::Status(port::error::FAILED_PRECONDITION,
                         "Tensor op math type in dnn::AlgorithmDesc does not "
@@ -3531,9 +3323,7 @@ bool CudnnSupport::GetRnnAlgorithms(
   out_algorithms->clear();
   for (auto i : algo_types) {
     out_algorithms->push_back({i, /*use_tensor_ops=*/false});
-#if CUDNN_VERSION >= 7100
     out_algorithms->push_back({i, /*use_tensor_ops=*/true});
-#endif
   }
   return true;
 }
@@ -3672,11 +3462,9 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
   CudnnTensorDescriptor scale_offset_descriptor(
       scale_offset_desc, ToCudnnDataType(scale_data_type));
   cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
-#if CUDNN_VERSION >= 7000
   if (BatchnormSpatialPersistentEnabled() && is_training) {
     mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
   }
-#endif
   float one = 1.0;
   float zero = 0.0;
   auto cudnn = cudnn_->GetHandle(parent_, stream);
@@ -3855,11 +3643,9 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
   CudnnTensorDescriptor scale_offset_descriptor(
       scale_offset_desc, static_cast<cudnnDataType_t>(cudnn_scale_type));
   cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
-#if CUDNN_VERSION >= 7000
   if (BatchnormSpatialPersistentEnabled()) {
     mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
   }
-#endif
   float one = 1.0;
   float zero = 0.0;
 

@@ -132,6 +132,28 @@ extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
 
 namespace {
 
+struct CollectivePermuteParticipantData : xla::ParticipantData {
+  CollectivePermuteParticipantData(const xla::RendezvousKey& rendezvous_key_p,
+                                   xla::int64 device_ordinal_p,
+                                   se::Stream* stream_p)
+      : ParticipantData(rendezvous_key_p, device_ordinal_p, stream_p) {}
+
+  int replica_id;
+  se::DeviceMemoryBase source_data;
+  se::DeviceMemoryBase destination_data;
+  xla::int64 byte_size;
+  std::vector<int> replica_ids_to_copy_to;
+
+  std::string ToString() const override {
+    return absl::StrFormat(
+        "CollectivePermuteParticipantData{replica_id=%d, "
+        "source_data=%p, destination_data=%p, byte_size=%d, "
+        "replica_ids_to_copy_to=[%s]}",
+        replica_id, source_data.opaque(), destination_data.opaque(), byte_size,
+        absl::StrJoin(replica_ids_to_copy_to, ", "));
+  }
+};
+
 // Inverses the encoding of a Shape protobuf into an LLVM global variable.
 xla::StatusOr<xla::Shape> DecodeSelfDescribingShapeConstant(
     const void* shape_ptr, xla::int32 size_bytes) {
@@ -265,16 +287,14 @@ __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
 namespace {
 
 class CpuCollectivePermuteRendezvous
-    : public xla::Rendezvous<xla::CollectivePermuteParticipantData,
-                             std::nullptr_t> {
+    : public xla::Rendezvous<CollectivePermuteParticipantData, std::nullptr_t> {
  public:
   explicit CpuCollectivePermuteRendezvous(const xla::RendezvousKey& k)
-      : xla::Rendezvous<xla::CollectivePermuteParticipantData, std::nullptr_t>(
-            k) {}
+      : xla::Rendezvous<CollectivePermuteParticipantData, std::nullptr_t>(k) {}
 
  protected:
-  xla::StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
-      const xla::CollectivePermuteParticipantData& participant) override {
+  xla::StatusOr<ParticipantImplOutput> RunCollectiveOp(
+      const CollectivePermuteParticipantData& /*participant*/) override {
     bool primary = InitializationBarrier();
 
     // Perform all copies from the primary thread.
@@ -315,7 +335,7 @@ class CpuAllReduceRendezvous
       : xla::Rendezvous<xla::AllReduceParticipantData, std::nullptr_t>(k) {}
 
  protected:
-  xla::StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
+  xla::StatusOr<ParticipantImplOutput> RunCollectiveOp(
       const xla::AllReduceParticipantData& participant) override {
     xla::PrimitiveType datatype = participant.buffers.front().primitive_type;
     bool primary = InitializationBarrier();
@@ -526,9 +546,8 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
   CHECK((num_buffers > 1 && shape.IsTuple()) ||
         (num_buffers == 1 && xla::LayoutUtil::IsDenseArray(shape)));
 
-  xla::AllReduceParticipantData participant(rendezvous_key);
-  participant.device_ordinal = device_ordinal;
-  participant.stream = run_options->stream();
+  xla::AllReduceParticipantData participant(rendezvous_key, device_ordinal,
+                                            run_options->stream());
   participant.reduction_kind = static_cast<xla::ReductionKind>(reduction_kind);
   for (int i = 0; i < num_buffers; i++) {
     xla::Shape subshape = num_buffers == 1 ? shape : shape.tuple_shapes(i);
@@ -589,10 +608,9 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_CollectivePermute(
   xla::RendezvousKey rendezvous_key =
       GetRendezvousKey(run_options, {}, channel_id_present, op_id);
 
-  xla::CollectivePermuteParticipantData participant(rendezvous_key);
+  CollectivePermuteParticipantData participant(rendezvous_key, device_ordinal,
+                                               run_options->stream());
   participant.replica_id = replica_id;
-  participant.device_ordinal = device_ordinal;
-  participant.stream = run_options->stream();
   participant.source_data = se::DeviceMemoryBase(input_buffer, byte_size);
   participant.destination_data = se::DeviceMemoryBase(output_buffer, byte_size);
   participant.replica_ids_to_copy_to = copy_to;

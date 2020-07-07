@@ -20,10 +20,9 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/ir/broadcast_utils.h"
-#include "tensorflow/compiler/mlir/xla/ir/chlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
 
 namespace mlir {
 namespace xla_chlo {
@@ -112,6 +111,19 @@ struct ConvertRankedDynamicBroadcastBinaryOp
 
     // Compute result shape.
     auto loc = op.getLoc();
+
+    // Insert a constraint on the shapes being broadcastable and insert all
+    // future code into an assuming block reliant on the constraint.
+    Value lhs_shape = rewriter.create<shape::ShapeOfOp>(loc, lhs);
+    Value rhs_shape = rewriter.create<shape::ShapeOfOp>(loc, rhs);
+    auto broadcastable_cstr =
+        rewriter.create<shape::CstrBroadcastableOp>(loc, lhs_shape, rhs_shape);
+    auto assuming_op = rewriter.create<shape::AssumingOp>(
+        loc, ArrayRef<Type>{result_type}, broadcastable_cstr.result());
+
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.createBlock(&assuming_op.doRegion());
+
     int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
     Value result_extents =
         xla::ComputeBinaryElementwiseBroadcastingResultExtents(loc, lhs, rhs,
@@ -140,8 +152,10 @@ struct ConvertRankedDynamicBroadcastBinaryOp
         rewriter.getI64TensorAttr(rhs_broadcast_dimensions));
 
     // And generate the final non-broadcasted binary op.
-    rewriter.replaceOp(op, {Adaptor::CreateOp(op, result_type, broadcasted_lhs,
-                                              broadcasted_rhs, rewriter)});
+    Value final_result = Adaptor::CreateOp(op, result_type, broadcasted_lhs,
+                                           broadcasted_rhs, rewriter);
+    rewriter.create<shape::AssumingYieldOp>(loc, final_result);
+    rewriter.replaceOp(op, {assuming_op.getResult(0)});
     return success();
   }
 };

@@ -1529,5 +1529,65 @@ TEST(InstantiateFunctionTest, ArgAttrs) {
   EXPECT_TRUE(found);
 }
 
+TEST(InstantiateFunctionTest, ResourceInputDevice) {
+  FunctionDef fdef = FDH::Create(
+      // Name
+      "Func",
+      // Args
+      {{"x0: resource"}, {"x1: resource"}},
+      // Return values
+      {"y: float"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"read0"},
+           "ReadVariableOp",
+           {"x0"},
+           {{"dtype", DT_FLOAT}},
+           {},
+           "/device:CPU:1"},
+          {{"read1"},
+           "ReadVariableOp",
+           {"x1"},
+           {{"dtype", DT_FLOAT}},
+           {},
+           "/device:CPU:0"},
+          {{"add"},
+           "Add",
+           {"read0:value:0", "read1:value:0"},
+           {{"T", DT_FLOAT}},
+           {},
+           "/device:CPU:0"},
+      },
+      {{"y", "add:z:0"}});
+  FunctionDef::ArgAttrs arg_attrs;
+  *(*arg_attrs.mutable_attr())["_composite_device"].mutable_s() =
+      "/device:COMPOSITE:0";
+  (*fdef.mutable_arg_attr())[0] = arg_attrs;
+  absl::flat_hash_map<string, std::vector<string>> composite_devices;
+
+  Tensor arg0(DT_RESOURCE, TensorShape({2}));
+  ResourceHandle resource_handle0;
+  resource_handle0.set_device("/device:CPU:0");
+  ResourceHandle resource_handle1;
+  resource_handle1.set_device("/device:CPU:1");
+  arg0.flat<ResourceHandle>()(0) = resource_handle0;
+  arg0.flat<ResourceHandle>()(1) = resource_handle1;
+
+  Tensor arg1(DT_RESOURCE, TensorShape({}));
+  arg1.scalar<ResourceHandle>()() = resource_handle0;
+
+  const string device0 = GetFunctionResourceInputDevice(
+      arg0, /*arg_index=*/0, fdef, &composite_devices);
+  const string device1 = GetFunctionResourceInputDevice(
+      arg1, /*arg_index=*/1, fdef, &composite_devices);
+
+  EXPECT_EQ(device0, "/device:COMPOSITE:0");
+  EXPECT_EQ(device1, "/device:CPU:0");
+  EXPECT_EQ(composite_devices.size(), 1);
+  EXPECT_EQ(composite_devices.at("/device:COMPOSITE:0").size(), 2);
+}
+
 }  // end namespace
 }  // end namespace tensorflow

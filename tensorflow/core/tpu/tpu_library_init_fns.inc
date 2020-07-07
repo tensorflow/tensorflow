@@ -12,6 +12,8 @@ tensorflow::Status SetTpuConfigStructFns(void* library_handle) {
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_FreeCharArray);
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_FreeInt32Array);
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_HasTPUPodState);
+  TFTPU_SET_FN(config_fn, TpuConfigurationApi_TpusPerHost);
+  TFTPU_SET_FN(config_fn, TpuConfigurationApi_TpuMemoryLimit);
 
   return tensorflow::Status::OK();
 }

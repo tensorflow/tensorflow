@@ -308,7 +308,7 @@ class MappingTests(test.TestCase):
     model = training.Model()
     model.sub = a
     save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "non-string key"):
+    with self.assertRaisesRegex(ValueError, "non-string key"):
       model.save_weights(save_path)
 
   def testDictWrapperNoDependency(self):
@@ -361,7 +361,7 @@ class MappingTests(test.TestCase):
     model.d["a"] = []
     model.d.pop("a")
     save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "Unable to save"):
+    with self.assertRaisesRegex(ValueError, "Unable to save"):
       model.save_weights(save_path)
 
   def testExternalModificationNoSave(self):
@@ -370,7 +370,7 @@ class MappingTests(test.TestCase):
     model.d = external_reference
     external_reference["a"] = []
     save_path = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.assertRaisesRegexp(ValueError, "modified outside the wrapper"):
+    with self.assertRaisesRegex(ValueError, "modified outside the wrapper"):
       model.save_weights(save_path)
 
   def testOverwriteCanStillSave(self):
@@ -602,7 +602,7 @@ class InterfaceTests(test.TestCase):
     checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
     a.l2 = []
     a.l2.insert(1, module.Module())
-    with self.assertRaisesRegexp(ValueError, "A list element was replaced"):
+    with self.assertRaisesRegex(ValueError, "A list element was replaced"):
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
 

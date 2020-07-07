@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec as type_spec_module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
@@ -92,12 +94,13 @@ class KerasTensor(object):
   import keras_tensor directly and call `keras_tensor.enable_keras_tensors()`
   """
 
-  def __init__(self, type_spec, name=None):
+  def __init__(self, type_spec, inferred_shape_value=None, name=None):
     """Construct a KerasTensor from a type_spec and an optional name."""
     if not isinstance(type_spec, type_spec_module.TypeSpec):
       raise ValueError('KerasTensors must be constructed with a `tf.TypeSpec`.')
 
     self._type_spec = type_spec
+    self._inferred_shape_value = inferred_shape_value
     if name is None and hasattr(type_spec, 'name'):
       name = type_spec.name
     self._name = name
@@ -209,9 +212,35 @@ class _KerasTensorIterator(object):
 
 
 def keras_tensor_to_placeholder(x):
-  """TODO(kaftan): Docstring."""
+  """Construct a graph placeholder to represent a KerasTensor when tracing."""
   if isinstance(x, KerasTensor):
     spec = x.type_spec
+
+    if x._inferred_shape_value is not None:  # pylint: disable=protected-access
+      # If we suspect this KerasTensor might be representing a shape tensor,
+      # and we were able to extract value information with TensorFlow's shape
+      # handling when making the KerasTensor, we construct the placeholder by
+      # re-injecting the inferred value information into the graph.
+      # Even though keras layers each trace in their own scratch
+      # graph, this shape value info injection allows us to capture
+      # a sizable and useful subset of the C++ shape value inference TF can do
+      # if all tf ops appear in the same graph when using shape ops.
+      #
+      # Examples of things this cannot infer concrete dimensions for
+      # that the full single-graph C++ shape inference sometimes can are:
+      # * cases where the shape tensor is cast out of int32 before being
+      #   manipulated w/ floating point numbers then converted back
+      # * cases where int32 tensors w/ rank > 2 are manipulated before being
+      #   used as a shape tensor
+      inferred_shape_value = array_ops.shape(
+          array_ops.placeholder(
+              shape=x._inferred_shape_value, dtype=dtypes.int32))  # pylint: disable=protected-access
+      if spec.shape.rank == 0:
+        # `tf.shape` always returns a rank-1, we may need to turn it back to a
+        # scalar.
+        inferred_shape_value = inferred_shape_value[0]
+      return inferred_shape_value  # pylint: disable=protected-access
+
     if isinstance(spec, sparse_tensor.SparseTensorSpec):
       # nest.map_structure loses dense shape information for sparse tensors.
       # So, we special-case sparse placeholder creation.
@@ -231,8 +260,38 @@ def keras_tensor_to_placeholder(x):
 
 
 def keras_tensor_from_tensor(x):
+  """Convert a traced (composite)tensor to a representative KerasTensor."""
   name = getattr(x, 'name', None)
-  out = KerasTensor(type_spec_module.type_spec_from_value(x), name=name)
+  inferred_shape_value = None
+  type_spec = type_spec_module.type_spec_from_value(x)
+
+  if (isinstance(type_spec, tensor_spec.TensorSpec)
+      and type_spec.dtype == dtypes.int32
+      and type_spec.shape.rank < 2):
+    # If this tensor might be representing shape information,
+    # (dtype=int32, rank of 0 or 1)
+    # we attempt to capture any value information tensorflow's
+    # shape handling can extract from the current scratch graph.
+    #
+    # Even though keras layers each trace in their own scratch
+    # graph, this shape value info extraction allows us to capture
+    # a sizable and useful subset of the C++ shape value inference TF can do
+    # if all tf ops appear in the same graph when using shape ops.
+    #
+    # Examples of things this cannot infer concrete dimensions for
+    # that the full single-graph C++ shape inference sometimes can are:
+    # * cases where the shape tensor is cast out of int32 before being
+    #   manipulated w/ floating point numbers then converted back
+    # * cases where int32 tensors w/ rank > 2 are manipulated before being
+    #   used as a shape tensor
+    inferred_shape_value = array_ops.ones(shape=x).shape
+    if inferred_shape_value.dims:
+      inferred_shape_value = inferred_shape_value.as_list()
+    else:
+      inferred_shape_value = None
+
+  out = KerasTensor(type_spec,
+                    inferred_shape_value=inferred_shape_value, name=name)
   if hasattr(x, '_keras_mask'):
     out._keras_mask = KerasTensor(  # pylint: disable=protected-access
         type_spec_module.type_spec_from_value(x._keras_mask))  # pylint: disable=protected-access

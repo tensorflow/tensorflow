@@ -16,11 +16,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 
 namespace tensorflow {
 
@@ -31,7 +30,7 @@ using Status = ::stream_executor::port::Status;
 template <typename T>
 using StatusOr = ::stream_executor::port::StatusOr<T>;
 
-TpuPlatform::TpuPlatform() {
+TpuPlatform::TpuPlatform() : name_("TPU") {
   platform_ = tpu::ExecutorApiFn()->TpuPlatform_NewFn();
 }
 
@@ -108,10 +107,7 @@ TpuPlatform::GetUncachedExecutor(
   return TpuPlatform::kId;
 }
 
-const std::string& TpuPlatform::Name() const {
-  static std::string* name = new std::string("TPU");
-  return *name;
-}
+const std::string& TpuPlatform::Name() const { return name_; }
 
 int64 TpuPlatform::TpuMemoryLimit() {
   return tpu::ExecutorApiFn()->TpuPlatform_TpuMemoryLimitFn(platform_);
@@ -120,6 +116,23 @@ int64 TpuPlatform::TpuMemoryLimit() {
 bool TpuPlatform::ShouldRegisterTpuDeviceToDeviceCopy() {
   return tpu::ExecutorApiFn()
       ->TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopyFn(platform_);
+}
+
+Status TpuPlatform::TpusPerHost(int* tpus) {
+  TF_Status* status = TF_NewStatus();
+  tpu::ConfigApiFn()->TpuConfigurationApi_TpusPerHostFn(tpus, status);
+  auto ret_status = StatusFromTF_Status(status);
+  TF_DeleteStatus(status);
+  return ret_status;
+}
+
+Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
+  TF_Status* status = TF_NewStatus();
+  tpu::ConfigApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
+      reinterpret_cast<int64_t*>(&memory_limit), status);
+  auto ret_status = StatusFromTF_Status(status);
+  TF_DeleteStatus(status);
+  return ret_status;
 }
 
 bool RegisterTpuPlatform() {

@@ -59,7 +59,7 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-module attributes {tf_saved_model.semantics} {
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
   // CHECK: func @f
   func @f(

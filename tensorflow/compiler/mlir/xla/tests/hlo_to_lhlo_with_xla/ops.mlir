@@ -305,3 +305,23 @@ func @main(%value0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %res = "xla_hlo.tanh"(%value0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %res : tensor<2x2xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: %[[ARG0:.*]]: memref<5x5xi32>
+// CHECK-SAME: %[[ARG1:.*]]: memref<5x5xf32>
+// CHECK-SAME: %[[ARG2:.*]]: memref<100xi8> {xla_lhlo.alloc = 0
+// CHECK-SAME: %[[ARG3:.*]]: memref<100xi8> {xla_lhlo.alloc = 1
+// CHECK: %[[VIEW0:.*]] = std.view %[[ARG2]]{{.*}} : memref<100xi8> to memref<5x5xi32>
+// CHECK: %[[VIEW1:.*]] = std.view %[[ARG3]]{{.*}} : memref<100xi8> to memref<5x5xf32>
+// CHECK: "xla_lhlo.sort"(%[[ARG0]], %[[ARG1]], %[[VIEW0]], %[[VIEW1]])
+func @main(%key: tensor<5x5xi32>, %value: tensor<5x5xf32>) -> tuple<tensor<5x5xi32>, tensor<5x5xf32>> {
+  %res = "xla_hlo.sort"(%key, %value) ({
+  ^bb0(%a: tensor<i32>, %b: tensor<i32>, %c: tensor<f32>, %d: tensor<f32>):
+    %ret = "xla_hlo.compare"(%c, %d) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "xla_hlo.return"(%ret) : (tensor<i1>) -> ()
+  }) {dimension = 1 : i64, is_stable = true}: (tensor<5x5xi32>, tensor<5x5xf32>) -> tuple<tensor<5x5xi32>, tensor<5x5xf32>>
+
+  return %res : tuple<tensor<5x5xi32>, tensor<5x5xf32>>
+}

@@ -476,12 +476,14 @@ class RaggedBatchGatherOpTest(test_util.TensorFlowTestCase,
     ragged_indices = ragged_tensor.RaggedTensor.from_row_splits(
         indices, [0, 2, 4])
 
-    with self.assertRaisesRegexp(ValueError, r'batch_dims may only be negative '
-                                 r'if rank\(indices\) is statically known.'):
+    with self.assertRaisesRegex(
+        ValueError, r'batch_dims may only be negative '
+        r'if rank\(indices\) is statically known.'):
       ragged_batch_gather_ops.batch_gather(params, indices)
 
-    with self.assertRaisesRegexp(ValueError, r'batch_dims may only be negative '
-                                 r'if rank\(indices\) is statically known.'):
+    with self.assertRaisesRegex(
+        ValueError, r'batch_dims may only be negative '
+        r'if rank\(indices\) is statically known.'):
       ragged_batch_gather_ops.batch_gather(params, ragged_indices)
 
   @parameterized.parameters(
@@ -527,7 +529,7 @@ class RaggedBatchGatherOpTest(test_util.TensorFlowTestCase,
                                        indices,
                                        message=None,
                                        error=ValueError):
-    with self.assertRaisesRegexp(error, message):
+    with self.assertRaisesRegex(error, message):
       ragged_batch_gather_ops.batch_gather(params, indices)
 
 

@@ -855,8 +855,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     loaded = keras_load.load(saved_model_dir)
     self.assertAllEqual([[1.0]], self.evaluate(loaded(inp)))
-    with self.assertRaisesRegexp(ValueError,
-                                 'call function was not serialized'):
+    with self.assertRaisesRegex(ValueError, 'call function was not serialized'):
       loaded.layer(inp)
 
 
@@ -1039,8 +1038,8 @@ class MetricTest(test.TestCase, parameterized.TestCase):
 
       self.evaluate([v.initializer for v in metric.variables])
 
-      with self.assertRaisesRegexp(ValueError,
-                                   'Unable to restore custom object'):
+      with self.assertRaisesRegex(ValueError,
+                                  'Unable to restore custom object'):
         self._test_metric_save_and_load(metric, save_dir, num_tensor_args)
       with generic_utils.CustomObjectScope({'CustomMetric': CustomMetric}):
         loaded = self._test_metric_save_and_load(

@@ -73,7 +73,6 @@ namespace {
 
 namespace py = pybind11;
 
-using ::tensorflow::profiler::TraceMeWrapper;
 
 struct Uniquer {
   absl::Mutex mu;
@@ -159,6 +158,13 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
       fn_name, static_cast<void*>(capsule), platform);
   return Status::OK();
 }
+
+// Adds a trivial forwarding class so these Python bindings and TensorFlow's
+// bindings of the same thing don't register the same class with pybind11.
+class TraceMeWrapper : public tensorflow::profiler::TraceMeWrapper {
+ public:
+  using tensorflow::profiler::TraceMeWrapper::TraceMeWrapper;
+};
 
 void BuildProfilerSubmodule(py::module* m) {
   py::module profiler =

@@ -34,12 +34,12 @@ class RawOpsTest(test.TestCase):
     self.assertEqual([2], self.evaluate(gen_math_ops.Add(x=x, y=x)))
 
   def testRequiresKwargs(self):
-    with self.assertRaisesRegexp(TypeError, "only takes keyword args"):
+    with self.assertRaisesRegex(TypeError, "only takes keyword args"):
       gen_math_ops.Add(1., 1.)
 
   def testRequiresKwargs_providesSuggestion(self):
     msg = "possible keys: \\['x', 'y', 'name'\\]"
-    with self.assertRaisesRegexp(TypeError, msg):
+    with self.assertRaisesRegex(TypeError, msg):
       gen_math_ops.Add(1., y=2.)
 
   def testName(self):

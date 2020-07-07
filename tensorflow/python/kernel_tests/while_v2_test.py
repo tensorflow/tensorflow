@@ -146,7 +146,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
       while_loop_v2(lambda x: x < 10, Body, [x])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         r"Loop var Const:0 enters the loop with type <dtype: 'float32'> "
         r"but has type <dtype: 'float16'> after 1 iteration."):
@@ -908,25 +908,21 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       while_op = self._createWhile(None)
       self.assertEqual(while_op.name, "while")
-      self.assertRegexpMatches(
-          while_op.get_attr("cond").name, r"while_cond_\d*")
-      self.assertRegexpMatches(
-          while_op.get_attr("body").name, r"while_body_\d*")
+      self.assertRegex(while_op.get_attr("cond").name, r"while_cond_\d*")
+      self.assertRegex(while_op.get_attr("body").name, r"while_body_\d*")
 
     with ops.Graph().as_default():
       with ops.name_scope("foo"):
         while1_op = self._createWhile("")
         self.assertEqual(while1_op.name, "foo/while")
-        self.assertRegexpMatches(
-            while1_op.get_attr("cond").name, r"foo_while_cond_\d*")
-        self.assertRegexpMatches(
-            while1_op.get_attr("body").name, r"foo_while_body_\d*")
+        self.assertRegex(while1_op.get_attr("cond").name, r"foo_while_cond_\d*")
+        self.assertRegex(while1_op.get_attr("body").name, r"foo_while_body_\d*")
 
         while2_op = self._createWhile(None)
         self.assertEqual(while2_op.name, "foo/while_1")
-        self.assertRegexpMatches(
+        self.assertRegex(
             while2_op.get_attr("cond").name, r"foo_while_1_cond_\d*")
-        self.assertRegexpMatches(
+        self.assertRegex(
             while2_op.get_attr("body").name, r"foo_while_1_body_\d*")
 
   @test_util.enable_control_flow_v2

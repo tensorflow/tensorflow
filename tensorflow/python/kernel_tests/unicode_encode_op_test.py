@@ -293,7 +293,7 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
     def f(v):
       return ragged_string_ops.unicode_encode(v, "UTF-8")
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Rank of input_tensor must be statically known."):
       f([72, 101, 108, 108, 111])
 

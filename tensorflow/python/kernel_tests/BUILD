@@ -3302,7 +3302,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "cwise_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["cwise_ops_test.py"],
     shard_count = 50,
     deps = [

@@ -18,8 +18,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 
 namespace mlir {
 namespace xla_lhlo {
@@ -126,10 +125,11 @@ struct DynamicMemRefCastOpConverter
 
 }  // namespace
 
-void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
+void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
+                                          LLVMTypeConverter *converter,
                                           OwningRewritePatternList *patterns) {
   patterns->insert<DynamicMemRefCastOpConverter, StaticMemRefCastOpConverter>(
-      *converter);
+      *converter, options);
 }
 
 }  // namespace xla_lhlo

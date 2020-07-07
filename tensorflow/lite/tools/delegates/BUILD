@@ -151,6 +151,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":delegate_provider_hdr",
+        "//tensorflow/lite/delegates/external:external_delegate",
     ],
     alwayslink = 1,
 )

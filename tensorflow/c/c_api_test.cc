@@ -2286,14 +2286,15 @@ TEST_F(CApiAttributesTest, Tensor) {
 
 TEST_F(CApiAttributesTest, StringTensor) {
   // Create the string-Tensor "attribute" value.
-  char encoded[] = {
-      0,   0, 0, 0, 0, 0, 0, 0,  // array[uint64] offsets
-      1,                         // varint encoded string length
-      'A',
-  };
+  const char test_string[] =
+      "borkborkborkborkborkborkborkbork";  // >24bytes to force heap alloc
+  TF_TString tstr[1];
+  TF_TString_Init(&tstr[0]);
+  TF_TString_Copy(&tstr[0], test_string, sizeof(test_string) - 1);
+
   auto deallocator = [](void* data, size_t len, void* arg) {};
-  unique_tensor_ptr t_in(TF_NewTensor(TF_STRING, nullptr, 0, &encoded[0],
-                                      sizeof(encoded), deallocator, nullptr),
+  unique_tensor_ptr t_in(TF_NewTensor(TF_STRING, nullptr, 0, &tstr[0],
+                                      sizeof(tstr), deallocator, nullptr),
                          TF_DeleteTensor);
 
   // Create a TF_Operation with the attribute t_in
@@ -2312,9 +2313,17 @@ TEST_F(CApiAttributesTest, StringTensor) {
   EXPECT_EQ(TF_STRING, TF_TensorType(t_out));
   EXPECT_EQ(0, TF_NumDims(t_out));
   ASSERT_EQ(TF_TensorByteSize(t_in.get()), TF_TensorByteSize(t_out));
-  EXPECT_EQ(0, memcmp(TF_TensorData(t_in.get()), TF_TensorData(t_out),
-                      TF_TensorByteSize(t_out)));
+  TF_TString* t_in_tstr = static_cast<TF_TString*>(TF_TensorData(t_in.get()));
+  TF_TString* t_out_tstr = static_cast<TF_TString*>(TF_TensorData(t_out));
+  EXPECT_EQ(absl::string_view(test_string),
+            absl::string_view(TF_TString_GetDataPointer(t_out_tstr),
+                              TF_TString_GetSize(t_out_tstr)));
+  EXPECT_EQ(absl::string_view(TF_TString_GetDataPointer(t_in_tstr),
+                              TF_TString_GetSize(t_in_tstr)),
+            absl::string_view(TF_TString_GetDataPointer(t_out_tstr),
+                              TF_TString_GetSize(t_out_tstr)));
   TF_DeleteTensor(t_out);
+  TF_TString_Dealloc(&tstr[0]);
 }
 
 TEST_F(CApiAttributesTest, TensorList) {

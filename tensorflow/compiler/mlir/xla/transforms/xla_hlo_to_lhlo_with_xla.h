@@ -16,11 +16,109 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_HLO_TO_LHLO_WITH_XLA_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_XLA_HLO_TO_LHLO_WITH_XLA_H_
 
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace mlir {
+
+// This class will process an HloModule with the supplied BufferAssignment and
+// populate the MLIR ModuleOp with the computation converted in the LHLO
+// dialect.
+class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
+ public:
+  // Initializes internal data structures. It must be called before calling any
+  // of the visitors.
+  tensorflow::Status Initialize();
+
+  LhloDialectEmitter(const xla::BufferAssignment& assignment,
+                     const xla::HloComputation& computation, ModuleOp module)
+      : assignment_(std::move(assignment)),
+        computation_(computation),
+        module_(module),
+        builder_(module.getContext()),
+        i8_type_(builder_.getIntegerType(8)) {}
+
+  xla::StatusOr<mlir::Operation*> EmitSortOp(xla::HloInstruction* instr);
+
+ private:
+  template <typename OpType>
+  xla::StatusOr<OpType> CreateOpWithoutAttrs(xla::HloInstruction* instr);
+
+  tensorflow::Status DefaultAction(xla::HloInstruction* instr) final;
+
+  // Computation parameters don't need any specific handling when they are
+  // visited, they are already processed when we enter a new computation.
+  tensorflow::Status HandleParameter(xla::HloInstruction* instr) final {
+    return tensorflow::Status::OK();
+  }
+
+  tensorflow::Status HandleSort(xla::HloInstruction* instr) final;
+
+  // Helper function that recursively visits the tuple structure in
+  // `current_shape`, and reconstruct a matching xla_lhlo::TupleOp.
+  // Each leaf node is converted to an std.view op with corresponding offsets.
+  // If no tuple presents, it simply returns a view of the buffer.
+  tensorflow::Status CreateView(const xla::HloInstruction* instr,
+                                const xla::Shape& current_shape,
+                                ::xla::ShapeIndex* current_shape_index,
+                                SmallVectorImpl<Value>* values);
+
+  // Helper function to create view/tuple of views to a buffer for a given
+  // instruction result.
+  tensorflow::Status GetOrCreateView(const xla::HloInstruction* instr,
+                                     SmallVectorImpl<Value>* values);
+
+  // Return an MLIR location for an HLO instruction.
+  Location getLocation(xla::HloInstruction* inst) {
+    return NameLoc::get(builder_.getIdentifier(inst->name()),
+                        builder_.getContext());
+  }
+
+  // This map provides access to MLIR buffers for each HLO buffer allocation.
+  // The MLIR buffers are all `memref<{size}xi8>` and correspond to function
+  // parameters. It is populated at the beginning of the processing with all the
+  // buffer allocations and is unchanged afterward. Every HLOInstruction is
+  // using a "slice" of the buffer allocation and providing shape, layout, and
+  // Dtype. An MLIR view is used separately to model slices into the allocations
+  // (see below).
+  llvm::DenseMap<const xla::BufferAllocation*, Value> allocations_;
+
+  // This map provides access to MLIR buffers for each HLO instruction, keyed by
+  // its buffer slice. A slice is contained in a BufferAllocation, and has an
+  // offset and a size.
+  //
+  // As for why we don't use HloInstruction*, see GetOrCreateView(), but mostly
+  // we want to leverage better of the aliased buffers.
+  //
+  // If the HloInstruction is a tuple, all leaf nodes are stored flattened.
+  // Otherwise, there will be a single buffer.
+  //
+  // An MLIR buffer is either an input parameter, or a ViewOp in the case where
+  // the slice is only part of its allocation.
+  //
+  // `slices_` is populated lazily in the `GetOrCreateView()` helper as we
+  // process every instruction.
+  using SliceKey = std::tuple<const xla::BufferAllocation*, int64_t, int64_t>;
+  llvm::DenseMap<SliceKey, llvm::SmallVector<Value, 1>> slices_;
+
+  // The BufferAssignment computed by XLA ahead of time.
+  const xla::BufferAssignment& assignment_;
+
+  // The HLO module that will be converted.
+  const xla::HloComputation& computation_;
+
+  // This is the MLIR module in which a function will be created for every HLO
+  // computation.
+  ModuleOp module_;
+
+  // The builder keeps track of the current insertion point in the MLIR module.
+  OpBuilder builder_;
+  // Convenient "cached" access to this widely used MLIR type (i8).
+  Type i8_type_;
+};
 
 // Populate the MLIR `module` with the computation from the `hlo_module` using
 // the provided buffer `assignment`. The returned `Status` indicates success

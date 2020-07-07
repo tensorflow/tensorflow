@@ -214,16 +214,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace concatenation
 
-TfLiteRegistration* Register_CONCATENATION() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/concatenation::Prepare,
-                                 /*invoke=*/concatenation::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_CONCATENATION() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/concatenation::Prepare,
+          /*invoke=*/concatenation::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

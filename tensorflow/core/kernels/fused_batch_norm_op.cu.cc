@@ -19,7 +19,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #endif
 #if TENSORFLOW_USE_ROCM
- #include "rocm/include/hip/hip_fp16.h"
+#include "rocm/include/hip/hip_fp16.h"
 typedef __half2 half2;
 #endif
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
@@ -201,11 +201,12 @@ struct FusedBatchNormInferenceKernel<Eigen::half, float, tensor_format,
                              const U* __restrict__ var,
                              const T* __restrict__ _side_input, float epsilon,
                              T* __restrict__ _out) {
+    // Old GPUs do not have (or have very slow) fp16 arithmetic.
+#if (__CUDA_ARCH__ >= 610) || TENSORFLOW_USE_ROCM
     const IT* in = reinterpret_cast<const IT*>(_in);
     const IT* side_input = reinterpret_cast<const IT*>(_side_input);
     IT* out = reinterpret_cast<IT*>(_out);
-    // Old GPUs do not have (or have very slow) fp16 arithmetic.
-#if (__CUDA_ARCH__ >= 610) || TENSORFLOW_USE_ROCM
+
     int32 index = blockIdx.x * blockDim.x + threadIdx.x;
     const int32 total_device_threads = gridDim.x * blockDim.x;
 
@@ -299,15 +300,16 @@ __global__ void FusedBatchNormInferenceMetaKernel(
     const U* scale, const U* offset, const U* mean, const U* var,
     const T* side_input, float epsilon, T* out) {
   // We prefer to run non-generic specialization, for the given types T and U.
-  FusedBatchNormInferenceKernel<
-      T, U, tensor_format, add_side_input, activation_mode,
+  FusedBatchNormInferenceKernel<T, U, tensor_format, add_side_input,
+                                activation_mode,
 #if TENSORFLOW_USE_ROCM
-    false
-#else      
-  // TODO(b/135435976): Temporary disable non-generic kernel implementation.
-      /*is_generic_kernel=*/true
-#endif    
-      >::run(count, channels_size, inner_dim_size, in,
+                                false
+#else
+                                // TODO(b/135435976): Temporary disable
+                                // non-generic kernel implementation.
+                                /*is_generic_kernel=*/true
+#endif
+                                >::run(count, channels_size, inner_dim_size, in,
                                        scale, offset, mean, var, side_input,
                                        epsilon, out);
 }
@@ -329,11 +331,11 @@ struct FusedBatchNormInferenceFunctor<GPUDevice, T, U> {
     if (count == 0) return;
 
     bool launched = false;
-    #if TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     constexpr int32 kThreadInBlock = 1024;
-    #else
+#else
     constexpr int32 kThreadInBlock = 512;
-    #endif
+#endif
 
 #define LAUNCH(DATA_FORMAT, ADD_SIDE_INPUT, ACTIVATION, CHANNEL_SIZE,          \
                INNER_DIM_SIZE)                                                 \
