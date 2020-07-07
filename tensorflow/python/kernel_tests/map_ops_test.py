@@ -39,20 +39,22 @@ from tensorflow.python.ops import map_ops
 
 @test_util.run_all_in_graph_and_eager_modes
 class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+  def testEmptyTensorMap(self):
+    m = map_ops.empty_tensor_map()
+    print("empty tensor map created")
+    
+  '''
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))
   @test_util.run_deprecated_v1
   def testEraseFromEmptyTensorMapFails(self, max_num_elements):
     print("hello world testErase")
-    m = map_ops.empty_tensor_map(
-        element_dtype=dtypes.float32,
-        element_shape=[],
-        max_num_elements=max_num_elements)
+    m = map_ops.empty_tensor_map()
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "Trying to erase from an empty map"):
       m = map_ops.tensor_map_erase(l, element_dtype=dtypes.float32)
       self.evaluate(l)
-  
+  '''
 
   def testZeroOut(self):
     print("hello world testZeroOut")

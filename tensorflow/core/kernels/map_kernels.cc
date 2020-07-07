@@ -15,8 +15,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/map_kernels.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-//#include "tensorflow/core/framework/variant.h"
-//#include "tensorflow/core/framework/variant_op_registry.h"
 
 namespace tensorflow {
 REGISTER_KERNEL_BUILDER(Name("EmptyTensorMap").Device(DEVICE_CPU),

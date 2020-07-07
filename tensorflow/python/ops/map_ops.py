@@ -30,17 +30,8 @@ from tensorflow.python.ops.gen_map_ops import *
 #    resource_loader.get_path_to_datafile('_zero_out_ops.so'))
 #zero_out = zero_out_ops.zero_out 
 
-def empty_tensor_map(element_shape,
-                      element_dtype,
-                      max_num_elements=None,
-                      name=None):
-  if max_num_elements is None:
-    max_num_elements = -1
-
-  return gen_map_ops.empty_tensor_map(element_shape, 
-      element_dtype,
-      max_num_elements,
-      name)
+def empty_tensor_map():
+  return gen_map_ops.empty_tensor_map()
 
 def zero_out(to_zero):
     print("Hello World - Python Op")
