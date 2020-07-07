@@ -206,8 +206,8 @@ XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64> gradients_size,
 
     TF_ASSIGN_OR_RETURN(Shape out_backprop_xla_shape,
                         b->GetShape(out_backprop));
-    const int out_backprop_xla_shape_dimensions_size =out_backprop_xla_shape.dimensions().size();
-    if (out_backprop_xla_shape_dimensions_size != num_dims) {
+    const int obxsd_size = out_backprop_xla_shape.dimensions().size();
+    if (obxsd_size != num_dims) {
       return tensorflow::errors::InvalidArgument("out_backprop must be ",
                                                  num_dims, "-dimensional");
     }
