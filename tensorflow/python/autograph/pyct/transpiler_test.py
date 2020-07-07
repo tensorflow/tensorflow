@@ -136,27 +136,6 @@ class FunctionTranspilerTest(test.TestCase):
 
     self.assertEqual(f(1), 1 - 1)
 
-  def test_multiple_lambdas_indistinguishable_definitions(self):
-    a, b = 1, 2
-    f, _ = (lambda x: a * x, lambda x: b * x)
-
-    tr = TestTranspiler()
-    with self.assertRaises(ValueError):
-      tr.transform_function(f, object(), None, {})
-
-  def test_lambda_code_with_removable_garbage(self):
-    # pylint:disable=g-long-lambda
-    f = (  # intentional wrap
-        lambda x: (
-            x  # intentional wrap
-            + 1),)[0]
-    # pylint:enable=g-long-lambda
-
-    tr = TestTranspiler()
-    f, _, _ = tr.transform_function(f, object(), None, {})
-
-    self.assertEqual(f(1), 1 - 1)
-
   def test_nested_functions(self):
     b = 2
 

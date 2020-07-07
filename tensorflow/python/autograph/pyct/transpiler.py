@@ -23,7 +23,6 @@ import types
 
 import gast
 
-from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import cache
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import loader
@@ -303,25 +302,6 @@ class FunctionTranspiler(object):
     node, source = parser.parse_entity(fn, future_features=future_features)
     logging.log(3, 'Source code of %s:\n\n%s\n', fn, source)
 
-    # In general, the output of inspect.getsource is inexact for lambdas
-    # because it uses regex matching to adjust the exact location around
-    # the line number that CPython records. Then, the entire containing line
-    # is returned, which we may have trouble disambiguating.
-    # For example:
-    #   x, y = lambda: 1, lambda: 2
-    is_lambda = fn.__name__ == '<lambda>'
-    if is_lambda:
-      nodes = ast_util.find_matching_definitions(node, fn)
-      if len(nodes) != 1:
-        raise ValueError(
-            'Unable to identify source code of lambda function {}.'
-            ' It was defined in this code:\n'
-            '{}\n'
-            'This code must contain a single distinguishable lambda.'
-            ' To avoid this problem, define each lambda in a separate'
-            ' expression.'.format(fn, source))
-      node, = nodes
-
     origin_info.resolve_entity(node, source, fn)
 
     namespace = inspect_utils.getnamespace(fn)
@@ -338,7 +318,7 @@ class FunctionTranspiler(object):
     node = self._erase_arg_defaults(node)
     node = self.transform_ast(node, context)
 
-    if is_lambda:
+    if isinstance(node, gast.Lambda):
       node = gast.Assign(
           targets=[
               gast.Name(
