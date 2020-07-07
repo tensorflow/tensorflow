@@ -28,11 +28,6 @@ from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.platform import test
 
 
-# Version notice: these tests pass in Python 3.7. They will fail in 3.8, where
-# the parser is able to clean up the trailing garbage.
-# TODO(mdan): Update the tests to work in 3.8 as well.
-
-
 class ParserTest(test.TestCase):
 
   def test_parse_entity(self):
@@ -111,6 +106,11 @@ class ParserTest(test.TestCase):
         expected_exception_text):
       parser.parse_entity(l(0), future_features=())
 
+  def assertMatchesWithPotentialGarbage(self, source, expected, garbage):
+    # In runtimes which don't track end_col_number, the source contains the
+    # entire line, which in turn may have garbage from the surrounding context.
+    self.assertIn(source, (expected, expected + garbage))
+
   def test_parse_lambda_multiline(self):
 
     l = (
@@ -121,19 +121,17 @@ class ParserTest(test.TestCase):
     self.assertEqual(
         parser.unparse(node, include_encoding_marker=False),
         '(lambda x: (lambda y: ((x + y) - 1)))')
-    self.assertEqual(
-        source,
-        'lambda x: lambda y: x + y  # pylint:disable=g-long-lambda\n'
-        '        - 1)')
+    self.assertMatchesWithPotentialGarbage(
+        source, ('lambda x: lambda y: x + y  # pylint:disable=g-long-lambda\n'
+                 '        - 1'), ')')
 
     node, source = parser.parse_entity(l(0), future_features=())
     self.assertEqual(
         parser.unparse(node, include_encoding_marker=False),
         '(lambda y: ((x + y) - 1))')
-    self.assertEqual(
-        source,
-        'lambda y: x + y  # pylint:disable=g-long-lambda\n'
-        '        - 1)')
+    self.assertMatchesWithPotentialGarbage(
+        source, ('lambda y: x + y  # pylint:disable=g-long-lambda\n'
+                 '        - 1'), ')')
 
   def test_parse_lambda_in_expression(self):
 
@@ -146,25 +144,28 @@ class ParserTest(test.TestCase):
     self.assertEqual(
         parser.unparse(node, include_encoding_marker=False),
         '(lambda x: (lambda y: ((x + y) + 1)))')
-    self.assertEqual(source, 'lambda x: lambda y: x + y + 1,')
+    self.assertMatchesWithPotentialGarbage(
+        source, 'lambda x: lambda y: x + y + 1', ',')
 
     node, source = parser.parse_entity(l[0](0), future_features=())
     self.assertEqual(
         parser.unparse(node, include_encoding_marker=False),
         '(lambda y: ((x + y) + 1))')
-    self.assertEqual(source, 'lambda y: x + y + 1,')
+    self.assertMatchesWithPotentialGarbage(
+        source, 'lambda y: x + y + 1', ',')
 
     node, source = parser.parse_entity(l[1], future_features=())
     self.assertEqual(
         parser.unparse(node, include_encoding_marker=False),
         '(lambda x: (lambda y: ((x + y) + 2)))')
-    self.assertEqual(source, 'lambda x: lambda y: x + y + 2,')
+    self.assertMatchesWithPotentialGarbage(source,
+                                           'lambda x: lambda y: x + y + 2', ',')
 
     node, source = parser.parse_entity(l[1](0), future_features=())
     self.assertEqual(
         parser.unparse(node, include_encoding_marker=False),
         '(lambda y: ((x + y) + 2))')
-    self.assertEqual(source, 'lambda y: x + y + 2,')
+    self.assertMatchesWithPotentialGarbage(source, 'lambda y: x + y + 2', ',')
 
   def test_parse_lambda_complex_body(self):
 
@@ -184,16 +185,19 @@ class ParserTest(test.TestCase):
     self.assertEqual(
         parser.unparse(node, include_encoding_marker=False),
         "(lambda x: (x.y([], x.z, (), x[0:2]), x.u, 'abc', 1))")
-    self.assertEqual(source, ('lambda x: (  # pylint:disable=g-long-lambda\n'
-                              '        x.y(\n'
-                              '            [],\n'
-                              '            x.z,\n'
-                              '            (),\n'
-                              '            x[0:2],\n'
-                              '        ),\n'
-                              '        x.u,\n'
-                              '        \'abc\',\n'
-                              '        1,'))
+    base_source = ('lambda x: (  # pylint:disable=g-long-lambda\n'
+                   '        x.y(\n'
+                   '            [],\n'
+                   '            x.z,\n'
+                   '            (),\n'
+                   '            x[0:2],\n'
+                   '        ),\n'
+                   '        x.u,\n'
+                   '        \'abc\',\n'
+                   '        1,')
+    # The complete source includes the trailing parenthesis. But that is only
+    # detected in runtimes which correctly track end_lineno for ASTs.
+    self.assertIn(source, (base_source, base_source + '\n    )'))
 
   def test_parse_lambda_function_call_definition(self):
 
@@ -203,7 +207,8 @@ class ParserTest(test.TestCase):
       self.assertEqual(
           parser.unparse(node, include_encoding_marker=False),
           '(lambda x: x)')
-      self.assertEqual(source, 'lambda x: x, named_arg=1)')
+      self.assertMatchesWithPotentialGarbage(
+          source, 'lambda x: x', ', named_arg=1)')
 
     do_parse_and_test(  # Intentional line break
         lambda x: x, named_arg=1)
