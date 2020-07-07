@@ -86,7 +86,7 @@ bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                  (params->dilation_height_factor == 1) &&
                  (affine_quantization->scale->size ==
                   filter->dims->data[kConvQuantizedDimension]) &&
-                 affine_quantization->scale->size <= (kMaxChannels * 2);
+                 affine_quantization->scale->size <= (kMaxChannels);
   return ret_val;
 }
 
@@ -186,10 +186,10 @@ TfLiteStatus EvalMliQuantizedPerChannel(
     mli_conv2d_cfg cfg = {};
 
     // reuse space allocated for OpData parameters
-    mli_weights.el_params.asym.scale.pi16 =
-        (int16_t*)data->per_channel_output_multiplier;
-    mli_bias.el_params.asym.scale.pi16 =
-        (int16_t*)data->per_channel_output_shift;
+    mli_weights.el_params.asym.scale.pi32 =
+        (int32_t*)data->per_channel_output_multiplier;
+    mli_bias.el_params.asym.scale.pi32 =
+        (int32_t*)data->per_channel_output_shift;
 
     int16_t filter_zero_point = 0;
     int16_t bias_zero_point = 0;
