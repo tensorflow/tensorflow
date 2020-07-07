@@ -2,6 +2,12 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_gpu_architectures", "if_cuda")
 
+def if_mlir_generated_gpu_kernels_enabled(if_true, if_false = []):
+    return select({
+        "//tensorflow/core/kernels/mlir_generated:mlir_generated_gpu_kernels_enabled": if_true,
+        "//conditions:default": if_false,
+    })
+
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""
     for file in filegroup.files.to_list():
@@ -150,7 +156,7 @@ _gen_mlir_op_rule = rule(
 def _gen_mlir_op(name, type):
     _gen_mlir_op_rule(
         name = "generate_{name}_{type}_mlir".format(name = name, type = type),
-        template = "{name}.mlir.tmpl".format(name = name),
+        template = "op_definitions/{name}.mlir.tmpl".format(name = name),
         type = type,
         out = "{name}_{type}.mlir".format(name = name, type = type),
     )

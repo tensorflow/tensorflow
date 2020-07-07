@@ -41,7 +41,7 @@ cc_library(
 tf_cc_binary(
     name = "tf_to_cubin",
     srcs = ["tf_to_cubin.cc"],
-    visibility = ["//tensorflow/core/kernels/cubin_headers:__pkg__"],
+    visibility = ["//tensorflow/core/kernels/mlir_generated:__pkg__"],
     deps = [
         ":cubin_creator",
         "//tensorflow/compiler/mlir:init_mlir",

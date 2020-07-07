@@ -29,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-class MlirGeneratedOpGpuTanhTest : public OpsTestBase {
+class GpuTanhTest : public OpsTestBase {
  protected:
   void SetUp() override {
     std::unique_ptr<tensorflow::Device> device_gpu(
@@ -60,17 +60,17 @@ class MlirGeneratedOpGpuTanhTest : public OpsTestBase {
   }
 };
 
-TEST_F(MlirGeneratedOpGpuTanhTest, TanhFloat) {
+TEST_F(GpuTanhTest, TanhFloat) {
   RunTanhOp<float>({-18.0f, -9.0f, -1e-6f, -0.0f, 0.0f, 1e-6, 0.1f, 0.2f, 0.3f,
                     0.5f, 0.7f, 0.9f, 9.0f, 18.0f});
 }
 
-TEST_F(MlirGeneratedOpGpuTanhTest, TanhDouble) {
+TEST_F(GpuTanhTest, TanhDouble) {
   RunTanhOp<double>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3, 0.5,
                      0.7, 0.9, 9.0, 18.0});
 }
 
-TEST_F(MlirGeneratedOpGpuTanhTest, TanhHalf) {
+TEST_F(GpuTanhTest, TanhHalf) {
   RunTanhOp<Eigen::half, float>(
       {static_cast<Eigen::half>(-18.0), static_cast<Eigen::half>(-9.0),
        static_cast<Eigen::half>(-1e-6), static_cast<Eigen::half>(-0.0),
