@@ -161,7 +161,7 @@ void MetricTableReport::AppendCategoryTable() {
 
     // Show the top entries in the category.
     const char* const kIndentPrefix = "                              * ";
-    const int64 entries_to_show = std::min<int64>(max_entries_per_category_to_show_,
+    int64 entries_to_show = std::min<int64>(max_entries_per_category_to_show_,
                                             category.entries.size());
     const int64 category_entries_size = category.entries.size(); 
     if (category_entries_size == entries_to_show + 1) {
