@@ -1330,10 +1330,9 @@ class _RandomGenerator(stateful_random_ops.Generator):
 
 def make_generator(seed=None):
   if seed:
-    rng = _RandomGenerator.from_seed(seed)
+    return _RandomGenerator.from_seed(seed)
   else:
-    rng = _RandomGenerator.from_non_deterministic_state()
-  return rng
+    return _RandomGenerator.from_non_deterministic_state()
 
 
 def get_interpolation(interpolation):
