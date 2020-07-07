@@ -807,16 +807,16 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraphMatMul) {
    *
    * Now we will execute this function with an eager context:
    *
-   *   A = [[0, 0], [0, 0]] 
+   *   A = [[0, 1], [1, 0]] 
    *   B = [[1, 0], [0, 1]]   
    *
    *   output1, output2, output3 = two_adds_and_mm(A, B)
    *
    * We expect outputs: 
    *    
-   *   output1 =  [[1, 0], [0, 1]]  
+   *   output1 =  [[1, 1], [1, 1]]  
    *   output2 =  [[2, 0], [0, 2]]  
-   *   output3 =  [[2, 0], [0, 2]]  
+   *   output3 =  [[2, 2], [2, 2]]  
    *
    */
 
@@ -842,7 +842,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraphMatMul) {
         TF_ExecutionContextGetTFEContext(eager_execution_ctx,s);
 
     // 1st Arg
-    float vals1 [] = {0.0f,0.0f,0.0f,0.0f};
+    float vals1 [] = {0.0f,1.0f,1.0f,0.0f};
     int64_t dims [] = {2,2}; // Matrices will be 2 x 2   
     int num_dims = sizeof(dims)/sizeof(dims[0]);
 
@@ -867,9 +867,9 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraphMatMul) {
 
   ASSERT_EQ(3, TF_OutputListNumOutputs(func_outputs));
   
-  float expected_outputs [3][4] = {{1.0f,0.0f,0.0f,1.0f}, 
+  float expected_outputs [3][4] = {{1.0f,1.0f,1.0f,1.0f}, 
                                    {2.0f,0.0f,0.0f,2.0f},
-                                   {2.0f,0.0f,0.0f,2.0f}};
+                                   {2.0f,2.0f,2.0f,2.0f}};
 
   float result_data[4];
   for (int idx = 0; idx < 3; ++idx) {
@@ -897,6 +897,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraphMatMul) {
   
   TF_DeleteOutputList(func_outputs);
   TF_DeleteExecutionContext(eager_execution_ctx);
+  //TF_DeleteExecutionContext(graph_ctx);
   TF_DeleteAbstractFunction(func);
 }
 
