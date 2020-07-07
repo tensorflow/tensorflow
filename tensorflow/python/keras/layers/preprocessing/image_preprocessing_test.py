@@ -33,7 +33,6 @@ from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import image_ops_impl as image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
 
 
@@ -238,11 +237,11 @@ class RandomCropTest(keras_parameterized.TestCase):
     width_offset = np.random.randint(low=0, high=5)
     mock_offset = [0, height_offset, width_offset, 0]
     with test.mock.patch.object(
-        stateless_random_ops, 'stateless_random_uniform',
+        gen_stateful_random_ops, 'stateful_uniform_full_int',
         return_value=mock_offset):
       with tf_test_util.use_gpu():
-        layer = image_preprocessing.RandomCrop(height, width)
         inp = np.random.random((12, 5, 8, 3))
+        layer = image_preprocessing.RandomCrop(height, width)
         actual_output = layer(inp, training=1)
         expected_output = inp[:, height_offset:(height_offset + height),
                               width_offset:(width_offset + width), :]
