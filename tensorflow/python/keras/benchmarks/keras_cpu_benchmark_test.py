@@ -123,7 +123,7 @@ class KerasModelCPUBenchmark(
     """Benchmark for LSTM model on synthetic imdb review dataset."""
     lstm_x = np.random.randint(0, 1999, size=(2500, 100))
     lstm_y = np.random.random((2500, 1))
-    results = benchmark_util.measure_performance(self._imdb_lstm(),
+    results = benchmark_util.measure_performance(self._imdb_lstm,
                                                  x=lstm_x,
                                                  y=lstm_y,
                                                  batch_size=batch_size,
