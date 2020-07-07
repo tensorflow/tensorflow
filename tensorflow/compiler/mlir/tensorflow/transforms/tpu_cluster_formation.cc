@@ -362,7 +362,8 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
   auto replicate_op = builder.create<tf_device::ReplicateOp>(
       cluster.getLoc(), num_replicas,
       llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>(),
-      replicated_inputs, cluster.getResultTypes());
+      replicated_inputs, /*packed_inputs=*/llvm::ArrayRef<Value>{},
+      cluster.getResultTypes());
   if (has_replicated_input_index)
     replicate_op.setAttr(kReplicatedInputIndicesAttr,
                          builder.getI64ArrayAttr(replicated_input_indices));
