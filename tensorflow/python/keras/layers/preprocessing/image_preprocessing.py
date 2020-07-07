@@ -1323,7 +1323,9 @@ class _RandomGenerator(stateful_random_ops.Generator):
     # that it skips the distribution-strategy check. When we are inside a
     # distribution-strategy scope, variables.Variable will pick a proper
     # variable class (e.g. MirroredVariable).
-    return variables.Variable(*args, **kwargs)
+    v = variables.Variable(*args, **kwargs)
+    K.track_variable(v)
+    return v
 
 
 def make_generator(seed=None):
@@ -1331,7 +1333,6 @@ def make_generator(seed=None):
     rng = _RandomGenerator.from_seed(seed)
   else:
     rng = _RandomGenerator.from_non_deterministic_state()
-  K.track_variable(rng._state_var)
   return rng
 
 
