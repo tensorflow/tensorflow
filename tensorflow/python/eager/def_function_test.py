@@ -922,11 +922,11 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       return x
     signature = [tensor_spec.TensorSpec(None, dtypes.int32),
                  tensor_spec.TensorSpec(None, dtypes.float32)]
-    def_function.function(f, input_signature=signature) # No error to be raised
+    def_function.function(f, input_signature=signature)  # No error to be raised
 
   def test_signature_validation_mismatched_type_annotation(self):
-    msg = "type mismatch for argument \'y\': type annotation is String, "\
-          "but input_signature is Float32"
+    msg = "type mismatch for argument \'y\': type annotation specifies "\
+          "String, but input_signature specifies Float32"
     with self.assertRaisesRegex(ValueError, msg):
       def f(x: ops.Tensor[dtypes.Int32], y: ops.Tensor[dtypes.String]):
         return x
@@ -940,8 +940,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     signature = [tensor_spec.TensorSpec(None, dtypes.int32)]
     def_function.function(f, input_signature=signature)
 
-    msg = "type mismatch for argument \'x\': type annotation is int, "\
-          "but input_signature is Int32"
+    msg = "type mismatch for argument \'x\': type annotation specifies "\
+          "int, but input_signature specifies Int32"
     with self.assertRaisesRegex(ValueError, msg):
       def g(x: ops.Tensor[int]):
         return x
@@ -956,8 +956,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     signature = [tensor_spec.TensorSpec(None, dtypes.float32)]
     def_function.function(f, input_signature=signature)
 
-    msg = "type mismatch for argument \'x\': type annotation is Float32, "\
-          "but input_signature is Int32"
+    msg = "type mismatch for argument \'x\': type annotation specifies "\
+          "Float32, but input_signature specifies Int32"
     with self.assertRaisesRegex(ValueError, msg):
       def g(x: type_annotation):
         return x

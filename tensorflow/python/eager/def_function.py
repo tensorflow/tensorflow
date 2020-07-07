@@ -22,7 +22,6 @@ from __future__ import print_function
 import functools
 import threading
 import weakref
-import typing
 import six
 
 from google.protobuf import text_format as _text_format
@@ -1192,7 +1191,8 @@ class Function(object):
     arg_to_dtype = dict(arg_dtype_list)
     type_annotations = self.function_spec.fullargspec.annotations
     for arg, annot in type_annotations.items():
-      if not hasattr(annot, '__args__'):
+      # Only verify annotations that are perameterized
+      if not hasattr(annot, '__args__') or len(annot.__args__) != 1:
         return
       annotation_dtype = annot.__args__[0]
       input_signature_dtype = arg_to_dtype.get(arg)
@@ -1202,7 +1202,7 @@ class Function(object):
       if annotation_dtype != input_signature_dtype.__class__:
         raise ValueError(
             "type mismatch for argument '%s': type annotation "\
-            "is %s, but input_signature is %s" %
+            "specifies %s, but input_signature specifies %s" %
             (arg, annotation_dtype.__name__,
              input_signature_dtype.__class__.__name__))
 
