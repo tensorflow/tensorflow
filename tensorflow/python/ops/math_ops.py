@@ -3898,11 +3898,18 @@ def reduced_shape(input_shape, axes):
   Returns:
     A 1-D Tensor, the output shape as if keepdims were set to True.
   """
-  if context.executing_eagerly():
-    input_shape = input_shape.numpy()
-    axes = axes.numpy()
-    input_shape[axes] = 1
-    return input_shape
+  # TODO(allenl): Refactor `reduced_shape` to take the tensor corresponding to
+  # `input_shape` rather than `tf.shape` of it. Then we can check if the shape
+  # is fully defined here, which may be faster executing eagerly than running
+  # `tf.shape` and then fetching its constant value.
+  constant_input_shape = tensor_util.constant_value(input_shape)
+  if constant_input_shape is not None:
+    constant_axes = tensor_util.constant_value(axes)
+    if constant_axes is not None:
+      constant_axes = np.array(constant_axes, dtype=np.int32)
+      constant_input_shape = np.array(constant_input_shape, dtype=np.int32)
+      constant_input_shape[constant_axes] = 1
+      return constant_input_shape
 
   # Example:
   # cast needed for SparseTensor reductions
