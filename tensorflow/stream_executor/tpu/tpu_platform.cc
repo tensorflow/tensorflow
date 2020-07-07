@@ -129,7 +129,7 @@ Status TpuPlatform::TpusPerHost(int* tpus) {
 Status TpuPlatform::TpuMemoryLimit(int64* memory_limit) {
   TF_Status* status = TF_NewStatus();
   tpu::ConfigApiFn()->TpuConfigurationApi_TpuMemoryLimitFn(
-      reinterpret_cast<int64_t*>(&memory_limit), status);
+      reinterpret_cast<int64_t*>(memory_limit), status);
   auto ret_status = StatusFromTF_Status(status);
   TF_DeleteStatus(status);
   return ret_status;
