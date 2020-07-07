@@ -420,7 +420,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
       // Device placement is preserved.
       graph_modified_ = true;
       node->set_op("Const");
-      node->clear_attr();
+      EraseRegularNodeAttributes(node);
       (*node->mutable_attr())["dtype"].set_type(type);
       constant_value.AsProtoTensorContent(
           (*node->mutable_attr())["value"].mutable_tensor());
@@ -1790,7 +1790,7 @@ void ConstantFolding::ReplaceOperationWithIdentity(
   if (dtype == DT_INVALID) return;
 
   node->set_op("Identity");
-  node->clear_attr();
+  EraseRegularNodeAttributes(node);
   (*node->mutable_attr())["T"].set_type(dtype);
   // Propagate the designated input through the identity.
   node->mutable_input()->SwapElements(0, input_to_forward);
@@ -1821,7 +1821,7 @@ void ConstantFolding::ReplaceOperationWithSnapshot(
   if (dtype == DT_INVALID) return;
 
   node->set_op("Snapshot");
-  node->clear_attr();
+  EraseRegularNodeAttributes(node);
   (*node->mutable_attr())["T"].set_type(dtype);
   // Propagate the designated input through the Snapshot.
   node->mutable_input()->SwapElements(0, input_to_forward);
@@ -1840,10 +1840,15 @@ void ConstantFolding::ReplaceOperationWithSnapshot(
 
 // Replace a node with NoOp. Change all inputs to control dependencies.
 // If the node has non-control outputs, no change will be performed.
-void ConstantFolding::ReplaceOperationWithNoOp(NodeDef* node, GraphDef* graph) {
+void ConstantFolding::ReplaceOperationWithNoOp(NodeDef* node,
+                                               GraphProperties* properties,
+                                               GraphDef* graph) {
   if (HasRegularOutputs(*node, *node_map_)) return;
   node->set_op("NoOp");
-  node->clear_attr();
+  EraseRegularNodeAttributes(node);
+  EraseNodeOutputAttributes(node);
+  // Erase attributes that describe output properties.
+  properties->ClearOutputProperties(node->name());
   // Change all inputs to control dependencies.
   for (int i = 0; i < node->input_size(); ++i) {
     if (IsControlInput(node->input(i))) {
@@ -1890,7 +1895,7 @@ void ConstantFolding::ReplaceBinaryOperationWithBroadcastTo(
 
   // Rewrite `node` in-place to BroadcastTo.
   node->set_op("BroadcastTo");
-  node->clear_attr();
+  EraseRegularNodeAttributes(node);
   (*node->mutable_attr())["T"].set_type(dtype);
   (*node->mutable_attr())["Tidx"].set_type(DT_INT32);
   // Set the designated input to BroadcastTo.
@@ -1940,7 +1945,7 @@ Status ConstantFolding::ReplaceOperationWithConstantTensor(DataType dtype,
                                                            GraphDef* graph) {
   if (dtype == DT_VARIANT) return Status::OK();
   node->set_op("Const");
-  node->clear_attr();
+  EraseRegularNodeAttributes(node);
   (*node->mutable_attr())["dtype"].set_type(dtype);
   (*node->mutable_attr())["value"].mutable_tensor()->Swap(value);
   // Convert all inputs to control dependencies.
@@ -2050,7 +2055,7 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
   SET_AND_RETURN_IF_MODIFIED(
       PartialAssocOpConstFolding(optimized_graph, properties, node));
   SET_AND_RETURN_IF_MODIFIED(
-      MergeConcat(use_shape_info, optimized_graph, node));
+      MergeConcat(use_shape_info, properties, optimized_graph, node));
   SET_AND_RETURN_IF_MODIFIED(
       PartialConcatConstFolding(optimized_graph, properties, node));
   SET_AND_RETURN_IF_MODIFIED(
@@ -2059,7 +2064,7 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
   SET_AND_RETURN_IF_MODIFIED(
       SimplifySelect(*properties, optimized_graph, node));
   RETURN_IF_MODIFIED(
-      RemoveRedundantVariableUpdates(*properties, optimized_graph, node));
+      RemoveRedundantVariableUpdates(properties, optimized_graph, node));
 
   graph_modified_ = graph_modified_cached;
   return Status::OK();
@@ -2485,8 +2490,7 @@ bool ConstantFolding::SimplifySelect(const GraphProperties& properties,
 }
 
 void ConstantFolding::RemoveRedundantVariableUpdates(
-    const GraphProperties& properties, GraphDef* optimized_graph,
-    NodeDef* node) {
+    GraphProperties* properties, GraphDef* optimized_graph, NodeDef* node) {
   static const absl::flat_hash_set<string>* kVariableReadOps =
       new absl::flat_hash_set<string>{"AssignAddVariableOp",
                                       "AssignSubVariableOp",
@@ -2521,9 +2525,9 @@ void ConstantFolding::RemoveRedundantVariableUpdates(
     VLOG(1) << "Removing redundant variable update: " << node->DebugString();
     if (absl::StrContains(node->op(), "Variable") ||
         absl::StrContains(node->op(), "Resource")) {
-      ReplaceOperationWithNoOp(node, optimized_graph);
+      ReplaceOperationWithNoOp(node, properties, optimized_graph);
     } else {
-      ReplaceOperationWithIdentity(0 /* input_to_forward */, properties, node,
+      ReplaceOperationWithIdentity(0 /* input_to_forward */, *properties, node,
                                    optimized_graph);
     }
   }
@@ -2762,7 +2766,7 @@ bool ConstantFolding::ReplaceReductionWithIdentity(NodeDef* node) const {
     return false;
   }
   node->set_op("Identity");
-  node->clear_attr();
+  EraseRegularNodeAttributes(node);
   (*node->mutable_attr())["T"].set_type(output_type);
   *node->mutable_input(1) = AsControlDependency(node->input(1));
   return true;
@@ -2852,7 +2856,7 @@ bool ConstantFolding::SimplifyReshape(const GraphProperties& properties,
   }
   DataType output_type = node->attr().at("T").type();
   node->set_op("Identity");
-  node->clear_attr();
+  EraseRegularNodeAttributes(node);
   (*node->mutable_attr())["T"].set_type(output_type);
   *node->mutable_input(1) = AsControlDependency(node->input(1));
   return true;
@@ -3723,6 +3727,7 @@ bool ConstantFolding::GetConcatAxis(const NodeDef& node, int* axis) {
 }
 
 bool ConstantFolding::MergeConcat(bool use_shape_info,
+                                  GraphProperties* properties,
                                   GraphDef* optimized_graph, NodeDef* node) {
   // We only optimize for ConcatV2.
   int axis;
@@ -3791,16 +3796,15 @@ bool ConstantFolding::MergeConcat(bool use_shape_info,
     }
   }
   // Forward Add control inputs
-  for (int i = num_regular_inputs; i < node->input_size(); ++i) {
+  const int num_inputs = node->input_size();
+  for (int i = num_inputs - 1; i >= num_regular_inputs; --i) {
     parent->add_input(node->input(i));
     node_map_->UpdateInput(parent->name(), node->name(), node->input(i));
+    node->mutable_input()->RemoveLast();
   }
-  node->clear_input();
-  node->set_op("NoOp");
-  node->clear_attr();
-  node_map_->RemoveNode(node->name());
   (*parent->mutable_attr())["N"].set_i(NumNonControlInputs(*parent) - 1);
   DedupControlInputs(parent);
+  ReplaceOperationWithNoOp(node, properties, optimized_graph);
 
   return true;
 }
