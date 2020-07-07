@@ -886,6 +886,8 @@ def cast(x, dtype, name=None):
   returned value is set to `0`. The handling of complex types here matches the
   behavior of numpy.
 
+  Note casting nan and inf values to integral types has undefined behavior.
+
   Args:
     x: A `Tensor` or `SparseTensor` or `IndexedSlices` of numeric type. It could
       be `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`,
