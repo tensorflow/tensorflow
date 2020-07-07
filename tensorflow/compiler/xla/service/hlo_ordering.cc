@@ -387,7 +387,7 @@ void SequentialHloOrdering::Initialize() {
   TF_DCHECK_OK(schedule_.Verify());
   for (const auto& computation_sequence : schedule_.sequences()) {
     const auto& order = computation_sequence.second.instructions();
-    for (int i = 0; i < order.size(); ++i) {
+    for (int i = 0, iter_limit = order.size(); i < iter_limit; ++i) {
       InsertOrDie(&order_position_, order[i], i);
     }
   }

@@ -50,7 +50,7 @@ llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input) {
 
   llvm::Value* input_squared = b->CreateFMul(input_clamped, input_clamped);
   llvm::Value* numerator = llvm::ConstantFP::get(type, numerator_coeffs[0]);
-  for (int i = 1; i < numerator_coeffs.size(); i++) {
+  for (int i = 1, iter_limit = numerator_coeffs.size(); i < iter_limit; i++) {
     numerator = b->CreateFAdd(b->CreateFMul(input_squared, numerator),
                               llvm::ConstantFP::get(type, numerator_coeffs[i]));
   }
@@ -58,7 +58,7 @@ llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input) {
   numerator = b->CreateFMul(input_clamped, numerator);
 
   llvm::Value* denominator = llvm::ConstantFP::get(type, denominator_coeffs[0]);
-  for (int i = 1; i < denominator_coeffs.size(); i++) {
+  for (int i = 1, iter_limit = denominator_coeffs.size(); i < iter_limit; i++) {
     denominator =
         b->CreateFAdd(b->CreateFMul(input_squared, denominator),
                       llvm::ConstantFP::get(type, denominator_coeffs[i]));

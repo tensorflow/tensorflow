@@ -81,7 +81,8 @@ uint64 HloModuleGroup::Hash() const {
   TF_RET_CHECK(!proto.name().empty()) << "Module group name cannot be empty";
   TF_RET_CHECK(proto.hlo_modules_size() > 0)
       << "Module group must have at least one HLO module";
-  TF_RET_CHECK(proto.hlo_modules_size() == module_configs.size());
+  const int64 module_configs_size = module_configs.size();
+  TF_RET_CHECK(proto.hlo_modules_size() == module_configs_size);
 
   std::vector<std::unique_ptr<HloModule>> modules;
   for (int i = 0; i < proto.hlo_modules_size(); ++i) {

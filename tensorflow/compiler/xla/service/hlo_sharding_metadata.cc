@@ -234,9 +234,10 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
   if (instruction->users().empty()) {
     // No sharding from users, use domain_sharding, after checking
     // compatibility.
+    const int64 domain_sharding_tuple_elements_size = domain_sharding.tuple_elements().size();
     TF_RET_CHECK(instruction->shape().IsTuple() &&
                  ShapeUtil::GetLeafCount(instruction->shape()) ==
-                     domain_sharding.tuple_elements().size());
+                     domain_sharding_tuple_elements_size);
     instruction->set_sharding(domain_sharding);
     return true;
   }

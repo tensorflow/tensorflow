@@ -1484,9 +1484,10 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
     }
     if (!instruction_can_change_layout_func_(instruction)) {
       // Copy the layout to the operand.
+      const int64 bcl_size = LayoutUtil::MinorToMajor(buffer_constraint.layout()).size();
       if (buffer.IsArray() && operand->shape().IsArray() &&
           operand->shape().rank() ==
-              LayoutUtil::MinorToMajor(buffer_constraint.layout()).size()) {
+              bcl_size) {
         TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
             buffer_constraint.layout(), instruction, operand_no,
             /*mandatory=*/true));
@@ -2085,7 +2086,7 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
         })) {
       continue;
     }
-    for (int64 i = 0; i < node.caller_callsites().size() - 1; ++i) {
+    for (int64 i = 0, iter_limit = node.caller_callsites().size() - 1; i < iter_limit; ++i) {
       HloInstruction* caller = node.caller_callsites()[i].instruction();
       if (caller->opcode() == HloOpcode::kConditional) {
         for (int64 k = 0; k < caller->branch_count(); ++k) {
