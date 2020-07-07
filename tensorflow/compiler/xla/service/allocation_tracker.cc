@@ -187,7 +187,8 @@ StatusOr<const ShapedBuffer*> AllocationTracker::ResolveForReplica(
   tensorflow::mutex_lock lock(mutex_);
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
                       ResolveInternal(data));
-  if (replica_id >= replicated_buffers.size()) {
+  const int64 replicated_buffers_size = replicated_buffers.size();
+  if (replica_id >= replicated_buffers_size) {
     return InvalidArgument(
         "Requesting buffer for replica %d, but found buffers only for %lu "
         "replicas.",

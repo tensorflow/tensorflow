@@ -44,8 +44,9 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   // Add loops from outer-most to inner-most dimensions.
   for (int i = LayoutUtil::MinorToMajor(shape_).size() - 1; i >= 0; --i) {
     const int64 dimension = LayoutUtil::Minor(shape_.layout(), i);
-    const int bounds_index = num_dims - 1 - i;
-    if (bounds_index < dynamic_loop_bounds_->size()) {
+    const int64 bounds_index = num_dims - 1 - i;
+    const int64 dynamic_loop_bounds_size = dynamic_loop_bounds_->size();
+    if (bounds_index < dynamic_loop_bounds_size) {
       // Emit dynamic loop bounds for this dimension. Dynamic loop bounds
       // are read from ir function dynamic loop bounds argument.
       llvm::Value* start_index = (*dynamic_loop_bounds_)[bounds_index].first;
