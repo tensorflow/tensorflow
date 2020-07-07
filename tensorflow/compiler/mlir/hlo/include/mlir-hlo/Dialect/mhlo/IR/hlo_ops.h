@@ -37,12 +37,12 @@ class OpBuilder;
 
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.h.inc"
 
-namespace xla_hlo {
+namespace mhlo {
 
 class XlaHloDialect : public Dialect {
  public:
   explicit XlaHloDialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "xla_hlo"; }
+  static StringRef getDialectNamespace() { return "mhlo"; }
 
   // Registered hook to materialize a constant operation from a given attribute
   // value with the desired resultant type.
@@ -82,7 +82,7 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
 //  %1 = index_cast %0 : index to i64
 //  %2 = dim %arg0, 1 : memref<?x?xf32>
 //  %3 = index_cast %2 : index to i64
-//  %4 = "xla_hlo.scalars_to_dimension_tensor"(%1, %3)
+//  %4 = "mhlo.scalars_to_dimension_tensor"(%1, %3)
 //    : (i64, i64) -> tensor<2xi64>
 //
 // and returns %4 as the shape value.
@@ -93,7 +93,7 @@ LogicalResult deriveShapeFromFirstOperand(
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h.inc"
 
-}  // end namespace xla_hlo
+}  // end namespace mhlo
 }  // end namespace mlir
 
 #endif  //  TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H_

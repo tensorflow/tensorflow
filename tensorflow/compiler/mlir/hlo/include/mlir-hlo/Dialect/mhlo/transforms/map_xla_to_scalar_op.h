@@ -464,7 +464,7 @@ struct XlaOpToStdScalarOp {
   template <typename XlaOpTy, typename LhloOpTy = XlaOpTy,
             typename = std::enable_if_t<
                 !std::is_same<LhloOpTy, xla_lhlo::CompareOp>::value &&
-                std::is_same<typename xla_hlo::HloToLhloOp<LhloOpTy>,
+                std::is_same<typename mhlo::HloToLhloOp<LhloOpTy>,
                              std::false_type>::value>>
   static Value map(XlaOpTy op, ArrayRef<Type> result_types,
                    ArrayRef<Value> args, OpBuilder* b, unsigned i = 0) {
@@ -472,8 +472,8 @@ struct XlaOpToStdScalarOp {
                                                   args, b);
   }
 
-  // Implementation for HLO ops except xla_hlo::CompareOp.
-  template <typename XlaOpTy, typename LhloOpTy = xla_hlo::HloToLhloOp<XlaOpTy>,
+  // Implementation for HLO ops except mhlo::CompareOp.
+  template <typename XlaOpTy, typename LhloOpTy = mhlo::HloToLhloOp<XlaOpTy>,
             typename = std::enable_if_t<
                 !std::is_same<LhloOpTy, xla_lhlo::CompareOp>::value &&
                 !std::is_same<LhloOpTy, std::false_type>::value>>
@@ -493,10 +493,11 @@ struct XlaOpToStdScalarOp {
         op.getLoc(), comparison_direction, result_types, args, b);
   }
 
-  // Implementation for xla_hlo::CompareOp.
-  template <typename HloOpTy, typename = std::enable_if_t<std::is_same<
-                                  HloOpTy, xla_hlo::CompareOp>::value>>
-  static Value map(xla_hlo::CompareOp op, ArrayRef<Type> result_types,
+  // Implementation for mhlo::CompareOp.
+  template <typename HloOpTy,
+            typename =
+                std::enable_if_t<std::is_same<HloOpTy, mhlo::CompareOp>::value>>
+  static Value map(mhlo::CompareOp op, ArrayRef<Type> result_types,
                    ArrayRef<Value> args, OpBuilder* b) {
     auto comparison_direction = op.comparison_direction();
     return impl::MapXlaCompareOpToStdScalarOp<xla_lhlo::CompareOp>(

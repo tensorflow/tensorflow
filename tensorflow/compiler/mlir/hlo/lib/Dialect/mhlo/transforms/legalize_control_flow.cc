@@ -35,7 +35,7 @@ limitations under the License.
 using mlir::PassRegistration;
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 namespace {
 struct LegalizeControlFlow
     : public mlir::PassWrapper<LegalizeControlFlow, FunctionPass> {
@@ -51,7 +51,7 @@ LogicalResult ReplaceTerminators(Region* region, Block* target_block,
                                  OpBuilder* builder) {
   for (auto& old_block : region->getBlocks()) {
     Block* block = mapper.lookup(&old_block);
-    auto return_op = dyn_cast<xla_hlo::ReturnOp>(block->getTerminator());
+    auto return_op = dyn_cast<mhlo::ReturnOp>(block->getTerminator());
     if (!return_op) continue;
     builder->setInsertionPointToEnd(block);
     builder->create<mlir::BranchOp>(loc, target_block, return_op.getOperands());
@@ -61,7 +61,7 @@ LogicalResult ReplaceTerminators(Region* region, Block* target_block,
   return success();
 }
 
-LogicalResult LowerIfOp(mlir::xla_hlo::IfOp if_op) {
+LogicalResult LowerIfOp(mlir::mhlo::IfOp if_op) {
   Operation* op_inst = if_op.getOperation();
   mlir::OpBuilder builder(if_op);
   auto orig_block = op_inst->getBlock();
@@ -106,13 +106,13 @@ LogicalResult LowerIfOp(mlir::xla_hlo::IfOp if_op) {
   return success();
 }
 
-LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
+LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   // Converts an XLA while loop into control flow. This generates a set of MLIR
   // blocks and branches, along with inlining the regions provided by the XLA
   // while loop. The structure should be similar to below:
   //
   //   <prior operations>
-  //   %0 = "xla_hlo.while"(%arg0) {^cond(...){...}, ^body(...){...}}
+  //   %0 = "mhlo.while"(%arg0) {^cond(...){...}, ^body(...){...}}
   //   <post operations>
   auto* op_inst = while_op.getOperation();
   mlir::OpBuilder builder(while_op);
@@ -147,7 +147,7 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   // extract_element and conditional branch. This changes the block below:
   //   ^cond(%0):
   //     <inlined conditional region>
-  //    "xla_hlo".return(%1)
+  //    "mhlo".return(%1)
   //
   //  Into:
   //   ^cond(%0):
@@ -156,14 +156,14 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   //     cond_br %2, ^body(%0), ^tail(%0) // Branch.
   builder.setInsertionPointToStart(cond_block);
 
-  // Replace the xla_hlo::ReturnOp with a branch back to the condition block.
-  // This is required as the xla_hlo::ReturnOp is used to mark the end of a
+  // Replace the mhlo::ReturnOp with a branch back to the condition block.
+  // This is required as the mhlo::ReturnOp is used to mark the end of a
   // block for regions nested inside of a operations (MLIR ReturnOp cannot be
   // nested within an non-function region).
   for (auto& block : while_op.cond()) {
     auto new_block = mapper.lookup(&block);
 
-    auto return_op = dyn_cast<xla_hlo::ReturnOp>(new_block->getTerminator());
+    auto return_op = dyn_cast<mhlo::ReturnOp>(new_block->getTerminator());
     if (!return_op) continue;
     builder.setInsertionPointToEnd(new_block);
 
@@ -183,7 +183,7 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   // conditional block. This changes the block below:
   //   ^body(%0):
   //     <inlined body block>
-  //    "xla_hlo".return(%1)
+  //    "mhlo".return(%1)
   //
   //  Into:
   //   ^body(%0):
@@ -191,8 +191,7 @@ LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   //     br ^cond(%0) // Branch.
   for (auto& block : while_op.body()) {
     auto new_block = mapper.lookup(&block);
-    auto return_op =
-        dyn_cast<mlir::xla_hlo::ReturnOp>(new_block->getTerminator());
+    auto return_op = dyn_cast<mlir::mhlo::ReturnOp>(new_block->getTerminator());
     if (!return_op) continue;
     builder.setInsertionPointToEnd(new_block);
     builder.create<mlir::BranchOp>(loc, cond_block, return_op.getOperands());
@@ -224,14 +223,14 @@ void LegalizeControlFlow::runOnFunction() {
   }
 }
 }  // namespace
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir
 
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
-mlir::xla_hlo::createLegalizeControlFlowPass() {
+mlir::mhlo::createLegalizeControlFlowPass() {
   return std::make_unique<LegalizeControlFlow>();
 }
 
-static PassRegistration<mlir::xla_hlo::LegalizeControlFlow> legalize_cf_pass(
+static PassRegistration<mlir::mhlo::LegalizeControlFlow> legalize_cf_pass(
     "xla-legalize-control-flow",
     "Legalize from XLA control flow to MLIR control flow");

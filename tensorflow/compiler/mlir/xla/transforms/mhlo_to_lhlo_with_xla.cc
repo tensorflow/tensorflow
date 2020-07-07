@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/xla/transforms/xla_hlo_to_lhlo_with_xla.h"
+#include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 
 #include <memory>
 #include <tuple>

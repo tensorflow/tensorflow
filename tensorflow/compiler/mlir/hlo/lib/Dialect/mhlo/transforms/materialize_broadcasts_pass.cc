@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 
 namespace {
 
@@ -33,7 +33,7 @@ struct TestMaterializeBroadcastsPass
     ConversionTarget conversionTarget(getContext());
     OwningRewritePatternList conversionPatterns;
 
-    // Consider the xla_hlo dialect legal for tests.
+    // Consider the mhlo dialect legal for tests.
     conversionTarget.addLegalDialect<XlaHloDialect>();
     // The conversion uses helpers from the Standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
@@ -50,9 +50,9 @@ struct TestMaterializeBroadcastsPass
 
 }  // namespace
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::xla_hlo::TestMaterializeBroadcastsPass>
-    pass("test-xla-materialize-broadcasts",
-         "Test pass for materializing 'broadcast_dimensions' attributes");
+static mlir::PassRegistration<mlir::mhlo::TestMaterializeBroadcastsPass> pass(
+    "test-xla-materialize-broadcasts",
+    "Test pass for materializing 'broadcast_dimensions' attributes");

@@ -60,7 +60,7 @@ limitations under the License.
 
 namespace mlir {
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.cc.inc"
-namespace xla_hlo {
+namespace mhlo {
 
 Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
                                               Attribute value, Type type,
@@ -68,8 +68,7 @@ Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
   // HLO dialect constants only support ElementsAttr unlike standard dialect
   // constant which supports all attributes.
   if (value.isa<ElementsAttr>())
-    return builder.create<xla_hlo::ConstOp>(loc, type,
-                                            value.cast<ElementsAttr>());
+    return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
   return nullptr;
 }
 
@@ -167,7 +166,7 @@ void ConstOp::build(OpBuilder& builder, OperationState& result,
   }
 
   // TODO: support other XLA specific types.
-  assert(type && "unsupported attribute type for building xla_hlo.constant");
+  assert(type && "unsupported attribute type for building mhlo.constant");
   result.types.push_back(type);
   result.addAttribute("value", value);
 }
@@ -387,7 +386,7 @@ static LogicalResult Verify(GetTupleElementOp op) {
 
 OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> operands) {
   if (auto tupleOp =
-          dyn_cast_or_null<xla_hlo::TupleOp>(getOperand().getDefiningOp())) {
+          dyn_cast_or_null<mhlo::TupleOp>(getOperand().getDefiningOp())) {
     return tupleOp.getOperand(index().getLimitedValue());
   }
 
@@ -693,10 +692,8 @@ void ComplexOp::build(OpBuilder& builder, OperationState& state, Value lhs,
 }
 
 OpFoldResult ComplexOp::fold(ArrayRef<Attribute> operands) {
-  auto real_op =
-      dyn_cast_or_null<xla_hlo::RealOp>(getOperand(0).getDefiningOp());
-  auto imag_op =
-      dyn_cast_or_null<xla_hlo::ImagOp>(getOperand(1).getDefiningOp());
+  auto real_op = dyn_cast_or_null<mhlo::RealOp>(getOperand(0).getDefiningOp());
+  auto imag_op = dyn_cast_or_null<mhlo::ImagOp>(getOperand(1).getDefiningOp());
   if (real_op && imag_op && real_op.getOperand() == imag_op.getOperand()) {
     return real_op.getOperand();
   }
@@ -727,7 +724,7 @@ void ImagOp::build(OpBuilder& builder, OperationState& state, Value val) {
 
 OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
   if (auto complex_op =
-          dyn_cast_or_null<xla_hlo::ComplexOp>(getOperand().getDefiningOp())) {
+          dyn_cast_or_null<mhlo::ComplexOp>(getOperand().getDefiningOp())) {
     return complex_op.getOperand(1);
   }
 
@@ -740,7 +737,7 @@ void RealOp::build(OpBuilder& builder, OperationState& state, Value val) {
 
 OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
   if (auto complex_op =
-          dyn_cast_or_null<xla_hlo::ComplexOp>(getOperand().getDefiningOp())) {
+          dyn_cast_or_null<mhlo::ComplexOp>(getOperand().getDefiningOp())) {
     return complex_op.getOperand(0);
   }
 
@@ -1148,7 +1145,7 @@ static LogicalResult Verify(MapOp op) {
 // RecvOp
 //===----------------------------------------------------------------------===//
 
-// Checks that the result type is of the form `tuple<any_type, xla_hlo::token>`
+// Checks that the result type is of the form `tuple<any_type, mhlo::token>`
 static LogicalResult Verify(RecvOp op) {
   auto result_ty = op.getResult().getType().cast<TupleType>();
   auto subtypes = result_ty.getTypes();
@@ -2020,7 +2017,7 @@ void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
-// xla_hlo Dialect Interfaces
+// mhlo Dialect Interfaces
 //===----------------------------------------------------------------------===//
 
 namespace {
@@ -2032,7 +2029,7 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
                        BlockAndValueMapping& valueMapping) const final {
     return true;
   }
-  // Operations in xla_hlo dialect are always legal to inline since they are
+  // Operations in mhlo dialect are always legal to inline since they are
   // pure.
   bool isLegalToInline(Operation*, Region*, BlockAndValueMapping&) const final {
     return true;
@@ -2041,7 +2038,7 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
 }  // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
-// xla_hlo Dialect Constructor
+// mhlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
 XlaHloDialect::XlaHloDialect(MLIRContext* context)
@@ -2061,8 +2058,7 @@ Type XlaHloDialect::parseType(DialectAsmParser& parser) const {
   if (parser.parseKeyword(&data_type)) return Type();
 
   if (data_type == "token") return TokenType::get(getContext());
-  parser.emitError(parser.getNameLoc())
-      << "unknown xla_hlo type: " << data_type;
+  parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << data_type;
   return nullptr;
 }
 
@@ -2071,7 +2067,7 @@ void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
     os << "token";
     return;
   }
-  os << "<unknown xla_hlo type>";
+  os << "<unknown mhlo type>";
 }
 
 //===----------------------------------------------------------------------===//
@@ -2106,5 +2102,5 @@ LogicalResult deriveShapeFromFirstOperand(
   return success();
 }
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir

@@ -69,7 +69,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 namespace {
 
 template <typename T, size_t N>
@@ -544,5 +544,5 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
   return std::make_unique<LegalizeTF>(device_type);
 }
 
-}  // end namespace xla_hlo
+}  // end namespace mhlo
 }  // end namespace mlir

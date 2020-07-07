@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 
 template <typename HloOpTy>
 struct HloToLhloOpImpl {
@@ -31,10 +31,10 @@ struct HloToLhloOpImpl {
 template <typename HloOpTy>
 using HloToLhloOp = typename HloToLhloOpImpl<HloOpTy>::Type;
 
-#define MAP_HLO_TO_LHLO(OpName)             \
-  template <>                               \
-  struct HloToLhloOpImpl<xla_hlo::OpName> { \
-    using Type = xla_lhlo::OpName;          \
+#define MAP_HLO_TO_LHLO(OpName)          \
+  template <>                            \
+  struct HloToLhloOpImpl<mhlo::OpName> { \
+    using Type = xla_lhlo::OpName;       \
   }
 
 MAP_HLO_TO_LHLO(AbsOp);
@@ -74,7 +74,7 @@ MAP_HLO_TO_LHLO(TanhOp);
 
 #undef MAP_HLO_TO_LHLO
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_HLO_TO_LHLO_OP_H_

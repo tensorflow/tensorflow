@@ -396,9 +396,9 @@ func @fusion_memref(%input1: memref<10xf32>, %input2: memref<10xf32>, %input3: m
   "xla_lhlo.fusion"() ( {
     %0 = tensor_load %input1 : memref<10xf32>
     %1 = tensor_load %input2 : memref<10xf32>
-    %2 = "xla_hlo.add"(%0, %1) {name = "add"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+    %2 = "mhlo.add"(%0, %1) {name = "add"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
     %3 = tensor_load %input3 : memref<10xf32>
-    %4 = "xla_hlo.multiply"(%2, %3) {name = "multiply"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+    %4 = "mhlo.multiply"(%2, %3) {name = "multiply"} : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
     tensor_store %4, %out : memref<10xf32>
     "xla_lhlo.terminator"() : () -> ()
   } ) : () -> ()
@@ -803,15 +803,15 @@ func @shift_right_logical_memrefs(%arg0: memref<1xf32>, %arg1: memref<1xf32>, %a
 func @all_reduce_memrefs(%arg0: memref<10xf32>, %arg_out: memref<10xf32>) -> () {
   "xla_lhlo.all_reduce"(%arg0, %arg_out) ({
     ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
-    %max = xla_hlo.maximum %lhs, %rhs : tensor<f32>
-    "xla_hlo.return"(%max) : (tensor<f32>) -> ()
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
   })
   { replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64> }: (memref<10xf32>, memref<10xf32>) -> ()
 
   "xla_lhlo.all_reduce"(%arg0, %arg_out) ({
     ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
-    %max = xla_hlo.maximum %lhs, %rhs : tensor<f32>
-    "xla_hlo.return"(%max) : (tensor<f32>) -> ()
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
   })
   {
     replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
@@ -958,8 +958,8 @@ func @scatter_memrefs(%input: memref<200x100x300xf32>, %indices: memref<10x2xi32
                       %updates: memref<10x300xf32>, %arg_out: memref<200x100x300xf32>) -> () {
   "xla_lhlo.scatter" (%input, %indices, %updates, %arg_out) ({
   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>): // no predecessors
-    %add = xla_hlo.add %lhs, %rhs : tensor<f32>
-    "xla_hlo.return"(%add) : (tensor<f32>) -> ()
+    %add = mhlo.add %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%add) : (tensor<f32>) -> ()
   }) {
     scatter_dimension_numbers = {
       update_window_dims = dense<[1]> : tensor<1xi64>,
@@ -979,8 +979,8 @@ func @scatter_memrefs(%input: memref<200x100x300xf32>, %indices: memref<10x2xi32
 func @map_memrefs(%arg0: memref<20xf32>, %arg1: memref<20xf32>, %arg_out: memref<20xf32>) -> () {
   "xla_lhlo.map"(%arg0, %arg1, %arg_out) ({
     ^bb0(%a: tensor<f32>, %b: tensor<f32>):
-    %c = xla_hlo.add %a, %b : tensor<f32>
-    "xla_hlo.return"(%c) : (tensor<f32>) -> ()
+    %c = mhlo.add %a, %b : tensor<f32>
+    "mhlo.return"(%c) : (tensor<f32>) -> ()
   }) {dimensions = dense<0> : tensor<1xi64>} : (memref<20xf32>, memref<20xf32>, memref<20xf32>) -> ()
   return
 }
@@ -991,8 +991,8 @@ func @map_memrefs(%arg0: memref<20xf32>, %arg1: memref<20xf32>, %arg_out: memref
   // expected-error@+1{{requires the same shape for all operands}}
   "xla_lhlo.map"(%arg0, %arg1, %arg_out) ({
     ^bb0(%a: tensor<f32>, %b: tensor<f32>):
-    %c = xla_hlo.add %a, %b : tensor<f32>
-    "xla_hlo.return"(%c) : (tensor<f32>) -> ()
+    %c = mhlo.add %a, %b : tensor<f32>
+    "mhlo.return"(%c) : (tensor<f32>) -> ()
   }) {dimensions = dense<0> : tensor<1xi64>} : (memref<20xf32>, memref<20xf32>, memref<10xf32>) -> ()
   return
 }
@@ -1012,8 +1012,8 @@ func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
   "xla_lhlo.sort"(%arg0, %arg1, %out0, %out1) ( {
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
-    %7 = "xla_hlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    "xla_hlo.return"(%7) : (tensor<i1>) -> ()
+    %7 = "mhlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   return
 }
@@ -1025,8 +1025,8 @@ func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
   "xla_lhlo.sort"(%arg0, %arg1, %out0, %out1) ( {
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
-    %7 = "xla_hlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    "xla_hlo.return"(%7) : (tensor<i1>) -> ()
+    %7 = "mhlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64} : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   return
 }
@@ -1038,8 +1038,8 @@ func @sort_memrefs(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf16>,
                    %out0: memref<16x16xf32>, %out1: memref<16x16xf16>) -> () {
   "xla_lhlo.sort"(%arg0, %arg1, %out0, %out1) ( {
   ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f16>, %d: tensor<f16>):
-    %7 = "xla_hlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    "xla_hlo.return"(%7) : (tensor<i1>) -> ()
+    %7 = "mhlo.compare"(%a, %b) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) : (memref<16x16xf32>, memref<16x16xf16>, memref<16x16xf32>, memref<16x16xf16>) -> ()
   return
 }

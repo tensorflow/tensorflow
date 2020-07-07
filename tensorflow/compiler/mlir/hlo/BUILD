@@ -482,8 +482,8 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "xla_hlo_fusion",
-    srcs = ["lib/Dialect/mhlo/transforms/xla_hlo_fusion.cc"],
+    name = "mhlo_fusion",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_fusion.cc"],
     deps = [
         ":cycle_detector",
         ":hlo",
@@ -696,7 +696,7 @@ cc_library(
         ":lhlo_legalize_to_affine",
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
-        ":xla_hlo_fusion",
+        ":mhlo_fusion",
         ":xla_legalize_control_flow",
         ":xla_legalize_tanh_to_approximation",
         ":xla_legalize_to_linalg",

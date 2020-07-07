@@ -29,8 +29,8 @@ include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
 include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
 
 def HLO_Dialect : Dialect {
-  let name = "xla_hlo";
-  let cppNamespace = "xla_hlo";
+  let name = "mhlo";
+  let cppNamespace = "mhlo";
 }
 
 class HLO_Op<string mnemonic, list<OpTrait> traits> :

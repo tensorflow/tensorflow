@@ -95,7 +95,7 @@ static void RegisterDialects() {
     mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
     mlir::registerDialect<mlir::TF::TensorFlowDialect>();
     mlir::registerDialect<mlir::StandardOpsDialect>();
-    mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
+    mlir::registerDialect<mlir::mhlo::XlaHloDialect>();
     mlir::registerDialect<mlir::shape::ShapeDialect>();
     return true;
   }();

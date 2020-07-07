@@ -28,14 +28,14 @@ namespace mlir {
 namespace {
 #include "tensorflow/compiler/mlir/hlo/lib/Dialect/mhlo/transforms/generated_legalize_to_standard.inc"
 }  // end anonymous namespace
-namespace xla_hlo {
+namespace mhlo {
 namespace {
 
-class CompareIConvert : public OpRewritePattern<xla_hlo::CompareOp> {
+class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(xla_hlo::CompareOp op,
+  LogicalResult matchAndRewrite(mhlo::CompareOp op,
                                 PatternRewriter &rewriter) const override {
     auto lhs = op.lhs();
     auto rhs = op.rhs();
@@ -68,11 +68,11 @@ class CompareIConvert : public OpRewritePattern<xla_hlo::CompareOp> {
   }
 };
 
-class CompareFConvert : public OpRewritePattern<xla_hlo::CompareOp> {
+class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(xla_hlo::CompareOp op,
+  LogicalResult matchAndRewrite(mhlo::CompareOp op,
                                 PatternRewriter &rewriter) const override {
     auto lhs = op.lhs();
     auto rhs = op.rhs();
@@ -109,11 +109,11 @@ class CompareFConvert : public OpRewritePattern<xla_hlo::CompareOp> {
 // convert the integer constant to iota result type. For complex types, the real
 // part is replaced with the generated constant and the imaginary part is
 // replaced with zero tensor.
-class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
+class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(xla_hlo::IotaOp op,
+  LogicalResult matchAndRewrite(mhlo::IotaOp op,
                                 PatternRewriter &rewriter) const override {
     auto output_type = op.getType().cast<ShapedType>();
     auto output_size = output_type.getNumElements();
@@ -168,8 +168,7 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
         loc, DenseIntElementsAttr::get(int_shape_type, APInt(bitwidth, 0)));
     auto imag_zeroes =
         rewriter.create<ConvertOp>(loc, int_or_float_shape_ty, zeroes);
-    rewriter.replaceOpWithNewOp<xla_hlo::ComplexOp>(op, iota_const,
-                                                    imag_zeroes);
+    rewriter.replaceOpWithNewOp<mhlo::ComplexOp>(op, iota_const, imag_zeroes);
     return success();
   }
 };
@@ -197,12 +196,12 @@ void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
 /// Perform the lowering to standard dialect.
 void LegalizeToStandard::runOnFunction() {
   OwningRewritePatternList patterns;
-  mlir::xla_hlo::PopulateXlaToStdPatterns(&patterns, &getContext());
+  mlir::mhlo::PopulateXlaToStdPatterns(&patterns, &getContext());
   applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
 
 static PassRegistration<LegalizeToStandard> legalize_pass(
     "xla-legalize-to-std", "Legalize from XLA dialect to standard dialect");
 
-}  // end namespace xla_hlo
+}  // end namespace mhlo
 }  // end namespace mlir

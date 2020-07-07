@@ -10,7 +10,7 @@ func @float_add(%lhs: tensor<2x2xf32>,
   // CHECK-SAME: %[[ARG1:[a-zA-Z0-9_]*]]: f32
   // CHECK: %[[RESULT:[a-zA-Z0-9_]*]] = addf %[[ARG0]], %[[ARG1]]
   // CHECK: linalg.yield %[[RESULT]]
-  %0 = "xla_hlo.add"(%lhs, %rhs) : (tensor<2x2xf32>,
+  %0 = "mhlo.add"(%lhs, %rhs) : (tensor<2x2xf32>,
                                     tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -22,7 +22,7 @@ func @integer_add(%lhs: tensor<2x2xi32>,
                   %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
   // CHECK: linalg.generic
   // CHECK: addi
-  %0 = "xla_hlo.add"(%lhs, %rhs) : (tensor<2x2xi32>,
+  %0 = "mhlo.add"(%lhs, %rhs) : (tensor<2x2xi32>,
                                     tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -34,7 +34,7 @@ func @float_mul(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: mulf
-  %0 = "xla_hlo.multiply"(%lhs, %rhs) : (tensor<2x2xf32>,
+  %0 = "mhlo.multiply"(%lhs, %rhs) : (tensor<2x2xf32>,
                                     tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -46,7 +46,7 @@ func @integer_mul(%lhs: tensor<2x2xi32>,
                   %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
   // CHECK: linalg.generic
   // CHECK: muli
-  %0 = "xla_hlo.multiply"(%lhs, %rhs) : (tensor<2x2xi32>,
+  %0 = "mhlo.multiply"(%lhs, %rhs) : (tensor<2x2xi32>,
                                     tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -58,7 +58,7 @@ func @float_remainder(%lhs: tensor<2x2xf32>,
                       %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: remf
-  %0 = "xla_hlo.remainder"(%lhs, %rhs) : (tensor<2x2xf32>,
+  %0 = "mhlo.remainder"(%lhs, %rhs) : (tensor<2x2xf32>,
                                     tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -70,7 +70,7 @@ func @integer_remainder(%lhs: tensor<2x2xi32>,
                         %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
   // CHECK: linalg.generic
   // CHECK: remi_signed
-  %0 = "xla_hlo.remainder"(%lhs, %rhs) : (tensor<2x2xi32>,
+  %0 = "mhlo.remainder"(%lhs, %rhs) : (tensor<2x2xi32>,
                                           tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -79,7 +79,7 @@ func @integer_remainder(%lhs: tensor<2x2xi32>,
 
 // CHECK-LABEL: func @float_rsqrt
 func @float_rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %tensor_result = "xla_hlo.rsqrt"(%operand)
+  %tensor_result = "mhlo.rsqrt"(%operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: linalg.generic
   // CHECK: rsqrt
@@ -93,7 +93,7 @@ func @float_sub(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: subf
-  %0 = "xla_hlo.subtract"(%lhs, %rhs) : (tensor<2x2xf32>,
+  %0 = "mhlo.subtract"(%lhs, %rhs) : (tensor<2x2xf32>,
                                     tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -105,7 +105,7 @@ func @integer_sub(%lhs: tensor<2x2xi32>,
                   %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
   // CHECK: linalg.generic
   // CHECK: subi
-  %0 = "xla_hlo.subtract"(%lhs, %rhs) : (tensor<2x2xi32>,
+  %0 = "mhlo.subtract"(%lhs, %rhs) : (tensor<2x2xi32>,
                                     tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -116,7 +116,7 @@ func @integer_sub(%lhs: tensor<2x2xi32>,
 func @float_abs(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: absf
-  %0 = "xla_hlo.abs"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "mhlo.abs"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -126,7 +126,7 @@ func @float_abs(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 func @float_exp(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: exp
-  %0 = "xla_hlo.exponential"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "mhlo.exponential"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -136,7 +136,7 @@ func @float_exp(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 func @float_log(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: log
-  %0 = "xla_hlo.log"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "mhlo.log"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -146,7 +146,7 @@ func @float_log(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 func @float_ceil(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: ceilf
-  %0 = "xla_hlo.ceil"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "mhlo.ceil"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -156,7 +156,7 @@ func @float_ceil(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 func @float_neg(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: negf
-  %0 = "xla_hlo.negate"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "mhlo.negate"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -166,7 +166,7 @@ func @float_neg(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 func @float_tanh(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: tanh
-  %0 = "xla_hlo.tanh"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "mhlo.tanh"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -177,7 +177,7 @@ func @integer_and(%lhs: tensor<2x2xi32>,
                   %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
   // CHECK: linalg.generic
   // CHECK: and
-  %0 = "xla_hlo.and"(%lhs, %rhs) : (tensor<2x2xi32>,
+  %0 = "mhlo.and"(%lhs, %rhs) : (tensor<2x2xi32>,
                                     tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -187,7 +187,7 @@ func @integer_and(%lhs: tensor<2x2xi32>,
 // CHECK-LABEL: func @float_cmp
 func @float_cmp(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> (tensor<2x2xi1>) {
-  %0 = "xla_hlo.compare"(%lhs, %rhs) {comparison_direction = "EQ"}
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = "EQ"}
           : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
   return %0 : tensor<2x2xi1>
 }
@@ -201,7 +201,7 @@ func @float_cmp(%lhs: tensor<2x2xf32>,
 // CHECK-LABEL: func @int_cmp
 func @int_cmp(%lhs: tensor<2x2xi32>,
               %rhs: tensor<2x2xi32>) -> tensor<2x2xi1> {
-  %0 = "xla_hlo.compare"(%lhs, %rhs) {comparison_direction = "LT"}
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = "LT"}
           : (tensor<2x2xi32>, tensor<2x2xi32>) -> (tensor<2x2xi1>)
   return %0 : tensor<2x2xi1>
 }
@@ -216,7 +216,7 @@ func @int_cmp(%lhs: tensor<2x2xi32>,
 func @float_cos(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: cos
-  %0 = "xla_hlo.cosine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "mhlo.cosine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -226,7 +226,7 @@ func @float_cos(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 func @float_sin(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: sin
-  %0 = "xla_hlo.sine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "mhlo.sine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -235,7 +235,7 @@ func @float_sin(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK-LABEL: func @copy
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func @copy(%input: tensor<2x4x8xf32>) -> tensor<2x4x8xf32> {
-  %0 = "xla_hlo.copy"(%input) : (tensor<2x4x8xf32>) -> (tensor<2x4x8xf32>)
+  %0 = "mhlo.copy"(%input) : (tensor<2x4x8xf32>) -> (tensor<2x4x8xf32>)
   return %0 : tensor<2x4x8xf32>
 }
 // CHECK: return [[ARG]] : tensor<2x4x8xf32>
@@ -245,7 +245,7 @@ func @copy(%input: tensor<2x4x8xf32>) -> tensor<2x4x8xf32> {
 // CHECK-LABEL: func @select
 func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
              %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %0 = "xla_hlo.select"(%pred, %lhs, %rhs)
+  %0 = "mhlo.select"(%pred, %lhs, %rhs)
          : (tensor<2x2xi1>, tensor<2x2xf32>, tensor<2x2xf32>) -> (tensor<2x2xf32>)
   return %0 : tensor<2x2xf32>
 }
@@ -260,7 +260,7 @@ func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
 // CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK-LABEL: func @broadcast_scalar
 func @broadcast_scalar(%arg: tensor<f32>) -> tensor<4x2x1xf32> {
-  %0 = "xla_hlo.broadcast"(%arg) {broadcast_sizes = dense<[4, 2, 1]> : tensor<3xi64>} : (tensor<f32>) -> tensor<4x2x1xf32>
+  %0 = "mhlo.broadcast"(%arg) {broadcast_sizes = dense<[4, 2, 1]> : tensor<3xi64>} : (tensor<f32>) -> tensor<4x2x1xf32>
   return %0: tensor<4x2x1xf32>
 }
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
@@ -273,7 +273,7 @@ func @broadcast_scalar(%arg: tensor<f32>) -> tensor<4x2x1xf32> {
 // CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)>
 // CHECK-LABEL: func @broadcast
 func @broadcast(%arg: tensor<4x?x16xf32>) -> tensor<4x2x1x4x?x16xf32> {
-  %0 = "xla_hlo.broadcast"(%arg) {broadcast_sizes = dense<[4, 2, 1]> : tensor<3xi64>} : (tensor<4x?x16xf32>) -> tensor<4x2x1x4x?x16xf32>
+  %0 = "mhlo.broadcast"(%arg) {broadcast_sizes = dense<[4, 2, 1]> : tensor<3xi64>} : (tensor<4x?x16xf32>) -> tensor<4x2x1x4x?x16xf32>
   return %0: tensor<4x2x1x4x?x16xf32>
 }
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
@@ -286,7 +286,7 @@ func @broadcast(%arg: tensor<4x?x16xf32>) -> tensor<4x2x1x4x?x16xf32> {
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
 // CHECK-LABEL: func @broadcast_in_dim
 func @broadcast_in_dim(%operand: tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32> {
-  %0 = "xla_hlo.broadcast_in_dim"(%operand)
+  %0 = "mhlo.broadcast_in_dim"(%operand)
          {broadcast_dimensions = dense<[4,0,2]> : tensor<3xi64>}
          : (tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32>
   return %0 : tensor<7x10x6x4x5xf32>
@@ -302,7 +302,7 @@ func @broadcast_in_dim(%operand: tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32> {
 // CHECK-LABEL: func @broadcast_in_dim_with_one_to_one
 func @broadcast_in_dim_with_one_to_one(
          %operand: tensor<1xf32>) -> tensor<1x5xf32> {
-  %0 = "xla_hlo.broadcast_in_dim"(%operand)
+  %0 = "mhlo.broadcast_in_dim"(%operand)
          {broadcast_dimensions = dense<[0]> : tensor<1xi64>}
          : (tensor<1xf32>) -> tensor<1x5xf32>
   return %0 : tensor<1x5xf32>
@@ -317,7 +317,7 @@ func @broadcast_in_dim_with_one_to_one(
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK-LABEL: func @broadcast_scalar
 func @broadcast_scalar(%operand: tensor<f32>) -> tensor<7x10x6xf32> {
-  %0 = "xla_hlo.broadcast_in_dim"(%operand)
+  %0 = "mhlo.broadcast_in_dim"(%operand)
         {broadcast_dimensions = dense<[]> : tensor<0xi64>}
         : (tensor<f32>) -> tensor<7x10x6xf32>
   return %0 : tensor<7x10x6xf32>
@@ -332,7 +332,7 @@ func @broadcast_scalar(%operand: tensor<f32>) -> tensor<7x10x6xf32> {
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 // CHECK-LABEL: func @transpose
 func @transpose(%arg0: tensor<2x3x9x5xi32>) -> tensor<3x2x5x9xi32> {
-  %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>}
+  %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>}
         : (tensor<2x3x9x5xi32>) -> tensor<3x2x5x9xi32>
   return %0 : tensor<3x2x5x9xi32>
 }
@@ -344,7 +344,7 @@ func @transpose(%arg0: tensor<2x3x9x5xi32>) -> tensor<3x2x5x9xi32> {
 // CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2) -> (d2)>
 // CHECK-LABEL: func @reshape_3D_2D
 func @reshape_3D_2D(%arg0: tensor<12x1x42xi32>) -> tensor<12x42xi32> {
-  %0 = "xla_hlo.reshape"(%arg0) : (tensor<12x1x42xi32>) -> tensor<12x42xi32>
+  %0 = "mhlo.reshape"(%arg0) : (tensor<12x1x42xi32>) -> tensor<12x42xi32>
   return %0 : tensor<12x42xi32>
 }
 // CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP1]], #[[RESHAPE_MAP2]]]
@@ -355,7 +355,7 @@ func @reshape_3D_2D(%arg0: tensor<12x1x42xi32>) -> tensor<12x42xi32> {
 // CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d2, d3)>
 // CHECK-LABEL: func @reshape_4D_2D
 func @reshape_4D_2D(%arg0: tensor<12x42x1x1xi32>) -> tensor<12x42xi32> {
-  %0 = "xla_hlo.reshape"(%arg0) : (tensor<12x42x1x1xi32>) -> tensor<12x42xi32>
+  %0 = "mhlo.reshape"(%arg0) : (tensor<12x42x1x1xi32>) -> tensor<12x42xi32>
   return %0 : tensor<12x42xi32>
 }
 // CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP1]], #[[RESHAPE_MAP2]]]
@@ -366,7 +366,7 @@ func @reshape_4D_2D(%arg0: tensor<12x42x1x1xi32>) -> tensor<12x42xi32> {
 // CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d2, d3)>
 // CHECK-LABEL: func @reshape_2D_4D
 func @reshape_2D_4D(%arg0: tensor<12x42xi32>) -> tensor<12x1x42x1xi32> {
-  %0 = "xla_hlo.reshape"(%arg0) : (tensor<12x42xi32>) -> tensor<12x1x42x1xi32>
+  %0 = "mhlo.reshape"(%arg0) : (tensor<12x42xi32>) -> tensor<12x1x42x1xi32>
   return %0 : tensor<12x1x42x1xi32>
 }
 // CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP1]], #[[RESHAPE_MAP2]]]
@@ -375,7 +375,7 @@ func @reshape_2D_4D(%arg0: tensor<12x42xi32>) -> tensor<12x1x42x1xi32> {
 
 // CHECK-LABEL: func @minf
 func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %0 = "xla_hlo.minimum"(%lhs, %rhs)
+  %0 = "mhlo.minimum"(%lhs, %rhs)
           : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -389,7 +389,7 @@ func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // CHECK-LABEL: func @maxi
 func @maxi(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
-  %0 = "xla_hlo.maximum"(%lhs, %rhs)
+  %0 = "mhlo.maximum"(%lhs, %rhs)
           : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -404,7 +404,7 @@ func @maxi(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
 // CHECK-DAG: #[[MAP:.*]] = affine_map<() -> ()>
 // CHECK-LABEL: func @add_scalar
 func @add_scalar(%lhs: tensor<f32>, %rhs: tensor<f32>) -> tensor<f32> {
-  %0 = "xla_hlo.add"(%lhs, %rhs) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %0 = "mhlo.add"(%lhs, %rhs) : (tensor<f32>, tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
 // CHECK: linalg.generic
@@ -417,7 +417,7 @@ func @add_scalar(%lhs: tensor<f32>, %rhs: tensor<f32>) -> tensor<f32> {
 
 func @reshape_collapse_single_dim
   (%arg0: tensor<1x28x28x1xf32>) -> tensor<1x784xf32> {
-  %0 = "xla_hlo.reshape"(%arg0) : (tensor<1x28x28x1xf32>) -> tensor<1x784xf32>
+  %0 = "mhlo.reshape"(%arg0) : (tensor<1x28x28x1xf32>) -> tensor<1x784xf32>
   return %0 : tensor<1x784xf32>
 }
 //   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3) -> (d0)>
@@ -428,7 +428,7 @@ func @reshape_collapse_single_dim
 // -----
 
 func @reshape_collapse(%arg0: tensor<2x2x2x3xf32>) -> tensor<2x4x3xf32> {
-    %0 = "xla_hlo.reshape"(%arg0) : (tensor<2x2x2x3xf32>) -> tensor<2x4x3xf32>
+    %0 = "mhlo.reshape"(%arg0) : (tensor<2x2x2x3xf32>) -> tensor<2x4x3xf32>
     return %0 : tensor<2x4x3xf32>
 }
 //   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3) -> (d0)>
@@ -440,7 +440,7 @@ func @reshape_collapse(%arg0: tensor<2x2x2x3xf32>) -> tensor<2x4x3xf32> {
 // -----
 
 func @reshape_expand(%arg0: tensor<2x8xf32>) -> tensor<2x4x2xf32> {
-    %0 = "xla_hlo.reshape"(%arg0) : (tensor<2x8xf32>) -> tensor<2x4x2xf32>
+    %0 = "mhlo.reshape"(%arg0) : (tensor<2x8xf32>) -> tensor<2x4x2xf32>
     return %0 : tensor<2x4x2xf32>
 }
 //   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1, d2) -> (d0)>
@@ -451,7 +451,7 @@ func @reshape_expand(%arg0: tensor<2x8xf32>) -> tensor<2x4x2xf32> {
 // -----
 
 func @reshape_single_expand(%arg0 : tensor<8xf32>) -> tensor<1x4x2xf32> {
-    %0 = "xla_hlo.reshape"(%arg0) : (tensor<8xf32>) -> tensor<1x4x2xf32>
+    %0 = "mhlo.reshape"(%arg0) : (tensor<8xf32>) -> tensor<1x4x2xf32>
     return %0 : tensor<1x4x2xf32>
 }
 //       CHECK: #[[MAP0:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
@@ -462,7 +462,7 @@ func @reshape_single_expand(%arg0 : tensor<8xf32>) -> tensor<1x4x2xf32> {
 
 func @reshape_multiple_collapse
   (%arg0 : tensor<1x2x2x5x3x2xf32>) -> tensor<1x4x5x6xf32> {
-    %0 = "xla_hlo.reshape"(%arg0) : (tensor<1x2x2x5x3x2xf32>) -> tensor<1x4x5x6xf32>
+    %0 = "mhlo.reshape"(%arg0) : (tensor<1x2x2x5x3x2xf32>) -> tensor<1x4x5x6xf32>
     return %0 : tensor<1x4x5x6xf32>
 }
 //   CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0)>
@@ -476,7 +476,7 @@ func @reshape_multiple_collapse
 
 // CHECK-LABEL: func @convert_i32_to_f32
 func @convert_i32_to_f32(%input: tensor<2x2xi32>) -> tensor<2x2xf32> {
-  %result = "xla_hlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xf32>
+  %result = "mhlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xf32>
   return %result : tensor<2x2xf32>
 }
 // CHECK: linalg.generic
@@ -488,7 +488,7 @@ func @convert_i32_to_f32(%input: tensor<2x2xi32>) -> tensor<2x2xf32> {
 
 // CHECK-LABEL: func @convert_i16_to_i32
 func @convert_i16_to_i32(%input: tensor<2x2xi16>) -> tensor<2x2xi32> {
-  %result = "xla_hlo.convert"(%input) : (tensor<2x2xi16>) -> tensor<2x2xi32>
+  %result = "mhlo.convert"(%input) : (tensor<2x2xi16>) -> tensor<2x2xi32>
   return %result : tensor<2x2xi32>
 }
 // CHECK: linalg.generic
@@ -500,7 +500,7 @@ func @convert_i16_to_i32(%input: tensor<2x2xi16>) -> tensor<2x2xi32> {
 
 // CHECK-LABEL: func @convert_i32_to_i16
 func @convert_i32_to_i16(%input: tensor<2x2xi32>) -> tensor<2x2xi16> {
-  %result = "xla_hlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xi16>
+  %result = "mhlo.convert"(%input) : (tensor<2x2xi32>) -> tensor<2x2xi16>
   return %result : tensor<2x2xi16>
 }
 // CHECK: linalg.generic
@@ -512,7 +512,7 @@ func @convert_i32_to_i16(%input: tensor<2x2xi32>) -> tensor<2x2xi16> {
 
 // CHECK-LABEL: func @convert_f32_to_f64
 func @convert_f32_to_f64(%input: tensor<2x2xf32>) -> tensor<2x2xf64> {
-  %result = "xla_hlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xf64>
+  %result = "mhlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xf64>
   return %result : tensor<2x2xf64>
 }
 // CHECK: linalg.generic
@@ -524,7 +524,7 @@ func @convert_f32_to_f64(%input: tensor<2x2xf32>) -> tensor<2x2xf64> {
 
 // CHECK-LABEL: func @convert_f64_to_f32
 func @convert_f64_to_f32(%input: tensor<2x2xf64>) -> tensor<2x2xf32> {
-  %result = "xla_hlo.convert"(%input) : (tensor<2x2xf64>) -> tensor<2x2xf32>
+  %result = "mhlo.convert"(%input) : (tensor<2x2xf64>) -> tensor<2x2xf32>
   return %result : tensor<2x2xf32>
 }
 // CHECK: linalg.generic
@@ -536,7 +536,7 @@ func @convert_f64_to_f32(%input: tensor<2x2xf64>) -> tensor<2x2xf32> {
 
 // CHECK-LABEL: func @convert_f32_to_i32
 func @convert_f32_to_i32(%input: tensor<2x2xf32>) -> tensor<2x2xi32> {
-  %result = "xla_hlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xi32>
+  %result = "mhlo.convert"(%input) : (tensor<2x2xf32>) -> tensor<2x2xi32>
   return %result : tensor<2x2xi32>
 }
 // CHECK: linalg.generic
@@ -550,7 +550,7 @@ func @convert_f32_to_i32(%input: tensor<2x2xf32>) -> tensor<2x2xi32> {
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @reverse
 func @reverse(%input: tensor<2x3xf32>) -> tensor<2x3xf32> {
-  %result = "xla_hlo.reverse"(%input) {
+  %result = "mhlo.reverse"(%input) {
     dimensions = dense<1> : tensor<1xi64>
   } : (tensor<2x3xf32>) -> tensor<2x3xf32>
   return %result : tensor<2x3xf32>
