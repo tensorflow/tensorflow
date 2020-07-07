@@ -1429,6 +1429,18 @@ Status Converter::BuildCudaEngine(
     TF_RETURN_IF_ERROR(profiles->ConfigureBuilder(
         trt_builder_.get(), builder_config.get(), network()));
   }
+
+  string precision_mode_str;
+  TF_RETURN_IF_ERROR(
+      TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
+  string trt_network_name = StrCat(
+      "TF:", TF_VERSION_STRING, ", ", "TRT:", GetLoadedTensorRTVersion(), "-",
+      "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
+      ", ", "Max-Batch-Size:", max_batch_size, ", ",
+      "Max-Workspace-Size:", max_workspace_size_bytes);
+  VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
+  network()->setName(trt_network_name.c_str());
+
   VLOG(1) << "Building TensorRT engine";
   engine->reset(
       trt_builder_->buildEngineWithConfig(*network(), *builder_config));
@@ -1448,19 +1460,6 @@ Status Converter::BuildCudaEngine(
       trt_builder_->setInt8Calibrator(nullptr);
     }
   }
-
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  string precision_mode_str;
-  TF_RETURN_IF_ERROR(
-      TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
-  string trt_network_name = StrCat(
-      "TF:", TF_VERSION_STRING, ", ", "TRT:", GetLoadedTensorRTVersion(), "-",
-      "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
-      ", ", "Max-Batch-Size:", max_batch_size, ", ",
-      "Max-Workspace-Size:", max_workspace_size_bytes);
-  VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
-  network()->setName(trt_network_name.c_str());
-#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 
   VLOG(1) << "Building TensorRT engine";
   engine->reset(trt_builder_->buildCudaEngine(*network()));
