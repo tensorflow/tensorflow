@@ -271,11 +271,15 @@ TfLiteRegistration Register_MEAN() {
           /*version=*/0};
 }
 
-TfLiteRegistration* Register_REDUCE_MAX() {
-  static TfLiteRegistration r = {/*init=*/reduce::InitMax, /*free=*/nullptr,
-                                 reduce::PrepareMax,
-                                 /*invoke=*/reduce::EvalGeneric<reduce::kMax>};
-  return &r;
+TfLiteRegistration Register_REDUCE_MAX() {
+  return {/*init=*/reduce::InitMax,
+          /*free=*/nullptr,
+          /*prepare=*/reduce::PrepareMax,
+          /*invoke=*/reduce::EvalGeneric<reduce::kMax>,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

@@ -110,9 +110,9 @@ void TestReduceOpFloat(const int* input_dims_data, const float* input_data,
 
   constexpr int tensors_size = num_of_inputs + num_of_outputs;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateInt32Tensor(axis_data, axis_dims, "axis_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateInt32Tensor(axis_data, axis_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
 
   TF_LITE_MICRO_EXPECT_EQ(
@@ -148,10 +148,10 @@ void TestReduceOpQuantized(const int* input_dims_data, const float* input_data,
   constexpr int tensors_size = 3;
   TfLiteTensor tensors[] = {
       CreateQuantizedTensor(input_data, input_data_quant, input_dims,
-                            input_scale, input_zero_point, "input_tensor"),
-      CreateInt32Tensor(axis_data, axis_dims, "axis_tensor"),
+                            input_scale, input_zero_point),
+      CreateInt32Tensor(axis_data, axis_dims),
       CreateQuantizedTensor(output_data_quant, output_dims, output_scale,
-                            output_zero_point, "output_tensor"),
+                            output_zero_point),
   };
 
   // Quantize expected output
