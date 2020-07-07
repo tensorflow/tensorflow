@@ -1680,7 +1680,7 @@ bool LiteralBase::IsR1Iota() const {
   auto is_iota_at_idx = [&](const int64 idx) {
     switch (shape().element_type()) {
       case U8:
-        return Get<uint8>({idx}) == idx;
+        return Get<uint8>({idx}) == static_cast<uint8>(idx);
       case U16:
         return Get<uint16>({idx}) == idx;
       case U32:
