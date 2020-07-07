@@ -19,111 +19,97 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import imp
+import inspect
+import sys
 import unittest
 
-from tensorflow.python.autograph import operators
-from tensorflow.python.autograph import utils
-from tensorflow.python.autograph.converters import asserts
-from tensorflow.python.autograph.converters import break_statements
-from tensorflow.python.autograph.converters import call_trees
-from tensorflow.python.autograph.converters import conditional_expressions
-from tensorflow.python.autograph.converters import continue_statements
-from tensorflow.python.autograph.converters import control_flow
-from tensorflow.python.autograph.converters import directives
-from tensorflow.python.autograph.converters import functions
-from tensorflow.python.autograph.converters import lists
-from tensorflow.python.autograph.converters import logical_expressions
-from tensorflow.python.autograph.converters import return_statements
-from tensorflow.python.autograph.converters import slices
-from tensorflow.python.autograph.converters import variables
 from tensorflow.python.autograph.core import config
-from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import function_wrappers
-from tensorflow.python.autograph.core import unsupported_features_checker
-from tensorflow.python.autograph.lang import special_functions
-from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cache
-from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import inspect_utils
-from tensorflow.python.autograph.pyct import qual_names
-from tensorflow.python.autograph.pyct import transpiler
-from tensorflow.python.autograph.pyct.static_analysis import activity
-from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.eager import function
 from tensorflow.python.util import tf_inspect
 
 
-class AutoGraphTranspiler(transpiler.FunctionTranspiler):
-
-  def get_transformed_name(self, node):
-    return 'tf__' + super(AutoGraphTranspiler, self).get_transformed_name(node)
-
-  def initial_analysis(self, node, ctx):
-    graphs = cfg.build(node)
-    node = qual_names.resolve(node)
-    node = activity.resolve(node, ctx, None)
-    node = reaching_definitions.resolve(node, ctx, graphs)
-    anno.dup(
-        node,
-        {
-            anno.Static.DEFINITIONS: anno.Static.ORIG_DEFINITIONS,
-        },
-    )
-    return node
-
-  def transform_ast(self, node, ctx):
-    unsupported_features_checker.verify(node)
-    node = self.initial_analysis(node, ctx)
-
-    node = functions.transform(node, ctx)
-    node = directives.transform(node, ctx)
-    node = break_statements.transform(node, ctx)
-    if ctx.user.options.uses(converter.Feature.ASSERT_STATEMENTS):
-      node = asserts.transform(node, ctx)
-    # Note: sequencing continue canonicalization before for loop one avoids
-    # dealing with the extra loop increment operation that the for
-    # canonicalization creates.
-    node = continue_statements.transform(node, ctx)
-    node = return_statements.transform(node, ctx)
-    if ctx.user.options.uses(converter.Feature.LISTS):
-      node = lists.transform(node, ctx)
-      node = slices.transform(node, ctx)
-    node = call_trees.transform(node, ctx)
-    node = control_flow.transform(node, ctx)
-    node = conditional_expressions.transform(node, ctx)
-    node = logical_expressions.transform(node, ctx)
-    node = variables.transform(node, ctx)
-    return node
-
-
-_TRANSPILER = AutoGraphTranspiler()
 _WHITELIST_CACHE = cache.UnboundInstanceCache()
 
 
-custom_vars = None
+def _is_of_known_loaded_module(f, module_name):
+  mod = sys.modules.get(module_name, None)
+  if mod is None:
+    return False
+  if any(v is not None for v in mod.__dict__.values() if f is v):
+    return True
+  return False
 
 
-# TODO(mdan): Superfluous function, remove.
-# TODO(mdan): Put these extra fields inside __autograph_info__.
-def convert(entity, program_ctx):
-  """Applies AutoGraph to entity."""
+def _is_known_loaded_type(f, module_name, entity_name):
+  """Tests whether the function or method is an instance of a known type."""
+  if (module_name not in sys.modules or
+      not hasattr(sys.modules[module_name], entity_name)):
+    return False
+  type_entity = getattr(sys.modules[module_name], entity_name)
+  if isinstance(f, type_entity):
+    # The method if of this type. Example:
+    #
+    # o = ClassType()
+    # function(o.method)()
+    return True
+  # Note: inspect is required here, to avoid unpacking tf.function decorators.
+  if inspect.ismethod(f):
+    # The the unbound method if of this type. Example:
+    #
+    # class ClassType:
+    #   @function
+    #   def method(self):
+    #     ...
+    # o = ClassType()
+    # o.method()
+    if isinstance(f.__func__, type_entity):
+      return True
+  return False
 
-  if not hasattr(entity, '__code__'):
-    raise ValueError('Cannot apply autograph to a function that doesn\'t '
-                     'expose a __code__ object. If this is a @tf.function,'
-                     ' try passing f.python_function instead.')
 
-  create_custom_vars(program_ctx)
-  transformed, module, source_map = _TRANSPILER.transform_function(
-      entity, program_ctx.options, program_ctx, custom_vars)
+def is_unsupported(o):
+  """Checks whether an entity is supported by AutoGraph at all."""
 
-  assert not hasattr(transformed, 'ag_module')
-  assert not hasattr(transformed, 'ag_source_map')
-  transformed.ag_module = module
-  transformed.ag_source_map = source_map
-  return transformed
+  # TODO(b/122265385): Remove this bypass.
+  if (_is_known_loaded_type(o, 'wrapt', 'FunctionWrapper') or
+      _is_known_loaded_type(o, 'wrapt', 'BoundFunctionWrapper')):
+    logging.warn(
+        '{} appears to be decorated by wrapt, which is not yet supported'
+        ' by AutoGraph. The function will run as-is.'
+        ' You may still apply AutoGraph before the wrapt decorator.'.format(o))
+    logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', o)
+    return True
+
+  if _is_known_loaded_type(o, 'functools', '_lru_cache_wrapper'):
+    logging.log(2, 'Permanently whitelisted: %s: lru_cache', o)
+    return True
+
+  # Constructors are permanently whitelisted.
+  # TODO(mdan): Toggle as experimental feature instead.
+  # TODO(b/124016764): Remove this limitation.
+  if inspect_utils.isconstructor(o):
+    logging.log(2, 'Permanently whitelisted: %s: constructor', o)
+    return True
+
+  # Other built-in modules are permanently whitelisted.
+  # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
+  if any(
+      _is_of_known_loaded_module(o, m)
+      for m in ('collections', 'pdb', 'copy', 'inspect', 're')):
+    logging.log(2, 'Permanently whitelisted: %s: part of builtin module', o)
+    return True
+
+  # Custom ops and kernels are also permanently whitelisted.
+  # See tensorflow.framework.load_library.
+  if (hasattr(o, '__module__') and
+      hasattr(o.__module__, '_IS_TENSORFLOW_PLUGIN')):
+    logging.log(2, 'Permanently whitelisted: %s: TensorFlow plugin', o)
+    return True
+
+  return False
 
 
 # TODO(mdan): allow_namedtuple_subclass should be hardcoded to True.
@@ -246,28 +232,3 @@ def cache_whitelisted(entity, options):
   except TypeError:
     # Catch-all for entities that are unhashable or don't allow weakrefs.
     pass
-
-
-# TODO(mdan): Move into core or replace with an actual importable module.
-# Visible for testing.
-def create_custom_vars(program_ctx):
-  """Adds namespace references to the module that exposes the api itself."""
-  global custom_vars
-  if custom_vars is None:
-    # Craft a module that exposes parts of the external API as well as certain
-    # internal modules.
-    ag_internal = imp.new_module('autograph')
-    ag_internal.__dict__.update(program_ctx.autograph_module.__dict__)
-    ag_internal.ConversionOptions = converter.ConversionOptions
-    ag_internal.STD = converter.STANDARD_OPTIONS
-    ag_internal.Feature = converter.Feature
-    ag_internal.utils = utils
-    ag_internal.FunctionScope = function_wrappers.FunctionScope
-    ag_internal.with_function_scope = function_wrappers.with_function_scope
-    # TODO(mdan): Add safeguards against name clashes.
-    # We don't want to create a submodule because we want the operators to be
-    # accessible as ag__.<operator>
-    ag_internal.__dict__.update(special_functions.__dict__)
-    ag_internal.__dict__.update(operators.__dict__)
-
-    custom_vars = {'ag__': ag_internal}
