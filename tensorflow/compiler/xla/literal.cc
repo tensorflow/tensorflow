@@ -1047,7 +1047,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
           }
           // Handle the non-innermost tensors of a 2D+ tensor.
           if (brace == "{") {
-            const in64 accum_indices_size = accum_indices->size();
+            const int64 accum_indices_size = accum_indices->size();
             if (rank > 3 && !accum_indices->empty() &&
                 accum_indices_size < rank) {
               int index = accum_indices->size() - 1;
