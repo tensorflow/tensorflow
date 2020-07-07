@@ -46,14 +46,14 @@ constexpr int kKeywordModelNodeAndRegistrationCount = 15;
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
 //
-// Run this test with '--copt=-DTF_LITE_MICRO_OPTIMIZED_RUNTIME' to get
-// optimized memory runtime values:
+// Run this test with '--copt=-DTF_LITE_STATIC_MEMORY' to get optimized memory
+// runtime values:
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kKeywordModelTotalSize = 18112;
-constexpr int kKeywordModelTailSize = 17440;
+constexpr int kKeywordModelTotalSize = 18192;
+constexpr int kKeywordModelTailSize = 17520;
 #else
-constexpr int kKeywordModelTotalSize = 21072;
-constexpr int kKeywordModelTailSize = 20400;
+constexpr int kKeywordModelTotalSize = 21152;
+constexpr int kKeywordModelTailSize = 20480;
 #endif
 constexpr int kKeywordModelHeadSize = 672;
 constexpr int kKeywordModelTfLiteTensorVariableBufferDataSize = 10240;
