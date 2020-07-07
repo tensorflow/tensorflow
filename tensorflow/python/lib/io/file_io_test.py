@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
+import pathlib
 
 import numpy as np
 
@@ -42,6 +43,10 @@ class FileIoTest(test.TestCase):
     f = file_io.FileIO("", mode="r")
     with self.assertRaises(errors.NotFoundError):
       _ = f.read()
+
+  def testPathLike(self):
+    f = file_io.FileIO(pathlib.Path("temp_file"), mode="w")
+    self.assertEqual(f.name, "temp_file")
 
   def testFileDoesntExist(self):
     file_path = os.path.join(self._base_dir, "temp_file")

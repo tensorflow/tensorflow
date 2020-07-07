@@ -38,7 +38,8 @@ class FileIO(object):
   """FileIO class that exposes methods to read / write to / from files.
 
   The constructor takes the following arguments:
-  name: name of the file
+  name: [path-like object](https://docs.python.org/3/glossary.html#term-path-like-object)
+    giving the pathname of the file to be opened.
   mode: one of `r`, `w`, `a`, `r+`, `w+`, `a+`. Append `b` for bytes mode.
 
   Can be used as an iterator to iterate over lines in the file.
@@ -48,7 +49,7 @@ class FileIO(object):
   """
 
   def __init__(self, name, mode):
-    self.__name = name
+    self.__name = compat.path_to_str(name)
     self.__mode = mode
     self._read_buf = None
     self._writable_file = None
