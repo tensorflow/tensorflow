@@ -266,7 +266,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(graph.get_tensor_by_name("y:0"), ret[0])
     self.assertEqual(graph.get_tensor_by_name("x:0"), ret[1])
 
-    with self.assertRaisesRegexp(ValueError, "not found in graph"):
+    with self.assertRaisesRegex(ValueError, "not found in graph"):
       loader.load_graph(graph, ["foo_graph"], return_elements=["z:0"])
 
 

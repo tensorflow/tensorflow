@@ -260,7 +260,7 @@ class GraphContext : public TracingContext {
   }
 
   Status AddParameter(DataType dtype, TracingTensorHandle** output) override {
-    auto operation = CreateOperation();
+    TracingOperationPtr operation(CreateOperation());
     TF_RETURN_IF_ERROR(operation->Reset("Placeholder", nullptr));
     TF_RETURN_IF_ERROR(
         operation->SetOpName(absl::StrCat("_input_", inputs_.size()).c_str()));

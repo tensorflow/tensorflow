@@ -1068,7 +1068,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
     with test.mock.patch.object(logging, 'warn') as mock_log:
       f()
-      self.assertRegexpMatches(
+      self.assertRegex(
           str(mock_log.call_args), 'Cannot enable trace inside a tf.function.')
 
   @test_util.run_v2_only
@@ -1076,7 +1076,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     with test.mock.patch.object(logging, 'warn') as mock_log:
       with context.graph_mode():
         summary_ops.trace_on(graph=True, profiler=False)
-      self.assertRegexpMatches(
+      self.assertRegex(
           str(mock_log.call_args), 'Must enable trace in eager mode.')
 
   @test_util.run_v2_only
@@ -1098,16 +1098,15 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
     with test.mock.patch.object(logging, 'warn') as mock_log:
       f()
-      self.assertRegexpMatches(
-          str(mock_log.call_args),
-          'Cannot export trace inside a tf.function.')
+      self.assertRegex(
+          str(mock_log.call_args), 'Cannot export trace inside a tf.function.')
 
   @test_util.run_v2_only
   def testTrace_cannotExportTraceInGraphMode(self):
     with test.mock.patch.object(logging, 'warn') as mock_log:
       with context.graph_mode():
         summary_ops.trace_export(name='foo', step=1)
-      self.assertRegexpMatches(
+      self.assertRegex(
           str(mock_log.call_args),
           'Can only export trace while executing eagerly.')
 

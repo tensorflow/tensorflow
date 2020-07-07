@@ -17,6 +17,9 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
+// TODO(henrytan): remove this once `TpuCompilationCache` migration to OSS is
+// completed.
+#if defined(LIBTFTPU)
 /* static */
 void TpuCompilationCacheMetrics::IncrementCacheLookupCount(
     bool is_cache_hit, absl::string_view session_name) {
@@ -27,6 +30,7 @@ void TpuCompilationCacheMetrics::IncrementCacheLookupCount(
 void TpuCompilationCacheMetrics::SetCacheEntryCount(int64 count) {
   // A placeholder for tracking metrics.
 }
+#endif  // LIBTFTPU
 
 }  // namespace tpu
 }  // namespace tensorflow

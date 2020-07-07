@@ -331,7 +331,7 @@ func @enter_control_input() {
 }
 
 // CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.Print"
-// CHECK: tf_executor.SwitchN {{.*}}, {{.*}} of {{[0-9]*}} (%[[CONTROL]])
+// CHECK: tf_executor._SwitchN {{.*}}, {{.*}} of {{[0-9]*}} (%[[CONTROL]])
 func @switchn_control_input(%arg1: tensor<i32>) {
   tf_executor.graph {
     %island:2 = tf_executor.island {
@@ -339,7 +339,7 @@ func @switchn_control_input(%arg1: tensor<i32>) {
       %print = "tf.Print"(%const) : (tensor<*xi32>) -> (tensor<*xi32>)
       tf_executor.yield %const : tensor<*xi32>
     }
-    %switchn:4 = tf_executor.SwitchN %island#0, %arg1 of 3: tensor<*xi32>
+    %switchn:4 = tf_executor._SwitchN %island#0, %arg1 of 3: tensor<*xi32>
     tf_executor.fetch %switchn#0 : tensor<*xi32>
   }
   return

@@ -665,6 +665,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "CopyOpInterface",
+    srcs = ["lib/Interfaces/CopyOpInterface.cpp"],
+    hdrs = ["include/mlir/Interfaces/CopyOpInterface.h"],
+    includes = ["include"],
+    deps = [
+        ":CopyOpInterfaceIncGen",
+        ":IR",
+    ],
+)
+
 gentbl(
     name = "ShapeOpsIncGen",
     strip_include_prefix = "include",
@@ -1478,6 +1489,7 @@ cc_library(
         ":IR",
         ":Pass",
         ":SCFDialect",
+        ":SCFToSPIRV",
         ":SPIRVDialect",
         ":SPIRVLowering",
         ":StandardToSPIRVTransforms",
@@ -2130,6 +2142,26 @@ gentbl(
 )
 
 gentbl(
+    name = "CopyOpInterfaceIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Interfaces/CopyOpInterface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Interfaces/CopyOpInterface.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Interfaces/CopyOpInterface.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
     name = "TransformsPassIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -2151,14 +2183,13 @@ cc_library(
         "lib/Transforms/*.cpp",
         "lib/Transforms/*.h",
     ]),
-    hdrs = glob([
-        "include/mlir/Transforms/*.h",
-    ]),
+    hdrs = glob(["include/mlir/Transforms/*.h"]),
     includes = ["include"],
     deps = [
         ":Affine",
         ":Analysis",
         ":ControlFlowInterfaces",
+        ":CopyOpInterface",
         ":IR",
         ":LinalgOps",
         ":LoopLikeInterface",
@@ -2228,6 +2259,28 @@ cc_library(
         ":SCFToGPU",
         ":StandardOps",
         ":Support",
+        ":Transforms",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "SCFToSPIRV",
+    srcs = ["lib/Conversion/SCFToSPIRV/SCFToSPIRV.cpp"],
+    hdrs = ["include/mlir/Conversion/SCFToSPIRV/SCFToSPIRV.h"],
+    includes = ["include"],
+    deps = [
+        ":Affine",
+        ":AffineToStandard",
+        ":ConversionPassIncGen",
+        ":IR",
+        ":Pass",
+        ":SCFDialect",
+        ":SPIRVDialect",
+        ":SPIRVLowering",
+        ":StandardOps",
+        ":Support",
+        ":TransformUtils",
         ":Transforms",
         "@llvm-project//llvm:Support",
     ],
@@ -2450,6 +2503,8 @@ cc_library(
         [
             "lib/Analysis/*.cpp",
             "lib/Analysis/*.h",
+            "lib/Analysis/*/*.cpp",
+            "lib/Analysis/*/*.h",
         ],
         exclude = [
             "lib/Analysis/Vector*.cpp",
@@ -2459,6 +2514,7 @@ cc_library(
     hdrs = glob(
         [
             "include/mlir/Analysis/*.h",
+            "include/mlir/Analysis/*/*.h",
         ],
         exclude = [
             "include/mlir/Analysis/Vector*.h",
@@ -3197,6 +3253,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
         "include/mlir/Dialect/Linalg/IR/LinalgOps.td",
+        "include/mlir/Interfaces/CopyOpInterface.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
         ":AffineOpsTdFiles",
         ":OpBaseTdFiles",
@@ -3249,6 +3306,7 @@ filegroup(
         "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.td",
         "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
         "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterface.td",
+        "include/mlir/Interfaces/CopyOpInterface.td",
         "include/mlir/Interfaces/ViewLikeInterface.td",
         ":AffineOpsTdFiles",
         ":LinalgOpsTdFiles",
@@ -3405,6 +3463,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Affine",
+        ":CopyOpInterface",
         ":DialectUtils",
         ":EDSC",
         ":IR",

@@ -2664,10 +2664,12 @@ def decode_image(contents,
       assert_decode = control_flow_ops.Assert(is_bmp, [decode_msg])
       bmp_channels = 0 if channels is None else channels
       good_channels = math_ops.not_equal(bmp_channels, 1, name='check_channels')
-      channels_msg = 'Channels must be in (None, 0, 3) when decoding BMP images'
+      channels_msg = ('Channels must be in (None, 0, 3, 4) when decoding BMP '
+                      'images')
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_decode, assert_channels]):
-        return convert_image_dtype(gen_image_ops.decode_bmp(contents), dtype)
+        return convert_image_dtype(
+            gen_image_ops.decode_bmp(contents, channels=bmp_channels), dtype)
 
     def _gif():
       """Decodes a GIF image."""

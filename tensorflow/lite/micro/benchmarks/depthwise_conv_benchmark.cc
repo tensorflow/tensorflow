@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_time.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -36,7 +35,7 @@ TfLiteStatus ValidateDepthwiseConvGoldens(TfLiteTensor* tensors,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, reporter, &context);
 
-  const TfLiteRegistration* registration =
+  const TfLiteRegistration registration =
       ops::micro::Register_DEPTHWISE_CONV_2D();
 
   int input_depth = tensors[0].dims->data[3];
@@ -55,8 +54,8 @@ TfLiteStatus ValidateDepthwiseConvGoldens(TfLiteTensor* tensors,
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;
   void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
+  if (registration.init) {
+    user_data = registration.init(&context, init_data, init_data_size);
   }
 
   // For an N element array, the raw array will be {N, Element 1, ... Element N}
@@ -75,20 +74,20 @@ TfLiteStatus ValidateDepthwiseConvGoldens(TfLiteTensor* tensors,
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
 
-  if (registration->prepare) {
-    TfLiteStatus prepare_status = registration->prepare(&context, &node);
+  if (registration.prepare) {
+    TfLiteStatus prepare_status = registration.prepare(&context, &node);
     if (prepare_status != kTfLiteOk) {
       return prepare_status;
     }
   }
 
   int32_t start = tflite::GetCurrentTimeTicks();
-  TfLiteStatus invoke_status = registration->invoke(&context, &node);
+  TfLiteStatus invoke_status = registration.invoke(&context, &node);
   TF_LITE_REPORT_ERROR(reporter, "invoke took %d cycles\n",
                        tflite::GetCurrentTimeTicks() - start);
 
-  if (registration->free) {
-    registration->free(&context, user_data);
+  if (registration.free) {
+    registration.free(&context, user_data);
   }
 
   if (invoke_status != kTfLiteOk) {

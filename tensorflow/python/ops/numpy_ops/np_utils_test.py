@@ -68,20 +68,20 @@ f docstring.
       return
 
     # pylint: disable=unused-variable
-    with self.assertRaisesRegexp(TypeError, 'Cannot find parameter'):
+    with self.assertRaisesRegex(TypeError, 'Cannot find parameter'):
 
       @np_utils.np_doc(None, np_fun=np_fun)
       def f1(a):
         return
 
-    with self.assertRaisesRegexp(TypeError, 'is of kind'):
+    with self.assertRaisesRegex(TypeError, 'is of kind'):
 
       @np_utils.np_doc(None, np_fun=np_fun)
       def f2(x, kwargs):
         return
 
-    with self.assertRaisesRegexp(TypeError,
-                                 'Parameter "y" should have a default value'):
+    with self.assertRaisesRegex(TypeError,
+                                'Parameter "y" should have a default value'):
 
       @np_utils.np_doc(None, np_fun=np_fun)
       def f3(x, y):

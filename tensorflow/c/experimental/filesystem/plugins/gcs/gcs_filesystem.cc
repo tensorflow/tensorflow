@@ -151,7 +151,7 @@ static void SyncImpl(const std::string& bucket, const std::string& object,
       *offset = static_cast<int64_t>(metadata->size());
     }
     outfile->clear();
-    outfile->seekp(std::ios::end);
+    outfile->seekp(0, std::ios::end);
     TF_SetStatus(status, TF_OK, "");
   } else {
     std::string temporary_object =
@@ -249,19 +249,32 @@ void Close(const TF_WritableFile* file, TF_Status* status) {
 // SECTION 3. Implementation for `TF_ReadOnlyMemoryRegion`
 // ----------------------------------------------------------------------------
 namespace tf_read_only_memory_region {
+typedef struct GCSMemoryRegion {
+  const void* const address;
+  const uint64_t length;
+} GCSMemoryRegion;
 
-// TODO(vnvo2409): Implement later
+void Cleanup(TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<GCSMemoryRegion*>(region->plugin_memory_region);
+  plugin_memory_free(const_cast<void*>(r->address));
+  delete r;
+}
+
+const void* Data(const TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<GCSMemoryRegion*>(region->plugin_memory_region);
+  return r->address;
+}
+
+uint64_t Length(const TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<GCSMemoryRegion*>(region->plugin_memory_region);
+  return r->length;
+}
 
 }  // namespace tf_read_only_memory_region
 
 // SECTION 4. Implementation for `TF_Filesystem`, the actual filesystem
 // ----------------------------------------------------------------------------
 namespace tf_gcs_filesystem {
-typedef struct GCSFile {
-  gcs::Client gcs_client;  // owned
-  bool compose;
-} GCSFile;
-
 // TODO(vnvo2409): Add lazy-loading and customizing parameters.
 void Init(TF_Filesystem* filesystem, TF_Status* status) {
   google::cloud::StatusOr<gcs::Client> client =
@@ -359,6 +372,42 @@ void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
   }
 
   TF_SetStatus(status, TF_OK, "");
+}
+
+// TODO(vnvo2409): We could download into a local temporary file and use
+// memory-mapping.
+void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
+                                     const char* path,
+                                     TF_ReadOnlyMemoryRegion* region,
+                                     TF_Status* status) {
+  std::string bucket, object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  auto metadata = gcs_file->gcs_client.GetObjectMetadata(bucket, object);
+  if (!metadata) {
+    TF_SetStatusFromGCSStatus(metadata.status(), status);
+    return;
+  }
+
+  TF_RandomAccessFile reader;
+  NewRandomAccessFile(filesystem, path, &reader, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  char* buffer = static_cast<char*>(plugin_memory_allocate(metadata->size()));
+  int64_t read =
+      tf_random_access_file::Read(&reader, 0, metadata->size(), buffer, status);
+  tf_random_access_file::Cleanup(&reader);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  if (read > 0 && buffer) {
+    region->plugin_memory_region =
+        new tf_read_only_memory_region::GCSMemoryRegion(
+            {buffer, static_cast<uint64_t>(read)});
+    TF_SetStatus(status, TF_OK, "");
+  } else if (read == 0) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
+  }
 }
 
 }  // namespace tf_gcs_filesystem

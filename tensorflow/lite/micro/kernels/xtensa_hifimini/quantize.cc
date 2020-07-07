@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini_legacy/fixedpoint_utils.h"
 
 namespace tflite {
 namespace ops {
@@ -161,16 +161,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // This Op (QUANTIZE) quantizes the input and produces quantized output.
 // AffineQuantize takes scale and zero point and quantizes the float value to
 // quantized output, in int8 or uint8 format.
-TfLiteRegistration* Register_QUANTIZE() {
-  static TfLiteRegistration r = {/*init=*/quantize::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/quantize::Prepare,
-                                 /*invoke=*/quantize::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_QUANTIZE() {
+  return {/*init=*/quantize::Init,
+          /*free=*/nullptr,
+          /*prepare=*/quantize::Prepare,
+          /*invoke=*/quantize::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

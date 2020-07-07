@@ -30,8 +30,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/BufferPlacement.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_hlo_to_lhlo_op.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -404,7 +404,7 @@ struct HloLegalizeToLhlo
     });
 
     auto module = getOperation();
-    module.walk([&](FuncOp func) -> WalkResult {
+    WalkResult result = module.walk([&](FuncOp func) -> WalkResult {
       BufferAssignmentPlacer bufferAssignment(func);
       OwningRewritePatternList patterns;
       populateHLOToLHLOConversionPattern(func.getContext(), &bufferAssignment,
@@ -422,6 +422,9 @@ struct HloLegalizeToLhlo
       }
       return applyPartialConversion(func, target, patterns);
     });
+    if (result.wasInterrupted()) {
+      signalPassFailure();
+    }
   }
 
  private:

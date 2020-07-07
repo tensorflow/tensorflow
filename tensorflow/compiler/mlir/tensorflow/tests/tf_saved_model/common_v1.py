@@ -98,9 +98,10 @@ def do_test(signature_def_map,
     # TODO(b/153507667): Set the following boolean flag once the hoisting
     #                    variables logic from SavedModel importer is removed.
     lift_variables = False
+    upgrade_legacy = True
     mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir(
         save_model_path, ','.join([tf.saved_model.tag_constants.SERVING]),
-        lift_variables, show_debug_info)
+        lift_variables, upgrade_legacy, show_debug_info)
 
     if canonicalize:
       mlir = pywrap_mlir.experimental_run_pass_pipeline(mlir, 'canonicalize',

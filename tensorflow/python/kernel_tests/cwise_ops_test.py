@@ -217,7 +217,7 @@ class ComparisonOpTest(test.TestCase):
     for t in dtypes:
       for f in funcs:
         with self.subTest(t=t, f=f):
-          with self.assertRaisesRegexp(
+          with self.assertRaisesRegex(
               (ValueError, errors.InvalidArgumentError),
               "Incompatible shapes|Dimensions must be equal"):
             f(x.astype(t), y.astype(t))
@@ -1158,8 +1158,8 @@ class ComplexMakeRealImagTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testConjString(self):
     x = array_ops.placeholder(dtypes_lib.string)
-    with self.assertRaisesRegexp(TypeError,
-                                 r"Expected numeric or variant tensor"):
+    with self.assertRaisesRegex(TypeError,
+                                r"Expected numeric or variant tensor"):
       math_ops.conj(x)
 
   def _compareGradient(self, x):
@@ -1281,7 +1281,7 @@ class PolyvalTest(test.TestCase):
   def test_coeffs_raise(self):
     x = np.random.rand(2, 2).astype(np.float32)
     coeffs = {}
-    with self.assertRaisesRegexp(ValueError, "Argument coeffs must be list"):
+    with self.assertRaisesRegex(ValueError, "Argument coeffs must be list"):
       math_ops.polyval(coeffs, x)
 
 

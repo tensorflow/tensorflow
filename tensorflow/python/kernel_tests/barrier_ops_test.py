@@ -78,17 +78,17 @@ class BarrierTest(test.TestCase):
       insert_0_op = b.insert_many(0, keys, [10.0, 20.0, 30.0])
       insert_1_op = b.insert_many(1, keys, [100.0, 200.0, 300.0])
 
-      self.assertEquals(size_t.eval(), [0])
+      self.assertEqual(size_t.eval(), [0])
       insert_0_op.run()
-      self.assertEquals(size_t.eval(), [0])
+      self.assertEqual(size_t.eval(), [0])
       insert_1_op.run()
-      self.assertEquals(size_t.eval(), [3])
+      self.assertEqual(size_t.eval(), [3])
 
   def testInsertManyEmptyTensor(self):
     with self.cached_session():
       error_message = ("Empty tensors are not supported, but received shape "
                        r"\'\(0,\)\' at index 1")
-      with self.assertRaisesRegexp(ValueError, error_message):
+      with self.assertRaisesRegex(ValueError, error_message):
         data_flow_ops.Barrier(
             (dtypes.float32, dtypes.float32), shapes=((1,), (0,)), name="B")
 
@@ -100,7 +100,7 @@ class BarrierTest(test.TestCase):
       self.assertEqual([], size_t.get_shape())
       keys = [b"a", b"b", b"c"]
       insert_0_op = b.insert_many(0, keys, np.array([[], [], []], np.float32))
-      self.assertEquals(size_t.eval(), [0])
+      self.assertEqual(size_t.eval(), [0])
       with self.assertRaisesOpError(
           ".*Tensors with no elements are not supported.*"):
         insert_0_op.run()
@@ -120,7 +120,7 @@ class BarrierTest(test.TestCase):
 
       insert_0_op.run()
       insert_1_op.run()
-      self.assertEquals(size_t.eval(), [3])
+      self.assertEqual(size_t.eval(), [3])
 
       indices_val, keys_val, values_0_val, values_1_val = sess.run(
           [take_t[0], take_t[1], take_t[2][0], take_t[2][1]])
@@ -157,8 +157,8 @@ class BarrierTest(test.TestCase):
       close_op.run()
       # Now we have a closed barrier with 2 ready elements. Running take_t
       # should return a reduced batch with 2 elements only.
-      self.assertEquals(size_i.eval(), [2])  # assert that incomplete size = 2
-      self.assertEquals(size_t.eval(), [2])  # assert that ready size = 2
+      self.assertEqual(size_i.eval(), [2])  # assert that incomplete size = 2
+      self.assertEqual(size_t.eval(), [2])  # assert that ready size = 2
       _, keys_val, values_0_val, values_1_val = sess.run(
           [index_t, key_t, value_list_t[0], value_list_t[1]])
       # Check that correct values have been returned.
@@ -170,8 +170,8 @@ class BarrierTest(test.TestCase):
       # The next insert completes the element with key "c". The next take_t
       # should return a batch with just 1 element.
       insert_1_2_op.run()
-      self.assertEquals(size_i.eval(), [1])  # assert that incomplete size = 1
-      self.assertEquals(size_t.eval(), [1])  # assert that ready size = 1
+      self.assertEqual(size_i.eval(), [1])  # assert that incomplete size = 1
+      self.assertEqual(size_t.eval(), [1])  # assert that ready size = 1
       _, keys_val, values_0_val, values_1_val = sess.run(
           [index_t, key_t, value_list_t[0], value_list_t[1]])
       # Check that correct values have been returned.
@@ -212,7 +212,7 @@ class BarrierTest(test.TestCase):
 
       insert_0_op.run()
       insert_1_op.run()
-      self.assertEquals(size_t.eval(), [3])
+      self.assertEqual(size_t.eval(), [3])
 
       indices_val, keys_val, values_0_val, values_1_val = sess.run(
           [take_t[0], take_t[1], take_t[2][0], take_t[2][1]])
@@ -237,7 +237,7 @@ class BarrierTest(test.TestCase):
       take_t = b.take_many(10)
 
       self.evaluate(insert_ops)
-      self.assertEquals(size_t.eval(), [10])
+      self.assertEqual(size_t.eval(), [10])
 
       indices_val, keys_val, values_val = sess.run(
           [take_t[0], take_t[1], take_t[2][0]])
@@ -258,7 +258,7 @@ class BarrierTest(test.TestCase):
       take_t = [b.take_many(1) for _ in keys]
 
       insert_op.run()
-      self.assertEquals(size_t.eval(), [10])
+      self.assertEqual(size_t.eval(), [10])
 
       index_fetches = []
       key_fetches = []
@@ -360,7 +360,7 @@ class BarrierTest(test.TestCase):
       for t in insert_threads:
         t.join()
 
-      self.assertEquals(len(taken), num_iterations)
+      self.assertEqual(len(taken), num_iterations)
       flatten = lambda l: [item for sublist in l for item in sublist]
       all_indices = sorted(flatten([t_i["indices"] for t_i in taken]))
       all_keys = sorted(flatten([t_i["keys"] for t_i in taken]))
@@ -402,11 +402,11 @@ class BarrierTest(test.TestCase):
       take_t = b.take_many(3)
       take_too_many_t = b.take_many(4)
 
-      self.assertEquals(size_t.eval(), [0])
-      self.assertEquals(incomplete_t.eval(), [0])
+      self.assertEqual(size_t.eval(), [0])
+      self.assertEqual(incomplete_t.eval(), [0])
       insert_0_op.run()
-      self.assertEquals(size_t.eval(), [0])
-      self.assertEquals(incomplete_t.eval(), [3])
+      self.assertEqual(size_t.eval(), [0])
+      self.assertEqual(incomplete_t.eval(), [3])
       close_op.run()
 
       # This op should fail because the barrier is closed.
@@ -416,8 +416,8 @@ class BarrierTest(test.TestCase):
       # This op should succeed because the barrier has not canceled
       # pending enqueues
       insert_1_op.run()
-      self.assertEquals(size_t.eval(), [3])
-      self.assertEquals(incomplete_t.eval(), [0])
+      self.assertEqual(size_t.eval(), [3])
+      self.assertEqual(incomplete_t.eval(), [0])
 
       # This op should fail because the barrier is closed.
       with self.assertRaisesOpError("is closed"):
@@ -462,11 +462,11 @@ class BarrierTest(test.TestCase):
       take_t = b.take_many(2)
       take_too_many_t = b.take_many(3)
 
-      self.assertEquals(size_t.eval(), [0])
+      self.assertEqual(size_t.eval(), [0])
       insert_0_op.run()
       insert_1_op.run()
-      self.assertEquals(size_t.eval(), [2])
-      self.assertEquals(incomplete_t.eval(), [1])
+      self.assertEqual(size_t.eval(), [2])
+      self.assertEqual(incomplete_t.eval(), [1])
       cancel_op.run()
 
       # This op should fail because the queue is closed.

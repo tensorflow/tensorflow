@@ -1069,6 +1069,8 @@ class SyncOnReadVariable(DistributedVariable):
   def value(self):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if ds_context.in_cross_replica_context():
+        if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+          return self._get_replica(0).value()
         return self._get_cross_replica()
       else:
         # _get_on_device_or_primary() returns a Variable.
@@ -1076,6 +1078,8 @@ class SyncOnReadVariable(DistributedVariable):
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+      # Consider returning a tensor value here to make the return value of
+      # _get_cross_replica consistent.
       return self._get_replica(0)
 
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):

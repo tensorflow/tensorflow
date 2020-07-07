@@ -86,6 +86,19 @@ class TracingOperation : public AbstractOperation {
   }
 };
 
+namespace internal {
+struct TracingOperationDeleter {
+  void operator()(TracingOperation* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using TracingOperationPtr =
+    std::unique_ptr<TracingOperation, internal::TracingOperationDeleter>;
+
 // This holds the context for the execution: dispatching operations either to an
 // MLIR implementation or to a graph implementation.
 class TracingContext : public AbstractContext {

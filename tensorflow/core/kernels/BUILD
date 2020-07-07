@@ -417,6 +417,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:op_requires",
     ],
 )
 
@@ -3045,6 +3046,7 @@ IMAGE_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:png_internal",
     "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core/util/tensor_bundle",
 ]
 
 tf_kernel_library(
@@ -6945,7 +6947,6 @@ filegroup(
         "queue_op.cc",
         "queue_ops.cc",
         "ragged_range_op.cc",
-        "ragged_tensor_to_tensor_op.cc",
         "random_op.cc",
         "random_op_cpu.h",
         "random_poisson_op.cc",

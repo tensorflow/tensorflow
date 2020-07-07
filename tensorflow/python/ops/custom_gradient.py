@@ -372,6 +372,7 @@ def _graph_mode_decorator(f, args, kwargs):
 
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   variables_in_signature = ("variables" in grad_argspec.args or
+                            "variables" in grad_argspec.kwonlyargs or
                             grad_argspec.varkw)
   if variables and not variables_in_signature:
     raise TypeError(
@@ -440,6 +441,7 @@ def _eager_mode_decorator(f, args, kwargs):
   ]
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   if (variables and ("variables" not in grad_argspec.args) and
+      ("variables" not in grad_argspec.kwonlyargs) and
       not grad_argspec.varkw):
     raise TypeError(
         "@tf.custom_gradient grad_fn must accept keyword argument 'variables', "

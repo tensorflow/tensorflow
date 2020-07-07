@@ -761,11 +761,17 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
     bool use_linear_index,
     absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
         extra_output_gens) {
-  for (int i = 0; i != extra_output_gens.size(); ++i) {
+  // Compute all extra output values before writing them. This avoids
+  // overwriting aliased input/output buffers before all reads occured.
+  absl::InlinedVector<llvm::Value*, 8> extra_output_ir_values;
+  for (int i = 0; i < extra_output_gens.size(); ++i) {
     TF_ASSIGN_OR_RETURN(llvm::Value* const extra_output_ir_value,
                         extra_output_gens[i].first(index));
+    extra_output_ir_values.push_back(extra_output_ir_value);
+  }
+  for (int i = 0; i < extra_output_gens.size(); ++i) {
     GetIrArray(*unnested_hlo, *unnested_hlo, extra_output_gens[i].second)
-        .EmitWriteArrayElement(index, extra_output_ir_value, &b_,
+        .EmitWriteArrayElement(index, extra_output_ir_values[i], &b_,
                                use_linear_index);
   }
   return Status::OK();

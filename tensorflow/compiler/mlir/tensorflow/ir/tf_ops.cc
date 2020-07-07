@@ -2198,7 +2198,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 
 void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  results.insert<LogOfSoftmax>(context);
+  results.insert<LogOfSoftmax, LogToLog1p>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2208,6 +2208,32 @@ void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void ReadVariableOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<ReadVariableOfCast>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// VarIsInitializedOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// Erase VarIsInitializedOp operations with no uses. This op has side effect on
+/// resources (read-only), but can still be deleted if it has zero uses.
+struct EraseDeadVarIsInitializedOp
+    : public OpRewritePattern<VarIsInitializedOp> {
+  using OpRewritePattern<VarIsInitializedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(VarIsInitializedOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!op.use_empty()) return failure();
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+}  // end anonymous namespace.
+
+void VarIsInitializedOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *context) {
+  patterns.insert<EraseDeadVarIsInitializedOp>(context);
 }
 
 //===----------------------------------------------------------------------===//

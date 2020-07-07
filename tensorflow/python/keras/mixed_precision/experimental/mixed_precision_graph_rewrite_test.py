@@ -73,9 +73,9 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_optimizer_errors(self):
     opt = gradient_descent_v2.SGD(1.0)
     opt = loss_scale_optimizer_v2.LossScaleOptimizer(opt, 'dynamic')
-    with self.assertRaisesRegexp(ValueError,
-                                 '"opt" must not already be an instance of a '
-                                 'LossScaleOptimizer.'):
+    with self.assertRaisesRegex(
+        ValueError, '"opt" must not already be an instance of a '
+        'LossScaleOptimizer.'):
       enable_mixed_precision_graph_rewrite(opt)
     self.assertFalse(config.get_optimizer_experimental_options()
                      .get('auto_mixed_precision', False))
@@ -83,8 +83,8 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
   @testing_utils.enable_v2_dtype_behavior
   def test_error_if_policy_is_set(self):
     with policy.policy_scope('mixed_float16'):
-      with self.assertRaisesRegexp(
-          ValueError, 'the global Keras dtype Policy has been set'):
+      with self.assertRaisesRegex(ValueError,
+                                  'the global Keras dtype Policy has been set'):
         enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))
     # Test no error is thrown when the policy is currently the default.
     enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))

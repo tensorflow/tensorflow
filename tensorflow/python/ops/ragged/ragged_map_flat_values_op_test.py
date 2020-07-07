@@ -178,17 +178,18 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase):
   def testRaggedTensorSplitsRaggedRankMismatchError(self):
     x = ragged_factory_ops.constant([[3, 1, 4], [], [1, 5]])
     y = ragged_factory_ops.constant([[[3, 1, 4], []], [], [[1, 5]]])
-    self.assertRaisesRegexp(
-        ValueError, r'Inputs must have identical ragged splits.*',
-        ragged_functional_ops.map_flat_values, math_ops.add, x, y)
+    self.assertRaisesRegex(ValueError,
+                           r'Inputs must have identical ragged splits.*',
+                           ragged_functional_ops.map_flat_values, math_ops.add,
+                           x, y)
 
   def testRaggedTensorSplitsValueMismatchError(self):
     x = ragged_factory_ops.constant([[3, 1, 4], [], [1, 5]])
     y = ragged_factory_ops.constant([[1], [2, 3], [4, 5]])
-    self.assertRaisesRegexp(errors.InvalidArgumentError,
-                            r'Inputs must have identical ragged splits.*',
-                            ragged_functional_ops.map_flat_values, math_ops.add,
-                            x, y)
+    self.assertRaisesRegex(errors.InvalidArgumentError,
+                           r'Inputs must have identical ragged splits.*',
+                           ragged_functional_ops.map_flat_values, math_ops.add,
+                           x, y)
 
   def testRaggedTensorSplitsMismatchErrorAtRuntime(self):
     splits1 = array_ops.placeholder_with_default(
@@ -197,8 +198,8 @@ class RaggedMapInnerValuesOpTest(test_util.TensorFlowTestCase):
         constant_op.constant([0, 1, 3, 5], dtypes.int64), None)
     x = ragged_tensor.RaggedTensor.from_row_splits([3, 1, 4, 1, 5], splits1)
     y = ragged_tensor.RaggedTensor.from_row_splits([1, 2, 3, 4, 5], splits2)
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r'.*Inputs must have identical ragged splits'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r'.*Inputs must have identical ragged splits'):
       self.evaluate(ragged_functional_ops.map_flat_values(math_ops.add, x, y))
 
 
