@@ -43,7 +43,7 @@ class NnapiDelegateProvider : public DelegateProvider {
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -76,38 +76,30 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(ToolParams* params) const {
   return flags;
 }
 
-void NnapiDelegateProvider::LogParams(const ToolParams& params) const {
+void NnapiDelegateProvider::LogParams(const ToolParams& params,
+                                      bool verbose) const {
 #if defined(__ANDROID__)
-  TFLITE_LOG(INFO) << "Use nnapi : [" << params.Get<bool>("use_nnapi") << "]";
-  if (params.Get<bool>("use_nnapi")) {
-    if (!params.Get<std::string>("nnapi_execution_preference").empty()) {
-      TFLITE_LOG(INFO) << "nnapi execution preference: ["
-                       << params.Get<std::string>("nnapi_execution_preference")
-                       << "]";
-    }
-    if (!params.Get<std::string>("nnapi_execution_priority").empty()) {
-      TFLITE_LOG(INFO) << "model execution priority in nnapi: ["
-                       << params.Get<std::string>("nnapi_execution_priority")
-                       << "]";
-    }
-    std::string log_string = "nnapi accelerator name: [" +
-                             params.Get<std::string>("nnapi_accelerator_name") +
-                             "]";
-    std::string string_device_names_list = nnapi::GetStringDeviceNamesList();
-    // Print available devices when possible
-    if (!string_device_names_list.empty()) {
-      log_string += " (Available: " + string_device_names_list + ")";
-    }
-    TFLITE_LOG(INFO) << log_string;
-    if (params.Get<bool>("disable_nnapi_cpu")) {
-      TFLITE_LOG(INFO) << "disable_nnapi_cpu: ["
-                       << params.Get<bool>("disable_nnapi_cpu") << "]";
-    }
-    if (params.Get<bool>("nnapi_allow_fp16")) {
-      TFLITE_LOG(INFO) << "Allow fp16 in NNAPI: ["
-                       << params.Get<bool>("nnapi_allow_fp16") << "]";
-    }
+  LOG_TOOL_PARAM(params, bool, "use_nnapi", "Use NNAPI", verbose);
+  if (!params.Get<bool>("use_nnapi")) return;
+
+  LOG_TOOL_PARAM(params, std::string, "nnapi_execution_preference",
+                 "NNAPI execution preference", verbose);
+  LOG_TOOL_PARAM(params, std::string, "nnapi_execution_priority",
+                 "Model execution priority in nnapi", verbose);
+  LOG_TOOL_PARAM(params, std::string, "nnapi_accelerator_name",
+                 "NNAPI accelerator name", verbose);
+
+  std::string string_device_names_list = nnapi::GetStringDeviceNamesList();
+  // Print available devices when possible as it's informative.
+  if (!string_device_names_list.empty()) {
+    TFLITE_LOG(INFO) << "NNAPI accelerators available: ["
+                     << string_device_names_list << "]";
   }
+
+  LOG_TOOL_PARAM(params, bool, "disable_nnapi_cpu", "Disable NNAPI cpu",
+                 verbose);
+  LOG_TOOL_PARAM(params, bool, "nnapi_allow_fp16", "Allow fp16 in NNAPI",
+                 verbose);
 #endif
 }
 

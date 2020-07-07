@@ -104,28 +104,28 @@ std::vector<Flag> BenchmarkModel::GetFlags() {
       CreateFlag<bool>("verbose", &params_,
                        "Whether to log parameters whose values are not set. "
                        "By default, only log those parameters that are set by "
-                       "parsing their values from the commandline flag.."),
+                       "parsing their values from the commandline flags."),
   };
 }
 
-#define LOG_PARAM(type, name, prefix, suffix) \
-  LOG_BENCHMARK_PARAM(params_, type, name, prefix, suffix, verbose)
 void BenchmarkModel::LogParams() {
   const bool verbose = params_.Get<bool>("verbose");
-  LOG_PARAM(int32_t, "num_runs", "Min num runs: [", "]");
-  LOG_PARAM(int32_t, "num_runs", "Min num runs: [", "]");
-  LOG_PARAM(float, "min_secs", "Min runs duration (seconds): [", "]");
-  LOG_PARAM(float, "max_secs", "Max runs duration (seconds): [", "]");
-  LOG_PARAM(float, "run_delay", "Inter-run delay (seconds): [", "]");
-  LOG_PARAM(int32_t, "num_threads", "Num threads: [", "]");
-  LOG_PARAM(bool, "use_caching", "Use caching: [", "]");
-  LOG_PARAM(std::string, "benchmark_name", "Benchmark name: [", "]");
-  LOG_PARAM(std::string, "output_prefix", "Output prefix: [", "]");
-  LOG_PARAM(int32_t, "warmup_runs", "Min warmup runs: [", "]");
-  LOG_PARAM(float, "warmup_min_secs", "Min warmup runs duration (seconds): [",
-            "]");
+  TFLITE_LOG(INFO) << "Log parameter values verbosely: [" << verbose << "]";
+
+  LOG_BENCHMARK_PARAM(int32_t, "num_runs", "Min num runs", verbose);
+  LOG_BENCHMARK_PARAM(float, "min_secs", "Min runs duration (seconds)",
+                      verbose);
+  LOG_BENCHMARK_PARAM(float, "max_secs", "Max runs duration (seconds)",
+                      verbose);
+  LOG_BENCHMARK_PARAM(float, "run_delay", "Inter-run delay (seconds)", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "num_threads", "Num threads", verbose);
+  LOG_BENCHMARK_PARAM(bool, "use_caching", "Use caching", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "benchmark_name", "Benchmark name", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "output_prefix", "Output prefix", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "warmup_runs", "Min warmup runs", verbose);
+  LOG_BENCHMARK_PARAM(float, "warmup_min_secs",
+                      "Min warmup runs duration (seconds)", verbose);
 }
-#undef LOG_PARAM
 
 TfLiteStatus BenchmarkModel::PrepareInputData() { return kTfLiteOk; }
 
