@@ -161,6 +161,26 @@ distribute_py_test(
     ],
 )
 
+distribute_py_test(
+    name = "custom_training_loop_optimizer_test",
+    srcs = ["custom_training_loop_optimizer_test.py"],
+    main = "custom_training_loop_optimizer_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "distribute_strategy_test_lib",
     srcs = [

@@ -20,13 +20,13 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python import keras
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import variables
 
 
@@ -51,7 +51,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
     with distribution.scope():
       v = variables.Variable([0., 0.])
-      optimizer = keras.optimizer_v2.gradient_descent.SGD(0.1)
+      optimizer = gradient_descent.SGD(0.1)
 
     @def_function.function
     def optimize():
@@ -81,7 +81,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
     with distribution.scope():
       v = variables.Variable([0., 0.])
-      optimizer = keras.optimizer_v2.gradient_descent.SGD(0.1)
+      optimizer = gradient_descent.SGD(0.1)
 
     @def_function.function
     def optimize():
@@ -105,7 +105,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   def test_custom_aggregation_central_storage(self, distribution):
     with distribution.scope():
       v = variables.Variable([0., 0.])
-      optimizer = keras.optimizer_v2.gradient_descent.SGD(0.1)
+      optimizer = gradient_descent.SGD(0.1)
 
     grads = ops.convert_to_tensor([1., 1.])
 
