@@ -30,8 +30,10 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
+
 
 tensor_to_ndarray = np_arrays.tensor_to_ndarray
 
@@ -214,22 +216,28 @@ def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None):
   if _has_docstring(f):
     doc += f.__doc__
     doc = _add_blank_line(doc)
-  if _has_docstring(np_f):
-    doc += 'Documentation for `numpy.%s`:\n\n' % np_f.__name__
-    # TODO(wangpeng): It looks like code snippets in numpy doc don't work
-    # correctly with doctest. Fix that and remove the reformatting of the np_f
-    # comment.
-    doc += np_f.__doc__.replace('>>>', '>')
+  # TODO(wangpeng): Re-enable the following and choose inlined vs. link to numpy
+  #   doc according to some global switch.
+  # if _has_docstring(np_f):
+  #   doc += 'Documentation for `numpy.%s`:\n\n' % np_f.__name__
+  #   # TODO(wangpeng): It looks like code snippets in numpy doc don't work
+  #   # correctly with doctest. Fix that and remove the reformatting of the np_f
+  #   # comment.
+  #   doc += np_f.__doc__.replace('>>>', '>')
   return doc
 
 
-def np_doc(np_fun_name, np_fun=None):
+def np_doc(np_fun_name, np_fun=None, export=True):
   """Attachs numpy docstring to a function.
 
   Args:
     np_fun_name: name for the np_fun symbol. At least one of np_fun or
       np_fun_name shoud be set.
     np_fun: (optional) the numpy function whose docstring will be used.
+    export: whether to export this symbol under module
+      `tf.experimental.numpy`. Note that if `export` is `True`, `np_fun` must be
+      a function directly under the `numpy` module, not under any submodule of
+      `numpy` (e.g. `numpy.random`).
 
   Returns:
     A function decorator that attaches the docstring from `np_fun` to the
@@ -271,12 +279,15 @@ def np_doc(np_fun_name, np_fun=None):
         np_fun,
         np_fun_name=np_fun_name,
         unsupported_params=unsupported_params)
-    return f
+    if export:
+      return np_export.np_export(np_fun_name)(f)
+    else:
+      return f
 
   return decorator
 
 
-def np_doc_only(np_fun_name, np_fun=None):
+def np_doc_only(np_fun_name, np_fun=None, export=True):
   """Attachs numpy docstring to a function.
 
   This differs from np_doc in that it doesn't check for a match in signature.
@@ -285,6 +296,10 @@ def np_doc_only(np_fun_name, np_fun=None):
     np_fun_name: name for the np_fun symbol. At least one of np_fun or
       np_fun_name shoud be set.
     np_fun: (optional) the numpy function whose docstring will be used.
+    export: whether to export this symbol under module
+      `tf.experimental.numpy`. Note that if `export` is `True`, `np_f` must be a
+      function directly under the `numpy` module, not under any submodule of
+      `numpy` (e.g. `numpy.random`).
 
   Returns:
     A function decorator that attaches the docstring from `np_fun` to the
@@ -294,7 +309,10 @@ def np_doc_only(np_fun_name, np_fun=None):
 
   def decorator(f):
     f.__doc__ = _np_doc_helper(f, np_fun, np_fun_name=np_fun_name)
-    return f
+    if export:
+      return np_export.np_export(np_fun_name)(f)
+    else:
+      return f
 
   return decorator
 

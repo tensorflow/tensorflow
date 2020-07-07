@@ -31,6 +31,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 
 
 def convert_to_tensor(value, dtype=None, dtype_hint=None):
@@ -94,7 +95,8 @@ class NdarraySpec(type_spec.BatchableTypeSpec):
     return self._hash
 
 
-class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
+@np_export.np_export('ndarray')  # pylint: disable=invalid-name
+class ndarray(composite_tensor.CompositeTensor):
   """Equivalent of numpy.ndarray backed by TensorFlow tensors.
 
   This does not support all features of NumPy ndarrays e.g. strides and
