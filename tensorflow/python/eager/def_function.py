@@ -1178,8 +1178,8 @@ class Function(object):
     """
     if self.input_signature is None:
       return
-    for tensor in self.input_signature:
-      if tensor.__class__ != tensor_spec.TensorSpec:
+    for spec in self.input_signature:
+      if not isinstance(spec, tensor_spec.TensorSpec):
         return
     input_signature_dtypes = tuple(tensor.dtype for tensor
                                    in self.input_signature)
@@ -1192,8 +1192,7 @@ class Function(object):
     arg_to_dtype = dict(arg_dtype_list)
     type_annotations = self.function_spec.fullargspec.annotations
     for arg, annot in type_annotations.items():
-      if (not hasattr(typing, "_GenericAlias") or
-          not isinstance(annot, typing._GenericAlias)):
+      if not hasattr(annot, '__args__'):
         return
       annotation_dtype = annot.__args__[0]
       input_signature_dtype = arg_to_dtype.get(arg)
@@ -1201,7 +1200,11 @@ class Function(object):
       if annot.__origin__ != ops.Tensor:
         return
       if annotation_dtype != input_signature_dtype.__class__:
-        raise ValueError("Type annotation does not match input_signature")
+        raise ValueError(
+            "type mismatch for argument '%s': type annotation "\
+            "is %s, but input_signature is %s" %
+            (arg, annotation_dtype.__name__,
+             input_signature_dtype.__class__.__name__))
 
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
