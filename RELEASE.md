@@ -1,6 +1,8 @@
 # Release 2.4.0
 
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+*   `tf.Tensor` is now a subclass of `typing.Generic`, allowing type annotations
+    to be parameterized by dtype: `tf.Tensor[tf.Int32]`. This requires Python 3,
+    and will become fully compatible with static type checkers in the future.
 
 ## Breaking Changes
 
