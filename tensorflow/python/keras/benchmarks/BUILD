@@ -31,7 +31,6 @@ py_test(
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )

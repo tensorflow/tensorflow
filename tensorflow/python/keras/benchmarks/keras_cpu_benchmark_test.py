@@ -23,7 +23,6 @@ import six
 import tensorflow as tf
 
 from tensorflow.python.platform import benchmark
-from tensorflow.python.platform import test
 from tensorflow.python.keras.benchmarks import benchmark_util
 
 # Loss function and optimizer.
@@ -32,7 +31,7 @@ _OPTIMIZER = 'rmsprop'
 
 
 class KerasModelCPUBenchmark(
-    six.with_metaclass(benchmark.ParameterizedBenchmark, test.Benchmark)):
+    six.with_metaclass(benchmark.ParameterizedBenchmark, tf.test.Benchmark)):
   """Required Arguments for measure_performance:
       x: Input data, it could be Numpy or load from tfds.
       y: Target data. If `x` is a dataset, generator instance,
@@ -137,4 +136,4 @@ class KerasModelCPUBenchmark(
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()
