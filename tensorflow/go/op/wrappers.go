@@ -41478,13 +41478,13 @@ func ParseExample(scope *Scope, serialized tf.Output, names tf.Output, sparse_ke
 // DatasetToGraphAttr is an optional argument to DatasetToGraph.
 type DatasetToGraphAttr func(optionalAttr)
 
-// DatasetToGraphStatefulWhitelist sets the optional stateful_whitelist attribute to value.
+// DatasetToGraphStatefulAllowlist sets the optional stateful_allowlist attribute to value.
 // If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
-func DatasetToGraphStatefulWhitelist(value []string) DatasetToGraphAttr {
+func DatasetToGraphStatefulAllowlist(value []string) DatasetToGraphAttr {
 	return func(m optionalAttr) {
-		m["stateful_whitelist"] = value
+		m["stateful_allowlist"] = value
 	}
 }
 

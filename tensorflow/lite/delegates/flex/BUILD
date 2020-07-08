@@ -233,10 +233,10 @@ tf_cc_test(
 cc_library(
     name = "whitelisted_flex_ops_lib",
     srcs = [
-        "whitelisted_flex_ops.cc",
+        "allowlisted_flex_ops.cc",
     ],
     hdrs = [
-        "whitelisted_flex_ops.h",
+        "allowlisted_flex_ops.h",
     ],
 )
 

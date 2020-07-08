@@ -1594,7 +1594,7 @@ def assert_not_batched(dataset):
   if isinstance(dataset, dataset_ops.DatasetV1Adapter):
     return assert_not_batched(dataset._dataset)
   else:
-    whitelisted_types = [
+    allowed_types = [
         dataset_ops._OptionsDataset,
         dataset_ops.ConcatenateDataset,
         dataset_ops.CacheDataset,
@@ -1615,7 +1615,7 @@ def assert_not_batched(dataset):
         readers.TextLineDatasetV2,
         readers.TFRecordDatasetV2,
     ]
-    for ty in whitelisted_types:
+    for ty in allowed_types:
       if isinstance(dataset, ty):
         for input_dataset in dataset._inputs():
           assert_not_batched(input_dataset)
@@ -1649,7 +1649,7 @@ def assert_not_shuffled(dataset):
   if isinstance(dataset, dataset_ops.DatasetV1Adapter):
     return assert_not_shuffled(dataset._dataset)
   else:
-    whitelisted_types = [
+    allowed_types = [
         dataset_ops._OptionsDataset,
         dataset_ops.BatchDataset,
         dataset_ops.ConcatenateDataset,
@@ -1672,7 +1672,7 @@ def assert_not_shuffled(dataset):
         readers.TextLineDatasetV2,
         readers.TFRecordDatasetV2,
     ]
-    for ty in whitelisted_types:
+    for ty in allowed_types:
       if isinstance(dataset, ty):
         for input_dataset in dataset._inputs():
           assert_not_shuffled(input_dataset)

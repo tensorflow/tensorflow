@@ -1020,9 +1020,9 @@ bool ConstantFolding::MaybeFoldable(const NodeDef& node,
     return false;
   }
 
-  // Skips nodes that must be preserved except whitelisted nodes.
+  // Skips nodes that must be preserved except allowlisted nodes.
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end() &&
-      nodes_whitelist_.find(node.name()) == nodes_whitelist_.end()) {
+      nodes_allowlist_.find(node.name()) == nodes_allowlist_.end()) {
     return false;
   }
 
@@ -1082,13 +1082,13 @@ bool ConstantFolding::MaybeFoldable(const NodeDef& node,
     }
   }
 
-  // Don't fold nodes that have no outgoing edges except whitelisted nodes.
+  // Don't fold nodes that have no outgoing edges except allowlisted nodes.
   // Such nodes could be introduced by an earlier constant folding pass and are
   // preserved in case users want to fetch their values; re-processing them
   // would lead to an error of adding a duplicated node to graph.
   const auto& outputs = node_map_->GetOutputs(node.name());
   if (outputs.empty() &&
-      nodes_whitelist_.find(node.name()) == nodes_whitelist_.end()) {
+      nodes_allowlist_.find(node.name()) == nodes_allowlist_.end()) {
     return false;
   }
   return true;
@@ -3874,7 +3874,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
                                             GraphDef* optimized_graph) {
   graph_ = &item->graph;
   node_map_.reset(new NodeMap(graph_));
-  nodes_whitelist_.clear();
+  nodes_allowlist_.clear();
   // Fold fetch nodes iff it has a single fanout. Note that if a fetch node
   // has a single fanout, it would be rewritten as a constant with the same
   // node name, and therefore users are still able to fetch it. This is not
@@ -3885,7 +3885,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   for (const auto& fetch : item->fetch) {
     const NodeDef* fetch_node = node_map_->GetNode(fetch);
     if (fetch_node && NumOutputs(*fetch_node, graph_) == 1) {
-      nodes_whitelist_.insert(fetch_node->name());
+      nodes_allowlist_.insert(fetch_node->name());
     }
   }
 
