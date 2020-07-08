@@ -1186,11 +1186,14 @@ def _matmul(  # pylint:disable=missing-docstring
     adjoint_b=False,
     a_is_sparse=False,
     b_is_sparse=False,
+    allow_fast_math=None,
     name=None):
   if transpose_a or transpose_b:
     raise ValueError("Transposing not supported at this time.")
   if a_is_sparse or b_is_sparse:
     raise ValueError("Sparse methods not supported at this time.")
+  if allow_fast_math != None:
+    raise ValueError("allow_fast_math is not supported at this time.")
   if not isinstance(a, LinearOperator):
     # We use the identity (B^HA^H)^H =  AB
     adjoint_matmul = b.matmul(

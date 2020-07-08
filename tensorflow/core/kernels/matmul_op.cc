@@ -122,7 +122,8 @@ struct LaunchMatMulBase {
   static void launch(
       OpKernelContext* ctx, const Tensor& a, const Tensor& b,
       const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
-      std::vector<AlgorithmType>* algorithms, bool use_autotune, Tensor* out) {
+      std::vector<AlgorithmType>* algorithms, bool use_autotune, Tensor* out,
+      int allow_fast_math) {
 #ifndef TENSORFLOW_USE_SYCL
     // An explicit vector-matrix multiply is much better optimized than an
     // implicit one and this is a bottleneck during non-batched inference.
@@ -256,7 +257,8 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
   static void launch(
       OpKernelContext* ctx, const Tensor& a, const Tensor& b,
       const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
-      std::vector<int64>* algorithms, bool use_autotune, Tensor* out) {
+      std::vector<int64>* algorithms, bool use_autotune, Tensor* out,
+      int allow_fast_math) {
     using se::blas::AlgorithmConfig;
     using se::blas::ComputationType;
     using se::blas::kDefaultAlgorithm;
@@ -314,7 +316,7 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
                       blas_transpose_b, blas_transpose_a, n, m, k, alpha, b_ptr,
                       transpose_b ? k : n, a_ptr, transpose_a ? m : k, beta,
                       &c_ptr, n, computation_type, profile_algorithm,
-                      &profile_result)
+                      allow_fast_math, &profile_result)
                   .ok();
           if (cublas_launch_status) {
             if (profile_result.is_valid()) {
@@ -331,7 +333,7 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
                 ->ThenBlasGemmWithProfiling(
                     blas_transpose_b, blas_transpose_a, n, m, k, 1.0, b_ptr,
                     transpose_b ? k : n, a_ptr, transpose_a ? m : k, 0.0,
-                    &c_ptr, n, &profile_result)
+                    &c_ptr, n, allow_fast_math, &profile_result)
                 .ok();
         if (cublas_launch_status) {
           if (profile_result.is_valid()) {
@@ -373,7 +375,7 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
                     blas_transpose_b, blas_transpose_a, n, m, k, alpha, b_ptr,
                     transpose_b ? k : n, a_ptr, transpose_a ? m : k, beta,
                     &c_ptr, n, computation_type, algorithm_config.algorithm(),
-                    nullptr)
+                    allow_fast_math, nullptr)
                 .ok();
         if (!cublas_launch_status) {
           ctx->SetStatus(errors::Internal(
@@ -413,7 +415,8 @@ struct LaunchMatMul<GPUDevice, T, true /* USE_CUBLAS */> {
             stream
                 ->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
                                1.0f, b_ptr, transpose_b ? k : n, a_ptr,
-                               transpose_a ? m : k, 0.0f, &c_ptr, n)
+                               transpose_a ? m : k, 0.0f, &c_ptr, n,
+                               allow_fast_math)
                 .ok();
         if (!blas_launch_status) {
           ctx->SetStatus(errors::Internal(
@@ -513,12 +516,13 @@ class MatMulOp : public OpKernel {
 
       LaunchMatMul<Device, float, USE_CUBLAS>::launch(
           ctx, a_float, b_float, dim_pair, &algorithms_, use_autotune_,
-          &out_float);
+          &out_float, allow_fast_math_);
       FloatToBFloat16(out_float.flat<float>().data(),
                       out->flat<bfloat16>().data(), out->NumElements());
     } else {
       LaunchMatMul<Device, T, USE_CUBLAS>::launch(
-          ctx, a, b, dim_pair, &algorithms_, use_autotune_, out);
+          ctx, a, b, dim_pair, &algorithms_, use_autotune_, out,
+          allow_fast_math_);
     }
   }
 
@@ -528,6 +532,20 @@ class MatMulOp : public OpKernel {
   bool use_autotune_;
   bool transpose_a_;
   bool transpose_b_;
+ protected:
+  int allow_fast_math_ = -1;
+};
+
+template <typename Device, typename T, bool USE_CUBLAS>
+class MatMulV2Op : public MatMulOp<Device, T, USE_CUBLAS> {
+ public:
+  using MatMulOp<Device, T, USE_CUBLAS>::allow_fast_math_;
+  explicit MatMulV2Op(OpKernelConstruction* ctx)
+      : MatMulOp<Device, T, USE_CUBLAS>(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("allow_fast_math",
+                                     &allow_fast_math_));
+  }
+  ~MatMulV2Op() override {}
 };
 
 namespace functor {
@@ -563,23 +581,38 @@ struct MatMulFunctor<SYCLDevice, T> {
 #define REGISTER_CPU_EIGEN(T)                                                  \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T").Label("eigen"), \
-      MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);
+      MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);            \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MatMulV2").Device(DEVICE_CPU).TypeConstraint<T>("T")               \
+                      .Label("eigen"),                                         \
+      MatMulV2Op<CPUDevice, T, false /* cublas, ignored for CPU */>);
 
-#define REGISTER_CPU(T)                                             \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"),     \
-      MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>); \
+#define REGISTER_CPU(T)                                               \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"),       \
+      MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);   \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("MatMulV2").Device(DEVICE_CPU).TypeConstraint<T>("T"),     \
+      MatMulV2Op<CPUDevice, T, false /* cublas, ignored for CPU */>); \
   REGISTER_CPU_EIGEN(T);
 
-#define REGISTER_GPU(T)                                            \
-  REGISTER_KERNEL_BUILDER(                                         \
-      Name("MatMul").Device(DEVICE_GPU).TypeConstraint<T>("T"),    \
-      MatMulOp<GPUDevice, T, true /* cublas, true by default */>); \
-  REGISTER_KERNEL_BUILDER(Name("MatMul")                           \
-                              .Device(DEVICE_GPU)                  \
-                              .TypeConstraint<T>("T")              \
-                              .Label("cublas"),                    \
-                          MatMulOp<GPUDevice, T, true /* cublas */>)
+#define REGISTER_GPU(T)                                               \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("MatMul").Device(DEVICE_GPU).TypeConstraint<T>("T"),       \
+      MatMulOp<GPUDevice, T, true /* cublas, true by default */>);    \
+  REGISTER_KERNEL_BUILDER(Name("MatMul")                              \
+                              .Device(DEVICE_GPU)                     \
+                              .TypeConstraint<T>("T")                 \
+                              .Label("cublas"),                       \
+                          MatMulOp<GPUDevice, T, true /* cublas */>); \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("MatMulV2").Device(DEVICE_GPU).TypeConstraint<T>("T"),     \
+      MatMulV2Op<GPUDevice, T, true /* cublas, true by default */>);  \
+  REGISTER_KERNEL_BUILDER(Name("MatMulV2")                            \
+                              .Device(DEVICE_GPU)                     \
+                              .TypeConstraint<T>("T")                 \
+                              .Label("cublas"),                       \
+                          MatMulV2Op<GPUDevice, T, true /* cublas */>)
 
 TF_CALL_int32(REGISTER_CPU);
 TF_CALL_int64(REGISTER_CPU);

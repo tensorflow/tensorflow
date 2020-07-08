@@ -920,7 +920,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     bool blas_launch_status =
         stream
             ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
-                           a_ptr, k, 0.0f, &c_ptr, n)
+                           a_ptr, k, 0.0f, &c_ptr, n, /*allow_fast_math=*/-1)
             .ok();
     if (!blas_launch_status) {
       ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -953,7 +953,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     bool blas_launch_status =
         stream
             ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
-                           a_ptr, k, 0.0f, &c_ptr, n)
+                           a_ptr, k, 0.0f, &c_ptr, n, /*allow_fast_math=*/-1)
             .ok();
     if (!blas_launch_status) {
       ctx->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,

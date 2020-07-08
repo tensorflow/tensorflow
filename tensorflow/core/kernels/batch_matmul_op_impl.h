@@ -222,7 +222,8 @@ template <typename Scalar>
 struct LaunchBatchMatMul<CPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
-                     bool trans_y, const MatMulBCast& bcast, Tensor* out) {
+                     bool trans_y, const MatMulBCast& bcast, Tensor* out,
+                     int allow_fast_math) {
     typedef ParallelMatMulKernel<Scalar, Eigen::NumTraits<Scalar>::IsComplex>
         ParallelMatMulKernel;
     bool conjugate_result = false;
@@ -316,7 +317,8 @@ template <typename Scalar>
 struct LaunchBatchMatMul<GPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
-                     bool trans_y, const MatMulBCast& bcast, Tensor* out) {
+                     bool trans_y, const MatMulBCast& bcast, Tensor* out,
+                     int allow_fast_math) {
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose,
                                    se::blas::Transpose::kConjugateTranspose};
@@ -434,7 +436,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                                static_cast<Coefficient>(1.0), *(b_ptrs[0]),
                                adj_y || trans_y ? k : n, *(a_ptrs[0]),
                                adj_x || trans_x ? m : k,
-                               static_cast<Coefficient>(0.0), c_ptrs[0], n)
+                               static_cast<Coefficient>(0.0), c_ptrs[0], n,
+                               allow_fast_math)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
@@ -452,7 +455,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                   adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
                   adj_x || trans_x ? m : k, a_stride,
                   static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
-                  batch_size)
+                  batch_size, allow_fast_math)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal(
@@ -470,7 +473,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                   static_cast<Coefficient>(1.0), b_ptrs,
                   adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
                   static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                  &scratch_allocator)
+                  &scratch_allocator, allow_fast_math)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal(
@@ -487,7 +490,8 @@ template <>
 struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
-                     bool trans_y, const MatMulBCast& bcast, Tensor* out) {
+                     bool trans_y, const MatMulBCast& bcast, Tensor* out,
+                     int allow_fast_math) {
     typedef Eigen::half Scalar;
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose,
@@ -582,7 +586,8 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
                              static_cast<Coefficient>(1.0), *(b_ptrs[0]),
                              adj_y || trans_y ? k : n, *(a_ptrs[0]),
                              adj_x || trans_x ? m : k,
-                             static_cast<Coefficient>(0.0), c_ptrs[0], n)
+                             static_cast<Coefficient>(0.0), c_ptrs[0], n,
+                             allow_fast_math)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal(
@@ -599,7 +604,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
                   adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
                   adj_x || trans_x ? m : k, a_stride,
                   static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
-                  batch_size)
+                  batch_size, allow_fast_math)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal(
@@ -617,7 +622,7 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
                   static_cast<Coefficient>(1.0), b_ptrs,
                   adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
                   static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                  &scratch_allocator)
+                  &scratch_allocator, allow_fast_math)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal(
@@ -665,7 +670,8 @@ template <typename Scalar>
 struct LaunchBatchMatMul<SYCLDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
-                     bool trans_y, const MatMulBCast& bcast, Tensor* out) {
+                     bool trans_y, const MatMulBCast& bcast, Tensor* out,
+                     int allow_fast_math) {
     // Number of matrix multiplies i.e. size of the batch.
     const int64 batch_size = bcast.output_batch_size();
     ParallelMatMulKernelSYCL<Scalar>::Run(context, in_x, in_y, adj_x, adj_y,
@@ -743,12 +749,13 @@ class BaseBatchMatMulOp : public OpKernel {
                                  out->shape().DebugString()));
     LaunchBatchMatMul<Device, Scalar>::Launch(
         ctx, in0_reshaped, in1_reshaped, adj_x_, adj_y_, /*trans_x=*/false,
-        /*trans_y=*/false, bcast, &out_reshaped);
+        /*trans_y=*/false, bcast, &out_reshaped, allow_fast_math_);
   }
 
  protected:
   virtual void ValidateInputTensors(OpKernelContext* ctx, const Tensor& in0,
                                     const Tensor& in1) = 0;
+  int allow_fast_math_ = -1;
 
  private:
   bool adj_x_;
@@ -810,13 +817,29 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Scalar> {
   }
 };
 
+template <typename Device, typename Scalar>
+class BatchMatMulV3Op : public BatchMatMulV2Op<Device, Scalar> {
+ public:
+  using BaseBatchMatMulOp<Device, Scalar>::allow_fast_math_;
+  explicit BatchMatMulV3Op(OpKernelConstruction* context)
+      : BatchMatMulV2Op<Device, Scalar>(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("allow_fast_math",
+                                             &allow_fast_math_));
+  }
+
+  ~BatchMatMulV3Op() override {}
+};
+
 #define REGISTER_BATCH_MATMUL_CPU(TYPE)                                   \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"),   \
       BatchMatMulOp<CPUDevice, TYPE>);                                    \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("BatchMatMulV2").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
-      BatchMatMulV2Op<CPUDevice, TYPE>)
+      BatchMatMulV2Op<CPUDevice, TYPE>);                                  \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("BatchMatMulV3").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
+      BatchMatMulV3Op<CPUDevice, TYPE>)
 
 #define REGISTER_BATCH_MATMUL_GPU(TYPE)                                   \
   REGISTER_KERNEL_BUILDER(                                                \
@@ -824,7 +847,10 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Scalar> {
       BatchMatMulOp<GPUDevice, TYPE>);                                    \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("BatchMatMulV2").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
-      BatchMatMulV2Op<GPUDevice, TYPE>)
+      BatchMatMulV2Op<GPUDevice, TYPE>);                                  \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("BatchMatMulV3").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
+      BatchMatMulV3Op<GPUDevice, TYPE>)
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_BATCH_MATMUL_SYCL(TYPE)                                   \

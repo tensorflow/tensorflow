@@ -580,9 +580,11 @@ struct EinsumHelper {
     Tensor output_reshaped;
     TF_RETURN_IF_ERROR(
         ReshapeToRank3(*output, bcast.output_batch_size(), &output_reshaped));
+    // By default, we disable the TF32 math mode on GPU for this operation.
     LaunchBatchMatMul<Device, T>::Launch(ctx, lhs, rhs, /*adj_x=*/false,
                                          /*adj_y=*/false, trans_x, trans_y,
-                                         bcast, &output_reshaped);
+                                         bcast, &output_reshaped,
+                                         /*allow_fast_math=*/0);
     return Status::OK();
   }
 };

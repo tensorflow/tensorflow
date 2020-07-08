@@ -913,6 +913,10 @@ tf_module {
     argspec: "args=[\'params\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "batch_mat_mul_v3"
+    argspec: "args=[\'x\', \'y\', \'adj_x\', \'adj_y\', \'allow_fast_math\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'-1\', \'None\'], "
+  }
+  member_method {
     name: "batch_scatter_update"
     argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
@@ -1629,12 +1633,16 @@ tf_module {
     argspec: "args=[\'fn\', \'elems\', \'dtype\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'infer_shape\', \'name\', \'fn_output_signature\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'False\', \'True\', \'None\', \'None\'], "
   }
   member_method {
+    name: "mat_mul_v2"
+    argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'allow_fast_math\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'-1\', \'None\'], "
+  }
+  member_method {
     name: "matching_files"
     argspec: "args=[\'pattern\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "matmul"
-    argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'False\', \'None\'], "
+    argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'a_is_sparse\', \'b_is_sparse\', \'allow_fast_math\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'False\', \'None\', \'None\'], "
   }
   member_method {
     name: "matrix_band_part"

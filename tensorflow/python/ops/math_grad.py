@@ -1672,6 +1672,47 @@ def _MatMulGradAgainstSecondOnly(op, grad):
   return None, grad_b
 
 
+def _MatMulV2GradAgainstFirstOnly(op, grad):
+  """Gradient for MatMul, only for the first input."""
+  t_a = op.get_attr("transpose_a")
+  t_b = op.get_attr("transpose_b")
+  fast_math = op.get_attr("allow_fast_math")
+  b = math_ops.conj(op.inputs[1])
+  if not t_a and not t_b:
+    grad_a = gen_math_ops.mat_mul_v2(grad, b, transpose_b=True,
+                                     allow_fast_math=fast_math)
+  elif not t_a and t_b:
+    grad_a = gen_math_ops.mat_mul_v2(grad, b, allow_fast_math=fast_math)
+  elif t_a and not t_b:
+    grad_a = gen_math_ops.mat_mul_v2(b, grad, transpose_b=True,
+                                     allow_fast_math=fast_math)
+  elif t_a and t_b:
+    grad_a = gen_math_ops.mat_mul_v2(b, grad, transpose_a=True,
+                                     transpose_b=True,
+                                     allow_fast_math=fast_math)
+  return grad_a, None
+
+def _MatMulV2GradAgainstSecondOnly(op, grad):
+  """Gradient for MatMul, only for the second input."""
+  t_a = op.get_attr("transpose_a")
+  t_b = op.get_attr("transpose_b")
+  fast_math = op.get_attr("allow_fast_math")
+  a = math_ops.conj(op.inputs[0])
+  if not t_a and not t_b:
+    grad_b = gen_math_ops.mat_mul_v2(a, grad, transpose_a=True,
+                                     allow_fast_math=fast_math)
+  elif not t_a and t_b:
+    grad_b = gen_math_ops.mat_mul_v2(grad, a, transpose_a=True,
+                                     allow_fast_math=fast_math)
+  elif t_a and not t_b:
+    grad_b = gen_math_ops.mat_mul_v2(a, grad, allow_fast_math=fast_math)
+  elif t_a and t_b:
+    grad_b = gen_math_ops.mat_mul_v2(grad, a, transpose_a=True,
+                                     transpose_b=True,
+                                     allow_fast_math=fast_math)
+  return None, grad_b
+
+
 @ops.RegisterGradient("MatMul")
 def _MatMulGrad(op, grad):
   """Gradient for MatMul."""
@@ -1702,6 +1743,47 @@ def _MatMulGrad(op, grad):
   elif t_a and t_b:
     grad_a = gen_math_ops.mat_mul(b, grad, transpose_a=True, transpose_b=True)
     grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True, transpose_b=True)
+  return grad_a, grad_b
+
+@ops.RegisterGradient("MatMulV2")
+def _MatMulGradV2(op, grad):
+  """Gradient for MatMulV2."""
+  try:
+    skip_input_indices = op.skip_input_indices
+    if skip_input_indices is not None:
+      if 1 in skip_input_indices:
+        return _MatMulV2GradAgainstFirstOnly(op, grad)
+      elif 0 in skip_input_indices:
+        return _MatMulV2GradAgainstSecondOnly(op, grad)
+  except AttributeError:
+    # No gradient skipping, so do the full gradient computation
+    pass
+
+  t_a = op.get_attr("transpose_a")
+  t_b = op.get_attr("transpose_b")
+  fast_math = op.get_attr("allow_fast_math")
+  a = math_ops.conj(op.inputs[0])
+  b = math_ops.conj(op.inputs[1])
+  if not t_a and not t_b:
+    grad_a = gen_math_ops.mat_mul_v2(grad, b, transpose_b=True,
+                                     allow_fast_math=fast_math)
+    grad_b = gen_math_ops.mat_mul_v2(a, grad, transpose_a=True,
+                                     allow_fast_math=fast_math)
+  elif not t_a and t_b:
+    grad_a = gen_math_ops.mat_mul_v2(grad, b, allow_fast_math=fast_math)
+    grad_b = gen_math_ops.mat_mul_v2(grad, a, transpose_a=True,
+                                     allow_fast_math=fast_math)
+  elif t_a and not t_b:
+    grad_a = gen_math_ops.mat_mul_v2(b, grad, transpose_b=True,
+                                     allow_fast_math=fast_math)
+    grad_b = gen_math_ops.mat_mul_v2(a, grad, allow_fast_math=fast_math)
+  elif t_a and t_b:
+    grad_a = gen_math_ops.mat_mul_v2(b, grad, transpose_a=True,
+                                     transpose_b=True,
+                                     allow_fast_math=fast_math)
+    grad_b = gen_math_ops.mat_mul_v2(grad, a, transpose_a=True,
+                                     transpose_b=True,
+                                     allow_fast_math=fast_math)
   return grad_a, grad_b
 
 
@@ -1826,6 +1908,53 @@ def _BatchMatMulV2(op, grad):
     else:
       grad_x = math_ops.matmul(y, grad, adjoint_a=True, adjoint_b=True)
       grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=True)
+
+  # Reduce along the broadcasted batch dimensions, if broadcasting is required.
+  shape_x_static = x.get_shape()
+  shape_y_static = y.get_shape()
+  if not (shape_x_static.is_fully_defined() and
+          shape_y_static.is_fully_defined() and
+          shape_x_static == shape_y_static):
+    sx = array_ops.shape(x)
+    sy = array_ops.shape(y)
+    rx, ry = gen_array_ops.broadcast_gradient_args(sx[:-2], sy[:-2])
+    grad_x = array_ops.reshape(math_ops.reduce_sum(grad_x, rx), sx)
+    grad_y = array_ops.reshape(math_ops.reduce_sum(grad_y, ry), sy)
+
+  return grad_x, grad_y
+
+
+@ops.RegisterGradient("BatchMatMulV3")
+def _BatchMatMulV3(op, grad):
+  """Returns the gradient of x and y given the gradient of x * y."""
+  x = op.inputs[0]
+  y = op.inputs[1]
+  adj_x = op.get_attr("adj_x")
+  adj_y = op.get_attr("adj_y")
+  fast_math = op.get_attr("allow_fast_math")
+
+  if not adj_x:
+    if not adj_y:
+      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=True,
+                               allow_fast_math=fast_math)
+      grad_y = math_ops.matmul(x, grad, adjoint_a=True, adjoint_b=False,
+                               allow_fast_math=fast_math)
+    else:
+      grad_x = math_ops.matmul(grad, y, adjoint_a=False, adjoint_b=False,
+                               allow_fast_math=fast_math)
+      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=False,
+                               allow_fast_math=fast_math)
+  else:
+    if not adj_y:
+      grad_x = math_ops.matmul(y, grad, adjoint_a=False, adjoint_b=True,
+                               allow_fast_math=fast_math)
+      grad_y = math_ops.matmul(x, grad, adjoint_a=False, adjoint_b=False,
+                               allow_fast_math=fast_math)
+    else:
+      grad_x = math_ops.matmul(y, grad, adjoint_a=True, adjoint_b=True,
+                               allow_fast_math=fast_math)
+      grad_y = math_ops.matmul(grad, x, adjoint_a=True, adjoint_b=True,
+                               allow_fast_math=fast_math)
 
   # Reduce along the broadcasted batch dimensions, if broadcasting is required.
   shape_x_static = x.get_shape()

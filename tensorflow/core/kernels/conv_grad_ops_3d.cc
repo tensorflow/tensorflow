@@ -1200,7 +1200,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       bool blas_launch_status =
           stream
               ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
-                             a_ptr, k, 0.0f, &c_ptr, n)
+                             a_ptr, k, 0.0f, &c_ptr, n, /*allow_fast_math=*/-1)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -1230,7 +1230,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       bool blas_launch_status =
           stream
               ->ThenBlasGemm(transpose, no_transpose, n, m, k, 1.0f, b_ptr, k,
-                             a_ptr, k, 0.0f, &c_ptr, n)
+                             a_ptr, k, 0.0f, &c_ptr, n, /*allow_fast_math=*/-1)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -1703,7 +1703,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
           stream
               ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
                              se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                             a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n)
+                             a_ptr, n, b_ptr, m, 0.0f, &c_ptr, n,
+                             /*allow_fast_math=*/-1)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,
@@ -1731,7 +1732,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
           stream
               ->ThenBlasGemm(se::blas::Transpose::kNoTranspose,
                              se::blas::Transpose::kTranspose, n, m, k, 1.0f,
-                             b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n)
+                             b_ptr, n, a_ptr, m, 0.0f, &c_ptr, n,
+                             /*allow_fast_math=*/-1)
               .ok();
       if (!blas_launch_status) {
         context->SetStatus(errors::Internal("Blas SGEMM launch failed : m=", m,

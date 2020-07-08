@@ -137,6 +137,18 @@ REGISTER_OP("BatchMatMulV2")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
 
+REGISTER_OP("BatchMatMulV3")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("output: T")
+    .Attr(
+        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "complex128}")
+    .Attr("adj_x: bool = false")
+    .Attr("adj_y: bool = false")
+    .Attr("allow_fast_math: int = -1")
+    .SetShapeFn(shape_inference::BatchMatMulV2Shape);
+
 #ifdef INTEL_MKL
 REGISTER_OP("_MklBatchMatMul")
     .Input("x: T")
@@ -919,6 +931,18 @@ REGISTER_OP("MatMul")
     .Attr(
         "T: {bfloat16, half, float, double, int32, int64, complex64, "
         "complex128}")
+    .SetShapeFn(shape_inference::MatMulShape);
+
+REGISTER_OP("MatMulV2")
+    .Input("a: T")
+    .Input("b: T")
+    .Output("product: T")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr(
+        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "complex128}")
+    .Attr("allow_fast_math: int = -1")
     .SetShapeFn(shape_inference::MatMulShape);
 
 #ifdef INTEL_MKL

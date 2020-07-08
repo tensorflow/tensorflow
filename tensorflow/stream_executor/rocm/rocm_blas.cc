@@ -1516,7 +1516,8 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           blas::Transpose transb, uint64 m, uint64 n, uint64 k,
                           float alpha, const DeviceMemory<Eigen::half> &a,
                           int lda, const DeviceMemory<Eigen::half> &b, int ldb,
-                          float beta, DeviceMemory<Eigen::half> *c, int ldc) {
+                          float beta, DeviceMemory<Eigen::half> *c, int ldc,
+                          int allow_fast_math) {
   blas_log("DoBlasGemm");
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS SGEMM<half>: at=%d bt=%d m=%u n=%u "
@@ -1562,7 +1563,8 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           blas::Transpose transb, uint64 m, uint64 n, uint64 k,
                           float alpha, const DeviceMemory<float> &a, int lda,
                           const DeviceMemory<float> &b, int ldb, float beta,
-                          DeviceMemory<float> *c, int ldc) {
+                          DeviceMemory<float> *c, int ldc,
+                          int allow_fast_math) {
   blas_log("DoBlasGemm");
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS SGEMM<float>: at=%d bt=%d m=%u n=%u "
@@ -1602,7 +1604,8 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           blas::Transpose transb, uint64 m, uint64 n, uint64 k,
                           double alpha, const DeviceMemory<double> &a, int lda,
                           const DeviceMemory<double> &b, int ldb, double beta,
-                          DeviceMemory<double> *c, int ldc) {
+                          DeviceMemory<double> *c, int ldc,
+                          int allow_fast_math) {
   blas_log("DoBlasGemm");
   return DoBlasInternal(
       wrap::rocblas_dgemm, stream, true /* = pointer_mode_host */,
@@ -1616,7 +1619,8 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           const DeviceMemory<std::complex<float>> &b, int ldb,
                           std::complex<float> beta,
-                          DeviceMemory<std::complex<float>> *c, int ldc) {
+                          DeviceMemory<std::complex<float>> *c, int ldc,
+                          int allow_fast_math) {
   blas_log("DoBlasGemm");
   return DoBlasInternal(
       wrap::rocblas_cgemm, stream, true /* = pointer_mode_host */,
@@ -1631,7 +1635,8 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           const DeviceMemory<std::complex<double>> &b, int ldb,
                           std::complex<double> beta,
-                          DeviceMemory<std::complex<double>> *c, int ldc) {
+                          DeviceMemory<std::complex<double>> *c, int ldc,
+                          int allow_fast_math) {
   blas_log("DoBlasGemm");
   return DoBlasInternal(
       wrap::rocblas_zgemm, stream, true /* = pointer_mode_host */,
@@ -1686,7 +1691,7 @@ bool ROCMBlas::DoBlasGemmWithProfiling(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, float alpha, const DeviceMemory<Eigen::half> &a,
     int lda, const DeviceMemory<Eigen::half> &b, int ldb, float beta,
-    DeviceMemory<Eigen::half> *c, int ldc,
+    DeviceMemory<Eigen::half> *c, int ldc, int allow_fast_math,
     blas::ProfileResult *output_profile_result) {
   return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
                                      lda, b, ldb, beta, c, ldc,
@@ -1697,7 +1702,7 @@ bool ROCMBlas::DoBlasGemmWithProfiling(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
     const DeviceMemory<float> &b, int ldb, float beta, DeviceMemory<float> *c,
-    int ldc, blas::ProfileResult *output_profile_result) {
+    int ldc, int allow_fast_math, blas::ProfileResult *output_profile_result) {
   return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
                                      lda, b, ldb, beta, c, ldc,
                                      output_profile_result);
@@ -1707,7 +1712,7 @@ bool ROCMBlas::DoBlasGemmWithProfiling(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
     uint64 n, uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
     const DeviceMemory<double> &b, int ldb, double beta,
-    DeviceMemory<double> *c, int ldc,
+    DeviceMemory<double> *c, int ldc, int allow_fast_math,
     blas::ProfileResult *output_profile_result) {
   return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
                                      lda, b, ldb, beta, c, ldc,
@@ -1720,7 +1725,7 @@ bool ROCMBlas::DoBlasGemmWithProfiling(
     const DeviceMemory<std::complex<float>> &a, int lda,
     const DeviceMemory<std::complex<float>> &b, int ldb,
     std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
-    blas::ProfileResult *output_profile_result) {
+    int allow_fast_math, blas::ProfileResult *output_profile_result) {
   return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
                                      lda, b, ldb, beta, c, ldc,
                                      output_profile_result);
@@ -1732,7 +1737,7 @@ bool ROCMBlas::DoBlasGemmWithProfiling(
     const DeviceMemory<std::complex<double>> &a, int lda,
     const DeviceMemory<std::complex<double>> &b, int ldb,
     std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
-    blas::ProfileResult *output_profile_result) {
+    int allow_fast_math, blas::ProfileResult *output_profile_result) {
   return DoBlasGemmWithProfilingImpl(stream, transa, transb, m, n, k, alpha, a,
                                      lda, b, ldb, beta, c, ldc,
                                      output_profile_result);
@@ -1781,7 +1786,7 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     const DeviceMemory<int8> &a, int lda, const DeviceMemory<int8> &b, int ldb,
     const HostOrDeviceScalar<int> &beta, DeviceMemory<int32> *c, int ldc,
     blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-    blas::ProfileResult *output_profile_result) {
+    int allow_fast_math, blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
       << "for the \"int8\" datatype";
@@ -1795,7 +1800,8 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     const DeviceMemory<Eigen::half> &b, int ldb,
     const HostOrDeviceScalar<Eigen::half> &beta, DeviceMemory<Eigen::half> *c,
     int ldc, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
+    blas::AlgorithmType algorithm, int allow_fast_math,
+    blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
       << "for the \"half\" datatype";
@@ -1808,7 +1814,8 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     const DeviceMemory<float> &a, int lda, const DeviceMemory<float> &b,
     int ldb, const HostOrDeviceScalar<float> &beta, DeviceMemory<float> *c,
     int ldc, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
+    blas::AlgorithmType algorithm, int allow_fast_math,
+    blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
       << "for the \"float\" datatype";
@@ -1821,7 +1828,8 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     const DeviceMemory<double> &a, int lda, const DeviceMemory<double> &b,
     int ldb, const HostOrDeviceScalar<double> &beta, DeviceMemory<double> *c,
     int ldc, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, blas::ProfileResult *output_profile_result) {
+    blas::AlgorithmType algorithm, int allow_fast_math,
+    blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
       << "for the \"double\" datatype";
@@ -1836,7 +1844,7 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     const HostOrDeviceScalar<std::complex<float>> &beta,
     DeviceMemory<std::complex<float>> *c, int ldc,
     blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-    blas::ProfileResult *output_profile_result) {
+    int allow_fast_math, blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
       << "for the \"complex<float>\" datatype";
@@ -1851,7 +1859,7 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
     const HostOrDeviceScalar<std::complex<double>> &beta,
     DeviceMemory<std::complex<double>> *c, int ldc,
     blas::ComputationType computation_type, blas::AlgorithmType algorithm,
-    blas::ProfileResult *output_profile_result) {
+    int allow_fast_math, blas::ProfileResult *output_profile_result) {
   LOG(ERROR)
       << "rocBLAS does not currently support the GEMMwithAlgorithm operation "
       << "for the \"complex<double>\" datatype";
@@ -2065,7 +2073,7 @@ bool ROCMBlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,
     const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb, float beta,
     const port::ArraySlice<DeviceMemory<Eigen::half> *> &c, int ldc,
-    int batch_count, ScratchAllocator *scratch_allocator) {
+    int batch_count, ScratchAllocator *scratch_allocator, int allow_fast_math) {
   blas_log("DoBlasGemmBatched");
   const Eigen::half alpha_half(alpha);
   const Eigen::half beta_half(beta);
@@ -2087,7 +2095,7 @@ bool ROCMBlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<float> *> &a_array, int lda,
     const port::ArraySlice<DeviceMemory<float> *> &b_array, int ldb, float beta,
     const port::ArraySlice<DeviceMemory<float> *> &c_array, int ldc,
-    int batch_count, ScratchAllocator *scratch_allocator) {
+    int batch_count, ScratchAllocator *scratch_allocator, int allow_fast_math) {
   blas_log("DoBlasGemmBatched");
   port::Status status = DoBlasGemmBatchedInternal(
       wrap::rocblas_sgemm_strided_batched, stream, transa, transb, m, n, k,
@@ -2105,7 +2113,8 @@ bool ROCMBlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<double> *> &a_array, int lda,
     const port::ArraySlice<DeviceMemory<double> *> &b_array, int ldb,
     double beta, const port::ArraySlice<DeviceMemory<double> *> &c_array,
-    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator,
+    int allow_fast_math) {
   blas_log("DoBlasGemmBatched");
   port::Status status = DoBlasGemmBatchedInternal(
       wrap::rocblas_dgemm_strided_batched, stream, transa, transb, m, n, k,
@@ -2125,7 +2134,8 @@ bool ROCMBlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<std::complex<float>> *> &b_array,
     int ldb, std::complex<float> beta,
     const port::ArraySlice<DeviceMemory<std::complex<float>> *> &c_array,
-    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator,
+    int allow_fast_math) {
   blas_log("DoBlasGemmBatched");
   port::Status status = DoBlasGemmBatchedInternal(
       wrap::rocblas_cgemm_strided_batched, stream, transa, transb, m, n, k,
@@ -2145,7 +2155,8 @@ bool ROCMBlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<std::complex<double>> *> &b_array,
     int ldb, std::complex<double> beta,
     const port::ArraySlice<DeviceMemory<std::complex<double>> *> &c_array,
-    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator,
+    int allow_fast_math) {
   blas_log("DoBlasGemmBatched");
   port::Status status = DoBlasGemmBatchedInternal(
       wrap::rocblas_zgemm_strided_batched, stream, transa, transb, m, n, k,
@@ -2450,7 +2461,7 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     uint64 n, uint64 k, float alpha, const DeviceMemory<Eigen::half> &a,
     int lda, int64 stride_a, const DeviceMemory<Eigen::half> &b, int ldb,
     int64 stride_b, float beta, DeviceMemory<Eigen::half> *c, int ldc,
-    int64 stride_c, int batch_count) {
+    int64 stride_c, int batch_count, int allow_fast_math) {
   blas_log("DoBlasGemmStridedBatched");
   const Eigen::half alpha_half(alpha);
   const Eigen::half beta_half(beta);
@@ -2472,7 +2483,7 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     uint64 n, uint64 k, float alpha, const DeviceMemory<float> &a, int lda,
     int64 stride_a, const DeviceMemory<float> &b, int ldb, int64 stride_b,
     float beta, DeviceMemory<float> *c, int ldc, int64 stride_c,
-    int batch_count) {
+    int batch_count, int allow_fast_math) {
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS SGEMM Strided Batched<float>: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
@@ -2491,7 +2502,7 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     uint64 n, uint64 k, double alpha, const DeviceMemory<double> &a, int lda,
     int64 stride_a, const DeviceMemory<double> &b, int ldb, int64 stride_b,
     double beta, DeviceMemory<double> *c, int ldc, int64 stride_c,
-    int batch_count) {
+    int batch_count, int allow_fast_math) {
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS SGEMM Strided Batched<double>: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
@@ -2511,7 +2522,7 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     const DeviceMemory<std::complex<float>> &a, int lda, int64 stride_a,
     const DeviceMemory<std::complex<float>> &b, int ldb, int64 stride_b,
     std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
-    int64 stride_c, int batch_count) {
+    int64 stride_c, int batch_count, int allow_fast_math) {
   return DoBlasInternal(wrap::rocblas_cgemm_strided_batched, stream,
                         false, /* pointer_mode_host */
                         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
@@ -2526,7 +2537,7 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
     const DeviceMemory<std::complex<double>> &a, int lda, int64 stride_a,
     const DeviceMemory<std::complex<double>> &b, int ldb, int64 stride_b,
     std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
-    int64 stride_c, int batch_count) {
+    int64 stride_c, int batch_count, int allow_fast_math) {
   return DoBlasInternal(wrap::rocblas_zgemm_strided_batched, stream,
                         false, /* pointer_mode_host */
                         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,

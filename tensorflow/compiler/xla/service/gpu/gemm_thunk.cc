@@ -129,7 +129,7 @@ static bool DoGemmWithAlgorithm(
             /*leading dim of RHS=*/rhs_matrix.num_rows,
             /*beta=*/static_cast<Element>(beta), &output_data,
             /*leading dim of output=*/output_matrix.num_rows, computation_type,
-            *algorithm, output_profile_result)
+            *algorithm, /*allow_fast_math=*/-1, output_profile_result)
         .ok();
   }
 
@@ -146,7 +146,7 @@ static bool DoGemmWithAlgorithm(
             /*leading dim of RHS=*/rhs_matrix.num_rows, rhs_stride,
             /*beta=*/beta, &output_data,
             /*leading dim of output=*/output_matrix.num_rows, output_stride,
-            batch_size)
+            batch_size, /*allow_fast_math=*/-1)
         .ok();
   }
 
@@ -156,7 +156,8 @@ static bool DoGemmWithAlgorithm(
           output_matrix.num_cols, /*size of reduce dim=*/k, /*alpha=*/alpha,
           lhs_data, /*leading dim of LHS=*/lhs_matrix.num_rows, rhs_data,
           /*leading dim of RHS=*/rhs_matrix.num_rows, /*beta=*/beta,
-          &output_data, /*leading dim of output=*/output_matrix.num_rows)
+          &output_data, /*leading dim of output=*/output_matrix.num_rows,
+          /*allow_fast_math=*/-1)
       .ok();
 }
 

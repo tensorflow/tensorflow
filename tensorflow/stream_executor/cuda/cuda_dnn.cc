@@ -4064,7 +4064,8 @@ bool CudnnSupport::DoMatMul(Stream* stream,
     const int64 k = input_dimensions.NodesAcrossFeatureMaps();
     stream->ThenBlasGemm(blas::Transpose::kNoTranspose,
                          blas::Transpose::kNoTranspose, m, n, k, alpha, weights,
-                         m, input_data, k, beta, output_data, m);
+                         m, input_data, k, beta, output_data, m,
+                         /*allow_fast_math=*/-1);
   } else {
     // This is a slower and more complex path that supports output
     // width() * height() > 1, though it only supports the
@@ -4144,7 +4145,7 @@ bool CudnnSupport::DoMatMul(Stream* stream,
     stream->ThenBlasGemmBatched(blas::Transpose::kNoTranspose,
                                 blas::Transpose::kNoTranspose, m, n, k, alpha,
                                 toPtrs(a), lda, toPtrs(b), ldb, beta, toPtrs(c),
-                                ldc, batch_count);
+                                ldc, batch_count, /*allow_fast_math=*/-1);
   }
 
   return stream->ok();
