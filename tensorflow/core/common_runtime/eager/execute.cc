@@ -395,7 +395,7 @@ Status GetOrCreateKernelAndDevice(
     // When LazyCopyFunctionRemoteInputs is disabled, all inputs need to be on
     // local devices, since we execute a remote function through worker service,
     // which doesn't accept remote inputs.
-    for (int i = 0; i < op->Inputs().size(); i++) {
+    for (int i = 0, iter_limit = op->Inputs().size(); i < iter_limit; i++) {
       TensorHandle* input = op->Inputs()[i];
       if (!ctx.LazyCopyFunctionRemoteInputs() &&
           input->Type() == TensorHandle::REMOTE) {
@@ -620,7 +620,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   Status s;
   if (executor.Async()) {
     const DataTypeVector& output_dtypes = kernel->output_dtypes();
-    for (int i = 0; i < num_outputs; ++i) {
+    for (int i = 0, iter_limit = num_outputs; i < iter_limit; ++i) {
       retvals[i] = TensorHandle::CreateEmptyLocalHandle(
           /* d= */ ctx.CanonicalDevice(kernel->OutputDevice(i)),
           /* op_device= */ kernel->device(),
@@ -641,7 +641,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     // performance.
     s = executor.AddOrExecute(std::move(node));
   } else {
-    for (int i = 0; i < num_outputs; ++i) {
+    for (int i = 0, iter_limit = num_outputs; i < iter_limit; ++i) {
       retvals[i] = nullptr;
     }
     ExecuteNode node(&ctx, op->Inputs(), op->remote_func_params(), kernel,
@@ -656,7 +656,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   // Since the operation failed, we need to Unref any outputs if they were
   // allocated.
   if (!s.ok()) {
-    for (int i = 0; i < num_outputs; ++i) {
+    for (int i = 0, iter_limit = num_outputs; i < iter_limit; ++i) {
       if (retvals[i] != nullptr) {
         retvals[i]->Unref();
       }
@@ -733,7 +733,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                                profiler::TraceMeLevel::kInfo);
     const bool eagerly_copy_function_remote_inputs =
         !ctx.LazyCopyFunctionRemoteInputs() || !op->is_function();
-    for (int i = 0; i < op->Inputs().size(); i++) {
+    for (int i = 0, iter_limit = op->Inputs().size(); i < iter_limit; i++) {
       tensorflow::TensorHandle* input = op->Inputs()[i];
       tensorflow::Device* input_device = absl::get<Device*>(input->device());
       tensorflow::Device* input_device_or_cpu =
@@ -800,15 +800,15 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   DataTypeVector output_dtypes;
   TF_RETURN_IF_ERROR(GetOutputDTypes(op, &output_dtypes));
 
-  const size_t num_outputs = static_cast<int>(output_dtypes.size());
-  if (num_outputs != *num_retvals) {
+  const size_t num_outputs = output_dtypes.size();
+  if (static_cast<int>(num_outputs) != *num_retvals) {
     return errors::InvalidArgument(
         "num_retvals does not match expected output dtypes");
   }
   *num_retvals = num_outputs;
 
   const tensorflow::uint64 id = remote_op->id();
-  for (int i = 0; i < num_outputs; ++i) {
+  for (int i = 0, iter_limit = num_outputs; i < iter_limit; ++i) {
     // TODO(nareshmodi): Change the callback to instead add the decref to a
     // list of pending decrefs that we can send as a batch with the next
     // execute.
@@ -861,7 +861,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
   if (!s.ok()) {
-    for (int i = 0; i < num_outputs; ++i) {
+    for (int i = 0, iter_limit = num_outputs; i < iter_limit; ++i) {
       retvals[i]->Unref();
     }
   }
@@ -873,7 +873,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 Status GetKernelOutputs(std::vector<Tensor>* outputs, int num_outputs,
                         TensorHandle** retvals, EagerContext* ctx,
                         KernelAndDevice* kernel) {
-  for (int i = 0; i < num_outputs; ++i) {
+  for (int i = 0, iter_limit = num_outputs; i < iter_limit; ++i) {
     if (retvals[i] == nullptr) {
       retvals[i] = TensorHandle::CreateLocalHandle(
           std::move((*outputs)[i]),
@@ -1267,7 +1267,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
     graph_collector = ctx.GetGraphCollector();
   }
 
-  for (int i = 0; i < num_outputs; ++i) {
+  for (int i = 0, iter_limit = num_outputs; i < iter_limit; ++i) {
     retvals[i] = nullptr;
   }
 
@@ -1279,7 +1279,7 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
         // Since the operation failed, we need to Unref any outputs if they were
         // allocated.
         if (!s.ok()) {
-          for (int i = 0; i < num_outputs; ++i) {
+          for (int i = 0, iter_limit = num_outputs; i < iter_limit; ++i) {
             if (retvals[i] != nullptr) {
               retvals[i]->Unref();
             }

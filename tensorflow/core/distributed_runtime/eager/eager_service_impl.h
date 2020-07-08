@@ -149,7 +149,7 @@ class EagerServiceImpl {
     bool IsStale() {
       mutex_lock l(last_accessed_mu_);
       return (destroy_after_micros_ > 0 &&
-              (env_->env->NowMicros() - last_accessed_micros_) >
+              static_cast<int64>(env_->env->NowMicros() - last_accessed_micros_) >
                   destroy_after_micros_);
     }
 
