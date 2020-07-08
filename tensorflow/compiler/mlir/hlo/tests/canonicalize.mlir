@@ -391,12 +391,54 @@ func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
   return %0 : tensor<4xi32>
 }
 
+// CHECK-LABEL: @dynamic_iota_broadcast
+func @dynamic_iota_broadcast(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
+  // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>
+  // CHECK: [[BROADCAST:%.+]] = "mhlo.dynamic_broadcast_in_dim"([[IOTA]], %arg0) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<5xi32>, tensor<2xindex>) -> tensor<5x?xi32>
+  %0 = "mhlo.dynamic_iota"(%arg0) {iota_dimension = 0 : i64} : (tensor<2xindex>) -> tensor<5x?xi32>
+
+  // CHECK: return [[BROADCAST]]
+  return %0 : tensor<5x?xi32>
+}
+
+// CHECK-LABEL: @dynamic_iota_broadcast_second
+func @dynamic_iota_broadcast_second(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
+  // CHECK-NEXT: [[CAST1:%.+]] = index_cast %arg0 : tensor<2xindex> to tensor<2xi64>
+  // CHECK-NEXT: [[SLICE:%.+]] = "mhlo.slice"([[CAST1]]) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK-NEXT: [[CAST2:%.+]] = index_cast [[SLICE]] : tensor<1xi64> to tensor<1xindex>
+  // CHECK-NEXT: [[IOTA:%.+]] = "mhlo.dynamic_iota"([[CAST2]]) {iota_dimension = 0 : i64} : (tensor<1xindex>) -> tensor<?xi32>
+  // CHECK-NEXT: [[BROADCAST:%.+]] = "mhlo.dynamic_broadcast_in_dim"([[IOTA]], %arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xi32>, tensor<2xindex>) -> tensor<5x?xi32>
+  %0 = "mhlo.dynamic_iota"(%arg0) {iota_dimension = 1 : i64} : (tensor<2xindex>) -> tensor<5x?xi32>
+
+  // CHECK: return [[BROADCAST]]
+  return %0 : tensor<5x?xi32>
+}
+
+
 // CHECK-LABEL: @iota_not_lowered_to_constant
 func @iota_not_lowered_to_constant() -> tensor<4xi32> {
   // CHECK: [[RESULT:%.*]] = "mhlo.iota"
   // CHECK: return [[RESULT]]
   %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xi32>
   return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: @iota_broadcast
+func @iota_broadcast() -> tensor<5x4xi32> {
+  // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>
+  // CHECK: [[RESULT:%.+]] = "mhlo.broadcast_in_dim"([[IOTA]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<5xi32>) -> tensor<5x4xi32>
+  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5x4xi32>
+
+  return %0 : tensor<5x4xi32>
+}
+
+// CHECK-LABEL: @iota_broadcast
+func @iota_broadcast_second() -> tensor<5x4xi32> {
+  // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xi32>
+  // CHECK: [[RESULT:%.+]] = "mhlo.broadcast_in_dim"([[IOTA]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<5x4xi32>
+  %0 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<5x4xi32>
+
+  return %0 : tensor<5x4xi32>
 }
 
 // CHECK-LABEL: @unary_einsum

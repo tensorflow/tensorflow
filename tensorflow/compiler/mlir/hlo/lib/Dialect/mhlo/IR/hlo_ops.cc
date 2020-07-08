@@ -214,6 +214,41 @@ static LogicalResult Verify(IotaOp op) {
   return success();
 }
 
+// Iota operations across multiple dimensions can be reduced to an iota and a
+// ranked broadcast.
+struct IotaBroadcast : public OpRewritePattern<IotaOp> {
+  using OpRewritePattern<IotaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(IotaOp iota,
+                                PatternRewriter& rewriter) const override {
+    auto result_ty = iota.getType().cast<ShapedType>();
+    if (!result_ty.hasRank() || result_ty.getRank() < 2) {
+      return failure();
+    }
+
+    auto iota_dimension = iota.iota_dimension();
+
+    auto iota_type = RankedTensorType::get(
+        {result_ty.getDimSize(iota_dimension.getLimitedValue())},
+        result_ty.getElementType());
+
+    auto new_iota = rewriter.create<IotaOp>(iota.getLoc(), iota_type,
+                                            rewriter.getI64IntegerAttr(0));
+
+    auto broadcast_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({1}, rewriter.getIntegerType(64)),
+        {iota_dimension});
+    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(iota, result_ty, new_iota,
+                                                  broadcast_attr);
+    return success();
+  }
+};
+
+void IotaOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                         MLIRContext* context) {
+  results.insert<IotaBroadcast>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicIotaOp
 //===----------------------------------------------------------------------===//
@@ -235,11 +270,63 @@ struct DynamicIotaIsStatic : public OpRewritePattern<DynamicIotaOp> {
   }
 };
 
+// Dynamic Iota operations across multiple dimensions can be reduced to an iota
+// and a ranked broadcast.
+struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
+  using OpRewritePattern<DynamicIotaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicIotaOp iota,
+                                PatternRewriter& rewriter) const override {
+    auto result_ty = iota.getType().cast<ShapedType>();
+    if (!result_ty.hasRank() || result_ty.getRank() < 2) {
+      return failure();
+    }
+
+    auto iota_dimension = iota.iota_dimension();
+    auto iota_dimension_int = iota_dimension.getLimitedValue();
+
+    auto converted_shape = rewriter.create<IndexCastOp>(
+        iota.getLoc(),
+        RankedTensorType::get(
+            iota.output_shape().getType().cast<ShapedType>().getShape(),
+            rewriter.getI64Type()),
+        iota.output_shape());
+
+    auto sliced_shape = rewriter.create<SliceOp>(
+        iota.getLoc(), converted_shape,
+        GetI64ElementsAttr(iota_dimension_int, &rewriter),
+        GetI64ElementsAttr(iota_dimension_int + 1, &rewriter),
+        GetI64ElementsAttr(1, &rewriter));
+
+    auto converted_sliced_shape = rewriter.create<IndexCastOp>(
+        iota.getLoc(),
+        RankedTensorType::get(
+            {1},
+            iota.output_shape().getType().cast<ShapedType>().getElementType()),
+        sliced_shape);
+
+    auto iota_type = RankedTensorType::get(
+        {result_ty.getDimSize(iota_dimension_int)}, result_ty.getElementType());
+
+    auto new_iota = rewriter.create<DynamicIotaOp>(
+        iota.getLoc(), iota_type, converted_sliced_shape,
+        rewriter.getI64IntegerAttr(0));
+
+    auto broadcast_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({1}, rewriter.getIntegerType(64)),
+        {iota_dimension});
+    rewriter.replaceOpWithNewOp<DynamicBroadcastInDimOp>(
+        iota, result_ty, new_iota, iota.output_shape(), broadcast_attr);
+    return success();
+  }
+};
+
 }  // namespace
 
 void DynamicIotaOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<DynamicIotaIsStatic>(context);
+  results.insert<DynamicIotaBroadcast>(context);
 }
 
 //===----------------------------------------------------------------------===//
