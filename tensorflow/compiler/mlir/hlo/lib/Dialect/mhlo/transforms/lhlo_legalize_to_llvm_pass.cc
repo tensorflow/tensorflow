@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -38,6 +40,9 @@ class TestLhloToLLVMPass
     populateStdToLLVMConversionPatterns(converter, patterns);
     PopulateLhloToLLVMConversionPatterns(
         LowerToLLVMOptions::getDefaultOptions(), &converter, &patterns);
+    mlir::populateLoopToStdConversionPatterns(patterns, &getContext());
+
+    mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
