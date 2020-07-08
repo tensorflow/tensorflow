@@ -220,6 +220,31 @@ struct HloToLhloDynamicBroadcastInDimOpConverter
   }
 };
 
+struct HloToLhloDynamicReshapeConverter
+    : public BaseOpConversion<mhlo::DynamicReshapeOp> {
+ public:
+  using BaseOpConversion<mhlo::DynamicReshapeOp>::BaseOpConversion;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicReshapeOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    Type result_type;
+    if (auto ranked_type = op.getType().dyn_cast<RankedTensorType>()) {
+      result_type =
+          MemRefType::get(ranked_type.getShape(), ranked_type.getElementType());
+    } else if (auto unranked_type =
+                   op.getType().dyn_cast<UnrankedTensorType>()) {
+      result_type = UnrankedMemRefType::get(unranked_type.getElementType(), 0);
+    } else {
+      return failure();
+    }
+    mhlo::DynamicReshapeOp::Adaptor adaptor(operands);
+    rewriter.replaceOpWithNewOp<xla_lhlo::ReshapeMemRefCastOp>(
+        op, result_type, adaptor.operand(), adaptor.output_shape());
+    return success();
+  }
+};
+
 struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
  public:
   using BaseOpConversion<mhlo::ReduceOp>::BaseOpConversion;
@@ -441,6 +466,7 @@ void populateHLOToLHLOConversionPattern(
   // clang-format off
   patterns->insert<
       HloToLhloDynamicBroadcastInDimOpConverter,
+      HloToLhloDynamicReshapeConverter,
       HloToLhloOpConverter<mhlo::AbsOp>,
       HloToLhloOpConverter<mhlo::AddOp>,
       HloToLhloOpConverter<mhlo::AndOp>,

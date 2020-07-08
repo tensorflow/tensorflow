@@ -470,14 +470,6 @@ def ReshapeMemRefCastOp: Op<LHLO_Dialect, "reshape_memref_cast", [
   );
   let results = (outs AnyRankedOrUnrankedMemRef:$result);
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, MemRefType resultType, " #
-    "Value operand, Value shape", [{
-       result.addOperands(operand);
-       result.addOperands(shape);
-       result.types.push_back(resultType);
-     }]>];
-
   let extraClassDeclaration = [{
     MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
   }];
