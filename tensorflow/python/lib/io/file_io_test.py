@@ -50,10 +50,6 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(errors.NotFoundError):
       _ = f.read()
 
-  def testPathLike(self):
-    f = file_io.FileIO(pathlib.Path("temp_file"), mode="w")
-    self.assertEqual(f.name, "temp_file")
-
   @run_all_path_types
   def testFileDoesntExist(self, join):
     file_path = join(self._base_dir, "temp_file")
@@ -88,14 +84,16 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     file_contents = file_io.read_file_to_string(file_path)
     self.assertEqual("new", file_contents)
 
-  def testReadBinaryMode(self):
-    file_path = os.path.join(self._base_dir, "temp_file")
+  @run_all_path_types
+  def testReadBinaryMode(self, join):
+    file_path = join(self._base_dir, "temp_file")
     file_io.write_string_to_file(file_path, "testing")
     with file_io.FileIO(file_path, mode="rb") as f:
       self.assertEqual(b"testing", f.read())
 
-  def testWriteBinaryMode(self):
-    file_path = os.path.join(self._base_dir, "temp_file")
+  @run_all_path_types
+  def testWriteBinaryMode(self, join):
+    file_path = join(self._base_dir, "temp_file")
     file_io.FileIO(file_path, "wb").write("testing")
     with file_io.FileIO(file_path, mode="r") as f:
       self.assertEqual("testing", f.read())

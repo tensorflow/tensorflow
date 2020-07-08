@@ -49,7 +49,7 @@ class FileIO(object):
   """
 
   def __init__(self, name, mode):
-    self.__name = compat.path_to_str(name)
+    self.__name = name
     self.__mode = mode
     self._read_buf = None
     self._writable_file = None
@@ -77,7 +77,7 @@ class FileIO(object):
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for reading")
       self._read_buf = _pywrap_file_io.BufferedInputStream(
-          self.__name, 1024 * 512)
+          compat.path_to_str(self.__name), 1024 * 512)
 
   def _prewrite_check(self):
     if not self._writable_file:
@@ -85,7 +85,7 @@ class FileIO(object):
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for writing")
       self._writable_file = _pywrap_file_io.WritableFile(
-          compat.as_bytes(self.__name), compat.as_bytes(self.__mode))
+          compat.path_to_bytes(self.__name), compat.as_bytes(self.__mode))
 
   def _prepare_value(self, val):
     if self._binary_mode:
