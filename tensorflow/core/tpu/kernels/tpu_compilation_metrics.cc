@@ -12,27 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_METRICS_H_
-#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_METRICS_H_
-
-#include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
 
 namespace tensorflow {
 namespace tpu {
 
-// Tracks Tpu compilation cache metrics.
-class TpuCompilationCacheMetrics {
- public:
-  // Increments the number of cache lookup count.
-  static void IncrementCacheLookupCount(bool is_cache_hit,
-                                        absl::string_view session_name);
+// TODO(henrytan): remove this once `TpuCompilationCache` migration to OSS is
+// completed.
+#if defined(LIBTFTPU)
+/* static */
+void TpuCompilationMetrics::IncrementCacheLookupCount(
+    bool is_cache_hit, absl::string_view session_name) {
+  // A placeholder for tracking metrics.
+}
 
-  // Sets the total count of cache entries.
-  static void SetCacheEntryCount(int64 count);
-};
+/* static */
+void TpuCompilationMetrics::SetCacheEntryCount(int64 count) {
+  // A placeholder for tracking metrics.
+}
+
+/* static */
+void TpuCompilationMetrics::IncrementCompilationCount(
+    absl::string_view session_name) {
+  // A placeholder for tracking metrics.
+}
+#endif  // LIBTFTPU
 
 }  // namespace tpu
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_METRICS_H_

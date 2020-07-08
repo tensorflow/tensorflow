@@ -299,8 +299,8 @@ cc_library(
     deps = [
         ":compiled_subgraph",
         ":tpu_compilation_cache_key",
-        ":tpu_compilation_cache_metrics_hdrs",
         ":tpu_compilation_cache_proto_cc",
+        ":tpu_compilation_metrics_hdrs",
         ":tpu_util",
         ":tpu_util_hdrs",
         ":trace_util_hdrs",
@@ -333,9 +333,9 @@ cc_library(
         ":tpu_compilation_cache_entry_impl",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_key",
-        ":tpu_compilation_cache_metrics",  # buildcleaner: keep
-        ":tpu_compilation_cache_metrics_hdrs",
         ":tpu_compilation_cache_proto_cc",
+        ":tpu_compilation_metrics",  # buildcleaner: keep
+        ":tpu_compilation_metrics_hdrs",
         ":tpu_compile_c_api_hdrs",
         ":tpu_compile_op_support",
         ":tpu_mesh_state_interface",
@@ -358,8 +358,8 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_compilation_cache_metrics_hdrs",
-    hdrs = ["tpu_compilation_cache_metrics.h"],
+    name = "tpu_compilation_metrics_hdrs",
+    hdrs = ["tpu_compilation_metrics.h"],
     deps = [
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/strings",
@@ -367,10 +367,10 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_compilation_cache_metrics",
-    srcs = ["tpu_compilation_cache_metrics.cc"],
+    name = "tpu_compilation_metrics",
+    srcs = ["tpu_compilation_metrics.cc"],
     deps = [
-        ":tpu_compilation_cache_metrics_hdrs",
+        ":tpu_compilation_metrics_hdrs",
     ],
 )
 
