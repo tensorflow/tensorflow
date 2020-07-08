@@ -24,7 +24,7 @@ namespace {
 class MatrixInverseOp : public XlaOpKernel {
  public:
   explicit MatrixInverseOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("adjoint", &adjoint_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("adjoint", &adjoint_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

@@ -313,10 +313,10 @@ void InitializePyTrampoline(PyObject* trampoline) {
 class PyFuncOp : public OpKernel {
  public:
   explicit PyFuncOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("token", &token_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("token", &token_));
     eager_ = type_string() == "EagerPyFunc";
     if (eager_) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("is_async", &eager_async_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("is_async", &eager_async_));
     }
   }
 

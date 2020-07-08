@@ -20,7 +20,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
 #include "tensorflow/core/util/util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -61,8 +61,8 @@ class TensorListStack : public OpKernel {
   typedef std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>
       ConstMatrixVector;
   explicit TensorListStack(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
-    OP_REQUIRES_OK(c, c->GetAttr("num_elements", &num_elements_));
+    OP_REQUIRES_OK(c, c->GetAttribute("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("num_elements", &num_elements_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -162,7 +162,7 @@ template <typename Device, typename T>
 class TensorListGetItem : public OpKernel {
  public:
   explicit TensorListGetItem(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("element_dtype", &element_dtype_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -227,7 +227,7 @@ template <typename Device, typename T>
 class TensorListPopBack : public OpKernel {
  public:
   explicit TensorListPopBack(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("element_dtype", &element_dtype_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -280,13 +280,13 @@ class TensorListConcat : public OpKernel {
   using ConstMatrixVector =
       std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>;
   explicit TensorListConcat(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("element_dtype", &element_dtype_));
     // TODO(skyewm): the HasAttr check can be removed once the
     // element_shape_except_first_dim attr has been checked in for 2 weeks
     // (around 1/14/2019).
     if (c->HasAttr("element_shape")) {
       PartialTensorShape element_shape;
-      OP_REQUIRES_OK(c, c->GetAttr("element_shape", &element_shape));
+      OP_REQUIRES_OK(c, c->GetAttribute("element_shape", &element_shape));
       if (!element_shape.unknown_rank()) {
         element_shape_except_first_dim_ = PartialTensorShape(
             gtl::ArraySlice<int64>(element_shape.dim_sizes()).subspan(1));
@@ -554,7 +554,7 @@ class TensorListGather : public OpKernel {
   typedef std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>
       ConstMatrixVector;
   explicit TensorListGather(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("element_dtype", &element_dtype_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -891,7 +891,7 @@ template <typename Device, typename T>
 class TensorListPushBackBatch : public OpKernel {
  public:
   explicit TensorListPushBackBatch(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("element_dtype", &element_dtype_));
   }
 
   void Compute(OpKernelContext* c) override {

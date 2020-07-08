@@ -23,12 +23,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/cast_op_impl.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
-
-#include "tensorflow/core/kernels/cast_op_impl.h"
 
 namespace tensorflow {
 
@@ -55,11 +54,11 @@ typedef Eigen::SyclDevice SYCLDevice;
   FN(arg0, std::complex<double>)
 
 CastOpBase::CastOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("SrcT", &external_src_dtype_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("SrcT", &external_src_dtype_));
 
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("DstT", &external_dst_dtype_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("DstT", &external_dst_dtype_));
 
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("Truncate", &use_truncation_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("Truncate", &use_truncation_));
 
   // Quantized data types use the same underlying format as their non quantized
   // version so we use the non quantized implementation for casting.

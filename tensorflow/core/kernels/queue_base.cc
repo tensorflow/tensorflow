@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/queue_base.h"
 
 #include <vector>
+
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -102,7 +103,8 @@ Status QueueBase::MatchesNodeDefOp(const NodeDef& node_def,
 Status QueueBase::MatchesNodeDefCapacity(const NodeDef& node_def,
                                          int32 capacity) const {
   int32 requested_capacity = -1;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "capacity", &requested_capacity));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttribute(node_def, "capacity", &requested_capacity));
   if (requested_capacity < 0) requested_capacity = kUnbounded;
   if (requested_capacity != capacity) {
     return errors::InvalidArgument("Shared queue '", name_, "' has capacity ",
@@ -115,7 +117,7 @@ Status QueueBase::MatchesNodeDefCapacity(const NodeDef& node_def,
 Status QueueBase::MatchesNodeDefTypes(const NodeDef& node_def) const {
   DataTypeVector requested_dtypes;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(node_def, "component_types", &requested_dtypes));
+      GetNodeAttribute(node_def, "component_types", &requested_dtypes));
   if (requested_dtypes != component_dtypes_) {
     return errors::InvalidArgument("Shared queue '", name_,
                                    "' has component types ",
@@ -128,7 +130,7 @@ Status QueueBase::MatchesNodeDefTypes(const NodeDef& node_def) const {
 
 Status QueueBase::MatchesNodeDefShapes(const NodeDef& node_def) const {
   std::vector<TensorShape> requested_shapes;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "shapes", &requested_shapes));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node_def, "shapes", &requested_shapes));
   if (requested_shapes != component_shapes_) {
     return errors::InvalidArgument("Shared queue '", name_,
                                    "' has component shapes ",

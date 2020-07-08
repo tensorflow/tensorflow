@@ -283,7 +283,7 @@ namespace {
 Status ValidateNoInline(const FunctionBody* fbody) {
   const auto attr = AttrSlice(&fbody->fdef.attr());
   bool noinline = false;
-  if (TryGetNodeAttr(attr, kNoInlineAttr, &noinline) && noinline) {
+  if (TryGetNodeAttribute(attr, kNoInlineAttr, &noinline) && noinline) {
     return errors::InvalidArgument(
         "Can't inline function marked with '_noinline'");
   }
@@ -849,7 +849,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
     }
     // Skip function calls that marked noinline.
     bool noinline;
-    if (fld->GetAttr(*node, kNoInlineAttr, &noinline).ok() && noinline) {
+    if (fld->GetAttribute(*node, kNoInlineAttr, &noinline).ok() && noinline) {
       VLOG(3) << "noinline: " << SummarizeNode(*node);
       continue;
     }

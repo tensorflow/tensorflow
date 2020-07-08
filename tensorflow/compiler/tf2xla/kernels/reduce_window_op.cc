@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/while_op.h"
-
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -31,7 +30,8 @@ class ReduceWindowOp : public XlaOpKernel {
  public:
   explicit ReduceWindowOp(OpKernelConstruction* context)
       : XlaOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("computation", &computation_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("computation", &computation_));
   }
 
   void Compile(XlaOpKernelContext* context) override {

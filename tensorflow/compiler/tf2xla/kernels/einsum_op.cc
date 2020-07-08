@@ -33,7 +33,7 @@ constexpr std::array<DataType, 7> kEinsumTypes = {
 class XlaEinsumOp : public XlaOpKernel {
  public:
   explicit XlaEinsumOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("equation", &equation_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("equation", &equation_));
   }
 
   ~XlaEinsumOp() override = default;
@@ -57,7 +57,7 @@ class XlaEinsumOp : public XlaOpKernel {
 class EinsumOp : public XlaOpKernel {
  public:
   explicit EinsumOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("equation", &equation_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("equation", &equation_));
   }
 
   ~EinsumOp() override = default;

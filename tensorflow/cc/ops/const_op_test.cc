@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/ops/const_op.h"
+
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -29,8 +30,10 @@ void ExpectNodeEqual(const Node* n, gtl::ArraySlice<T> values,
   EXPECT_TRUE(n->IsConstant());
   Tensor tensor;
   TF_EXPECT_OK(GetNodeAttr(n->attrs(), "value", &tensor));
+  TF_EXPECT_OK(GetNodeAttribute(n->attrs(), "value", &tensor));
   DataType dtype;
   TF_EXPECT_OK(GetNodeAttr(n->attrs(), "dtype", &dtype));
+  TF_EXPECT_OK(GetNodeAttribute(n->attrs(), "dtype", &dtype));
   EXPECT_EQ(tensor.dtype(), dtype);
   test::ExpectTensorEqual<T>(tensor, test::AsTensor(values, shape));
 }
@@ -40,8 +43,10 @@ void ExpectTypeAndShape(const Node* n, DataType expected_dtype,
   EXPECT_TRUE(n->IsConstant());
   Tensor tensor;
   TF_EXPECT_OK(GetNodeAttr(n->attrs(), "value", &tensor));
+  TF_EXPECT_OK(GetNodeAttribute(n->attrs(), "value", &tensor));
   DataType dtype;
   TF_EXPECT_OK(GetNodeAttr(n->attrs(), "dtype", &dtype));
+  TF_EXPECT_OK(GetNodeAttribute(n->attrs(), "dtype", &dtype));
   EXPECT_EQ(dtype, expected_dtype);
   EXPECT_EQ(expected_shape, TensorShape(tensor.shape()));
 }

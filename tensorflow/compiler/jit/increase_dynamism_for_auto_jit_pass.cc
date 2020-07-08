@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/increase_dynamism_for_auto_jit_pass.h"
+
 #include <iterator>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
@@ -56,7 +58,7 @@ StatusOrOptional<Tensor> TryToGetTensorFromConstOp(Node* n) {
   }
 
   const TensorProto* proto = nullptr;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "value", &proto));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "value", &proto));
   Tensor tensor(proto->dtype());
   TF_RET_CHECK(tensor.FromProto(*proto));
   return {tensor};

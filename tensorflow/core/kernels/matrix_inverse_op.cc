@@ -19,8 +19,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/LU"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -29,12 +27,14 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/Eigen/LU"
 
 #if GOOGLE_CUDA
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/eye_functor.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #endif
 
 namespace tensorflow {
@@ -45,7 +45,7 @@ class MatrixInverseOp : public LinearAlgebraOp<Scalar> {
   INHERIT_LINALG_TYPEDEFS(Scalar);
 
   explicit MatrixInverseOp(OpKernelConstruction* context) : Base(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
+    OP_REQUIRES_OK(context, context->GetAttribute("adjoint", &adjoint_));
   }
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
@@ -92,7 +92,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
  public:
   explicit MatrixInverseOpGpu(OpKernelConstruction* context)
       : AsyncOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
+    OP_REQUIRES_OK(context, context->GetAttribute("adjoint", &adjoint_));
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {

@@ -71,7 +71,7 @@ Status DecodeImageShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
   DimensionHandle channels_dim;
   int32 channels;
-  TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
+  TF_RETURN_IF_ERROR(c->GetAttribute("channels", &channels));
   if (channels == 0) {
     channels_dim = c->UnknownDim();
   } else {
@@ -94,8 +94,8 @@ Status DecodeImageV2ShapeFn(InferenceContext* c) {
   DimensionHandle channels_dim;
 
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-  TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
-  TF_RETURN_IF_ERROR(c->GetAttr("expand_animations", &expand_animations));
+  TF_RETURN_IF_ERROR(c->GetAttribute("channels", &channels));
+  TF_RETURN_IF_ERROR(c->GetAttribute("expand_animations", &expand_animations));
 
   if (channels == 0) {
     channels_dim = c->UnknownDim();
@@ -236,7 +236,7 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
 
   int64 output_size;
   bool pad_per_class;
-  TF_RETURN_IF_ERROR(c->GetAttr("pad_per_class", &pad_per_class));
+  TF_RETURN_IF_ERROR(c->GetAttribute("pad_per_class", &pad_per_class));
   if (!pad_per_class) {
     output_size = c->Value(output_dim);
   } else {
@@ -488,7 +488,7 @@ REGISTER_OP("DecodeAndCropJpeg")
       DimensionHandle w = c->UnknownDim();
 
       int32 channels;
-      TF_RETURN_IF_ERROR(c->GetAttr("channels", &channels));
+      TF_RETURN_IF_ERROR(c->GetAttribute("channels", &channels));
       if (channels != 0) {
         if (channels < 0) {
           return errors::InvalidArgument("channels must be non-negative, got ",
@@ -788,9 +788,9 @@ REGISTER_OP("ExtractGlimpse")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(offsets, 1), 2, &unused));
 
       bool uniform_noise = false;
-      TF_RETURN_IF_ERROR(c->GetAttr("uniform_noise", &uniform_noise));
+      TF_RETURN_IF_ERROR(c->GetAttribute("uniform_noise", &uniform_noise));
       string noise;
-      TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
+      TF_RETURN_IF_ERROR(c->GetAttribute("noise", &noise));
       if (uniform_noise && (!noise.empty() && noise != "uniform")) {
         return errors::InvalidArgument(
             "The uniform_noise and noise should not be specified at the same "
@@ -823,9 +823,9 @@ REGISTER_OP("ExtractGlimpseV2")
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(offsets, 1), 2, &unused));
 
       bool uniform_noise = false;
-      TF_RETURN_IF_ERROR(c->GetAttr("uniform_noise", &uniform_noise));
+      TF_RETURN_IF_ERROR(c->GetAttribute("uniform_noise", &uniform_noise));
       string noise;
-      TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
+      TF_RETURN_IF_ERROR(c->GetAttribute("noise", &noise));
       if (uniform_noise && (!noise.empty() && noise != "uniform")) {
         return errors::InvalidArgument(
             "The uniform_noise and noise should not be specified at the same "
@@ -982,7 +982,8 @@ REGISTER_OP("NonMaxSuppressionV4")
       TF_RETURN_IF_ERROR(NMSShapeFn(c));
 
       bool pad_to_max;
-      TF_RETURN_IF_ERROR(c->GetAttr("pad_to_max_output_size", &pad_to_max));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("pad_to_max_output_size", &pad_to_max));
       if (pad_to_max) {
         // If padded, overwrite the shape of the output to be static.
         DimensionHandle output_dim;
@@ -1009,7 +1010,8 @@ REGISTER_OP("NonMaxSuppressionV5")
       TF_RETURN_IF_ERROR(SoftNMSShapeFn(c));
 
       bool pad_to_max;
-      TF_RETURN_IF_ERROR(c->GetAttr("pad_to_max_output_size", &pad_to_max));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("pad_to_max_output_size", &pad_to_max));
       if (pad_to_max) {
         // If padded, overwrite the shape of the output to be static.
         DimensionHandle output_dim;
@@ -1098,7 +1100,7 @@ REGISTER_OP("GenerateBoundingBoxProposals")
 
       // TODO(skama): verify that the inputs are compatible
       int post_nms_top_n;
-      TF_RETURN_IF_ERROR(c->GetAttr("post_nms_topn", &post_nms_top_n));
+      TF_RETURN_IF_ERROR(c->GetAttribute("post_nms_topn", &post_nms_top_n));
       auto roi_shape = c->MakeShape(
           {c->Dim(scores, 0), post_nms_top_n, 4});  //(N,post_nms_top_n,4)
       auto prob_shape = c->MakeShape(

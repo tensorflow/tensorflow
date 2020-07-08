@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/scale_and_translate_op.h"
 
 #include <memory>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 using strings::Printf;
@@ -268,9 +269,10 @@ class ScaleAndTranslateOp : public OpKernel {
  public:
   explicit ScaleAndTranslateOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("antialias", &antialias_));
+    OP_REQUIRES_OK(context, context->GetAttribute("antialias", &antialias_));
     string kernel_type_str;
-    OP_REQUIRES_OK(context, context->GetAttr("kernel_type", &kernel_type_str));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("kernel_type", &kernel_type_str));
     kernel_type_ = functor::SamplingKernelTypeFromString(kernel_type_str);
     OP_REQUIRES(context, kernel_type_ != functor::SamplingKernelTypeEnd,
                 errors::InvalidArgument("Unrecognized kernel type: " +
@@ -378,9 +380,10 @@ class ScaleAndTranslateGradOp : public OpKernel {
  public:
   explicit ScaleAndTranslateGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("antialias", &antialias_));
+    OP_REQUIRES_OK(context, context->GetAttribute("antialias", &antialias_));
     string kernel_type_str;
-    OP_REQUIRES_OK(context, context->GetAttr("kernel_type", &kernel_type_str));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("kernel_type", &kernel_type_str));
     kernel_type_ = functor::SamplingKernelTypeFromString(kernel_type_str);
     OP_REQUIRES(context, kernel_type_ != functor::SamplingKernelTypeEnd,
                 errors::InvalidArgument("Unrecognized kernel type: " +

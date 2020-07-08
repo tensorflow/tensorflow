@@ -152,7 +152,7 @@ REGISTER_OP("CTCBeamSearchDecoder")
           c->Merge(c->Dim(inputs, 1), c->Dim(sequence_length, 0), &batch_size));
 
       int32 top_paths;
-      TF_RETURN_IF_ERROR(c->GetAttr("top_paths", &top_paths));
+      TF_RETURN_IF_ERROR(c->GetAttribute("top_paths", &top_paths));
 
       // Outputs.
       int out_idx = 0;

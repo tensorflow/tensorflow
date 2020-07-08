@@ -90,9 +90,10 @@ template <class T, class W>
 class DenseCount : public OpKernel {
  public:
   explicit DenseCount(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("minlength", &minlength_));
-    OP_REQUIRES_OK(context, context->GetAttr("maxlength", &maxlength_));
-    OP_REQUIRES_OK(context, context->GetAttr("binary_output", &binary_output_));
+    OP_REQUIRES_OK(context, context->GetAttribute("minlength", &minlength_));
+    OP_REQUIRES_OK(context, context->GetAttribute("maxlength", &maxlength_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("binary_output", &binary_output_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -166,9 +167,10 @@ template <class T, class W>
 class SparseCount : public OpKernel {
  public:
   explicit SparseCount(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("minlength", &minlength_));
-    OP_REQUIRES_OK(context, context->GetAttr("maxlength", &maxlength_));
-    OP_REQUIRES_OK(context, context->GetAttr("binary_output", &binary_output_));
+    OP_REQUIRES_OK(context, context->GetAttribute("minlength", &minlength_));
+    OP_REQUIRES_OK(context, context->GetAttribute("maxlength", &maxlength_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("binary_output", &binary_output_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -223,9 +225,10 @@ template <class T, class W>
 class RaggedCount : public OpKernel {
  public:
   explicit RaggedCount(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("minlength", &minlength_));
-    OP_REQUIRES_OK(context, context->GetAttr("maxlength", &maxlength_));
-    OP_REQUIRES_OK(context, context->GetAttr("binary_output", &binary_output_));
+    OP_REQUIRES_OK(context, context->GetAttribute("minlength", &minlength_));
+    OP_REQUIRES_OK(context, context->GetAttribute("maxlength", &maxlength_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("binary_output", &binary_output_));
   }
 
   void Compute(OpKernelContext* context) override {

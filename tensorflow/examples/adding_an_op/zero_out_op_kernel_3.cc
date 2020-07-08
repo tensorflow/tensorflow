@@ -33,7 +33,7 @@ class ZeroOutOp : public OpKernel {
   explicit ZeroOutOp(OpKernelConstruction* context) : OpKernel(context) {
     // Get the index of the value to preserve
     OP_REQUIRES_OK(context,
-                   context->GetAttr("preserve_index", &preserve_index_));
+                   context->GetAttribute("preserve_index", &preserve_index_));
     // Check that preserve\_index is positive
     OP_REQUIRES(context, preserve_index_ >= 0,
                 errors::InvalidArgument("Need preserve_index >= 0, got ",

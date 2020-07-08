@@ -109,7 +109,7 @@ class DecodeImageOp : public OpKernel {
     if (format_ == kGifFormat) {
       channels_ = 3;
     } else {
-      OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
+      OP_REQUIRES_OK(context, context->GetAttribute("channels", &channels_));
       OP_REQUIRES(
           context,
           channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,
@@ -121,7 +121,7 @@ class DecodeImageOp : public OpKernel {
     // In the case of png, we support uint16 output
     if (format_ == kPngFormat) {
       DataType dt;
-      OP_REQUIRES_OK(context, context->GetAttr("dtype", &dt));
+      OP_REQUIRES_OK(context, context->GetAttribute("dtype", &dt));
       OP_REQUIRES(
           context, dt == DataType::DT_UINT8 || dt == DataType::DT_UINT16,
           errors::InvalidArgument("Type must be uint8 or uint16, got ", dt));
@@ -137,23 +137,23 @@ class DecodeImageOp : public OpKernel {
     flags_.dct_method = JDCT_IFAST;
 
     if (format_ == kJpgFormat) {
-      OP_REQUIRES_OK(context, context->GetAttr("ratio", &flags_.ratio));
+      OP_REQUIRES_OK(context, context->GetAttribute("ratio", &flags_.ratio));
       OP_REQUIRES(context,
                   flags_.ratio == 1 || flags_.ratio == 2 || flags_.ratio == 4 ||
                       flags_.ratio == 8,
                   errors::InvalidArgument("ratio must be 1, 2, 4, or 8, got ",
                                           flags_.ratio));
-      OP_REQUIRES_OK(context, context->GetAttr("fancy_upscaling",
-                                               &flags_.fancy_upscaling));
+      OP_REQUIRES_OK(context, context->GetAttribute("fancy_upscaling",
+                                                    &flags_.fancy_upscaling));
       OP_REQUIRES_OK(context,
-                     context->GetAttr("try_recover_truncated",
-                                      &flags_.try_recover_truncated_jpeg));
+                     context->GetAttribute("try_recover_truncated",
+                                           &flags_.try_recover_truncated_jpeg));
       OP_REQUIRES_OK(context,
-                     context->GetAttr("acceptable_fraction",
-                                      &flags_.min_acceptable_fraction));
+                     context->GetAttribute("acceptable_fraction",
+                                           &flags_.min_acceptable_fraction));
 
       string dct_method;
-      OP_REQUIRES_OK(context, context->GetAttr("dct_method", &dct_method));
+      OP_REQUIRES_OK(context, context->GetAttribute("dct_method", &dct_method));
       OP_REQUIRES(
           context,
           (dct_method.empty() || dct_method == "INTEGER_FAST" ||
@@ -318,9 +318,9 @@ class DecodeImageOp : public OpKernel {
     // Decode GIF, allocating tensor once the size is known.
     Tensor* output = nullptr;
     string error_string;
-    OP_REQUIRES(
-        context,
-        gif::Decode(input.data(), input.size(),
+    OP_REQUIRES(context,
+                gif::Decode(
+                    input.data(), input.size(),
                     [=, &output](int num_frames, int width, int height,
                                  int channels) -> uint8* {
                       Status status;
@@ -346,8 +346,8 @@ class DecodeImageOp : public OpKernel {
                       return output->flat<uint8>().data();
                     },
                     &error_string),
-        errors::InvalidArgument("Invalid GIF data (size ", input.size(), "), ",
-                                error_string));
+                errors::InvalidArgument("Invalid GIF data (size ", input.size(),
+                                        "), ", error_string));
   }
 
  private:
@@ -382,22 +382,22 @@ class DecodeImageV2Op : public OpKernel {
     // invocations. For `DecodeImage` op, set JPEG decoding setting to TF
     // default.
     if (op_type_ == "DecodeJpeg" || op_type_ == "DecodeAndCropJpeg") {
-      OP_REQUIRES_OK(context, context->GetAttr("ratio", &flags_.ratio));
+      OP_REQUIRES_OK(context, context->GetAttribute("ratio", &flags_.ratio));
       OP_REQUIRES(context,
                   flags_.ratio == 1 || flags_.ratio == 2 || flags_.ratio == 4 ||
                       flags_.ratio == 8,
                   errors::InvalidArgument("ratio must be 1, 2, 4, or 8, got ",
                                           flags_.ratio));
-      OP_REQUIRES_OK(context, context->GetAttr("fancy_upscaling",
+      OP_REQUIRES_OK(context, context->GetAttribute("fancy_upscaling",
                                                &flags_.fancy_upscaling));
       OP_REQUIRES_OK(context,
-                     context->GetAttr("try_recover_truncated",
+                     context->GetAttribute("try_recover_truncated",
                                       &flags_.try_recover_truncated_jpeg));
       OP_REQUIRES_OK(context,
-                     context->GetAttr("acceptable_fraction",
+                     context->GetAttribute("acceptable_fraction",
                                       &flags_.min_acceptable_fraction));
       string dct_method;
-      OP_REQUIRES_OK(context, context->GetAttr("dct_method", &dct_method));
+      OP_REQUIRES_OK(context, context->GetAttribute("dct_method", &dct_method));
       OP_REQUIRES(
           context,
           (dct_method.empty() || dct_method == "INTEGER_FAST" ||
@@ -418,7 +418,7 @@ class DecodeImageV2Op : public OpKernel {
 
     // Get `dtype` attribute from `DecodePng` or `DecodeImage` op invocations.
     if (op_type_ == "DecodePng" || op_type_ == "DecodeImage") {
-      OP_REQUIRES_OK(context, context->GetAttr("dtype", &data_type_));
+      OP_REQUIRES_OK(context, context->GetAttribute("dtype", &data_type_));
       if (op_type_ == "DecodePng") {
         OP_REQUIRES(
             context,
@@ -435,8 +435,8 @@ class DecodeImageV2Op : public OpKernel {
                     errors::InvalidArgument("`dtype` for `DecodeImage` must be "
                                             "unit8, unit16, float but got: ",
                                             data_type_));
-        OP_REQUIRES_OK(context, context->GetAttr("expand_animations",
-                                                 &expand_animations_));
+        OP_REQUIRES_OK(context, context->GetAttribute("expand_animations",
+                                                      &expand_animations_));
       }
     }
 
@@ -444,7 +444,7 @@ class DecodeImageV2Op : public OpKernel {
     // `DecodeGif` doesn't have `channels` attribute but it supports 3
     // channels by default.
     if (op_type_ != "DecodeGif") {
-      OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
+      OP_REQUIRES_OK(context, context->GetAttribute("channels", &channels_));
       OP_REQUIRES(
           context,
           channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,

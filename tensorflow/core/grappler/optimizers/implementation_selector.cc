@@ -309,7 +309,7 @@ Status FindDeviceIndex(const utils::MutableNodeView* device_index_node,
     return errors::Internal("Could not parse device name:", device);
   }
   const auto& device_list =
-      device_index_node->GetAttr("device_names")->list().s();
+      device_index_node->GetAttribute("device_names")->list().s();
   auto it = absl::c_find(device_list, parsed_name.type);
   if (it != device_list.end()) {
     *index = it - device_list.begin();

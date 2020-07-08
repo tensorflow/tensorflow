@@ -28,7 +28,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/Eigen/QR"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -38,14 +37,15 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/Eigen/QR"
 
 #if GOOGLE_CUDA
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/eye_functor.h"
 #include "tensorflow/core/kernels/matrix_band_part_op.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #endif
 
 namespace tensorflow {
@@ -56,7 +56,8 @@ class QrOp : public LinearAlgebraOp<Scalar> {
   typedef LinearAlgebraOp<Scalar> Base;
 
   explicit QrOp(OpKernelConstruction* context) : Base(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("full_matrices", &full_matrices_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("full_matrices", &full_matrices_));
   }
 
   using TensorShapes = typename Base::TensorShapes;
@@ -133,7 +134,8 @@ template <class Scalar>
 class QrOpGpu : public AsyncOpKernel {
  public:
   explicit QrOpGpu(OpKernelConstruction* context) : AsyncOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("full_matrices", &full_matrices_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("full_matrices", &full_matrices_));
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {

@@ -22,7 +22,6 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -116,12 +116,12 @@ class CropAndResizeOp : public AsyncOpKernel {
  public:
   explicit CropAndResizeOp(OpKernelConstruction* context)
       : AsyncOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("method", &method_));
+    OP_REQUIRES_OK(context, context->GetAttribute("method", &method_));
     OP_REQUIRES(context, method_ == "bilinear" || method_ == "nearest",
                 errors::InvalidArgument(
                     "method must be 'bilinear' or 'nearest'", method_));
-    OP_REQUIRES_OK(context, context->GetAttr("extrapolation_value",
-                                             &extrapolation_value_));
+    OP_REQUIRES_OK(context, context->GetAttribute("extrapolation_value",
+                                                  &extrapolation_value_));
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
@@ -342,7 +342,7 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
  public:
   explicit CropAndResizeGradImageOp(OpKernelConstruction* context)
       : AsyncOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("method", &method_));
+    OP_REQUIRES_OK(context, context->GetAttribute("method", &method_));
     OP_REQUIRES(context, method_ == "bilinear" || method_ == "nearest",
                 errors::InvalidArgument(
                     "method must be 'bilinear' or 'nearest'", method_));
@@ -549,7 +549,7 @@ class CropAndResizeGradBoxesOp : public AsyncOpKernel {
   explicit CropAndResizeGradBoxesOp(OpKernelConstruction* context)
       : AsyncOpKernel(context) {
     string method;
-    OP_REQUIRES_OK(context, context->GetAttr("method", &method));
+    OP_REQUIRES_OK(context, context->GetAttribute("method", &method));
     OP_REQUIRES(context, method == "bilinear",
                 errors::InvalidArgument("method must be 'bilinear'", method));
   }

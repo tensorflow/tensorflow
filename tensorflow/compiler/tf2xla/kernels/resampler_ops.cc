@@ -600,7 +600,7 @@ class ResamplerGradOp : public XlaOpKernel {
  public:
   explicit ResamplerGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     DataType output_dtype;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &output_dtype));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &output_dtype));
   }
 
   // TODO(b/112295522): note that sampling from image boundary is not currently

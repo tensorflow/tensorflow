@@ -673,15 +673,15 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 ParallelMapDatasetOp::ParallelMapDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx), op_version_(ctx->HasAttr(kSloppy) ? 1 : 2) {
   FunctionMetadata::Params params;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kUseInterOpParallelism,
-                                   &params.use_inter_op_parallelism));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kUseInterOpParallelism,
+                                        &params.use_inter_op_parallelism));
   OP_REQUIRES_OK(ctx,
                  FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
   if (op_version_ == 1) {
     bool sloppy;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kSloppy, &sloppy));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kSloppy, &sloppy));
     if (sloppy) {
       deterministic_ =
           DeterminismPolicy(DeterminismPolicy::Type::kNondeterministic);
@@ -691,12 +691,12 @@ ParallelMapDatasetOp::ParallelMapDatasetOp(OpKernelConstruction* ctx)
   }
   if (op_version_ == 2) {
     std::string deterministic;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kDeterministic, &deterministic));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kDeterministic, &deterministic));
     OP_REQUIRES_OK(
         ctx, DeterminismPolicy::FromString(deterministic, &deterministic_));
   }
-  OP_REQUIRES_OK(ctx,
-                 ctx->GetAttr(kPreserveCardinality, &preserve_cardinality_));
+  OP_REQUIRES_OK(
+      ctx, ctx->GetAttribute(kPreserveCardinality, &preserve_cardinality_));
 }
 
 void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,

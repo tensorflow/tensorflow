@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/stack.h"
 
 #include <limits.h>
+
 #include <atomic>
 #include <vector>
 
@@ -156,8 +157,8 @@ std::atomic<int64> Stack::stack_counter{0};
 // StackOp
 
 StackOp::StackOp(OpKernelConstruction* context) : OpKernel(context) {
-  OP_REQUIRES_OK(context, context->GetAttr("elem_type", &elem_type_));
-  OP_REQUIRES_OK(context, context->GetAttr("stack_name", &stack_name_));
+  OP_REQUIRES_OK(context, context->GetAttribute("elem_type", &elem_type_));
+  OP_REQUIRES_OK(context, context->GetAttribute("stack_name", &stack_name_));
   if (stack_name_.empty()) stack_name_ = name();
 }
 
@@ -214,7 +215,8 @@ void StackOp::Compute(OpKernelContext* ctx) {
 StackPushOp::StackPushOp(OpKernelConstruction* context, bool allow_swapping)
     : AsyncOpKernel(context) {
   if (allow_swapping) {
-    OP_REQUIRES_OK(context, context->GetAttr("swap_memory", &swap_memory_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("swap_memory", &swap_memory_));
   }
 }
 

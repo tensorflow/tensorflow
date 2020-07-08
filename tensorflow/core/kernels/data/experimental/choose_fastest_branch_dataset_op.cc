@@ -135,19 +135,19 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
   explicit ChooseFastestBranchDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
     std::vector<NameAttrList> funcs;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("branches", &funcs));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("branches", &funcs));
     func_metadatas_.resize(funcs.size());
     for (int i = 0; i < funcs.size(); ++i) {
       OP_REQUIRES_OK(
           ctx, FunctionMetadata::Create(ctx, std::move(funcs[i]), /*params=*/{},
                                         &func_metadatas_[i]));
     }
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_elements_per_branch",
-                                     &num_elements_per_branch_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("other_arguments_lengths",
-                                     &other_arguments_lengths_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("num_elements_per_branch",
+                                          &num_elements_per_branch_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("other_arguments_lengths",
+                                          &other_arguments_lengths_));
 
     OP_REQUIRES(
         ctx, func_metadatas_.size() == other_arguments_lengths_.size(),

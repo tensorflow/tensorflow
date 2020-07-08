@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <limits>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_threadpool.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -40,7 +40,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
  public:
   explicit MklRequantizationRangePerChannelOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_value_max", &clip_value_max_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("clip_value_max", &clip_value_max_));
   }
 
   void Compute(OpKernelContext* ctx) override {

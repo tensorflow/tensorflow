@@ -331,8 +331,7 @@ class Encapsulator {
   // subgraph boundary it is a slot on the output of a call node, otherwise it
   // is a slot on a node in the output graph.
   int FindOutputSlotOfEdgeSrc(const string& src_func_id,
-                              const string& dst_func_id,
-                              const Edge* edge);
+                              const string& dst_func_id, const Edge* edge);
 
   // Finds the image of an edge destination in the output graph. If the edge
   // crosses a subgraph boundary it is the input of a call node, otherwise it is
@@ -346,8 +345,7 @@ class Encapsulator {
   // subgraph boundary it is a slot on the input of a call node, otherwise it is
   // a slot on a node in the output graph.
   int FindOutputSlotOfEdgeDst(const string& src_func_id,
-                              const string& dst_func_id,
-                              const Edge* edge);
+                              const string& dst_func_id, const Edge* edge);
 
   // Copies a single edge to the output graph. The edge is either entirely
   // within the output graph, or crosses into or out of a compiled subgraph.
@@ -898,9 +896,9 @@ int Encapsulator::FindOutputSlotOfEdgeDst(const string& src_func_id,
                                           const Edge* edge) {
   if (IsInSubgraph(dst_func_id)) {
     const Subgraph& dst_subgraph = subgraphs_.at(dst_func_id);
-      // 'dst' is in a subgraph and 'src' is a regular node in the output
-      // graph. Use the corresponding call input instead.
-      return dst_subgraph.GetArgIndexForEdge(edge);
+    // 'dst' is in a subgraph and 'src' is a regular node in the output
+    // graph. Use the corresponding call input instead.
+    return dst_subgraph.GetArgIndexForEdge(edge);
   } else {
     // The destination of the edge is in the output graph so use the regular
     // edge slot.
@@ -1111,8 +1109,7 @@ Status EncapsulateSubgraphsInFunctions(
     string group_attribute, const Graph& graph_in,
     const RewriteSubgraphFn& rewrite_subgraph_fn, bool reuse_existing_functions,
     std::unique_ptr<Graph>* graph_out, FunctionLibraryDefinition* library) {
-  Encapsulator encapsulator(std::move(group_attribute),
-                            &graph_in);
+  Encapsulator encapsulator(std::move(group_attribute), &graph_in);
   TF_RETURN_IF_ERROR(encapsulator.SplitIntoSubgraphs(library));
 
   TF_RETURN_IF_ERROR(encapsulator.BuildFunctionDefs(
@@ -1131,7 +1128,7 @@ static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
   for (Node* n : graph.op_nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
       if (index < 0 || index >= types->size()) {
         return errors::InvalidArgument("Invalid argument number");
       }
@@ -1148,7 +1145,7 @@ static Status RenumberArguments(Graph* graph,
   for (Node* n : graph->op_nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
       if (index < 0 || index >= permutation.size()) {
         return errors::InvalidArgument("Invalid argument number");
       }
@@ -1325,7 +1322,7 @@ Status EncapsulateSubgraphsPass::Run(
 bool IsXlaCompiledKernel(const Node& node) {
   bool is_compiled = false;
   bool has_compilation_attr =
-      TryGetNodeAttr(node.attrs(), kXlaCompiledKernelAttr, &is_compiled) &&
+      TryGetNodeAttribute(node.attrs(), kXlaCompiledKernelAttr, &is_compiled) &&
       is_compiled;
   return has_compilation_attr ? is_compiled : false;
 }

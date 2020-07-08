@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // See docs in ../ops/data_flow_ops.cc.
 
+#include "tensorflow/core/kernels/priority_queue.h"
+
 #include <deque>
 #include <queue>
 #include <vector>
@@ -22,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/priority_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/priority_queue_util.h"
@@ -145,46 +146,46 @@ void PriorityQueue::TryEnqueueMany(const Tuple& tuple, OpKernelContext* ctx,
     if (!already_cancelled) {
       enqueue_attempts_.emplace_back(
           batch_size, callback, ctx, cm, token,
-          [tuple, this,
-           ctx](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-            if (closed_) {
-              attempt->context->SetStatus(
-                  errors::Cancelled("PriorityQueue '", name_, "' is closed."));
-              return kComplete;
-            }
-            RunResult result = kNoProgress;
-            while (queues_[0].size() < static_cast<size_t>(capacity_)) {
-              result = kProgress;
-              const int index =
-                  tuple[0].dim_size(0) - attempt->elements_requested;
+          [tuple, this, ctx](Attempt* attempt)
+              TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                if (closed_) {
+                  attempt->context->SetStatus(errors::Cancelled(
+                      "PriorityQueue '", name_, "' is closed."));
+                  return kComplete;
+                }
+                RunResult result = kNoProgress;
+                while (queues_[0].size() < static_cast<size_t>(capacity_)) {
+                  result = kProgress;
+                  const int index =
+                      tuple[0].dim_size(0) - attempt->elements_requested;
 
-              PersistentTensor priority_element;
-              attempt->context->SetStatus(GetElementComponentFromBatch(
-                  tuple, index, 0, attempt->context, &priority_element));
-              if (!attempt->context->status().ok()) return kComplete;
-              Tensor* priority_tensor = priority_element.AccessTensor(ctx);
-              if (!TensorShapeUtils::IsScalar(priority_tensor->shape())) {
-                attempt->context->SetStatus(errors::InvalidArgument(
-                    "Expected the priority element to be a scalar, but "
-                    "received shape: ",
-                    priority_tensor->shape().DebugString()));
-                return kComplete;
-              }
-              const int64 priority = priority_tensor->scalar<int64>()();
-              for (int i = 0; i < num_components(); ++i) {
-                PersistentTensor element;
-                attempt->context->SetStatus(GetElementComponentFromBatch(
-                    tuple, index, i, attempt->context, &element));
-                if (!attempt->context->status().ok()) return kComplete;
-                queues_[i].emplace(priority, element);
-              }
-              --attempt->elements_requested;
-              if (attempt->elements_requested == 0) {
-                return kComplete;
-              }
-            }
-            return result;
-          });
+                  PersistentTensor priority_element;
+                  attempt->context->SetStatus(GetElementComponentFromBatch(
+                      tuple, index, 0, attempt->context, &priority_element));
+                  if (!attempt->context->status().ok()) return kComplete;
+                  Tensor* priority_tensor = priority_element.AccessTensor(ctx);
+                  if (!TensorShapeUtils::IsScalar(priority_tensor->shape())) {
+                    attempt->context->SetStatus(errors::InvalidArgument(
+                        "Expected the priority element to be a scalar, but "
+                        "received shape: ",
+                        priority_tensor->shape().DebugString()));
+                    return kComplete;
+                  }
+                  const int64 priority = priority_tensor->scalar<int64>()();
+                  for (int i = 0; i < num_components(); ++i) {
+                    PersistentTensor element;
+                    attempt->context->SetStatus(GetElementComponentFromBatch(
+                        tuple, index, i, attempt->context, &element));
+                    if (!attempt->context->status().ok()) return kComplete;
+                    queues_[i].emplace(priority, element);
+                  }
+                  --attempt->elements_requested;
+                  if (attempt->elements_requested == 0) {
+                    return kComplete;
+                  }
+                }
+                return result;
+              });
     }
   }
   if (!already_cancelled) {
@@ -205,7 +206,8 @@ void PriorityQueue::TryDequeue(OpKernelContext* ctx,
     already_cancelled = !cm->RegisterCallback(
         token, [this, cm, token]() { Cancel(kDequeue, cm, token); });
     if (!already_cancelled) {
-      // TODO(josh11b): This makes two copies of callback, avoid this if possible.
+      // TODO(josh11b): This makes two copies of callback, avoid this if
+      // possible.
       dequeue_attempts_.emplace_back(
           1, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -296,7 +298,8 @@ void PriorityQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
     already_cancelled = !cm->RegisterCallback(
         token, [this, cm, token]() { Cancel(kDequeue, cm, token); });
     if (!already_cancelled) {
-      // TODO(josh11b): This makes two copies of callback, avoid this if possible.
+      // TODO(josh11b): This makes two copies of callback, avoid this if
+      // possible.
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this, allow_small_batch](
@@ -402,7 +405,7 @@ Status PriorityQueue::MatchesPriorityNodeDefTypes(
     const NodeDef& node_def) const {
   DataTypeVector requested_dtypes;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(node_def, "component_types", &requested_dtypes));
+      GetNodeAttribute(node_def, "component_types", &requested_dtypes));
   requested_dtypes.insert(requested_dtypes.begin(), DT_INT64);
   if (requested_dtypes != component_dtypes_) {
     return errors::InvalidArgument("Shared queue '", name_,
@@ -417,7 +420,7 @@ Status PriorityQueue::MatchesPriorityNodeDefTypes(
 Status PriorityQueue::MatchesPriorityNodeDefShapes(
     const NodeDef& node_def) const {
   std::vector<TensorShape> requested_shapes;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "shapes", &requested_shapes));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node_def, "shapes", &requested_shapes));
   requested_shapes.insert(requested_shapes.begin(), TensorShape({}));
   if (requested_shapes != component_shapes_) {
     return errors::InvalidArgument("Shared queue '", name_,

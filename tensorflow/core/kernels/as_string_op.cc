@@ -37,12 +37,12 @@ class AsStringOp : public OpKernel {
     int32 width;
     string fill_string;
     DataType dtype;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("precision", &precision));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("scientific", &scientific));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shortest", &shortest));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("width", &width));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("fill", &fill_string));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("precision", &precision));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("scientific", &scientific));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("shortest", &shortest));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("width", &width));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("fill", &fill_string));
     switch (dtype) {
       case DT_FLOAT:
       case DT_DOUBLE:

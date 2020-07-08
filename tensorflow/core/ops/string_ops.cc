@@ -134,8 +134,8 @@ REGISTER_OP("StringFormat")
     .SetShapeFn([](InferenceContext* c) {
       string template_;
       string placeholder;
-      TF_RETURN_IF_ERROR(c->GetAttr("template", &template_));
-      TF_RETURN_IF_ERROR(c->GetAttr("placeholder", &placeholder));
+      TF_RETURN_IF_ERROR(c->GetAttribute("template", &template_));
+      TF_RETURN_IF_ERROR(c->GetAttribute("placeholder", &placeholder));
 
       std::vector<std::string> split_template;
       split_template = absl::StrSplit(template_, placeholder);

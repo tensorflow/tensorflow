@@ -24,9 +24,9 @@ namespace {
 class XlaSelfAdjointEigOp : public XlaOpKernel {
  public:
   explicit XlaSelfAdjointEigOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("lower", &lower_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_iter", &max_iter_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("lower", &lower_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("max_iter", &max_iter_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("epsilon", &epsilon_));
   }
   void Compile(XlaOpKernelContext* ctx) override {
     auto result =

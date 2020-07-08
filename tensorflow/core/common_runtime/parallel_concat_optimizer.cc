@@ -62,9 +62,9 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
             op, g->NewName(strings::StrCat(n->name(), "/Internal")));
       };
       DataType dtype;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "T", &dtype));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(n_attrs, "T", &dtype));
       TensorShapeProto shape;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "shape", &shape));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(n_attrs, "shape", &shape));
 
       // Add the start node
       Node* start;

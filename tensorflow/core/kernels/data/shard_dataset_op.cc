@@ -214,7 +214,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
 ShardDatasetOp::ShardDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kRequireNonEmpty, &require_non_empty_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kRequireNonEmpty, &require_non_empty_));
 }
 
 void ShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,

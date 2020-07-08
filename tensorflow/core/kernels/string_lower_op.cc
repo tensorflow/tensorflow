@@ -18,20 +18,20 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/ascii.h"
-#include "unicode/unistr.h"  // from @icu
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "unicode/unistr.h"  // from @icu
 
 namespace tensorflow {
 
 class StringLowerOp : public OpKernel {
  public:
   explicit StringLowerOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("encoding", &encoding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("encoding", &encoding_));
     OP_REQUIRES(context, encoding_.empty() || encoding_ == "utf-8",
                 errors::InvalidArgument(
                     "only utf-8 or '' (no encoding) is supported, received ",
@@ -54,7 +54,7 @@ class StringLowerOp : public OpKernel {
         output(i) = absl::AsciiStrToLower(entry);
       }
     } else {
-      // The validation of utf-8 has already been done in GetAttr above.
+      // The validation of utf-8 has already been done in GetAttribute above.
       for (int64 i = 0; i < input.size(); ++i) {
         icu::UnicodeString us(input(i).c_str(), "UTF-8");
         us.toLower();

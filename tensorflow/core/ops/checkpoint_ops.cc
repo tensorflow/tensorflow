@@ -31,9 +31,10 @@ REGISTER_OP("GenerateVocabRemapping")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
 
       int64 new_vocab_offset;
-      TF_RETURN_IF_ERROR(c->GetAttr("new_vocab_offset", &new_vocab_offset));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("new_vocab_offset", &new_vocab_offset));
       int64 num_new_vocab;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_new_vocab", &num_new_vocab));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_new_vocab", &num_new_vocab));
 
       c->set_output(0, c->Vector(num_new_vocab));
       c->set_output(1, c->Scalar());
@@ -61,9 +62,9 @@ REGISTER_OP("LoadAndRemapMatrix")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
 
       int64 num_rows;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_rows", &num_rows));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_rows", &num_rows));
       int64 num_cols;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_cols", &num_cols));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_cols", &num_cols));
 
       c->set_output(0, c->Matrix(num_rows, num_cols));
       return Status::OK();

@@ -28,12 +28,12 @@ class ScopedAllocatorOp : public OpKernel {
  public:
   explicit ScopedAllocatorOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("T", &dtype_));
-    OP_REQUIRES_OK(context, context->GetAttr("shapes", &shapes_));
-    OP_REQUIRES_OK(context, context->GetAttr("sa_name", &name_));
-    OP_REQUIRES_OK(context, context->GetAttr("id", &id_));
-    OP_REQUIRES_OK(context, context->GetAttr("expected_call_count",
-                                             &expected_call_count_));
+    OP_REQUIRES_OK(context, context->GetAttribute("T", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttribute("shapes", &shapes_));
+    OP_REQUIRES_OK(context, context->GetAttribute("sa_name", &name_));
+    OP_REQUIRES_OK(context, context->GetAttribute("id", &id_));
+    OP_REQUIRES_OK(context, context->GetAttribute("expected_call_count",
+                                                  &expected_call_count_));
     device_ = context->device();
     // Precalculate the size of the backing tensor and the offsets of
     // the subtensors to be allocated from it, taking into account
@@ -93,12 +93,12 @@ class ScopedAllocatorConcatOp : public OpKernel {
  public:
   explicit ScopedAllocatorConcatOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("shape", &shape_));
-    OP_REQUIRES_OK(context, context->GetAttr("T", &dtype_));
-    OP_REQUIRES_OK(context, context->GetAttr("reshape", &reshape_));
+    OP_REQUIRES_OK(context, context->GetAttribute("shape", &shape_));
+    OP_REQUIRES_OK(context, context->GetAttribute("T", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttribute("reshape", &reshape_));
     // These attributes are just for debugging.
-    OP_REQUIRES_OK(context, context->GetAttr("sa_name", &name_));
-    OP_REQUIRES_OK(context, context->GetAttr("id", &id_));
+    OP_REQUIRES_OK(context, context->GetAttribute("sa_name", &name_));
+    OP_REQUIRES_OK(context, context->GetAttribute("id", &id_));
     device_ = context->device();
   }
 
@@ -174,10 +174,10 @@ class ScopedAllocatorSplitOp : public OpKernel {
  public:
   explicit ScopedAllocatorSplitOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttribute("T", &dtype_));
     // This stuff is just for debugging
-    OP_REQUIRES_OK(context, context->GetAttr("sa_name", &name_));
-    OP_REQUIRES_OK(context, context->GetAttr("id", &id_));
+    OP_REQUIRES_OK(context, context->GetAttribute("sa_name", &name_));
+    OP_REQUIRES_OK(context, context->GetAttribute("id", &id_));
     device_ = context->device();
   }
 

@@ -23,7 +23,6 @@ limitations under the License.
 
 #include <limits>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -129,7 +129,7 @@ Status ForwardInputOrCreateNewList(OpKernelContext* c, int32 input_index,
 class EmptyTensorList : public OpKernel {
  public:
   explicit EmptyTensorList(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("element_dtype", &element_dtype_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -172,7 +172,7 @@ REGISTER_KERNEL_BUILDER(Name("EmptyTensorList")
 class TensorListPushBack : public OpKernel {
  public:
   explicit TensorListPushBack(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("element_dtype", &element_dtype_));
   }
 
   ~TensorListPushBack() override {}
@@ -295,7 +295,7 @@ REGISTER_KERNEL_BUILDER(Name("TensorListElementShape")
 class TensorListReserve : public OpKernel {
  public:
   explicit TensorListReserve(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("element_dtype", &element_dtype_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -394,7 +394,7 @@ REGISTER_KERNEL_BUILDER(
 class TensorListSetItem : public OpKernel {
  public:
   explicit TensorListSetItem(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("element_dtype", &element_dtype_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -449,7 +449,7 @@ REGISTER_TENSOR_LIST_SET_ITEM_GPU(bfloat16)
 class TensorListConcatLists : public OpKernel {
  public:
   explicit TensorListConcatLists(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("element_dtype", &element_dtype_));
   }
 
   void Compute(OpKernelContext* c) override {

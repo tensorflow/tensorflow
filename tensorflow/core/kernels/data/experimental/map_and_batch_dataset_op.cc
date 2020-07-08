@@ -810,10 +810,10 @@ MapAndBatchDatasetOp::MapAndBatchDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kFunc, /*params=*/{},
                                                &func_metadata_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
-  OP_REQUIRES_OK(ctx,
-                 ctx->GetAttr(kPreserveCardinality, &preserve_cardinality_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(
+      ctx, ctx->GetAttribute(kPreserveCardinality, &preserve_cardinality_));
 }
 
 void MapAndBatchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,

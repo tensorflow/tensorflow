@@ -42,7 +42,8 @@ class TridiagonalSolveOp : public LinearAlgebraOp<Scalar> {
       decltype(std::declval<const ConstMatrixMaps>()[0].row(0));
 
   explicit TridiagonalSolveOp(OpKernelConstruction* context) : Base(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("partial_pivoting", &pivoting_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("partial_pivoting", &pivoting_));
   }
 
   void ValidateInputMatrixShapes(

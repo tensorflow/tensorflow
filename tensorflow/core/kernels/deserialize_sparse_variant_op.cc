@@ -29,7 +29,7 @@ class DeserializeSparseOp : public OpKernel {
  public:
   explicit DeserializeSparseOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dtype", &dtype_));
   }
 
   void Compute(OpKernelContext* context) override {

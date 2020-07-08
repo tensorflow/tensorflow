@@ -30,8 +30,8 @@ namespace {
 class RetvalOp : public XlaOpKernel {
  public:
   explicit RetvalOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("index", &index_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

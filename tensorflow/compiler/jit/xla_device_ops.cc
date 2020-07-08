@@ -31,7 +31,7 @@ void XlaDeviceDummyOp::Compute(OpKernelContext* ctx) {
 
 XlaAssignVariableOp::XlaAssignVariableOp(OpKernelConstruction* c)
     : OpKernel(c) {
-  OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+  OP_REQUIRES_OK(c, c->GetAttribute("dtype", &dtype_));
 }
 
 void XlaAssignVariableOp::Compute(OpKernelContext* context) {

@@ -394,11 +394,11 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
  public:
   explicit MultiDeviceIteratorHandleOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &name_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("container", &container_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kDevices, &devices_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("shared_name", &name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("container", &container_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kDevices, &devices_));
   }
 
   // The resource is deleted from the resource manager only when it is private
@@ -511,9 +511,9 @@ class AnonymousMultiDeviceIteratorOp
  public:
   explicit AnonymousMultiDeviceIteratorOp(OpKernelConstruction* ctx)
       : AnonymousResourceOp<MultiDeviceIterator>(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kDevices, &devices_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kDevices, &devices_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_dtypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
   }
 
  private:
@@ -684,8 +684,8 @@ class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
  public:
   explicit MultiDeviceIteratorFromStringHandleOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
     OP_REQUIRES(
         ctx,
         output_types_.empty() || output_shapes_.empty() ||

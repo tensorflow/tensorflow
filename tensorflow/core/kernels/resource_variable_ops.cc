@@ -85,7 +85,7 @@ REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp").Device(DEVICE_CPU),
                         ResourceHandlesOp<Var>);
 
 ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
-  OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+  OP_REQUIRES_OK(c, c->GetAttribute("dtype", &dtype_));
 }
 
 namespace {
@@ -160,8 +160,8 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
 
 ReadVariablesOp::ReadVariablesOp(OpKernelConstruction* c) : OpKernel(c) {
   int n;
-  OP_REQUIRES_OK(c, c->GetAttr("N", &n));
-  OP_REQUIRES_OK(c, c->GetAttr("dtypes", &dtypes_));
+  OP_REQUIRES_OK(c, c->GetAttribute("N", &n));
+  OP_REQUIRES_OK(c, c->GetAttribute("dtypes", &dtypes_));
   OP_REQUIRES(c, n == dtypes_.size(),
               errors::InvalidArgument(
                   "Mismatched number of arguments to ReadVariablesOp (", n,
@@ -216,12 +216,12 @@ REGISTER_KERNEL_BUILDER(Name("_ReadVariablesOp").Device(DEVICE_CPU),
                         ReadVariablesOp);
 
 VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
-  OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
-  OP_REQUIRES_OK(context, context->GetAttr("shared_name", &name_));
+  OP_REQUIRES_OK(context, context->GetAttribute("container", &container_));
+  OP_REQUIRES_OK(context, context->GetAttribute("shared_name", &name_));
 
-  OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
+  OP_REQUIRES_OK(context, context->GetAttribute("dtype", &dtype_and_shape_.dtype));
   PartialTensorShape shape;
-  OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
+  OP_REQUIRES_OK(context, context->GetAttribute("shape", &dtype_and_shape_.shape));
 
   is_anonymous_ = name_ == ResourceHandle::ANONYMOUS_NAME;
 
@@ -339,7 +339,7 @@ REGISTER_KERNEL_BUILDER(Name("VariableShape")
 DestroyResourceOp::DestroyResourceOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx,
-                 ctx->GetAttr("ignore_lookup_error", &ignore_lookup_error_));
+                 ctx->GetAttribute("ignore_lookup_error", &ignore_lookup_error_));
 }
 
 void DestroyResourceOp::Compute(OpKernelContext* ctx) {
@@ -361,9 +361,9 @@ template <typename Device, typename T>
 class AssignVariableOp : public OpKernel {
  public:
   explicit AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
-    if (!c->GetAttr("_grappler_relax_allocator_constraints",
-                    &relax_constraints_)
+    OP_REQUIRES_OK(c, c->GetAttribute("dtype", &dtype_));
+    if (!c->GetAttribute("_grappler_relax_allocator_constraints",
+                         &relax_constraints_)
              .ok()) {
       relax_constraints_ = false;
     }
@@ -427,7 +427,7 @@ template <typename Device>
 class AssignVariableOp<Device, Variant> : public OpKernel {
  public:
   explicit AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("dtype", &dtype_));
     OP_REQUIRES(c, dtype_ == DT_VARIANT,
                 errors::Internal("Variant kernel called with dtype: ",
                                  DataTypeString(dtype_)));
@@ -624,7 +624,7 @@ template <typename Device, typename T, typename Index>
 class ResourceGatherOp : public OpKernel {
  public:
   explicit ResourceGatherOp(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("batch_dims", &batch_dims_));
+    OP_REQUIRES_OK(c, c->GetAttribute("batch_dims", &batch_dims_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -849,7 +849,7 @@ class ResourceScatterUpdateOp : public OpKernel {
   explicit ResourceScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
     // We use the same kernel for many operations.
     // Each operation has a different set of attributes defined in its nodes.
-    Status s = c->GetAttr("use_locking", &use_exclusive_lock_);
+    Status s = c->GetAttribute("use_locking", &use_exclusive_lock_);
     if (!s.ok()) {
       use_exclusive_lock_ = false;
     }

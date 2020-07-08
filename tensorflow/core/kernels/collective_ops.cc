@@ -73,21 +73,24 @@ class CollectiveGatherOpKernel : public CollectiveOpKernel {
   explicit CollectiveGatherOpKernel(OpKernelConstruction* c)
       : CollectiveOpKernel(c) {
     col_params_.instance.type = GATHER_COLLECTIVE;
-    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    OP_REQUIRES_OK(
+        c, c->GetAttribute("group_size", &col_params_.group.group_size));
     OP_REQUIRES(
         c, col_params_.group.group_size > 0,
         errors::InvalidArgument("group_size must be positive integer but got ",
                                 col_params_.group.group_size));
-    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
+    OP_REQUIRES_OK(c,
+                   c->GetAttribute("group_key", &col_params_.group.group_key));
     OP_REQUIRES_OK(
-        c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
-    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
+        c, c->GetAttribute("instance_key", &col_params_.instance.instance_key));
+    OP_REQUIRES_OK(c, c->GetAttribute("T", &col_params_.instance.data_type));
     OP_REQUIRES_OK(
-        c, c->GetAttr("communication_hint",
-                      &col_params_.instance.impl_details.communication_hint));
+        c,
+        c->GetAttribute("communication_hint",
+                        &col_params_.instance.impl_details.communication_hint));
     OP_REQUIRES_OK(
-        c, c->GetAttr("timeout_seconds",
-                      &col_params_.instance.impl_details.timeout_seconds));
+        c, c->GetAttribute("timeout_seconds",
+                           &col_params_.instance.impl_details.timeout_seconds));
     const NodeDef& real_node = c->def();
     col_params_.name = strings::StrCat(real_node.name(), ": Gather");
     col_params_.group.device_type = c->device_type();
@@ -150,38 +153,41 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
   explicit CollectiveReduceOpKernel(OpKernelConstruction* c)
       : CollectiveOpKernel(c) {
     col_params_.instance.type = REDUCTION_COLLECTIVE;
-    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    OP_REQUIRES_OK(
+        c, c->GetAttribute("group_size", &col_params_.group.group_size));
     OP_REQUIRES(
         c, col_params_.group.group_size > 0,
         errors::InvalidArgument("group_size must be positive integer but got ",
                                 col_params_.group.group_size));
-    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
+    OP_REQUIRES_OK(c,
+                   c->GetAttribute("group_key", &col_params_.group.group_key));
     OP_REQUIRES_OK(
-        c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
+        c, c->GetAttribute("instance_key", &col_params_.instance.instance_key));
     OP_REQUIRES_OK(
-        c, c->GetAttr("subdiv_offsets",
-                      &col_params_.instance.impl_details.subdiv_offsets));
+        c, c->GetAttribute("subdiv_offsets",
+                           &col_params_.instance.impl_details.subdiv_offsets));
     string merge_op_name;
-    OP_REQUIRES_OK(c, c->GetAttr("merge_op", &merge_op_name));
+    OP_REQUIRES_OK(c, c->GetAttribute("merge_op", &merge_op_name));
     if (merge_op_name == "Max") {
       merge_op_name = "Maximum";
     } else if (merge_op_name == "Min") {
       merge_op_name = "Minimum";
     }
     string final_op_name;
-    OP_REQUIRES_OK(c, c->GetAttr("final_op", &final_op_name));
+    OP_REQUIRES_OK(c, c->GetAttribute("final_op", &final_op_name));
     OP_REQUIRES(c, final_op_name == "Id" || final_op_name == "Div",
                 errors::InvalidArgument(
                     "final_op must be one of {\"Id\", \"Div\"} but got ",
                     final_op_name));
-    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
-    OP_REQUIRES_OK(c, c->GetAttr("wait_for", &dependencies_));
+    OP_REQUIRES_OK(c, c->GetAttribute("T", &col_params_.instance.data_type));
+    OP_REQUIRES_OK(c, c->GetAttribute("wait_for", &dependencies_));
     OP_REQUIRES_OK(
-        c, c->GetAttr("communication_hint",
-                      &col_params_.instance.impl_details.communication_hint));
+        c,
+        c->GetAttribute("communication_hint",
+                        &col_params_.instance.impl_details.communication_hint));
     OP_REQUIRES_OK(
-        c, c->GetAttr("timeout_seconds",
-                      &col_params_.instance.impl_details.timeout_seconds));
+        c, c->GetAttribute("timeout_seconds",
+                           &col_params_.instance.impl_details.timeout_seconds));
     VLOG(2) << "CollectiveReduce instance " << col_params_.instance.instance_key
             << " merge_op " << merge_op_name << " final_op " << final_op_name
             << " communication_hint "
@@ -278,22 +284,25 @@ class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
   explicit CollectiveBcastSendOpKernel(OpKernelConstruction* c)
       : CollectiveOpKernel(c) {
     col_params_.instance.type = BROADCAST_COLLECTIVE;
-    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    OP_REQUIRES_OK(
+        c, c->GetAttribute("group_size", &col_params_.group.group_size));
     OP_REQUIRES(
         c, col_params_.group.group_size > 0,
         errors::InvalidArgument("group_size must be positive integer but got ",
                                 col_params_.group.group_size));
-    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
+    OP_REQUIRES_OK(c,
+                   c->GetAttribute("group_key", &col_params_.group.group_key));
     OP_REQUIRES_OK(
-        c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
-    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
-    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
+        c, c->GetAttribute("instance_key", &col_params_.instance.instance_key));
+    OP_REQUIRES_OK(c, c->GetAttribute("T", &col_params_.instance.data_type));
+    OP_REQUIRES_OK(c, c->GetAttribute("shape", &col_params_.instance.shape));
     OP_REQUIRES_OK(
-        c, c->GetAttr("communication_hint",
-                      &col_params_.instance.impl_details.communication_hint));
+        c,
+        c->GetAttribute("communication_hint",
+                        &col_params_.instance.impl_details.communication_hint));
     OP_REQUIRES_OK(
-        c, c->GetAttr("timeout_seconds",
-                      &col_params_.instance.impl_details.timeout_seconds));
+        c, c->GetAttribute("timeout_seconds",
+                           &col_params_.instance.impl_details.timeout_seconds));
     col_params_.is_source = true;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 
@@ -360,22 +369,25 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
   explicit CollectiveBcastRecvOpKernel(OpKernelConstruction* c)
       : CollectiveOpKernel(c) {
     col_params_.instance.type = BROADCAST_COLLECTIVE;
-    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    OP_REQUIRES_OK(
+        c, c->GetAttribute("group_size", &col_params_.group.group_size));
     OP_REQUIRES(
         c, col_params_.group.group_size > 0,
         errors::InvalidArgument("group_size must be positive integer but got ",
                                 col_params_.group.group_size));
-    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
+    OP_REQUIRES_OK(c,
+                   c->GetAttribute("group_key", &col_params_.group.group_key));
     OP_REQUIRES_OK(
-        c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
-    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
-    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
+        c, c->GetAttribute("instance_key", &col_params_.instance.instance_key));
+    OP_REQUIRES_OK(c, c->GetAttribute("T", &col_params_.instance.data_type));
+    OP_REQUIRES_OK(c, c->GetAttribute("shape", &col_params_.instance.shape));
     OP_REQUIRES_OK(
-        c, c->GetAttr("communication_hint",
-                      &col_params_.instance.impl_details.communication_hint));
+        c,
+        c->GetAttribute("communication_hint",
+                        &col_params_.instance.impl_details.communication_hint));
     OP_REQUIRES_OK(
-        c, c->GetAttr("timeout_seconds",
-                      &col_params_.instance.impl_details.timeout_seconds));
+        c, c->GetAttribute("timeout_seconds",
+                           &col_params_.instance.impl_details.timeout_seconds));
     col_params_.is_source = false;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 

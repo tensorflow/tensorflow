@@ -42,16 +42,17 @@ REGISTER_OP("AllToAll")
       int split_dimension;
       int split_count;
 
-      TF_RETURN_IF_ERROR(c->GetAttr("split_count", &split_count));
+      TF_RETURN_IF_ERROR(c->GetAttribute("split_count", &split_count));
 
-      TF_RETURN_IF_ERROR(c->GetAttr("concat_dimension", &concat_dimension));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("concat_dimension", &concat_dimension));
 
       if (concat_dimension < 0 || concat_dimension >= rank) {
         return errors::InvalidArgument("concat_dimension ", concat_dimension,
                                        " is out of range of input rank ", rank);
       }
 
-      TF_RETURN_IF_ERROR(c->GetAttr("split_dimension", &split_dimension));
+      TF_RETURN_IF_ERROR(c->GetAttribute("split_dimension", &split_dimension));
       if (split_dimension < 0 || split_dimension >= rank) {
         return errors::InvalidArgument("split_dimension ", split_dimension,
                                        " is out of range of input rank ", rank);

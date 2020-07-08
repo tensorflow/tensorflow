@@ -28,17 +28,17 @@ limitations under the License.
 namespace tensorflow {
 
 XlaCaseOp::XlaCaseOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("branches", &unpruned_branches_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("Tin", &input_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("Tout", &output_types_));
-  if (!ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_).ok()) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("branches", &unpruned_branches_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("Tin", &input_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("Tout", &output_types_));
+  if (!ctx->GetAttribute(kXlaTokenInputNodesAttrName, &token_input_nodes_).ok()) {
     has_token_input_output_ = false;
   } else {
     has_token_input_output_ = !token_input_nodes_.empty();
   }
   if (ctx->HasAttr(kPropagateCompileTimeConsts)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
-                                     &propagate_compile_time_consts_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kPropagateCompileTimeConsts,
+                                          &propagate_compile_time_consts_));
   }
 }
 

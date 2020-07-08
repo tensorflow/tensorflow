@@ -623,9 +623,9 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   }
   auto comp = [](const NodeDef* x, const NodeDef* y) {
     int xi;
-    TF_CHECK_OK(GetNodeAttr(*x, "index", &xi));
+    TF_CHECK_OK(GetNodeAttribute(*x, "index", &xi));
     int yi;
-    TF_CHECK_OK(GetNodeAttr(*y, "index", &yi));
+    TF_CHECK_OK(GetNodeAttribute(*y, "index", &yi));
     return xi < yi;
   };
   std::sort(arg.begin(), arg.end(), comp);
@@ -634,7 +634,7 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   strings::StrAppend(&out, "\n(");
   auto get_type_and_device = [](const NodeDef& n) {
     DataType dt;
-    if (!TryGetNodeAttr(n, "T", &dt)) {
+    if (!TryGetNodeAttribute(n, "T", &dt)) {
       dt = DT_INVALID;
     }
     if (!n.device().empty()) {
@@ -1519,7 +1519,43 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
   // If ndef is SymbolicGradient[f=Foo], we use Foo's gradient or
   // Foo's attributes.
   const NameAttrList* forward_func_attrs;
-  if (!TryGetNodeAttr(ndef, kFuncAttr, &forward_func_attrs)) {
+  if (!TryGetNodeAttribute(ndef, kFuncAttr, &forward_func_attrs)) {
+    return nullptr;
+  }
+  const string& func_name = forward_func_attrs->name();
+  {
+    tf_shared_lock l(mu_);
+    const string& grad_name = FindGradientHelper(func_name);
+    // If 'func' has a user-defined gradient function, uses the grad
+    // function's attrs to see if noinline is specified. Otherwise,
+    // uses func's attrs.
+    if (!grad_name.empty()) {
+      if (const auto helper = FindHelper(grad_name)) {
+        return &(helper->fdef);
+      } else {
+        return nullptr;
+      }
+    }
+    if (const auto helper = FindHelper(func_name)) {
+      return &(helper->fdef);
+    } else {
+      return nullptr;
+    }
+  }
+}
+
+const FunctionDef* FunctionLibraryDefinition::GetAttributeImpl(
+    const NodeDef& ndef) const {
+  if (ndef.op() != kGradientOp) {
+    // If 'ndef' calls a function and the function's def has the attr,
+    // returns it.
+    return Find(ndef.op());
+  }
+
+  // If ndef is SymbolicGradient[f=Foo], we use Foo's gradient or
+  // Foo's attributes.
+  const NameAttrList* forward_func_attrs;
+  if (!TryGetNodeAttribute(ndef, kFuncAttr, &forward_func_attrs)) {
     return nullptr;
   }
   const string& func_name = forward_func_attrs->name();
@@ -1577,6 +1613,16 @@ Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
   }
   return errors::InvalidArgument("Attr ", attr, " is not defined.");
 }
+template <typename T>
+Status FunctionLibraryDefinition::GetAttribute(const NodeDef& ndef,
+                                               const string& attr,
+                                               T* value) const {
+  const FunctionDef* fdef = GetAttributeImpl(ndef);
+  if (fdef && TryGetNodeAttribute(AttrSlice(&fdef->attr()), attr, value)) {
+    return Status::OK();
+  }
+  return errors::InvalidArgument("Attr ", attr, " is not defined.");
+}
 
 template <typename T>
 Status FunctionLibraryDefinition::GetAttr(const Node& node, const string& attr,
@@ -1584,14 +1630,29 @@ Status FunctionLibraryDefinition::GetAttr(const Node& node, const string& attr,
   return GetAttr(node.def(), attr, value);
 }
 
+template <typename T>
+Status FunctionLibraryDefinition::GetAttribute(const Node& node,
+                                               const string& attr,
+                                               T* value) const {
+  return GetAttribute(node.def(), attr, value);
+}
+
 #define GET_ATTR(T)                                                            \
   template Status FunctionLibraryDefinition::GetAttr(const Node&,              \
                                                      const string&, T*) const; \
   template Status FunctionLibraryDefinition::GetAttr(const NodeDef&,           \
                                                      const string&, T*) const;
+#define GET_ATTRIBUTE(T)                                   \
+  template Status FunctionLibraryDefinition::GetAttribute( \
+      const Node&, const string&, T*) const;               \
+  template Status FunctionLibraryDefinition::GetAttribute( \
+      const NodeDef&, const string&, T*) const;
 GET_ATTR(string)
 GET_ATTR(bool)
+GET_ATTRIBUTE(string)
+GET_ATTRIBUTE(bool)
 #undef GET_ATTR
+#undef GET_ATTRIBUTE
 
 namespace {
 

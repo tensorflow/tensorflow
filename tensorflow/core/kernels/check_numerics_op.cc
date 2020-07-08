@@ -84,7 +84,7 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
   explicit CheckNumericsOp(OpKernelConstruction* context) : OpKernel(context) {
     // message_ is used as the prefix for the assertion error message. For
     // instance, this can be the name of the input op that produced the tensor.
-    OP_REQUIRES_OK(context, context->GetAttr("message", &message_));
+    OP_REQUIRES_OK(context, context->GetAttribute("message", &message_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -200,7 +200,7 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
       : AsyncOpKernel(context) {
     // message_ is used as the prefix for the assertion error message. For
     // instance, this can be the name of the input op that produced the tensor.
-    OP_REQUIRES_OK(context, context->GetAttr("message", &message_));
+    OP_REQUIRES_OK(context, context->GetAttribute("message", &message_));
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {

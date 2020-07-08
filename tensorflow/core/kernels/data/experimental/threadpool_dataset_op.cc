@@ -68,10 +68,10 @@ class ThreadPoolResource : public ResourceBase {
 class ThreadPoolHandleOp : public OpKernel {
  public:
   explicit ThreadPoolHandleOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("display_name", &display_name_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_threads", &num_threads_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_intra_op_parallelism",
-                                     &max_intra_op_parallelism_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("display_name", &display_name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("num_threads", &num_threads_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("max_intra_op_parallelism",
+                                          &max_intra_op_parallelism_));
     OP_REQUIRES(
         ctx, num_threads_ > 0,
         errors::InvalidArgument("`num_threads` must be greater than zero."));

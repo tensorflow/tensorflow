@@ -441,12 +441,16 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // TODO(irving): Remove; keep only the const Node& version.
   template <typename T>
   Status GetAttr(const NodeDef& ndef, const string& attr, T* value) const;
+  template <typename T>
+  Status GetAttribute(const NodeDef& ndef, const string& attr, T* value) const;
 
   // Given a node, inspects attributes of the callee function to derive the
   // attribute 'value' for 'attr'. Returns OK iff the attribute is given by the
   // function's definition.
   template <typename T>
   Status GetAttr(const Node& node, const string& attr, T* value) const;
+  template <typename T>
+  Status GetAttribute(const Node& node, const string& attr, T* value) const;
 
   // Returns a proto representation of the state of this function library.
   FunctionDefLibrary ToProto() const TF_LOCKS_EXCLUDED(mu_);
@@ -507,6 +511,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
   const FunctionDef* GetAttrImpl(const NodeDef& ndef) const
+      TF_LOCKS_EXCLUDED(mu_);
+  const FunctionDef* GetAttributeImpl(const NodeDef& ndef) const
       TF_LOCKS_EXCLUDED(mu_);
 
   // Remove all functions in `funcs` and all gradients of functions in
@@ -1019,8 +1025,15 @@ Status GetOpGradientCreator(const string& op, Creator* creator);
       const Node&, const string&, T*) const;                 \
   extern template Status FunctionLibraryDefinition::GetAttr( \
       const NodeDef&, const string&, T*) const;
+#define GET_ATTRIBUTE(T)                                          \
+  extern template Status FunctionLibraryDefinition::GetAttribute( \
+      const Node&, const string&, T*) const;                 \
+  extern template Status FunctionLibraryDefinition::GetAttribute( \
+      const NodeDef&, const string&, T*) const;
 GET_ATTR(string)
 GET_ATTR(bool)
+GET_ATTRIBUTE(string)
+GET_ATTRIBUTE(bool)
 #undef GET_ATTR
 
 }  // end namespace tensorflow

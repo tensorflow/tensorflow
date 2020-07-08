@@ -211,7 +211,7 @@ REGISTER_SYCL_HOST_REF_KERNEL(tstring);
 class RefSelectOp : public OpKernel {
  public:
   explicit RefSelectOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("N", &num_ref_inputs_));
+    OP_REQUIRES_OK(context, context->GetAttribute("N", &num_ref_inputs_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -690,9 +690,9 @@ REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE_TPU_SYSTEM),
 class AbortOp : public OpKernel {
  public:
   explicit AbortOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("error_msg", &error_msg_));
-    OP_REQUIRES_OK(
-        context, context->GetAttr("exit_without_error", &exit_without_error_));
+    OP_REQUIRES_OK(context, context->GetAttribute("error_msg", &error_msg_));
+    OP_REQUIRES_OK(context, context->GetAttribute("exit_without_error",
+                                                  &exit_without_error_));
   }
 
   void Compute(OpKernelContext* context) override {

@@ -23,7 +23,7 @@ class StringLengthOp : public OpKernel {
  public:
   explicit StringLengthOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string unit;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("unit", &unit));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("unit", &unit));
     OP_REQUIRES_OK(ctx, ParseCharUnit(unit, &unit_));
   }
 

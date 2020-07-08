@@ -521,16 +521,23 @@ typedef struct TF_AttrMetadata {
 // Returns metadata about the value of the attribute `attr_name` of `oper`.
 TF_CAPI_EXPORT extern TF_AttrMetadata TF_OperationGetAttrMetadata(
     TF_Operation* oper, const char* attr_name, TF_Status* status);
+TF_CAPI_EXPORT extern TF_AttrMetadata TF_OperationGetAttributeMetadata(
+    TF_Operation* oper, const char* attr_name, TF_Status* status);
 
 // Fills in `value` with the value of the attribute `attr_name`.  `value` must
 // point to an array of length at least `max_length` (ideally set to
-// TF_AttrMetadata.total_size from TF_OperationGetAttrMetadata(oper,
+// TF_AttrMetadata.total_size from TF_OperationGetAttributeMetadata(oper,
 // attr_name)).
 TF_CAPI_EXPORT extern void TF_OperationGetAttrString(TF_Operation* oper,
                                                      const char* attr_name,
                                                      void* value,
                                                      size_t max_length,
                                                      TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeString(TF_Operation* oper,
+                                                          const char* attr_name,
+                                                          void* value,
+                                                          size_t max_length,
+                                                          TF_Status* status);
 
 // Get the list of strings in the value of the attribute `attr_name`.  Fills in
 // `values` and `lengths`, each of which must point to an array of length at
@@ -539,11 +546,14 @@ TF_CAPI_EXPORT extern void TF_OperationGetAttrString(TF_Operation* oper,
 // The elements of values will point to addresses in `storage` which must be at
 // least `storage_size` bytes in length.  Ideally, max_values would be set to
 // TF_AttrMetadata.list_size and `storage` would be at least
-// TF_AttrMetadata.total_size, obtained from TF_OperationGetAttrMetadata(oper,
-// attr_name).
+// TF_AttrMetadata.total_size, obtained from
+// TF_OperationGetAttributeMetadata(oper, attr_name).
 //
 // Fails if storage_size is too small to hold the requested number of strings.
 TF_CAPI_EXPORT extern void TF_OperationGetAttrStringList(
+    TF_Operation* oper, const char* attr_name, void** values, size_t* lengths,
+    int max_values, void* storage, size_t storage_size, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeStringList(
     TF_Operation* oper, const char* attr_name, void** values, size_t* lengths,
     int max_values, void* storage, size_t storage_size, TF_Status* status);
 
@@ -551,70 +561,111 @@ TF_CAPI_EXPORT extern void TF_OperationGetAttrInt(TF_Operation* oper,
                                                   const char* attr_name,
                                                   int64_t* value,
                                                   TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeInt(TF_Operation* oper,
+                                                       const char* attr_name,
+                                                       int64_t* value,
+                                                       TF_Status* status);
 
 // Fills in `values` with the value of the attribute `attr_name` of `oper`.
 // `values` must point to an array of length at least `max_values` (ideally set
-// TF_AttrMetadata.list_size from TF_OperationGetAttrMetadata(oper,
+// TF_AttrMetadata.list_size from TF_OperationGetAttributeMetadata(oper,
 // attr_name)).
 TF_CAPI_EXPORT extern void TF_OperationGetAttrIntList(TF_Operation* oper,
                                                       const char* attr_name,
                                                       int64_t* values,
                                                       int max_values,
                                                       TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeIntList(
+    TF_Operation* oper, const char* attr_name, int64_t* values, int max_values,
+    TF_Status* status);
 
 TF_CAPI_EXPORT extern void TF_OperationGetAttrFloat(TF_Operation* oper,
                                                     const char* attr_name,
                                                     float* value,
                                                     TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeFloat(TF_Operation* oper,
+                                                         const char* attr_name,
+                                                         float* value,
+                                                         TF_Status* status);
+
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeDouble(TF_Operation* oper,
+                                                          const char* attr_name,
+                                                          double* value,
+                                                          TF_Status* status);
 
 // Fills in `values` with the value of the attribute `attr_name` of `oper`.
 // `values` must point to an array of length at least `max_values` (ideally set
-// to TF_AttrMetadata.list_size from TF_OperationGetAttrMetadata(oper,
+// to TF_AttrMetadata.list_size from TF_OperationGetAttributeMetadata(oper,
 // attr_name)).
 TF_CAPI_EXPORT extern void TF_OperationGetAttrFloatList(TF_Operation* oper,
                                                         const char* attr_name,
                                                         float* values,
                                                         int max_values,
                                                         TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeFloatList(
+    TF_Operation* oper, const char* attr_name, float* values, int max_values,
+    TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeDoubleList(
+    TF_Operation* oper, const char* attr_name, double* values, int max_values,
+    TF_Status* status);
 
 TF_CAPI_EXPORT extern void TF_OperationGetAttrBool(TF_Operation* oper,
                                                    const char* attr_name,
                                                    unsigned char* value,
                                                    TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeBool(TF_Operation* oper,
+                                                        const char* attr_name,
+                                                        unsigned char* value,
+                                                        TF_Status* status);
 
 // Fills in `values` with the value of the attribute `attr_name` of `oper`.
 // `values` must point to an array of length at least `max_values` (ideally set
-// to TF_AttrMetadata.list_size from TF_OperationGetAttrMetadata(oper,
+// to TF_AttrMetadata.list_size from TF_OperationGetAttributeMetadata(oper,
 // attr_name)).
 TF_CAPI_EXPORT extern void TF_OperationGetAttrBoolList(TF_Operation* oper,
                                                        const char* attr_name,
                                                        unsigned char* values,
                                                        int max_values,
                                                        TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeBoolList(
+    TF_Operation* oper, const char* attr_name, unsigned char* values,
+    int max_values, TF_Status* status);
 
 TF_CAPI_EXPORT extern void TF_OperationGetAttrType(TF_Operation* oper,
                                                    const char* attr_name,
                                                    TF_DataType* value,
                                                    TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeType(TF_Operation* oper,
+                                                        const char* attr_name,
+                                                        TF_DataType* value,
+                                                        TF_Status* status);
 
 // Fills in `values` with the value of the attribute `attr_name` of `oper`.
 // `values` must point to an array of length at least `max_values` (ideally set
-// to TF_AttrMetadata.list_size from TF_OperationGetAttrMetadata(oper,
+// to TF_AttrMetadata.list_size from TF_OperationGetAttributeMetadata(oper,
 // attr_name)).
 TF_CAPI_EXPORT extern void TF_OperationGetAttrTypeList(TF_Operation* oper,
                                                        const char* attr_name,
                                                        TF_DataType* values,
                                                        int max_values,
                                                        TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeTypeList(
+    TF_Operation* oper, const char* attr_name, TF_DataType* values,
+    int max_values, TF_Status* status);
 
 // Fills in `value` with the value of the attribute `attr_name` of `oper`.
 // `values` must point to an array of length at least `num_dims` (ideally set to
-// TF_Attr_Meta.size from TF_OperationGetAttrMetadata(oper, attr_name)).
+// TF_Attr_Meta.size from TF_OperationGetAttributeMetadata(oper, attr_name)).
 TF_CAPI_EXPORT extern void TF_OperationGetAttrShape(TF_Operation* oper,
                                                     const char* attr_name,
                                                     int64_t* value,
                                                     int num_dims,
                                                     TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeShape(TF_Operation* oper,
+                                                         const char* attr_name,
+                                                         int64_t* value,
+                                                         int num_dims,
+                                                         TF_Status* status);
 
 // Fills in `dims` with the list of shapes in the attribute `attr_name` of
 // `oper` and `num_dims` with the corresponding number of dimensions. On return,
@@ -625,11 +676,14 @@ TF_CAPI_EXPORT extern void TF_OperationGetAttrShape(TF_Operation* oper,
 // The elements of `dims` will point to addresses in `storage` which must be
 // large enough to hold at least `storage_size` int64_ts.  Ideally, `num_shapes`
 // would be set to TF_AttrMetadata.list_size and `storage_size` would be set to
-// TF_AttrMetadata.total_size from TF_OperationGetAttrMetadata(oper,
+// TF_AttrMetadata.total_size from TF_OperationGetAttributeMetadata(oper,
 // attr_name).
 //
 // Fails if storage_size is insufficient to hold the requested shapes.
 TF_CAPI_EXPORT extern void TF_OperationGetAttrShapeList(
+    TF_Operation* oper, const char* attr_name, int64_t** dims, int* num_dims,
+    int num_shapes, int64_t* storage, int storage_size, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeShapeList(
     TF_Operation* oper, const char* attr_name, int64_t** dims, int* num_dims,
     int num_shapes, int64_t* storage, int storage_size, TF_Status* status);
 
@@ -638,12 +692,18 @@ TF_CAPI_EXPORT extern void TF_OperationGetAttrShapeList(
 TF_CAPI_EXPORT extern void TF_OperationGetAttrTensorShapeProto(
     TF_Operation* oper, const char* attr_name, TF_Buffer* value,
     TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeTensorShapeProto(
+    TF_Operation* oper, const char* attr_name, TF_Buffer* value,
+    TF_Status* status);
 
 // Fills in `values` with binary-serialized TensorShapeProto values of the
 // attribute `attr_name` of `oper`. `values` must point to an array of length at
 // least `num_values` (ideally set to TF_AttrMetadata.list_size from
-// TF_OperationGetAttrMetadata(oper, attr_name)).
+// TF_OperationGetAttributeMetadata(oper, attr_name)).
 TF_CAPI_EXPORT extern void TF_OperationGetAttrTensorShapeProtoList(
+    TF_Operation* oper, const char* attr_name, TF_Buffer** values,
+    int max_values, TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeTensorShapeProtoList(
     TF_Operation* oper, const char* attr_name, TF_Buffer** values,
     int max_values, TF_Status* status);
 
@@ -655,11 +715,15 @@ TF_CAPI_EXPORT extern void TF_OperationGetAttrTensor(TF_Operation* oper,
                                                      const char* attr_name,
                                                      TF_Tensor** value,
                                                      TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeTensor(TF_Operation* oper,
+                                                          const char* attr_name,
+                                                          TF_Tensor** value,
+                                                          TF_Status* status);
 
 // Fills in `values` with the TF_Tensor values of the attribute `attr_name` of
 // `oper`. `values` must point to an array of TF_Tensor* of length at least
 // `max_values` (ideally set to TF_AttrMetadata.list_size from
-// TF_OperationGetAttrMetadata(oper, attr_name)).
+// TF_OperationGetAttributeMetadata(oper, attr_name)).
 //
 // The caller takes ownership of all the non-null TF_Tensor* entries in `values`
 // (which can be deleted using TF_DeleteTensor(values[i])).
@@ -668,10 +732,16 @@ TF_CAPI_EXPORT extern void TF_OperationGetAttrTensorList(TF_Operation* oper,
                                                          TF_Tensor** values,
                                                          int max_values,
                                                          TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeTensorList(
+    TF_Operation* oper, const char* attr_name, TF_Tensor** values,
+    int max_values, TF_Status* status);
 
 // Sets `output_attr_value` to the binary-serialized AttrValue proto
 // representation of the value of the `attr_name` attr of `oper`.
 TF_CAPI_EXPORT extern void TF_OperationGetAttrValueProto(
+    TF_Operation* oper, const char* attr_name, TF_Buffer* output_attr_value,
+    TF_Status* status);
+TF_CAPI_EXPORT extern void TF_OperationGetAttributeValueProto(
     TF_Operation* oper, const char* attr_name, TF_Buffer* output_attr_value,
     TF_Status* status);
 
@@ -1165,6 +1235,9 @@ TF_CAPI_EXPORT extern void TF_FunctionSetAttrValueProto(TF_Function* func,
 // representation of the value of the `attr_name` attr of `func`.
 // If `attr_name` attribute is not present, status is set to an error.
 TF_CAPI_EXPORT extern void TF_FunctionGetAttrValueProto(
+    TF_Function* func, const char* attr_name, TF_Buffer* output_attr_value,
+    TF_Status* status);
+TF_CAPI_EXPORT extern void TF_FunctionGetAttributeValueProto(
     TF_Function* func, const char* attr_name, TF_Buffer* output_attr_value,
     TF_Status* status);
 

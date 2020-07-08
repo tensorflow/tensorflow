@@ -147,7 +147,7 @@ class StatelessRandomUniformOp : public XlaOpKernel {
   explicit StatelessRandomUniformOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx),
         device_type_string_(ctx->device_type().type_string()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -194,7 +194,7 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
   explicit StatelessRandomUniformIntOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx),
         device_type_string_(ctx->device_type().type_string()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -245,7 +245,7 @@ class StatelessRandomUniformFullIntOp : public XlaOpKernel {
   explicit StatelessRandomUniformFullIntOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx),
         device_type_string_(ctx->device_type().type_string()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -286,7 +286,7 @@ class StatelessRandomNormalOp : public XlaOpKernel {
   explicit StatelessRandomNormalOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx),
         device_type_string_(ctx->device_type().type_string()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -338,7 +338,7 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
   explicit StatelessTruncatedNormalOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx),
         device_type_string_(ctx->device_type().type_string()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

@@ -69,7 +69,7 @@ StatusOr<bool> IsConstantOnHost(Node* n) {
 
 StatusOr<bool> IsConstantSmall(Node* n) {
   const TensorProto* proto = nullptr;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "value", &proto));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "value", &proto));
 
   // TODO(sanjoy): It may make sense to combine this threshold with XLA's "large
   // constant" threshold, if there is one.

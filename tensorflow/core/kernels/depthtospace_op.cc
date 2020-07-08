@@ -17,13 +17,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/kernels/depthtospace_op.h"
+
 #include <memory>
 #include <string>
 #include <utility>
 
-#include "tensorflow/core/kernels/depthtospace_op.h"
-
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -45,11 +45,12 @@ class DepthToSpaceOp : public OpKernel {
  public:
   explicit DepthToSpaceOp(OpKernelConstruction* context) : OpKernel(context) {
     string data_format_str;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("data_format", &data_format_str));
     OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
 
-    OP_REQUIRES_OK(context, context->GetAttr("block_size", &block_size_));
+    OP_REQUIRES_OK(context, context->GetAttribute("block_size", &block_size_));
     OP_REQUIRES(context, block_size_ > 1,
                 errors::InvalidArgument("Block size should be > 1, but was: ",
                                         block_size_));

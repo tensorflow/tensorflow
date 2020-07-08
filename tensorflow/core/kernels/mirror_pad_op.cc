@@ -18,9 +18,8 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/mirror_pad_op.h"
-#include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include <string>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -40,7 +40,7 @@ class MirrorPadOp : public OpKernel {
  public:
   explicit MirrorPadOp(OpKernelConstruction* context) : OpKernel(context) {
     MirrorPadMode mode;
-    OP_REQUIRES_OK(context, context->GetAttr("mode", &mode));
+    OP_REQUIRES_OK(context, context->GetAttribute("mode", &mode));
 
     switch (mode) {
       case MirrorPadMode::SYMMETRIC: {
@@ -251,7 +251,7 @@ class MirrorPadGradOp : public OpKernel {
  public:
   explicit MirrorPadGradOp(OpKernelConstruction* context) : OpKernel(context) {
     MirrorPadMode mode;
-    OP_REQUIRES_OK(context, context->GetAttr("mode", &mode));
+    OP_REQUIRES_OK(context, context->GetAttribute("mode", &mode));
 
     switch (mode) {
       case MirrorPadMode::SYMMETRIC: {

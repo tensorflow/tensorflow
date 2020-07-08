@@ -45,7 +45,7 @@ class GatherOp : public OpKernel {
   explicit GatherOp(OpKernelConstruction* c) : OpKernel(c) {
     // Set batch_dims_ to 0 if the attribute does not exist.
     if (c->HasAttr("batch_dims")) {
-      OP_REQUIRES_OK(c, c->GetAttr("batch_dims", &batch_dims_));
+      OP_REQUIRES_OK(c, c->GetAttribute("batch_dims", &batch_dims_));
     } else {
       batch_dims_ = 0;
     }

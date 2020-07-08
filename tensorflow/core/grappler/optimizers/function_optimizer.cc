@@ -148,7 +148,8 @@ class FakeDevice : public Device {
 bool MarkedNoSpecialize(const FunctionDef& fdef) {
   const auto attr = AttrSlice(&fdef.attr());
   bool nospecialize = false;
-  return TryGetNodeAttr(attr, kNoSpecializeAttr, &nospecialize) && nospecialize;
+  return TryGetNodeAttribute(attr, kNoSpecializeAttr, &nospecialize) &&
+         nospecialize;
 }
 
 // Specialized function instantiation type parameters, body parameters, and
@@ -796,7 +797,7 @@ using OutputControlSource = InlineFunctionBodyOptions::OutputControlSource;
 // Checks if boolean attribute is defined and its value is 'true'.
 bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
   bool match;
-  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
+  bool found = TryGetNodeAttribute(n->attrs(), attr_name, &match);
   return found && match;
 }
 
@@ -1018,7 +1019,7 @@ Status MakeFunctionBodyForInlining(const Node& node,
   // deprecated for a while, but we still support for compatibility reasons.
   if (node.type_string() == FunctionLibraryDefinition::kGradientOp) {
     NameAttrList func;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), kFuncAttr, &func));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(node.attrs(), kFuncAttr, &func));
 
     const string grad = flib_def.FindGradient(func.name());
 

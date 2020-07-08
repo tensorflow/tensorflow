@@ -125,7 +125,7 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
   for (const auto& node : input_graph_def.node()) {
     if (node.name() == tensor_names_node) {
       Tensor tensor_names_tensor;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &tensor_names_tensor));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(node, "value", &tensor_names_tensor));
       const auto& tensor_names_value = tensor_names_tensor.flat<tstring>();
       for (int i = 0; i < tensor_names_value.size(); i++) {
         if (tensor_names_value(i) == GetMonolithicTensorKey(target_name)) {
@@ -142,7 +142,8 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
   for (const auto& node : input_graph_def.node()) {
     if (node.name() == shape_and_slices_node) {
       Tensor shape_and_slices_tensor;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &shape_and_slices_tensor));
+      TF_RETURN_IF_ERROR(
+          GetNodeAttribute(node, "value", &shape_and_slices_tensor));
       const auto& shape_and_slices_value =
           shape_and_slices_tensor.flat<tstring>();
       *shape_slice_string = shape_and_slices_value(offset);
@@ -300,7 +301,7 @@ Status SparsifyGatherInternal(
             const NodeDef& axis_node = match.inputs[2].node;
 
             Tensor axis_t;
-            TF_RETURN_IF_ERROR(GetNodeAttr(axis_node, "value", &axis_t));
+            TF_RETURN_IF_ERROR(GetNodeAttribute(axis_node, "value", &axis_t));
             int64 axis = 0;
             if (axis_t.dtype() == DT_INT32) {
               axis = axis_t.scalar<int32>()();
@@ -322,7 +323,8 @@ Status SparsifyGatherInternal(
           const NodeDef& weights_node = match.inputs[0].inputs[0].node;
 
           DataType data_type;
-          TF_RETURN_IF_ERROR(GetNodeAttr(weights_node, "dtype", &data_type));
+          TF_RETURN_IF_ERROR(
+              GetNodeAttribute(weights_node, "dtype", &data_type));
           if (data_type != DT_FLOAT) {
             return tensorflow::errors::FailedPrecondition(
                 "Transform only applicable to subgraph with 'Const',"

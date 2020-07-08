@@ -32,7 +32,7 @@ Status DecodeWavShapeFn(InferenceContext* c) {
 
   DimensionHandle channels_dim;
   int32 desired_channels;
-  TF_RETURN_IF_ERROR(c->GetAttr("desired_channels", &desired_channels));
+  TF_RETURN_IF_ERROR(c->GetAttribute("desired_channels", &desired_channels));
   if (desired_channels == -1) {
     channels_dim = c->UnknownDim();
   } else {
@@ -44,7 +44,7 @@ Status DecodeWavShapeFn(InferenceContext* c) {
   }
   DimensionHandle samples_dim;
   int32 desired_samples;
-  TF_RETURN_IF_ERROR(c->GetAttr("desired_samples", &desired_samples));
+  TF_RETURN_IF_ERROR(c->GetAttribute("desired_samples", &desired_samples));
   if (desired_samples == -1) {
     samples_dim = c->UnknownDim();
   } else {
@@ -71,9 +71,9 @@ Status SpectrogramShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
   int32 window_size;
-  TF_RETURN_IF_ERROR(c->GetAttr("window_size", &window_size));
+  TF_RETURN_IF_ERROR(c->GetAttribute("window_size", &window_size));
   int32 stride;
-  TF_RETURN_IF_ERROR(c->GetAttr("stride", &stride));
+  TF_RETURN_IF_ERROR(c->GetAttribute("stride", &stride));
 
   DimensionHandle input_length = c->Dim(input, 0);
   DimensionHandle input_channels = c->Dim(input, 1);
@@ -108,7 +108,7 @@ Status MfccShapeFn(InferenceContext* c) {
 
   int32 dct_coefficient_count;
   TF_RETURN_IF_ERROR(
-      c->GetAttr("dct_coefficient_count", &dct_coefficient_count));
+      c->GetAttribute("dct_coefficient_count", &dct_coefficient_count));
 
   DimensionHandle spectrogram_channels = c->Dim(spectrogram, 0);
   DimensionHandle spectrogram_length = c->Dim(spectrogram, 1);

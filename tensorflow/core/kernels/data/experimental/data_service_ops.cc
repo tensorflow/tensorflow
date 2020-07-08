@@ -27,7 +27,7 @@ RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
   int64 external_state_policy_int;
   OP_REQUIRES_OK(
-      ctx, ctx->GetAttr(kExternalStatePolicy, &external_state_policy_int));
+      ctx, ctx->GetAttribute(kExternalStatePolicy, &external_state_policy_int));
   external_state_policy_ =
       SerializationContext::ExternalStatePolicy(external_state_policy_int);
 }

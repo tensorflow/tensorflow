@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 
 #include <memory>
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -32,7 +33,7 @@ namespace tensorflow {
 class EncodeJpegOp : public OpKernel {
  public:
   explicit EncodeJpegOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("format", &format_));
+    OP_REQUIRES_OK(context, context->GetAttribute("format", &format_));
     if (format_.empty()) {
       flags_.format = static_cast<jpeg::Format>(0);
     } else if (format_ == "grayscale") {
@@ -45,19 +46,20 @@ class EncodeJpegOp : public OpKernel {
                       "format must be '', grayscale or rgb, got ", format_));
     }
 
-    OP_REQUIRES_OK(context, context->GetAttr("quality", &flags_.quality));
+    OP_REQUIRES_OK(context, context->GetAttribute("quality", &flags_.quality));
     OP_REQUIRES(context, 0 <= flags_.quality && flags_.quality <= 100,
                 errors::InvalidArgument("quality must be in [0,100], got ",
                                         flags_.quality));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("progressive", &flags_.progressive));
-    OP_REQUIRES_OK(
-        context, context->GetAttr("optimize_size", &flags_.optimize_jpeg_size));
-    OP_REQUIRES_OK(context, context->GetAttr("chroma_downsampling",
-                                             &flags_.chroma_downsampling));
+                   context->GetAttribute("progressive", &flags_.progressive));
+    OP_REQUIRES_OK(context, context->GetAttribute("optimize_size",
+                                                  &flags_.optimize_jpeg_size));
+    OP_REQUIRES_OK(context, context->GetAttribute("chroma_downsampling",
+                                                  &flags_.chroma_downsampling));
 
     string density_unit;
-    OP_REQUIRES_OK(context, context->GetAttr("density_unit", &density_unit));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("density_unit", &density_unit));
     if (density_unit == "in") {
       flags_.density_unit = 1;
     } else if (density_unit == "cm") {
@@ -68,9 +70,12 @@ class EncodeJpegOp : public OpKernel {
                                           density_unit));
     }
 
-    OP_REQUIRES_OK(context, context->GetAttr("x_density", &flags_.x_density));
-    OP_REQUIRES_OK(context, context->GetAttr("y_density", &flags_.y_density));
-    OP_REQUIRES_OK(context, context->GetAttr("xmp_metadata", &xmp_metadata_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("x_density", &flags_.x_density));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("y_density", &flags_.y_density));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("xmp_metadata", &xmp_metadata_));
     flags_.xmp_metadata = xmp_metadata_;  // StringPiece doesn't own data
   }
 

@@ -335,8 +335,8 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
     return errors::NotFound("Failed to find function '", op->Name(), "'");
   }
 
-  status = GetNodeAttr(AttrSlice(&function_def->attr()), kXlaMustCompileAttr,
-                       compile_with_xla);
+  status = GetNodeAttribute(AttrSlice(&function_def->attr()), kXlaMustCompileAttr,
+                            compile_with_xla);
   if (status.ok()) {
     DVLOG(2) << "Function definition explicitly specifies "
              << (*compile_with_xla ? "" : "not ") << "to compile with XLA";

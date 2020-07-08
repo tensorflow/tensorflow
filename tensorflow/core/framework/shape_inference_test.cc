@@ -1292,6 +1292,22 @@ TEST_F(ShapeInferenceTest, GetAttr) {
   EXPECT_EQ("bar", value);
 }
 
+TEST_F(ShapeInferenceTest, GetAttribute) {
+  OpRegistrationData op_reg_data;
+  op_reg_data.op_def = MakeOpDef(0, 2);
+  NodeDef def;
+  CHECK(NodeDefBuilder("dummy", &op_reg_data.op_def)
+            .Attr("foo", "bar")
+            .Finalize(&def)
+            .ok());
+
+  std::vector<ShapeHandle> empty;
+  InferenceContext c(kVersion, def, op_reg_data.op_def, empty, {}, {}, {});
+  string value;
+  EXPECT_TRUE(c.GetAttrbute("foo", &value).ok());
+  EXPECT_EQ("bar", value);
+}
+
 TEST_F(ShapeInferenceTest, Divide) {
   NodeDef def;
   InferenceContext c(kVersion, def, MakeOpDef(1, 2), {S({6, -1, 1, 2, 0})}, {},

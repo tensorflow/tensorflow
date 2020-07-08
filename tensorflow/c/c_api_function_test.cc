@@ -385,6 +385,13 @@ class CApiFunctionTest : public ::testing::Test {
     TF_DeleteBuffer(attr_buf);
   }
 
+  void GetAttribute(const char* attr_name, AttrValue* out_attr) {
+    TF_Buffer* attr_buf = TF_NewBuffer();
+    TF_FunctionGetAttributeValueProto(func_, attr_name, attr_buf, s_);
+    ASSERT_TRUE(out_attr->ParseFromArray(attr_buf->data, attr_buf->length));
+    TF_DeleteBuffer(attr_buf);
+  }
+
   const char* func_name_ = "MyFunc";
   const char* func_node_name_ = "MyFunc_0";
   TF_Status* s_;
@@ -1533,11 +1540,15 @@ TEST_F(CApiFunctionTest, Attribute) {
   AttrValue read_attr;
   GetAttr("test_attr_name", &read_attr);
   ASSERT_EQ(attr.DebugString(), read_attr.DebugString());
+  GetAttribute("test_attr_name", &read_attr);
+  ASSERT_EQ(attr.DebugString(), read_attr.DebugString());
 
   // Retrieve the same attr after save/restore
   Reincarnate();
   AttrValue read_attr2;
   GetAttr("test_attr_name", &read_attr2);
+  ASSERT_EQ(attr.DebugString(), read_attr2.DebugString());
+  GetAttribute("test_attr_name", &read_attr2);
   ASSERT_EQ(attr.DebugString(), read_attr2.DebugString());
 }
 

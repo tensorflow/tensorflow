@@ -227,6 +227,9 @@ class NodeViewInternal {
   const AttrValue* GetAttr(absl::string_view attr_name) const {
     return attrs_.Find(attr_name);
   }
+  const AttrValue* GetAttribute(absl::string_view attr_name) const {
+    return attrs_.Find(attr_name);
+  }
 
   // Returns all attributes of the node.
   const AttrSlice& GetAttrs() const { return attrs_; }

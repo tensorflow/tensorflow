@@ -45,8 +45,8 @@ bool IsCpuGpuCompile(const Graph* graph) {
   for (Node* n : graph->nodes()) {
     string name;
     // Only consider nodes being compiled.
-    if (!GetNodeAttr(n->attrs(),
-                     EncapsulateXlaComputationsPass::kXlaClusterAttr, &name)
+    if (!GetNodeAttribute(
+             n->attrs(), EncapsulateXlaComputationsPass::kXlaClusterAttr, &name)
              .ok())
       continue;
     // Early return for any node with a device that is not a CPU or GPU.
@@ -63,7 +63,8 @@ bool IsCpuGpuCompile(const Graph* graph) {
 // Checks if a graph node is marked to be a guaranteed constant.
 bool is_guaranteed_constant(const Node& n) {
   bool guaranteed_constant = false;
-  if (!GetNodeAttr(n.attrs(), "_is_guaranteed_constant", &guaranteed_constant)
+  if (!GetNodeAttribute(n.attrs(), "_is_guaranteed_constant",
+                        &guaranteed_constant)
            .ok()) {
     return false;
   }
@@ -72,7 +73,7 @@ bool is_guaranteed_constant(const Node& n) {
 
 // Finds the `index` of an _Arg or _Retval node.
 Status GetIndexAttr(const Node& n, int num_args, int* index) {
-  TF_RETURN_IF_ERROR(GetNodeAttr(n.attrs(), "index", index));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n.attrs(), "index", index));
   if (*index < 0 || *index >= num_args) {
     return errors::InvalidArgument("Invalid ", n.type_string(), " number ",
                                    *index);
@@ -256,8 +257,8 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   // XlaClusterOutput nodes with a XlaLaunch node.
   for (Node* launch : launch_nodes) {
     int variable_start_index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(launch->attrs(), "_variable_start_index",
-                                   &variable_start_index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(
+        launch->attrs(), "_variable_start_index", &variable_start_index));
 
     std::vector<const Edge*> in_edges;
     TF_RETURN_IF_ERROR(launch->input_edges(&in_edges));

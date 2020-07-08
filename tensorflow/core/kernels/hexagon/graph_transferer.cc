@@ -491,7 +491,7 @@ void GraphTransferer::RegisterConstantNode(const ShapeRefiner& shape_refiner,
   const_node_info.add_shape(shape_array[2]);
   const_node_info.add_shape(shape_array[3]);
   const TensorProto* proto = nullptr;
-  TF_CHECK_OK(GetNodeAttr(node.attrs(), "value", &proto));
+  TF_CHECK_OK(GetNodeAttribute(node.attrs(), "value", &proto));
   Tensor const_tensor;
   TF_CHECK_OK(MakeTensorFromProto(*proto, &const_tensor));
 
@@ -647,17 +647,17 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
   const int id = node_name_to_id_cache_map_[node.name()];
   shape_inference::InferenceContext* context = shape_refiner.GetContext(&node);
   CHECK(node.attrs().Find(PADDING_ATTR_NAME));
-  // TODO(satok): Use context->GetAttr(...) instead?
+  // TODO(satok): Use context->GetAttribute(...) instead?
   Padding padding;
-  TF_CHECK_OK(context->GetAttr(PADDING_ATTR_NAME, &padding));
+  TF_CHECK_OK(context->GetAttribute(PADDING_ATTR_NAME, &padding));
   CHECK(node.attrs().Find(STRIDES_ATTR_NAME));
   std::vector<int32> strides;
-  TF_CHECK_OK(context->GetAttr(STRIDES_ATTR_NAME, &strides));
+  TF_CHECK_OK(context->GetAttribute(STRIDES_ATTR_NAME, &strides));
   const int stride_id = RegisterConstantShape(strides);
   std::vector<int> extra_inputs{stride_id};
   if (node.attrs().Find(KSIZE_ATTR_NAME)) {
     std::vector<int32> kernel_sizes;
-    TF_CHECK_OK(context->GetAttr(KSIZE_ATTR_NAME, &kernel_sizes));
+    TF_CHECK_OK(context->GetAttribute(KSIZE_ATTR_NAME, &kernel_sizes));
     const int ksize_id = RegisterConstantShape(kernel_sizes);
     extra_inputs.insert(extra_inputs.begin(), ksize_id);
   }
@@ -697,7 +697,7 @@ void GraphTransferer::RegisterNodeWithRank(
       << ")";
   bool keep_dims = false;
   int padding_id = PADDING_NA_ID;
-  if (context->GetAttr(KEEP_DIMS_ATTR_NAME, &keep_dims).ok()) {
+  if (context->GetAttribute(KEEP_DIMS_ATTR_NAME, &keep_dims).ok()) {
     padding_id = keep_dims ? Padding::SAME : Padding::VALID;
   }
 
@@ -735,7 +735,7 @@ void GraphTransferer::RegisterPadNode(
   CHECK(input_node->IsConstant());
 
   const TensorProto* tensor_proto = nullptr;
-  TF_CHECK_OK(GetNodeAttr(input_node->attrs(), "value", &tensor_proto));
+  TF_CHECK_OK(GetNodeAttribute(input_node->attrs(), "value", &tensor_proto));
   CHECK_NOTNULL(tensor_proto);
   Tensor const_tensor;
   TF_CHECK_OK(MakeTensorFromProto(*tensor_proto, &const_tensor));
@@ -746,7 +746,7 @@ void GraphTransferer::RegisterPadNode(
   } else if (const_tensor.shape().dim_size(0) < PAD_WIDTH) {
     const int width = const_tensor.shape().dim_size(0);
     const TensorProto* proto = nullptr;
-    TF_CHECK_OK(GetNodeAttr(input_node->attrs(), "value", &proto));
+    TF_CHECK_OK(GetNodeAttribute(input_node->attrs(), "value", &proto));
     Tensor const_tensor;
     TF_CHECK_OK(MakeTensorFromProto(*proto, &const_tensor));
     CHECK_EQ(DT_INT32, const_tensor.dtype());

@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/strong_hash.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -692,11 +692,13 @@ template <bool HASHED_OUTPUT, typename InternalType>
 class SparseCrossOp : public OpKernel {
  public:
   explicit SparseCrossOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("num_buckets", &num_buckets_));
     // Read signed_hash_key_ as int64 since uint64 attributes are not
     // supported by REGISTER_OP.
     int64 signed_hash_key_;
-    OP_REQUIRES_OK(context, context->GetAttr("hash_key", &signed_hash_key_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("hash_key", &signed_hash_key_));
     hash_key_ = static_cast<uint64>(signed_hash_key_);
   }
 

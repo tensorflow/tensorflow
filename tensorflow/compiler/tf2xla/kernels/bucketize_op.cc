@@ -27,7 +27,7 @@ namespace {
 class BucketizeOp : public XlaOpKernel {
  public:
   explicit BucketizeOp(OpKernelConstruction* context) : XlaOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("boundaries", &boundaries_));
+    OP_REQUIRES_OK(context, context->GetAttribute("boundaries", &boundaries_));
     OP_REQUIRES(context, std::is_sorted(boundaries_.begin(), boundaries_.end()),
                 errors::InvalidArgument("Expected sorted boundaries"));
   }

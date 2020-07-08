@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <vector>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
@@ -26,7 +27,7 @@ template <typename T>
 class SparseSplitOp : public OpKernel {
  public:
   explicit SparseSplitOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_split", &num_split_));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_split", &num_split_));
   }
 
   void Compute(OpKernelContext* context) override {

@@ -34,10 +34,10 @@ namespace {
 class ExtractImagePatchesOp : public XlaOpKernel {
  public:
   explicit ExtractImagePatchesOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("ksizes", &ksizes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &strides_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("rates", &dilations_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("ksizes", &ksizes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("strides", &strides_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("rates", &dilations_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("padding", &padding_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

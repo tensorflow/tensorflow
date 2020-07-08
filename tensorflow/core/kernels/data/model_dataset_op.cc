@@ -38,12 +38,12 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       : UnaryDatasetOpKernel(ctx) {
     if (ctx->HasAttr("algorithm")) {
       int64 algorithm;
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("algorithm", &algorithm));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("algorithm", &algorithm));
       algorithm_ = model::AutotuneAlgorithm(algorithm);
     } else {
       algorithm_ = model::AutotuneAlgorithm::HILL_CLIMB;
     }
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("cpu_budget", &cpu_budget_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("cpu_budget", &cpu_budget_));
     if (cpu_budget_ == 0) {
       cpu_budget_ = port::NumSchedulableCPUs();
     }

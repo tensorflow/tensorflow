@@ -461,19 +461,20 @@ class MklPoolingOpBase : public OpKernel {
       // Current quantized convolution doesn't have data_format attribute.
       data_format = "NHWC";
     } else {
-      OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("data_format", &data_format));
     }
     OP_REQUIRES(context, FormatFromString(data_format, &this->data_format_tf_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES_OK(context, context->GetAttr("ksize", &this->ksize_));
+    OP_REQUIRES_OK(context, context->GetAttribute("ksize", &this->ksize_));
     OP_REQUIRES(context, this->ksize_.size() == 4 || this->ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 4 or 5 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &this->stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &this->stride_));
     OP_REQUIRES(context, this->stride_.size() == 4 || this->stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 or 5 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &this->padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &this->padding_));
     OP_REQUIRES(context, this->ksize_[0] == 1 && this->stride_[0] == 1,
                 errors::Unimplemented("Pooling is not yet supported on the "
                                       "batch dimension."));
@@ -488,7 +489,7 @@ class MklPoolingOpBase : public OpKernel {
     // We may not get this attribute for this node if it does not go through
     // graph rewrite pass. So we do not check for error while retrieving this
     // attribute value.
-    context->GetAttr("workspace_enabled", &this->workspace_enabled_);
+    context->GetAttribute("workspace_enabled", &this->workspace_enabled_);
   }
   void Compute(OpKernelContext* context) override = 0;
 

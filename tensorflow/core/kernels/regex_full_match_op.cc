@@ -61,7 +61,7 @@ class StaticRegexFullMatchOp : public OpKernel {
  public:
   explicit StaticRegexFullMatchOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string pattern;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("pattern", &pattern));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("pattern", &pattern));
     re_ = MakeUnique<RE2>(pattern);
     OP_REQUIRES(ctx, re_->ok(),
                 errors::InvalidArgument("Invalid pattern: ", pattern,

@@ -75,8 +75,8 @@ Status ExtractWhileLoopFrames(
     if (IsEnter(node)) {
       WhileLoopArg arg;
       arg.enter = node;
-      TF_RETURN_IF_ERROR(GetNodeAttr(arg.enter->attrs(), "is_constant",
-                                     &arg.is_loop_invariant));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(arg.enter->attrs(), "is_constant",
+                                          &arg.is_loop_invariant));
       frame.args.push_back(arg);
     } else if (IsLoopCond(node)) {
       frame.loop_cond = node;

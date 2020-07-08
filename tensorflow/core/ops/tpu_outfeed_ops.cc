@@ -51,8 +51,8 @@ REGISTER_OP("OutfeedDequeueTuple")
     .SetShapeFn([](InferenceContext* c) {
       std::vector<PartialTensorShape> shapes;
       std::vector<DataType> dtypes;
-      TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
-      TF_RETURN_IF_ERROR(c->GetAttr("dtypes", &dtypes));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shapes", &shapes));
+      TF_RETURN_IF_ERROR(c->GetAttribute("dtypes", &dtypes));
       if (shapes.size() != dtypes.size()) {
         return errors::InvalidArgument(
             "Incorrect number of output shapes specified");

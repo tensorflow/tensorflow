@@ -25,11 +25,11 @@ namespace {
 class XlaSvdOp : public XlaOpKernel {
  public:
   explicit XlaSvdOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_iter", &max_iter_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("max_iter", &max_iter_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("epsilon", &epsilon_));
     string precision_config_attr;
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("precision_config", &precision_config_attr));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("precision_config", &precision_config_attr));
     OP_REQUIRES(ctx,
                 precision_config_.ParsePartialFromString(precision_config_attr),
                 errors::InvalidArgument("Error parsing precision config."));
@@ -55,8 +55,8 @@ class XlaSvdOp : public XlaOpKernel {
 class SvdOp : public XlaOpKernel {
  public:
   explicit SvdOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("compute_uv", &compute_uv_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("full_matrices", &full_matrices_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("compute_uv", &compute_uv_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("full_matrices", &full_matrices_));
   }
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape input_shape = ctx->InputShape("input");

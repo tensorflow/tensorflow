@@ -18,7 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/bias_op.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/bias_op_gpu.h"
@@ -91,7 +92,7 @@ class BiasOp : public BinaryOp<T> {
  public:
   explicit BiasOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
     string data_format;
-    if (context->GetAttr("data_format", &data_format).ok()) {
+    if (context->GetAttribute("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
     } else {
@@ -236,7 +237,7 @@ class BiasGradOp : public OpKernel {
  public:
   explicit BiasGradOp(OpKernelConstruction* context) : OpKernel(context) {
     string data_format;
-    if (context->GetAttr("data_format", &data_format).ok()) {
+    if (context->GetAttribute("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
     } else {
@@ -327,7 +328,7 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
   typedef GPUDevice Device;
   explicit BiasOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
     string data_format;
-    if (context->GetAttr("data_format", &data_format).ok()) {
+    if (context->GetAttribute("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
     } else {
@@ -475,7 +476,7 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
   typedef GPUDevice Device;
   explicit BiasGradOp(OpKernelConstruction* context) : OpKernel(context) {
     string data_format;
-    if (context->GetAttr("data_format", &data_format).ok()) {
+    if (context->GetAttribute("data_format", &data_format).ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
     } else {

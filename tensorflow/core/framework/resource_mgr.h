@@ -804,8 +804,8 @@ void IsResourceInitialized<T>::Compute(OpKernelContext* ctx) {
 template <typename T>
 ResourceHandleOp<T>::ResourceHandleOp(OpKernelConstruction* context)
     : OpKernel(context) {
-  OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
-  OP_REQUIRES_OK(context, context->GetAttr("shared_name", &name_));
+  OP_REQUIRES_OK(context, context->GetAttribute("container", &container_));
+  OP_REQUIRES_OK(context, context->GetAttribute("shared_name", &name_));
 }
 
 template <typename T>
@@ -841,9 +841,9 @@ template <typename T>
 ResourceHandlesOp<T>::ResourceHandlesOp(OpKernelConstruction* context)
     : OpKernel(context) {
   int n;
-  OP_REQUIRES_OK(context, context->GetAttr("N", &n));
-  OP_REQUIRES_OK(context, context->GetAttr("containers", &containers_));
-  OP_REQUIRES_OK(context, context->GetAttr("shared_names", &names_));
+  OP_REQUIRES_OK(context, context->GetAttribute("N", &n));
+  OP_REQUIRES_OK(context, context->GetAttribute("containers", &containers_));
+  OP_REQUIRES_OK(context, context->GetAttribute("shared_names", &names_));
   OP_REQUIRES(
       context, containers_.size() == n,
       errors::InvalidArgument("Number of containers (", containers_.size(),

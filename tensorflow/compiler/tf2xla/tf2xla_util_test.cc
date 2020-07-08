@@ -404,6 +404,7 @@ TEST(PropagateConstIntoFunctionalNodes, CopiedConstNodeHasUniqueName) {
   Node* while_node = node_name_index["while"];
   ASSERT_NE(while_node, nullptr);
   TF_ASSERT_OK(GetNodeAttr(while_node->def(), "body", &body_fn));
+  TF_ASSERT_OK(GetNodeAttribute(while_node->def(), "body", &body_fn));
   const FunctionDef* rewritten_body_fn = fld.Find(body_fn.name());
   ASSERT_NE(rewritten_body_fn, nullptr);
   std::unordered_map<string, NodeDef> nodes;

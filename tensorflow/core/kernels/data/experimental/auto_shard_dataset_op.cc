@@ -34,7 +34,8 @@ constexpr char kOptimizerName[] = "tf_auto_shard";
 AutoShardDatasetOp::AutoShardDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx), auto_shard_policy_(0) {
   if (ctx->HasAttr("auto_shard_policy")) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("auto_shard_policy", &auto_shard_policy_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("auto_shard_policy", &auto_shard_policy_));
   }
 }
 

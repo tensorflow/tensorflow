@@ -29,11 +29,11 @@ class XlaDequantizeOp : public XlaOpKernel {
  public:
   explicit XlaDequantizeOp(OpKernelConstruction* context)
       : XlaOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("min_range", &min_range_));
-    OP_REQUIRES_OK(context, context->GetAttr("max_range", &max_range_));
-    OP_REQUIRES_OK(context, context->GetAttr("mode", &mode_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("transpose_output", &transpose_output_));
+    OP_REQUIRES_OK(context, context->GetAttribute("min_range", &min_range_));
+    OP_REQUIRES_OK(context, context->GetAttribute("max_range", &max_range_));
+    OP_REQUIRES_OK(context, context->GetAttribute("mode", &mode_));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("transpose_output", &transpose_output_));
   }
 
   void Compile(XlaOpKernelContext* context) override {

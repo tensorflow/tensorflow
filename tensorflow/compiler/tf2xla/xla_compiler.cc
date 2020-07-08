@@ -97,14 +97,14 @@ ComputeArgAndRetvalShardings(const Graph& graph) {
       TF_ASSIGN_OR_RETURN(auto sharding, get_sharding_for_node(n));
       if (!sharding.has_value()) continue;
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
       TF_RET_CHECK(index >= 0) << "Negative _Arg index";
       arg_shardings[index] = std::move(*sharding);
     } else if (n->IsRetval()) {
       TF_ASSIGN_OR_RETURN(auto sharding, get_sharding_for_node(n));
       if (!sharding.has_value()) continue;
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
       TF_RET_CHECK(index >= 0) << "Negative _Retval index";
       retval_shardings[index] = std::move(*sharding);
     }
@@ -590,8 +590,8 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   CopyGraph(*fbody->graph, graph.get());
 
   bool is_inside_mustcompile = false;
-  TryGetNodeAttr(AttrSlice(&fbody->fdef.attr()), kXlaMustCompileAttr,
-                 &is_inside_mustcompile);
+  TryGetNodeAttribute(AttrSlice(&fbody->fdef.attr()), kXlaMustCompileAttr,
+                      &is_inside_mustcompile);
 
   // Performs a first function inlining pass before shape inference, since
   // otherwise shape inference can't see inside functions and a comprehensive
@@ -703,7 +703,8 @@ Status XlaCompiler::CompileFunction(
   for (int i = 0; i < args.size(); i++) {
     // Skip resource variables and tensor lists.
     DataType dtype;
-    TF_RETURN_IF_ERROR(GetNodeAttr(fbody->arg_nodes[i]->def(), "T", &dtype));
+    TF_RETURN_IF_ERROR(
+        GetNodeAttribute(fbody->arg_nodes[i]->def(), "T", &dtype));
     if (dtype == DT_RESOURCE || dtype == DT_VARIANT) {
       continue;
     }
@@ -1204,10 +1205,11 @@ void ConvertConstantsToExpressions(xla::XlaBuilder* builder,
 
 }  // namespace
 
-Status XlaCompiler::CompileGraph(
-    const XlaCompiler::CompileOptions& options, string const& name,
-    std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
-    CompilationResult* result) {
+Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
+                                 string const& name,
+                                 std::unique_ptr<Graph> graph,
+                                 absl::Span<const XlaCompiler::Argument> args,
+                                 CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
 
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(

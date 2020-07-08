@@ -41,7 +41,7 @@ class MklDequantizeOp : public OpKernel {
  public:
   explicit MklDequantizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string mode_string;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("mode", &mode_string));
     OP_REQUIRES(ctx, mode_string == "SCALED",
                 errors::InvalidArgument(
                     "MklDequantizeOp only supports 'SCALED' mode, but got '" +

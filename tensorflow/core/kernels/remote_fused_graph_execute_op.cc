@@ -29,12 +29,12 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
   explicit RemoteFusedGraphExecuteOp(OpKernelConstruction* const ctx)
       : OpKernel(ctx), execute_info_() {
     string serialized_proto;
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr(RemoteFusedGraphExecuteUtils::
-                              ATTR_SERIALIZED_REMOTE_FUSED_GRAPH_EXECUTE_INFO,
-                          &serialized_proto));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Tinputs", &input_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Toutputs", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(
+                            RemoteFusedGraphExecuteUtils::
+                                ATTR_SERIALIZED_REMOTE_FUSED_GRAPH_EXECUTE_INFO,
+                            &serialized_proto));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("Tinputs", &input_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("Toutputs", &output_types_));
     execute_info_.ParseFromString(serialized_proto);
     if (!execute_info_.executor_name().empty()) {
       const RemoteFusedGraphExecuteUtils::ExecutorBuildFunc* build_func =

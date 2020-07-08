@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/queue_op.h"
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/queue_interface.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -26,12 +27,12 @@ limitations under the License.
 namespace tensorflow {
 
 QueueOp::QueueOp(OpKernelConstruction* context) : ResourceOpKernel(context) {
-  OP_REQUIRES_OK(context, context->GetAttr("capacity", &capacity_));
+  OP_REQUIRES_OK(context, context->GetAttribute("capacity", &capacity_));
   if (capacity_ < 0) {
     capacity_ = QueueBase::kUnbounded;
   }
   OP_REQUIRES_OK(context,
-                 context->GetAttr("component_types", &component_types_));
+                 context->GetAttribute("component_types", &component_types_));
 }
 
 void QueueOp::Compute(OpKernelContext* context) {
@@ -45,7 +46,6 @@ void QueueOp::Compute(OpKernelContext* context) {
 Status QueueOp::VerifyResource(QueueInterface* queue) {
   return queue->MatchesNodeDef(def());
 }
-
 
 QueueOpKernel::QueueOpKernel(OpKernelConstruction* context)
     : AsyncOpKernel(context) {}
@@ -67,7 +67,7 @@ void QueueOpKernel::ComputeAsync(OpKernelContext* ctx, DoneCallback callback) {
 
 QueueAccessOpKernel::QueueAccessOpKernel(OpKernelConstruction* context)
     : QueueOpKernel(context) {
-  OP_REQUIRES_OK(context, context->GetAttr("timeout_ms", &timeout_));
+  OP_REQUIRES_OK(context, context->GetAttribute("timeout_ms", &timeout_));
   // TODO(keveman): Enable timeout.
   OP_REQUIRES(context, timeout_ == -1,
               errors::InvalidArgument("Timeout not supported yet."));
@@ -326,8 +326,8 @@ DequeueUpToOp::~DequeueUpToOp() = default;
 // The op has one input, which is the handle of the appropriate Queue.
 QueueCloseOp::QueueCloseOp(OpKernelConstruction* context)
     : QueueOpKernel(context) {
-  OP_REQUIRES_OK(context, context->GetAttr("cancel_pending_enqueues",
-                                           &cancel_pending_enqueues_));
+  OP_REQUIRES_OK(context, context->GetAttribute("cancel_pending_enqueues",
+                                                &cancel_pending_enqueues_));
 }
 
 void QueueCloseOp::ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,

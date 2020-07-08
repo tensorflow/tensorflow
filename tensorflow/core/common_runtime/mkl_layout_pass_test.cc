@@ -131,7 +131,7 @@ class MklLayoutPassTest : public ::testing::Test {
     T attr_val;
     for (const Node* n : graph_.nodes()) {
       if (IncludeNode(n) && n->type_string() == node_name) {
-        TF_CHECK_OK(GetNodeAttr(n->def(), attr, &attr_val));
+        TF_CHECK_OK(GetNodeAttribute(n->def(), attr, &attr_val));
         return attr_val;
       }
     }

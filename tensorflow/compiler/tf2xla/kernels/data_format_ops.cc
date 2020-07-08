@@ -32,9 +32,9 @@ class DataFormatDimMapOp : public XlaOpKernel {
   explicit DataFormatDimMapOp(OpKernelConstruction* context)
       : XlaOpKernel(context) {
     string src_format;
-    OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("src_format", &src_format));
     string dst_format;
-    OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("dst_format", &dst_format));
     OP_REQUIRES(context, src_format.size() == 4,
                 errors::InvalidArgument(absl::StrCat(
                     "Source format must of length 4, received src_format = ",
@@ -84,14 +84,14 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
  public:
   explicit DataFormatVecPermuteOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("src_format", &src_format_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("src_format", &src_format_));
     OP_REQUIRES(
         ctx, src_format_.size() == 4,
         errors::InvalidArgument("Data format should have 4 characters"));
     TensorFormat data_format;
     OP_REQUIRES(ctx, FormatFromString(src_format_, &data_format),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dst_format", &dst_format_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dst_format", &dst_format_));
     OP_REQUIRES(
         ctx, dst_format_.size() == 4,
         errors::InvalidArgument("Data format should have 4 characters"));

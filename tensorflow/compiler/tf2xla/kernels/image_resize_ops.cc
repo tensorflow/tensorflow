@@ -583,12 +583,13 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
 
 ResizeNearestNeighborOp::ResizeNearestNeighborOp(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("align_corners", &align_corners_));
   OP_REQUIRES(
       ctx, align_corners_ == true,
       errors::Unimplemented("ResizeNearestNeighbor with align_corners=False "
                             "is not yet implemented"));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttribute("half_pixel_centers", &half_pixel_centers_));
   OP_REQUIRES(ctx, half_pixel_centers_ == false,
               errors::Unimplemented(
                   "ResizeNearestNeighbor with half_pixel_centers=True is "
@@ -604,8 +605,9 @@ REGISTER_XLA_OP(Name("ResizeNearestNeighbor").CompileTimeConstantInput("size"),
 
 ResizeBilinearOp::ResizeBilinearOp(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("align_corners", &align_corners_));
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttribute("half_pixel_centers", &half_pixel_centers_));
   OP_REQUIRES(
       ctx, half_pixel_centers_ == false,
       errors::Unimplemented("ResizeBilinear with half_pixel_centers=True is "
@@ -621,8 +623,9 @@ REGISTER_XLA_OP(Name("ResizeBilinear").CompileTimeConstantInput("size"),
 
 ResizeBilinearGradOp::ResizeBilinearGradOp(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("align_corners", &align_corners_));
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttribute("half_pixel_centers", &half_pixel_centers_));
   OP_REQUIRES(
       ctx, align_corners_ == true,
       errors::Unimplemented("ResizeBilinearGrad with align_corners=False is "
@@ -633,7 +636,7 @@ ResizeBilinearGradOp::ResizeBilinearGradOp(OpKernelConstruction* ctx)
                   "not yet implemented"));
 
   DataType output_dtype;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &output_dtype));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &output_dtype));
   OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(output_dtype, &output_type_));
 }
 

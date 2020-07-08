@@ -335,6 +335,8 @@ class OpKernelConstruction {
   // a matching type, a non-ok status will be returned.
   template <class T>
   Status GetAttr(StringPiece attr_name, T* value) const;
+  template <class T>
+  Status GetAttribute(StringPiece attr_name, T* value) const;
 
   // Return true if the attr_name is defined in def().
   bool HasAttr(StringPiece attr_name) const;
@@ -1576,6 +1578,12 @@ class OpKernelRegistrar {
 template <class T>
 Status OpKernelConstruction::GetAttr(StringPiece attr_name, T* value) const {
   return GetNodeAttr(def(), attr_name, value);
+}
+
+template <class T>
+Status OpKernelConstruction::GetAttribute(StringPiece attr_name,
+                                          T* value) const {
+  return GetNodeAttribute(def(), attr_name, value);
 }
 
 inline DataType OpKernelContext::input_dtype(int index) const {

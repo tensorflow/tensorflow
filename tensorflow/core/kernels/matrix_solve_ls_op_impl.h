@@ -18,9 +18,6 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#include "third_party/eigen3/Eigen/Cholesky"
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/QR"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,6 +25,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/Eigen/Cholesky"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/Eigen/QR"
 
 namespace tensorflow {
 
@@ -37,7 +37,7 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
   typedef LinearAlgebraOp<Scalar> Base;
 
   explicit MatrixSolveLsOp(OpKernelConstruction* context) : Base(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("fast", &fast_));
+    OP_REQUIRES_OK(context, context->GetAttribute("fast", &fast_));
   }
 
   using TensorShapes = typename Base::TensorShapes;

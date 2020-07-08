@@ -85,8 +85,8 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
       // With `parallel_iterations == 1` it's safe to use TemporaryVariable.
       if (is_in_while_loop) {
         int parallel_iterations;
-        bool found = TryGetNodeAttr(frame->attrs(), kParallelIterationsAttrName,
-                                    &parallel_iterations);
+        bool found = TryGetNodeAttribute(
+            frame->attrs(), kParallelIterationsAttrName, &parallel_iterations);
         if (found && parallel_iterations == 1) {
           is_in_while_loop = false;
         }
@@ -124,9 +124,9 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
     };
 
     DataType dtype;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "T", &dtype));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n_attrs, "T", &dtype));
     TensorShapeProto shape;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "shape", &shape));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n_attrs, "shape", &shape));
 
     std::vector<const Edge*> data_edges, control_edges;
     for (const Edge* input_edge : n->in_edges()) {
@@ -234,9 +234,9 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
 
     AttrSlice n_attrs = n->attrs();
     DataType dtype;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "T", &dtype));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n_attrs, "T", &dtype));
     int num_inputs;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "N", &num_inputs));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n_attrs, "N", &num_inputs));
 
     Node* add_n_node = nullptr;
 

@@ -196,8 +196,8 @@ GeneratorDatasetOp::GeneratorDatasetOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx,
                  FunctionMetadata::Create(ctx, kFinalizeFunc, /*params=*/{},
                                           &finalize_func_metadata_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
 }
 
 void GeneratorDatasetOp::MakeDataset(OpKernelContext* ctx,

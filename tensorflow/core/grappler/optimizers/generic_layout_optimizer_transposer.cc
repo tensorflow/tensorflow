@@ -69,7 +69,7 @@ constexpr int kRank = 4;
 inline bool AttrDataFormatMatch(const utils::MutableNodeView& node,
                                 absl::string_view src_data_format,
                                 bool* missing) {
-  const auto* attr = node.GetAttr(kAttrDataFormat);
+  const auto* attr = node.GetAttribute(kAttrDataFormat);
   if (attr != nullptr) {
     return attr->s() == src_data_format;
   }
@@ -100,7 +100,7 @@ std::vector<int> GetRegularFaninPorts(const utils::MutableNodeView& node) {
 }
 
 std::vector<int> GetConcatDataFaninPorts(const utils::MutableNodeView& node) {
-  const auto* n_attr = node.GetAttr(kAttrN);
+  const auto* n_attr = node.GetAttribute(kAttrN);
   const int n = n_attr != nullptr ? n_attr->i() : 0;
   const int start = (node.GetOp() == "Concat") ? 1 : 0;
   const int end = start + n;
@@ -330,7 +330,7 @@ Status Transposer::UpdateFanoutEdgesWithOp(TransposeContext* context,
                                            utils::MutableNodeView* src_node,
                                            absl::string_view op) {
   // Update attr _output_shapes for output ports.
-  const auto* output_shape_attr = src_node->GetAttr(kAttrOutputShape);
+  const auto* output_shape_attr = src_node->GetAttribute(kAttrOutputShape);
   AttrValue shape_attr_copy;
   if (op == kOpTranspose && output_shape_attr != nullptr) {
     shape_attr_copy = *output_shape_attr;
@@ -447,7 +447,8 @@ Status Transposer::UpdateEdge(
     if (input_shape != nullptr) {
       input_shape_proto = input_shape->list().shape(src_port);
     } else {
-      const auto* src_node_shape_attr = src_node->GetAttr(kAttrOutputShape);
+      const auto* src_node_shape_attr =
+          src_node->GetAttribute(kAttrOutputShape);
       if (src_node_shape_attr != nullptr) {
         input_shape_proto = src_node_shape_attr->list().shape(src_port);
       }
@@ -491,7 +492,7 @@ Status Transposer::UpdateEdge(
 
 bool Transposer::IsFanoutPortRankN(const utils::MutableNodeView& node, int port,
                                    int n) const {
-  const auto* output_shape_attr = node.GetAttr(kAttrOutputShape);
+  const auto* output_shape_attr = node.GetAttribute(kAttrOutputShape);
   if (output_shape_attr == nullptr ||
       output_shape_attr->list().shape_size() <= port) {
     return false;
@@ -530,7 +531,7 @@ bool Transposer::IsFaninPortDimsNIfConst(const utils::MutableNodeView& node,
       return true;
     }
     // If fanin is a Const, check tensor to see if dimensions match.
-    const auto* value_attr = fanin_node_view->GetAttr(kAttrValue);
+    const auto* value_attr = fanin_node_view->GetAttribute(kAttrValue);
     if (value_attr == nullptr) {
       return false;
     }
@@ -604,7 +605,7 @@ string Transposer::GetShapeConstNodeNameFormat(absl::string_view node_name,
 
 inline string GetLayoutSensitiveNodeDataFormat(
     const utils::MutableNodeView& node) {
-  const auto* attr = node.GetAttr(kAttrDataFormat);
+  const auto* attr = node.GetAttribute(kAttrDataFormat);
   if (attr != nullptr) {
     return attr->s();
   }
@@ -620,7 +621,7 @@ Status LayoutSensitiveOpTransposer::UpdateNode(TransposeContext* context,
 
   auto permute_attr = [&context, &node,
                        &mutation](absl::string_view attr_name) {
-    const auto* attr = node->GetAttr(attr_name);
+    const auto* attr = node->GetAttribute(attr_name);
     if (attr != nullptr) {
       AttrValue attr_copy(*attr);
       TF_RETURN_IF_ERROR(PermuteSingle(
@@ -636,7 +637,8 @@ Status LayoutSensitiveOpTransposer::UpdateNode(TransposeContext* context,
   TF_RETURN_IF_ERROR(permute_attr(kAttrKSize));
   TF_RETURN_IF_ERROR(permute_attr(kAttrDilations));
 
-  const auto* explicit_paddings_attr = node->GetAttr(kAttrExplicitPaddings);
+  const auto* explicit_paddings_attr =
+      node->GetAttribute(kAttrExplicitPaddings);
   if (explicit_paddings_attr != nullptr && explicit_paddings_attr->has_list() &&
       explicit_paddings_attr->list().i_size() > 0) {
     AttrValue explicit_paddings_attr_copy(*explicit_paddings_attr);
@@ -729,7 +731,7 @@ Status Conv2DBackpropInputTransposer::TransposeNode(
 
   const auto& fanin = node->GetRegularFanin(0);
   auto* fanin_node = fanin.node_view();
-  const auto* output_shape_attr = fanin_node->GetAttr(kAttrOutputShape);
+  const auto* output_shape_attr = fanin_node->GetAttribute(kAttrOutputShape);
   if (output_shape_attr == nullptr) {
     VLOG(3) << "Cannot compute the shape of " << fanin_node->GetName()
             << " because it is missing attribute " << kAttrOutputShape;
@@ -775,7 +777,7 @@ Status FusedBatchNormExTransposer::TransposeNode(TransposeContext* context,
 
 bool FusedBatchNormGradTransposer::IsTraining(
     const utils::MutableNodeView& node) const {
-  const auto* is_training_attr = node.GetAttr(kAttrIsTraining);
+  const auto* is_training_attr = node.GetAttribute(kAttrIsTraining);
   if (is_training_attr != nullptr) {
     return is_training_attr->b();
   }
@@ -884,11 +886,11 @@ inline bool IsValidDataFormatNode(const utils::MutableNodeView& node,
   if (!IsDataFormatOp(node)) {
     return false;
   }
-  const auto* src_format_attr = node.GetAttr(kAttrSrcFormat);
+  const auto* src_format_attr = node.GetAttribute(kAttrSrcFormat);
   if (src_format_attr == nullptr || src_format_attr->s() != src_format) {
     return false;
   }
-  const auto* dst_format_attr = node.GetAttr(kAttrDstFormat);
+  const auto* dst_format_attr = node.GetAttribute(kAttrDstFormat);
   if (dst_format_attr == nullptr || dst_format_attr->s() != dst_format) {
     return false;
   }
@@ -1087,7 +1089,7 @@ Status BinaryOpTransposer::MaybeReshapeVectorFanin(
         GetShapeConstNodeNameFormat(node_name, vector_index));
     const auto& fanin = node->GetRegularFanin(vector_index);
     auto* fanin_node = fanin.node_view();
-    const auto* output_shape_attr = fanin_node->GetAttr(kAttrOutputShape);
+    const auto* output_shape_attr = fanin_node->GetAttribute(kAttrOutputShape);
     if (output_shape_attr == nullptr) {
       return errors::InvalidArgument("Missing attribute ", kAttrOutputShape);
     }
@@ -1098,7 +1100,7 @@ Status BinaryOpTransposer::MaybeReshapeVectorFanin(
         AddNodeShapeConst(mutation, shape_const_node_name, node_device,
                           context->frames.IsInFrame(*node->node()), vector_size,
                           fanin_node->GetName()));
-    const auto* t_attr = node->GetAttr(kAttrT);
+    const auto* t_attr = node->GetAttribute(kAttrT);
     if (t_attr == nullptr) {
       return errors::InvalidArgument("Missing attribute ", kAttrT);
     }
@@ -1137,7 +1139,7 @@ Status ConcatOpTransposer::TransposeNode(TransposeContext* context,
       context, GetConcatDataFaninPorts(*node), node, kOpTranspose));
   int axis_node = 0;
   if (node->GetOp() == "ConcatV2") {
-    const auto* n_attr = node->GetAttr(kAttrN);
+    const auto* n_attr = node->GetAttribute(kAttrN);
     if (n_attr != nullptr) {
       axis_node = n_attr->i();
     }
@@ -1222,7 +1224,7 @@ Status PadTransposer::TransposeNode(TransposeContext* context,
 }
 
 bool ReduceTransposer::KeepDims(const utils::MutableNodeView& node) {
-  const auto* keep_dims_attr = node.GetAttr(kAttrKeepDims);
+  const auto* keep_dims_attr = node.GetAttribute(kAttrKeepDims);
   if (keep_dims_attr != nullptr) {
     return keep_dims_attr->b();
   }
@@ -1264,7 +1266,7 @@ bool ReduceTransposer::IsReduceAxisSupported(
   if (!IsConstant(*axis_node->node())) {
     return false;
   }
-  const auto* value_attr = axis_node->GetAttr(kAttrValue);
+  const auto* value_attr = axis_node->GetAttribute(kAttrValue);
   if (value_attr == nullptr) {
     return false;
   }
@@ -1427,7 +1429,7 @@ bool SqueezeTransposer::IsInputConvertible(
   const auto& regular_fanin_0 = node.GetRegularFanin(0);
   auto* regular_fanin_0_node = regular_fanin_0.node_view();
   const auto* output_shape_attr =
-      regular_fanin_0_node->GetAttr(kAttrOutputShape);
+      regular_fanin_0_node->GetAttribute(kAttrOutputShape);
   if (output_shape_attr != nullptr) {
     auto& shape = output_shape_attr->list().shape(regular_fanin_0.index());
     if (shape.dim_size() != kRank) {
@@ -1477,7 +1479,7 @@ bool SqueezeTransposer::IsDimsSupported(
   auto indices = [&context](absl::Span<const char> labels) {
     return GetDimensionIndicesFromLabel(context.src_dim_indices, labels);
   };
-  const auto* squeeze_dims_attr = node.GetAttr(kAttrSqueezeDims);
+  const auto* squeeze_dims_attr = node.GetAttribute(kAttrSqueezeDims);
   if (squeeze_dims_attr == nullptr) {
     return false;
   }
@@ -1489,7 +1491,7 @@ bool SqueezeTransposer::IsDimsSupported(
 
 Status SqueezeTransposer::UpdateSqueezeDims(TransposeContext* context,
                                             utils::MutableNodeView* node) {
-  const auto* squeeze_dims_attr = node->GetAttr(kAttrSqueezeDims);
+  const auto* squeeze_dims_attr = node->GetAttribute(kAttrSqueezeDims);
   if (squeeze_dims_attr == nullptr) {
     return errors::InvalidArgument("Missing attribute ", kAttrSqueezeDims);
   }
@@ -1537,7 +1539,7 @@ Status SqueezeTransposer::TransposeNode(TransposeContext* context,
 
 bool StridedSliceTransposer::IsMaskZero(const utils::MutableNodeView& node,
                                         absl::string_view mask) {
-  const auto* mask_attr = node.GetAttr(mask);
+  const auto* mask_attr = node.GetAttribute(mask);
   if (mask_attr != nullptr) {
     return mask_attr->i() == 0;
   }
@@ -1561,7 +1563,7 @@ Status StridedSliceTransposer::PermuteMask(TransposeContext* context,
   // src_to_dst permutation = [0, 3, 1, 2].
   // mask : 0010 [Note the bit positions correspond to indexes i.e this is in
   // reverse order of the src format (CWHN)] result : 0100 (WHCN)
-  const auto* mask_attr = node->GetAttr(mask);
+  const auto* mask_attr = node->GetAttribute(mask);
   const int mask_i = mask_attr != nullptr ? mask_attr->i() : 0;
   if (mask_i < 0 || mask_i > 15) {
     return errors::InvalidArgument("invalid mask value: ", mask_i);
@@ -1839,7 +1841,7 @@ std::vector<int> GetDataFanoutPorts(const utils::MutableNodeView& node) {
     return GetDataFaninPorts(node);
   }
   if (IsSplit(*node_def) || IsSplitV(*node_def)) {
-    const auto* num_split_attr = node.GetAttr(kAttrNumSplit);
+    const auto* num_split_attr = node.GetAttribute(kAttrNumSplit);
     if (num_split_attr == nullptr) {
       return {0};
     }
@@ -1848,7 +1850,7 @@ std::vector<int> GetDataFanoutPorts(const utils::MutableNodeView& node) {
     return values;
   }
   if (IsSwitch(*node_def)) {
-    const auto* num_outs_attr = node.GetAttr(kAttrNumOuts);
+    const auto* num_outs_attr = node.GetAttribute(kAttrNumOuts);
     const int num_outs = num_outs_attr != nullptr ? num_outs_attr->i() : 2;
     std::vector<int> values(num_outs);
     std::iota(values.begin(), values.end(), 0);
@@ -1869,7 +1871,7 @@ bool GetValueAttrFromConstInputNode(
   if (!IsConstant(*regular_fanin_node->node())) {
     return false;
   }
-  const auto* value_attr = regular_fanin_node->GetAttr(kAttrValue);
+  const auto* value_attr = regular_fanin_node->GetAttribute(kAttrValue);
   if (value_attr == nullptr || value_attr->tensor().dtype() != DT_INT32) {
     return false;
   }

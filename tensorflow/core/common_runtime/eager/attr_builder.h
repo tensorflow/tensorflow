@@ -137,7 +137,7 @@ class AttrBuilder {
       return errors::NotFound("No attr named'", attr_name,
                               "' found in AttrBuilder for ", op_name_);
     }
-    return GetNodeAttr(AttrSlice(node_def_), attr_name, value);
+    return GetNodeAttribute(AttrSlice(node_def_), attr_name, value);
   }
 
   tensorflow::Fprint128 CacheKey(const StringPiece device);

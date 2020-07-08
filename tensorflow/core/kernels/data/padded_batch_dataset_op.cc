@@ -390,7 +390,7 @@ PaddedBatchDatasetOp::PaddedBatchDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx),
       op_version_(ctx->def().op() == "PaddedBatchDataset" ? 1 : 2) {
   if (ctx->HasAttr(kParallelCopy)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kParallelCopy, &parallel_copy_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kParallelCopy, &parallel_copy_));
   }
 }
 

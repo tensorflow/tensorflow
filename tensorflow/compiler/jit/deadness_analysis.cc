@@ -425,7 +425,7 @@ class PredicateFactory {
 
     if (node->type_string() == "Const" && must_be_true) {
       const TensorProto* proto = nullptr;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "value", &proto));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(node->def(), "value", &proto));
 
       Tensor tensor(proto->dtype());
       TF_RET_CHECK(tensor.FromProto(*proto));
@@ -459,7 +459,7 @@ class PredicateFactory {
 
     if (must_have_value.has_value() && node->type_string() == "Const") {
       const TensorProto* proto = nullptr;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "value", &proto));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(node->def(), "value", &proto));
 
       Tensor tensor(proto->dtype());
       TF_RET_CHECK(tensor.FromProto(*proto));

@@ -35,7 +35,7 @@ namespace {
 class ShapeOp : public XlaOpKernel {
  public:
   explicit ShapeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("out_type", &out_dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("out_type", &out_dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -68,7 +68,7 @@ REGISTER_XLA_OP(Name("Shape").CompilationOnly().IsMetadataOp(), ShapeOp);
 class ShapeNOp : public XlaOpKernel {
  public:
   explicit ShapeNOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("out_type", &out_dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("out_type", &out_dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -198,7 +198,7 @@ class SqueezeOp : public XlaOpKernel {
  public:
   explicit SqueezeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     std::vector<int32> squeeze_dims;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("squeeze_dims", &squeeze_dims));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("squeeze_dims", &squeeze_dims));
     squeeze_dims_.insert(squeeze_dims.begin(), squeeze_dims.end());
   }
 

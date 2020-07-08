@@ -33,7 +33,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/util/proto/descriptors.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tensorflow {
 namespace {
@@ -599,8 +599,8 @@ class DecodeProtoOp : public OpKernel {
  public:
   explicit DecodeProtoOp(OpKernelConstruction* context) : OpKernel(context) {
     string descriptor_source;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("descriptor_source", &descriptor_source));
+    OP_REQUIRES_OK(context, context->GetAttribute("descriptor_source",
+                                                  &descriptor_source));
 
     // We always get back a desc_pool, but we may not own it. If we own it,
     // owned_desc_pool_ will be filled in.
@@ -609,7 +609,8 @@ class DecodeProtoOp : public OpKernel {
                                               &desc_pool, &owned_desc_pool_));
 
     string message_type;
-    OP_REQUIRES_OK(context, context->GetAttr("message_type", &message_type));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("message_type", &message_type));
 
     const Descriptor* message_desc =
         desc_pool->FindMessageTypeByName(message_type);
@@ -618,9 +619,10 @@ class DecodeProtoOp : public OpKernel {
                                         message_type));
 
     std::vector<string> field_names;
-    OP_REQUIRES_OK(context, context->GetAttr("field_names", &field_names));
+    OP_REQUIRES_OK(context, context->GetAttribute("field_names", &field_names));
     std::vector<DataType> output_types;
-    OP_REQUIRES_OK(context, context->GetAttr("output_types", &output_types));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("output_types", &output_types));
     OP_REQUIRES(
         context, field_names.size() == output_types.size(),
         errors::InvalidArgument("field_names and output_types attributes must "
@@ -708,7 +710,7 @@ class DecodeProtoOp : public OpKernel {
                 errors::InvalidArgument("Couldn't get prototype message: ",
                                         message_desc->full_name()));
     string format;
-    OP_REQUIRES_OK(context, context->GetAttr("message_format", &format));
+    OP_REQUIRES_OK(context, context->GetAttribute("message_format", &format));
     OP_REQUIRES(
         context, format == "binary" || format == "text",
         errors::InvalidArgument("format must be one of binary or text"));
@@ -717,7 +719,7 @@ class DecodeProtoOp : public OpKernel {
     // Enable the initial protobuf sanitizer, which is much more expensive than
     // the decoder.
     // TODO(nix): Remove this once the fast decoder has passed security review.
-    OP_REQUIRES_OK(context, context->GetAttr("sanitize", &sanitize_));
+    OP_REQUIRES_OK(context, context->GetAttribute("sanitize", &sanitize_));
   }
 
   void Compute(OpKernelContext* ctx) override {

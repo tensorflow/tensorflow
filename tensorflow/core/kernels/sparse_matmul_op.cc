@@ -23,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/op.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #ifdef TENSORFLOW_USE_LIBXSMM
 #include "include/libxsmm_intrinsics_x86.h"
 #include "include/libxsmm_malloc.h"
@@ -957,10 +957,10 @@ class SparseMatMulOp : public OpKernel {
 
  public:
   explicit SparseMatMulOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("a_is_sparse", &a_is_sparse_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("b_is_sparse", &b_is_sparse_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("transpose_a", &transpose_a_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("transpose_b", &transpose_b_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("a_is_sparse", &a_is_sparse_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("b_is_sparse", &b_is_sparse_));
   }
 
   void Compute(OpKernelContext* ctx) override {

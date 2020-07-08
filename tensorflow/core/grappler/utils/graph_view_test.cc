@@ -737,6 +737,19 @@ TYPED_TEST(TypedNodeViewTest, GetAttr) {
   EXPECT_EQ(c_node->GetAttr("attr_1")->s(), "a");
 }
 
+TYPED_TEST(TypedNodeViewTest, GetAttribute) {
+  GraphDef graph = SimpleAttrTestGraph();
+
+  Status s;
+  TypeParam graph_view(&graph, &s);
+  TF_ASSERT_OK(s);
+
+  auto* c_node = graph_view.GetNode("c");
+  ASSERT_NE(c_node, nullptr);
+
+  EXPECT_EQ(c_node->GetAttribute("attr_1")->s(), "a");
+}
+
 TYPED_TEST(TypedNodeViewTest, GetAttrs) {
   GraphDef graph = SimpleAttrTestGraph();
 

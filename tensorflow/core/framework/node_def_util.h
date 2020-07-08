@@ -242,12 +242,69 @@ Status GetNodeAttr(
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<Tensor>* value);  // type: "list(tensor)"
 
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        string* value);  // type: "string"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        tstring* value);  // type: "tstring"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        int64* value);  // type: "int"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        int32* value);  // type: "int"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        float* value);  // type: "float"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        double* value);  // type: "double"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        bool* value);  // type: "bool"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        DataType* value);  // type: "type"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        TensorShapeProto* value);  // type: "shape"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        TensorShape* value);  // type: "shape"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        PartialTensorShape* value);  // type: "shape"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        Tensor* value);  // type: "tensor"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        std::vector<string>* value);  // type "list(string)"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        std::vector<tstring>* value);  // type "list(tstring)"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        std::vector<int64>* value);  // type "list(int)"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        std::vector<int32>* value);  // type "list(int)"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        std::vector<float>* value);  // type "list(float)"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        std::vector<double>* value);  // type "list(double)"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        std::vector<bool>* value);  // type "list(bool)"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        std::vector<DataType>* value);  // type "list(type)"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        DataTypeVector* value);  // type "list(type)"
+Status GetNodeAttribute(
+    const AttrSlice& attrs, StringPiece attr_name,
+    std::vector<TensorShapeProto>* value);  // type "list(shape)"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        std::vector<TensorShape>* value);  // type "list(shape)"
+Status GetNodeAttribute(
+    const AttrSlice& attrs, StringPiece attr_name,
+    std::vector<PartialTensorShape>* value);  // type "list(shape)"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        std::vector<Tensor>* value);  // type: "list(tensor)"
+
 // This version avoids copying the TensorProto.
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const TensorProto** value);  // type: "tensor"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     const TensorProto** value);  // type: "tensor"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        const TensorProto** value);  // type: "tensor"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         const TensorProto** value);  // type: "tensor"
 
 // This version avoids copying the NameAttrList.
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
@@ -255,12 +312,21 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const NameAttrList** value);  // type: "func"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     const NameAttrList** value);  // type: "func"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        const NameAttrList** value);  // type: "func"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         const NameAttrList** value);  // type: "func"
 
 // These versions copies the NameAttrList(s).
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    NameAttrList* value);  // type: "func"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<NameAttrList>* value);  // type: "list(func)"
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        NameAttrList* value);  // type: "func"
+Status GetNodeAttribute(
+    const AttrSlice& attrs, StringPiece attr_name,
+    std::vector<NameAttrList>* value);  // type: "list(func)"
 
 // Look up the attr with name attr_name and set *value to its value.  If no
 // attr with attr_name is found in node_def, or the attr does not have
@@ -282,6 +348,25 @@ bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     TensorShape* value);  // type: "shape"
 
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         string* value);  // type: "string"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         int64* value);  // type: "int"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         std::vector<int64>* value);  // type: "int"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         int32* value);  // type: "int"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         float* value);  // type: "float"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         double* value);  // type: "double"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         bool* value);  // type: "bool"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         DataType* value);  // type: "type"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         TensorShape* value);  // type: "shape"
+
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     std::vector<string>* value);  // type: "list(string)"
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -297,11 +382,34 @@ bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     std::vector<TensorShape> value);  // type: "shape"
 
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         std::vector<string>* value);  // type: "list(string)"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         std::vector<tstring>* value);  // type: "list(tstring)"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         std::vector<int32>* value);  // type: "list(int)"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         std::vector<float>* value);  // type: "list(float)"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         std::vector<double>* value);  // type: "list(double)"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         std::vector<bool>* value);  // type: "list(bool)"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         std::vector<DataType>* value);  // type: "list(type)"
+bool TryGetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                         std::vector<TensorShape> value);  // type: "shape"
+
 // Overloads of TryGetNodeAttr() that avoid copying the non-POD attribute
 // values.
 bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                     std::vector<const string*>* value);  // type: "list(string)"
 bool TryGetNodeAttr(
+    const AttrSlice& attrs, StringPiece attr_name,
+    std::vector<const TensorShapeProto*>* value);  // type: "list(shape)"
+bool TryGetNodeAttribute(
+    const AttrSlice& attrs, StringPiece attr_name,
+    std::vector<const string*>* value);  // type: "list(string)"
+bool TryGetNodeAttribute(
     const AttrSlice& attrs, StringPiece attr_name,
     std::vector<const TensorShapeProto*>* value);  // type: "list(shape)"
 
@@ -310,10 +418,14 @@ bool TryGetNodeAttr(
 // a matching type, a reference to an empty string is returned.
 // REQUIRES: Must not use the returned value beyond the lifetime of node_def.
 const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name);
+const string& GetNodeAttributeString(const AttrSlice& attrs,
+                                     StringPiece attr_name);
 
 // Specialization to parse an attribute directly into a Padding enum.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    Padding* value);
+Status GetNodeAttribute(const AttrSlice& attrs, StringPiece attr_name,
+                        Padding* value);
 
 // Computes the input type for a specific node input.
 // REQUIRES: ValidateOpDef(op_def).ok()

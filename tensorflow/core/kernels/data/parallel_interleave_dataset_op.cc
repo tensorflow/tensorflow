@@ -1513,11 +1513,11 @@ ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
       op_version_(OpVersionFromOpName(ctx->def().op())) {
   OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kFunc, /*params=*/{},
                                                &func_metadata_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
   if (op_version_ == 2) {
     bool sloppy;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kSloppy, &sloppy));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kSloppy, &sloppy));
     if (sloppy) {
       deterministic_ =
           DeterminismPolicy(DeterminismPolicy::Type::kNondeterministic);
@@ -1527,7 +1527,7 @@ ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
   }
   if (op_version_ >= 3) {
     std::string deterministic;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kDeterministic, &deterministic));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kDeterministic, &deterministic));
     OP_REQUIRES_OK(
         ctx, DeterminismPolicy::FromString(deterministic, &deterministic_));
   }

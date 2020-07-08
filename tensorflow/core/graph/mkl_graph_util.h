@@ -252,7 +252,8 @@ static inline bool IsMklOp(const string& op_name, DataType T) {
 
 static inline bool IsMklOp(const Node* n) {
   DataType T;
-  return GetNodeAttr(n->def(), "T", &T).ok() && IsMklOp(n->type_string(), T);
+  return GetNodeAttribute(n->def(), "T", &T).ok() &&
+         IsMklOp(n->type_string(), T);
 }
 
 // Check whether opname with type T is registered as MKL-compliant and

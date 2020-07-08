@@ -59,8 +59,8 @@ BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
   if (!bcast.IsValid()) {
     bool incompatible_shape_error;
     bool has_attr =
-        TryGetNodeAttr(ctx->op_kernel().def(), "incompatible_shape_error",
-                       &(incompatible_shape_error));
+        TryGetNodeAttribute(ctx->op_kernel().def(), "incompatible_shape_error",
+                            &(incompatible_shape_error));
     if (has_attr && !incompatible_shape_error) {
       const string& op = ctx->op_kernel().type_string();
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));

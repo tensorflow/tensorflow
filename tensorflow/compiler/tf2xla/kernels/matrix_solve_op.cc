@@ -25,7 +25,7 @@ namespace {
 class MatrixSolveOp : public XlaOpKernel {
  public:
   explicit MatrixSolveOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("adjoint", &adjoint_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("adjoint", &adjoint_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

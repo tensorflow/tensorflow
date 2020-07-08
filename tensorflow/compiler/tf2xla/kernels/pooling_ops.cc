@@ -48,12 +48,12 @@ class PoolingOp : public XlaOpKernel {
     if (ctx->num_inputs() == 1) {
       std::vector<int32> ksize_int;
       std::vector<int32> stride_int;
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_int));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("ksize", &ksize_int));
       OP_REQUIRES(ctx, ksize_int.size() == num_dims(),
                   errors::InvalidArgument("Sliding window ksize field must "
                                           "specify ",
                                           num_dims(), " dimensions"));
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_int));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("strides", &stride_int));
       OP_REQUIRES(ctx, stride_int.size() == num_dims(),
                   errors::InvalidArgument("Sliding window stride field must "
                                           "specify ",
@@ -64,7 +64,7 @@ class PoolingOp : public XlaOpKernel {
       }
     }
     Padding padding;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("padding", &padding));
     padding_ = (padding == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
 
     OP_REQUIRES_OK(
@@ -155,7 +155,7 @@ class MaxPoolOp : public PoolingOp {
       : PoolingOp(ctx, /*num_spatial_dims=*/num_spatial_dims,
                   /*reduction_type=*/ctx->input_type(0)) {
     string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("data_format", &data_format_str));
     OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES(
@@ -214,7 +214,7 @@ class AvgPoolOp : public PoolingOp {
                   /*reduction_type=*/
                   XlaHelpers::SumAccumulationType(ctx->input_type(0))) {
     string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("data_format", &data_format_str));
     OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
   }
@@ -275,10 +275,10 @@ class MaxPoolGradOp : public XlaOpKernel {
   MaxPoolGradOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
     if (ctx->num_inputs() == 3) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_));
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("ksize", &ksize_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("strides", &stride_));
     }
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("padding", &padding_));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -375,7 +375,7 @@ class MaxPool2DGradOp : public MaxPoolGradOp {
   explicit MaxPool2DGradOp(OpKernelConstruction* ctx)
       : MaxPoolGradOp(ctx, /*num_spatial_dims=*/2) {
     string data_format;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("data_format", &data_format));
     OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
   }
@@ -398,23 +398,23 @@ class AvgPoolGradOp : public XlaOpKernel {
  public:
   AvgPoolGradOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("ksize", &ksize_));
     OP_REQUIRES(ctx, ksize_.size() == num_dims(),
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify ",
                                         num_dims(), " dimensions"));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("strides", &stride_));
     OP_REQUIRES(ctx, stride_.size() == num_dims(),
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify ",
                                         num_dims(), " dimensions"));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("padding", &padding_));
     OP_REQUIRES(ctx, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
 
     string data_format;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("data_format", &data_format));
     OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
   }
@@ -495,10 +495,10 @@ class MaxPoolGradGradOp : public XlaOpKernel {
   MaxPoolGradGradOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
     if (ctx->num_inputs() == 3) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_));
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("ksize", &ksize_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("strides", &stride_));
     }
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("padding", &padding_));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -650,7 +650,7 @@ class MaxPool2DGradGradOp : public MaxPoolGradGradOp {
   explicit MaxPool2DGradGradOp(OpKernelConstruction* ctx)
       : MaxPoolGradGradOp(ctx, /*num_spatial_dims=*/2) {
     string data_format;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("data_format", &data_format));
     OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
   }
@@ -668,7 +668,7 @@ class MaxPool3DGradGradOp : public MaxPoolGradGradOp {
   explicit MaxPool3DGradGradOp(OpKernelConstruction* ctx)
       : MaxPoolGradGradOp(ctx, /*num_spatial_dims=*/3) {
     string data_format;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("data_format", &data_format));
     OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
   }

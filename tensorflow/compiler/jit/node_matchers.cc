@@ -137,7 +137,7 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
 
     if (constant_value) {
       const TensorProto* proto = nullptr;
-      if (!TryGetNodeAttr(node->def(), "value", &proto)) {
+      if (!TryGetNodeAttribute(node->def(), "value", &proto)) {
         if (listener->IsInterested()) {
           *listener << "\ncould not find \"value\" attribute in node";
         }

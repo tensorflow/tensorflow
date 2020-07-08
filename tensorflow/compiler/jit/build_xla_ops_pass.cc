@@ -227,10 +227,10 @@ Output IncomingEdgeAsOutput(const Edge* e) {
 
 Status GetXlaClusterInfo(Node* n, XlaClusterInfo* result) {
   int num_constant_inputs, num_resource_inputs;
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(n->attrs(), kXlaNumConstantArgsAttr, &num_constant_inputs));
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(n->attrs(), kXlaNumResourceArgsAttr, &num_resource_inputs));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), kXlaNumConstantArgsAttr,
+                                      &num_constant_inputs));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), kXlaNumResourceArgsAttr,
+                                      &num_resource_inputs));
 
   if (num_constant_inputs < 0 || num_resource_inputs < 0 ||
       num_constant_inputs + num_resource_inputs > n->num_inputs()) {
@@ -497,7 +497,7 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
 
   bool has_ref_attr;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(n->attrs(), kXlaHasReferenceVarsAttr, &has_ref_attr));
+      GetNodeAttribute(n->attrs(), kXlaHasReferenceVarsAttr, &has_ref_attr));
   xla_compile.operation.node()->AddAttr(kXlaHasReferenceVarsAttr, has_ref_attr);
   TF_RETURN_IF_ERROR(
       CopyIncomingControlEdges(g, /*from=*/n, /*to=*/xla_compile.key.node()));

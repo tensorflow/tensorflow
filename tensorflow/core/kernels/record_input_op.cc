@@ -28,7 +28,7 @@ class RecordInputOp : public OpKernel {
   explicit RecordInputOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
 #define GETATTR(TYPE, FIELD) \
   TYPE FIELD;                \
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(#FIELD, &FIELD));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(#FIELD, &FIELD));
 
     GETATTR(string, file_pattern);
     GETATTR(int64, file_random_seed);
@@ -39,7 +39,8 @@ class RecordInputOp : public OpKernel {
     GETATTR(string, compression_type);
 #undef GETATTR
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("compression_type", &compression_type));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("compression_type", &compression_type));
 
     RecordYielder::Options yopts;
     yopts.file_pattern = file_pattern;

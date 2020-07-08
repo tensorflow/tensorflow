@@ -638,8 +638,8 @@ ShuffleDatasetOp::ShuffleDatasetOp(OpKernelConstruction* ctx)
     op_version_ = 1;
   }
   if (ctx->HasAttr(kReshuffleEachIteration)) {
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr(kReshuffleEachIteration, &reshuffle_each_iteration_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kReshuffleEachIteration,
+                                          &reshuffle_each_iteration_));
   }
 }
 
@@ -887,8 +887,8 @@ ShuffleAndRepeatDatasetOp::ShuffleAndRepeatDatasetOp(OpKernelConstruction* ctx)
     op_version_ = 1;
   }
   if (ctx->HasAttr(kReshuffleEachIteration)) {
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr(kReshuffleEachIteration, &reshuffle_each_iteration_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kReshuffleEachIteration,
+                                          &reshuffle_each_iteration_));
   }
 }
 

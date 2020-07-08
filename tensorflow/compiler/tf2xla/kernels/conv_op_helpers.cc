@@ -187,16 +187,16 @@ xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
   ConvOpAttrs attrs;
   attrs.num_spatial_dims = num_spatial_dims;
   attrs.depthwise = depthwise;
-  TF_RETURN_IF_ERROR(ctx->GetAttr("dilations", &attrs.dilations));
-  TF_RETURN_IF_ERROR(ctx->GetAttr("strides", &attrs.strides));
-  TF_RETURN_IF_ERROR(ctx->GetAttr("padding", &attrs.padding));
+  TF_RETURN_IF_ERROR(ctx->GetAttribute("dilations", &attrs.dilations));
+  TF_RETURN_IF_ERROR(ctx->GetAttribute("strides", &attrs.strides));
+  TF_RETURN_IF_ERROR(ctx->GetAttribute("padding", &attrs.padding));
   if (attrs.padding == EXPLICIT) {
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("explicit_paddings", &attrs.explicit_paddings));
+        ctx->GetAttribute("explicit_paddings", &attrs.explicit_paddings));
   }
 
   string data_format;
-  TF_RETURN_IF_ERROR(ctx->GetAttr("data_format", &data_format));
+  TF_RETURN_IF_ERROR(ctx->GetAttribute("data_format", &data_format));
   if (!FormatFromString(data_format, &attrs.data_format)) {
     return errors::InvalidArgument("Invalid data format: ", data_format);
   }

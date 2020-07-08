@@ -32,12 +32,13 @@ class SummaryImageOp : public OpKernel {
 
   explicit SummaryImageOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 max_images_tmp;
-    OP_REQUIRES_OK(context, context->GetAttr("max_images", &max_images_tmp));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("max_images", &max_images_tmp));
     OP_REQUIRES(context, max_images_tmp < (1LL << 31),
                 errors::InvalidArgument("max_images must be < 2^31"));
     max_images_ = static_cast<int32>(max_images_tmp);
     const TensorProto* proto;
-    OP_REQUIRES_OK(context, context->GetAttr("bad_color", &proto));
+    OP_REQUIRES_OK(context, context->GetAttribute("bad_color", &proto));
     OP_REQUIRES_OK(context, context->device()->MakeTensorFromProto(
                                 *proto, AllocatorAttributes(), &bad_color_));
     OP_REQUIRES(context, bad_color_.dtype() == DT_UINT8,

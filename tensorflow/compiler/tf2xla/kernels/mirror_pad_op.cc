@@ -66,7 +66,7 @@ class MirrorPadOp : public XlaOpKernel {
     const TensorShape pad_shape = ctx->InputShape("paddings");
 
     MirrorPadMode mode;
-    OP_REQUIRES_OK(ctx, GetNodeAttr(def(), "mode", &mode));
+    OP_REQUIRES_OK(ctx, GetNodeAttribute(def(), "mode", &mode));
     OP_REQUIRES(
         ctx, mode == MirrorPadMode::REFLECT || mode == MirrorPadMode::SYMMETRIC,
         xla::Unimplemented("Unsupported MirrorPad mode. Only SYMMETRIC and "

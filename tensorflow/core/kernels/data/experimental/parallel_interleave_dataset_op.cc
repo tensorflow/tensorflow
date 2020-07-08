@@ -1152,12 +1152,12 @@ ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
                                                &func_metadata_));
   if (op_version_ == 2) {
     std::string deterministic;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kDeterministic, &deterministic));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kDeterministic, &deterministic));
     OP_REQUIRES_OK(
         ctx, DeterminismPolicy::FromString(deterministic, &deterministic_));
   }
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
 }
 
 void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,

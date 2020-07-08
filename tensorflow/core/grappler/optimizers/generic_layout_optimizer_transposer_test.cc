@@ -81,14 +81,14 @@ void VerifyRegularFaninMatch(const utils::MutableNodeView* node, int port,
 
 void VerifyShapeAttributeMatch(const utils::MutableNodeView* node,
                                absl::string_view attr_value) {
-  const auto* attr = node->GetAttr(kAttrOutputShapes);
+  const auto* attr = node->GetAttribute(kAttrOutputShapes);
   ASSERT_NE(attr, nullptr);
   EXPECT_EQ(attr->shape().DebugString(), attr_value);
 }
 
 void VerifyShapeAttributeMatch(const utils::MutableNodeView* node,
                                int shape_index, absl::string_view attr_value) {
-  const auto* attr = node->GetAttr(kAttrOutputShapes);
+  const auto* attr = node->GetAttribute(kAttrOutputShapes);
   ASSERT_NE(attr, nullptr);
   ASSERT_GT(attr->list().shape_size(), shape_index);
   EXPECT_EQ(attr->list().shape(shape_index).DebugString(), attr_value);
@@ -96,7 +96,7 @@ void VerifyShapeAttributeMatch(const utils::MutableNodeView* node,
 
 void VerifyDataFormatAttributeMatch(const utils::MutableNodeView* node,
                                     absl::string_view attr_value) {
-  const auto* attr = node->GetAttr(kAttrDataFormat);
+  const auto* attr = node->GetAttribute(kAttrDataFormat);
   ASSERT_NE(attr, nullptr);
   EXPECT_EQ(attr->s(), attr_value);
 }
@@ -397,7 +397,7 @@ TEST_F(TransposerTest, CreateConstPermNode) {
       context.graph_view->GetNode(kNodeName);
   EXPECT_EQ(const_perm_node->GetName(), kNodeName);
   EXPECT_EQ(const_perm_node->GetDevice(), kDevice);
-  const auto* value_attr = const_perm_node->GetAttr("value");
+  const auto* value_attr = const_perm_node->GetAttribute("value");
   ASSERT_NE(value_attr, nullptr);
 
   Tensor tensor;
@@ -452,7 +452,8 @@ TEST_F(TransposerTest, CreateTransposeNode) {
   auto* transpose_node = context.graph_view->GetNode(transpose_node_name);
   ASSERT_NE(transpose_node, nullptr);
   EXPECT_EQ(transpose_node->GetDevice(), kDevice);
-  const auto* output_shapes_attr = transpose_node->GetAttr("_output_shapes");
+  const auto* output_shapes_attr =
+      transpose_node->GetAttribute("_output_shapes");
   EXPECT_EQ(output_shapes_attr->list().shape(0).DebugString(),
             expected_shape.DebugString());
 }
@@ -505,7 +506,7 @@ TEST_F(TransposerTest, UpdateStrides) {
       MakeAttrValueListValueFromVector({1, 4, 2, 1});
   auto* conv2d = context.graph_view->GetNode("conv2d");
   ASSERT_NE(conv2d, nullptr);
-  const auto& strides_attr = conv2d->GetAttr("strides");
+  const auto& strides_attr = conv2d->GetAttribute("strides");
   ASSERT_NE(strides_attr, nullptr);
   EXPECT_EQ(strides_attr->list().DebugString(),
             expected_original_strides.DebugString());
@@ -520,7 +521,7 @@ TEST_F(TransposerTest, UpdateStrides) {
   TF_ASSERT_OK(context.graph_view->GetMutationBuilder()->Apply());
 
   auto* updated_conv2d = context.graph_view->GetNode("conv2d");
-  const auto& updated_strides_attr = updated_conv2d->GetAttr("strides");
+  const auto& updated_strides_attr = updated_conv2d->GetAttribute("strides");
   ASSERT_NE(updated_strides_attr, nullptr);
   EXPECT_EQ(updated_strides_attr->list().DebugString(),
             expected_updated_strides.DebugString());
@@ -540,7 +541,7 @@ TEST_F(TransposerTest, UpdateFaninEdgesTranspose) {
   FusedBatchNormGradTransposer transposer;
   auto* fbng = context.graph_view->GetNode("fused_batch_norm_grad");
   ASSERT_NE(fbng, nullptr);
-  const auto& fbng_output_shapes_attr = fbng->GetAttr("_output_shapes");
+  const auto& fbng_output_shapes_attr = fbng->GetAttribute("_output_shapes");
   ASSERT_NE(fbng_output_shapes_attr, nullptr);
   const TensorShapeProto& expected_shape = fbng_output_shapes_attr->shape();
   TF_ASSERT_OK(
@@ -725,7 +726,7 @@ TEST_F(TransposerTest, DefaultLayoutSensitiveOpTransposerTestConv2D) {
   VerifyRegularFaninMatch(conv2d_node, 0, input_transpose_node->GetName(), 0);
   VerifyRegularFaninMatch(conv2d_node, 1, "filter", 0);
   VerifyDataFormatAttributeMatch(conv2d_node, kDstFormat);
-  const auto* strides_attr = conv2d_node->GetAttr("strides");
+  const auto* strides_attr = conv2d_node->GetAttribute("strides");
   ASSERT_NE(strides_attr, nullptr);
   ASSERT_EQ(strides_attr->list().i_size(), 4);
   EXPECT_EQ(strides_attr->list().i(0), 1);
@@ -945,14 +946,15 @@ TEST_F(TransposerTest, NodeAttributes) {
   ASSERT_NE(conv2d_bf_node, nullptr);
   ASSERT_EQ(conv2d_bf_node->NumRegularFanins(), 3);
   VerifyDataFormatAttributeMatch(conv2d_bf_node, kDstFormat);
-  auto* dilations_attr = conv2d_bf_node->GetAttr("dilations");
+  auto* dilations_attr = conv2d_bf_node->GetAttribute("dilations");
   ASSERT_NE(dilations_attr, nullptr);
   ASSERT_EQ(dilations_attr->list().i_size(), 4);
   EXPECT_EQ(dilations_attr->list().i(0), 1);
   EXPECT_EQ(dilations_attr->list().i(1), 1);
   EXPECT_EQ(dilations_attr->list().i(2), kDilation);
   EXPECT_EQ(dilations_attr->list().i(3), kDilation);
-  auto* explicit_paddings_attr = conv2d_bf_node->GetAttr("explicit_paddings");
+  auto* explicit_paddings_attr =
+      conv2d_bf_node->GetAttribute("explicit_paddings");
   ASSERT_NE(explicit_paddings_attr, nullptr);
   ASSERT_EQ(explicit_paddings_attr->list().i_size(), 8);
   EXPECT_EQ(explicit_paddings_attr->list().i(0), 0);
@@ -988,10 +990,12 @@ TEST_F(TransposerTest, Conv2DBackpropInputTransposerTest) {
       "conv2d_backprop_input-0-DataFormatVecPermuteNHWCToNCHW-LayoutOptimizer");
   ASSERT_NE(input_vec_permute_node, nullptr);
   ASSERT_EQ(input_vec_permute_node->NumRegularFanins(), 1);
-  const auto* src_format_attr = input_vec_permute_node->GetAttr(kAttrSrcFormat);
+  const auto* src_format_attr =
+      input_vec_permute_node->GetAttribute(kAttrSrcFormat);
   ASSERT_NE(src_format_attr, nullptr);
   EXPECT_EQ(src_format_attr->s(), kSrcFormat);
-  const auto* dst_format_attr = input_vec_permute_node->GetAttr(kAttrDstFormat);
+  const auto* dst_format_attr =
+      input_vec_permute_node->GetAttribute(kAttrDstFormat);
   ASSERT_NE(dst_format_attr, nullptr);
   EXPECT_EQ(dst_format_attr->s(), kDstFormat);
 
@@ -2121,7 +2125,7 @@ TEST_F(TransposerTest, SqueezeTransposerTestSqueezeDimsUpdated) {
   ASSERT_NE(squeeze_node, nullptr);
   ASSERT_EQ(squeeze_node->NumRegularFanins(), 1);
   VerifyRegularFaninMatch(squeeze_node, 0, input_transpose_node1->GetName(), 0);
-  const auto* squeeze_dims_attr = squeeze_node->GetAttr("squeeze_dims");
+  const auto* squeeze_dims_attr = squeeze_node->GetAttribute("squeeze_dims");
   const auto& list = squeeze_dims_attr->list();
   ASSERT_EQ(list.i_size(), 2);
   EXPECT_EQ(list.i(0), 2);
@@ -3344,10 +3348,11 @@ TEST_F(TransposerTest, StridedSliceTransposer) {
   VerifyRegularFaninMatch(updated_stridedslice_node, 3, strides_node->GetName(),
                           0);
   const auto* begin_mask_attr =
-      updated_stridedslice_node->GetAttr("begin_mask");
+      updated_stridedslice_node->GetAttribute("begin_mask");
   ASSERT_NE(begin_mask_attr, nullptr);
   EXPECT_EQ(begin_mask_attr->i(), 0x7);
-  const auto* end_mask_attr = updated_stridedslice_node->GetAttr("end_mask");
+  const auto* end_mask_attr =
+      updated_stridedslice_node->GetAttribute("end_mask");
   ASSERT_NE(end_mask_attr, nullptr);
   EXPECT_EQ(end_mask_attr->i(), 0xD);
 
@@ -3491,10 +3496,11 @@ TEST_F(TransposerTest, StridedSliceTransposerConstFaninBadRank) {
   VerifyRegularFaninMatch(updated_stridedslice_node, 2, "end", 0);
   VerifyRegularFaninMatch(updated_stridedslice_node, 3, "strides", 0);
   const auto* begin_mask_attr =
-      updated_stridedslice_node->GetAttr("begin_mask");
+      updated_stridedslice_node->GetAttribute("begin_mask");
   ASSERT_NE(begin_mask_attr, nullptr);
   EXPECT_EQ(begin_mask_attr->i(), 0xB);
-  const auto* end_mask_attr = updated_stridedslice_node->GetAttr("end_mask");
+  const auto* end_mask_attr =
+      updated_stridedslice_node->GetAttribute("end_mask");
   ASSERT_NE(end_mask_attr, nullptr);
   EXPECT_EQ(end_mask_attr->i(), 0x7);
 

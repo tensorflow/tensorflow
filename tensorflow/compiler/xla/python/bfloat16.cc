@@ -22,9 +22,9 @@ limitations under the License.
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
+#include "absl/strings/str_cat.h"
 #include "numpy/arrayobject.h"
 #include "numpy/ufuncobject.h"
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"

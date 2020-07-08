@@ -20,7 +20,6 @@ limitations under the License.
 #include <math.h>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -40,7 +40,7 @@ class MklRequantizePerChannelOp : public OpKernel {
  public:
   explicit MklRequantizePerChannelOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("out_type", &out_type_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("out_type", &out_type_));
     OP_REQUIRES(ctx, out_type_ == DT_QINT8 || out_type_ == DT_QUINT8,
                 errors::InvalidArgument(
                     "out_type must be qint8 or quint8, but got: ", out_type_));

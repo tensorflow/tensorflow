@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iostream>
+
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -26,9 +27,9 @@ class StringFormatOp : public OpKernel {
  public:
   explicit StringFormatOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string template_;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("template", &template_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("placeholder", &placeholder_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("summarize", &summarize_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("template", &template_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("placeholder", &placeholder_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("summarize", &summarize_));
 
     split_template_ = absl::StrSplit(template_, placeholder_);
     int64 num_placeholders = split_template_.size() - 1;

@@ -489,13 +489,31 @@ TEST_F(GraphPartitionTest, Functions) {
 TEST_F(GraphPartitionTest, SetIncarnation) {
   GraphDef gdef;
   const char* const kSendRecvAttrs = R"proto(
-  attr { key: 'T' value { type: DT_FLOAT  }  }
-  attr { key: 'client_terminated' value {  b: false } }
-  attr { key: 'recv_device' value { s: 'B' } }
-  attr { key: 'send_device' value { s: 'A' } }
-  attr { key: 'send_device_incarnation' value { i: 0 }  }
-  attr { key: 'tensor_name' value { s: 'test' } }
-)proto";
+    attr {
+      key: 'T'
+      value { type: DT_FLOAT }
+    }
+    attr {
+      key: 'client_terminated'
+      value { b: false }
+    }
+    attr {
+      key: 'recv_device'
+      value { s: 'B' }
+    }
+    attr {
+      key: 'send_device'
+      value { s: 'A' }
+    }
+    attr {
+      key: 'send_device_incarnation'
+      value { i: 0 }
+    }
+    attr {
+      key: 'tensor_name'
+      value { s: 'test' }
+    }
+  )proto";
   CHECK(protobuf::TextFormat::ParseFromString(
       strings::StrCat(
           "node { name: 'A/Pi' op: 'Const' ",
@@ -516,6 +534,7 @@ TEST_F(GraphPartitionTest, SetIncarnation) {
       if (ndef.name() == "A" || ndef.name() == "B") {
         int64 val;
         TF_CHECK_OK(GetNodeAttr(ndef, "send_device_incarnation", &val));
+        TF_CHECK_OK(GetNodeAttribute(ndef, "send_device_incarnation", &val));
         EXPECT_EQ(val, 100);  // Send device is "A".
       }
     }

@@ -123,7 +123,7 @@ Status TryGetElementShapeFromInput(XlaOpKernelContext* ctx, xla::XlaOp input,
 class TensorListReserveOp : public XlaOpKernel {
  public:
   explicit TensorListReserveOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("element_dtype", &dtype_));
     // Only non-nested TensorList is supported for now.
     OP_REQUIRES(
         ctx, dtype_ != DT_VARIANT,
@@ -194,7 +194,7 @@ REGISTER_XLA_OP(Name("TensorListReserve")
 class EmptyTensorListOp : public XlaOpKernel {
  public:
   explicit EmptyTensorListOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("element_dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -263,7 +263,7 @@ class TensorListElementShapeOp : public XlaOpKernel {
  public:
   explicit TensorListElementShapeOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape_type", &shape_type_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("shape_type", &shape_type_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -319,7 +319,7 @@ REGISTER_XLA_OP(Name("TensorListElementShape").IsMetadataOp(),
 class TensorListGetItemOp : public XlaOpKernel {
  public:
   explicit TensorListGetItemOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("element_dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -357,7 +357,7 @@ REGISTER_XLA_OP(Name("TensorListGetItem"), TensorListGetItemOp);
 class TensorListGatherOp : public XlaOpKernel {
  public:
   explicit TensorListGatherOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("element_dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -495,7 +495,7 @@ REGISTER_XLA_OP(Name("TensorListConcatV2"), TensorListConcatOp);
 class TensorListSplitOp : public XlaOpKernel {
  public:
   explicit TensorListSplitOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("element_dtype", &dtype_));
     // Only non-nested TensorList is supported for now.
     OP_REQUIRES(
         ctx, dtype_ != DT_VARIANT,

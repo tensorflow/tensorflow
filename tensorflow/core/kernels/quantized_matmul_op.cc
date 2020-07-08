@@ -68,8 +68,10 @@ class QuantizedMatMulOp : public OpKernel {
  public:
   explicit QuantizedMatMulOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("transpose_a", &transpose_a_));
-    OP_REQUIRES_OK(context, context->GetAttr("transpose_b", &transpose_b_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("transpose_a", &transpose_a_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("transpose_b", &transpose_b_));
   }
 
   void Compute(OpKernelContext* context) override {

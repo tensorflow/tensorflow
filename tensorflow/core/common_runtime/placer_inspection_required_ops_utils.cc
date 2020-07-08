@@ -84,7 +84,7 @@ Status PlacerInspectionRequiredOpChecker::IsPlacerInspectionRequired(
 Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
                               const Node& node, const FunctionDef** fdef,
                               NameAttrList* func) {
-  TF_RETURN_IF_ERROR(GetNodeAttr(node.def(), "f", func));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node.def(), "f", func));
   const string& function_name = func->name();
   *fdef = flib_def.Find(function_name);
   if (*fdef == nullptr) {

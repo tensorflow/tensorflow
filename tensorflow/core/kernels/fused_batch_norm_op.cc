@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/util/stream_executor_util.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
@@ -66,7 +66,8 @@ string ToString(FusedBatchNormActivationMode activation_mode) {
 Status ParseActivationMode(OpKernelConstruction* context,
                            FusedBatchNormActivationMode* activation_mode) {
   string activation_mode_str;
-  TF_RETURN_IF_ERROR(context->GetAttr("activation_mode", &activation_mode_str));
+  TF_RETURN_IF_ERROR(
+      context->GetAttribute("activation_mode", &activation_mode_str));
 
   if (activation_mode_str == "Identity") {
     *activation_mode = FusedBatchNormActivationMode::kIdentity;
@@ -1185,17 +1186,19 @@ class FusedBatchNormOpBase : public OpKernel {
                                 bool is_batch_norm_ex = false)
       : OpKernel(context) {
     float epsilon;
-    OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
+    OP_REQUIRES_OK(context, context->GetAttribute("epsilon", &epsilon));
     epsilon_ = U(epsilon);
     float exponential_avg_factor;
-    OP_REQUIRES_OK(context, context->GetAttr("exponential_avg_factor",
-                                             &exponential_avg_factor));
+    OP_REQUIRES_OK(context, context->GetAttribute("exponential_avg_factor",
+                                                  &exponential_avg_factor));
     exponential_avg_factor_ = U(exponential_avg_factor);
     string tensor_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("is_training", &is_training_));
 
     if (!is_batch_norm_ex) {
       has_side_input_ = false;
@@ -1204,8 +1207,8 @@ class FusedBatchNormOpBase : public OpKernel {
       OP_REQUIRES_OK(context, ParseActivationMode(context, &activation_mode_));
 
       int num_side_inputs;
-      OP_REQUIRES_OK(context,
-                     context->GetAttr("num_side_inputs", &num_side_inputs));
+      OP_REQUIRES_OK(
+          context, context->GetAttribute("num_side_inputs", &num_side_inputs));
       OP_REQUIRES(context, num_side_inputs >= 0 && num_side_inputs <= 1,
                   errors::InvalidArgument(
                       "FusedBatchNorm accepts at most one side input."));
@@ -1364,13 +1367,15 @@ class FusedBatchNormGradOpBase : public OpKernel {
   explicit FusedBatchNormGradOpBase(OpKernelConstruction* context)
       : OpKernel(context) {
     float epsilon;
-    OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
+    OP_REQUIRES_OK(context, context->GetAttribute("epsilon", &epsilon));
     epsilon_ = U(epsilon);
     string tensor_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("is_training", &is_training_));
   }
 
   virtual void ComputeWithReservedSpace(OpKernelContext* context,

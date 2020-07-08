@@ -158,8 +158,8 @@ class AssertCardinalityDatasetOp::Dataset : public DatasetBase {
 AssertCardinalityDatasetOp::AssertCardinalityDatasetOp(
     OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
 }
 
 void AssertCardinalityDatasetOp::MakeDataset(OpKernelContext* ctx,

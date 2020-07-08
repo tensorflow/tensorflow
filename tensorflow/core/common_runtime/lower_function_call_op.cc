@@ -36,7 +36,7 @@ bool LowerAsMultiDeviceFunction(const Node* n) {
 
   bool match;
   bool found =
-      TryGetNodeAttr(n->attrs(), kLowerAsMultiDeviceFunctionAttr, &match);
+      TryGetNodeAttribute(n->attrs(), kLowerAsMultiDeviceFunctionAttr, &match);
   return found && match;
 }
 
@@ -77,7 +77,7 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
   const FunctionDef* fdef;
   if (n->IsPartitionedCall()) {
     NameAttrList func;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "f", &func));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "f", &func));
     fdef = flib_def.Find(func.name());
   } else if (n->type_string() == FunctionLibraryDefinition::kGradientOp) {
     VLOG(2) << "Skip SymbolicGradient lowering";

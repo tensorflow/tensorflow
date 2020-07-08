@@ -450,9 +450,9 @@ class IteratorVariantSerializer {
 // resource containers with AnonymousIteratorHandleOp instead.
 IteratorHandleOp::IteratorHandleOp(OpKernelConstruction* ctx)
     : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &name_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_dtypes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("shared_name", &name_));
 }
 
 // The resource is deleted from the resource manager only when it is private
@@ -564,8 +564,9 @@ AnonymousIteratorHandleOp::AnonymousIteratorHandleOp(
     OpKernelConstruction* context)
     : AnonymousResourceOp<IteratorResource>(context),
       graph_def_version_(context->graph_def_version()) {
-  OP_REQUIRES_OK(context, context->GetAttr(kOutputTypes, &output_dtypes_));
-  OP_REQUIRES_OK(context, context->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(context, context->GetAttribute(kOutputTypes, &output_dtypes_));
+  OP_REQUIRES_OK(context,
+                 context->GetAttribute(kOutputShapes, &output_shapes_));
   create_deleter_ = context->def().op() == kAnonymousIteratorV2;
 }
 
@@ -627,8 +628,8 @@ class ToSingleElementOp : public HybridAsyncOpKernel {
  public:
   explicit ToSingleElementOp(OpKernelConstruction* ctx)
       : HybridAsyncOpKernel(ctx, "tf_data_to_single_element") {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
   }
 
  protected:
@@ -686,13 +687,13 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
   explicit ReduceDatasetOp(OpKernelConstruction* ctx)
       : HybridAsyncOpKernel(ctx, "tf_data_reduce_dataset") {
     FunctionMetadata::Params params;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
-                                     &params.use_inter_op_parallelism));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_inter_op_parallelism",
+                                          &params.use_inter_op_parallelism));
     params.use_default_device = false;
     OP_REQUIRES_OK(ctx,
                    FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
   }
 
  protected:
@@ -782,14 +783,14 @@ class OneShotIteratorOp : public AsyncOpKernel {
 
   {
     string shared_name;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &shared_name));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("shared_name", &shared_name));
     OP_REQUIRES(ctx, shared_name.empty(),
                 errors::InvalidArgument("OneShotIteratorOp does not currently "
                                         "support the 'shared_name' attr."));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("dataset_factory", &dataset_factory_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("dataset_factory", &dataset_factory_func_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_dtypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
   }
 
   ~OneShotIteratorOp() override {
@@ -1050,8 +1051,8 @@ void IteratorToStringHandleOp::Compute(OpKernelContext* ctx) {
 IteratorFromStringHandleOp::IteratorFromStringHandleOp(
     OpKernelConstruction* ctx)
     : OpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_dtypes_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_dtypes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
   OP_REQUIRES(
       ctx,
       output_dtypes_.empty() || output_shapes_.empty() ||
@@ -1103,8 +1104,8 @@ SerializeIteratorOp::SerializeIteratorOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
   if (ctx->HasAttr(kExternalStatePolicy)) {
     int64 state_change_option;
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr(kExternalStatePolicy, &state_change_option));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute(kExternalStatePolicy, &state_change_option));
     external_state_policy_ =
         SerializationContext::ExternalStatePolicy(state_change_option);
   }
@@ -1176,10 +1177,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("AnonymousIteratorV2").Device(DEVICE_CPU).Priority(2),
     AnonymousIteratorHandleOp);
-REGISTER_KERNEL_BUILDER(Name("AnonymousIteratorV2")
-                            .Device(DEVICE_GPU)
-                            .Priority(1),
-                        AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(
+    Name("AnonymousIteratorV2").Device(DEVICE_GPU).Priority(1),
+    AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),
                         ToSingleElementOp);
 REGISTER_KERNEL_BUILDER(Name("ReduceDataset").Device(DEVICE_CPU),

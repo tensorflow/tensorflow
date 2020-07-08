@@ -766,9 +766,9 @@ SnapshotDatasetV2Op::SnapshotDatasetV2Op(OpKernelConstruction* ctx)
   FunctionMetadata::Params reader_params;
   FunctionMetadata::Params shard_params;
 
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kCompression, &compression_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kCompression, &compression_));
 
   OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kReaderFunc, reader_params,
                                                &reader_func_metadata_));
@@ -855,38 +855,40 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
   explicit SnapshotDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx),
         graph_def_version_(ctx->graph_def_version()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
+
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("reader_path_prefix", &reader_path_prefix_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("writer_path_prefix", &writer_path_prefix_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("compression", &compression_));
 
     OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("reader_path_prefix", &reader_path_prefix_));
+                   ctx->GetAttribute("shard_size_bytes", &shard_size_bytes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("pending_snapshot_expiry_seconds",
+                                          &pending_snapshot_expiry_seconds_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("num_reader_threads", &num_reader_threads_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("reader_buffer_size", &reader_buffer_size_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("num_writer_threads", &num_writer_threads_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("writer_buffer_size", &writer_buffer_size_));
     OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("writer_path_prefix", &writer_path_prefix_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("compression", &compression_));
-
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shard_size_bytes", &shard_size_bytes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("pending_snapshot_expiry_seconds",
-                                     &pending_snapshot_expiry_seconds_));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("num_reader_threads", &num_reader_threads_));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("reader_buffer_size", &reader_buffer_size_));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("num_writer_threads", &num_writer_threads_));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("writer_buffer_size", &writer_buffer_size_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shuffle_on_read", &shuffle_on_read_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("seed", &seed_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("seed2", &seed2_));
+                   ctx->GetAttribute("shuffle_on_read", &shuffle_on_read_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("seed", &seed_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("seed2", &seed2_));
 
     mode_ = snapshot_util::kModeAuto;
     if (ctx->HasAttr("mode")) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("mode", &mode_));
     }
 
     snapshot_name_ = "";
     if (ctx->HasAttr("snapshot_name")) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("snapshot_name", &snapshot_name_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("snapshot_name", &snapshot_name_));
     }
 
     if (shard_size_bytes_ == -1) shard_size_bytes_ = kDefaultShardSizeBytes;
@@ -1122,9 +1124,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       // Initialize at first and at that point we don't know which iterator
       // (Reader / Writer / Passthrough) we need to restore as this info is part
       // of the checkpoint.
-      Status Initialize(IteratorContext* ctx) override {
-        return Status::OK();
-      }
+      Status Initialize(IteratorContext* ctx) override { return Status::OK(); }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,

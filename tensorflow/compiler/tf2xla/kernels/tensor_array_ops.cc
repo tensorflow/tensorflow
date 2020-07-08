@@ -133,16 +133,17 @@ xla::XlaOp DynamicAddSlice(xla::XlaBuilder* builder, const xla::XlaOp& operand,
 class TensorArrayOp : public XlaOpKernel {
  public:
   explicit TensorArrayOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("element_shape", &element_shape_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("element_shape", &element_shape_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
     bool dynamic_size;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dynamic_size", &dynamic_size));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dynamic_size", &dynamic_size));
     OP_REQUIRES(
         ctx, !dynamic_size,
         errors::Unimplemented(
             "TensorArrays with dynamic size are not supported by XLA."));
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_array_name", &tensor_array_name_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("tensor_array_name", &tensor_array_name_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -191,7 +192,7 @@ REGISTER_XLA_OP(Name("TensorArrayV3").CompileTimeConstantInput("size"),
 class TensorArrayWriteOp : public XlaOpKernel {
  public:
   explicit TensorArrayWriteOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -245,7 +246,7 @@ REGISTER_XLA_OP(Name("TensorArrayWriteV3"), TensorArrayWriteOp);
 class TensorArrayReadOp : public XlaOpKernel {
  public:
   explicit TensorArrayReadOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -288,7 +289,7 @@ REGISTER_XLA_OP(Name("TensorArrayReadV3"), TensorArrayReadOp);
 class TensorArrayGatherOp : public XlaOpKernel {
  public:
   explicit TensorArrayGatherOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -355,7 +356,7 @@ REGISTER_XLA_OP(Name("TensorArrayGatherV3"), TensorArrayGatherOp);
 class TensorArrayScatterOp : public XlaOpKernel {
  public:
   explicit TensorArrayScatterOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -442,7 +443,7 @@ REGISTER_XLA_OP(Name("TensorArrayScatterV3"), TensorArrayScatterOp);
 class TensorArrayConcatOp : public XlaOpKernel {
  public:
   explicit TensorArrayConcatOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -482,7 +483,7 @@ REGISTER_XLA_OP(Name("TensorArrayConcatV3"), TensorArrayConcatOp);
 class TensorArraySplitOp : public XlaOpKernel {
  public:
   explicit TensorArraySplitOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -571,7 +572,7 @@ REGISTER_XLA_OP(Name("TensorArraySizeV3"), TensorArraySizeOp);
 class TensorArrayGradOp : public XlaOpKernel {
  public:
   explicit TensorArrayGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("source", &source_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("source", &source_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

@@ -43,7 +43,7 @@ REGISTER_XLA_OP(Name("VarIsInitializedOp"), VarIsInitializedOp);
 class VariableShapeOp : public XlaOpKernel {
  public:
   explicit VariableShapeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("out_type", &out_dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("out_type", &out_dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -64,7 +64,7 @@ REGISTER_XLA_OP(Name("VariableShape").IsMetadataOp(), VariableShapeOp);
 class ReadVariableOp : public XlaOpKernel {
  public:
   explicit ReadVariableOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -124,7 +124,7 @@ REGISTER_XLA_OP(
 class ResourceGatherOp : public XlaOpKernel {
  public:
   explicit ResourceGatherOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("batch_dims", &batch_dims_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("batch_dims", &batch_dims_));
   }
   void Compile(XlaOpKernelContext* ctx) override {
     DataType type = ctx->expected_output_dtype(0);

@@ -30,7 +30,6 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -91,8 +91,9 @@ class SvdOpGpu : public AsyncOpKernel {
   using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
 
   explicit SvdOpGpu(OpKernelConstruction* context) : AsyncOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("compute_uv", &compute_uv_));
-    OP_REQUIRES_OK(context, context->GetAttr("full_matrices", &full_matrices_));
+    OP_REQUIRES_OK(context, context->GetAttribute("compute_uv", &compute_uv_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("full_matrices", &full_matrices_));
   }
 
   void RunSVD(OpKernelContext* context, DoneCallback done, int64 m, int64 n,

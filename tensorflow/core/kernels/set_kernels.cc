@@ -27,7 +27,6 @@ limitations under the License.
 #include <set>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -188,7 +188,7 @@ void OutputSparseTensor(OpKernelContext* ctx, const TensorShape& output_shape,
 
 bool ValidateIndicesFromContext(OpKernelConstruction* ctx) {
   bool result;
-  if (ctx->GetAttr("validate_indices", &result).ok()) {
+  if (ctx->GetAttribute("validate_indices", &result).ok()) {
     return result;
   }
   return true;
@@ -304,7 +304,7 @@ enum SetOperation { A_MINUS_B = 0, B_MINUS_A = 1, INTERSECTION = 2, UNION = 3 };
 
 SetOperation SetOperationFromContext(OpKernelConstruction* ctx) {
   string set_operation_str;
-  if (!ctx->GetAttr("set_operation", &set_operation_str).ok()) {
+  if (!ctx->GetAttribute("set_operation", &set_operation_str).ok()) {
     ctx->CtxFailure(errors::InvalidArgument("Missing set_operation."));
   } else {
     std::transform(set_operation_str.begin(), set_operation_str.end(),

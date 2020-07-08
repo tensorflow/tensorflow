@@ -183,7 +183,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
 
     if (ret_input_node->def().op() == FunctionLibraryDefinition::kArgOp) {
       TF_RETURN_IF_ERROR(
-          GetNodeAttr(ret_input_node->def(), "index", &(indices[i])));
+          GetNodeAttribute(ret_input_node->def(), "index", &(indices[i])));
     } else {
       indices.clear();
       break;
@@ -457,7 +457,7 @@ Status FunctionMetadata::Create(
     OpKernelConstruction* ctx, const string& func_name, Params params,
     std::shared_ptr<FunctionMetadata>* out_metadata) {
   NameAttrList func;
-  TF_RETURN_IF_ERROR(ctx->GetAttr(func_name, &func));
+  TF_RETURN_IF_ERROR(ctx->GetAttribute(func_name, &func));
   return Create(ctx, std::move(func), params, out_metadata);
 }
 

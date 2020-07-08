@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <array>
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -33,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
@@ -133,7 +133,7 @@ class Pooling3DOp : public UnaryOp<T> {
  public:
   explicit Pooling3DOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     if (context->device_type() == DEVICE_CPU) {
@@ -143,15 +143,15 @@ class Pooling3DOp : public UnaryOp<T> {
                                   "on device type ",
                                   DeviceTypeString(context->device_type())));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES_OK(context, context->GetAttribute("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 5 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window stride field must "
                                         "specify 5 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
     OP_REQUIRES(context,
                 (GetTensorDim(ksize_, data_format_, 'N') == 1 &&
                  GetTensorDim(stride_, data_format_, 'N') == 1),
@@ -307,7 +307,7 @@ class MaxPooling3dGradOp : public OpKernel {
   explicit MaxPooling3dGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     if (context->device_type() == DEVICE_CPU) {
@@ -317,15 +317,15 @@ class MaxPooling3dGradOp : public OpKernel {
               "Default MaxPooling3dGradOp only supports NDHWC ",
               "on device type ", DeviceTypeString(context->device_type())));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES_OK(context, context->GetAttribute("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 5 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window stride field must "
                                         "specify 5 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
     OP_REQUIRES(context,
                 (GetTensorDim(ksize_, data_format_, 'N') == 1 &&
                  GetTensorDim(stride_, data_format_, 'N') == 1),
@@ -461,7 +461,7 @@ class AvgPooling3dGradOp : public OpKernel {
   explicit AvgPooling3dGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     if (context->device_type() == DEVICE_CPU) {
@@ -471,15 +471,15 @@ class AvgPooling3dGradOp : public OpKernel {
               "Default AvgPooling3dGradOp only supports NDHWC ",
               "on device type ", DeviceTypeString(context->device_type())));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES_OK(context, context->GetAttribute("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 5 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window stride field must "
                                         "specify 5 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
     OP_REQUIRES(context,
                 (GetTensorDim(ksize_, data_format_, 'N') == 1 &&
                  GetTensorDim(stride_, data_format_, 'N') == 1),
@@ -660,18 +660,18 @@ class MaxPooling3dGradGradOp : public OpKernel {
   explicit MaxPooling3dGradGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES_OK(context, context->GetAttribute("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 5 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 5 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));

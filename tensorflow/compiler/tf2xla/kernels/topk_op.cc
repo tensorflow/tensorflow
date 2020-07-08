@@ -27,7 +27,7 @@ namespace {
 class TopKOp : public XlaOpKernel {
  public:
   explicit TopKOp(OpKernelConstruction* context) : XlaOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("sorted", &sorted_));
+    OP_REQUIRES_OK(context, context->GetAttribute("sorted", &sorted_));
   }
 
   void Compile(XlaOpKernelContext* context) override {

@@ -31,9 +31,9 @@ namespace {
 class EmptyOp : public XlaOpKernel {
  public:
   explicit EmptyOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dtype_, &type_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("init", &init_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("init", &init_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

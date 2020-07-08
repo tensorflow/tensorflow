@@ -229,7 +229,7 @@ Status MklEagerOpRewrite::RewriteToMklOp(
 bool MklEagerOpRewrite::RewriteConv2D(EagerOperation* op) {
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
   string padding;
-  TF_CHECK_OK(GetNodeAttr(ndef, "padding", &padding));
+  TF_CHECK_OK(GetNodeAttribute(ndef, "padding", &padding));
   // Right now MKL Conv2D does not support explicit padding.
   return (padding != "EXPLICIT");
 }

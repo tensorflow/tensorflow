@@ -249,7 +249,7 @@ class WriteImageSummaryOp : public OpKernel {
  public:
   explicit WriteImageSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     int64 max_images_tmp;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_images", &max_images_tmp));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("max_images", &max_images_tmp));
     OP_REQUIRES(ctx, max_images_tmp < (1LL << 31),
                 errors::InvalidArgument("max_images must be < 2^31"));
     max_images_ = static_cast<int32>(max_images_tmp);
@@ -285,7 +285,7 @@ REGISTER_KERNEL_BUILDER(Name("WriteImageSummary").Device(DEVICE_CPU),
 class WriteAudioSummaryOp : public OpKernel {
  public:
   explicit WriteAudioSummaryOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_outputs", &max_outputs_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("max_outputs", &max_outputs_));
     OP_REQUIRES(ctx, max_outputs_ > 0,
                 errors::InvalidArgument("max_outputs must be > 0"));
   }

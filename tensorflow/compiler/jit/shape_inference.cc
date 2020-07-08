@@ -77,7 +77,7 @@ Status PropagateShapes(Graph* graph,
 
     if (n->type_string() == "_Arg") {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
       auto it = arg_shapes.find(index);
       if (it != arg_shapes.end()) {
         const InferredShape& arg_shape = it->second;

@@ -466,8 +466,8 @@ Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
 
   // All the node types handled here have their output datatype set in
   // either attribute 'dtype' or 'T'.
-  if (!TryGetNodeAttr(node, "dtype", type) &&
-      !TryGetNodeAttr(node, "T", type)) {
+  if (!TryGetNodeAttribute(node, "dtype", type) &&
+      !TryGetNodeAttribute(node, "T", type)) {
     return errors::InvalidArgument(
         "Could not determine output type for feed node: ", node.name(),
         " of type ", node.op());
@@ -479,7 +479,7 @@ Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
         PartialTensorShape(node.attr().at("value").tensor().tensor_shape());
   } else if (kHasExplicitShapeAttribute->find(node.op()) !=
              kHasExplicitShapeAttribute->end()) {
-    TF_RETURN_IF_ERROR(GetNodeAttr(node, "shape", shape));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(node, "shape", shape));
   } else {
     return errors::InvalidArgument("Could not determine shape for feed node: ",
                                    node.name(), " of type ", node.op());
@@ -866,7 +866,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
       if (node->IsCollective()) {
         int32 instance_key;
         TF_RETURN_IF_ERROR(
-            GetNodeAttr(node->attrs(), "instance_key", &instance_key));
+            GetNodeAttribute(node->attrs(), "instance_key", &instance_key));
         instance_key_set.emplace(instance_key);
       } else {
         const FunctionDef* fdef = optimized_flib->Find(node->def().op());
@@ -878,7 +878,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
                 ndef.op() == "CollectiveGather") {
               int32 instance_key;
               TF_RETURN_IF_ERROR(
-                  GetNodeAttr(ndef, "instance_key", &instance_key));
+                  GetNodeAttribute(ndef, "instance_key", &instance_key));
               instance_key_set.emplace(instance_key);
             }
           }

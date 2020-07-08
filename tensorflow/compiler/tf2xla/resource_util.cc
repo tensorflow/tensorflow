@@ -104,7 +104,7 @@ Status PropagateFromArgOp(
   TF_RET_CHECK(n.type_string() == kArgOp);
 
   int index;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n.attrs(), "index", &index));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n.attrs(), "index", &index));
   if (!resource_arg_indices.contains(index)) return Status::OK();
 
   TF_RET_CHECK(function_name.has_value())
@@ -149,7 +149,7 @@ Status UpdateResourceUsageFromFunctionBodyAnalysis(
     if (src_node_info.op_ == kArgOp) {
       const Node* arg_src = node_name_index[src_node_info.node_name_];
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(arg_src->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(arg_src->attrs(), "index", &index));
 
       const Edge* e;
       // TODO(ycao): Allow overriding input_edge to _Arg index mapping. This is
@@ -164,7 +164,8 @@ Status UpdateResourceUsageFromFunctionBodyAnalysis(
       if (dst_node_info.op_ == kRetvalOp) {
         const Node* ret_user = node_name_index[dst_node_info.node_name_];
         int index;
-        TF_RETURN_IF_ERROR(GetNodeAttr(ret_user->attrs(), "index", &index));
+        TF_RETURN_IF_ERROR(
+            GetNodeAttribute(ret_user->attrs(), "index", &index));
 
         absl::InlinedVector<const Edge*, 1> outs;
         // TODO(ycao): Allow overriding _Retval index to call node output edge

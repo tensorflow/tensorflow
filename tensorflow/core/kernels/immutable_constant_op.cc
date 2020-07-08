@@ -78,9 +78,9 @@ class MemmappedTensorAllocator : public Allocator {
 ImmutableConstantOp::ImmutableConstantOp(OpKernelConstruction* context)
     : OpKernel(context) {
   OP_REQUIRES_OK(context,
-                 context->GetAttr(kMemoryRegionNameAttr, &region_name_));
-  OP_REQUIRES_OK(context, context->GetAttr(kDTypeAttr, &dtype_));
-  OP_REQUIRES_OK(context, context->GetAttr(kShapeAttr, &shape_));
+                 context->GetAttribute(kMemoryRegionNameAttr, &region_name_));
+  OP_REQUIRES_OK(context, context->GetAttribute(kDTypeAttr, &dtype_));
+  OP_REQUIRES_OK(context, context->GetAttribute(kShapeAttr, &shape_));
 }
 
 void ImmutableConstantOp::Compute(OpKernelContext* ctx) {

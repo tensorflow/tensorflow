@@ -18,14 +18,13 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/conditional_accumulator_base.h"
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/conditional_accumulator_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -49,10 +48,10 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_persistent(DT_STRING, TensorShape({2}),
                                                 &accumulator_handle_, nullptr));
-    OP_REQUIRES_OK(context, context->GetAttr("shape", &shape_));
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttribute("shape", &shape_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dtype", &dtype_));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("reduction_type", &reduction_type_));
+                   context->GetAttribute("reduction_type", &reduction_type_));
   }
 
   void Compute(OpKernelContext* ctx) override {

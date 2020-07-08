@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/parse_ops.cc.
 
 #include <algorithm>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -72,8 +73,8 @@ class DecodeCompressedOp : public OpKernel {
  public:
   explicit DecodeCompressedOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("compression_type", &compression_type_));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("compression_type", &compression_type_));
     OP_REQUIRES(context,
                 (compression_type_.empty() || compression_type_ == "ZLIB" ||
                  compression_type_ == "GZIP"),

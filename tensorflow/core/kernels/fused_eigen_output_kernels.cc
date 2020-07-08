@@ -29,14 +29,14 @@ Status InitializeFusedComputation(
   // Remapper optimizer (see grappler/optimizers/remapper.cc).
 
   std::vector<string> fused_ops;
-  TF_RETURN_IF_ERROR(context->GetAttr("fused_ops", &fused_ops));
+  TF_RETURN_IF_ERROR(context->GetAttribute("fused_ops", &fused_ops));
   if (fused_ops.empty()) {
     return errors::InvalidArgument("Fused ", kernel_name,
                                    " must have at least one fused op.");
   }
 
   int num_args;
-  TF_RETURN_IF_ERROR(context->GetAttr("num_args", &num_args));
+  TF_RETURN_IF_ERROR(context->GetAttribute("num_args", &num_args));
 
   // TODO(ezhulenev): Add support for fusion element-wise op chains defined
   // at runtime, e.g. Relu+Sqrt+Tanh+etc.
@@ -79,7 +79,7 @@ Status InitializeFusedComputation(
           "mean, variance.");
     }
     TF_RETURN_IF_ERROR(
-        context->GetAttr("epsilon", &fused_computation_args->epsilon));
+        context->GetAttribute("epsilon", &fused_computation_args->epsilon));
   }
 
   return Status::OK();

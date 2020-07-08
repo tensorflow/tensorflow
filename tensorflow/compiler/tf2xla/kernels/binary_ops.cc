@@ -295,7 +295,7 @@ XLA_MAKE_BINARY(Igammac, IgammacImpl(lhs, rhs, broadcast_helper));
 class ApproximateEqualOp : public XlaOpKernel {
  public:
   explicit ApproximateEqualOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("tolerance", &tolerance_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("tolerance", &tolerance_));
   }
 
   // Computes the max of the scalar input x and 0.

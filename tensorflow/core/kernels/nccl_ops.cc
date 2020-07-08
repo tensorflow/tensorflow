@@ -43,8 +43,8 @@ namespace {
 class NcclAsyncOpBase : public AsyncOpKernel {
  public:
   explicit NcclAsyncOpBase(OpKernelConstruction* c) : AsyncOpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("num_devices", &num_devices_));
-    OP_REQUIRES_OK(c, c->GetAttr("shared_name", &collective_prefix_));
+    OP_REQUIRES_OK(c, c->GetAttribute("num_devices", &num_devices_));
+    OP_REQUIRES_OK(c, c->GetAttribute("shared_name", &collective_prefix_));
   }
 
   string GetCollectiveKey(OpKernelContext* c) {
@@ -66,7 +66,7 @@ class NcclReduceOpBase : public NcclAsyncOpBase {
  public:
   explicit NcclReduceOpBase(OpKernelConstruction* c) : NcclAsyncOpBase(c) {
     string reduction;
-    OP_REQUIRES_OK(c, c->GetAttr("reduction", &reduction));
+    OP_REQUIRES_OK(c, c->GetAttribute("reduction", &reduction));
     if (reduction == "min") {
       reduction_op_ = ncclMin;
     } else if (reduction == "max") {

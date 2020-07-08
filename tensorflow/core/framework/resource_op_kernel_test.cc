@@ -62,12 +62,12 @@ class StubResourceOpKernel : public ResourceOpKernel<StubResource> {
  private:
   Status CreateResource(StubResource** resource) override {
     *resource = CHECK_NOTNULL(new StubResource);
-    return GetNodeAttr(def(), "code", &(*resource)->code);
+    return GetNodeAttribute(def(), "code", &(*resource)->code);
   }
 
   Status VerifyResource(StubResource* resource) override {
     int code;
-    TF_RETURN_IF_ERROR(GetNodeAttr(def(), "code", &code));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(def(), "code", &code));
     if (code != resource->code) {
       return errors::InvalidArgument("stub has code ", resource->code,
                                      " but requested code ", code);

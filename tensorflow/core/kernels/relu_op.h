@@ -20,13 +20,13 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/relu_op_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -137,7 +137,7 @@ class LeakyReluOp : public UnaryElementWiseOp<T, LeakyReluOp<Device, T>> {
   explicit LeakyReluOp(OpKernelConstruction* context)
       : UnaryElementWiseOp<T, LeakyReluOp<Device, T>>(context) {
     float alpha_tmp;
-    OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_tmp));
+    OP_REQUIRES_OK(context, context->GetAttribute("alpha", &alpha_tmp));
     alpha_ = T(alpha_tmp);
   }
 
@@ -158,7 +158,7 @@ class LeakyReluGradOp
   explicit LeakyReluGradOp(OpKernelConstruction* context)
       : BinaryElementWiseOp<T, LeakyReluGradOp<Device, T>>(context) {
     float alpha_tmp;
-    OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_tmp));
+    OP_REQUIRES_OK(context, context->GetAttribute("alpha", &alpha_tmp));
     alpha_ = T(alpha_tmp);
   }
 

@@ -32,11 +32,11 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
  public:
   explicit MklFusedMatMulOp(OpKernelConstruction* ctx)
       : MklDnnMatMulOpBase<T, T>(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("fused_ops", &fused_ops_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("is_filter_const", &(this->is_weight_const_)));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("fused_ops", &fused_ops_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("transpose_a", &transpose_a_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("transpose_b", &transpose_b_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("is_filter_const", &(this->is_weight_const_)));
 
     OP_REQUIRES(ctx, fused_ops_.size() <= 2,
                 errors::InvalidArgument(

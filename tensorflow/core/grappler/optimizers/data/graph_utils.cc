@@ -166,7 +166,7 @@ Status GetScalarConstNodeValueHelper(
                                    " is not a Const node. Op: ", node.op());
 
   Tensor tensor;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &tensor));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node, "value", &tensor));
   if (!TensorShapeUtils::IsScalar(tensor.shape())) {
     return errors::InvalidArgument(
         "Node ", node.name(),
@@ -285,7 +285,7 @@ Status GetDatasetOutputTypesAttr(const NodeDef& node,
   // We don't name the output_types attr consistently, so should check for both.
   for (const string& attr_name : {"output_types", "Toutput_types"}) {
     if (node.attr().contains(attr_name)) {
-      return GetNodeAttr(node, attr_name, output_types);
+      return GetNodeAttribute(node, attr_name, output_types);
     }
   }
   return errors::InvalidArgument("Could not find output_types attr for node: ",

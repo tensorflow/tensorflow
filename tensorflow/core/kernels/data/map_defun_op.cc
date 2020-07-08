@@ -169,13 +169,13 @@ MapDefunOp::MapDefunOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
   OP_REQUIRES(ctx, func_lib != nullptr,
               errors::Internal("No function library."));
   const NameAttrList* func;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kFunc, &func));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kFunc, &func));
   OP_REQUIRES_OK(ctx,
                  func_lib->Instantiate(func->name(), AttrSlice(&func->attr()),
                                        &func_handle_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
-  OP_REQUIRES_OK(
-      ctx, ctx->GetAttr(kMaxIntraOpParallelism, &max_intra_op_parallelism_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kMaxIntraOpParallelism,
+                                        &max_intra_op_parallelism_));
 
   OP_REQUIRES(ctx, ctx->num_inputs() >= 0,
               errors::InvalidArgument("Must have at least one input."));

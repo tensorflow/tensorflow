@@ -22,9 +22,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "tensorflow/core/kernels/strided_slice_op.h"
-
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -33,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/slice_op.h"
+#include "tensorflow/core/kernels/strided_slice_op.h"
 #include "tensorflow/core/kernels/strided_slice_op_impl.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
@@ -40,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/util/strided_slice_op.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace {
@@ -82,12 +81,14 @@ template <typename Device, typename T>
 class StridedSliceOp : public OpKernel {
  public:
   explicit StridedSliceOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("begin_mask", &begin_mask));
-    OP_REQUIRES_OK(context, context->GetAttr("end_mask", &end_mask));
-    OP_REQUIRES_OK(context, context->GetAttr("ellipsis_mask", &ellipsis_mask));
-    OP_REQUIRES_OK(context, context->GetAttr("new_axis_mask", &new_axis_mask));
+    OP_REQUIRES_OK(context, context->GetAttribute("begin_mask", &begin_mask));
+    OP_REQUIRES_OK(context, context->GetAttribute("end_mask", &end_mask));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("shrink_axis_mask", &shrink_axis_mask));
+                   context->GetAttribute("ellipsis_mask", &ellipsis_mask));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("new_axis_mask", &new_axis_mask));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("shrink_axis_mask", &shrink_axis_mask));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -190,12 +191,14 @@ class StridedSliceGradOp : public OpKernel {
  public:
   explicit StridedSliceGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("begin_mask", &begin_mask));
-    OP_REQUIRES_OK(context, context->GetAttr("end_mask", &end_mask));
-    OP_REQUIRES_OK(context, context->GetAttr("ellipsis_mask", &ellipsis_mask));
-    OP_REQUIRES_OK(context, context->GetAttr("new_axis_mask", &new_axis_mask));
+    OP_REQUIRES_OK(context, context->GetAttribute("begin_mask", &begin_mask));
+    OP_REQUIRES_OK(context, context->GetAttribute("end_mask", &end_mask));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("shrink_axis_mask", &shrink_axis_mask));
+                   context->GetAttribute("ellipsis_mask", &ellipsis_mask));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("new_axis_mask", &new_axis_mask));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("shrink_axis_mask", &shrink_axis_mask));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -284,12 +287,14 @@ class StridedSliceAssignOp : public OpKernel {
  public:
   explicit StridedSliceAssignOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("begin_mask", &begin_mask));
-    OP_REQUIRES_OK(context, context->GetAttr("end_mask", &end_mask));
-    OP_REQUIRES_OK(context, context->GetAttr("ellipsis_mask", &ellipsis_mask));
-    OP_REQUIRES_OK(context, context->GetAttr("new_axis_mask", &new_axis_mask));
+    OP_REQUIRES_OK(context, context->GetAttribute("begin_mask", &begin_mask));
+    OP_REQUIRES_OK(context, context->GetAttribute("end_mask", &end_mask));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("shrink_axis_mask", &shrink_axis_mask));
+                   context->GetAttribute("ellipsis_mask", &ellipsis_mask));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("new_axis_mask", &new_axis_mask));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("shrink_axis_mask", &shrink_axis_mask));
   }
 
   void Compute(OpKernelContext* context) override {

@@ -26,9 +26,9 @@ namespace {
 
 Status CandidateSamplerShapeFn(InferenceContext* c) {
   int64 num_sampled;
-  TF_RETURN_IF_ERROR(c->GetAttr("num_sampled", &num_sampled));
+  TF_RETURN_IF_ERROR(c->GetAttribute("num_sampled", &num_sampled));
   int64 num_true;
-  TF_RETURN_IF_ERROR(c->GetAttr("num_true", &num_true));
+  TF_RETURN_IF_ERROR(c->GetAttribute("num_true", &num_true));
 
   ShapeHandle true_classes_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &true_classes_shape));
@@ -143,7 +143,7 @@ REGISTER_OP("ComputeAccidentalHits")
     .Attr("seed2: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       int64 num_true;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_true", &num_true));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_true", &num_true));
 
       // Validate true_classes, must be a matrix.
       ShapeHandle true_classes;

@@ -139,7 +139,8 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
   explicit MklDnnQuantizedMatMulOp(OpKernelConstruction* context)
       : MklDnnMatMulOpBase<Tweight, Toutput>(context) {
     string mode_string;
-    OP_REQUIRES_OK(context, context->GetAttr("input_quant_mode", &mode_string));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("input_quant_mode", &mode_string));
     if (mode_string == "MIN_FIRST") {
       mode_ = QUANTIZE_MODE_MIN_FIRST;
     } else if (mode_string == "SCALED") {
@@ -151,8 +152,8 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
     }
     this->is_weight_const_ = false;
     if (context->HasAttr("is_weight_const")) {
-      OP_REQUIRES_OK(context, context->GetAttr("is_weight_const",
-                                               &(this->is_weight_const_)));
+      OP_REQUIRES_OK(context, context->GetAttribute("is_weight_const",
+                                                    &(this->is_weight_const_)));
     }
   }
 

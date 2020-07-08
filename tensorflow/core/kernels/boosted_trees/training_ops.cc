@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/kernels/boosted_trees/resources.h"
 #include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tensorflow {
 
@@ -35,10 +35,12 @@ class BoostedTreesUpdateEnsembleOp : public OpKernel {
  public:
   explicit BoostedTreesUpdateEnsembleOp(OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("num_features", &num_features_));
 
     int32 pruning_index;
-    OP_REQUIRES_OK(context, context->GetAttr("pruning_mode", &pruning_index));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("pruning_mode", &pruning_index));
     pruning_mode_ = static_cast<PruningMode>(pruning_index);
   }
 
@@ -234,8 +236,9 @@ class BoostedTreesUpdateEnsembleV2Op : public OpKernel {
  public:
   explicit BoostedTreesUpdateEnsembleV2Op(OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
-    OP_REQUIRES_OK(context, context->GetAttr("num_groups", &num_groups_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("logits_dimension", &logits_dim_));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_groups", &num_groups_));
   }
 
   void Compute(OpKernelContext* const context) override {

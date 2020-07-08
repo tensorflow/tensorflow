@@ -30,7 +30,7 @@ template <uint64 hash(StringPiece)>
 class StringToHashBucketOp : public OpKernel {
  public:
   explicit StringToHashBucketOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_buckets", &num_buckets_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("num_buckets", &num_buckets_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -66,10 +66,10 @@ class StringToKeyedHashBucketOp : public OpKernel {
  public:
   explicit StringToKeyedHashBucketOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_buckets", &num_buckets_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("num_buckets", &num_buckets_));
 
     std::vector<int64> key;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("key", &key));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("key", &key));
     OP_REQUIRES(ctx, key.size() == 2,
                 errors::InvalidArgument("Key must have 2 elements"));
     std::memcpy(key_, key.data(), sizeof(key_));

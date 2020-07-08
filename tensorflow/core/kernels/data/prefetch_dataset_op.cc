@@ -543,10 +543,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 PrefetchDatasetOp::PrefetchDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
   if (ctx->HasAttr(kSlackPeriod)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kSlackPeriod, &slack_period_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kSlackPeriod, &slack_period_));
   }
   if (ctx->HasAttr(kLegacyAutotune)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kLegacyAutotune, &legacy_autotune_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kLegacyAutotune, &legacy_autotune_));
   }
 }
 

@@ -39,7 +39,7 @@ REGISTER_OP("Variable")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shape", &shape));
 
       // Variable has legacy behavior where we cannot tell the difference
       // between a scalar shape attribute and 'unknown shape'.  So if the shape
@@ -86,7 +86,7 @@ REGISTER_OP("Assign")
     .SetAllowsUninitializedInput()
     .SetShapeFn([](InferenceContext* c) {
       bool validate_shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("validate_shape", &validate_shape));
+      TF_RETURN_IF_ERROR(c->GetAttribute("validate_shape", &validate_shape));
       if (validate_shape) {
         return shape_inference::MergeBothInputsShapeFn(c);
       }
@@ -322,7 +322,7 @@ REGISTER_OP("ResourceCountUpTo")
       }
       shape_inference::ShapeAndType shape_and_type = (*handle_data)[0];
       DataType value_dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("T", &value_dtype));
+      TF_RETURN_IF_ERROR(c->GetAttribute("T", &value_dtype));
       if (value_dtype != shape_and_type.dtype) {
         return errors::InvalidArgument(
             "Data types do not match: ", DataTypeString(value_dtype), " and ",

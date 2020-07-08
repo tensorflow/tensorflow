@@ -236,7 +236,8 @@ class GatherOp : public XlaOpKernel {
   explicit GatherOp(OpKernelConstruction* context) : XlaOpKernel(context) {
     // Set batch_dims_ to 0 if the attribute does not exist.
     if (context->HasAttr("batch_dims")) {
-      OP_REQUIRES_OK(context, context->GetAttr("batch_dims", &batch_dims_));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("batch_dims", &batch_dims_));
     } else {
       batch_dims_ = 0;
     }

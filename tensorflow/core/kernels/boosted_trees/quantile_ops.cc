@@ -98,7 +98,8 @@ class BoostedTreesCreateQuantileStreamResourceOp : public OpKernel {
   explicit BoostedTreesCreateQuantileStreamResourceOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr(kMaxElementsName, &max_elements_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute(kMaxElementsName, &max_elements_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -140,7 +141,8 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
   explicit BoostedTreesMakeQuantileSummariesOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute(kNumFeaturesName, &num_features_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -220,7 +222,8 @@ class BoostedTreesFlushQuantileSummariesOp : public OpKernel {
   explicit BoostedTreesFlushQuantileSummariesOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute(kNumFeaturesName, &num_features_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -343,7 +346,8 @@ class BoostedTreesQuantileStreamResourceDeserializeOp : public OpKernel {
   explicit BoostedTreesQuantileStreamResourceDeserializeOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr(kNumStreamsName, &num_features_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute(kNumStreamsName, &num_features_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -393,8 +397,8 @@ class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
   explicit BoostedTreesQuantileStreamResourceFlushOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr(kGenerateQuantiles, &generate_quantiles_));
+    OP_REQUIRES_OK(context, context->GetAttribute(kGenerateQuantiles,
+                                                  &generate_quantiles_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -449,7 +453,8 @@ class BoostedTreesQuantileStreamResourceGetBucketBoundariesOp
   explicit BoostedTreesQuantileStreamResourceGetBucketBoundariesOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute(kNumFeaturesName, &num_features_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -507,7 +512,8 @@ class BoostedTreesBucketizeOp : public OpKernel {
  public:
   explicit BoostedTreesBucketizeOp(OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr(kNumFeaturesName, &num_features_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute(kNumFeaturesName, &num_features_));
   }
 
   void Compute(OpKernelContext* const context) override {

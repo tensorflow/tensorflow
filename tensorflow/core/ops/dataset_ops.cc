@@ -889,9 +889,9 @@ REGISTER_OP("MapDefun")
     .Attr("max_intra_op_parallelism: int = 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<PartialTensorShape> output_shapes;
-      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+      TF_RETURN_IF_ERROR(c->GetAttribute("output_shapes", &output_shapes));
       DataTypeVector t_args;
-      TF_RETURN_IF_ERROR(c->GetAttr("Targuments", &t_args));
+      TF_RETURN_IF_ERROR(c->GetAttribute("Targuments", &t_args));
       if (output_shapes.size() != c->num_outputs()) {
         return errors::InvalidArgument(
             "`output_shapes` must be the same length as `output_types` (",

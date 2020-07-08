@@ -32,7 +32,7 @@ REGISTER_OP("SymbolicGradient")
         return errors::InvalidArgument("len(inputs) < len(outputs)");
       }
       std::vector<DataType> types;
-      TF_RETURN_IF_ERROR(c->GetAttr("Tin", &types));
+      TF_RETURN_IF_ERROR(c->GetAttribute("Tin", &types));
       // Say, (u, v) = f(x, y, z), _symbolic_gradient(f) is a function of
       // (x, y, z, du, dv) -> (dx, dy, dz). Therefore, shapes of its
       // outputs (dx, dy, dz) are the same as (x, y, z).
@@ -92,7 +92,7 @@ else_branch: A function that takes 'inputs' and returns a list of
 
 Status IfShapeInferenceFn(shape_inference::InferenceContext* c) {
   std::vector<PartialTensorShape> output_shapes;
-  TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+  TF_RETURN_IF_ERROR(c->GetAttribute("output_shapes", &output_shapes));
   // If `output_shapes` attr is set use that as the shapes of the outputs
   // else return unknown shapes.
   if (output_shapes.empty()) return shape_inference::UnknownShape(c);
@@ -146,7 +146,7 @@ REGISTER_OP("Case")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<PartialTensorShape> output_shapes;
-      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+      TF_RETURN_IF_ERROR(c->GetAttribute("output_shapes", &output_shapes));
       // If `output_shapes` attr is set use that as the shapes of the outputs
       // else return unknown shapes.
       if (output_shapes.empty()) return shape_inference::UnknownShape(c);
@@ -197,7 +197,7 @@ body: A function that takes a list of tensors and returns another
 
 Status WhileShapeInferenceFn(shape_inference::InferenceContext* c) {
   std::vector<PartialTensorShape> output_shapes;
-  TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+  TF_RETURN_IF_ERROR(c->GetAttribute("output_shapes", &output_shapes));
   // If `output_shapes` attr is set use that as the shapes of the outputs
   // else use the input shapes.
   if (!output_shapes.empty()) {
@@ -292,7 +292,7 @@ REGISTER_OP("FakeParam")
     .Attr("shape: shape")
     .SetShapeFn([](InferenceContext* c) {
       PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shape", &shape));
       shape_inference::ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
       c->set_output(0, out);

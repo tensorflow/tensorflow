@@ -1030,32 +1030,32 @@ class BatchResource : public ResourceBase {
 class BatchFunctionKernel : public AsyncOpKernel {
  public:
   explicit BatchFunctionKernel(OpKernelConstruction* c) : AsyncOpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("container", &container_));
-    OP_REQUIRES_OK(c, c->GetAttr("shared_name", &shared_name_));
+    OP_REQUIRES_OK(c, c->GetAttribute("container", &container_));
+    OP_REQUIRES_OK(c, c->GetAttribute("shared_name", &shared_name_));
     // If shared_name is not supplied, use name instead (prevent collisions by
     // default).
     if (shared_name_.empty()) {
       shared_name_ = name();
     }
-    OP_REQUIRES_OK(c, c->GetAttr("batching_queue", &batcher_queue_));
-    OP_REQUIRES_OK(c, c->GetAttr("num_batch_threads", &num_batch_threads_));
-    OP_REQUIRES_OK(c, c->GetAttr("max_batch_size", &max_batch_size_));
+    OP_REQUIRES_OK(c, c->GetAttribute("batching_queue", &batcher_queue_));
+    OP_REQUIRES_OK(c, c->GetAttribute("num_batch_threads", &num_batch_threads_));
+    OP_REQUIRES_OK(c, c->GetAttribute("max_batch_size", &max_batch_size_));
     OP_REQUIRES_OK(c,
-                   c->GetAttr("batch_timeout_micros", &batch_timeout_micros_));
+                   c->GetAttribute("batch_timeout_micros", &batch_timeout_micros_));
     OP_REQUIRES_OK(c,
-                   c->GetAttr("max_enqueued_batches", &max_enqueued_batches_));
-    OP_REQUIRES_OK(c, c->GetAttr("allowed_batch_sizes", &allowed_batch_sizes_));
+                   c->GetAttribute("max_enqueued_batches", &max_enqueued_batches_));
+    OP_REQUIRES_OK(c, c->GetAttribute("allowed_batch_sizes", &allowed_batch_sizes_));
 
     auto lib = c->function_library();
     OP_REQUIRES(c, lib != nullptr, errors::Internal("No function library"));
     NameAttrList func;
-    OP_REQUIRES_OK(c, c->GetAttr("f", &func));
+    OP_REQUIRES_OK(c, c->GetAttribute("f", &func));
     OP_REQUIRES_OK(
         c, lib->Instantiate(func.name(), AttrSlice(&func.attr()), &fhandle_));
 
     if (c->HasAttr("enable_large_batch_splitting")) {
-      OP_REQUIRES_OK(c, c->GetAttr("enable_large_batch_splitting",
-                                   &enable_large_batch_splitting_));
+      OP_REQUIRES_OK(c, c->GetAttribute("enable_large_batch_splitting",
+                                        &enable_large_batch_splitting_));
     } else {
       enable_large_batch_splitting_ = false;
     }
@@ -1138,21 +1138,21 @@ REGISTER_KERNEL_BUILDER(Name("BatchFunction").Device(DEVICE_CPU),
 class BatchKernel : public AsyncOpKernel {
  public:
   explicit BatchKernel(OpKernelConstruction* c) : AsyncOpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("container", &container_));
-    OP_REQUIRES_OK(c, c->GetAttr("shared_name", &shared_name_));
+    OP_REQUIRES_OK(c, c->GetAttribute("container", &container_));
+    OP_REQUIRES_OK(c, c->GetAttribute("shared_name", &shared_name_));
     // If shared_name is not supplied, use name instead (prevent collisions by
     // default).
     if (shared_name_.empty()) {
       shared_name_ = name();
     }
-    OP_REQUIRES_OK(c, c->GetAttr("batching_queue", &batcher_queue_));
-    OP_REQUIRES_OK(c, c->GetAttr("num_batch_threads", &num_batch_threads_));
-    OP_REQUIRES_OK(c, c->GetAttr("max_batch_size", &max_batch_size_));
+    OP_REQUIRES_OK(c, c->GetAttribute("batching_queue", &batcher_queue_));
+    OP_REQUIRES_OK(c, c->GetAttribute("num_batch_threads", &num_batch_threads_));
+    OP_REQUIRES_OK(c, c->GetAttribute("max_batch_size", &max_batch_size_));
     OP_REQUIRES_OK(c,
-                   c->GetAttr("batch_timeout_micros", &batch_timeout_micros_));
+                   c->GetAttribute("batch_timeout_micros", &batch_timeout_micros_));
     OP_REQUIRES_OK(c,
-                   c->GetAttr("max_enqueued_batches", &max_enqueued_batches_));
-    OP_REQUIRES_OK(c, c->GetAttr("allowed_batch_sizes", &allowed_batch_sizes_));
+                   c->GetAttribute("max_enqueued_batches", &max_enqueued_batches_));
+    OP_REQUIRES_OK(c, c->GetAttribute("allowed_batch_sizes", &allowed_batch_sizes_));
     OP_REQUIRES_OK(c, ValidateAllowedBatchSizes());
   }
 
@@ -1401,14 +1401,14 @@ class UnbatchResource : public ResourceBase {
 class UnbatchKernel : public AsyncOpKernel {
  public:
   explicit UnbatchKernel(OpKernelConstruction* c) : AsyncOpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("container", &container_));
-    OP_REQUIRES_OK(c, c->GetAttr("shared_name", &shared_name_));
+    OP_REQUIRES_OK(c, c->GetAttribute("container", &container_));
+    OP_REQUIRES_OK(c, c->GetAttribute("shared_name", &shared_name_));
     // If shared_name is not supplied, use name instead (prevent collisions by
     // default).
     if (shared_name_.empty()) {
       shared_name_ = name();
     }
-    OP_REQUIRES_OK(c, c->GetAttr("timeout_micros", &timeout_micros_));
+    OP_REQUIRES_OK(c, c->GetAttribute("timeout_micros", &timeout_micros_));
   }
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
@@ -1588,8 +1588,8 @@ class UnbatchGradResource : public ResourceBase {
 class UnbatchGradKernel : public AsyncOpKernel {
  public:
   explicit UnbatchGradKernel(OpKernelConstruction* c) : AsyncOpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("container", &container_));
-    OP_REQUIRES_OK(c, c->GetAttr("shared_name", &shared_name_));
+    OP_REQUIRES_OK(c, c->GetAttribute("container", &container_));
+    OP_REQUIRES_OK(c, c->GetAttribute("shared_name", &shared_name_));
     // If shared_name is not supplied, use name instead (prevent collisions by
     // default).
     if (shared_name_.empty()) {

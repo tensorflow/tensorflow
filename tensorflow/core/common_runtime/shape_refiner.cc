@@ -73,7 +73,8 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
     // context.
 
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node->def()), "index", &index));
+    TF_RETURN_IF_ERROR(
+        GetNodeAttribute(AttrSlice(node->def()), "index", &index));
 
     if (index < 0 || outer_context->num_inputs() <= index) {
       return errors::Internal(
@@ -101,7 +102,8 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
     // context.
 
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node->def()), "index", &index));
+    TF_RETURN_IF_ERROR(
+        GetNodeAttribute(AttrSlice(node->def()), "index", &index));
 
     if (index < 0 || outer_context->num_outputs() <= index) {
       return errors::Internal(
@@ -577,14 +579,15 @@ Status ShapeRefiner::PartialStridedSliceShape(Node* slice_node,
 
   int begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(slice_node->attrs(), "begin_mask", &begin_mask));
-  TF_RETURN_IF_ERROR(GetNodeAttr(slice_node->attrs(), "end_mask", &end_mask));
+      GetNodeAttribute(slice_node->attrs(), "begin_mask", &begin_mask));
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(slice_node->attrs(), "ellipsis_mask", &ellipsis_mask));
+      GetNodeAttribute(slice_node->attrs(), "end_mask", &end_mask));
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(slice_node->attrs(), "new_axis_mask", &new_axis_mask));
+      GetNodeAttribute(slice_node->attrs(), "ellipsis_mask", &ellipsis_mask));
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(slice_node->attrs(), "shrink_axis_mask", &shrink_axis_mask));
+      GetNodeAttribute(slice_node->attrs(), "new_axis_mask", &new_axis_mask));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(slice_node->attrs(), "shrink_axis_mask",
+                                      &shrink_axis_mask));
 
   // Only attempt to evaluate if there are no special masks set (note that we
   // can handle begin/end_mask == 1).
@@ -655,8 +658,9 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
   auto run_inference_lambda = [&]() {
     if (function_library_ && IsFunctionCall(*function_library_, *node)) {
       bool disable_shape_inference;
-      if (!GetNodeAttr(AttrSlice(node->def()), "_disable_call_shape_inference",
-                       &disable_shape_inference)
+      if (!GetNodeAttribute(AttrSlice(node->def()),
+                            "_disable_call_shape_inference",
+                            &disable_shape_inference)
                .ok() ||
           !disable_shape_inference) {
         // Special inference logic for user-defined functions.

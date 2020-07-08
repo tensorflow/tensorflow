@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
@@ -80,7 +80,7 @@ class MaxPoolingOp : public OpKernel {
  public:
   explicit MaxPoolingOp(OpKernelConstruction* context) : OpKernel(context) {
     string data_format;
-    auto status = context->GetAttr("data_format", &data_format);
+    auto status = context->GetAttribute("data_format", &data_format);
     if (status.ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
@@ -92,7 +92,7 @@ class MaxPoolingOp : public OpKernel {
     } else {
       data_format_ = FORMAT_NHWC;
     }
-    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+    OP_REQUIRES_OK(context, context->GetAttribute("ksize", &ksize_));
     OP_REQUIRES(context, ksize_.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 4 dimensions"));
@@ -101,11 +101,11 @@ class MaxPoolingOp : public OpKernel {
                   errors::InvalidArgument("Sliding window ksize for dimension ",
                                           i, " was zero."));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 4,
                 errors::InvalidArgument("Sliding window stride field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
     OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
@@ -301,7 +301,7 @@ class MaxPoolingV2Op : public OpKernel {
  public:
   explicit MaxPoolingV2Op(OpKernelConstruction* context) : OpKernel(context) {
     string data_format;
-    auto status = context->GetAttr("data_format", &data_format);
+    auto status = context->GetAttribute("data_format", &data_format);
     if (status.ok()) {
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
@@ -315,11 +315,11 @@ class MaxPoolingV2Op : public OpKernel {
       data_format_ = FORMAT_NHWC;
     }
     if (context->num_inputs() == 1) {
-      OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+      OP_REQUIRES_OK(context, context->GetAttribute("ksize", &ksize_));
       OP_REQUIRES(context, ksize_.size() == 4,
                   errors::InvalidArgument("Sliding window ksize field must "
                                           "specify 4 dimensions"));
-      OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+      OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
       OP_REQUIRES(context, stride_.size() == 4,
                   errors::InvalidArgument("Sliding window stride field must "
                                           "specify 4 dimensions"));
@@ -327,7 +327,7 @@ class MaxPoolingV2Op : public OpKernel {
                   errors::Unimplemented(
                       "Pooling is not yet supported on the batch dimension."));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
   }
 
   void Compute(OpKernelContext* context) override {

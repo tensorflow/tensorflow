@@ -116,7 +116,7 @@ Status ReplaceArgUsageWithConstNode(
   for (Node* n : g->op_nodes()) {
     if (n->IsArg()) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
       arg_nodes[index] = n;
     }
   }
@@ -178,7 +178,7 @@ Status PropagateConstIntoFuncAttr(
     FunctionLibraryDefinition* fld) {
   // Instantiate the function.
   NameAttrList func_attr;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &func_attr));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), attr_name, &func_attr));
   const FunctionDef* fdef = lookup_fld->Find(func_attr.name());
   if (!fdef) {
     return errors::Internal("Cannot find function ", func_attr.name(),
@@ -252,7 +252,7 @@ Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
   // directly from the corresponding arg.
   std::unordered_map<int, const Node*> const_input_index_to_node;
   NameAttrList body_attr;
-  TF_RETURN_IF_ERROR(GetNodeAttr(while_node->def(), "body", &body_attr));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(while_node->def(), "body", &body_attr));
   const FunctionDef* body_func = lookup_fld->Find(body_attr.name());
   if (!body_func) {
     return errors::Internal("Cannot find body function ", body_attr.name(),
@@ -651,7 +651,7 @@ Status RewriteAssociatedFunction(
     }
     case AssociatedFunctionInfo::kSymbolicGradient: {
       NameAttrList func;
-      TF_RETURN_IF_ERROR(GetNodeAttr(
+      TF_RETURN_IF_ERROR(GetNodeAttribute(
           node->attrs(), FunctionLibraryDefinition::kFuncAttr, &func));
       GradientDef gradient_def;
       gradient_def.set_function_name(func.name());
@@ -667,8 +667,8 @@ Status RewriteAssociatedFunction(
     case AssociatedFunctionInfo::kFunctionAttr: {
       // Change function attr to rewritten functions.
       NameAttrList func;
-      TF_RETURN_IF_ERROR(
-          GetNodeAttr(node->attrs(), associated_function.attr_name(), &func));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(
+          node->attrs(), associated_function.attr_name(), &func));
       node->ClearAttr(associated_function.attr_name());
       func.set_name(rewritten_function_name);
       node->AddAttr(associated_function.attr_name(), func);
@@ -825,7 +825,7 @@ Status RewriteTensorListWithConstElement(Graph* g,
     // Look into forward While body function and check if TensorListPushBack op
     // has a Const input.
     NameAttrList fwd_body_attr;
-    TF_CHECK_OK(GetNodeAttr(fwd_while->def(), "body", &fwd_body_attr));
+    TF_CHECK_OK(GetNodeAttribute(fwd_while->def(), "body", &fwd_body_attr));
     const FunctionDef* fwd_body = fld->Find(fwd_body_attr.name());
     if (!fwd_body) {
       return errors::InvalidArgument("Cannot find function ",
@@ -862,7 +862,7 @@ Status RewriteTensorListWithConstElement(Graph* g,
     // Rewrite backward While body function, replace usages of
     // TensorListPopBack with a Const node.
     NameAttrList bwd_body_attr;
-    TF_CHECK_OK(GetNodeAttr(bwd_while->def(), "body", &bwd_body_attr));
+    TF_CHECK_OK(GetNodeAttribute(bwd_while->def(), "body", &bwd_body_attr));
     const FunctionDef* bwd_body = fld->Find(bwd_body_attr.name());
     if (!bwd_body) {
       return errors::InvalidArgument("Cannot find function ",

@@ -42,13 +42,13 @@ class LRNFloatTest : public OpsTestBase {
 
   int GetIntAttr(const string& name) {
     int value;
-    TF_CHECK_OK(GetNodeAttr(*node_def(), name, &value));
+    TF_CHECK_OK(GetNodeAttribute(*node_def(), name, &value));
     return value;
   }
 
   float GetFloatAttr(const string& name) {
     float value;
-    TF_CHECK_OK(GetNodeAttr(*node_def(), name, &value));
+    TF_CHECK_OK(GetNodeAttribute(*node_def(), name, &value));
     return value;
   }
 

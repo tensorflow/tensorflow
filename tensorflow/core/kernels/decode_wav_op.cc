@@ -29,10 +29,10 @@ namespace tensorflow {
 class DecodeWavOp : public OpKernel {
  public:
   explicit DecodeWavOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("desired_channels", &desired_channels_));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("desired_channels", &desired_channels_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("desired_samples", &desired_samples_));
+                   context->GetAttribute("desired_samples", &desired_samples_));
   }
 
   void Compute(OpKernelContext* context) override {

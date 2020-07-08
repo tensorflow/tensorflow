@@ -33,9 +33,10 @@ class BaseCandidateSamplerOp : public OpKernel {
  public:
   explicit BaseCandidateSamplerOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_sampled", &num_sampled_));
-    OP_REQUIRES_OK(context, context->GetAttr("num_true", &num_true_));
-    OP_REQUIRES_OK(context, context->GetAttr("unique", &unique_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("num_sampled", &num_sampled_));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_true", &num_true_));
+    OP_REQUIRES_OK(context, context->GetAttribute("unique", &unique_));
     OP_REQUIRES_OK(context, generator_.Init(context));
   }
 
@@ -115,7 +116,7 @@ class SimpleCandidateSamplerOp : public BaseCandidateSamplerOp {
   explicit SimpleCandidateSamplerOp(OpKernelConstruction* context)
       : BaseCandidateSamplerOp(context) {
     int64 range_max;
-    OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
+    OP_REQUIRES_OK(context, context->GetAttribute("range_max", &range_max));
     set_sampler(new RangeSamplerType(range_max));
   }
 };
@@ -139,7 +140,7 @@ class AllCandidateSamplerOp : public BaseCandidateSamplerOp {
   explicit AllCandidateSamplerOp(OpKernelConstruction* context)
       : BaseCandidateSamplerOp(context) {
     int64 range_max;
-    OP_REQUIRES_OK(context, context->GetAttr("num_sampled", &range_max));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_sampled", &range_max));
     set_sampler(new AllSampler(range_max));
   }
 };
@@ -152,11 +153,11 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
   explicit FixedUnigramCandidateSamplerOp(OpKernelConstruction* context)
       : BaseCandidateSamplerOp(context) {
     int64 range_max;
-    OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
+    OP_REQUIRES_OK(context, context->GetAttribute("range_max", &range_max));
     string vocab_file;
-    OP_REQUIRES_OK(context, context->GetAttr("vocab_file", &vocab_file));
+    OP_REQUIRES_OK(context, context->GetAttribute("vocab_file", &vocab_file));
     std::vector<float> unigrams;
-    OP_REQUIRES_OK(context, context->GetAttr("unigrams", &unigrams));
+    OP_REQUIRES_OK(context, context->GetAttribute("unigrams", &unigrams));
     OP_REQUIRES(
         context, !vocab_file.empty() || !unigrams.empty(),
         errors::InvalidArgument("Must provide either vocab_file or unigrams."));
@@ -164,14 +165,14 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
                 errors::InvalidArgument(
                     "Must only provide one of vocab_file and unigrams."));
     float distortion;
-    OP_REQUIRES_OK(context, context->GetAttr("distortion", &distortion));
+    OP_REQUIRES_OK(context, context->GetAttribute("distortion", &distortion));
     int64 num_reserved_ids;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("num_reserved_ids", &num_reserved_ids));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("num_reserved_ids", &num_reserved_ids));
     int64 num_shards;
-    OP_REQUIRES_OK(context, context->GetAttr("num_shards", &num_shards));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_shards", &num_shards));
     int64 shard;
-    OP_REQUIRES_OK(context, context->GetAttr("shard", &shard));
+    OP_REQUIRES_OK(context, context->GetAttribute("shard", &shard));
 
     if (!vocab_file.empty()) {
       set_sampler(new FixedUnigramSampler(context->env(), range_max, vocab_file,
@@ -191,7 +192,7 @@ class ComputeAccidentalHitsOp : public OpKernel {
  public:
   explicit ComputeAccidentalHitsOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_true", &num_true_));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_true", &num_true_));
   }
 
   void Compute(OpKernelContext* context) override {

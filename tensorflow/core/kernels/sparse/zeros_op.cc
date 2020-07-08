@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse/zeros_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/slice_op.h"
 #include "tensorflow/core/kernels/sparse/kernels.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -41,7 +41,7 @@ template <typename Device>
 class CSRZerosOp : public OpKernel {
  public:
   explicit CSRZerosOp(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("type", &dtype_));
+    OP_REQUIRES_OK(c, c->GetAttribute("type", &dtype_));
   }
 
   void Compute(OpKernelContext* c) override {

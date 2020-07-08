@@ -356,6 +356,8 @@ TEST_F(GraphTest, AddAttr) {
   string attr;
   EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
+  EXPECT_EQ(Status::OK(), GetNodeAttribute(n1->attrs(), "_a", &attr));
+  EXPECT_EQ("new_attr", attr);
 
   Node* n2 = graph_.CopyNode(n1);
 
@@ -363,12 +365,19 @@ TEST_F(GraphTest, AddAttr) {
 
   EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
+  EXPECT_EQ(Status::OK(), GetNodeAttribute(n1->attrs(), "_a", &attr));
+  EXPECT_EQ("new_attr", attr);
   EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_b", &attr));
+  EXPECT_EQ("new_attr_2", attr);
+  EXPECT_EQ(Status::OK(), GetNodeAttribute(n1->attrs(), "_b", &attr));
   EXPECT_EQ("new_attr_2", attr);
 
   EXPECT_EQ(Status::OK(), GetNodeAttr(n2->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
+  EXPECT_EQ(Status::OK(), GetNodeAttribute(n2->attrs(), "_a", &attr));
+  EXPECT_EQ("new_attr", attr);
   EXPECT_NE(Status::OK(), GetNodeAttr(n2->attrs(), "_b", &attr));
+  EXPECT_NE(Status::OK(), GetNodeAttribute(n2->attrs(), "_b", &attr));
 }
 
 // Convert edge iteration results into a sorted string.

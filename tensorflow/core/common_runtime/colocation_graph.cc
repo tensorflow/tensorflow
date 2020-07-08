@@ -651,9 +651,9 @@ Status ColocationGraph::ColocateAllNodes() {
     // When adding the node, identify whether it is part of a colocation
     // group.
 
-    // This code is effectively the equivalent of GetNodeAttr() for a string
-    // array, but it avoids all internal allocations (the allocation of the
-    // backing store of the std::vector<string> as well as the copies of the
+    // This code is effectively the equivalent of GetNodeAttribute() for a
+    // string array, but it avoids all internal allocations (the allocation of
+    // the backing store of the std::vector<string> as well as the copies of the
     // strings within it).  Instead, we combine the query of the colocation
     // attribute with the calls to ColocateNodeToGroup.
     const AttrValue* attr_value =
@@ -777,7 +777,7 @@ DataType GetElementDataType(const Node& node) {
 
   if (tensor_list_ops->contains(node.type_string())) {
     DataType element_type;
-    if (GetNodeAttr(node.attrs(), "element_dtype", &element_type).ok()) {
+    if (GetNodeAttribute(node.attrs(), "element_dtype", &element_type).ok()) {
       return element_type;
     }
   }

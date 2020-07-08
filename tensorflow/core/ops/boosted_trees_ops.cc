@@ -58,8 +58,8 @@ REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
       // Confirms the rank of the inputs and sets the shape of the outputs.
       int max_splits;
       int num_features;
-      TF_RETURN_IF_ERROR(c->GetAttr("max_splits", &max_splits));
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      TF_RETURN_IF_ERROR(c->GetAttribute("max_splits", &max_splits));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_features", &num_features));
       shape_inference::ShapeHandle node_id_range_shape;
       shape_inference::ShapeHandle unused_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &node_id_range_shape));
@@ -133,7 +133,8 @@ REGISTER_OP("BoostedTreesCalculateBestFeatureSplit")
       c->set_output(3, rank_1_output_shape);
       c->set_output(6, rank_1_output_shape);
       int logits_dimension;
-      TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("logits_dimension", &logits_dimension));
       ShapeHandle contribs_output_shape =
           c->MakeShape({c->UnknownDim(), logits_dimension});
       c->set_output(4, contribs_output_shape);
@@ -163,9 +164,10 @@ REGISTER_OP("BoostedTreesCalculateBestFeatureSplitV2")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // Attributes.
       int num_features;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_features", &num_features));
       int logits_dimension;
-      TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("logits_dimension", &logits_dimension));
       // Inputs.
       shape_inference::ShapeHandle unused_shape;
       // node id range is rank 1 with 2 values.
@@ -251,7 +253,8 @@ REGISTER_OP("BoostedTreesSparseCalculateBestFeatureSplit")
       c->set_output(3, rank_1_output_shape);
       c->set_output(6, rank_1_output_shape);
       int logits_dimension;
-      TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("logits_dimension", &logits_dimension));
       ShapeHandle contribs_output_shape =
           c->MakeShape({c->UnknownDim(), logits_dimension});
       c->set_output(4, contribs_output_shape);
@@ -315,9 +318,9 @@ REGISTER_OP("BoostedTreesMakeStatsSummary")
       int max_splits;
       int num_buckets;
       int num_features;
-      TF_RETURN_IF_ERROR(c->GetAttr("max_splits", &max_splits));
-      TF_RETURN_IF_ERROR(c->GetAttr("num_buckets", &num_buckets));
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      TF_RETURN_IF_ERROR(c->GetAttribute("max_splits", &max_splits));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_buckets", &num_buckets));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_features", &num_features));
       shape_inference::ShapeHandle node_ids_shape;
       shape_inference::ShapeHandle gradients_shape;
       shape_inference::ShapeHandle hessians_shape;
@@ -357,8 +360,8 @@ REGISTER_OP("BoostedTreesAggregateStats")
       // Sets the shape of the output as a Rank 4 Tensor.
       int max_splits;
       int num_buckets;
-      TF_RETURN_IF_ERROR(c->GetAttr("max_splits", &max_splits));
-      TF_RETURN_IF_ERROR(c->GetAttr("num_buckets", &num_buckets));
+      TF_RETURN_IF_ERROR(c->GetAttribute("max_splits", &max_splits));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_buckets", &num_buckets));
 
       shape_inference::ShapeHandle node_ids_shape;
       shape_inference::ShapeHandle gradients_shape;
@@ -407,8 +410,8 @@ REGISTER_OP("BoostedTreesSparseAggregateStats")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       int max_splits;
       int num_buckets;
-      TF_RETURN_IF_ERROR(c->GetAttr("max_splits", &max_splits));
-      TF_RETURN_IF_ERROR(c->GetAttr("num_buckets", &num_buckets));
+      TF_RETURN_IF_ERROR(c->GetAttribute("max_splits", &max_splits));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_buckets", &num_buckets));
 
       shape_inference::ShapeHandle node_ids_shape;
       shape_inference::ShapeHandle gradients_shape;
@@ -462,7 +465,7 @@ REGISTER_OP("BoostedTreesPredict")
       shape_inference::ShapeHandle feature_shape;
       int num_bucketized_features;
       TF_RETURN_IF_ERROR(
-          c->GetAttr("num_bucketized_features", &num_bucketized_features));
+          c->GetAttribute("num_bucketized_features", &num_bucketized_features));
       shape_inference::DimensionHandle batch_size = c->Dim(c->input(1), 0);
       for (int i = 0; i < num_bucketized_features; ++i) {
         TF_RETURN_IF_ERROR(
@@ -473,7 +476,8 @@ REGISTER_OP("BoostedTreesPredict")
       }
 
       int logits_dimension;
-      TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("logits_dimension", &logits_dimension));
       auto logits_shape =
           c->MakeShape({c->Dim(feature_shape, 0), logits_dimension});
       // Logits.
@@ -491,7 +495,7 @@ REGISTER_OP("BoostedTreesExampleDebugOutputs")
       shape_inference::ShapeHandle feature_shape;
       int num_bucketized_features;
       TF_RETURN_IF_ERROR(
-          c->GetAttr("num_bucketized_features", &num_bucketized_features));
+          c->GetAttribute("num_bucketized_features", &num_bucketized_features));
       shape_inference::DimensionHandle batch_dim = c->Dim(c->input(1), 0);
       for (int i = 0; i < num_bucketized_features; ++i) {
         TF_RETURN_IF_ERROR(
@@ -533,7 +537,7 @@ REGISTER_OP("BoostedTreesTrainingPredict")
       shape_inference::ShapeHandle feature_shape;
       int num_bucketized_features;
       TF_RETURN_IF_ERROR(
-          c->GetAttr("num_bucketized_features", &num_bucketized_features));
+          c->GetAttribute("num_bucketized_features", &num_bucketized_features));
 
       shape_inference::ShapeHandle unused_input;
       shape_inference::DimensionHandle batch_size = c->Dim(c->input(3), 0);
@@ -551,7 +555,8 @@ REGISTER_OP("BoostedTreesTrainingPredict")
                                   c->Dim(node_ids_shape, 0), &batch_size));
 
       int logits_dimension;
-      TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("logits_dimension", &logits_dimension));
       auto logits_shape =
           c->MakeShape({c->Dim(feature_shape, 0), logits_dimension});
       // Partial logits.
@@ -578,7 +583,7 @@ REGISTER_OP("BoostedTreesUpdateEnsemble")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle shape_handle;
       int num_features;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_features", &num_features));
 
       // Feature_ids, should be one for each feature.
       shape_inference::ShapeHandle feature_ids_shape;
@@ -636,9 +641,10 @@ REGISTER_OP("BoostedTreesUpdateEnsembleV2")
       int num_features;
       int logits_dimension;
       int num_groups;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
-      TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
-      TF_RETURN_IF_ERROR(c->GetAttr("num_groups", &num_groups));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_features", &num_features));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("logits_dimension", &logits_dimension));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_groups", &num_groups));
       // num_features was kept for backwards compatibility reasons. It now
       // represents number of groups.
       DCHECK_EQ(num_features, num_groups);
@@ -754,7 +760,7 @@ REGISTER_OP("BoostedTreesMakeQuantileSummaries")
     .Output("summaries: num_features * float")
     .SetShapeFn([](InferenceContext* c) {
       int num_features;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_features", &num_features));
       ShapeHandle example_weights_shape;
       TF_RETURN_IF_ERROR(
           c->WithRank(c->input(num_features), 1, &example_weights_shape));
@@ -777,7 +783,7 @@ REGISTER_OP("BoostedTreesFlushQuantileSummaries")
     .Output("summaries: num_features * float")
     .SetShapeFn([](InferenceContext* c) {
       int num_features;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_features", &num_features));
       for (int i = 0; i < num_features; ++i) {
         // the columns are value, weight, min_rank, max_rank.
         c->set_output(i, c->MakeShape({c->UnknownDim(), 4}));
@@ -791,7 +797,7 @@ REGISTER_OP("BoostedTreesQuantileStreamResourceAddSummaries")
     .Input("summaries: num_features * float")
     .SetShapeFn([](InferenceContext* c) {
       int num_features;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_features", &num_features));
       // resource handle must be a scalar.
       shape_inference::ShapeHandle unused_input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
@@ -831,7 +837,7 @@ REGISTER_OP("BoostedTreesQuantileStreamResourceGetBucketBoundaries")
     .Output("bucket_boundaries: num_features * float")
     .SetShapeFn([](InferenceContext* c) {
       int num_features;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_features", &num_features));
       shape_inference::ShapeHandle unused_input;
       // resource handle must be a scalar.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
@@ -848,7 +854,7 @@ REGISTER_OP("BoostedTreesBucketize")
     .Output("buckets: num_features * int32")
     .SetShapeFn([](InferenceContext* c) {
       int num_features;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_features", &num_features));
       ShapeHandle feature_shape;
       DimensionHandle unused_dim;
       for (int i = 0; i < num_features; i++) {

@@ -164,13 +164,13 @@ Status InstantiationTypeParameters(
     if (!arg.type_attr().empty()) {
       DataType dtype;
       TF_RETURN_IF_ERROR(
-          GetNodeAttr(func_instantiation_attr, arg.type_attr(), &dtype));
+          GetNodeAttribute(func_instantiation_attr, arg.type_attr(), &dtype));
       type_parameters->emplace(arg.type_attr(), dtype);
 
     } else if (!arg.type_list_attr().empty()) {
       std::vector<DataType> dtypes;
-      TF_RETURN_IF_ERROR(
-          GetNodeAttr(func_instantiation_attr, arg.type_list_attr(), &dtypes));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(func_instantiation_attr,
+                                          arg.type_list_attr(), &dtypes));
       int index = 0;
       for (const DataType& dtype : dtypes) {
         type_parameters->emplace(absl::StrCat(arg.type_list_attr(), ":", index),
@@ -334,7 +334,7 @@ Status ReplaceInputWithConst(const NodeDef& input_const, int input_index,
     if (IsArg(node)) {
       auto attrs = AttrSlice(node);
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "index", &index));
       if (index >= input_index) {
         (*node.mutable_attr())["index"].set_i(index - 1);
       }
@@ -383,7 +383,7 @@ Status RemoveFunctionOutputs(const absl::flat_hash_set<int>& remove_outputs,
     if (IsRetval(node)) {
       auto attrs = AttrSlice(node);
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "index", &index));
 
       for (const auto& mapping : *output_mapping) {
         const int from = mapping.first;

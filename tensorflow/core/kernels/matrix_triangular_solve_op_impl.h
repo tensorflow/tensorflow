@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MATRIX_TRIANGULAR_SOLVE_OP_IMPL_H_
 #define TENSORFLOW_CORE_KERNELS_MATRIX_TRIANGULAR_SOLVE_OP_IMPL_H_
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -30,11 +29,12 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_bcast.h"
+#include "third_party/eigen3/Eigen/Core"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
@@ -151,8 +151,8 @@ class BaseMatrixTriangularSolveOp : public OpKernel {
  public:
   explicit BaseMatrixTriangularSolveOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("lower", &lower_));
-    OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
+    OP_REQUIRES_OK(context, context->GetAttribute("lower", &lower_));
+    OP_REQUIRES_OK(context, context->GetAttribute("adjoint", &adjoint_));
   }
 
   ~BaseMatrixTriangularSolveOp() override {}

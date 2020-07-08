@@ -51,8 +51,8 @@ class LookupTableOp : public OpKernel {
                                                    tensorflow::TensorShape({2}),
                                                    &table_handle_, nullptr));
     }
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("use_node_name_sharing", &use_node_name_sharing_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_node_name_sharing",
+                                          &use_node_name_sharing_));
   }
 
   // ctx is not owned by this function.

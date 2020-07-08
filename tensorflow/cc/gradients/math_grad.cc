@@ -15,12 +15,11 @@ limitations under the License.
 
 #include <cmath>
 
+#include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/math_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-
-#include "tensorflow/cc/framework/grad_op_registry.h"
-#include "tensorflow/cc/framework/gradients.h"
 
 namespace tensorflow {
 namespace ops {
@@ -497,25 +496,20 @@ Status PowGrad(const Scope& scope, const Operation& op,
   auto grad = grad_inputs[0];
   // grad * y * pow(x, y - 1)
   auto one = Cast(scope, Const(scope, 1.0), y.type());
-  auto gx_1 = Mul(scope,
-                  Mul(scope, grad, y),
-                  Pow(scope, x, Sub(scope, y, one)));
+  auto gx_1 =
+      Mul(scope, Mul(scope, grad, y), Pow(scope, x, Sub(scope, y, one)));
   // Avoid false singularity at x = 0
   DataType x_dtype = x.type();
   auto zero = Cast(scope, Const(scope, 0.0), x_dtype);
   if (x_dtype == DT_COMPLEX64 || x_dtype == DT_COMPLEX128) {
     // real(x) < 0 is fine for the complex case
-    auto log_x = Where3(scope,
-                        NotEqual(scope, x, zero),
-                        Log(scope, x),
+    auto log_x = Where3(scope, NotEqual(scope, x, zero), Log(scope, x),
                         ZerosLike(scope, x));
     auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
     return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
   } else {
     // There's no sensible real value to return if x < 0, so return 0
-    auto log_x = Where3(scope,
-                        Greater(scope, x, zero),
-                        Log(scope, x),
+    auto log_x = Where3(scope, Greater(scope, x, zero), Log(scope, x),
                         ZerosLike(scope, x));
     auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
     return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
@@ -753,13 +747,12 @@ Status ErfGrad(const Scope& scope, const Operation& op,
                const std::vector<Output>& grad_inputs,
                std::vector<Output>* grad_outputs) {
   auto grad = grad_inputs[0];
-  auto two_over_root_pi = Cast(scope, Const(scope, 2 / std::sqrt(M_PI)),
-                               grad.type());
+  auto two_over_root_pi =
+      Cast(scope, Const(scope, 2 / std::sqrt(M_PI)), grad.type());
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto x = ConjugateHelper(grad_scope, op.input(0));
   // grad * 2/sqrt(pi) * exp(-x**2)
-  auto dx = Mul(grad_scope,
-                Mul(grad_scope, grad, two_over_root_pi),
+  auto dx = Mul(grad_scope, Mul(grad_scope, grad, two_over_root_pi),
                 Exp(grad_scope, Neg(grad_scope, Square(grad_scope, x))));
   grad_outputs->push_back(dx);
   return grad_scope.status();
@@ -942,9 +935,9 @@ Status ProdGrad(const Scope& scope, const Operation& op,
   // [3]
   auto rank = Rank(cpu_scope, op.input(0));
 
-
   // Normalize any negative indices in the reduction_axes to positive values.
-  auto reduction_indices_pos = Mod(cpu_scope, Add(cpu_scope, reduction_indices, rank), rank);
+  auto reduction_indices_pos =
+      Mod(cpu_scope, Add(cpu_scope, reduction_indices, rank), rank);
 
   // [1]
   auto reduced = Cast(cpu_scope, reduction_indices_pos, DataType::DT_INT32);
@@ -1031,7 +1024,7 @@ Status ProdGrad(const Scope& scope, const Operation& op,
   // ]
   auto y = Reshape(scope, Mul(scope, left, right), permuted_shape);
 
-  // out = 
+  // out =
   // [
   //   [
   //     [ 35.,  48.],
@@ -1044,8 +1037,8 @@ Status ProdGrad(const Scope& scope, const Operation& op,
   //     [ 0.,  30.]
   //   ]
   // ]
-  auto out =
-      Mul(scope, grad_tiled, Transpose(scope, y, InvertPermutation(scope, perm)));
+  auto out = Mul(scope, grad_tiled,
+                 Transpose(scope, y, InvertPermutation(scope, perm)));
 
   grad_outputs->push_back(Reshape(scope, out, input_shape));
 
@@ -1119,8 +1112,10 @@ Status MatMulGradCommon(const Scope& scope, const Operation& op,
 
   bool ta;
   bool tb;
-  TF_RETURN_IF_ERROR(GetNodeAttr(product.node()->attrs(), attr_adj_x, &ta));
-  TF_RETURN_IF_ERROR(GetNodeAttr(product.node()->attrs(), attr_adj_y, &tb));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttribute(product.node()->attrs(), attr_adj_x, &ta));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttribute(product.node()->attrs(), attr_adj_y, &tb));
 
   if (!ta && !tb) {
     return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, b, true, a,

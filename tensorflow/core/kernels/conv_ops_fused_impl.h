@@ -57,13 +57,13 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -669,7 +669,8 @@ class FusedConv2DOp : public OpKernel {
   explicit FusedConv2DOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, InitConv2DParameters(context, &params_));
 
-    OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
 

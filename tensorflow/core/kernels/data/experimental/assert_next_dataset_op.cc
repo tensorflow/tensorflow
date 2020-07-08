@@ -143,8 +143,8 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
 
 AssertNextDatasetOp::AssertNextDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
 }
 
 void AssertNextDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,

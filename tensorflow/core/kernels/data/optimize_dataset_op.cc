@@ -42,8 +42,8 @@ constexpr char kOptimizerConfigs[] = "optimizer_configs";
 
 OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx,
-                 ctx->GetAttr(kOptimizationConfigs, &optimization_configs_));
+  OP_REQUIRES_OK(
+      ctx, ctx->GetAttribute(kOptimizationConfigs, &optimization_configs_));
 }
 
 void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,

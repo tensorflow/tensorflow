@@ -42,8 +42,8 @@ constexpr std::array<DataType, 5> kScanOpTypes = {
 class ScanOp : public XlaOpKernel {
  public:
   ScanOp(OpKernelConstruction* ctx, bool sum) : XlaOpKernel(ctx), sum_(sum) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("reverse", &reverse_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("exclusive", &exclusive_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("reverse", &reverse_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("exclusive", &exclusive_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

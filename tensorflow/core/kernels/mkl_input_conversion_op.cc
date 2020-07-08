@@ -17,21 +17,21 @@ limitations under the License.
 
 #include <algorithm>
 #include <vector>
+
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/mkl_tfconv_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/util/tensor_format.h"
-
-#include "mkldnn.hpp"
-#include "tensorflow/core/kernels/mkl_tfconv_op.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -74,8 +74,9 @@ class MklInputConversionOp : public OpKernel {
  public:
   explicit MklInputConversionOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
-    OP_REQUIRES_OK(context, context->GetAttr("T", &op_data_type));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("data_format", &data_format_str));
+    OP_REQUIRES_OK(context, context->GetAttribute("T", &op_data_type));
     has_avx512f_ = port::TestCPUFeature(port::CPUFeature::AVX512F);
   }
 

@@ -394,18 +394,19 @@ void MasterSession::ReffedClientGraph::TrackFeedsAndFetches(
       // (client-terminated) should be tracked.  Other send/recv nodes
       // are for transferring data between partitions / memory spaces.
       bool client_terminated;
-      TF_CHECK_OK(GetNodeAttr(ndef, "client_terminated", &client_terminated));
+      TF_CHECK_OK(
+          GetNodeAttribute(ndef, "client_terminated", &client_terminated));
       if (client_terminated) {
         string name;
-        TF_CHECK_OK(GetNodeAttr(ndef, "tensor_name", &name));
+        TF_CHECK_OK(GetNodeAttribute(ndef, "tensor_name", &name));
         string send_device;
-        TF_CHECK_OK(GetNodeAttr(ndef, "send_device", &send_device));
+        TF_CHECK_OK(GetNodeAttribute(ndef, "send_device", &send_device));
         string recv_device;
-        TF_CHECK_OK(GetNodeAttr(ndef, "recv_device", &recv_device));
+        TF_CHECK_OK(GetNodeAttribute(ndef, "recv_device", &recv_device));
         uint64 send_device_incarnation;
-        TF_CHECK_OK(
-            GetNodeAttr(ndef, "send_device_incarnation",
-                        reinterpret_cast<int64*>(&send_device_incarnation)));
+        TF_CHECK_OK(GetNodeAttribute(
+            ndef, "send_device_incarnation",
+            reinterpret_cast<int64*>(&send_device_incarnation)));
         const string& key =
             Rendezvous::CreateKey(send_device, send_device_incarnation,
                                   recv_device, name, FrameAndIter(0, 0));

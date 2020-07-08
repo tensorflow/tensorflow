@@ -216,8 +216,8 @@ class XRTAllocateUninitializedOp : public OpKernel {
  public:
   explicit XRTAllocateUninitializedOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &tf_shape_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("shape", &tf_shape_));
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, tf_shape_, &xla_shape_));
   }
   ~XRTAllocateUninitializedOp() override = default;
@@ -262,12 +262,12 @@ class XRTAllocateFromTensorOp : public OpKernel {
  public:
   explicit XRTAllocateFromTensorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     bool make_tuple = false;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &tf_shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("make_tuple", &make_tuple));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("shapes", &tf_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtypes", &dtypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("make_tuple", &make_tuple));
     std::vector<int64> minor_to_major;
     if (ctx->HasAttr("layouts")) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("layouts", &minor_to_major));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("layouts", &minor_to_major));
     }
     OP_REQUIRES(
         ctx, tf_shapes_.size() == dtypes_.size(),
@@ -534,8 +534,8 @@ template <class DeviceAccessor>
 class XRTReadToTensorOp : public OpKernel {
  public:
   explicit XRTReadToTensorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("release_handles", &discard_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("release_handles", &discard_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtypes", &dtypes_));
   }
   ~XRTReadToTensorOp() override = default;
   XRTReadToTensorOp(const XRTReadToTensorOp&) = delete;

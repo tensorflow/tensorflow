@@ -177,7 +177,7 @@ void VerifyRegularFanoutMatch(const utils::NodeView* node, int port,
 
 void VerifyDataFormatAttributeMatch(const utils::NodeView* node,
                                     absl::string_view attr_value) {
-  const auto* attr = node->GetAttr("data_format");
+  const auto* attr = node->GetAttribute("data_format");
   ASSERT_NE(attr, nullptr);
   EXPECT_EQ(attr->s(), attr_value);
 }

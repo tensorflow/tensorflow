@@ -1283,9 +1283,9 @@ class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
     // Bypass Bitcast whose source type and destination type are equal.
     AttrSlice attrs(*node);
     DataType input_type;
-    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &input_type));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "T", &input_type));
     DataType output_type;
-    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "type", &output_type));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "type", &output_type));
     if ((input_type == output_type) && !IsInPreserveSet(*node)) {
       *simplified_node_name = node->input(0);
       return Status::OK();
@@ -1299,7 +1299,8 @@ class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
     if (IsBitcast(*operand) && !IsInPreserveSet(*operand)) {
       AttrSlice operand_attrs(*operand);
       DataType operand_input_type;
-      TF_RETURN_IF_ERROR(GetNodeAttr(operand_attrs, "T", &operand_input_type));
+      TF_RETURN_IF_ERROR(
+          GetNodeAttribute(operand_attrs, "T", &operand_input_type));
       // Bitcast(Bitcast(x, type1), type2) => Bitcast(x, type2)
       bitcast->set_input(0, operand->input(0));
       SetDataTypeToAttr(operand_input_type, "T", bitcast);
@@ -1331,9 +1332,9 @@ class RemoveRedundantCastStage : public ArithmeticOptimizerStage {
     // Bypass Cast whose source type and destination type are equal.
     AttrSlice attrs(*node);
     DataType input_type;
-    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "SrcT", &input_type));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "SrcT", &input_type));
     DataType output_type;
-    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "DstT", &output_type));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "DstT", &output_type));
     if (input_type == output_type) {
       *simplified_node_name = node->input(0);
     }
@@ -3552,7 +3553,8 @@ class SimplifyEmbeddingLookupStage : public ArithmeticOptimizerStage {
       return Status::OK();
 
     DataType unique_element_type;
-    TF_RETURN_IF_ERROR(GetNodeAttr(*unique_node, "T", &unique_element_type));
+    TF_RETURN_IF_ERROR(
+        GetNodeAttribute(*unique_node, "T", &unique_element_type));
 
     // Input 1 (indices) of the reduction node must be output 1 of the unique
     // node.
@@ -3648,7 +3650,7 @@ class RemoveCastIntoSegmentReductionStage : public ArithmeticOptimizerStage {
  private:
   bool IsCastFromSupportedType(const NodeDef& node, DataType* out_input_type) {
     if (!IsCast(node)) return false;
-    if (!GetNodeAttr(node, "SrcT", out_input_type).ok()) return false;
+    if (!GetNodeAttribute(node, "SrcT", out_input_type).ok()) return false;
     return *out_input_type == DT_INT32 || *out_input_type == DT_INT64;
   }
 };

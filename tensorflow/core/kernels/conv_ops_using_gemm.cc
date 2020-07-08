@@ -432,9 +432,9 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
  public:
   explicit Conv2DUsingGemmOp(OpKernelConstruction* context)
       : BinaryOp<T>(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &strides_));
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
@@ -449,7 +449,7 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
         context, stride_n == 1 && stride_c == 1,
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
   }
 
   void Compute(OpKernelContext* context) override {

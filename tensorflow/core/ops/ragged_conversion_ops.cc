@@ -60,7 +60,7 @@ tensorflow::Status ValidateRowPartitionTypesAndShapes(
 
   int num_row_partition_tensors;
   TF_RETURN_IF_ERROR(
-      c->GetAttr("num_row_partition_tensors", &num_row_partition_tensors));
+      c->GetAttribute("num_row_partition_tensors", &num_row_partition_tensors));
   if (num_row_partition_tensors != row_partition_types.size()) {
     return InvalidArgument(
         "Number of row partition tensors (", num_row_partition_tensors,
@@ -148,7 +148,7 @@ REGISTER_OP("RaggedTensorToTensor")
 
 Status RaggedTensorToSparseShapeFn(InferenceContext* c) {
   int64 num_splits;
-  TF_RETURN_IF_ERROR(c->GetAttr<int64>("RAGGED_RANK", &num_splits));
+  TF_RETURN_IF_ERROR(c->GetAttribute<int64>("RAGGED_RANK", &num_splits));
   // TODO(b/112274756): Allow ragged_rank to be 0.
   if (num_splits < 1) {
     return errors::InvalidArgument("Requires RAGGED_RANK>0");
@@ -177,9 +177,9 @@ Status RaggedTensorToSparseShapeFn(InferenceContext* c) {
 
 Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
   int64 num_splits;
-  TF_RETURN_IF_ERROR(c->GetAttr<int64>("RAGGED_RANK", &num_splits));
+  TF_RETURN_IF_ERROR(c->GetAttribute<int64>("RAGGED_RANK", &num_splits));
   bool batched;
-  TF_RETURN_IF_ERROR(c->GetAttr<bool>("batched_input", &batched));
+  TF_RETURN_IF_ERROR(c->GetAttribute<bool>("batched_input", &batched));
   shape_inference::ShapeHandle rt_dense_values = c->input(num_splits);
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(rt_dense_values, 1, &rt_dense_values));
   for (int64 i = 0; i < num_splits; ++i) {
@@ -204,10 +204,10 @@ Status RaggedTensorToVariantShapeFn(InferenceContext* c) {
 Status RaggedTensorFromVariantShapeFn(InferenceContext* c) {
   int64 input_ragged_rank;
   TF_RETURN_IF_ERROR(
-      c->GetAttr<int64>("input_ragged_rank", &input_ragged_rank));
+      c->GetAttribute<int64>("input_ragged_rank", &input_ragged_rank));
   int64 output_ragged_rank;
   TF_RETURN_IF_ERROR(
-      c->GetAttr<int64>("output_ragged_rank", &output_ragged_rank));
+      c->GetAttribute<int64>("output_ragged_rank", &output_ragged_rank));
   shape_inference::ShapeHandle encoded_ragged = c->input(0);
   if (c->RankKnown(encoded_ragged) && input_ragged_rank >= 0) {
     shape_inference::ShapeHandle unused;

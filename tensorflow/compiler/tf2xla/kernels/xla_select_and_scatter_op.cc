@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/while_op.h"
-
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -31,8 +30,10 @@ class XlaSelectAndScatterOp : public XlaOpKernel {
  public:
   explicit XlaSelectAndScatterOp(OpKernelConstruction* context)
       : XlaOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("select", &select_computation_));
-    OP_REQUIRES_OK(context, context->GetAttr("scatter", &scatter_computation_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("select", &select_computation_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("scatter", &scatter_computation_));
   }
 
   void Compile(XlaOpKernelContext* context) override {

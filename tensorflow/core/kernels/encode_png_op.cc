@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 
 #include <memory>
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -32,7 +33,8 @@ namespace tensorflow {
 class EncodePngOp : public OpKernel {
  public:
   explicit EncodePngOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("compression", &compression_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("compression", &compression_));
     OP_REQUIRES(context, -1 <= compression_ && compression_ <= 9,
                 errors::InvalidArgument("compression should be in [-1,9], got ",
                                         compression_));

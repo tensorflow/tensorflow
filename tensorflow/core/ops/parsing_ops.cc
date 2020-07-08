@@ -122,7 +122,7 @@ REGISTER_OP("DecodePaddedRaw")
       TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &fixed_length));
 
       DataType out_type;
-      TF_RETURN_IF_ERROR(c->GetAttr("out_type", &out_type));
+      TF_RETURN_IF_ERROR(c->GetAttribute("out_type", &out_type));
 
       int32 data_type_size = DataTypeSize(out_type);
 

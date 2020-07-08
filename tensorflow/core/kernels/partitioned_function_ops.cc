@@ -45,12 +45,14 @@ PartitionedCallOp::PartitionedCallOp(OpKernelConstruction* ctx)
       func_(new NameAttrList),
       config_proto_(new ConfigProto),
       shared_rendezvous_(false) {
-  OP_REQUIRES_OK(
-      ctx, ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, func_.get()));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(FunctionLibraryDefinition::kFuncAttr,
+                                        func_.get()));
   string deprecated_config_serialized;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &deprecated_config_serialized));
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttribute("config", &deprecated_config_serialized));
   string config_proto_serialized;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("config_proto", &config_proto_serialized));
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttribute("config_proto", &config_proto_serialized));
   OP_REQUIRES(
       ctx,
       deprecated_config_serialized.empty() || config_proto_serialized.empty(),
@@ -70,7 +72,7 @@ PartitionedCallOp::PartitionedCallOp(OpKernelConstruction* ctx)
         errors::InvalidArgument("Unable to parse config_proto string as "
                                 "tensorflow::ConfigProto proto."));
   }
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("executor_type", &executor_type_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("executor_type", &executor_type_));
 }
 
 PartitionedCallOp::~PartitionedCallOp() {

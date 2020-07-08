@@ -41,10 +41,10 @@ TEST(PerformStaticShapeInferenceBeforeEncapsulationTest, Basic) {
 
   // Check that "add" node now has _xla_inferred_shapes attr.
   auto node_index = g.BuildNodeNameIndex();
-  Node *add_node = node_index["add"];
+  Node* add_node = node_index["add"];
   std::vector<PartialTensorShape> output_shapes;
-  TF_CHECK_OK(GetNodeAttr(add_node->attrs(), kXlaInferredShapesAttrName,
-                          &output_shapes));
+  TF_CHECK_OK(GetNodeAttribute(add_node->attrs(), kXlaInferredShapesAttrName,
+                               &output_shapes));
   EXPECT_EQ(output_shapes.size(), 1);
   TensorShapeProto shape_proto;
   output_shapes[0].AsProto(&shape_proto);

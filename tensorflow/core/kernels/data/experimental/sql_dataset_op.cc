@@ -31,8 +31,8 @@ namespace {
 class SqlDatasetOp : public DatasetOpKernel {
  public:
   explicit SqlDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
     for (const DataType& dt : output_types_) {
       OP_REQUIRES(ctx,
                   dt == DT_STRING || dt == DT_INT8 || dt == DT_INT16 ||

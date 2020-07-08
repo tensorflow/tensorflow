@@ -527,8 +527,8 @@ Status AddControlLoop(const PartitionOptions& opts, Graph* g, const Node* src,
   const string& device_name = edge->dst()->assigned_device_name();
   const string& frame_name = src_info.frame_name;
   int parallel_iterations;
-  status = GetNodeAttr(src_info.frame->attrs(), "parallel_iterations",
-                       &parallel_iterations);
+  status = GetNodeAttribute(src_info.frame->attrs(), "parallel_iterations",
+                            &parallel_iterations);
   if (!status.ok()) return status;
 
   // The names of the nodes to be added.
@@ -831,7 +831,7 @@ Status TopologicalSortNodesWithTimePriority(
           .push_back(ndef);
     }
     int64 start_time;
-    TF_RETURN_IF_ERROR(GetNodeAttr(*ndef, "_start_time", &start_time));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(*ndef, "_start_time", &start_time));
     node_to_start_time[ndef] = start_time;
     inputs_needed[ndef] = ndef->input_size();
     if (ndef->input_size() == 0) {
@@ -956,7 +956,7 @@ void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
     return;
   }
   int64 incarnation = PartitionOptions::kIllegalIncarnation;
-  if (!TryGetNodeAttr(*ndef, "send_device_incarnation", &incarnation) ||
+  if (!TryGetNodeAttribute(*ndef, "send_device_incarnation", &incarnation) ||
       (incarnation == PartitionOptions::kIllegalIncarnation)) {
     incarnation = opts.get_incarnation(send_device);
     SetAttrValue(incarnation,
@@ -1020,7 +1020,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     dst_def->clear_input();  // Inputs are filled below
     if (opts.need_to_record_start_times) {
       int64 start_time;
-      status = GetNodeAttr(*dst_def, "_start_time", &start_time);
+      status = GetNodeAttribute(*dst_def, "_start_time", &start_time);
       if (errors::IsNotFound(status)) {
         start_time = opts.start_times[dst->id()].value();
         AddNodeAttr("_start_time", start_time, dst_def);
@@ -1083,14 +1083,16 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       int64 send_start_time = 0;
       int64 recv_start_time = 0;
       if (opts.scheduling_for_recvs) {
-        status = GetNodeAttr(src->attrs(), "_start_time", &send_start_time);
+        status =
+            GetNodeAttribute(src->attrs(), "_start_time", &send_start_time);
         if (errors::IsNotFound(status) && opts.need_to_record_start_times) {
           send_start_time = opts.start_times[src->id()].value();
         } else if (!status.ok()) {
           return status;
         }
 
-        status = GetNodeAttr(dst->attrs(), "_start_time", &recv_start_time);
+        status =
+            GetNodeAttribute(dst->attrs(), "_start_time", &recv_start_time);
         if (errors::IsNotFound(status) && opts.need_to_record_start_times) {
           recv_start_time = opts.start_times[dst->id()].value();
         } else if (!status.ok()) {

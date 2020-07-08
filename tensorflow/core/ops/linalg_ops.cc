@@ -169,7 +169,7 @@ Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(n), &e_shape));
   c->set_output(0, e_shape);
   bool compute_v;
-  TF_RETURN_IF_ERROR(c->GetAttr("compute_v", &compute_v));
+  TF_RETURN_IF_ERROR(c->GetAttribute("compute_v", &compute_v));
   if (compute_v) {
     ShapeHandle v_shape;
     TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(n, n), &v_shape));
@@ -221,7 +221,7 @@ Status QrShapeFn(InferenceContext* c) {
   ShapeHandle q_shape;
   ShapeHandle r_shape;
   bool full_matrices;
-  TF_RETURN_IF_ERROR(c->GetAttr("full_matrices", &full_matrices));
+  TF_RETURN_IF_ERROR(c->GetAttribute("full_matrices", &full_matrices));
   if (full_matrices) {
     TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, m), &q_shape));
     TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(m, n), &r_shape));
@@ -253,12 +253,12 @@ Status SvdShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(p), &e_shape));
   c->set_output(0, e_shape);
   bool compute_uv;
-  TF_RETURN_IF_ERROR(c->GetAttr("compute_uv", &compute_uv));
+  TF_RETURN_IF_ERROR(c->GetAttribute("compute_uv", &compute_uv));
   if (compute_uv) {
     ShapeHandle u_shape;
     ShapeHandle v_shape;
     bool full_matrices;
-    TF_RETURN_IF_ERROR(c->GetAttr("full_matrices", &full_matrices));
+    TF_RETURN_IF_ERROR(c->GetAttribute("full_matrices", &full_matrices));
     if (full_matrices) {
       TF_RETURN_IF_ERROR(
           c->Concatenate(batch_shape, c->Matrix(m, m), &u_shape));

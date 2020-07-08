@@ -53,7 +53,7 @@ class DequantizeOp : public OpKernel {
  public:
   explicit DequantizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string mode_string;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("mode", &mode_string));
     OP_REQUIRES(
         ctx,
         (ctx->output_type(0) == DT_FLOAT || ctx->output_type(0) == DT_BFLOAT16),
@@ -85,8 +85,8 @@ class DequantizeOp : public OpKernel {
     } else if (mode_string == "SCALED") {
       mode_ = QUANTIZE_MODE_SCALED;
     }
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("narrow_range", &narrow_range_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("axis", &axis_));
   }
 
   void Compute(OpKernelContext* ctx) override {

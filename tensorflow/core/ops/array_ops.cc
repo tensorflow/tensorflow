@@ -40,7 +40,7 @@ namespace {
 
 Status GetAxisForPackAndUnpack(InferenceContext* c, int32 rank_after_pack,
                                int32* axis) {
-  TF_RETURN_IF_ERROR(c->GetAttr("axis", axis));
+  TF_RETURN_IF_ERROR(c->GetAttribute("axis", axis));
   if (*axis < -1 * rank_after_pack || *axis >= rank_after_pack) {
     return errors::InvalidArgument("Invalid axis: ", *axis, "; must be in [",
                                    -1 * rank_after_pack, ",", rank_after_pack,
@@ -290,7 +290,7 @@ REGISTER_OP("ParallelConcat")
     .SetShapeFn([](InferenceContext* c) {
       // Validate that the shape attr is correct.
       PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shape", &shape));
       ShapeHandle passed_shape;
       TF_RETURN_IF_ERROR(
           c->MakeShapeFromPartialTensorShape(shape, &passed_shape));
@@ -704,7 +704,7 @@ REGISTER_OP("Const")
     .Attr("dtype: type")
     .SetShapeFn([](InferenceContext* c) {
       const TensorProto* proto = nullptr;
-      TF_RETURN_IF_ERROR(c->GetAttr("value", &proto));
+      TF_RETURN_IF_ERROR(c->GetAttribute("value", &proto));
       TF_RETURN_IF_ERROR(TensorShape::IsValidShape(proto->tensor_shape()));
       TensorShape shape(proto->tensor_shape());
       std::vector<DimensionHandle> dims;
@@ -1080,7 +1080,7 @@ REGISTER_OP("Fill")
     .Attr("index_type: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       DataType index_type = DT_INT32;
-      Status s = c->GetAttr("index_type", &index_type);
+      Status s = c->GetAttribute("index_type", &index_type);
       if (!s.ok() && s.code() != error::NOT_FOUND) {
         return s;
       }
@@ -1218,7 +1218,7 @@ REGISTER_OP("GatherV2")
 
       // Note, batch_dims can be negative.
       int32 batch_dims;
-      TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
+      TF_RETURN_IF_ERROR(c->GetAttribute("batch_dims", &batch_dims));
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(
           params_shape, batch_dims < 0 ? -batch_dims : batch_dims + 1,
           &unused));
@@ -1536,7 +1536,7 @@ REGISTER_OP("EnsureShape")
     .SetShapeFn([](InferenceContext* c) {
       // Merges desired shape and statically known shape of input
       PartialTensorShape desired_shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &desired_shape));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shape", &desired_shape));
 
       int rank = desired_shape.dims();
       ShapeHandle input_shape_handle;
@@ -1567,9 +1567,9 @@ REGISTER_OP("ReverseSequence")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &seq_lens_shape));
 
       int64 seq_dim;
-      TF_RETURN_IF_ERROR(c->GetAttr("seq_dim", &seq_dim));
+      TF_RETURN_IF_ERROR(c->GetAttribute("seq_dim", &seq_dim));
       int64 batch_dim;
-      TF_RETURN_IF_ERROR(c->GetAttr("batch_dim", &batch_dim));
+      TF_RETURN_IF_ERROR(c->GetAttribute("batch_dim", &batch_dim));
 
       if (!c->RankKnown(input)) {
         return shape_inference::UnknownShape(c);
@@ -1678,11 +1678,12 @@ REGISTER_OP("StridedSlice")
 
       int32 begin_mask, end_mask, ellipsis_mask, new_axis_mask,
           shrink_axis_mask;
-      TF_RETURN_IF_ERROR(c->GetAttr("begin_mask", &begin_mask));
-      TF_RETURN_IF_ERROR(c->GetAttr("end_mask", &end_mask));
-      TF_RETURN_IF_ERROR(c->GetAttr("ellipsis_mask", &ellipsis_mask));
-      TF_RETURN_IF_ERROR(c->GetAttr("new_axis_mask", &new_axis_mask));
-      TF_RETURN_IF_ERROR(c->GetAttr("shrink_axis_mask", &shrink_axis_mask));
+      TF_RETURN_IF_ERROR(c->GetAttribute("begin_mask", &begin_mask));
+      TF_RETURN_IF_ERROR(c->GetAttribute("end_mask", &end_mask));
+      TF_RETURN_IF_ERROR(c->GetAttribute("ellipsis_mask", &ellipsis_mask));
+      TF_RETURN_IF_ERROR(c->GetAttribute("new_axis_mask", &new_axis_mask));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("shrink_axis_mask", &shrink_axis_mask));
 
       const Tensor* begin_value = c->input_tensor(1);
       const Tensor* end_value = c->input_tensor(2);
@@ -1975,7 +1976,7 @@ REGISTER_OP("Placeholder")
     .Attr("shape: shape = { unknown_rank: true }")
     .SetShapeFn([](InferenceContext* c) {
       PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shape", &shape));
 
       // Placeholder has legacy behavior where we cannot tell the difference
       // between a scalar shape attribute and 'unknown shape'.  So if the shape
@@ -2009,7 +2010,7 @@ REGISTER_OP("PlaceholderWithDefault")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       PartialTensorShape shape;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shape", &shape));
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shape, &out));
 
@@ -2088,7 +2089,7 @@ REGISTER_OP("Squeeze")
 
       // Validate and wrap squeeze dimensions.
       std::vector<int32> squeeze_dims;
-      TF_RETURN_IF_ERROR(c->GetAttr("squeeze_dims", &squeeze_dims));
+      TF_RETURN_IF_ERROR(c->GetAttribute("squeeze_dims", &squeeze_dims));
       for (int i = 0; i < squeeze_dims.size(); ++i) {
         if (squeeze_dims[i] < -input_rank || squeeze_dims[i] >= input_rank) {
           return errors::InvalidArgument("squeeze_dims[", i, "] not in [",
@@ -2361,7 +2362,7 @@ REGISTER_OP("SpaceToBatch")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
 
       int32 block_size;
-      TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
+      TF_RETURN_IF_ERROR(c->GetAttribute("block_size", &block_size));
 
       Tensor block_shape(tensorflow::DT_INT64, TensorShape({2}));
       auto block_shape_vec = block_shape.vec<int64>();
@@ -2401,7 +2402,7 @@ REGISTER_OP("BatchToSpace")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
 
       int32 block_size;
-      TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
+      TF_RETURN_IF_ERROR(c->GetAttribute("block_size", &block_size));
 
       Tensor block_shape(tensorflow::DT_INT64, TensorShape({2}));
       auto block_shape_vec = block_shape.vec<int64>();
@@ -2423,7 +2424,7 @@ REGISTER_OP("SpaceToDepth")
     // TODO(pauldonnelly): Implement GPU kernels for NCHW_VECT_C.
     .SetShapeFn([](InferenceContext* c) {
       string data_format_str;
-      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+      TF_RETURN_IF_ERROR(c->GetAttribute("data_format", &data_format_str));
       TensorFormat data_format;
       FormatFromString(data_format_str, &data_format);
 
@@ -2434,7 +2435,7 @@ REGISTER_OP("SpaceToDepth")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), dims, &input));
 
       int32 block_size;
-      TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
+      TF_RETURN_IF_ERROR(c->GetAttribute("block_size", &block_size));
 
       DimensionHandle batch_size =
           c->Dim(input, GetTensorDimIndex<num_spatial_dims>(data_format, 'N'));
@@ -2477,7 +2478,7 @@ REGISTER_OP("DepthToSpace")
     // TODO(pauldonnelly): Implement GPU kernels for NCHW and NCHW_VECT_C.
     .SetShapeFn([](InferenceContext* c) {
       string data_format_str;
-      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+      TF_RETURN_IF_ERROR(c->GetAttribute("data_format", &data_format_str));
       TensorFormat data_format;
       FormatFromString(data_format_str, &data_format);
 
@@ -2489,7 +2490,7 @@ REGISTER_OP("DepthToSpace")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), dims, &input));
 
       int32 block_size;
-      TF_RETURN_IF_ERROR(c->GetAttr("block_size", &block_size));
+      TF_RETURN_IF_ERROR(c->GetAttribute("block_size", &block_size));
 
       DimensionHandle batch_size =
           c->Dim(input, GetTensorDimIndex<num_spatial_dims>(data_format, 'N'));
@@ -2536,7 +2537,7 @@ REGISTER_OP("ExtractImagePatches")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
 
       std::vector<int32> ksizes;
-      TF_RETURN_IF_ERROR(c->GetAttr("ksizes", &ksizes));
+      TF_RETURN_IF_ERROR(c->GetAttribute("ksizes", &ksizes));
       if (ksizes.size() != 4) {
         return errors::InvalidArgument(
             "ExtractImagePatches requires the ksizes attribute to contain 4 "
@@ -2545,7 +2546,7 @@ REGISTER_OP("ExtractImagePatches")
       }
 
       std::vector<int32> strides;
-      TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+      TF_RETURN_IF_ERROR(c->GetAttribute("strides", &strides));
       if (strides.size() != 4) {
         return errors::InvalidArgument(
             "ExtractImagePatches requires the stride attribute to contain 4 "
@@ -2554,7 +2555,7 @@ REGISTER_OP("ExtractImagePatches")
       }
 
       std::vector<int32> rates;
-      TF_RETURN_IF_ERROR(c->GetAttr("rates", &rates));
+      TF_RETURN_IF_ERROR(c->GetAttribute("rates", &rates));
       if (rates.size() != 4) {
         return errors::InvalidArgument(
             "ExtractImagePatches requires the rates attribute to contain 4 "
@@ -2592,7 +2593,7 @@ REGISTER_OP("ExtractImagePatches")
       auto in_cols = c->Value(in_cols_dim);
 
       Padding padding;
-      TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
+      TF_RETURN_IF_ERROR(c->GetAttribute("padding", &padding));
 
       int64 output_rows, output_cols;
       int64 padding_before, padding_after;
@@ -2626,7 +2627,7 @@ REGISTER_OP("ExtractVolumePatches")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 5, &input_shape));
 
       std::vector<int32> ksizes;
-      TF_RETURN_IF_ERROR(c->GetAttr("ksizes", &ksizes));
+      TF_RETURN_IF_ERROR(c->GetAttribute("ksizes", &ksizes));
       if (ksizes.size() != 5) {
         return errors::InvalidArgument(
             "ExtractVolumePatches requires the ksizes attribute to contain 5 "
@@ -2635,7 +2636,7 @@ REGISTER_OP("ExtractVolumePatches")
       }
 
       std::vector<int32> strides;
-      TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+      TF_RETURN_IF_ERROR(c->GetAttribute("strides", &strides));
       if (strides.size() != 5) {
         return errors::InvalidArgument(
             "ExtractVolumePatches requires the stride attribute to contain 5 "
@@ -2648,7 +2649,7 @@ REGISTER_OP("ExtractVolumePatches")
       // See extract_volume_patches_op.cc for why rates are disabled now.
 
       std::vector<int32> rates;
-      TF_RETURN_IF_ERROR(c->GetAttr("rates", &rates));
+      TF_RETURN_IF_ERROR(c->GetAttribute("rates", &rates));
       if (rates.size() != 5) {
         return errors::InvalidArgument(
             "ExtractVolumePatches requires the rates attribute to contain 5 "
@@ -2698,7 +2699,7 @@ REGISTER_OP("ExtractVolumePatches")
       auto in_cols = c->Value(in_cols_dim);
 
       Padding padding;
-      TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
+      TF_RETURN_IF_ERROR(c->GetAttribute("padding", &padding));
 
       int64 output_planes, output_rows, output_cols;
       int64 padding_before, padding_after;
@@ -2731,7 +2732,7 @@ REGISTER_OP("OneHot")
     .Attr("TI: {uint8, int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       int32 axis;
-      TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
+      TF_RETURN_IF_ERROR(c->GetAttribute("axis", &axis));
       if (axis < -1) return errors::InvalidArgument("axis must be >= -1");
 
       DimensionHandle depth;
@@ -2786,7 +2787,7 @@ REGISTER_OP("QuantizeAndDequantizeV2")
     .Attr("axis: int = -1")
     .SetShapeFn([](InferenceContext* c) {
       int axis;
-      TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
+      TF_RETURN_IF_ERROR(c->GetAttribute("axis", &axis));
       const int minmax_rank = (axis == -1) ? 0 : 1;
       ShapeHandle minmax;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), minmax_rank, &minmax));
@@ -2815,7 +2816,7 @@ REGISTER_OP("QuantizeAndDequantizeV3")
     .Attr("axis: int = -1")
     .SetShapeFn([](InferenceContext* c) {
       int axis;
-      TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
+      TF_RETURN_IF_ERROR(c->GetAttribute("axis", &axis));
       const int minmax_rank = (axis == -1) ? 0 : 1;
       ShapeHandle minmax;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), minmax_rank, &minmax));
@@ -2850,7 +2851,7 @@ REGISTER_OP("QuantizeV2")
     .Attr("ensure_minimum_range: float = 0.01")
     .SetShapeFn([](InferenceContext* c) {
       int axis = -1;
-      Status s = c->GetAttr("axis", &axis);
+      Status s = c->GetAttribute("axis", &axis);
       if (!s.ok() && s.code() != error::NOT_FOUND) {
         return s;
       }
@@ -2883,7 +2884,7 @@ REGISTER_OP("Dequantize")
     .Attr("dtype: {bfloat16, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       int axis = -1;
-      Status s = c->GetAttr("axis", &axis);
+      Status s = c->GetAttribute("axis", &axis);
       if (!s.ok() && s.code() != error::NOT_FOUND) {
         return s;
       }

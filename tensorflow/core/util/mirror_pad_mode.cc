@@ -35,6 +35,20 @@ Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
   return Status::OK();
 }
 
+Status GetNodeAttribute(const NodeDef& node_def, StringPiece attr_name,
+                        MirrorPadMode* value) {
+  string str_value;
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node_def, attr_name, &str_value));
+  if (str_value == "REFLECT") {
+    *value = MirrorPadMode::REFLECT;
+  } else if (str_value == "SYMMETRIC") {
+    *value = MirrorPadMode::SYMMETRIC;
+  } else {
+    return errors::NotFound(str_value, " is not an allowed padding mode.");
+  }
+  return Status::OK();
+}
+
 string GetMirrorPadModeAttrString() { return "mode: {'REFLECT', 'SYMMETRIC'}"; }
 
 }  // end namespace tensorflow

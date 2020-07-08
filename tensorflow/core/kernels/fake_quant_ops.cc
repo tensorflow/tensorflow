@@ -67,18 +67,19 @@ class FakeQuantWithMinMaxArgsOp
   typedef UnaryElementWiseOp<float, FakeQuantWithMinMaxArgsOp<Device>> Base;
   explicit FakeQuantWithMinMaxArgsOp(OpKernelConstruction* context)
       : Base::UnaryElementWiseOp(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("min", &min_));
-    OP_REQUIRES_OK(context, context->GetAttr("max", &max_));
+    OP_REQUIRES_OK(context, context->GetAttribute("min", &min_));
+    OP_REQUIRES_OK(context, context->GetAttribute("max", &max_));
     OP_REQUIRES(context, min_ < max_,
                 InvalidArgument("min has to be smaller than max, was: ", min_,
                                 " >= ", max_));
     int num_bits;
-    OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_bits", &num_bits));
     OP_REQUIRES(
         context, IsNumBitsValid(num_bits),
         InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
-    OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
     quant_max_ = (1 << num_bits) - 1;
     SET_USING_FAKE_QUANT();
@@ -108,18 +109,19 @@ class FakeQuantWithMinMaxArgsGradientOp
       Base;
   explicit FakeQuantWithMinMaxArgsGradientOp(OpKernelConstruction* context)
       : Base::BinaryElementWiseOp(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("min", &min_));
-    OP_REQUIRES_OK(context, context->GetAttr("max", &max_));
+    OP_REQUIRES_OK(context, context->GetAttribute("min", &min_));
+    OP_REQUIRES_OK(context, context->GetAttribute("max", &max_));
     OP_REQUIRES(context, min_ < max_,
                 InvalidArgument("min has to be smaller than max, was: ", min_,
                                 " >= ", max_));
     int num_bits;
-    OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_bits", &num_bits));
     OP_REQUIRES(
         context, IsNumBitsValid(num_bits),
         InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
-    OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
     quant_max_ = (1 << num_bits) - 1;
   }
@@ -187,12 +189,13 @@ class FakeQuantWithMinMaxVarsOp : public OpKernel {
   explicit FakeQuantWithMinMaxVarsOp(OpKernelConstruction* context)
       : OpKernel::OpKernel(context) {
     int num_bits;
-    OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_bits", &num_bits));
     OP_REQUIRES(
         context, IsNumBitsValid(num_bits),
         InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
-    OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
     quant_max_ = (1 << num_bits) - 1;
     SET_USING_FAKE_QUANT();
@@ -227,12 +230,13 @@ class FakeQuantWithMinMaxVarsGradientOp : public OpKernel {
   explicit FakeQuantWithMinMaxVarsGradientOp(OpKernelConstruction* context)
       : OpKernel::OpKernel(context) {
     int num_bits;
-    OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_bits", &num_bits));
     OP_REQUIRES(
         context, IsNumBitsValid(num_bits),
         InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
-    OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
     quant_max_ = (1 << num_bits) - 1;
   }
@@ -318,12 +322,13 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
   explicit FakeQuantWithMinMaxVarsPerChannelOp(OpKernelConstruction* context)
       : OpKernel::OpKernel(context) {
     int num_bits;
-    OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_bits", &num_bits));
     OP_REQUIRES(
         context, IsNumBitsValid(num_bits),
         InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
-    OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
     quant_max_ = (1 << num_bits) - 1;
     SET_USING_FAKE_QUANT();
@@ -366,12 +371,13 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
       OpKernelConstruction* context)
       : OpKernel::OpKernel(context) {
     int num_bits;
-    OP_REQUIRES_OK(context, context->GetAttr("num_bits", &num_bits));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_bits", &num_bits));
     OP_REQUIRES(
         context, IsNumBitsValid(num_bits),
         InvalidArgument("num_bits must be between 2 and 16, inclusive"));
     bool narrow_range;
-    OP_REQUIRES_OK(context, context->GetAttr("narrow_range", &narrow_range));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
     quant_max_ = (1 << num_bits) - 1;
   }

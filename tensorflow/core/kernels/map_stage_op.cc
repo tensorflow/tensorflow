@@ -496,9 +496,9 @@ Status GetStagingMap(OpKernelContext* ctx, const NodeDef& ndef,
     DataTypeVector dtypes;
     int64 capacity;
     int64 memory_limit;
-    TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "dtypes", &dtypes));
-    TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
-    TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "memory_limit", &memory_limit));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(ndef, "dtypes", &dtypes));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(ndef, "capacity", &capacity));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(ndef, "memory_limit", &memory_limit));
     *ret = new StagingMap<Ordered>(dtypes, capacity, memory_limit);
     return Status::OK();
   };

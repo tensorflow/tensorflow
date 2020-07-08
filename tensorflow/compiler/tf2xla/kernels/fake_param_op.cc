@@ -32,8 +32,8 @@ class XlaFakeParamOp : public XlaOpKernel {
     DataType dtype;
     // Tensor shape can be unknown.
     PartialTensorShape tensor_shape;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &tensor_shape));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("shape", &tensor_shape));
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, tensor_shape, &shape_));
   }
 

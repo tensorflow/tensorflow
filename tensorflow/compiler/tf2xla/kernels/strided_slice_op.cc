@@ -37,12 +37,13 @@ namespace {
 class StridedSliceOp : public XlaOpKernel {
  public:
   explicit StridedSliceOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("begin_mask", &begin_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("end_mask", &end_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("ellipsis_mask", &ellipsis_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("new_axis_mask", &new_axis_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shrink_axis_mask", &shrink_axis_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Index", &index_type_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("begin_mask", &begin_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("end_mask", &end_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("ellipsis_mask", &ellipsis_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("new_axis_mask", &new_axis_mask_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("shrink_axis_mask", &shrink_axis_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("Index", &index_type_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -259,12 +260,13 @@ REGISTER_XLA_OP(Name("StridedSlice")
 class StridedSliceGradOp : public XlaOpKernel {
  public:
   explicit StridedSliceGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("begin_mask", &begin_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("end_mask", &end_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("ellipsis_mask", &ellipsis_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("new_axis_mask", &new_axis_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shrink_axis_mask", &shrink_axis_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Index", &index_type_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("begin_mask", &begin_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("end_mask", &end_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("ellipsis_mask", &ellipsis_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("new_axis_mask", &new_axis_mask_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("shrink_axis_mask", &shrink_axis_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("Index", &index_type_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -393,13 +395,14 @@ REGISTER_XLA_OP(Name("StridedSliceGrad")
 class StridedSliceAssignOp : public XlaOpKernel {
  public:
   explicit StridedSliceAssignOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("begin_mask", &begin_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("end_mask", &end_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("ellipsis_mask", &ellipsis_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("new_axis_mask", &new_axis_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shrink_axis_mask", &shrink_axis_mask_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Index", &index_type_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("begin_mask", &begin_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("end_mask", &end_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("ellipsis_mask", &ellipsis_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("new_axis_mask", &new_axis_mask_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("shrink_axis_mask", &shrink_axis_mask_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("Index", &index_type_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

@@ -183,7 +183,7 @@ Status CalculateRetvalRearrange(
   for (int i = 0; i < ret_nodes.size(); i++) {
     Node* n = ret_nodes[i];
     DataType t;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &t));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "T", &t));
     if (t != DT_RESOURCE) {
       int new_retval_index = retval_index_mapping->size();
       retval_index_mapping->insert(std::make_pair(i, new_retval_index));
@@ -200,7 +200,7 @@ Status CalculateRetvalRearrange(
     }
     Node* arg = e->src();
     int src_index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(arg->def(), "index", &src_index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(arg->def(), "index", &src_index));
     resource_retval_to_arg->insert(std::make_pair(i, src_index));
   }
   return Status::OK();
@@ -279,7 +279,7 @@ Status MaybeRewriteWhileNode(
     Graph* g, Node* n, FunctionLibraryDefinition* fld, bool* node_rewritten) {
   // Check if this While node needs rewrite.
   std::vector<DataType> types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &types));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "T", &types));
   bool input_need_rearrange;
   int resource_input_count;
   std::vector<int> index_mapping;
@@ -306,7 +306,7 @@ Status MaybeRewriteWhileNode(
   // Modify cond and body functions.
   for (auto const& attr_name : std::vector<string>{"cond", "body"}) {
     NameAttrList attr_value;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &attr_value));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), attr_name, &attr_value));
     const FunctionBody* fbody;
     TF_RETURN_IF_ERROR(get_function_body_fn(attr_value, &fbody));
 
@@ -320,7 +320,7 @@ Status MaybeRewriteWhileNode(
       for (int i = 0; i < fbody->ret_nodes.size(); i++) {
         Node* n = fbody->ret_nodes[i];
         DataType dtype;
-        TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtype));
+        TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "T", &dtype));
         if (dtype != DT_RESOURCE) {
           continue;
         }
@@ -332,7 +332,8 @@ Status MaybeRewriteWhileNode(
         }
         if (input_node->IsArg()) {
           int index;
-          TF_RETURN_IF_ERROR(GetNodeAttr(input_node->def(), "index", &index));
+          TF_RETURN_IF_ERROR(
+              GetNodeAttribute(input_node->def(), "index", &index));
           if (index != i) {
             return errors::Unimplemented("While node ", n->DebugString(),
                                          " has resource _Retval[", i,
@@ -384,14 +385,14 @@ Status MaybeRewriteIfNode(
   // 1) Tin has DT_RESOURCE which requires rearrange;
   // 2) Tout has DT_RESOURCE.
   std::vector<DataType> in_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "Tin", &in_types));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "Tin", &in_types));
   bool input_need_rearrange;
   int resource_input_count;
   std::vector<int> index_mapping;
   TF_RETURN_IF_ERROR(InputTypesNeedsRearrange(
       in_types, &input_need_rearrange, &resource_input_count, &index_mapping));
   std::vector<DataType> out_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "Tout", &out_types));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "Tout", &out_types));
   bool has_resource_output = std::find(out_types.begin(), out_types.end(),
                                        DT_RESOURCE) != out_types.end();
   if (!input_need_rearrange && !has_resource_output) {
@@ -430,7 +431,7 @@ Status MaybeRewriteIfNode(
   for (auto const& attr_name :
        std::vector<string>{"then_branch", "else_branch"}) {
     NameAttrList f;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &f));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), attr_name, &f));
     const FunctionBody* fbody;
     TF_RETURN_IF_ERROR(get_function_body_fn(f, &fbody));
 
@@ -514,7 +515,7 @@ Status RearrangeFunctionArguments(
   }
   for (Node* n : call_nodes) {
     NameAttrList func_name_attrs;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "f", &func_name_attrs));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "f", &func_name_attrs));
     const FunctionBody* fbody;
     TF_RETURN_IF_ERROR(get_function_body_fn(func_name_attrs, &fbody));
     InlineFunctionBodyOptions opts;

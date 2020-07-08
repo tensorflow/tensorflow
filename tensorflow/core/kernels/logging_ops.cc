@@ -51,7 +51,7 @@ Status AppendStringToFile(const std::string& fname, StringPiece data,
 }  // namespace
 
 AssertOp::AssertOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("summarize", &summarize_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("summarize", &summarize_));
 }
 
 void AssertOp::Compute(OpKernelContext* ctx) {
@@ -82,9 +82,9 @@ class PrintOp : public OpKernel {
  public:
   explicit PrintOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), call_counter_(0) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("message", &message_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("first_n", &first_n_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("summarize", &summarize_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("message", &message_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("first_n", &first_n_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("summarize", &summarize_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -120,8 +120,8 @@ REGISTER_KERNEL_BUILDER(Name("Print").Device(DEVICE_CPU), PrintOp);
 class PrintV2Op : public OpKernel {
  public:
   explicit PrintV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_stream", &output_stream_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("end", &end_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_stream", &output_stream_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("end", &end_));
 
     SetFilePathIfAny();
     if (!file_path_.empty()) return;

@@ -66,7 +66,7 @@ class LegacyVar : public ResourceBase {
 };
 
 VariableOp::VariableOp(OpKernelConstruction* context) : OpKernel(context) {
-  OP_REQUIRES_OK(context, context->GetAttr("shape", &shape_));
+  OP_REQUIRES_OK(context, context->GetAttribute("shape", &shape_));
   dtype_ = RemoveRefType(context->output_type(0));
   OP_REQUIRES_OK(context, cinfo_.Init(context->resource_manager(), def(),
                                       true /* use name() */));
@@ -96,9 +96,9 @@ class TemporaryVariableOp : public OpKernel {
  public:
   explicit TemporaryVariableOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("shape", &shape_));
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
-    OP_REQUIRES_OK(context, context->GetAttr("var_name", &var_name_));
+    OP_REQUIRES_OK(context, context->GetAttribute("shape", &shape_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dtype", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttribute("var_name", &var_name_));
     // Variable name defaults to op name if not specified explicitly.
     if (var_name_.empty()) var_name_ = name();
   }
@@ -146,7 +146,7 @@ class DestroyTemporaryVariableOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES(context, IsRefType(context->input_type(0)),
                 errors::InvalidArgument("lhs input needs to be a ref type"));
-    OP_REQUIRES_OK(context, context->GetAttr("var_name", &var_name_));
+    OP_REQUIRES_OK(context, context->GetAttribute("var_name", &var_name_));
     OP_REQUIRES(context, !var_name_.empty(),
                 errors::InvalidArgument("Missing var_name attribute"));
   }

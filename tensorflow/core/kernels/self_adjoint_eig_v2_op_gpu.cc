@@ -21,7 +21,6 @@ limitations under the License.
 #include <type_traits>
 
 #define EIGEN_USE_GPU
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -42,7 +42,7 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
  public:
   explicit SelfAdjointEigV2OpGpu(OpKernelConstruction* context)
       : AsyncOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("compute_v", &compute_v_));
+    OP_REQUIRES_OK(context, context->GetAttribute("compute_v", &compute_v_));
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {

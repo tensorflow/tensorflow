@@ -184,7 +184,7 @@ class SampleRemoteFusedGraphExecutor final : public IRemoteFusedGraphExecutor {
     // TODO(satok): Read NAME_B from node_a_plus_b
     const NodeDef& node_b = *node_def_map_.at(NAME_B);
     const TensorProto* proto = nullptr;
-    TF_CHECK_OK(GetNodeAttr(node_b, "value", &proto));
+    TF_CHECK_OK(GetNodeAttribute(node_b, "value", &proto));
     Tensor const_tensor;
     TF_CHECK_OK(RemoteFusedGraphExecuteUtils::MakeTensorFromProto(
         *proto, &const_tensor));

@@ -86,7 +86,7 @@ template <typename Device>
 class ParallelConcatUpdate : public OpKernel {
  public:
   explicit ParallelConcatUpdate(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("loc", &loc_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("loc", &loc_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -124,7 +124,7 @@ template <typename Device, typename T>
 class ParallelConcatStart : public OpKernel {
  public:
   explicit ParallelConcatStart(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &shape_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("shape", &shape_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -435,7 +435,7 @@ template <typename Device, typename T>
 class EmptyOp : public OpKernel {
  public:
   explicit EmptyOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("init", &init_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("init", &init_));
   }
 
   void Compute(OpKernelContext* ctx) override {

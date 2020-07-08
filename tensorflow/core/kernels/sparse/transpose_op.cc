@@ -26,8 +26,6 @@ limitations under the License.
 
 #include <numeric>
 
-#include "third_party/eigen3/Eigen/SparseCore"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -41,6 +39,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 #include "tensorflow/core/kernels/sparse/transpose_op.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "third_party/eigen3/Eigen/SparseCore"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -95,7 +95,7 @@ template <typename Device, typename T>
 class CSRTransposeOp : public OpKernel {
  public:
   explicit CSRTransposeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("conjugate", &conjugate_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("conjugate", &conjugate_));
   }
 
   void Compute(OpKernelContext* ctx) override {

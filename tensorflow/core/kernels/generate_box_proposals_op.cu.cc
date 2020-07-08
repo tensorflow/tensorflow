@@ -19,7 +19,6 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
@@ -306,7 +306,8 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
   explicit GenerateBoundingBoxProposals(
       tensorflow::OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("post_nms_topn", &post_nms_topn_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("post_nms_topn", &post_nms_topn_));
     OP_REQUIRES(context, post_nms_topn_ > 0,
                 errors::InvalidArgument("post_nms_topn can't be 0 or less"));
     bbox_xform_clip_default_ = log(1000.0 / 16.);

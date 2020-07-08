@@ -20,13 +20,13 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/scan_ops.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -37,8 +37,8 @@ template <typename Device, class T, typename Reducer, typename Tidx>
 class ScanOp : public OpKernel {
  public:
   explicit ScanOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("reverse", &reverse_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("exclusive", &exclusive_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("reverse", &reverse_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("exclusive", &exclusive_));
   }
 
   void Compute(OpKernelContext* ctx) override {

@@ -77,7 +77,7 @@ REGISTER_OP("SparseTensorToCSRSparseMatrix")
       }
 
       DataType dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("T", &dtype));
+      TF_RETURN_IF_ERROR(c->GetAttribute("T", &dtype));
       c->set_output(0, c->Scalar());
       c->set_output_handle_shapes_and_types(0,
                                             {ShapeAndType{dense_shape, dtype}});
@@ -141,7 +141,7 @@ REGISTER_OP("DenseToCSRSparseMatrix")
           c, indices /*indices_shape*/, fake_values_vec /*values_shape*/,
           fake_shape_shape /*shape_shape*/));
       DataType dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("T", &dtype));
+      TF_RETURN_IF_ERROR(c->GetAttribute("T", &dtype));
       c->set_output_handle_shapes_and_types(0,
                                             {ShapeAndType{dense_shape, dtype}});
       c->set_output(0, c->Scalar());
@@ -247,14 +247,15 @@ REGISTER_OP("SparseMatrixMatMul")
       bool transpose_output = false;
 
       // TODO(ebrevdo): Add transpose support.
-      TF_RETURN_IF_ERROR(c->GetAttr("transpose_a", &transpose_a));
-      TF_RETURN_IF_ERROR(c->GetAttr("transpose_b", &transpose_b));
-      TF_RETURN_IF_ERROR(c->GetAttr("transpose_output", &transpose_output));
+      TF_RETURN_IF_ERROR(c->GetAttribute("transpose_a", &transpose_a));
+      TF_RETURN_IF_ERROR(c->GetAttribute("transpose_b", &transpose_b));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("transpose_output", &transpose_output));
 
       bool adjoint_a = false;
       bool adjoint_b = false;
-      TF_RETURN_IF_ERROR(c->GetAttr("adjoint_a", &adjoint_a));
-      TF_RETURN_IF_ERROR(c->GetAttr("adjoint_b", &adjoint_b));
+      TF_RETURN_IF_ERROR(c->GetAttribute("adjoint_a", &adjoint_a));
+      TF_RETURN_IF_ERROR(c->GetAttribute("adjoint_b", &adjoint_b));
       if (adjoint_a && transpose_a) {
         return errors::InvalidArgument(
             "Only one of adjoint_a and transpose_a may be true.");
@@ -407,12 +408,12 @@ REGISTER_OP("SparseMatrixSparseMatMul")
 
       bool transpose_a = false;
       bool transpose_b = false;
-      TF_RETURN_IF_ERROR(c->GetAttr("transpose_a", &transpose_a));
-      TF_RETURN_IF_ERROR(c->GetAttr("transpose_b", &transpose_b));
+      TF_RETURN_IF_ERROR(c->GetAttribute("transpose_a", &transpose_a));
+      TF_RETURN_IF_ERROR(c->GetAttribute("transpose_b", &transpose_b));
       bool adjoint_a = false;
       bool adjoint_b = false;
-      TF_RETURN_IF_ERROR(c->GetAttr("adjoint_a", &adjoint_a));
-      TF_RETURN_IF_ERROR(c->GetAttr("adjoint_b", &adjoint_b));
+      TF_RETURN_IF_ERROR(c->GetAttribute("adjoint_a", &adjoint_a));
+      TF_RETURN_IF_ERROR(c->GetAttribute("adjoint_b", &adjoint_b));
       if (adjoint_a && transpose_a) {
         return errors::InvalidArgument(
             "Only one of adjoint_a and transpose_a may be true.");
@@ -467,7 +468,7 @@ REGISTER_OP("SparseMatrixZeros")
             ".  Expected a known rank of either 2 or 3.");
       }
       DataType dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("type", &dtype));
+      TF_RETURN_IF_ERROR(c->GetAttribute("type", &dtype));
       c->set_output_handle_shapes_and_types(0,
                                             {ShapeAndType{dense_shape, dtype}});
       c->set_output(0, c->Scalar());

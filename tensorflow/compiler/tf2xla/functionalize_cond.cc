@@ -818,7 +818,7 @@ Status Conditional::BuildIfNode(Graph* graph,
        {kXlaFrontendAttributesAttrName, kXlaOutsideCompilationAttrName,
         kTpuReplicateAttrName}) {
     string attr_val;
-    if (GetNodeAttr(predicate_.node->def(), attr_name, &attr_val).ok()) {
+    if (GetNodeAttribute(predicate_.node->def(), attr_name, &attr_val).ok()) {
       builder.Attr(attr_name, attr_val);
     }
   }
@@ -959,7 +959,7 @@ Status FunctionalizeCond::AddIdentityNode(const Node* replacee, Node* if_node,
   NodeBuilder id_builder(replacee->name(), "Identity");
   id_builder.Input(if_node, port);
   string outside_compilation;
-  if (GetNodeAttr(if_node->def(), kXlaOutsideCompilationAttrName,
+  if (GetNodeAttribute(if_node->def(), kXlaOutsideCompilationAttrName,
                   &outside_compilation)
           .ok()) {
     id_builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);

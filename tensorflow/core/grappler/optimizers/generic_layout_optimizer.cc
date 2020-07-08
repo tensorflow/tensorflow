@@ -90,7 +90,7 @@ inline bool NumConv2DOnDeviceWithDataTypeOverThreshold(
       continue;
     }
     num_conv2d_gpu++;
-    const auto* t_attr = node.GetAttr("T");
+    const auto* t_attr = node.GetAttribute("T");
     if (t_attr == nullptr) {
       continue;
     }
@@ -199,11 +199,11 @@ inline bool IsCancellableDataFormatNodePair(
 
   auto src_dst_match = [](const utils::MutableNodeView& src,
                           const utils::MutableNodeView& dst) {
-    const auto* src_format = src.GetAttr(kAttrSrcFormat);
+    const auto* src_format = src.GetAttribute(kAttrSrcFormat);
     if (src_format == nullptr) {
       return false;
     }
-    const auto* dst_format = dst.GetAttr(kAttrDstFormat);
+    const auto* dst_format = dst.GetAttribute(kAttrDstFormat);
     if (dst_format == nullptr) {
       return false;
     }

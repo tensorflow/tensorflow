@@ -362,8 +362,8 @@ class SparseConditionalAccumulator
     // be fixed if it affects efficiency.
     bool has_known_shape = false;
     OP_REQUIRES_OK_BOOLEAN(
-        ctx, GetNodeAttr(ctx->op_kernel().def(), "has_known_shape",
-                         &has_known_shape));
+        ctx, GetNodeAttribute(ctx->op_kernel().def(), "has_known_shape",
+                              &has_known_shape));
 
     // Get input gradient tensors
     const Tensor* grad_idx_tensor;

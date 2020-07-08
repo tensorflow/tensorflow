@@ -453,7 +453,7 @@ REGISTER_OP_GRADIENT("Sub", SubGrad);
 
 Status MulGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType T;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "T", &T));
   if (T == DT_COMPLEX64 || T == DT_COMPLEX128) {
     return GradForBinaryCwise(
         g, {
@@ -540,7 +540,7 @@ Status PowGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format on
   std::vector<FDH::Node> log_x_handling;
   DataType T;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "T", &T));
   if (T == DT_COMPLEX64 || T == DT_COMPLEX128) {
     // dz * z * (x != 0 ? Log(x) : 0)
     // clang-format off
@@ -869,15 +869,15 @@ Status MatMulGradCommon(const string& opname, const string& attr_adj_x,
                         const string& attr_adj_y, const AttrSlice& attrs,
                         FunctionDef* g, bool enable_broadcasting) {
   DataType T;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "T", &T));
   if (T == DT_COMPLEX64 || T == DT_COMPLEX128) {
     return errors::Unimplemented(
         "MatMul gradient for complex is not supported yet.");
   }
   bool ta;
   bool tb;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, attr_adj_x, &ta));
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, attr_adj_y, &tb));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, attr_adj_x, &ta));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, attr_adj_y, &tb));
   if (!ta && !tb) {
     return MatMulGradHelper(g, opname, attr_adj_x, attr_adj_y, "dz", false, "y",
                             true, "x", true, "dz", false, enable_broadcasting);

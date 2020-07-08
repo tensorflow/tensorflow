@@ -15,12 +15,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -165,10 +165,10 @@ class QuantizedBatchNormOp : public OpKernel {
  public:
   explicit QuantizedBatchNormOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("variance_epsilon", &variance_epsilon_));
-    OP_REQUIRES_OK(context, context->GetAttr("scale_after_normalization",
-                                             &scale_after_normalization_));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("variance_epsilon", &variance_epsilon_));
+    OP_REQUIRES_OK(context, context->GetAttribute("scale_after_normalization",
+                                                  &scale_after_normalization_));
   }
 
   void Compute(OpKernelContext* context) override {

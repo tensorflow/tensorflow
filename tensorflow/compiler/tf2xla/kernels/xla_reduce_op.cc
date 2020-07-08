@@ -29,9 +29,9 @@ namespace {
 class XlaReduceOp : public XlaOpKernel {
  public:
   explicit XlaReduceOp(OpKernelConstruction* context) : XlaOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("reducer", &reducer_));
-    OP_REQUIRES_OK(context, context->GetAttr("dimensions_to_reduce",
-                                             &dimensions_to_reduce_));
+    OP_REQUIRES_OK(context, context->GetAttribute("reducer", &reducer_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dimensions_to_reduce",
+                                                  &dimensions_to_reduce_));
     std::set<int64> dims_set(dimensions_to_reduce_.begin(),
                              dimensions_to_reduce_.end());
     OP_REQUIRES(

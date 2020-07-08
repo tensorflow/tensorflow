@@ -209,14 +209,14 @@ class MapDatasetOp::Dataset : public DatasetBase {
 MapDatasetOp::MapDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
   FunctionMetadata::Params params;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kUseInterOpParallelism,
-                                   &params.use_inter_op_parallelism));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kUseInterOpParallelism,
+                                        &params.use_inter_op_parallelism));
   OP_REQUIRES_OK(ctx,
                  FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
-  OP_REQUIRES_OK(ctx,
-                 ctx->GetAttr(kPreserveCardinality, &preserve_cardinality_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(
+      ctx, ctx->GetAttribute(kPreserveCardinality, &preserve_cardinality_));
 }
 
 void MapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,

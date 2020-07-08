@@ -568,10 +568,11 @@ class MklConvBackpropCommonOp : public OpKernel {
   explicit MklConvBackpropCommonOp(OpKernelConstruction* context)
       : OpKernel(context) {
     string data_format_str;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("data_format", &data_format_str));
     OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &strides_));
     int stride_n = GetTensorDim(strides_, data_format_, 'N');
     int stride_c = GetTensorDim(strides_, data_format_, 'C');
     OP_REQUIRES(
@@ -581,7 +582,7 @@ class MklConvBackpropCommonOp : public OpKernel {
 
     // Depthwise Convolution doesn't have dilation parameter
     if (!is_depthwise) {
-      OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+      OP_REQUIRES_OK(context, context->GetAttribute("dilations", &dilations_));
       if (strides_.size() == 4) {
         // Check Conv2D dilations
         OP_REQUIRES(
@@ -606,7 +607,7 @@ class MklConvBackpropCommonOp : public OpKernel {
       dilations_ = {1, 1, 1, 1};
     }
 
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
   }
 
  protected:

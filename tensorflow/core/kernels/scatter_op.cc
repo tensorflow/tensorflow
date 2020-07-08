@@ -78,7 +78,7 @@ class ScatterUpdateOp : public OpKernel {
   //   that users have to do explicitly with a conversion operator
   //   in the graph?
   explicit ScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(c, c->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -156,7 +156,7 @@ template <typename T, typename Index, scatter_op::UpdateOp op>
 class ScatterUpdateOp<SYCLDevice, T, Index, op> : public OpKernel {
  public:
   explicit ScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(c, c->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* c) override {

@@ -17,11 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 #include "tensorflow/core/kernels/relu_op_functor.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -91,7 +91,7 @@ class UnaryOpsComposition : public OpKernel {
 
   explicit UnaryOpsComposition(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("op_names", &op_names_));
+    OP_REQUIRES_OK(context, context->GetAttribute("op_names", &op_names_));
 
     OP_REQUIRES(context, !op_names_.empty(),
                 errors::InvalidArgument(

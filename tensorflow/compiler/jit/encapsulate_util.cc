@@ -50,7 +50,7 @@ absl::optional<string> GetStringAttr(const Node& n, const string& attr_name) {
 template <typename T>
 Status AppendToListAttr(Node* n, const string& attr_name, const string& value) {
   std::vector<T> attr_value;
-  Status s = GetNodeAttr(n->attrs(), attr_name, &attr_value);
+  Status s = GetNodeAttribute(n->attrs(), attr_name, &attr_value);
   if (!s.ok() && s.code() != error::NOT_FOUND) {
     return s;
   }
@@ -157,9 +157,9 @@ Status PreprocessDataEdgesBetweenOutsideCompilations(
       NodeDefBuilder placeholder_builder(new_name, "Placeholder");
       placeholder_builder.Attr("dtype", src->output_type(src_output));
       string outside_compilation_attr;
-      TF_RETURN_IF_ERROR(GetNodeAttr(dst->attrs(),
-                                     outside_compilation_attr_name,
-                                     &outside_compilation_attr));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(dst->attrs(),
+                                          outside_compilation_attr_name,
+                                          &outside_compilation_attr));
       placeholder_builder.Attr(outside_compilation_attr_name,
                                outside_compilation_attr);
       placeholder_builder.Attr(kOutsideCompilationOriginalNodeAttrName,
@@ -212,9 +212,9 @@ Status PostprocessDataEdgesBetweenOutsideCompilations(
   for (auto n : placeholder_nodes) {
     string node_name;
     int node_src_output;
-    TF_RETURN_IF_ERROR(GetNodeAttr(
+    TF_RETURN_IF_ERROR(GetNodeAttribute(
         n->attrs(), kOutsideCompilationOriginalNodeAttrName, &node_name));
-    TF_RETURN_IF_ERROR(GetNodeAttr(
+    TF_RETURN_IF_ERROR(GetNodeAttribute(
         n->attrs(), kOutsideCompilationSrcOutputAttrName, &node_src_output));
     auto iter = node_name_index.find(node_name);
     if (iter == node_name_index.end()) {
@@ -279,9 +279,9 @@ Status PostprocessControlEdgesBetweenOutsideCompilations(
   // Reconnect outside compilation to outside compilation control edge.
   for (Node* n : g->nodes()) {
     std::vector<string> control_deps;
-    Status s =
-        GetNodeAttr(n->attrs(), kXlaControlDependenciesWithinXlaClusterAttrName,
-                    &control_deps);
+    Status s = GetNodeAttribute(n->attrs(),
+                                kXlaControlDependenciesWithinXlaClusterAttrName,
+                                &control_deps);
     if (!s.ok()) {
       if (s.code() != error::NOT_FOUND) {
         return s;

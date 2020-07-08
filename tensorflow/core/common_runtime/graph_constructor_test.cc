@@ -158,6 +158,10 @@ class GraphConstructorTest : public ::testing::Test {
     if (!s.ok()) {
       return "";
     }
+    Status s = GetNodeAttribute(n->attrs(), kColocationAttrName, &value);
+    if (!s.ok()) {
+      return "";
+    }
     if (value.size() != 1) {
       ADD_FAILURE()
           << "ColocationGroup was written with the assumption of at most 1 "
@@ -1029,6 +1033,8 @@ TEST_F(GraphConstructorTest, ImportGraphDef_DefaultAttrs) {
   ASSERT_TRUE(a != nullptr);
   int value = 0;
   s = GetNodeAttr(a->attrs(), "default_int", &value);
+  ASSERT_EQ(Status::OK(), s) << s << " -- " << a->def().DebugString();
+  s = GetNodeAttribute(a->attrs(), "default_int", &value);
   ASSERT_EQ(Status::OK(), s) << s << " -- " << a->def().DebugString();
   EXPECT_EQ(31415, value);
 }

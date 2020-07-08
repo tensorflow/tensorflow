@@ -25,8 +25,8 @@ class TensorForestTreePredictOp : public OpKernel {
  public:
   explicit TensorForestTreePredictOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("logits_dimension", &logits_dimension_));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("logits_dimension", &logits_dimension_));
   }
 
   void Compute(OpKernelContext* context) override {

@@ -215,7 +215,7 @@ Status CompileImpl(
 class StatefulUniformOp : public XlaOpKernel {
  public:
   explicit StatefulUniformOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -259,7 +259,7 @@ class StatefulStandardNormalOp : public XlaOpKernel {
  public:
   explicit StatefulStandardNormalOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -298,7 +298,7 @@ class StatefulTruncatedNormalOp : public XlaOpKernel {
  public:
   explicit StatefulTruncatedNormalOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -343,7 +343,7 @@ REGISTER_XLA_OP(Name("StatefulTruncatedNormal")
 class StatefulUniformIntOp : public XlaOpKernel {
  public:
   explicit StatefulUniformIntOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -378,7 +378,7 @@ class StatefulUniformFullIntOp : public XlaOpKernel {
  public:
   explicit StatefulUniformFullIntOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

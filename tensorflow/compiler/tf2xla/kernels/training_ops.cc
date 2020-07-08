@@ -73,7 +73,7 @@ class ResourceApplyProximalGradientDescent : public XlaOpKernel {
  public:
   explicit ResourceApplyProximalGradientDescent(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -117,7 +117,7 @@ REGISTER_XLA_OP(Name("ResourceApplyProximalGradientDescent")
 class ResourceApplyMomentum : public XlaOpKernel {
  public:
   explicit ResourceApplyMomentum(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_nesterov", &use_nesterov_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -175,7 +175,7 @@ class ResourceApplyKerasMomentum : public XlaOpKernel {
  public:
   explicit ResourceApplyKerasMomentum(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_nesterov", &use_nesterov_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -233,7 +233,7 @@ REGISTER_XLA_OP(Name("ResourceApplyKerasMomentum")
 class ResourceApplyAdagrad : public XlaOpKernel {
  public:
   explicit ResourceApplyAdagrad(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("update_slots", &update_slots_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -282,7 +282,7 @@ class ResourceApplyAdagradV2 : public XlaOpKernel {
  public:
   explicit ResourceApplyAdagradV2(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("update_slots", &update_slots_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -337,7 +337,7 @@ class ResourceApplyProximalAdagrad : public XlaOpKernel {
  public:
   explicit ResourceApplyProximalAdagrad(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -393,7 +393,7 @@ class ResourceApplyAdagradDA : public XlaOpKernel {
  public:
   explicit ResourceApplyAdagradDA(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -468,8 +468,8 @@ REGISTER_XLA_OP(Name("ResourceApplyAdagradDA").TypeConstraint("T", kFloatTypes),
 class ResourceApplyAdam : public XlaOpKernel {
  public:
   explicit ResourceApplyAdam(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_nesterov", &use_nesterov_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -565,7 +565,7 @@ REGISTER_XLA_OP(
 class ResourceApplyAdaMax : public XlaOpKernel {
  public:
   explicit ResourceApplyAdaMax(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -636,7 +636,7 @@ REGISTER_XLA_OP(Name("ResourceApplyAdaMax").TypeConstraint("T", kFloatTypes),
 class ResourceApplyRMSProp : public XlaOpKernel {
  public:
   explicit ResourceApplyRMSProp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -864,9 +864,9 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype, bool has_l2_shrinkage,
 class ResourceApplyFtrl : public XlaOpKernel {
  public:
   explicit ResourceApplyFtrl(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("multiply_linear_by_lr", &multiply_linear_by_lr_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("multiply_linear_by_lr",
+                                          &multiply_linear_by_lr_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -886,9 +886,9 @@ REGISTER_XLA_OP(Name("ResourceApplyFtrl").TypeConstraint("T", kFloatTypes),
 class ResourceApplyFtrlV2 : public XlaOpKernel {
  public:
   explicit ResourceApplyFtrlV2(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("multiply_linear_by_lr", &multiply_linear_by_lr_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("multiply_linear_by_lr",
+                                          &multiply_linear_by_lr_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -908,7 +908,7 @@ REGISTER_XLA_OP(Name("ResourceApplyFtrlV2").TypeConstraint("T", kFloatTypes),
 class ResourceApplyAdadelta : public XlaOpKernel {
  public:
   explicit ResourceApplyAdadelta(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -975,7 +975,7 @@ REGISTER_XLA_OP(
 class ResourceApplySignBase : public XlaOpKernel {
  public:
   explicit ResourceApplySignBase(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

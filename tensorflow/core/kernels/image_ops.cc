@@ -58,7 +58,7 @@ class ImageProjectiveTransformV2 : public OpKernel {
   explicit ImageProjectiveTransformV2(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
     string interpolation_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("interpolation", &interpolation_str));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("interpolation", &interpolation_str));
     if (interpolation_str == "NEAREST") {
       interpolation_ = Interpolation::NEAREST;
     } else if (interpolation_str == "BILINEAR") {
@@ -68,7 +68,7 @@ class ImageProjectiveTransformV2 : public OpKernel {
                  << ". Supported types: NEAREST, BILINEAR";
     }
     string mode_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("fill_mode", &mode_str));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("fill_mode", &mode_str));
     if (mode_str == "REFLECT") {
       fill_mode_ = Mode::REFLECT;
     } else if (mode_str == "WRAP") {

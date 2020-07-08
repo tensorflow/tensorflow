@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -24,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/lookup_table_op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace {
@@ -38,11 +38,12 @@ class GenerateVocabRemappingOp : public OpKernel {
  public:
   explicit GenerateVocabRemappingOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("new_vocab_offset", &new_vocab_offset_));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("new_vocab_offset", &new_vocab_offset_));
-    OP_REQUIRES_OK(context, context->GetAttr("num_new_vocab", &num_new_vocab_));
+                   context->GetAttribute("num_new_vocab", &num_new_vocab_));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("old_vocab_size", &old_vocab_size_));
+                   context->GetAttribute("old_vocab_size", &old_vocab_size_));
   }
 
   void Compute(OpKernelContext* context) override {

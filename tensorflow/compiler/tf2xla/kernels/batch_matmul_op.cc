@@ -25,8 +25,8 @@ namespace {
 class BatchMatMulOp : public XlaOpKernel {
  public:
   explicit BatchMatMulOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("adj_x", &adj_x_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("adj_y", &adj_y_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("adj_x", &adj_x_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("adj_y", &adj_y_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

@@ -23,9 +23,6 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -36,6 +33,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -142,7 +141,7 @@ class ReductionOp : public OpKernel {
     const DataType pt = DataTypeToEnum<Tperm>::v();
     OP_REQUIRES_OK(ctx, ctx->MatchSignature({dt, pt}, {dt}));
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("keep_dims", &keep_dims_));
   }
 
   void Compute(OpKernelContext* ctx) override {

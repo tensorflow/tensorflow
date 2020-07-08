@@ -41,7 +41,7 @@ Status DiscoverDataDependencies(
         node->IsCollective() && node->type_string() == "CollectiveReduce";
     if (enter_node) {
       Status get_attr_status =
-          GetNodeAttr(node->attrs(), "instance_key", &instance_key);
+          GetNodeAttribute(node->attrs(), "instance_key", &instance_key);
       s.Update(get_attr_status);
       collective_nodes->push_back(node);
       instance_keys->push_back(instance_key);
@@ -162,7 +162,7 @@ Status InsertControlDependencies(
     for (const auto& pair : dependency_edges) {
       int32 src_instance;
       TF_RETURN_IF_ERROR(
-          GetNodeAttr(pair.first->attrs(), "instance_key", &src_instance));
+          GetNodeAttribute(pair.first->attrs(), "instance_key", &src_instance));
       for (Node* dst_node : pair.second) {
         wait_for[dst_node].insert(src_instance);
       }

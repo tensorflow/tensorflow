@@ -434,12 +434,12 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
   for (Node* node : graph->op_nodes()) {
     if (node->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(node->attrs(), "index", &index));
       TF_RET_CHECK(index >= 0 && index < arg_core_mapping.size());
       TF_RETURN_IF_ERROR(assign(node, arg_core_mapping[index].sharding));
     } else if (node->type_string() == kRetvalOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(node->attrs(), "index", &index));
       TF_RET_CHECK(index >= 0 && index < retval_core_mapping.size());
       TF_RETURN_IF_ERROR(assign(node, retval_core_mapping[index].sharding));
     }

@@ -581,13 +581,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
 DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kTaskRefreshIntervalHintMs,
-                                   &task_refresh_interval_hint_ms_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kTaskRefreshIntervalHintMs,
+                                        &task_refresh_interval_hint_ms_));
   if (task_refresh_interval_hint_ms_ == model::kAutotune) {
     task_refresh_interval_hint_ms_ = kDefaultTaskRefreshIntervalMs;
   }
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
 }
 
 void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,

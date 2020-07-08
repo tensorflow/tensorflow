@@ -24,7 +24,6 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace {
@@ -574,7 +574,8 @@ class NonMaxSuppressionOp : public OpKernel {
  public:
   explicit NonMaxSuppressionOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("iou_threshold", &iou_threshold_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("iou_threshold", &iou_threshold_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -710,8 +711,8 @@ class NonMaxSuppressionV4Op : public OpKernel {
  public:
   explicit NonMaxSuppressionV4Op(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("pad_to_max_output_size",
-                                             &pad_to_max_output_size_));
+    OP_REQUIRES_OK(context, context->GetAttribute("pad_to_max_output_size",
+                                                  &pad_to_max_output_size_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -776,8 +777,8 @@ class NonMaxSuppressionV5Op : public OpKernel {
  public:
   explicit NonMaxSuppressionV5Op(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("pad_to_max_output_size",
-                                             &pad_to_max_output_size_));
+    OP_REQUIRES_OK(context, context->GetAttribute("pad_to_max_output_size",
+                                                  &pad_to_max_output_size_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -901,8 +902,9 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
  public:
   explicit CombinedNonMaxSuppressionOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("pad_per_class", &pad_per_class_));
-    OP_REQUIRES_OK(context, context->GetAttr("clip_boxes", &clip_boxes_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("pad_per_class", &pad_per_class_));
+    OP_REQUIRES_OK(context, context->GetAttribute("clip_boxes", &clip_boxes_));
   }
 
   void Compute(OpKernelContext* context) override {

@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/data_flow_ops.cc.
 
 #include <vector>
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -31,7 +32,7 @@ namespace tensorflow {
 class DynamicPartitionOp_Shared : public OpKernel {
  public:
   explicit DynamicPartitionOp_Shared(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("num_partitions", &num_partitions_));
+    OP_REQUIRES_OK(c, c->GetAttribute("num_partitions", &num_partitions_));
     //   QUESTION: It'd be nice to support DT_INT16, DT_UINT8, etc.
     //   to input[1].  Should we have the framework do some sort of
     //   integer promotion automatically, or should that be something

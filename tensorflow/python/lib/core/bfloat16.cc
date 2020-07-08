@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <array>
-
 #include "tensorflow/python/lib/core/bfloat16.h"
+
+#include <array>
 
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/lib/strings/strcat.h"

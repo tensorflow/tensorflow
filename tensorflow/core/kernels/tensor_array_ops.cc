@@ -22,7 +22,6 @@ limitations under the License.
 // TODO(b/31496047): Fix non-standard include order.
 #include <numeric>  // clang-format off
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -161,21 +161,24 @@ class TensorArrayOp : public TensorArrayCreationOp {
  public:
   explicit TensorArrayOp(OpKernelConstruction* context)
       : TensorArrayCreationOp(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
-    OP_REQUIRES_OK(context, context->GetAttr("element_shape", &element_shape_));
-    OP_REQUIRES_OK(context, context->GetAttr("dynamic_size", &dynamic_size_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dtype", &dtype_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("element_shape", &element_shape_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("dynamic_size", &dynamic_size_));
     // The HasAttr check is for backwards compatibility with older op
     // versions which do not have this attribute.
     if (context->HasAttr("identical_element_shapes")) {
-      OP_REQUIRES_OK(context, context->GetAttr("identical_element_shapes",
-                                               &identical_element_shapes_));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("identical_element_shapes",
+                                           &identical_element_shapes_));
     } else {
       identical_element_shapes_ = false;
     }
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("clear_after_read", &clear_after_read_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("tensor_array_name", &tensor_array_name_));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("clear_after_read", &clear_after_read_));
+    OP_REQUIRES_OK(context, context->GetAttribute("tensor_array_name",
+                                                  &tensor_array_name_));
     if (tensor_array_name_.empty()) tensor_array_name_ = name();
   }
 
@@ -273,7 +276,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
  public:
   explicit TensorArrayGradOp(OpKernelConstruction* context)
       : TensorArrayCreationOp(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("source", &source_));
+    OP_REQUIRES_OK(context, context->GetAttribute("source", &source_));
   }
 
   Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,
@@ -496,7 +499,7 @@ class TensorArrayReadOp : public OpKernel {
  public:
   explicit TensorArrayReadOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dtype", &dtype_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -590,8 +593,9 @@ class TensorArrayPackOrGatherOp : public OpKernel {
 
   explicit TensorArrayPackOrGatherOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
-    OP_REQUIRES_OK(context, context->GetAttr("element_shape", &element_shape_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dtype", &dtype_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("element_shape", &element_shape_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -815,9 +819,9 @@ class TensorArrayConcatOp : public OpKernel {
 
   explicit TensorArrayConcatOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
-    OP_REQUIRES_OK(context, context->GetAttr("element_shape_except0",
-                                             &element_shape_except0_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dtype", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttribute("element_shape_except0",
+                                                  &element_shape_except0_));
   }
 
   void Compute(OpKernelContext* ctx) override {

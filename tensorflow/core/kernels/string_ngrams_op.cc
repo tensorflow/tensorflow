@@ -29,13 +29,14 @@ class StringNGramsOp : public tensorflow::OpKernel {
  public:
   explicit StringNGramsOp(tensorflow::OpKernelConstruction* context)
       : tensorflow::OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("separator", &separator_));
-    OP_REQUIRES_OK(context, context->GetAttr("ngram_widths", &ngram_widths_));
-    OP_REQUIRES_OK(context, context->GetAttr("left_pad", &left_pad_));
-    OP_REQUIRES_OK(context, context->GetAttr("right_pad", &right_pad_));
-    OP_REQUIRES_OK(context, context->GetAttr("pad_width", &pad_width_));
-    OP_REQUIRES_OK(context, context->GetAttr("preserve_short_sequences",
-                                             &preserve_short_));
+    OP_REQUIRES_OK(context, context->GetAttribute("separator", &separator_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("ngram_widths", &ngram_widths_));
+    OP_REQUIRES_OK(context, context->GetAttribute("left_pad", &left_pad_));
+    OP_REQUIRES_OK(context, context->GetAttribute("right_pad", &right_pad_));
+    OP_REQUIRES_OK(context, context->GetAttribute("pad_width", &pad_width_));
+    OP_REQUIRES_OK(context, context->GetAttribute("preserve_short_sequences",
+                                                  &preserve_short_));
   }
 
   int get_pad_width(const int ngram_width) const {

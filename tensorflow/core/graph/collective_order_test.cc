@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/graph/collective_order.h"
 
 #include <gmock/gmock.h>
+
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -71,6 +72,7 @@ void VerifyAttrs(
     }
     std::vector<int32> wait_for_actual;
     TF_EXPECT_OK(GetNodeAttr(node->attrs(), "wait_for", &wait_for_actual));
+    TF_EXPECT_OK(GetNodeAttribute(node->attrs(), "wait_for", &wait_for_actual));
     auto wait_for_expected = wait_for_map.at(node->name());
     EXPECT_THAT(wait_for_actual, UnorderedElementsAreArray(wait_for_expected));
   }

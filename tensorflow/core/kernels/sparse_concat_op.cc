@@ -35,7 +35,8 @@ template <typename T>
 class SparseConcatOp : public OpKernel {
  public:
   explicit SparseConcatOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("concat_dim", &concat_dim_attr_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("concat_dim", &concat_dim_attr_));
   }
 
   void Compute(OpKernelContext* context) override {

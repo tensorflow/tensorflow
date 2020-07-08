@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/util/guarded_philox_random.h"
+
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -21,9 +22,9 @@ namespace tensorflow {
 Status GuardedPhiloxRandom::Init(OpKernelConstruction* context) {
   // Grab seed Attrs.
   int64 seed, seed2;
-  auto status = context->GetAttr("seed", &seed);
+  auto status = context->GetAttribute("seed", &seed);
   if (!status.ok()) return status;
-  status = context->GetAttr("seed2", &seed2);
+  status = context->GetAttribute("seed2", &seed2);
   if (!status.ok()) return status;
 
   // Initialize with the given seeds

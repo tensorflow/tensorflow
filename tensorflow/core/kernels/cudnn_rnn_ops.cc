@@ -15,6 +15,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <stddef.h>
+
 #include <atomic>
 #include <cmath>
 #include <functional>
@@ -22,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/use_cudnn.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
@@ -972,16 +973,16 @@ class CudnnRNNKernelCommon : public OpKernel {
  protected:
   explicit CudnnRNNKernelCommon(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("dropout", &dropout_));
-    OP_REQUIRES_OK(context, context->GetAttr("seed", &seed_));
-    OP_REQUIRES_OK(context, context->GetAttr("seed2", &seed2_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dropout", &dropout_));
+    OP_REQUIRES_OK(context, context->GetAttribute("seed", &seed_));
+    OP_REQUIRES_OK(context, context->GetAttribute("seed2", &seed2_));
     string str;
-    OP_REQUIRES_OK(context, context->GetAttr("rnn_mode", &str));
+    OP_REQUIRES_OK(context, context->GetAttribute("rnn_mode", &str));
     OP_REQUIRES_OK(context, ParseRNNMode(str, &model_types_.rnn_mode));
-    OP_REQUIRES_OK(context, context->GetAttr("input_mode", &str));
+    OP_REQUIRES_OK(context, context->GetAttribute("input_mode", &str));
     OP_REQUIRES_OK(context,
                    ParseTFRNNInputMode(str, &model_types_.rnn_input_mode));
-    OP_REQUIRES_OK(context, context->GetAttr("direction", &str));
+    OP_REQUIRES_OK(context, context->GetAttribute("direction", &str));
     OP_REQUIRES_OK(
         context, ParseRNNDirectionMode(str, &model_types_.rnn_direction_mode));
     // Reset CudnnRnnDescriptor and related random number generate states in
@@ -1113,7 +1114,7 @@ class CudnnRNNParamsSizeOp<GPUDevice, T, Index> : public CudnnRNNKernelCommon {
   explicit CudnnRNNParamsSizeOp(OpKernelConstruction* context)
       : CudnnRNNKernelCommon(context) {
     if (context->HasAttr("num_proj")) {
-      OP_REQUIRES_OK(context, context->GetAttr("num_proj", &num_proj_));
+      OP_REQUIRES_OK(context, context->GetAttribute("num_proj", &num_proj_));
     } else {
       num_proj_ = 0;
     }
@@ -1161,24 +1162,25 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
   explicit CudnnRNNParamsToCanonical(OpKernelConstruction* context)
       : CudnnRNNKernelCommon(context) {
     if (context->HasAttr("num_params")) {
-      OP_REQUIRES_OK(context, context->GetAttr("num_params", &num_params_));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("num_params", &num_params_));
     } else {
       num_params_ = 0;
     }
     if (context->HasAttr("num_params_weights")) {
-      OP_REQUIRES_OK(context, context->GetAttr("num_params_weights",
-                                               &num_params_weights_));
+      OP_REQUIRES_OK(context, context->GetAttribute("num_params_weights",
+                                                    &num_params_weights_));
     } else {
       num_params_weights_ = 0;
     }
     if (context->HasAttr("num_params_biases")) {
-      OP_REQUIRES_OK(
-          context, context->GetAttr("num_params_biases", &num_params_biases_));
+      OP_REQUIRES_OK(context, context->GetAttribute("num_params_biases",
+                                                    &num_params_biases_));
     } else {
       num_params_biases_ = 0;
     }
     if (context->HasAttr("num_proj")) {
-      OP_REQUIRES_OK(context, context->GetAttr("num_proj", &num_proj_));
+      OP_REQUIRES_OK(context, context->GetAttribute("num_proj", &num_proj_));
     } else {
       num_proj_ = 0;
     }
@@ -1363,7 +1365,7 @@ class CudnnRNNCanonicalToParams<GPUDevice, T> : public CudnnRNNKernelCommon {
   explicit CudnnRNNCanonicalToParams(OpKernelConstruction* context)
       : CudnnRNNKernelCommon(context) {
     if (context->HasAttr("num_proj")) {
-      OP_REQUIRES_OK(context, context->GetAttr("num_proj", &num_proj_));
+      OP_REQUIRES_OK(context, context->GetAttribute("num_proj", &num_proj_));
     } else {
       num_proj_ = 0;
     }
@@ -1430,7 +1432,8 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
  public:
   explicit CudnnRNNForwardOp(OpKernelConstruction* context)
       : CudnnRNNKernelCommon(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("is_training", &is_training_));
 
     // Read debug env variables.
     is_debug_mode_ = DebugCudnnRnn();
@@ -1795,9 +1798,9 @@ class CudnnRNNForwardOpV3<GPUDevice, T>
  public:
   explicit CudnnRNNForwardOpV3(OpKernelConstruction* context)
       : CudnnRNNForwardOp<GPUDevice, T>(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("time_major", &time_major_));
+    OP_REQUIRES_OK(context, context->GetAttribute("time_major", &time_major_));
     if (context->HasAttr("num_proj")) {
-      OP_REQUIRES_OK(context, context->GetAttr("num_proj", &num_proj_));
+      OP_REQUIRES_OK(context, context->GetAttribute("num_proj", &num_proj_));
     } else {
       num_proj_ = 0;
     }
@@ -2075,9 +2078,9 @@ class CudnnRNNBackwardOpV3<GPUDevice, T>
  public:
   explicit CudnnRNNBackwardOpV3(OpKernelConstruction* context)
       : CudnnRNNBackwardOp<GPUDevice, T>(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("time_major", &time_major_));
+    OP_REQUIRES_OK(context, context->GetAttribute("time_major", &time_major_));
     if (context->HasAttr("num_proj")) {
-      OP_REQUIRES_OK(context, context->GetAttr("num_proj", &num_proj_));
+      OP_REQUIRES_OK(context, context->GetAttribute("num_proj", &num_proj_));
     } else {
       num_proj_ = 0;
     }

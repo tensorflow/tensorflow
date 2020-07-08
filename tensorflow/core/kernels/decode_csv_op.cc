@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/parsing_ops.cc.
 #include <vector>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -29,12 +30,13 @@ class DecodeCSVOp : public OpKernel {
   explicit DecodeCSVOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string delim;
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("OUT_TYPE", &out_type_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("OUT_TYPE", &out_type_));
     OP_REQUIRES(ctx, out_type_.size() < std::numeric_limits<int>::max(),
                 errors::InvalidArgument("Out type too large"));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("field_delim", &delim));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_quote_delim", &use_quote_delim_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("select_cols", &select_cols_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("field_delim", &delim));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("use_quote_delim", &use_quote_delim_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("select_cols", &select_cols_));
     OP_REQUIRES(
         ctx, out_type_.size() == select_cols_.size() || select_cols_.empty(),
         errors::InvalidArgument("select_cols should match output size"));
@@ -50,7 +52,7 @@ class DecodeCSVOp : public OpKernel {
     OP_REQUIRES(ctx, delim.size() == 1,
                 errors::InvalidArgument("field_delim should be only 1 char"));
     delim_ = delim[0];
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("na_value", &na_value_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("na_value", &na_value_));
   }
 
   void Compute(OpKernelContext* ctx) override {

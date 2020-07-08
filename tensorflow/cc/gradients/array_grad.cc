@@ -15,12 +15,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-
-#include "tensorflow/cc/framework/grad_op_registry.h"
-#include "tensorflow/cc/framework/gradients.h"
 
 namespace tensorflow {
 namespace ops {
@@ -43,9 +42,9 @@ Status PackGrad(const Scope& scope, const Operation& op,
                 const std::vector<Output>& grad_inputs,
                 std::vector<Output>* grad_outputs) {
   int N;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "N", &N));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(op.node()->attrs(), "N", &N));
   int axis;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "axis", &axis));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(op.node()->attrs(), "axis", &axis));
 
   grad_outputs->reserve(N);
   auto grad_op = Unstack(scope, grad_inputs[0], N, Unstack::Axis(axis));
@@ -60,7 +59,7 @@ Status UnpackGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,
                   std::vector<Output>* grad_outputs) {
   int axis;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "axis", &axis));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(op.node()->attrs(), "axis", &axis));
   grad_outputs->push_back(Stack(scope, grad_inputs, Stack::Axis(axis)));
   return scope.status();
 }
@@ -191,7 +190,7 @@ Status CheckNumericsGrad(const Scope& scope, const Operation& op,
                          const std::vector<Output>& grad_inputs,
                          std::vector<Output>* grad_outputs) {
   string message;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "message", &message));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(op.node()->attrs(), "message", &message));
   string err_msg = strings::StrCat(
       "Not a number (NaN) or infinity (Inf) values detected in gradient. ",
       message);
@@ -244,9 +243,10 @@ Status ReverseSequenceGrad(const Scope& scope, const Operation& op,
                            std::vector<Output>* grad_outputs) {
   auto seq_lengths = op.input(1);
   int batch_dim;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "batch_dim", &batch_dim));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttribute(op.node()->attrs(), "batch_dim", &batch_dim));
   int seq_dim;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "seq_dim", &seq_dim));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(op.node()->attrs(), "seq_dim", &seq_dim));
   grad_outputs->push_back(
       ReverseSequence(scope, grad_inputs[0], seq_lengths, seq_dim,
                       ReverseSequence::BatchDim(batch_dim)));
@@ -314,7 +314,7 @@ Status SpaceToBatchGrad(const Scope& scope, const Operation& op,
                         std::vector<Output>* grad_outputs) {
   int block_size;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
+      GetNodeAttribute(op.node()->attrs(), "block_size", &block_size));
   grad_outputs->push_back(
       BatchToSpace(scope, grad_inputs[0], op.input(1), block_size));
   grad_outputs->push_back(NoGradient());
@@ -338,7 +338,7 @@ Status BatchToSpaceGrad(const Scope& scope, const Operation& op,
                         std::vector<Output>* grad_outputs) {
   int block_size;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
+      GetNodeAttribute(op.node()->attrs(), "block_size", &block_size));
   grad_outputs->push_back(
       SpaceToBatch(scope, grad_inputs[0], op.input(1), block_size));
   grad_outputs->push_back(NoGradient());
@@ -362,7 +362,7 @@ Status SpaceToDepthGrad(const Scope& scope, const Operation& op,
                         std::vector<Output>* grad_outputs) {
   int block_size;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
+      GetNodeAttribute(op.node()->attrs(), "block_size", &block_size));
   grad_outputs->push_back(DepthToSpace(scope, grad_inputs[0], block_size));
   return scope.status();
 }
@@ -373,7 +373,7 @@ Status DepthToSpaceGrad(const Scope& scope, const Operation& op,
                         std::vector<Output>* grad_outputs) {
   int block_size;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.node()->attrs(), "block_size", &block_size));
+      GetNodeAttribute(op.node()->attrs(), "block_size", &block_size));
   grad_outputs->push_back(SpaceToDepth(scope, grad_inputs[0], block_size));
   return scope.status();
 }
@@ -383,7 +383,7 @@ Status MirrorPadGrad(const Scope& scope, const Operation& op,
                      const std::vector<Output>& grad_inputs,
                      std::vector<Output>* grad_outputs) {
   string mode;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "mode", &mode));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(op.node()->attrs(), "mode", &mode));
   grad_outputs->push_back(tensorflow::ops::internal::MirrorPadGrad(
       scope, grad_inputs[0], op.input(1), mode));
   grad_outputs->push_back(NoGradient());
@@ -396,7 +396,7 @@ Status MirrorPadGradGrad(const Scope& scope, const Operation& op,
                          const std::vector<Output>& grad_inputs,
                          std::vector<Output>* grad_outputs) {
   string mode;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "mode", &mode));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(op.node()->attrs(), "mode", &mode));
   grad_outputs->push_back(MirrorPad(scope, grad_inputs[0], op.input(1), mode));
   grad_outputs->push_back(NoGradient());
   return scope.status();
@@ -416,14 +416,15 @@ Status StridedSliceGradHelper(const Scope& scope, const Operation& op,
   int64 new_axis_mask;
   int64 shrink_axis_mask;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.node()->attrs(), "begin_mask", &begin_mask));
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "end_mask", &end_mask));
+      GetNodeAttribute(op.node()->attrs(), "begin_mask", &begin_mask));
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.node()->attrs(), "ellipsis_mask", &ellipsis_mask));
+      GetNodeAttribute(op.node()->attrs(), "end_mask", &end_mask));
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.node()->attrs(), "new_axis_mask", &new_axis_mask));
+      GetNodeAttribute(op.node()->attrs(), "ellipsis_mask", &ellipsis_mask));
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.node()->attrs(), "shrink_axis_mask", &shrink_axis_mask));
+      GetNodeAttribute(op.node()->attrs(), "new_axis_mask", &new_axis_mask));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(op.node()->attrs(), "shrink_axis_mask",
+                                      &shrink_axis_mask));
   grad_outputs->push_back(
       StridedSliceGrad(scope, x, begin, end, strides, grad_inputs[0],
                        StridedSliceGrad::BeginMask(begin_mask)

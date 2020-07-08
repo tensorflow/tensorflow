@@ -29,7 +29,7 @@ _HostConstantOp::_HostConstantOp(OpKernelConstruction* ctx)
   const TensorProto* proto = nullptr;
   AllocatorAttributes alloc_attr;
   alloc_attr.set_on_host(true);
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("value", &proto));
   OP_REQUIRES_OK(
       ctx, ctx->device()->MakeTensorFromProto(*proto, alloc_attr, &tensor_));
   OP_REQUIRES(
@@ -69,4 +69,3 @@ REGISTER_KERNEL_BUILDER(
     _HostConstantOp);
 
 }  // end namespace tensorflow
-

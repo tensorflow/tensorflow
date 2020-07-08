@@ -202,10 +202,10 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   {
     std::vector<int> forward_input;
     Status fwd_status =
-        GetNodeAttr(n->attrs(), "_forward_input", &forward_input);
+        GetNodeAttribute(n->attrs(), "_forward_input", &forward_input);
     std::vector<int> scoped_allocator_attrs;
-    Status sa_status =
-        GetNodeAttr(n->attrs(), "_scoped_allocator", &scoped_allocator_attrs);
+    Status sa_status = GetNodeAttribute(n->attrs(), "_scoped_allocator",
+                                        &scoped_allocator_attrs);
 
     int* forward_from = item->forward_from_base();
     uint8* output_types = item->output_type_base();
@@ -306,8 +306,8 @@ void GraphView::SetScopedAllocatorAttrs(
       NodeItem* item = node(use_node->id());
       AllocatorAttributes* use_attrs = item->output_attr_base();
       std::vector<int> scoped_allocator_attrs;
-      Status s = GetNodeAttr(use_node->attrs(), "_scoped_allocator",
-                             &scoped_allocator_attrs);
+      Status s = GetNodeAttribute(use_node->attrs(), "_scoped_allocator",
+                                  &scoped_allocator_attrs);
       if (!s.ok()) {
         VLOG(2) << "Failed to find expected ScopedAllocator attr on "
                 << use_node->name();
@@ -342,7 +342,7 @@ Status InferAllocAttr(const Node* n, const Node* dst,
   // so these two cases are not mutually exclusive.
   if (IsRecv(n)) {
     string src_name;
-    s = GetNodeAttr(n->attrs(), "send_device", &src_name);
+    s = GetNodeAttribute(n->attrs(), "send_device", &src_name);
     if (!s.ok()) return s;
     DeviceNameUtils::ParsedName parsed_src_name;
     if (!DeviceNameUtils::ParseFullName(src_name, &parsed_src_name)) {
@@ -367,7 +367,7 @@ Status InferAllocAttr(const Node* n, const Node* dst,
   }
   if (IsSend(dst)) {
     string dst_name;
-    s = GetNodeAttr(dst->attrs(), "recv_device", &dst_name);
+    s = GetNodeAttribute(dst->attrs(), "recv_device", &dst_name);
     if (!s.ok()) return s;
     DeviceNameUtils::ParsedName parsed_dst_name;
     if (!DeviceNameUtils::ParseFullName(dst_name, &parsed_dst_name)) {

@@ -29,7 +29,6 @@ limitations under the License.
 #include <vector>
 
 #include "mkl_cblas.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -56,8 +56,8 @@ class BatchMatMulMkl : public OpKernel {
  public:
   explicit BatchMatMulMkl(OpKernelConstruction* context)
       : OpKernel(context), eigen_batch_mm_v2_(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("adj_x", &adj_x_));
-    OP_REQUIRES_OK(context, context->GetAttr("adj_y", &adj_y_));
+    OP_REQUIRES_OK(context, context->GetAttribute("adj_x", &adj_x_));
+    OP_REQUIRES_OK(context, context->GetAttribute("adj_y", &adj_y_));
   }
 
   virtual ~BatchMatMulMkl() {}

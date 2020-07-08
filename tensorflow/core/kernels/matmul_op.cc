@@ -443,8 +443,8 @@ class MatMulOp : public OpKernel {
  public:
   explicit MatMulOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), algorithms_set_already_(false) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("transpose_a", &transpose_a_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("transpose_b", &transpose_b_));
 
     LaunchMatMul<Device, T, USE_CUBLAS>::GetBlasGemmAlgorithm(
         ctx, &algorithms_, &algorithms_set_already_);

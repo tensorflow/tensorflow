@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 // See docs in ../ops/image_ops.cc.
 #include <math.h>
+
 #include <cmath>
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -208,19 +210,20 @@ class SampleDistortedBoundingBoxV2Op : public OpKernel {
     OP_REQUIRES_OK(context, generator_.Init(context));
 
     if (context->num_inputs() == 2) {
-      OP_REQUIRES_OK(context, context->GetAttr("min_object_covered",
-                                               &min_object_covered_));
+      OP_REQUIRES_OK(context, context->GetAttribute("min_object_covered",
+                                                    &min_object_covered_));
       OP_REQUIRES(
           context, min_object_covered_ >= 0,
           errors::InvalidArgument("Min object covered must be non-negative: ",
                                   min_object_covered_));
     }
 
-    OP_REQUIRES_OK(context, context->GetAttr("use_image_if_no_bounding_boxes",
-                                             &use_image_if_no_bounding_boxes_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("use_image_if_no_bounding_boxes",
+                                         &use_image_if_no_bounding_boxes_));
 
-    OP_REQUIRES_OK(
-        context, context->GetAttr("aspect_ratio_range", &aspect_ratio_range_));
+    OP_REQUIRES_OK(context, context->GetAttribute("aspect_ratio_range",
+                                                  &aspect_ratio_range_));
     OP_REQUIRES(context, aspect_ratio_range_.size() == 2,
                 errors::InvalidArgument(
                     "Aspect ratio range field must specify 2 dimensions"));
@@ -231,7 +234,7 @@ class SampleDistortedBoundingBoxV2Op : public OpKernel {
                                 aspect_ratio_range_[0], ", ",
                                 aspect_ratio_range_[1], "]"));
 
-    OP_REQUIRES_OK(context, context->GetAttr("area_range", &area_range_));
+    OP_REQUIRES_OK(context, context->GetAttribute("area_range", &area_range_));
     OP_REQUIRES(
         context, area_range_.size() == 2,
         errors::InvalidArgument("Area range field must specify 2 dimensions"));
@@ -246,7 +249,8 @@ class SampleDistortedBoundingBoxV2Op : public OpKernel {
                     "Area range must be less then or equal to 1.0: [",
                     area_range_[0], ", ", area_range_[1], "]"));
 
-    OP_REQUIRES_OK(context, context->GetAttr("max_attempts", &max_attempts_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("max_attempts", &max_attempts_));
     OP_REQUIRES(context, max_attempts_ > 0,
                 errors::InvalidArgument("Max attempts must be non-negative: ",
                                         max_attempts_));

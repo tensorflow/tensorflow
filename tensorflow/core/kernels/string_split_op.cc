@@ -166,7 +166,7 @@ class StringSplitOp : public OpKernel {
     bool skip_empty;
     // By default skip_empty_ is true. We only get the value from attr if it is
     // available, so that it is backward compatible.
-    if (context->GetAttr("skip_empty", &skip_empty).ok()) {
+    if (context->GetAttribute("skip_empty", &skip_empty).ok()) {
       skip_empty_ = skip_empty;
     }
   }
@@ -243,7 +243,7 @@ class StringSplitV2Op : public OpKernel {
  public:
   explicit StringSplitV2Op(OpKernelConstruction* context)
       : OpKernel(context), maxsplit_(-1) {
-    OP_REQUIRES_OK(context, context->GetAttr("maxsplit", &maxsplit_));
+    OP_REQUIRES_OK(context, context->GetAttribute("maxsplit", &maxsplit_));
   }
 
   void Compute(OpKernelContext* ctx) override {

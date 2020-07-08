@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
+
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -383,9 +384,18 @@ TEST(RemoteFusedGraphExecuteUtils, PropagateAndBuildTensorShapeMap) {
         &data_types));
     ASSERT_EQ(1, data_types.size());
     EXPECT_EQ(DT_FLOAT, data_types.at(0));
+    TF_ASSERT_OK(GetNodeAttribute(
+        *node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES,
+        &data_types));
+    ASSERT_EQ(1, data_types.size());
+    EXPECT_EQ(DT_FLOAT, data_types.at(0));
 
     std::vector<TensorShape> shapes;
     TF_ASSERT_OK(GetNodeAttr(
+        *node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES, &shapes));
+    ASSERT_EQ(1, shapes.size());
+    EXPECT_EQ(0, shapes.at(0).dims());
+    TF_ASSERT_OK(GetNodeAttribute(
         *node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES, &shapes));
     ASSERT_EQ(1, shapes.size());
     EXPECT_EQ(0, shapes.at(0).dims());
@@ -402,9 +412,18 @@ TEST(RemoteFusedGraphExecuteUtils, PropagateAndBuildTensorShapeMap) {
         &data_types));
     ASSERT_EQ(1, data_types.size());
     EXPECT_EQ(DT_FLOAT, data_types.at(0));
+    TF_ASSERT_OK(GetNodeAttribute(
+        *node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_DATA_TYPES,
+        &data_types));
+    ASSERT_EQ(1, data_types.size());
+    EXPECT_EQ(DT_FLOAT, data_types.at(0));
 
     std::vector<TensorShape> shapes;
     TF_ASSERT_OK(GetNodeAttr(
+        *node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES, &shapes));
+    ASSERT_EQ(1, shapes.size());
+    EXPECT_EQ(0, shapes.at(0).dims());
+    TF_ASSERT_OK(GetNodeAttribute(
         *node_def, RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES, &shapes));
     ASSERT_EQ(1, shapes.size());
     EXPECT_EQ(0, shapes.at(0).dims());

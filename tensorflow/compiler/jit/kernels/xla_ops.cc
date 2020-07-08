@@ -428,7 +428,7 @@ namespace {
 std::vector<int> ConstantsVector(OpKernelConstruction* ctx) {
   DataTypeVector constant_types;
   OP_REQUIRES_OK_RETURN(ctx, std::vector<int>(),
-                        ctx->GetAttr("Tconstants", &constant_types));
+                        ctx->GetAttribute("Tconstants", &constant_types));
   std::vector<int> constants(constant_types.size());
   std::iota(constants.begin(), constants.end(), 0);
   return constants;
@@ -437,15 +437,15 @@ std::vector<int> ConstantsVector(OpKernelConstruction* ctx) {
 std::vector<int> ResourcesVector(OpKernelConstruction* ctx) {
   DataTypeVector constant_types;
   OP_REQUIRES_OK_RETURN(ctx, std::vector<int>(),
-                        ctx->GetAttr("Tconstants", &constant_types));
+                        ctx->GetAttribute("Tconstants", &constant_types));
 
   DataTypeVector arg_types;
   OP_REQUIRES_OK_RETURN(ctx, std::vector<int>(),
-                        ctx->GetAttr("Targs", &arg_types));
+                        ctx->GetAttribute("Targs", &arg_types));
 
   int num_resources;
   OP_REQUIRES_OK_RETURN(ctx, std::vector<int>(),
-                        ctx->GetAttr("Nresources", &num_resources));
+                        ctx->GetAttribute("Nresources", &num_resources));
 
   std::vector<int> resources(num_resources);
   std::iota(resources.begin(), resources.end(),
@@ -455,21 +455,22 @@ std::vector<int> ResourcesVector(OpKernelConstruction* ctx) {
 
 NameAttrList FunctionAttr(OpKernelConstruction* ctx) {
   const NameAttrList* func;
-  OP_REQUIRES_OK_RETURN(ctx, NameAttrList(), ctx->GetAttr("function", &func));
+  OP_REQUIRES_OK_RETURN(ctx, NameAttrList(),
+                        ctx->GetAttribute("function", &func));
   return *func;
 }
 
 bool MustCompileAttr(OpKernelConstruction* ctx) {
   bool must_compile;
   OP_REQUIRES_OK_RETURN(ctx, false,
-                        ctx->GetAttr("must_compile", &must_compile));
+                        ctx->GetAttribute("must_compile", &must_compile));
   return must_compile;
 }
 
 bool HasRefVars(OpKernelConstruction* ctx) {
   bool has_ref_vars;
-  OP_REQUIRES_OK_RETURN(ctx, false,
-                        ctx->GetAttr(kXlaHasReferenceVarsAttr, &has_ref_vars));
+  OP_REQUIRES_OK_RETURN(
+      ctx, false, ctx->GetAttribute(kXlaHasReferenceVarsAttr, &has_ref_vars));
   return has_ref_vars;
 }
 

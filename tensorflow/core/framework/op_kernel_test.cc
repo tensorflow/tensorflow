@@ -814,7 +814,79 @@ class GetAttrKernel : public ::tensorflow::OpKernel {
   std::vector<std::pair<string, Status>> status;
 };
 
+class GetAttributeKernel : public ::tensorflow::OpKernel {
+ public:
+  explicit GetAttributeKernel(OpKernelConstruction* context)
+      : OpKernel(context) {
+    string attr_name;
+    OP_REQUIRES_OK(context, context->GetAttribute("attr_name", &attr_name));
+
+    status.emplace_back("s", context->GetAttribute(attr_name, &s));
+    status.emplace_back("s_list", context->GetAttribute(attr_name, &s_list));
+    status.emplace_back("i", context->GetAttribute(attr_name, &i));
+    status.emplace_back("i_list", context->GetAttribute(attr_name, &i_list));
+    status.emplace_back("i32", context->GetAttribute(attr_name, &i32));
+    status.emplace_back("i32_list",
+                        context->GetAttribute(attr_name, &i32_list));
+    status.emplace_back("f", context->GetAttribute(attr_name, &f));
+    status.emplace_back("f_list", context->GetAttribute(attr_name, &f_list));
+    status.emplace_back("d", context->GetAttribute(attr_name, &d));
+    status.emplace_back("d_list", context->GetAttribute(attr_name, &d_list));
+    status.emplace_back("b", context->GetAttribute(attr_name, &b));
+    status.emplace_back("b_list", context->GetAttribute(attr_name, &b_list));
+    status.emplace_back("type", context->GetAttribute(attr_name, &type));
+    status.emplace_back("type_list",
+                        context->GetAttribute(attr_name, &type_list));
+    status.emplace_back("type_vector",
+                        context->GetAttribute(attr_name, &type_vector));
+    status.emplace_back("shape_proto",
+                        context->GetAttribute(attr_name, &shape_proto));
+    status.emplace_back("shape_proto_list",
+                        context->GetAttribute(attr_name, &shape_proto_list));
+    status.emplace_back("shape", context->GetAttribute(attr_name, &shape));
+    status.emplace_back("shape_list",
+                        context->GetAttribute(attr_name, &shape_list));
+  }
+  void Compute(::tensorflow::OpKernelContext* context) override {}
+
+  void ExpectOk(std::initializer_list<string> keys) {
+    for (const auto& key_status : status) {
+      // Only the status for keys in "keys" should be ok().
+      bool in_keys = false;
+      for (const string& key : keys) {
+        if (key_status.first == key) {
+          in_keys = true;
+        }
+      }
+      EXPECT_EQ(in_keys, key_status.second.ok())
+          << "key_status: " << key_status.first << ", " << key_status.second;
+    }
+  }
+
+  string s;
+  std::vector<string> s_list;
+  int64 i;
+  std::vector<int64> i_list;
+  int32 i32;
+  std::vector<int32> i32_list;
+  float f;
+  std::vector<float> f_list;
+  double d;
+  std::vector<double> d_list;
+  bool b;
+  std::vector<bool> b_list;
+  DataType type;
+  std::vector<DataType> type_list;
+  DataTypeVector type_vector;
+  TensorShapeProto shape_proto;
+  std::vector<TensorShapeProto> shape_proto_list;
+  TensorShape shape;
+  std::vector<TensorShape> shape_list;
+  std::vector<std::pair<string, Status>> status;
+};
+
 class GetAttrTest : public OpKernelBuilderTest {};
+class GetAttributeTest : public OpKernelBuilderTest {};
 
 REGISTER_OP("GetAttrStringList")
     .Attr("attr_name: string")
@@ -931,6 +1003,14 @@ TEST_F(GetAttrTest, Type) {
   auto* get_attr_kernel = static_cast<GetAttrKernel*>(op_kernel.get());
   get_attr_kernel->ExpectOk({"type"});
   EXPECT_EQ(DT_FLOAT, get_attr_kernel->type);
+}
+
+TEST_F(GetAttributeTest, Type) {
+  std::unique_ptr<OpKernel> op_kernel = ExpectSuccess(
+      "GetAttrType", DEVICE_CPU, {"attr_name|string|'a'", "a|type|DT_DOUBLE"});
+  auto* get_attr_kernel = static_cast<GetAttributeKernel*>(op_kernel.get());
+  get_attr_kernel->ExpectOk({"type"});
+  EXPECT_EQ(DT_DOUBLE, get_attr_kernel->type);
 }
 
 REGISTER_OP("GetAttrTypeList").Attr("attr_name: string").Attr("a: list(type)");

@@ -775,8 +775,8 @@ const Node* FindNodeByName(const Graph& graph, const string& name) {
 
 bool HasGuaranteeConstAttr(const Node& n) {
   bool is_guaranteed_constant = false;
-  if (!GetNodeAttr(n.attrs(), "_is_guaranteed_constant",
-                   &is_guaranteed_constant)
+  if (!GetNodeAttribute(n.attrs(), "_is_guaranteed_constant",
+                        &is_guaranteed_constant)
            .ok()) {
     return false;
   }
@@ -2646,8 +2646,8 @@ TEST(EncapsulateSubgraphsTest, RefVariablesMarked) {
 
   for (const Node* node : graph->nodes()) {
     bool has_ref_var;
-    TF_ASSERT_OK(
-        GetNodeAttr(node->attrs(), kXlaHasReferenceVarsAttr, &has_ref_var));
+    TF_ASSERT_OK(GetNodeAttribute(node->attrs(), kXlaHasReferenceVarsAttr,
+                                  &has_ref_var));
     EXPECT_TRUE(node->IsSink() || node->IsSource() || has_ref_var)
         << "All nodes apart from source and sink can access reference variable";
   }
@@ -2676,8 +2676,8 @@ TEST(EncapsulateSubgraphsTest, NoRefVarsNoAttr) {
 
   for (const Node* node : graph->nodes()) {
     bool has_ref_var;
-    TF_ASSERT_OK(
-        GetNodeAttr(node->attrs(), kXlaHasReferenceVarsAttr, &has_ref_var));
+    TF_ASSERT_OK(GetNodeAttribute(node->attrs(), kXlaHasReferenceVarsAttr,
+                                  &has_ref_var));
     EXPECT_FALSE(has_ref_var) << "The graph does not have reference variables";
   }
 }

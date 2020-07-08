@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_split.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/einsum_op_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/reduction_ops_common_gpu.h"
@@ -591,7 +591,7 @@ template <typename Device, typename T>
 class EinsumOp : public OpKernel {
  public:
   explicit EinsumOp(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("equation", &equation_));
+    OP_REQUIRES_OK(c, c->GetAttribute("equation", &equation_));
     OP_REQUIRES_OK(
         c, EinsumHelper::ParseEquation(
                equation_, &input_labels_, &output_labels_, &label_types_,

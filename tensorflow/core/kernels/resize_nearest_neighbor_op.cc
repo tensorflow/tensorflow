@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/image_resizer_state.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -40,9 +40,10 @@ class ResizeNearestNeighborOp : public OpKernel {
  public:
   explicit ResizeNearestNeighborOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
-    OP_REQUIRES_OK(
-        context, context->GetAttr("half_pixel_centers", &half_pixel_centers_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("align_corners", &align_corners_));
+    OP_REQUIRES_OK(context, context->GetAttribute("half_pixel_centers",
+                                                  &half_pixel_centers_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -214,9 +215,10 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
  public:
   explicit ResizeNearestNeighborOpGrad(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("align_corners", &align_corners_));
-    OP_REQUIRES_OK(
-        context, context->GetAttr("half_pixel_centers", &half_pixel_centers_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("align_corners", &align_corners_));
+    OP_REQUIRES_OK(context, context->GetAttribute("half_pixel_centers",
+                                                  &half_pixel_centers_));
   }
 
   void Compute(OpKernelContext* context) override {

@@ -422,7 +422,7 @@ TEST_F(ScopedAllocatorOptimizerTest, Extend) {
   std::vector<int> scoped_allocator_attrs;
   AttrSlice slice(nd);
   Status sa_status =
-      GetNodeAttr(slice, "_scoped_allocator", &scoped_allocator_attrs);
+      GetNodeAttribute(slice, "_scoped_allocator", &scoped_allocator_attrs);
   for (int i : scoped_allocator_attrs) {
     VLOG(0) << "extracted: " << i;
   }

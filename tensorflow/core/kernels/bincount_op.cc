@@ -221,7 +221,7 @@ template <typename Device, typename Tidx, typename T>
 class DenseBincountOp : public OpKernel {
  public:
   explicit DenseBincountOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("binary_output", &binary_output_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -314,7 +314,7 @@ template <typename Device, typename Tidx, typename T>
 class SparseBincountOp : public OpKernel {
  public:
   explicit SparseBincountOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("binary_output", &binary_output_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -395,7 +395,7 @@ template <typename Device, typename Tidx, typename T>
 class RaggedBincountOp : public OpKernel {
  public:
   explicit RaggedBincountOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("binary_output", &binary_output_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("binary_output", &binary_output_));
   }
 
   void Compute(OpKernelContext* ctx) override {

@@ -29,11 +29,12 @@ namespace tensorflow {
 class SummaryAudioOp : public OpKernel {
  public:
   explicit SummaryAudioOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("max_outputs", &max_outputs_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("max_outputs", &max_outputs_));
     OP_REQUIRES(context, max_outputs_ > 0,
                 errors::InvalidArgument("max_outputs must be > 0"));
     has_sample_rate_attr_ =
-        context->GetAttr("sample_rate", &sample_rate_attr_).ok();
+        context->GetAttribute("sample_rate", &sample_rate_attr_).ok();
   }
 
   void Compute(OpKernelContext* c) override {

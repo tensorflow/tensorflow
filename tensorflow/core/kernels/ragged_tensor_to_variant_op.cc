@@ -143,7 +143,8 @@ class RaggedTensorToVariantOp : public OpKernel {
  public:
   explicit RaggedTensorToVariantOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("batched_input", &batched_input_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("batched_input", &batched_input_));
   }
 
   void Compute(OpKernelContext* context) override {

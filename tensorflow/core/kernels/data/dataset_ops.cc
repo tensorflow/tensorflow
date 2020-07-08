@@ -51,15 +51,15 @@ DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx)
   if (op_version_ == 2) {
     if (ctx->HasAttr(kExternalStatePolicy)) {
       int64 state_change_option;
-      OP_REQUIRES_OK(ctx,
-                     ctx->GetAttr(kExternalStatePolicy, &state_change_option));
+      OP_REQUIRES_OK(
+          ctx, ctx->GetAttribute(kExternalStatePolicy, &state_change_option));
       external_state_policy_ =
           SerializationContext::ExternalStatePolicy(state_change_option);
     }
   } else {
     if (ctx->HasAttr(kAllowStateful)) {
       bool allow_stateful;
-      OP_REQUIRES_OK(ctx, ctx->GetAttr(kAllowStateful, &allow_stateful));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute(kAllowStateful, &allow_stateful));
       if (allow_stateful) {
         external_state_policy_ =
             SerializationContext::ExternalStatePolicy::kWarn;
@@ -71,8 +71,8 @@ DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx)
   }
 
   if (ctx->HasAttr(kStripDeviceAssignment)) {
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr(kStripDeviceAssignment, &strip_device_assignment_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kStripDeviceAssignment,
+                                          &strip_device_assignment_));
   }
 }
 
@@ -117,8 +117,7 @@ void DatasetCardinalityOp::Compute(OpKernelContext* ctx) {
 
 void DatasetFromGraphOp::Compute(OpKernelContext* ctx) {
   tstring graph_def_string;
-  OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument(ctx, kGraphDef, &graph_def_string));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kGraphDef, &graph_def_string));
   GraphDef graph_def;
   OP_REQUIRES(ctx, graph_def.ParseFromString(graph_def_string),
               errors::InvalidArgument("Could not parse GraphDef"));

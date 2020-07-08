@@ -44,7 +44,8 @@ class PaddingFIFOQueueOp : public TypedQueueOp {
  public:
   explicit PaddingFIFOQueueOp(OpKernelConstruction* context)
       : TypedQueueOp(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("shapes", &component_shapes_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("shapes", &component_shapes_));
     for (const auto& shape : component_shapes_) {
       OP_REQUIRES(context, shape.dims() >= 0,
                   errors::InvalidArgument("shape ", shape.DebugString(),

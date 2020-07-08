@@ -65,7 +65,7 @@ Status InternalCompute(const RE2& match, const string& rewrite,
 class RegexReplaceOp : public OpKernel {
  public:
   explicit RegexReplaceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("replace_global", &replace_global_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("replace_global", &replace_global_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -100,13 +100,13 @@ class StaticRegexReplaceOp : public OpKernel {
  public:
   explicit StaticRegexReplaceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string pattern;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("pattern", &pattern));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("rewrite", &rewrite_str_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("pattern", &pattern));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("rewrite", &rewrite_str_));
     re_ = MakeUnique<RE2>(pattern);
     OP_REQUIRES(ctx, re_->ok(),
                 errors::InvalidArgument("Invalid pattern: ", pattern,
                                         ", error: ", re_->error()));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("replace_global", &replace_global_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("replace_global", &replace_global_));
   }
 
   void Compute(OpKernelContext* ctx) override {

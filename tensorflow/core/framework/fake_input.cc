@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/fake_input.h"
 
 #include <vector>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -101,7 +102,8 @@ Status FakeInputImpl::AddInputToBuilder() {
   } else {
     if (!dt_specified_ && !arg_->type_list_attr().empty()) {
       DataTypeVector dts;
-      Status status = GetNodeAttr(*node_def_, arg_->type_list_attr(), &dts);
+      Status status =
+          GetNodeAttribute(*node_def_, arg_->type_list_attr(), &dts);
       if (!status.ok()) {
         return errors::InvalidArgument(
             "Could not infer list of types for input '", arg_->name(),
@@ -128,7 +130,7 @@ Status FakeInputImpl::GetN(int* n) const {
   if (n_specified_) {
     *n = n_;
   } else {
-    Status status = GetNodeAttr(*node_def_, arg_->number_attr(), n);
+    Status status = GetNodeAttribute(*node_def_, arg_->number_attr(), n);
     if (!status.ok()) {
       return errors::InvalidArgument("Could not infer length of input '",
                                      arg_->name(),
@@ -145,7 +147,7 @@ Status FakeInputImpl::GetDataType(DataType* dt) const {
   } else if (arg_->type() != DT_INVALID) {
     *dt = arg_->type();
   } else if (!arg_->type_attr().empty()) {
-    Status status = GetNodeAttr(*node_def_, arg_->type_attr(), dt);
+    Status status = GetNodeAttribute(*node_def_, arg_->type_attr(), dt);
     if (!status.ok()) {
       // Check if the type attr has a default
       const OpDef::AttrDef* attr = FindAttr(arg_->type_attr(), *op_def_);

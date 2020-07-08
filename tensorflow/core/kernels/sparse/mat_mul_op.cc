@@ -19,9 +19,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/SparseCore"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -35,6 +32,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/threadpool.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/Eigen/SparseCore"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cuda_solvers.h"
@@ -79,20 +79,20 @@ template <typename Device, typename T>
 class CSRMatMulOp : public OpKernel {
  public:
   explicit CSRMatMulOp(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("transpose_a", &transpose_a_));
-    OP_REQUIRES_OK(c, c->GetAttr("transpose_b", &transpose_b_));
+    OP_REQUIRES_OK(c, c->GetAttribute("transpose_a", &transpose_a_));
+    OP_REQUIRES_OK(c, c->GetAttribute("transpose_b", &transpose_b_));
     bool adjoint_a;
-    OP_REQUIRES_OK(c, c->GetAttr("adjoint_a", &adjoint_a));
+    OP_REQUIRES_OK(c, c->GetAttribute("adjoint_a", &adjoint_a));
     OP_REQUIRES(c, !(adjoint_a && transpose_a_),
                 errors::InvalidArgument(
                     "Only one of adjoint_a and transpose_a may be true."));
     bool adjoint_b;
-    OP_REQUIRES_OK(c, c->GetAttr("adjoint_b", &adjoint_b));
+    OP_REQUIRES_OK(c, c->GetAttribute("adjoint_b", &adjoint_b));
     OP_REQUIRES(c, !(adjoint_b && transpose_b_),
                 errors::InvalidArgument(
                     "Only one of adjoint_b and transpose_b may be true."));
-    OP_REQUIRES_OK(c, c->GetAttr("transpose_output", &transpose_output_));
-    OP_REQUIRES_OK(c, c->GetAttr("conjugate_output", &conjugate_output_));
+    OP_REQUIRES_OK(c, c->GetAttribute("transpose_output", &transpose_output_));
+    OP_REQUIRES_OK(c, c->GetAttribute("conjugate_output", &conjugate_output_));
     conjugate_a_ = adjoint_a;
     conjugate_b_ = adjoint_b;
     transpose_a_ |= adjoint_a;

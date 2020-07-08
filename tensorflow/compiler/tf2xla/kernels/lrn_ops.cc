@@ -26,12 +26,12 @@ namespace {
 class LRNOp : public XlaOpKernel {
  public:
   explicit LRNOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("depth_radius", &depth_radius_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("depth_radius", &depth_radius_));
 
     // TODO(phawkins): handle non-float types for attributes.
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("bias", &bias_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("alpha", &alpha_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("beta", &beta_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("bias", &bias_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("alpha", &alpha_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("beta", &beta_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -78,12 +78,12 @@ REGISTER_XLA_OP(Name("LRN"), LRNOp);
 class LRNGradOp : public XlaOpKernel {
  public:
   explicit LRNGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("depth_radius", &depth_radius_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("depth_radius", &depth_radius_));
 
     // TODO(phawkins): handle non-float types for attributes.
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("bias", &bias_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("alpha", &alpha_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("beta", &beta_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("bias", &bias_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("alpha", &alpha_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("beta", &beta_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -98,14 +98,15 @@ class LRNGradOp : public XlaOpKernel {
     const int64 cols = in_grads_shape.dim_size(2);
     const int64 depth = in_grads_shape.dim_size(3);
     OP_REQUIRES(
-        ctx, in_image_shape.dim_size(0) == batch &&
-                 in_image_shape.dim_size(1) == rows &&
-                 in_image_shape.dim_size(2) == cols &&
-                 in_image_shape.dim_size(3) == depth &&
-                 out_image_shape.dim_size(0) == batch &&
-                 out_image_shape.dim_size(1) == rows &&
-                 out_image_shape.dim_size(2) == cols &&
-                 out_image_shape.dim_size(3) == depth,
+        ctx,
+        in_image_shape.dim_size(0) == batch &&
+            in_image_shape.dim_size(1) == rows &&
+            in_image_shape.dim_size(2) == cols &&
+            in_image_shape.dim_size(3) == depth &&
+            out_image_shape.dim_size(0) == batch &&
+            out_image_shape.dim_size(1) == rows &&
+            out_image_shape.dim_size(2) == cols &&
+            out_image_shape.dim_size(3) == depth,
         errors::InvalidArgument(
             "input_grads, input_image, and out_image should have the same "
             "shape"));

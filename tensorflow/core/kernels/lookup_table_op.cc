@@ -158,8 +158,8 @@ template <class K, class V>
 class MutableHashTableOfTensors final : public LookupInterface {
  public:
   MutableHashTableOfTensors(OpKernelContext* ctx, OpKernel* kernel) {
-    OP_REQUIRES_OK(ctx,
-                   GetNodeAttr(kernel->def(), "value_shape", &value_shape_));
+    OP_REQUIRES_OK(
+        ctx, GetNodeAttribute(kernel->def(), "value_shape", &value_shape_));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsVector(value_shape_),
         errors::InvalidArgument("Default value must be a vector, got shape ",
@@ -316,15 +316,15 @@ template <class K, class V>
 class MutableDenseHashTable final : public LookupInterface {
  public:
   MutableDenseHashTable(OpKernelContext* ctx, OpKernel* kernel) {
-    OP_REQUIRES_OK(
-        ctx, GetNodeAttr(kernel->def(), "max_load_factor", &max_load_factor_));
+    OP_REQUIRES_OK(ctx, GetNodeAttribute(kernel->def(), "max_load_factor",
+                                         &max_load_factor_));
     OP_REQUIRES(ctx, max_load_factor_ > 0 && max_load_factor_ < 1,
                 errors::InvalidArgument(
                     "max_load_factor must be between 0 and 1, got: ",
                     max_load_factor_));
 
-    OP_REQUIRES_OK(ctx,
-                   GetNodeAttr(kernel->def(), "value_shape", &value_shape_));
+    OP_REQUIRES_OK(
+        ctx, GetNodeAttribute(kernel->def(), "value_shape", &value_shape_));
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(value_shape_) ||
                     TensorShapeUtils::IsVector(value_shape_),
@@ -370,8 +370,8 @@ class MutableDenseHashTable final : public LookupInterface {
     }
 
     int64 initial_num_buckets;
-    OP_REQUIRES_OK(ctx, GetNodeAttr(kernel->def(), "initial_num_buckets",
-                                    &initial_num_buckets));
+    OP_REQUIRES_OK(ctx, GetNodeAttribute(kernel->def(), "initial_num_buckets",
+                                         &initial_num_buckets));
     OP_REQUIRES_OK(ctx, AllocateBuckets(ctx, initial_num_buckets));
   }
 

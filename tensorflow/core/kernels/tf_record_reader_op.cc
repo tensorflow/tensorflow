@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -87,8 +88,8 @@ class TFRecordReaderOp : public ReaderOpKernel {
     Env* env = context->env();
 
     string compression_type;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("compression_type", &compression_type));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("compression_type", &compression_type));
 
     SetReaderFactory([this, compression_type, env]() {
       return new TFRecordReader(name(), compression_type, env);

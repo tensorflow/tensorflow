@@ -159,7 +159,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
 RangeDatasetOp::RangeDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputTypes, &output_types_));
 }
 
 void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {

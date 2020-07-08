@@ -72,7 +72,8 @@ REGISTER_OP("TensorForestTreePredict")
       batch_size = c->Dim(shape_handle, 0);
 
       int logits_dimension;
-      TF_RETURN_IF_ERROR(c->GetAttr("logits_dimension", &logits_dimension));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("logits_dimension", &logits_dimension));
       c->set_output(0, c->Matrix(batch_size, logits_dimension));
       return Status::OK();
     });

@@ -42,8 +42,8 @@ template <typename ContextType>
 Status GetRowPartitionTypes(
     ContextType* context, std::vector<RowPartitionType>* row_partition_types) {
   std::vector<string> row_partition_type_strings;
-  TF_RETURN_IF_ERROR(
-      context->GetAttr("row_partition_types", &row_partition_type_strings));
+  TF_RETURN_IF_ERROR(context->GetAttribute("row_partition_types",
+                                           &row_partition_type_strings));
   return GetRowPartitionTypesHelper(row_partition_type_strings,
                                     row_partition_types);
 }

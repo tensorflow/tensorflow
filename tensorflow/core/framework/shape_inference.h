@@ -491,6 +491,8 @@ class InferenceContext {
   // have a matching type, a non-ok status will be returned.
   template <class T>
   Status GetAttr(StringPiece attr_name, T* value) const;
+  template <class T>
+  Status GetAttribute(StringPiece attr_name, T* value) const;
 
   // Returns in <out> the result of dividing <dividend> by <divisor>.
   // Returns an error if <divisor>  is not positive or if <evenly_divisible>
@@ -778,6 +780,10 @@ inline DimensionOrConstant::DimensionOrConstant(int64 val) : val(val) {
 template <class T>
 Status InferenceContext::GetAttr(StringPiece attr_name, T* value) const {
   return GetNodeAttr(attrs_, attr_name, value);
+}
+template <class T>
+Status InferenceContext::GetAttribute(StringPiece attr_name, T* value) const {
+  return GetNodeAttribute(attrs_, attr_name, value);
 }
 
 }  // namespace shape_inference

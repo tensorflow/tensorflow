@@ -67,10 +67,10 @@ REGISTER_OP("RaggedCross")
       std::vector<DataType> dense_types;
 
       TF_RETURN_IF_ERROR(
-          c->GetAttr("ragged_values_types", &ragged_values_types));
+          c->GetAttribute("ragged_values_types", &ragged_values_types));
       TF_RETURN_IF_ERROR(
-          c->GetAttr("ragged_splits_types", &ragged_splits_types));
-      TF_RETURN_IF_ERROR(c->GetAttr("dense_types", &dense_types));
+          c->GetAttribute("ragged_splits_types", &ragged_splits_types));
+      TF_RETURN_IF_ERROR(c->GetAttribute("dense_types", &dense_types));
 
       int num_ragged = ragged_values_types.size();
       if (num_ragged != ragged_splits_types.size()) {
@@ -79,7 +79,7 @@ REGISTER_OP("RaggedCross")
       }
 
       int num_sparse;
-      TF_RETURN_IF_ERROR(c->GetAttr("Nsparse", &num_sparse));
+      TF_RETURN_IF_ERROR(c->GetAttribute("Nsparse", &num_sparse));
 
       ShapeHandle out_values = c->UnknownShapeOfRank(1);
       ShapeHandle out_splits = c->UnknownShapeOfRank(1);
@@ -122,8 +122,8 @@ Status RaggedGatherShapeFn(InferenceContext* c) {
   int num_splits;
   int64 PARAMS_RAGGED_RANK;
   TF_RETURN_IF_ERROR(
-      c->GetAttr<int64>("PARAMS_RAGGED_RANK", &PARAMS_RAGGED_RANK));
-  TF_RETURN_IF_ERROR(c->GetAttr<int>("OUTPUT_RAGGED_RANK", &num_splits));
+      c->GetAttribute<int64>("PARAMS_RAGGED_RANK", &PARAMS_RAGGED_RANK));
+  TF_RETURN_IF_ERROR(c->GetAttribute<int>("OUTPUT_RAGGED_RANK", &num_splits));
 
   // Check rank of `indices`.
   ShapeHandle indices = c->input(PARAMS_RAGGED_RANK + 1);

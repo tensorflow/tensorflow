@@ -99,7 +99,8 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
 
   explicit TridiagonalSolveOpGpuLinalg(OpKernelConstruction* context)
       : Base(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("partial_pivoting", &pivoting_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("partial_pivoting", &pivoting_));
   }
 
   void ValidateInputMatrixShapes(
@@ -247,7 +248,8 @@ class TridiagonalSolveOpGpu : public OpKernel {
  public:
   explicit TridiagonalSolveOpGpu(OpKernelConstruction* context)
       : OpKernel(context), linalgOp_(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("partial_pivoting", &pivoting_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("partial_pivoting", &pivoting_));
   }
 
   void Compute(OpKernelContext* context) final {

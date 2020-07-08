@@ -46,9 +46,9 @@ Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
     if (node.op() == "If") {
       *op_name = node.name();
       const NameAttrList* result;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node, "then_branch", &result));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(node, "then_branch", &result));
       *then_fn = *result;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node, "else_branch", &result));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(node, "else_branch", &result));
       *else_fn = *result;
       return Status::OK();
     }
@@ -216,9 +216,9 @@ Status FindWhileCondAndBody(const GraphDef& graph, NameAttrList* cond,
   for (const NodeDef& node : graph.node()) {
     if (node.op() == "While") {
       const NameAttrList* result;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node, "cond", &result));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(node, "cond", &result));
       *cond = *result;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node, "body", &result));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(node, "body", &result));
       *body = *result;
       return Status::OK();
     }

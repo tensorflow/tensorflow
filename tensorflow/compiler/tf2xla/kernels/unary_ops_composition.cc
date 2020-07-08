@@ -93,7 +93,7 @@ const XlaOpGeneratorMap& GetXlaOpGeneratorMap() {
 class UnaryOpsCompositionOp : public XlaOpKernel {
  public:
   explicit UnaryOpsCompositionOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("op_names", &op_names_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("op_names", &op_names_));
 
     const XlaOpGeneratorMap& op_generator_map = GetXlaOpGeneratorMap();
     for (absl::string_view op_name : op_names_) {

@@ -1274,14 +1274,17 @@ TEST(FunctionLibraryDefinitionTest, GetAttr_FuncNoAttr) {
   // Not a function.
   ndef.set_op("Matmul");
   EXPECT_FALSE(lib.GetAttr(ndef, "annotation", &annotation).ok());
+  EXPECT_FALSE(lib.GetAttribute(ndef, "annotation", &annotation).ok());
 
   // A function. No attr defined.
   ndef.set_op("XTimesTwo");
   EXPECT_FALSE(lib.GetAttr(ndef, "annotation", &annotation).ok());
+  EXPECT_FALSE(lib.GetAttribute(ndef, "annotation", &annotation).ok());
 
   // ndef defines the attr. But we don't care.
   AddNodeAttr("annotation", true, &ndef);
   EXPECT_FALSE(lib.GetAttr(ndef, "annotation", &annotation).ok());
+  EXPECT_FALSE(lib.GetAttribute(ndef, "annotation", &annotation).ok());
 }
 
 template <typename T>
@@ -1305,10 +1308,12 @@ TEST(FunctionLibraryDefinitionTest, GetAttr_FuncWithAttr) {
   // A function. No attr defined in ndef.
   ndef.set_op("XTimesTwo");
   TF_EXPECT_OK(lib.GetAttr(ndef, "annotation", &annotation));
+  TF_EXPECT_OK(lib.GetAttribute(ndef, "annotation", &annotation));
   EXPECT_EQ(annotation, true);
 
   string str;
   TF_EXPECT_OK(lib.GetAttr(ndef, "options", &str));
+  TF_EXPECT_OK(lib.GetAttribute(ndef, "options", &str));
   EXPECT_EQ(str, "some string data");
 }
 
@@ -1329,17 +1334,20 @@ TEST(FunctionLibraryDefinitionTest, GetAttr_Gradient) {
 
   bool annotation;
   EXPECT_FALSE(lib.GetAttr(ndef, "annotation", &annotation).ok());
+  EXPECT_FALSE(lib.GetAttribute(ndef, "annotation", &annotation).ok());
 
   NameAttrList nal;
   nal.set_name("XTimesTwo");
   AddNodeAttr(FunctionLibraryDefinition::kFuncAttr, nal, &ndef);
   TF_EXPECT_OK(lib.GetAttr(ndef, "annotation", &annotation));
+  TF_EXPECT_OK(lib.GetAttribute(ndef, "annotation", &annotation));
   EXPECT_EQ(annotation, false);  // XTimesTwo's gradient is WXPlusB.
 
   nal.set_name("WXPlusB");
   ndef.clear_attr();
   AddNodeAttr(FunctionLibraryDefinition::kFuncAttr, nal, &ndef);
   TF_EXPECT_OK(lib.GetAttr(ndef, "annotation", &annotation));
+  TF_EXPECT_OK(lib.GetAttribute(ndef, "annotation", &annotation));
   EXPECT_EQ(annotation, false);  // WXPlusB has no custom gradient.
 }
 

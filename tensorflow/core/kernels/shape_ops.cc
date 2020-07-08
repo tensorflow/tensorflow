@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 
 #include "tensorflow/core/kernels/shape_ops.h"
+
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 
@@ -464,7 +465,7 @@ REGISTER_KERNEL_BUILDER(Name("Squeeze")
 class EnsureShapeOp : public OpKernel {
  public:
   explicit EnsureShapeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("shape", &expected_shape_));
   }
 
   void Compute(OpKernelContext* ctx) override {

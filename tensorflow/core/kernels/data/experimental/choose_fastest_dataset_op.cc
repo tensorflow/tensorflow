@@ -31,9 +31,10 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
  public:
   explicit ChooseFastestDatasetOp(OpKernelConstruction* ctx)
       : DatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_experiments", &num_experiments_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("num_experiments", &num_experiments_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {

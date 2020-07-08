@@ -27,7 +27,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -54,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -68,7 +68,7 @@ using sdca::Regularizations;
 struct ComputeOptions {
   explicit ComputeOptions(OpKernelConstruction* const context) {
     string loss_type;
-    OP_REQUIRES_OK(context, context->GetAttr("loss_type", &loss_type));
+    OP_REQUIRES_OK(context, context->GetAttribute("loss_type", &loss_type));
     if (loss_type == "logistic_loss") {
       loss_updater.reset(new LogisticLossUpdater);
     } else if (loss_type == "squared_loss") {
@@ -84,17 +84,18 @@ struct ComputeOptions {
           context, false,
           errors::InvalidArgument("Unsupported loss type: ", loss_type));
     }
-    auto s = context->GetAttr("adaptative", &adaptive);
+    auto s = context->GetAttribute("adaptative", &adaptive);
     if (!s.ok()) {
-      s = context->GetAttr("adaptive", &adaptive);
+      s = context->GetAttribute("adaptive", &adaptive);
     }
     OP_REQUIRES_OK(context, s);
-    OP_REQUIRES_OK(
-        context, context->GetAttr("num_sparse_features", &num_sparse_features));
-    OP_REQUIRES_OK(context, context->GetAttr("num_sparse_features_with_values",
-                                             &num_sparse_features_with_values));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_sparse_features",
+                                                  &num_sparse_features));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("num_dense_features", &num_dense_features));
+                   context->GetAttribute("num_sparse_features_with_values",
+                                         &num_sparse_features_with_values));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_dense_features",
+                                                  &num_dense_features));
     OP_REQUIRES(
         context, num_sparse_features + num_dense_features > 0,
         errors::InvalidArgument("Requires at least one feature to train."));
@@ -108,10 +109,10 @@ struct ComputeOptions {
                                     static_cast<int64>(num_sparse_features) +
                                         static_cast<int64>(num_dense_features),
                                     std::numeric_limits<int>::max())));
-    OP_REQUIRES_OK(
-        context, context->GetAttr("num_loss_partitions", &num_loss_partitions));
-    OP_REQUIRES_OK(context, context->GetAttr("num_inner_iterations",
-                                             &num_inner_iterations));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_loss_partitions",
+                                                  &num_loss_partitions));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_inner_iterations",
+                                                  &num_inner_iterations));
     OP_REQUIRES_OK(context, regularizations.Initialize(context));
   }
 

@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
 
-
 namespace tensorflow {
 
 // This pass inserts Mkl to Tf tensor conversion nodes (represented by C)
@@ -179,7 +178,8 @@ Status MklToTfConversionPass::InsertConversionNodeOnEdge(
   CHECK_NOTNULL(conversion_node);
   // TODO(Intel-tf) MklToTf accepts only NHWC or NCHW, but doesn't seem to be
   // using data_format. This code might be redundant.
-  if (GetNodeAttr(src->def(), "data_format", &data_format) == Status::OK() &&
+  if (GetNodeAttribute(src->def(), "data_format", &data_format) ==
+          Status::OK() &&
       (data_format == ToString(FORMAT_NHWC) ||
        data_format == ToString(FORMAT_NCHW))) {
     conversion_node->AddAttr("data_format", data_format);
@@ -264,7 +264,7 @@ Status MklToTfConversionPass::InsertInputConversionNode(
   // TODO(Intel-tf) MklInputConversion accepts only NHWC or NCHW, but doesn't
   // seem to be using data_format. This code might be redundant.
   string data_format;
-  if (GetNodeAttr(edges[0]->src()->def(), "data_format", &data_format) ==
+  if (GetNodeAttribute(edges[0]->src()->def(), "data_format", &data_format) ==
           Status::OK() &&
       (data_format == ToString(FORMAT_NHWC) ||
        data_format == ToString(FORMAT_NCHW))) {
@@ -337,10 +337,10 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
     DataType src_datatype;
     DataType dst_datatype;
     bool src_is_mkl_op =
-        (GetNodeAttr(src->def(), "T", &src_datatype) == Status::OK() &&
+        (GetNodeAttribute(src->def(), "T", &src_datatype) == Status::OK() &&
          IsMklSupportedOp(src->type_string(), src_datatype));
     bool dst_is_mkl_op =
-        (GetNodeAttr(dst->def(), "T", &dst_datatype) == Status::OK() &&
+        (GetNodeAttribute(dst->def(), "T", &dst_datatype) == Status::OK() &&
          IsMklSupportedOp(dst->type_string(), dst_datatype));
 
     // Check if src with is Mkl-compliant, while dst is not Mkl-compliant.
@@ -378,7 +378,8 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
   for (Node* n : order) {
     // If node is not an op or it does not have a datatype, then skip.
     DataType datatype;
-    if (!n->IsOp() || (GetNodeAttr(n->def(), "T", &datatype) != Status::OK())) {
+    if (!n->IsOp() ||
+        (GetNodeAttribute(n->def(), "T", &datatype) != Status::OK())) {
       continue;
     }
     if (IsMklElementWiseOp(n->type_string(), datatype)) {
@@ -386,7 +387,7 @@ bool MklToTfConversionPass::RunPass(std::unique_ptr<Graph>* g) {
       Node* input_node = nullptr;
       TF_CHECK_OK(n->input_node(0, &input_node));
       DataType input_datatype;
-      if ((GetNodeAttr(n->def(), "T", &input_datatype) == Status::OK()) &&
+      if ((GetNodeAttribute(n->def(), "T", &input_datatype) == Status::OK()) &&
           (input_node->type_string().compare("_MklInputConversion") == 0)) {
         continue;
       }

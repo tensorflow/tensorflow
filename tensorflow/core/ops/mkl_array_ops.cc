@@ -111,7 +111,7 @@ REGISTER_OP("_MklQuantizeV2")
     .Attr("ensure_minimum_range: float = 0.01")
     .SetShapeFn([](InferenceContext* c) {
       int axis = -1;
-      Status s = c->GetAttr("axis", &axis);
+      Status s = c->GetAttribute("axis", &axis);
       if (!s.ok() && s.code() != error::NOT_FOUND) {
         return s;
       }

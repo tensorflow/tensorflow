@@ -33,7 +33,7 @@ class InTopK : public OpKernel {
  public:
   explicit InTopK(OpKernelConstruction* context) : OpKernel(context) {
     if (context->num_inputs() == 2) {
-      OP_REQUIRES_OK(context, context->GetAttr("k", &k_));
+      OP_REQUIRES_OK(context, context->GetAttribute("k", &k_));
     }
   }
 

@@ -56,22 +56,22 @@ static FrameAndIter GetFrameAndIter(OpKernelContext* ctx,
 
 SendOp::SendOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   string send_device;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("send_device", &send_device));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("send_device", &send_device));
   string recv_device;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("recv_device", &recv_device));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("recv_device", &recv_device));
   uint64 send_device_incarnation;
-  OP_REQUIRES_OK(
-      ctx, ctx->GetAttr("send_device_incarnation",
-                        reinterpret_cast<int64*>(&send_device_incarnation)));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(
+                          "send_device_incarnation",
+                          reinterpret_cast<int64*>(&send_device_incarnation)));
   string tensor_name;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_name", &tensor_name));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("tensor_name", &tensor_name));
   key_prefix_ = GetRendezvousKeyPrefix(send_device, recv_device,
                                        send_device_incarnation, tensor_name);
   // The vast majority of Send nodes are outside any loop context, so
   // proactively cache the rendezvous key for the top-level.
   GetRendezvousKey(key_prefix_, {0, 0}, &parsed_key_.buf_);
   OP_REQUIRES_OK(ctx, Rendezvous::ParseKey(parsed_key_.buf_, &parsed_key_));
-  if (!ctx->GetAttr("_hostmem_sendrecv", &hostmem_sendrecv_).ok()) {
+  if (!ctx->GetAttribute("_hostmem_sendrecv", &hostmem_sendrecv_).ok()) {
     hostmem_sendrecv_ = false;
   }
 }
@@ -135,22 +135,22 @@ REGISTER_KERNEL_BUILDER(
 
 RecvOp::RecvOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
   string send_device;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("send_device", &send_device));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("send_device", &send_device));
   string recv_device;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("recv_device", &recv_device));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("recv_device", &recv_device));
   uint64 send_device_incarnation;
-  OP_REQUIRES_OK(
-      ctx, ctx->GetAttr("send_device_incarnation",
-                        reinterpret_cast<int64*>(&send_device_incarnation)));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(
+                          "send_device_incarnation",
+                          reinterpret_cast<int64*>(&send_device_incarnation)));
   string tensor_name;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_name", &tensor_name));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("tensor_name", &tensor_name));
   key_prefix_ = GetRendezvousKeyPrefix(send_device, recv_device,
                                        send_device_incarnation, tensor_name);
   // The vast majority of Recv nodes are outside any loop context, so
   // proactively cache the rendezvous key for the top-level.
   GetRendezvousKey(key_prefix_, {0, 0}, &parsed_key_.buf_);
   OP_REQUIRES_OK(ctx, Rendezvous::ParseKey(parsed_key_.buf_, &parsed_key_));
-  if (!ctx->GetAttr("_hostmem_sendrecv", &hostmem_sendrecv_).ok()) {
+  if (!ctx->GetAttribute("_hostmem_sendrecv", &hostmem_sendrecv_).ok()) {
     hostmem_sendrecv_ = false;
   }
 }

@@ -263,10 +263,10 @@ class Conv2DBackpropFilterOp : public OpKernel {
   explicit Conv2DBackpropFilterOp(OpKernelConstruction* context)
       : OpKernel(context) {
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &strides_));
     int stride_n = GetTensorDim(strides_, data_format_, 'N');
     int stride_c = GetTensorDim(strides_, data_format_, 'C');
     int stride_h = GetTensorDim(strides_, data_format_, 'H');
@@ -278,7 +278,7 @@ class Conv2DBackpropFilterOp : public OpKernel {
     OP_REQUIRES(context, stride_h > 0 && stride_w > 0,
                 errors::InvalidArgument(
                     "Row and column strides should be larger than 0."));
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dilations", &dilations_));
     OP_REQUIRES(context, dilations_.size() == 4,
                 errors::InvalidArgument("Sliding window dilations field must "
                                         "specify 4 dimensions"));
@@ -294,13 +294,14 @@ class Conv2DBackpropFilterOp : public OpKernel {
         context, dilation_h > 0 && dilation_w > 0,
         errors::InvalidArgument("Dilated rates should be larger than 0."));
 
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("explicit_paddings", &explicit_paddings_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("explicit_paddings",
+                                                  &explicit_paddings_));
     OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
                                               /*num_dims=*/4, data_format_));
 
-    OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
 
@@ -384,13 +385,13 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
   explicit Conv2DCustomBackpropFilterOp(OpKernelConstruction* context)
       : OpKernel(context) {
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
                 errors::InvalidArgument(
                     "Conv2DCustomBackpropFilterOp only supports NHWC."));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
@@ -401,12 +402,12 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     OP_REQUIRES(context, strides_[1] > 0 && strides_[2] > 0,
                 errors::InvalidArgument(
                     "Row and column strides should be larger than 0."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("explicit_paddings", &explicit_paddings_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("explicit_paddings",
+                                                  &explicit_paddings_));
     OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
                                               /*num_dims=*/4, data_format_));
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dilations", &dilations_));
     OP_REQUIRES(context, dilations_.size() == 4,
                 errors::InvalidArgument("Sliding window dilations field must "
                                         "specify 4 dimensions"));

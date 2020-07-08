@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/constant_folding.h"
+
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/cc/ops/nn_ops.h"
-#include "tensorflow/core/common_runtime/constant_folding.h"
-
 #include "tensorflow/cc/ops/array_ops_internal.h"
+#include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -53,8 +53,10 @@ class ConstantFoldingTest : public ::testing::Test {
     EXPECT_TRUE(n->IsConstant());
     const TensorProto* tensor_proto;
     TF_EXPECT_OK(GetNodeAttr(n->attrs(), "value", &tensor_proto));
+    TF_EXPECT_OK(GetNodeAttribute(n->attrs(), "value", &tensor_proto));
     DataType dtype;
     TF_EXPECT_OK(GetNodeAttr(n->attrs(), "dtype", &dtype));
+    TF_EXPECT_OK(GetNodeAttribute(n->attrs(), "dtype", &dtype));
     Tensor t(dtype);
     EXPECT_TRUE(t.FromProto(*tensor_proto));
     test::ExpectClose(t, test::AsTensor(values, shape));
@@ -66,8 +68,10 @@ class ConstantFoldingTest : public ::testing::Test {
     EXPECT_TRUE(n->IsConstant());
     const TensorProto* tensor_proto;
     TF_EXPECT_OK(GetNodeAttr(n->attrs(), "value", &tensor_proto));
+    TF_EXPECT_OK(GetNodeAttribute(n->attrs(), "value", &tensor_proto));
     DataType dtype;
     TF_EXPECT_OK(GetNodeAttr(n->attrs(), "dtype", &dtype));
+    TF_EXPECT_OK(GetNodeAttribute(n->attrs(), "dtype", &dtype));
     Tensor t(dtype);
     EXPECT_TRUE(t.FromProto(*tensor_proto));
     test::ExpectTensorEqual<T>(t, test::AsTensor(values, shape));

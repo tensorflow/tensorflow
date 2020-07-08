@@ -113,7 +113,7 @@ class CTCDecodeHelper {
 
   // sequences[b][p][ix] stores decoded value "ix" of path "p" for batch "b".
   Status StoreAllDecodedSequences(
-      const std::vector<std::vector<std::vector<int> > >& sequences,
+      const std::vector<std::vector<std::vector<int>>>& sequences,
       OpOutputList* decoded_indices, OpOutputList* decoded_values,
       OpOutputList* decoded_shape) const {
     // Calculate the total number of entries for each path
@@ -183,7 +183,7 @@ template <typename T>
 class CTCGreedyDecoderOp : public OpKernel {
  public:
   explicit CTCGreedyDecoderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("merge_repeated", &merge_repeated_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("merge_repeated", &merge_repeated_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -224,11 +224,11 @@ class CTCGreedyDecoderOp : public OpKernel {
     int blank_index = num_classes - 1;
 
     // Perform best path decoding
-    std::vector<std::vector<std::vector<int> > > sequences(batch_size);
+    std::vector<std::vector<std::vector<int>>> sequences(batch_size);
     auto decode = [&](const int64 begin, const int64 end) {
       for (int b = begin; b < end; ++b) {
         sequences[b].resize(1);
-        auto &sequence = sequences[b][0];
+        auto& sequence = sequences[b][0];
         int prev_indices = -1;
         for (int t = 0; t < seq_len_t(b); ++t) {
           int max_class_indices;
@@ -277,10 +277,10 @@ template <typename T>
 class CTCBeamSearchDecoderOp : public OpKernel {
  public:
   explicit CTCBeamSearchDecoderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("merge_repeated", &merge_repeated_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("beam_width", &beam_width_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("merge_repeated", &merge_repeated_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("beam_width", &beam_width_));
     int top_paths;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("top_paths", &top_paths));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("top_paths", &top_paths));
     decode_helper_.SetTopPaths(top_paths);
   }
 
@@ -325,7 +325,7 @@ class CTCBeamSearchDecoderOp : public OpKernel {
     Tensor input_chip(DataTypeToEnum<T>::v(), TensorShape({num_classes}));
     auto input_chip_t = input_chip.flat<T>();
 
-    std::vector<std::vector<std::vector<int> > > best_paths(batch_size);
+    std::vector<std::vector<std::vector<int>>> best_paths(batch_size);
     std::vector<T> log_probs;
 
     // Assumption: the blank index is num_classes - 1

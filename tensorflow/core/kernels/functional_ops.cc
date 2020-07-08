@@ -128,8 +128,8 @@ class IfOp : public AsyncOpKernel {
   explicit IfOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     auto lib = ctx->function_library();
     OP_REQUIRES(ctx, lib != nullptr, errors::Internal("No function library"));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("then_branch", &then_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("else_branch", &else_func_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("then_branch", &then_func_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("else_branch", &else_func_));
   }
 
   ~IfOp() override {}
@@ -250,7 +250,7 @@ class CaseOp : public AsyncOpKernel {
   explicit CaseOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     auto lib = ctx->function_library();
     OP_REQUIRES(ctx, lib != nullptr, errors::Internal("No function library"));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("branches", &branch_funcs_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("branches", &branch_funcs_));
   }
 
   ~CaseOp() override {}
@@ -362,8 +362,8 @@ REGISTER_KERNEL_BUILDER(
 class WhileOp : public AsyncOpKernel {
  public:
   explicit WhileOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("cond", &cond_func_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("body", &body_func_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("cond", &cond_func_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("body", &body_func_));
   }
 
   ~WhileOp() override {}
@@ -757,7 +757,7 @@ class ForOp : public AsyncOpKernel {
     auto lib = ctx->function_library();
     OP_REQUIRES(ctx, lib != nullptr, errors::Internal("No function library"));
     const NameAttrList* func;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("body", &func));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("body", &func));
     OP_REQUIRES_OK(ctx, Instantiate(lib, *func, &body_handle_));
   }
 
@@ -894,13 +894,13 @@ class FakeParamOp : public OpKernel {
  public:
   explicit FakeParamOp(OpKernelConstruction* context) : OpKernel(context) {
     DataType dtype;
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype));
+    OP_REQUIRES_OK(context, context->GetAttribute("dtype", &dtype));
 
     // Set shape to the specified shape, setting unknown dimensions to empty.
     // If the specified shape is unknown, leave as an empty shape.
     TensorShape shape;
     PartialTensorShape partial_shape;
-    OP_REQUIRES_OK(context, context->GetAttr("shape", &partial_shape));
+    OP_REQUIRES_OK(context, context->GetAttribute("shape", &partial_shape));
     if (!partial_shape.unknown_rank()) {
       for (int64 d : partial_shape.dim_sizes()) {
         shape.AddDim(d == -1 ? 0 : d);
@@ -929,7 +929,7 @@ REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_GPU), FakeParamOp);
 class DeviceIndexOp : public OpKernel {
  public:
   explicit DeviceIndexOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("device_names", &device_names_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("device_names", &device_names_));
   }
 
   void Compute(OpKernelContext* ctx) override {

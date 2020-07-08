@@ -631,7 +631,7 @@ template <typename Device, typename T>
 class ApplyGradientDescentOp : public OpKernel {
  public:
   explicit ApplyGradientDescentOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -673,7 +673,7 @@ template <typename T>
 class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
  public:
   explicit ApplyGradientDescentOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -773,7 +773,7 @@ template <typename Device, typename T>
 class ApplyAdadeltaOp : public OpKernel {
  public:
   explicit ApplyAdadeltaOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -935,7 +935,7 @@ template <typename T, typename Tindex>
 class SparseApplyAdadeltaOp : public OpKernel {
  public:
   explicit SparseApplyAdadeltaOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -1093,7 +1093,7 @@ class ApplyProximalGradientDescentOp : public OpKernel {
  public:
   explicit ApplyProximalGradientDescentOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -1163,7 +1163,7 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
  public:
   explicit SparseApplyProximalGradientDescentOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -1308,8 +1308,8 @@ template <typename Device, typename T>
 class ApplyAdagradOp : public OpKernel {
  public:
   explicit ApplyAdagradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("update_slots", &update_slots_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -1409,8 +1409,8 @@ template <typename Device, typename T>
 class ApplyAdagradV2Op : public OpKernel {
  public:
   explicit ApplyAdagradV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("update_slots", &update_slots_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -1515,7 +1515,7 @@ template <typename Device, typename T>
 class ApplyProximalAdagradOp : public OpKernel {
  public:
   explicit ApplyProximalAdagradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -1629,8 +1629,8 @@ template <typename T, typename Tindex>
 class SparseApplyAdagradOp : public OpKernel {
  public:
   explicit SparseApplyAdagradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("update_slots", &update_slots_));
   }
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -1792,8 +1792,8 @@ template <typename T, typename Tindex>
 class SparseApplyAdagradV2Op : public OpKernel {
  public:
   explicit SparseApplyAdagradV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("update_slots", &update_slots_));
   }
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -1964,7 +1964,7 @@ class SparseApplyProximalAdagradOp : public OpKernel {
  public:
   explicit SparseApplyProximalAdagradOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -2137,7 +2137,7 @@ template <typename Device, typename T>
 class ApplyAdagradDAOp : public OpKernel {
  public:
   explicit ApplyAdagradDAOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -2239,7 +2239,7 @@ template <typename T, typename Tindex>
 class SparseApplyAdagradDAOp : public OpKernel {
  public:
   explicit SparseApplyAdagradDAOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -2438,9 +2438,9 @@ template <typename Device, typename T, bool has_l2_shrinkage>
 class ApplyFtrlOp : public OpKernel {
  public:
   explicit ApplyFtrlOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("multiply_linear_by_lr", &multiply_linear_by_lr_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("multiply_linear_by_lr",
+                                          &multiply_linear_by_lr_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -2649,9 +2649,9 @@ template <typename Device, typename T, typename Tindex, bool has_l2_shrinkage>
 class SparseApplyFtrlOp : public OpKernel {
  public:
   explicit SparseApplyFtrlOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("multiply_linear_by_lr", &multiply_linear_by_lr_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("multiply_linear_by_lr",
+                                          &multiply_linear_by_lr_));
   }
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -2958,8 +2958,8 @@ template <typename Device, typename T>
 class ApplyMomentumOp : public OpKernel {
  public:
   explicit ApplyMomentumOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_nesterov", &use_nesterov_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -3070,8 +3070,8 @@ template <typename T, typename Tindex>
 class SparseApplyMomentumOp : public OpKernel {
  public:
   explicit SparseApplyMomentumOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_nesterov", &use_nesterov_));
   }
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -3187,8 +3187,8 @@ template <typename Device, typename T>
 class ApplyKerasMomentumOp : public OpKernel {
  public:
   explicit ApplyKerasMomentumOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_nesterov", &use_nesterov_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -3297,8 +3297,8 @@ class SparseApplyKerasMomentumOp : public OpKernel {
  public:
   explicit SparseApplyKerasMomentumOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_nesterov", &use_nesterov_));
   }
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -3438,8 +3438,8 @@ template <typename Device, typename T>
 class ApplyAdamOp : public OpKernel {
  public:
   explicit ApplyAdamOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_nesterov", &use_nesterov_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -3530,7 +3530,7 @@ template <typename T>
 class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
  public:
   explicit ApplyAdamOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -3711,7 +3711,7 @@ template <typename Device, typename T>
 class ApplyAdamWithAmsgradOp : public OpKernel {
  public:
   explicit ApplyAdamWithAmsgradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -3853,7 +3853,7 @@ template <typename Device, typename T>
 class ApplyAdaMaxOp : public OpKernel {
  public:
   explicit ApplyAdaMaxOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -3982,7 +3982,7 @@ template <typename Device, typename T>
 class ApplyRMSPropOp : public OpKernel {
  public:
   explicit ApplyRMSPropOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -4065,7 +4065,7 @@ template <typename Device, typename T>
 class ApplyCenteredRMSPropOp : public OpKernel {
  public:
   explicit ApplyCenteredRMSPropOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -4231,7 +4231,7 @@ template <typename T, typename Tindex>
 class SparseApplyRMSPropOp : public OpKernel {
  public:
   explicit SparseApplyRMSPropOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -4361,7 +4361,7 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
  public:
   explicit SparseApplyCenteredRMSPropOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -4536,7 +4536,7 @@ template <typename Device, typename T>
 class ApplyAddSignOp : public OpKernel {
  public:
   explicit ApplyAddSignOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -4643,7 +4643,7 @@ template <typename Device, typename T>
 class ApplyPowerSignOp : public OpKernel {
  public:
   explicit ApplyPowerSignOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_locking", &use_exclusive_lock_));
   }
 
   void Compute(OpKernelContext* ctx) override {

@@ -97,6 +97,8 @@ TEST(ForceXlaConstantsOnHostPassTest, Simple) {
       found = true;
       std::vector<int32> hostmem_attr;
       EXPECT_TRUE(TryGetNodeAttr(node->def(), "_input_hostmem", &hostmem_attr));
+      EXPECT_TRUE(
+          TryGetNodeAttribute(node->def(), "_input_hostmem", &hostmem_attr));
       EXPECT_EQ(hostmem_attr.size(), 1);
       EXPECT_EQ(hostmem_attr[0], 1);
     }

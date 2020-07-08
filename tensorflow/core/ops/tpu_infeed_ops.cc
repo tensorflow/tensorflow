@@ -54,7 +54,7 @@ REGISTER_OP("InfeedDequeueTuple")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       std::vector<PartialTensorShape> shapes;
-      TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shapes", &shapes));
       for (int i = 0; i < shapes.size(); ++i) {
         ShapeHandle out;
         TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shapes[i], &out));

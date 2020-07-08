@@ -24,8 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -459,13 +459,14 @@ class MklConvOp : public OpKernel {
   ~MklConvOp() {}
 
   explicit MklConvOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dilations", &dilations_));
     if (context->HasAttr("padding_list")) {
-      OP_REQUIRES_OK(context, context->GetAttr("padding_list", &padding_list_));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("padding_list", &padding_list_));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &strides_));
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES(context, (strides_.size() == 4 || strides_.size() == 5),
@@ -478,11 +479,11 @@ class MklConvOp : public OpKernel {
         context, stride_n == 1 && stride_c == 1,
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
     is_filter_const_ = false;
     if (context->HasAttr("is_filter_const")) {
-      OP_REQUIRES_OK(context,
-                     context->GetAttr("is_filter_const", &is_filter_const_));
+      OP_REQUIRES_OK(
+          context, context->GetAttribute("is_filter_const", &is_filter_const_));
     }
 
     if (strides_.size() == 4) {
@@ -1298,10 +1299,10 @@ class MklFusedConvOp
     // Since we came here through the registration of _MklFusedConv2D, get
     // all information from 'fused_ops' and 'num_args'
     std::vector<string> fused_ops;
-    OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &fused_ops));
+    OP_REQUIRES_OK(context, context->GetAttribute("fused_ops", &fused_ops));
 
     int num_args;
-    OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_args", &num_args));
     OP_REQUIRES(context, !fused_ops.empty(),
                 errors::InvalidArgument(
                     "Fused Conv2D must have at least one fused op."));
@@ -1394,10 +1395,10 @@ class MklFusedDepthwiseConvOp
     // _MklFusedDepthwiseConv2dNative, get all
     // information from 'fused_ops' and 'num_args'
     std::vector<string> fused_ops;
-    OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &fused_ops));
+    OP_REQUIRES_OK(context, context->GetAttribute("fused_ops", &fused_ops));
 
     int num_args;
-    OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_args", &num_args));
     OP_REQUIRES(context, !fused_ops.empty(),
                 errors::InvalidArgument(
                     "Fused DepthwiseConv2D must have at least one fused op."));
@@ -1457,11 +1458,11 @@ class MklQuantizedConv2DOp
                   bias_enabled, false, is_depthwise, false>(context) {
     bool is_filter_const;
     OP_REQUIRES_OK(context,
-                   context->GetAttr("is_filter_const", &is_filter_const));
+                   context->GetAttribute("is_filter_const", &is_filter_const));
 
     if (bias_enabled) {
       OP_REQUIRES_OK(context,
-                     context->GetAttr("is_bias_const", &is_bias_const_));
+                     context->GetAttribute("is_bias_const", &is_bias_const_));
     }
 
     OP_REQUIRES(context, is_filter_const,

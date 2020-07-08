@@ -168,7 +168,7 @@ REGISTER_XLA_OP(Name("SpaceToBatchND")
 class SpaceToBatchOp : public XlaOpKernel {
  public:
   explicit SpaceToBatchOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("block_size", &block_size_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("block_size", &block_size_));
     OP_REQUIRES(
         ctx, block_size_ > 1,
         errors::InvalidArgument("Block size should be > 1: ", block_size_));

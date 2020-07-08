@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <iostream>
 #include <vector>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -34,7 +35,7 @@ template <typename Device, typename T>
 class NthElementOp : public OpKernel {
  public:
   explicit NthElementOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("reverse", &reverse_));
+    OP_REQUIRES_OK(context, context->GetAttribute("reverse", &reverse_));
   }
 
   void Compute(OpKernelContext* context) override {

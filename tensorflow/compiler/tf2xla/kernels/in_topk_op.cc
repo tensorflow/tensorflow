@@ -33,7 +33,7 @@ namespace {
 class InTopKOp : public XlaOpKernel {
  public:
   explicit InTopKOp(OpKernelConstruction* context) : XlaOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("T", &targets_dtype_));
+    OP_REQUIRES_OK(context, context->GetAttribute("T", &targets_dtype_));
     OP_REQUIRES_OK(context,
                    DataTypeToPrimitiveType(targets_dtype_, &targets_type_));
   }

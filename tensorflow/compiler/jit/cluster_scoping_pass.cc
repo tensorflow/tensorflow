@@ -53,7 +53,7 @@ class ClusterScopingPassImpl {
 
 absl::optional<string> GetXlaInternalScope(Node* node) {
   string scope;
-  if (GetNodeAttr(node->attrs(), kXlaInternalScopeAttr, &scope).ok()) {
+  if (GetNodeAttribute(node->attrs(), kXlaInternalScopeAttr, &scope).ok()) {
     return scope;
   }
 

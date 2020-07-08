@@ -176,8 +176,8 @@ class OptionalHasValueOp : public OpKernel {
 class OptionalGetValueOp : public OpKernel {
  public:
   explicit OptionalGetValueOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
     OP_REQUIRES(
         ctx, output_shapes_.size() == output_types_.size(),
         errors::InvalidArgument(

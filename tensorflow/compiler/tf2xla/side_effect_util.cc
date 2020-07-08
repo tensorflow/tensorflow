@@ -60,7 +60,8 @@ Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
     for (const string& attr_name :
          std::vector<string>{"then_branch", "else_branch"}) {
       NameAttrList branch_func;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), attr_name, &branch_func));
+      TF_RETURN_IF_ERROR(
+          GetNodeAttribute(node->attrs(), attr_name, &branch_func));
       (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
       node->ClearAttr(attr_name);
       node->AddAttr(attr_name, branch_func);
@@ -70,7 +71,8 @@ Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
     device_ordinal_value.set_i(device_ordinal);
     for (const string& attr_name : std::vector<string>{"cond", "body"}) {
       NameAttrList branch_func;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), attr_name, &branch_func));
+      TF_RETURN_IF_ERROR(
+          GetNodeAttribute(node->attrs(), attr_name, &branch_func));
       (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
       node->ClearAttr(attr_name);
       node->AddAttr(attr_name, branch_func);
@@ -89,40 +91,42 @@ Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
 std::set<std::string> CalculateTokenInputsForOutputToken(const Graph& g) {
   std::set<std::string> results;
   Node* first_side_effecting_node_on_path = nullptr;
-  ReverseDFS(g,
-             [&](Node* n) {
-               std::vector<string> token_input_nodes;
-               if (!GetNodeAttr(n->attrs(), kXlaTokenInputNodesAttrName,
-                                &token_input_nodes)
-                        .ok() ||
-                   token_input_nodes.empty()) {
-                 return;
-               }
+  ReverseDFS(
+      g,
+      [&](Node* n) {
+        std::vector<string> token_input_nodes;
+        if (!GetNodeAttribute(n->attrs(), kXlaTokenInputNodesAttrName,
+                              &token_input_nodes)
+                 .ok() ||
+            token_input_nodes.empty()) {
+          return;
+        }
 
-               if (first_side_effecting_node_on_path != nullptr) {
-                 return;
-               }
+        if (first_side_effecting_node_on_path != nullptr) {
+          return;
+        }
 
-               first_side_effecting_node_on_path = n;
-               string original_node_name;
-               TF_CHECK_OK(GetNodeAttr(n->def(),
-                                       kXlaOriginalOutsideCompilationNodeName,
-                                       &original_node_name));
-               results.insert(original_node_name);
-             },
-             [&](Node* n) {
-               if (first_side_effecting_node_on_path == n) {
-                 first_side_effecting_node_on_path = nullptr;
-               }
-             },
-             NodeComparatorName());
+        first_side_effecting_node_on_path = n;
+        string original_node_name;
+        TF_CHECK_OK(GetNodeAttribute(n->def(),
+                                     kXlaOriginalOutsideCompilationNodeName,
+                                     &original_node_name));
+        results.insert(original_node_name);
+      },
+      [&](Node* n) {
+        if (first_side_effecting_node_on_path == n) {
+          first_side_effecting_node_on_path = nullptr;
+        }
+      },
+      NodeComparatorName());
   return results;
 }
 
 bool HasSideEffectingNodes(const Graph& g) {
   for (Node* n : g.nodes()) {
     std::vector<string> token_input_nodes;
-    if (GetNodeAttr(n->attrs(), kXlaTokenInputNodesAttrName, &token_input_nodes)
+    if (GetNodeAttribute(n->attrs(), kXlaTokenInputNodesAttrName,
+                         &token_input_nodes)
             .ok() &&
         !token_input_nodes.empty()) {
       return true;

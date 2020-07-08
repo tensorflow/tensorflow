@@ -115,17 +115,17 @@ class FakeQuantWithMinMaxArgsOp : public XlaOpKernel {
  public:
   explicit FakeQuantWithMinMaxArgsOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("num_bits", &num_bits_));
     OP_REQUIRES(ctx, num_bits_ >= 2 && num_bits_ <= 16,
                 errors::InvalidArgument("num_bits is out of range, expected "
                                         "between 2 and 16, was: ",
                                         num_bits_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("narrow_range", &narrow_range_));
     quant_min_ = narrow_range_ ? 1 : 0;
     quant_max_ = (1 << num_bits_) - 1;
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("min", &input_min_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("max", &input_max_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("min", &input_min_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("max", &input_max_));
     CpuNudge(input_min_, input_max_, quant_min_, quant_max_, &nudged_input_min_,
              &nudged_input_max_, &input_scale_);
   }
@@ -177,19 +177,19 @@ class FakeQuantWithMinMaxArgsGradOp : public XlaOpKernel {
   explicit FakeQuantWithMinMaxArgsGradOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
     int num_bits;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("num_bits", &num_bits));
     OP_REQUIRES(ctx, num_bits >= 2 && num_bits <= 16,
                 errors::InvalidArgument("num_bits is out of range, expected "
                                         "between 2 and 16, was: ",
                                         num_bits));
     bool narrow_range;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("narrow_range", &narrow_range));
     const float quant_min = narrow_range ? 1 : 0;
     const float quant_max = (1 << num_bits) - 1;
 
     float input_min, input_max, scale;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("min", &input_min));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("max", &input_max));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("min", &input_min));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("max", &input_max));
     CpuNudge(input_min, input_max, quant_min, quant_max, &nudged_input_min_,
              &nudged_input_max_, &scale);
   }
@@ -226,12 +226,12 @@ class FakeQuantWithMinMaxVarsOp : public XlaOpKernel {
  public:
   explicit FakeQuantWithMinMaxVarsOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("num_bits", &num_bits_));
     OP_REQUIRES(ctx, num_bits_ >= 2 && num_bits_ <= 16,
                 errors::InvalidArgument("num_bits is out of range, expected "
                                         "between 2 and 16, was: ",
                                         num_bits_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("narrow_range", &narrow_range_));
     quant_min_ = narrow_range_ ? 1 : 0;
     quant_max_ = (1 << num_bits_) - 1;
   }
@@ -275,13 +275,13 @@ class FakeQuantWithMinMaxVarsGradOp : public XlaOpKernel {
   explicit FakeQuantWithMinMaxVarsGradOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
     int num_bits;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_bits", &num_bits));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("num_bits", &num_bits));
     OP_REQUIRES(ctx, num_bits >= 2 && num_bits <= 16,
                 errors::InvalidArgument("num_bits is out of range, expected "
                                         "between 2 and 16, was: ",
                                         num_bits));
     bool narrow_range;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("narrow_range", &narrow_range));
     quant_min_ = narrow_range ? 1 : 0;
     quant_max_ = (1 << num_bits) - 1;
   }

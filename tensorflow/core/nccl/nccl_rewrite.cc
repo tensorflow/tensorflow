@@ -30,9 +30,9 @@ namespace {
 // device, adds one _NcclReduceSend for each other input.
 Status ReplaceReduce(Graph* graph, Node* node) {
   string reduction;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "reduction", &reduction));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node->attrs(), "reduction", &reduction));
   DataType dtype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &dtype));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node->attrs(), "T", &dtype));
   int num_devices = node->num_inputs();
   string shared_name = node->name();
   auto make_builder = [&](StringPiece op_name, StringPiece suffix) {
@@ -116,7 +116,7 @@ TensorProto TensorFromShape(const TensorShapeProto& shape) {
 // device.
 Status ReplaceBroadcast(Graph* graph, Node* node) {
   DataType dtype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &dtype));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node->attrs(), "T", &dtype));
   int send_dev = node->assigned_device_name_index();
   int num_devices = 0;  // Number of distinct devices, incremented below.
   std::vector<int> recv_index_map;  // Map device name index to stable index.
@@ -182,7 +182,7 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
   send_node->set_assigned_device_name_index(send_dev);
 
   TensorShapeProto shape_proto;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "shape", &shape_proto));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node->attrs(), "shape", &shape_proto));
 
   // Delete the original node before reconnecting to outputs.
   graph->RemoveNode(node);

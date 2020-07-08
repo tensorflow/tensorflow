@@ -12,8 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/experimental/microfrontend/lib/frontend.h"
-#include "tensorflow/lite/experimental/microfrontend/lib/frontend_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -22,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/lite/experimental/microfrontend/lib/frontend.h"
+#include "tensorflow/lite/experimental/microfrontend/lib/frontend_util.h"
 
 using tensorflow::OpKernel;
 using tensorflow::OpKernelConstruction;
@@ -67,22 +67,22 @@ REGISTER_OP("AudioMicrofrontend")
       TF_RETURN_IF_ERROR(ctx->WithRank(ctx->input(0), 1, &input));
 
       int sample_rate;
-      TF_RETURN_IF_ERROR(ctx->GetAttr("sample_rate", &sample_rate));
+      TF_RETURN_IF_ERROR(ctx->GetAttribute("sample_rate", &sample_rate));
       int window_size;
-      TF_RETURN_IF_ERROR(ctx->GetAttr("window_size", &window_size));
+      TF_RETURN_IF_ERROR(ctx->GetAttribute("window_size", &window_size));
       window_size *= sample_rate / 1000;
       int window_step;
-      TF_RETURN_IF_ERROR(ctx->GetAttr("window_step", &window_step));
+      TF_RETURN_IF_ERROR(ctx->GetAttribute("window_step", &window_step));
       window_step *= sample_rate / 1000;
 
       int num_channels;
-      TF_RETURN_IF_ERROR(ctx->GetAttr("num_channels", &num_channels));
+      TF_RETURN_IF_ERROR(ctx->GetAttribute("num_channels", &num_channels));
       int left_context;
-      TF_RETURN_IF_ERROR(ctx->GetAttr("left_context", &left_context));
+      TF_RETURN_IF_ERROR(ctx->GetAttribute("left_context", &left_context));
       int right_context;
-      TF_RETURN_IF_ERROR(ctx->GetAttr("right_context", &right_context));
+      TF_RETURN_IF_ERROR(ctx->GetAttribute("right_context", &right_context));
       int frame_stride;
-      TF_RETURN_IF_ERROR(ctx->GetAttr("frame_stride", &frame_stride));
+      TF_RETURN_IF_ERROR(ctx->GetAttribute("frame_stride", &frame_stride));
 
       DimensionHandle num_frames = ctx->Dim(input, 0);
       if (ctx->Value(num_frames) < window_size) {
@@ -153,55 +153,60 @@ template <typename T>
 class AudioMicrofrontendOp : public OpKernel {
  public:
   explicit AudioMicrofrontendOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("sample_rate", &sample_rate_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("sample_rate", &sample_rate_));
 
     int window_size;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("window_size", &window_size));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("window_size", &window_size));
     config_.window.size_ms = window_size;
 
     int window_step;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("window_step", &window_step));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("window_step", &window_step));
     config_.window.step_size_ms = window_step;
 
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("num_channels", &config_.filterbank.num_channels));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("upper_band_limit",
-                                     &config_.filterbank.upper_band_limit));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("lower_band_limit",
-                                     &config_.filterbank.lower_band_limit));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("smoothing_bits",
-                                     &config_.noise_reduction.smoothing_bits));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("even_smoothing",
-                                     &config_.noise_reduction.even_smoothing));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("odd_smoothing",
-                                     &config_.noise_reduction.odd_smoothing));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("num_channels",
+                                          &config_.filterbank.num_channels));
     OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("min_signal_remaining",
-                                &config_.noise_reduction.min_signal_remaining));
+                   ctx->GetAttribute("upper_band_limit",
+                                     &config_.filterbank.upper_band_limit));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("lower_band_limit",
+                                     &config_.filterbank.lower_band_limit));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("smoothing_bits",
+                                     &config_.noise_reduction.smoothing_bits));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("even_smoothing",
+                                     &config_.noise_reduction.even_smoothing));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("odd_smoothing",
+                                     &config_.noise_reduction.odd_smoothing));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("min_signal_remaining",
+                               &config_.noise_reduction.min_signal_remaining));
 
     bool enable_pcan;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("enable_pcan", &enable_pcan));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("enable_pcan", &enable_pcan));
     config_.pcan_gain_control.enable_pcan = enable_pcan;
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("pcan_strength",
-                                     &config_.pcan_gain_control.strength));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("pcan_offset", &config_.pcan_gain_control.offset));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("gain_bits", &config_.pcan_gain_control.gain_bits));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("pcan_strength",
+                                          &config_.pcan_gain_control.strength));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("pcan_offset",
+                                          &config_.pcan_gain_control.offset));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(
+                            "gain_bits", &config_.pcan_gain_control.gain_bits));
 
     bool enable_log;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("enable_log", &enable_log));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("enable_log", &enable_log));
     config_.log_scale.enable_log = enable_log;
 
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("scale_shift", &config_.log_scale.scale_shift));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("scale_shift", &config_.log_scale.scale_shift));
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("left_context", &left_context_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("right_context", &right_context_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("frame_stride", &frame_stride_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("zero_padding", &zero_padding_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("out_scale", &out_scale_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("left_context", &left_context_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("right_context", &right_context_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("frame_stride", &frame_stride_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("zero_padding", &zero_padding_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("out_scale", &out_scale_));
   }
 
   void Compute(OpKernelContext* ctx) override {

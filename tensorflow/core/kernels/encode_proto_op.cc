@@ -24,7 +24,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/proto/descriptors.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tensorflow {
 namespace {
@@ -480,8 +480,8 @@ class EncodeProtoOp : public OpKernel {
  public:
   explicit EncodeProtoOp(OpKernelConstruction* context) : OpKernel(context) {
     string descriptor_source;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("descriptor_source", &descriptor_source));
+    OP_REQUIRES_OK(context, context->GetAttribute("descriptor_source",
+                                                  &descriptor_source));
     // We always get back a desc_pool, but we may not own it. If we own it,
     // owned_desc_pool_ will be filled in.
     DescriptorPool const* desc_pool;
@@ -489,14 +489,16 @@ class EncodeProtoOp : public OpKernel {
                                               &desc_pool, &owned_desc_pool_));
 
     string message_type;
-    OP_REQUIRES_OK(context, context->GetAttr("message_type", &message_type));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("message_type", &message_type));
     const Descriptor* message_desc =
         desc_pool->FindMessageTypeByName(message_type);
     OP_REQUIRES(context, message_desc != nullptr,
                 errors::InvalidArgument("No descriptor found for message type ",
                                         message_type));
 
-    OP_REQUIRES_OK(context, context->GetAttr("field_names", &field_names_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("field_names", &field_names_));
 
     // Gather the field descriptors for the given field_names.
     field_descs_.resize(field_names_.size());

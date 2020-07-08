@@ -28,7 +28,7 @@ class UnsortedSegmentReduce : public XlaOpKernel {
  public:
   explicit UnsortedSegmentReduce(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     DataType dtype;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype));
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dtype, &type_));
   }
 

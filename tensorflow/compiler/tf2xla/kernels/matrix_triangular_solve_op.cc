@@ -28,8 +28,8 @@ class MatrixTriangularSolveOp : public XlaOpKernel {
  public:
   explicit MatrixTriangularSolveOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("lower", &lower_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("adjoint", &adjoint_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("lower", &lower_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("adjoint", &adjoint_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/framework/grad_op_registry.h"
+#include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/data_flow_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-
-#include "tensorflow/cc/framework/grad_op_registry.h"
-#include "tensorflow/cc/framework/gradients.h"
 
 namespace tensorflow {
 namespace ops {
@@ -65,7 +64,7 @@ Status DynamicPartitionGrad(const Scope& scope, const Operation& op,
   auto partitions = op.input(1);
   int32 num_partitions;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.node()->attrs(), "num_partitions", &num_partitions));
+      GetNodeAttribute(op.node()->attrs(), "num_partitions", &num_partitions));
 
   // Note: the shape of the partitions is a prefix of the data shape.
   // shape(partitions) = [5]

@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include "tensorflow/core/kernels/fifo_queue.h"
+
 #include <algorithm>
 #include <deque>
 #include <vector>
@@ -23,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/fifo_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -161,7 +162,8 @@ void FIFOQueue::TryDequeue(OpKernelContext* ctx, CallbackWithTuple callback) {
     already_cancelled = !cm->RegisterCallback(
         token, [this, cm, token]() { Cancel(kDequeue, cm, token); });
     if (!already_cancelled) {
-      // TODO(josh11b): This makes two copies of callback, avoid this if possible.
+      // TODO(josh11b): This makes two copies of callback, avoid this if
+      // possible.
       dequeue_attempts_.emplace_back(
           1, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -252,7 +254,8 @@ void FIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
     already_cancelled = !cm->RegisterCallback(
         token, [this, cm, token]() { Cancel(kDequeue, cm, token); });
     if (!already_cancelled) {
-      // TODO(josh11b): This makes two copies of callback, avoid this if possible.
+      // TODO(josh11b): This makes two copies of callback, avoid this if
+      // possible.
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, allow_small_batch,
@@ -372,7 +375,7 @@ Status FIFOQueue::MatchesNodeDef(const NodeDef& node_def) {
 // tensor of handles to Queues in the corresponding device.
 FIFOQueueOp::FIFOQueueOp(OpKernelConstruction* context)
     : TypedQueueOp(context) {
-  OP_REQUIRES_OK(context, context->GetAttr("shapes", &component_shapes_));
+  OP_REQUIRES_OK(context, context->GetAttribute("shapes", &component_shapes_));
 }
 
 Status FIFOQueueOp::CreateResource(QueueInterface** ret) {

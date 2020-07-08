@@ -41,7 +41,7 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
       continue;
     }
     int index;
-    TF_CHECK_OK(GetNodeAttr(n->attrs(), "index", &index));
+    TF_CHECK_OK(GetNodeAttribute(n->attrs(), "index", &index));
     CHECK_LE(0, index);
     CHECK_LT(index, node_vec->size());
     (*node_vec)[index] = n;

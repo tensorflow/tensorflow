@@ -39,7 +39,7 @@ namespace {
 class PackOp : public XlaOpKernel {
  public:
   explicit PackOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("axis", &axis_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -56,8 +56,8 @@ class PackOp : public XlaOpKernel {
       OP_REQUIRES(ctx, shapes[0].IsSameSize(shapes[i]),
                   errors::InvalidArgument(
                       "Shapes of all inputs must match: values[0].shape = ",
-                      shapes[0].DebugString(), " != values[", i, "].shape = ",
-                      shapes[i].DebugString()));
+                      shapes[0].DebugString(), " != values[", i,
+                      "].shape = ", shapes[i].DebugString()));
     }
 
     int expanded_num_dims = shapes[0].dims() + 1;

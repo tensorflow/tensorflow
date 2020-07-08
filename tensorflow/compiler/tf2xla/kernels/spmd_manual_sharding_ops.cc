@@ -30,7 +30,8 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
  public:
   explicit XlaSpmdFullToShardShapeOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("manual_sharding", &manual_sharding_str_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("manual_sharding", &manual_sharding_str_));
   }
 
   ~XlaSpmdFullToShardShapeOp() override = default;
@@ -90,8 +91,9 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
  public:
   explicit XlaSpmdShardToFullShapeOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("full_shape", &full_shape_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("manual_sharding", &manual_sharding_str_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("full_shape", &full_shape_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("manual_sharding", &manual_sharding_str_));
   }
 
   ~XlaSpmdShardToFullShapeOp() override = default;

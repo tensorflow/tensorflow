@@ -26,7 +26,7 @@ template <class T>
 class CountUpToOp : public OpKernel {
  public:
   explicit CountUpToOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("limit", &limit_));
+    OP_REQUIRES_OK(context, context->GetAttribute("limit", &limit_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -61,8 +61,8 @@ class ResourceCountUpToOp : public OpKernel {
  public:
   explicit ResourceCountUpToOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("limit", &limit_));
-    OP_REQUIRES_OK(context, context->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(context, context->GetAttribute("limit", &limit_));
+    OP_REQUIRES_OK(context, context->GetAttribute("T", &dtype_));
   }
 
   void Compute(OpKernelContext* context) override {

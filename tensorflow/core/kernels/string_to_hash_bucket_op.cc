@@ -27,7 +27,7 @@ class LegacyStringToHashBucketOp : public OpKernel {
  public:
   explicit LegacyStringToHashBucketOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_buckets", &num_buckets_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("num_buckets", &num_buckets_));
   }
 
   void Compute(OpKernelContext* context) override {

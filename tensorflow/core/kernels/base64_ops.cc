@@ -27,7 +27,7 @@ namespace {
 class EncodeBase64Op : public OpKernel {
  public:
   explicit EncodeBase64Op(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("pad", &pad_));
+    OP_REQUIRES_OK(context, context->GetAttribute("pad", &pad_));
   }
 
   void Compute(OpKernelContext* context) override {

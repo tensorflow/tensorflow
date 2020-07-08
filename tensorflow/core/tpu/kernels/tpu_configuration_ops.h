@@ -50,8 +50,8 @@ class ConfigureDistributedTpuOp : public OpKernel {
 class WaitForDistributedTpuOp : public OpKernel {
  public:
   explicit WaitForDistributedTpuOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("startup_timeout_sec", &startup_timeout_sec_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("startup_timeout_sec", &startup_timeout_sec_));
     OP_REQUIRES(ctx, startup_timeout_sec_ > 0,
                 errors::InvalidArgument("startup_timeout_sec ",
                                         startup_timeout_sec_, " must be >0"));
@@ -94,8 +94,8 @@ class InitializeHostForDistributedTpuOp : public OpKernel {
  public:
   explicit InitializeHostForDistributedTpuOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    ctx->GetAttr("enable_whole_mesh_compilations",
-                 &enable_whole_mesh_compilations_)
+    ctx->GetAttribute("enable_whole_mesh_compilations",
+                      &enable_whole_mesh_compilations_)
         .IgnoreError();
   }
 

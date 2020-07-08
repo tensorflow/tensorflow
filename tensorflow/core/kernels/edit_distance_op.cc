@@ -18,8 +18,8 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <limits>
-
 #include <vector>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -97,7 +97,7 @@ template <typename T>
 class EditDistanceOp : public OpKernel {
  public:
   explicit EditDistanceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("normalize", &normalize_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("normalize", &normalize_));
   }
 
   void Compute(OpKernelContext* ctx) override {

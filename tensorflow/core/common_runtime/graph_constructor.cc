@@ -788,7 +788,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
   // For nodes with the _output_shapes attribute, override the shape.
   std::vector<const TensorShapeProto*> shape_attrs;
   const char* kAttrName = "_output_shapes";
-  if (!TryGetNodeAttr(node->attrs(), kAttrName, &shape_attrs)) {
+  if (!TryGetNodeAttribute(node->attrs(), kAttrName, &shape_attrs)) {
     // No _output_shapes attribute, the AddNode call above was sufficient.
     return Status::OK();
   }
@@ -1002,7 +1002,7 @@ void GraphConstructor::UpdateUniquifiedColocationNames() {
     Node* node = pair.second.node;
     if (node == nullptr) continue;
     std::vector<string> coloc_values;
-    if (!TryGetNodeAttr(node->attrs(), kColocationAttrName, &coloc_values))
+    if (!TryGetNodeAttribute(node->attrs(), kColocationAttrName, &coloc_values))
       continue;
     bool updated = false;
     for (size_t i = 0; i < coloc_values.size(); ++i) {

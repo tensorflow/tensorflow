@@ -610,11 +610,11 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
   explicit FusedResizeConv2DUsingGemmOp(OpKernelConstruction* context)
       : OpKernel(context) {
     if (DoResize) {
-      OP_REQUIRES_OK(context,
-                     context->GetAttr("resize_align_corners", &align_corners_));
+      OP_REQUIRES_OK(context, context->GetAttribute("resize_align_corners",
+                                                    &align_corners_));
     }
     MirrorPadMode mode;
-    OP_REQUIRES_OK(context, context->GetAttr("mode", &mode));
+    OP_REQUIRES_OK(context, context->GetAttribute("mode", &mode));
 
     switch (mode) {
       case MirrorPadMode::SYMMETRIC: {
@@ -630,7 +630,7 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
                     errors::InvalidArgument(
                         "mode must be either REFLECT or SYMMETRIC."));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
@@ -640,7 +640,7 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
         context, stride_n == 1 && stride_c == 1,
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
   }
 
   void Compute(OpKernelContext* context) override {

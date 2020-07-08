@@ -263,7 +263,7 @@ Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
                                     NameAttrList* function) {
   if (call_def.op() == "PartitionedCall" ||
       call_def.op() == "StatefulPartitionedCall") {
-    TF_RETURN_IF_ERROR(GetNodeAttr(call_def, "f", function));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(call_def, "f", function));
   } else {
     function->set_name(call_def.op());
     *function->mutable_attr() = call_def.attr();

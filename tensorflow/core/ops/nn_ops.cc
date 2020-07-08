@@ -37,7 +37,7 @@ Status FractionalPoolShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
 
   std::vector<float> pooling_ratio;
-  TF_RETURN_IF_ERROR(c->GetAttr("pooling_ratio", &pooling_ratio));
+  TF_RETURN_IF_ERROR(c->GetAttribute("pooling_ratio", &pooling_ratio));
   if (pooling_ratio.size() != 4) {
     return errors::InvalidArgument(
         "pooling_ratio field must specify 4 dimensions");
@@ -484,7 +484,7 @@ Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
   ShapeHandle filter;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(filter_index), 4, &filter));
   std::vector<int32> strides;
-  TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+  TF_RETURN_IF_ERROR(c->GetAttribute("strides", &strides));
   if (strides.size() != 4) {
     return errors::InvalidArgument(
         "Operation requires the stride attribute to contain 4 values, but ",
@@ -505,7 +505,7 @@ Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(padded, 3), c->Dim(filter, 2), &unused));
 
   Padding padding;
-  TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
+  TF_RETURN_IF_ERROR(c->GetAttribute("padding", &padding));
 
   DimensionHandle output_rows, output_cols;
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
@@ -997,7 +997,7 @@ REGISTER_OP("Dilation2D")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &filter_shape));
 
       std::vector<int32> strides;
-      TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
+      TF_RETURN_IF_ERROR(c->GetAttribute("strides", &strides));
       if (strides.size() != 4) {
         return errors::InvalidArgument(
             "Dilation2D requires the stride attribute to contain 4 values, but "
@@ -1006,7 +1006,7 @@ REGISTER_OP("Dilation2D")
       }
 
       std::vector<int32> rates;
-      TF_RETURN_IF_ERROR(c->GetAttr("rates", &rates));
+      TF_RETURN_IF_ERROR(c->GetAttribute("rates", &rates));
       if (rates.size() != 4) {
         return errors::InvalidArgument(
             "Dilation2D requires the rates attribute to contain 4 values, but "
@@ -1047,7 +1047,7 @@ REGISTER_OP("Dilation2D")
       auto filter_cols_eff = filter_cols + (filter_cols - 1) * (rate_cols - 1);
 
       Padding padding;
-      TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
+      TF_RETURN_IF_ERROR(c->GetAttribute("padding", &padding));
 
       int64 output_rows, output_cols;
       int64 padding_before, padding_after;
@@ -1312,7 +1312,7 @@ Status TopKShapeFn(InferenceContext* c) {
     TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &k_dim));
   } else {
     int32 k;
-    TF_RETURN_IF_ERROR(c->GetAttr("k", &k));
+    TF_RETURN_IF_ERROR(c->GetAttribute("k", &k));
     if (k < 0) {
       return errors::InvalidArgument("Need k >= 0, got ", k);
     }
@@ -1888,7 +1888,7 @@ REGISTER_OP("__MklDummyConv2DBackpropFilterWithBias")
       ShapeHandle input_shape;
       // Fetch the data_format attribute, which may not exist.
       string data_format;
-      Status s = c->GetAttr("data_format", &data_format);
+      Status s = c->GetAttribute("data_format", &data_format);
 
       if (s.ok() && data_format == "NCHW") {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
@@ -1933,7 +1933,7 @@ REGISTER_OP("_MklConv2DBackpropFilterWithBias")
       ShapeHandle input_shape;
       // Fetch the data_format attribute, which may not exist.
       string data_format;
-      Status s = c->GetAttr("data_format", &data_format);
+      Status s = c->GetAttribute("data_format", &data_format);
 
       if (s.ok() && data_format == "NCHW") {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
@@ -2572,10 +2572,10 @@ REGISTER_OP("_MklFusedBatchNorm")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
 
       bool is_training;
-      TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
+      TF_RETURN_IF_ERROR(c->GetAttribute("is_training", &is_training));
       int number_inputs = (is_training) ? 3 : 5;
       string data_format;
-      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
+      TF_RETURN_IF_ERROR(c->GetAttribute("data_format", &data_format));
       DimensionHandle channel_dim =
           (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
 
@@ -2641,8 +2641,8 @@ REGISTER_OP("_MklFusedBatchNormGrad")
 
       bool is_training;
       string data_format;
-      TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
-      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
+      TF_RETURN_IF_ERROR(c->GetAttribute("is_training", &is_training));
+      TF_RETURN_IF_ERROR(c->GetAttribute("data_format", &data_format));
       DimensionHandle channel_dim = (data_format == "NHWC")
                                         ? c->Dim(y_backprop, 3)
                                         : c->Dim(y_backprop, 1);

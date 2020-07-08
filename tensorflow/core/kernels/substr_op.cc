@@ -17,7 +17,6 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -40,7 +40,7 @@ class SubstrOp : public OpKernel {
  public:
   explicit SubstrOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string unit;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("unit", &unit));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("unit", &unit));
     OP_REQUIRES_OK(ctx, ParseCharUnit(unit, &unit_));
   }
 

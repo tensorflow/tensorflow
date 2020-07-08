@@ -317,18 +317,18 @@ Status LoadOpShapeFunction::operator()(
           is_debug_op_,
       &state_variable_specs));
   int table_id;
-  TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
+  TF_RETURN_IF_ERROR(c->GetAttribute("table_id", &table_id));
   string table_name;
-  TF_RETURN_IF_ERROR(c->GetAttr("table_name", &table_name));
+  TF_RETURN_IF_ERROR(c->GetAttribute("table_name", &table_name));
   // Exactly one must be non-default.
   if ((table_id >= 0) == (!table_name.empty())) {
     return errors::InvalidArgument(
         "exactly one of table_id or table_name must be non-default");
   }
   int num_shards;
-  TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
+  TF_RETURN_IF_ERROR(c->GetAttribute("num_shards", &num_shards));
   int shard_id;
-  TF_RETURN_IF_ERROR(c->GetAttr("shard_id", &shard_id));
+  TF_RETURN_IF_ERROR(c->GetAttribute("shard_id", &shard_id));
   const int user_param_count =
       std::count_if(state_variable_specs.begin(), state_variable_specs.end(),
                     [&](const StateVariableSpecification& sv) {
@@ -377,18 +377,18 @@ Status RetrieveOpShapeFunction::operator()(
           is_debug_op_,
       &state_variable_specs));
   int table_id;
-  TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
+  TF_RETURN_IF_ERROR(c->GetAttribute("table_id", &table_id));
   string table_name;
-  TF_RETURN_IF_ERROR(c->GetAttr("table_name", &table_name));
+  TF_RETURN_IF_ERROR(c->GetAttribute("table_name", &table_name));
   // Exactly one must be non-default.
   if ((table_id >= 0) == (!table_name.empty())) {
     return errors::InvalidArgument(
         "exactly one of table_id or table_name must be non-default");
   }
   int num_shards;
-  TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
+  TF_RETURN_IF_ERROR(c->GetAttribute("num_shards", &num_shards));
   int shard_id;
-  TF_RETURN_IF_ERROR(c->GetAttr("shard_id", &shard_id));
+  TF_RETURN_IF_ERROR(c->GetAttribute("shard_id", &shard_id));
   for (int j = 0, iter_limit = state_variable_specs.size(); j < iter_limit;
        ++j) {
     if (state_variable_specs[j].has_user_defined() || is_debug_op_) {

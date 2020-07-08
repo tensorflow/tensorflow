@@ -35,25 +35,27 @@ class FusedBatchNormOp : public XlaOpKernel {
 
   FusedBatchNormOp(OpKernelConstruction* ctx, bool is_batch_norm_ex)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("is_training", &is_training_));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("exponential_avg_factor", &exponential_avg_factor_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("epsilon", &epsilon_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("is_training", &is_training_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("exponential_avg_factor",
+                                          &exponential_avg_factor_));
     string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("data_format", &data_format_str));
     OP_REQUIRES(
         ctx, FormatFromString(data_format_str, &data_format_),
         errors::InvalidArgument("Invalid data format: ", data_format_str));
 
     if (is_batch_norm_ex) {
       int num_side_inputs;
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("num_side_inputs", &num_side_inputs));
+      OP_REQUIRES_OK(ctx,
+                     ctx->GetAttribute("num_side_inputs", &num_side_inputs));
       OP_REQUIRES(ctx, num_side_inputs >= 0 && num_side_inputs <= 1,
                   errors::InvalidArgument(
                       "FusedBatchNormEx supports at most 1 side input."));
       add_side_input_ = (num_side_inputs == 1);
       string activation_mode;
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("activation_mode", &activation_mode));
+      OP_REQUIRES_OK(ctx,
+                     ctx->GetAttribute("activation_mode", &activation_mode));
       OP_REQUIRES(ctx,
                   activation_mode == "Identity" || activation_mode == "Relu",
                   errors::InvalidArgument(
@@ -238,10 +240,10 @@ REGISTER_XLA_OP(Name("_FusedBatchNormEx"), FusedBatchNormOpEx);
 class FusedBatchNormGradOp : public XlaOpKernel {
  public:
   explicit FusedBatchNormGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("is_training", &is_training_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("epsilon", &epsilon_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("is_training", &is_training_));
     string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("data_format", &data_format_str));
     OP_REQUIRES(
         ctx, FormatFromString(data_format_str, &data_format_),
         errors::InvalidArgument("Invalid data format: ", data_format_str));

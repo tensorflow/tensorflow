@@ -14,9 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/io_ops.cc.
-#include "tensorflow/core/kernels/save_restore_tensor.h"
-
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/save_restore_tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
@@ -29,7 +28,7 @@ class RestoreOp : public OpKernel {
   explicit RestoreOp(OpKernelConstruction* context) : OpKernel(context) {
     int preferred_shard;
     OP_REQUIRES_OK(context,
-                   context->GetAttr("preferred_shard", &preferred_shard));
+                   context->GetAttribute("preferred_shard", &preferred_shard));
     if (preferred_shard == -1) {
       preferred_shard_ = checkpoint::TensorSliceReader::kLoadAllShards;
     } else {
@@ -55,7 +54,7 @@ class RestoreSliceOp : public OpKernel {
   explicit RestoreSliceOp(OpKernelConstruction* context) : OpKernel(context) {
     int preferred_shard;
     OP_REQUIRES_OK(context,
-                   context->GetAttr("preferred_shard", &preferred_shard));
+                   context->GetAttribute("preferred_shard", &preferred_shard));
     if (preferred_shard == -1) {
       preferred_shard_ = checkpoint::TensorSliceReader::kLoadAllShards;
     } else {

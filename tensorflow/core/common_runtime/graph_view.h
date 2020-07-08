@@ -65,7 +65,7 @@ struct NodeItem {
   bool is_merge : 1;            // True iff IsMerge(node)
   bool is_enter : 1;            // True iff IsEnter(node)
   bool is_constant_enter : 1;   // True iff IsEnter(node) and
-                                // node->GetAttr("is_constant") == true.
+                                // node->GetAttribute("is_constant") == true.
   bool is_exit : 1;             // True iff IsExit(node)
   bool is_control_trigger : 1;  // True iff IsControlTrigger(node)
   bool is_source : 1;           // True iff IsSource(node)

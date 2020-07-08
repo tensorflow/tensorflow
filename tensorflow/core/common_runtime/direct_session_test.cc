@@ -1805,47 +1805,48 @@ TEST(DirectSessionTest, TimeoutSession) {
   GraphDef graph;
   // Creates a graph with one FIFOQueue and one dequeue op.
   protobuf::TextFormat::ParseFromString(R"proto(
-    node {
-      name: 'fifo_queue'
-      op: 'FIFOQueue'
-      device: '/device:CPU:0'
-      attr {
-        key: 'capacity'
-        value { i: 10 }
-      }
-      attr {
-        key: 'component_types'
-        value { list { type: DT_FLOAT } }
-      }
-      attr {
-        key: 'container'
-        value { s: '' }
-      }
-      attr {
-        key: 'shapes'
-        value { list {} }
-      }
-      attr {
-        key: 'shared_name'
-        value { s: '' }
-      }
-    }
-    node {
-      name: 'fifo_queue_Dequeue'
-      op: 'QueueDequeue'
-      input: 'fifo_queue'
-      device: '/device:CPU:0'
-      attr {
-        key: 'component_types'
-        value { list { type: DT_FLOAT } }
-      }
-      attr {
-        key: 'timeout_ms'
-        value { i: -1 }
-      }
-    }
-    versions { producer: 9 }
-  )proto", &graph);
+                                          node {
+                                            name: 'fifo_queue'
+                                            op: 'FIFOQueue'
+                                            device: '/device:CPU:0'
+                                            attr {
+                                              key: 'capacity'
+                                              value { i: 10 }
+                                            }
+                                            attr {
+                                              key: 'component_types'
+                                              value { list { type: DT_FLOAT } }
+                                            }
+                                            attr {
+                                              key: 'container'
+                                              value { s: '' }
+                                            }
+                                            attr {
+                                              key: 'shapes'
+                                              value { list {} }
+                                            }
+                                            attr {
+                                              key: 'shared_name'
+                                              value { s: '' }
+                                            }
+                                          }
+                                          node {
+                                            name: 'fifo_queue_Dequeue'
+                                            op: 'QueueDequeue'
+                                            input: 'fifo_queue'
+                                            device: '/device:CPU:0'
+                                            attr {
+                                              key: 'component_types'
+                                              value { list { type: DT_FLOAT } }
+                                            }
+                                            attr {
+                                              key: 'timeout_ms'
+                                              value { i: -1 }
+                                            }
+                                          }
+                                          versions { producer: 9 }
+                                        )proto",
+                                        &graph);
 
   {
     // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
@@ -1903,13 +1904,14 @@ TEST(DirectSessionTest, TestTimeoutCleanShutdown) {
   GraphDef graph;
   // Creates a graph with one FIFOQueue and one dequeue op.
   protobuf::TextFormat::ParseFromString(R"proto(
-    node {
-      name: 'cm_polling'
-      op: 'CancellationMgrPollingOp'
-      device: '/device:CPU:0'
-    }
-    versions { producer: 9 }
-  )proto", &graph);
+                                          node {
+                                            name: 'cm_polling'
+                                            op: 'CancellationMgrPollingOp'
+                                            device: '/device:CPU:0'
+                                          }
+                                          versions { producer: 9 }
+                                        )proto",
+                                        &graph);
 
   // Creates a session with operation_timeout_in_ms set to 100 milliseconds.
   SessionOptions options;

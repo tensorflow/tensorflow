@@ -102,11 +102,11 @@ class InitializeTableFromTextFileOp : public OpKernel {
  public:
   explicit InitializeTableFromTextFileOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("vocab_size", &vocab_size_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("key_index", &key_index_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("value_index", &value_index_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("vocab_size", &vocab_size_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("key_index", &key_index_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("value_index", &value_index_));
     string delimiter;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("delimiter", &delimiter));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("delimiter", &delimiter));
     OP_REQUIRES(ctx, delimiter.size() == 1,
                 errors::InvalidArgument("delimiter should be only 1 char"));
     delimiter_ = delimiter[0];

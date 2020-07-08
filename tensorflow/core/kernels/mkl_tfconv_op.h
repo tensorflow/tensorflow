@@ -50,8 +50,9 @@ template <typename Device, typename T>
 class MklToTfOp : public OpKernel {
  public:
   explicit MklToTfOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
-    OP_REQUIRES_OK(context, context->GetAttr("T", &op_data_type));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("data_format", &data_format_str));
+    OP_REQUIRES_OK(context, context->GetAttribute("T", &op_data_type));
     has_avx512f_ = port::TestCPUFeature(port::CPUFeature::AVX512F);
   }
 

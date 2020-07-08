@@ -176,7 +176,7 @@ REGISTER_OP("XlaDot")
 
       string dimension_numbers_string;
       TF_RETURN_IF_ERROR(
-          c->GetAttr("dimension_numbers", &dimension_numbers_string));
+          c->GetAttribute("dimension_numbers", &dimension_numbers_string));
 
       xla::DotDimensionNumbers dimension_numbers;
       dimension_numbers.ParseFromString(dimension_numbers_string);
@@ -406,7 +406,7 @@ REGISTER_OP("XlaRecv")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       TensorShape shape_attr;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &shape_attr));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shape", &shape_attr));
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);
@@ -435,7 +435,7 @@ REGISTER_OP("XlaReduce")
         int rank = c->Rank(c->input(0));
         std::vector<int64> dimensions_to_reduce;
         TF_RETURN_IF_ERROR(
-            c->GetAttr("dimensions_to_reduce", &dimensions_to_reduce));
+            c->GetAttribute("dimensions_to_reduce", &dimensions_to_reduce));
         std::set<int64> dims_set(dimensions_to_reduce.begin(),
                                  dimensions_to_reduce.end());
         auto dim_in_range = [rank](int64 dim) {
@@ -631,7 +631,7 @@ REGISTER_OP("XlaEinsum")
     .Attr("T: {complex64, bfloat16, float}")
     .SetShapeFn([](shape_inference::InferenceContext* context) {
       string equation;
-      TF_RETURN_IF_ERROR(context->GetAttr("equation", &equation));
+      TF_RETURN_IF_ERROR(context->GetAttribute("equation", &equation));
       // XlaEinsum supports only two-input einsum equations.
       if (!absl::StrContains(equation, ",")) {
         return errors::InvalidArgument("Expected one \",\" in equation. Got: ",
@@ -659,7 +659,7 @@ REGISTER_OP("XlaSpmdFullToShardShape")
         return shape_inference::UnknownShape(c);
       }
       string sharding_attr;
-      TF_RETURN_IF_ERROR(c->GetAttr("manual_sharding", &sharding_attr));
+      TF_RETURN_IF_ERROR(c->GetAttribute("manual_sharding", &sharding_attr));
       std::vector<shape_inference::DimensionHandle> dims;
       for (int64 i = 0; i < c->Rank(input_handle); ++i) {
         auto dim = c->Value(c->Dim(input_handle, i));
@@ -691,7 +691,7 @@ REGISTER_OP("XlaSpmdShardToFullShape")
     .Attr("full_shape: shape")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       TensorShape shape_attr;
-      TF_RETURN_IF_ERROR(c->GetAttr("full_shape", &shape_attr));
+      TF_RETURN_IF_ERROR(c->GetAttribute("full_shape", &shape_attr));
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shape_attr, &s));
       c->set_output(0, s);

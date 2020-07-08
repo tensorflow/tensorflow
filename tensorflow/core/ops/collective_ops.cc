@@ -65,7 +65,7 @@ REGISTER_OP("CollectiveGather")
             c->Vector(shape_inference::InferenceContext::kUnknownDim);
       } else {
         int group_size;
-        TF_CHECK_OK(c->GetAttr("group_size", &group_size));
+        TF_CHECK_OK(c->GetAttribute("group_size", &group_size));
         std::vector<shape_inference::DimensionHandle> output_first_dim;
         output_first_dim.push_back(
             c->MakeDim(group_size * input_first_dim_value));

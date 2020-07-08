@@ -42,7 +42,8 @@ class PriorityQueueOp : public TypedQueueOp {
  public:
   explicit PriorityQueueOp(OpKernelConstruction* context)
       : TypedQueueOp(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("shapes", &component_shapes_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("shapes", &component_shapes_));
     component_types_.insert(component_types_.begin(), DT_INT64);
     if (!component_shapes_.empty()) {
       component_shapes_.insert(component_shapes_.begin(), TensorShape({}));

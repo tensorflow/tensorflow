@@ -31,7 +31,7 @@ class UnpackVectorizer : public Vectorizer {
 
     int axis = 0;
     if (HasNodeAttr(node.def(), "axis")) {
-      TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "axis", &axis));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(node.attrs(), "axis", &axis));
     }
 
     if (axis >= 0) {
@@ -42,7 +42,7 @@ class UnpackVectorizer : public Vectorizer {
     }
 
     int num;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "num", &num));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(node.attrs(), "num", &num));
 
     Node* new_node;
     TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat("vectorized/", node.name()),

@@ -45,9 +45,9 @@ Status ReadVariableShapeFn(InferenceContext* c) {
 
 Status ReadVariablesShapeFn(InferenceContext* c) {
   int n;
-  TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+  TF_RETURN_IF_ERROR(c->GetAttribute("N", &n));
   DataTypeVector value_dtypes;
-  TF_RETURN_IF_ERROR(c->GetAttr("dtypes", &value_dtypes));
+  TF_RETURN_IF_ERROR(c->GetAttribute("dtypes", &value_dtypes));
   if (n != value_dtypes.size()) {
     return errors::InvalidArgument(
         "Mismatched number of arguments to ReadVariablesOp");
@@ -86,9 +86,9 @@ REGISTER_OP("VarHandleOp")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Scalar());
       DataType t;
-      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &t));
+      TF_RETURN_IF_ERROR(c->GetAttribute("dtype", &t));
       PartialTensorShape p;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &p));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shape", &p));
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(p, &s));
       c->set_output_handle_shapes_and_types(0,
@@ -107,11 +107,11 @@ REGISTER_OP("_VarHandlesOp")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       int n;
-      TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+      TF_RETURN_IF_ERROR(c->GetAttribute("N", &n));
       DataTypeVector dtypes;
-      TF_RETURN_IF_ERROR(c->GetAttr("dtypes", &dtypes));
+      TF_RETURN_IF_ERROR(c->GetAttribute("dtypes", &dtypes));
       std::vector<PartialTensorShape> shapes;
-      TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shapes", &shapes));
       if (dtypes.size() != n) {
         return errors::InvalidArgument("Mismatched number of dtypes (n=", n,
                                        ", num dtypes=", dtypes.size(), ")");
@@ -251,7 +251,7 @@ REGISTER_OP("ResourceGather")
 
       ShapeHandle unused;
       int32 batch_dims;
-      TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
+      TF_RETURN_IF_ERROR(c->GetAttribute("batch_dims", &batch_dims));
       if (batch_dims < 0)
         return errors::InvalidArgument("batch_dims is negative (", batch_dims,
                                        ")");

@@ -187,11 +187,11 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
         ++cluster_count;
         RemoteFusedGraphExecuteInfo info;
         string serialized_proto;
-        TF_ASSERT_OK(
-            GetNodeAttr(node_def,
-                        RemoteFusedGraphExecuteUtils::
-                            ATTR_SERIALIZED_REMOTE_FUSED_GRAPH_EXECUTE_INFO,
-                        &serialized_proto));
+        TF_ASSERT_OK(GetNodeAttribute(
+            node_def,
+            RemoteFusedGraphExecuteUtils::
+                ATTR_SERIALIZED_REMOTE_FUSED_GRAPH_EXECUTE_INFO,
+            &serialized_proto));
         info.ParseFromString(serialized_proto);
         CHECK_EQ(remote_fused_graph_executor_name_, info.executor_name());
       }

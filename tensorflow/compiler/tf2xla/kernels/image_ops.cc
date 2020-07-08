@@ -400,8 +400,8 @@ class NonMaxSuppressionOp : public XlaOpKernel {
  public:
   explicit NonMaxSuppressionOp(OpKernelConstruction* context)
       : XlaOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("pad_to_max_output_size",
-                                             &pad_to_max_output_size_));
+    OP_REQUIRES_OK(context, context->GetAttribute("pad_to_max_output_size",
+                                                  &pad_to_max_output_size_));
   }
 
   void Compile(XlaOpKernelContext* context) override {

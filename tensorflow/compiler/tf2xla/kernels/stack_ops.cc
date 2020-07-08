@@ -91,8 +91,8 @@ Status MaybeInitializeStack(xla::XlaBuilder* builder, XlaResource* resource,
 class StackOp : public XlaOpKernel {
  public:
   explicit StackOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("elem_type", &dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("stack_name", &stack_name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("elem_type", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("stack_name", &stack_name_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -127,7 +127,7 @@ REGISTER_XLA_OP(
 class StackPushOp : public XlaOpKernel {
  public:
   explicit StackPushOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -174,7 +174,7 @@ REGISTER_XLA_OP(Name("StackPushV2").CompilationOnly(), StackPushOp);
 class StackPopOp : public XlaOpKernel {
  public:
   explicit StackPopOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("elem_type", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("elem_type", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

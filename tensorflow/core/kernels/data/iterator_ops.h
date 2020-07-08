@@ -239,8 +239,8 @@ class IteratorGetNextOp : public HybridAsyncOpKernel {
  public:
   explicit IteratorGetNextOp(OpKernelConstruction* ctx)
       : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next") {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
   }
 
   AsyncOpKernel* AsAsync() override;
@@ -266,8 +266,8 @@ class IteratorGetNextAsOptionalOp : public HybridAsyncOpKernel {
  public:
   explicit IteratorGetNextAsOptionalOp(OpKernelConstruction* ctx)
       : HybridAsyncOpKernel(ctx, "tf_data_iterator_get_next_as_optional") {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
   }
 
  protected:

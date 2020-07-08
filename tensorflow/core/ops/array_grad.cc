@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <vector>
+
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -142,9 +143,9 @@ REGISTER_OP_GRADIENT("Unpack", UnpackGrad);
 Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
                         bool dim_is_last_arg) {
   int N;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &N));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "N", &N));
   DataType T;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "T", &T));
 
   std::vector<string> shape_i;
   std::vector<string> offset_i;
@@ -267,7 +268,7 @@ REGISTER_OP_GRADIENT("SplitV", SplitVGrad);
 
 Status ArrayToListGrad(const AttrSlice& attrs, FunctionDef* g) {
   int N;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &N));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "N", &N));
   std::vector<string> dys;
   dys.reserve(N);
   for (int i = 0; i < N; ++i) {
@@ -414,7 +415,7 @@ REGISTER_OP_GRADIENT("Reverse", ReverseGrad);
 
 Status ReverseV2Grad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Tidx", &itype));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "Tidx", &itype));
   if (itype != DT_INT32) {
     return errors::Unimplemented(
         "ReverseV2Grad for int64 index are not supported.");
@@ -438,7 +439,7 @@ REGISTER_OP_GRADIENT("ReverseV2", ReverseV2Grad);
 
 Status SliceGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "Index", &itype));
   if (itype != DT_INT32) {
     return errors::Unimplemented(
         "SliceGrad for int64 index are not supported.");
@@ -473,7 +474,7 @@ REGISTER_OP_GRADIENT("Slice", SliceGrad);
 
 Status StridedSliceGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "Index", &itype));
   if (itype != DT_INT32) {
     return errors::Unimplemented(
         "SliceGrad for int64 index are not supported.");
@@ -510,7 +511,7 @@ REGISTER_OP_GRADIENT("StridedSlice", StridedSliceGrad);
 
 Status StridedSliceGradGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Index", &itype));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "Index", &itype));
   if (itype != DT_INT32) {
     return errors::Unimplemented(
         "SliceGrad for int64 index are not supported.");
@@ -552,7 +553,7 @@ REGISTER_OP_GRADIENT("StridedSliceGrad", StridedSliceGradGrad);
 
 Status BroadcastToGrad(const AttrSlice& attrs, FunctionDef* g) {
   DataType itype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Tidx", &itype));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "Tidx", &itype));
   if (itype != DT_INT32) {
     return errors::Unimplemented(
         "BroadcastToGrad for int64 index are not supported.");

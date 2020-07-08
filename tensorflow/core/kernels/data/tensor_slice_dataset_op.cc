@@ -164,8 +164,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
 TensorSliceDatasetOp::TensorSliceDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kToutputTypes, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kToutputTypes, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
 }
 
 void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,

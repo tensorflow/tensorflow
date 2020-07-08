@@ -692,7 +692,8 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   DataType dtype;
-  if (!TryGetNodeAttr(n->def(), "dtype", &dtype) || !DataTypeIsInteger(dtype)) {
+  if (!TryGetNodeAttribute(n->def(), "dtype", &dtype) ||
+      !DataTypeIsInteger(dtype)) {
     return false;
   }
 
@@ -709,7 +710,7 @@ bool MarkForCompilationPassImpl::IsScalarIntegerResourceOperation(
   }
 
   const TensorProto* proto = nullptr;
-  if (!TryGetNodeAttr(const_input->def(), "value", &proto)) {
+  if (!TryGetNodeAttribute(const_input->def(), "value", &proto)) {
     return false;
   }
 
@@ -978,11 +979,11 @@ static bool GetNodeOrFuncAttr(Node* node, FunctionLibraryDefinition* flib_def,
                               const char* attr_name) {
   bool out = false;
   bool attr_value;
-  if (TryGetNodeAttr(node->attrs(), attr_name, &attr_value)) {
+  if (TryGetNodeAttribute(node->attrs(), attr_name, &attr_value)) {
     out |= attr_value;
   }
 
-  if (flib_def->GetAttr(*node, attr_name, &attr_value).ok()) {
+  if (flib_def->GetAttribute(*node, attr_name, &attr_value).ok()) {
     out |= attr_value;
   }
   return out;
@@ -1310,7 +1311,7 @@ bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
 
   // If there is a _XlaCompile annotation, use its value.
   bool compile = false;
-  Status status = GetNodeAttr(node->attrs(), kXlaCompileAttr, &compile);
+  Status status = GetNodeAttribute(node->attrs(), kXlaCompileAttr, &compile);
   if (status.ok()) {
     if (!compile) {
       VLOG(2) << "Rejecting " << node->name() << ": kXlaCompileAttr("
@@ -1319,7 +1320,7 @@ bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
     return !compile;
   }
 
-  status = flib_def_->GetAttr(*node, kXlaCompileAttr, &compile);
+  status = flib_def_->GetAttribute(*node, kXlaCompileAttr, &compile);
   if (status.ok()) {
     if (!compile) {
       VLOG(2) << "Rejecting " << node->name() << ": kXlaCompileAttr("

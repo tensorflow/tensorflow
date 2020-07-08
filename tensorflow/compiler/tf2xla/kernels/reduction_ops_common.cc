@@ -30,7 +30,7 @@ namespace tensorflow {
 XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx,
                                DataType reduction_type)
     : XlaOpKernel(ctx), reduction_type_(reduction_type) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("keep_dims", &keep_dims_));
   OP_REQUIRES_OK(
       ctx, DataTypeToPrimitiveType(reduction_type_, &xla_reduction_type_));
 }

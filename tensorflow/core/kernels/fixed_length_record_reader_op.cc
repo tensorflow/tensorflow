@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -165,10 +166,13 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
       : ReaderOpKernel(context) {
     int64 header_bytes = -1, record_bytes = -1, footer_bytes = -1,
           hop_bytes = -1;
-    OP_REQUIRES_OK(context, context->GetAttr("header_bytes", &header_bytes));
-    OP_REQUIRES_OK(context, context->GetAttr("record_bytes", &record_bytes));
-    OP_REQUIRES_OK(context, context->GetAttr("footer_bytes", &footer_bytes));
-    OP_REQUIRES_OK(context, context->GetAttr("hop_bytes", &hop_bytes));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("header_bytes", &header_bytes));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("record_bytes", &record_bytes));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("footer_bytes", &footer_bytes));
+    OP_REQUIRES_OK(context, context->GetAttribute("hop_bytes", &hop_bytes));
     OP_REQUIRES(context, header_bytes >= 0,
                 errors::InvalidArgument("header_bytes must be >= 0 not ",
                                         header_bytes));
@@ -183,7 +187,7 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
         errors::InvalidArgument("hop_bytes must be >= 0 not ", hop_bytes));
     Env* env = context->env();
     string encoding;
-    OP_REQUIRES_OK(context, context->GetAttr("encoding", &encoding));
+    OP_REQUIRES_OK(context, context->GetAttribute("encoding", &encoding));
     SetReaderFactory([this, header_bytes, record_bytes, footer_bytes, hop_bytes,
                       encoding, env]() {
       return new FixedLengthRecordReader(name(), header_bytes, record_bytes,

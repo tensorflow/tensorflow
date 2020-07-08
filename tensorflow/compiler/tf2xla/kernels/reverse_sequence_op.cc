@@ -29,8 +29,8 @@ class ReverseSequenceOp : public XlaOpKernel {
  public:
   explicit ReverseSequenceOp(OpKernelConstruction* context)
       : XlaOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("batch_dim", &batch_dim_));
-    OP_REQUIRES_OK(context, context->GetAttr("seq_dim", &seq_dim_));
+    OP_REQUIRES_OK(context, context->GetAttribute("batch_dim", &batch_dim_));
+    OP_REQUIRES_OK(context, context->GetAttribute("seq_dim", &seq_dim_));
   }
 
   void Compile(XlaOpKernelContext* context) override {

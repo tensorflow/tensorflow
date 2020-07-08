@@ -179,7 +179,6 @@ Status AddSynchronizationNode(
   return Status::OK();
 }
 
-
 Status AddShutdownNode(
     const NodeDef& shutdown_node_def, const string& shutdown_device_name,
     const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
@@ -273,18 +272,18 @@ Status DistributedTPUConfigurationRewritePass::Run(
 
             bool is_global_init = false;
             bool enable_whole_mesh_compilations = false;
-            TF_RETURN_IF_ERROR(GetNodeAttr(configuration_node_def,
-                                           "is_global_init", &is_global_init));
-            TryGetNodeAttr(configuration_node_def,
-                           "enable_whole_mesh_compilations",
-                           &enable_whole_mesh_compilations);
+            TF_RETURN_IF_ERROR(GetNodeAttribute(
+                configuration_node_def, "is_global_init", &is_global_init));
+            TryGetNodeAttribute(configuration_node_def,
+                                "enable_whole_mesh_compilations",
+                                &enable_whole_mesh_compilations);
             TF_RETURN_IF_ERROR(SetTPUInitMode(
                 is_global_init ? TPUInitMode::kGlobal : TPUInitMode::kRegular));
 
             bool compilation_failure_closes_chips;
-            TF_RETURN_IF_ERROR(GetNodeAttr(configuration_node_def,
-                                           "compilation_failure_closes_chips",
-                                           &compilation_failure_closes_chips));
+            TF_RETURN_IF_ERROR(GetNodeAttribute(
+                configuration_node_def, "compilation_failure_closes_chips",
+                &compilation_failure_closes_chips));
             internal::SetTpuCompilationFailureClosesChips(
                 compilation_failure_closes_chips);
 

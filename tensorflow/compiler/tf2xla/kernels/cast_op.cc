@@ -34,11 +34,11 @@ namespace {
 class CastOp : public XlaOpKernel {
  public:
   explicit CastOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("SrcT", &src_dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("DstT", &dst_dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("SrcT", &src_dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("DstT", &dst_dtype_));
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(src_dtype_, &src_type_));
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dst_dtype_, &dst_type_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Truncate", &use_truncation_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("Truncate", &use_truncation_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -105,8 +105,8 @@ REGISTER_XLA_OP(Name("Cast"), CastOp);
 class BitcastOp : public XlaOpKernel {
  public:
   explicit BitcastOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &src_dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("type", &dst_dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &src_dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("type", &dst_dtype_));
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(src_dtype_, &src_type_));
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dst_dtype_, &dst_type_));
   }

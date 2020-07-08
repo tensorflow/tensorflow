@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -88,16 +89,16 @@ void NodeExecStatsWrapper::Done(const string& device) {
   string text;
   if (IsSend(node_)) {
     string tensor_name;
-    TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
+    TF_CHECK_OK(GetNodeAttribute(attrs, "tensor_name", &tensor_name));
     string recv_device;
-    TF_CHECK_OK(GetNodeAttr(attrs, "recv_device", &recv_device));
+    TF_CHECK_OK(GetNodeAttribute(attrs, "recv_device", &recv_device));
     text = strings::StrCat(memory, node_->name(), " = ", node_->op(), "(",
                            tensor_name, " @", recv_device, ")");
   } else if (IsRecv(node_)) {
     string tensor_name;
-    TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
+    TF_CHECK_OK(GetNodeAttribute(attrs, "tensor_name", &tensor_name));
     string send_device;
-    TF_CHECK_OK(GetNodeAttr(attrs, "send_device", &send_device));
+    TF_CHECK_OK(GetNodeAttribute(attrs, "send_device", &send_device));
     text = strings::StrCat(memory, node_->name(), " = ", node_->op(), "(",
                            tensor_name, " @", send_device, ")");
   } else {

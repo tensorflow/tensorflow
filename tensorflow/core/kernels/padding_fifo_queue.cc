@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include "tensorflow/core/kernels/padding_fifo_queue.h"
+
 #include <deque>
 #include <vector>
 
@@ -23,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/padding_fifo_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -94,7 +95,8 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
     already_cancelled = !cm->RegisterCallback(
         token, [this, cm, token]() { Cancel(kDequeue, cm, token); });
     if (!already_cancelled) {
-      // TODO(josh11b): This makes two copies of callback, avoid this if possible.
+      // TODO(josh11b): This makes two copies of callback, avoid this if
+      // possible.
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, allow_small_batch,
@@ -268,7 +270,7 @@ Status PaddingFIFOQueue::ValidateManyTuple(const Tuple& tuple) {
 Status PaddingFIFOQueue::CompatibleNodeDefShapes(
     const NodeDef& node_def) const {
   std::vector<PartialTensorShape> requested_shapes;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "shapes", &requested_shapes));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node_def, "shapes", &requested_shapes));
   if (!PartialTensorShapeUtils::AreCompatible(requested_shapes,
                                               partial_shapes_)) {
     return errors::InvalidArgument(

@@ -271,31 +271,32 @@ Status TRTEngineOp::ConstructFunctionHandle(FunctionLibraryRuntime* lib,
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     : AsyncOpKernel(context) {
   // read serialized_engine
+  OP_REQUIRES_OK(context, context->GetAttribute("serialized_segment",
+                                                &serialized_segment_));
+  OP_REQUIRES_OK(
+      context, context->GetAttribute("workspace_size_bytes", &workspace_size_));
   OP_REQUIRES_OK(context,
-                 context->GetAttr("serialized_segment", &serialized_segment_));
-  OP_REQUIRES_OK(context,
-                 context->GetAttr("workspace_size_bytes", &workspace_size_));
-  OP_REQUIRES_OK(context, context->GetAttr("static_engine", &static_engine_));
+                 context->GetAttribute("static_engine", &static_engine_));
 
   VLOG(1) << "Constructing " << name();
   string precision_string;
   OP_REQUIRES_OK(context,
-                 context->GetAttr("precision_mode", &precision_string));
+                 context->GetAttribute("precision_mode", &precision_string));
   string calibration_data;
   OP_REQUIRES_OK(context,
-                 context->GetAttr("calibration_data", &calibration_data));
-  OP_REQUIRES_OK(context, context->GetAttr("segment_func", &func_));
+                 context->GetAttribute("calibration_data", &calibration_data));
+  OP_REQUIRES_OK(context, context->GetAttribute("segment_func", &func_));
   OP_REQUIRES(context, !func_.name().empty(),
               errors::InvalidArgument(
                   "The TF function for the TRT segment could not be empty"));
   OP_REQUIRES_OK(context,
                  TrtPrecisionModeFromName(precision_string, &precision_mode_));
   OP_REQUIRES_OK(context,
-                 context->GetAttr("use_calibration", &use_calibration_));
+                 context->GetAttribute("use_calibration", &use_calibration_));
   OP_REQUIRES_OK(context,
-                 context->GetAttr("input_shapes", &input_partial_shapes_));
-  auto status =
-      context->GetAttr("_allow_build_at_runtime", &allow_build_at_runtime_);
+                 context->GetAttribute("input_shapes", &input_partial_shapes_));
+  auto status = context->GetAttribute("_allow_build_at_runtime",
+                                      &allow_build_at_runtime_);
   if (status.code() == tensorflow::error::NOT_FOUND) {
     VLOG(2) << "Not found _allow_build_at_runtime in "
             << context->device()->name()
@@ -320,10 +321,10 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     calibrator_.reset(new TRTInt8Calibrator(calibration_data));
     calibration_data.resize(0);
   }
-  OP_REQUIRES_OK(context, context->GetAttr("max_cached_engines_count",
-                                           &max_cached_engines_));
+  OP_REQUIRES_OK(context, context->GetAttribute("max_cached_engines_count",
+                                                &max_cached_engines_));
 
-  status = context->GetAttr("_use_implicit_batch", &use_implicit_batch_);
+  status = context->GetAttribute("_use_implicit_batch", &use_implicit_batch_);
   if (status.code() == tensorflow::error::NOT_FOUND) {
     VLOG(2) << "Not found _use_implicit_batch in " << context->device()->name()
             << ", thus setting _use_implicit_batch=true";
@@ -336,8 +337,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     use_implicit_batch_ = true;
   }
 #endif
-  status =
-      context->GetAttr("_profile_generation_mode", &profile_generation_mode_);
+  status = context->GetAttribute("_profile_generation_mode",
+                                 &profile_generation_mode_);
   if (status.code() == tensorflow::error::NOT_FOUND) {
     VLOG(2) << "Not found _profile_generation_mode in "
             << context->device()->name()

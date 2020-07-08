@@ -26,12 +26,13 @@ class GatherOp : public XlaOpKernel {
  public:
   explicit GatherOp(OpKernelConstruction* context) : XlaOpKernel(context) {
     string dnums_attr;
-    OP_REQUIRES_OK(context, context->GetAttr("dimension_numbers", &dnums_attr));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("dimension_numbers", &dnums_attr));
     OP_REQUIRES(
         context, dnums_.ParsePartialFromString(dnums_attr),
         errors::InvalidArgument("Error parsing gather dimension numbers"));
-    OP_REQUIRES_OK(
-        context, context->GetAttr("indices_are_sorted", &indices_are_sorted_));
+    OP_REQUIRES_OK(context, context->GetAttribute("indices_are_sorted",
+                                                  &indices_are_sorted_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -54,15 +55,16 @@ REGISTER_XLA_OP(Name("XlaGather"), GatherOp);
 class ScatterOp : public XlaOpKernel {
  public:
   explicit ScatterOp(OpKernelConstruction* context) : XlaOpKernel(context) {
-    OP_REQUIRES_OK(
-        context, context->GetAttr("update_computation", &update_computation_));
+    OP_REQUIRES_OK(context, context->GetAttribute("update_computation",
+                                                  &update_computation_));
     string dnums_attr;
-    OP_REQUIRES_OK(context, context->GetAttr("dimension_numbers", &dnums_attr));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("dimension_numbers", &dnums_attr));
     OP_REQUIRES(
         context, dnums_.ParsePartialFromString(dnums_attr),
         errors::InvalidArgument("Error parsing scatter dimension numbers"));
-    OP_REQUIRES_OK(
-        context, context->GetAttr("indices_are_sorted", &indices_are_sorted_));
+    OP_REQUIRES_OK(context, context->GetAttribute("indices_are_sorted",
+                                                  &indices_are_sorted_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

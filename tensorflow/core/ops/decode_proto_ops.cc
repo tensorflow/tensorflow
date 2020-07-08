@@ -35,7 +35,7 @@ REGISTER_OP("DecodeProtoV2")
       ShapeHandle input = c->input(0);
 
       std::vector<tensorflow::DataType> output_types;
-      TF_RETURN_IF_ERROR(c->GetAttr("output_types", &output_types));
+      TF_RETURN_IF_ERROR(c->GetAttribute("output_types", &output_types));
 
       ShapeHandle sizes;
       TF_RETURN_IF_ERROR(

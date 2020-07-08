@@ -240,7 +240,8 @@ void RandomShuffleQueue::TryDequeue(OpKernelContext* ctx,
     already_cancelled = !cm->RegisterCallback(
         token, [this, cm, token]() { Cancel(kDequeue, cm, token); });
     if (!already_cancelled) {
-      // TODO(josh11b): This makes two copies of callback, avoid this if possible.
+      // TODO(josh11b): This makes two copies of callback, avoid this if
+      // possible.
       dequeue_attempts_.emplace_back(
           1, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -332,7 +333,8 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
     already_cancelled = !cm->RegisterCallback(
         token, [this, cm, token]() { Cancel(kDequeue, cm, token); });
     if (!already_cancelled) {
-      // TODO(josh11b): This makes two copies of callback, avoid this if possible.
+      // TODO(josh11b): This makes two copies of callback, avoid this if
+      // possible.
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, allow_small_batch,
@@ -444,7 +446,7 @@ Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
 
   int32 min_after_dequeue = -1;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(node_def, "min_after_dequeue", &min_after_dequeue));
+      GetNodeAttribute(node_def, "min_after_dequeue", &min_after_dequeue));
   if (min_after_dequeue != min_after_dequeue_) {
     return errors::InvalidArgument(
         "Shared queue '", name_, "' has min_after_dequeue ", min_after_dequeue_,
@@ -453,8 +455,8 @@ Status RandomShuffleQueue::MatchesNodeDef(const NodeDef& node_def) {
 
   int64 seed = -1;
   int64 seed2 = -1;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "seed", &seed));
-  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "seed2", &seed2));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node_def, "seed", &seed));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node_def, "seed2", &seed2));
   if ((seed != 0 || seed2 != 0) &&
       (seed != original_seed_ || seed2 != original_seed2_)) {
     return errors::InvalidArgument(
@@ -477,8 +479,8 @@ class RandomShuffleQueueOp : public TypedQueueOp {
  public:
   explicit RandomShuffleQueueOp(OpKernelConstruction* context)
       : TypedQueueOp(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("min_after_dequeue", &min_after_dequeue_));
+    OP_REQUIRES_OK(context, context->GetAttribute("min_after_dequeue",
+                                                  &min_after_dequeue_));
     OP_REQUIRES(context, min_after_dequeue_ >= 0,
                 errors::InvalidArgument("min_after_dequeue ",
                                         min_after_dequeue_, " must be >= 0"));
@@ -486,10 +488,11 @@ class RandomShuffleQueueOp : public TypedQueueOp {
         context, min_after_dequeue_ < capacity_,
         errors::InvalidArgument("min_after_dequeue ", min_after_dequeue_,
                                 " must be < capacity ", capacity_));
-    OP_REQUIRES_OK(context, context->GetAttr("seed", &seed_));
-    OP_REQUIRES_OK(context, context->GetAttr("seed2", &seed2_));
+    OP_REQUIRES_OK(context, context->GetAttribute("seed", &seed_));
+    OP_REQUIRES_OK(context, context->GetAttribute("seed2", &seed2_));
 
-    OP_REQUIRES_OK(context, context->GetAttr("shapes", &component_shapes_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("shapes", &component_shapes_));
   }
 
  private:

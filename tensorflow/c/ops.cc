@@ -188,7 +188,7 @@ void TF_DeleteDimensionHandle(TF_DimensionHandle* handle) {
     TF_SetStatus(status, TF_OK, "");                                     \
     cc_type v;                                                           \
     auto* cc_ctx = reinterpret_cast<InferenceContext*>(ctx);             \
-    Status s = cc_ctx->GetAttr(attr_name, &v);                           \
+    Status s = cc_ctx->GetAttribute(attr_name, &v);                      \
     Set_TF_Status_from_Status(status, s);                                \
     if (s.ok()) {                                                        \
       *val = static_cast<c_type>(v);                                     \

@@ -83,7 +83,7 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
 class LowerBoundOp : public XlaOpKernel {
  public:
   explicit LowerBoundOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("out_type", &out_dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("out_type", &out_dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -99,7 +99,7 @@ REGISTER_XLA_OP(Name("LowerBound"), LowerBoundOp);
 class UpperBoundOp : public XlaOpKernel {
  public:
   explicit UpperBoundOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("out_type", &out_dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("out_type", &out_dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

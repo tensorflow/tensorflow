@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <vector>
+
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -23,11 +24,11 @@ typedef FunctionDefHelper FDH;
 
 Status MapAccumulateGrad(const AttrSlice& attrs, FunctionDef* ret) {
   const NameAttrList* func;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "f", &func));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "f", &func));
   DataType T;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "T", &T));
   int k;
-  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "K", &k));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(attrs, "K", &k));
   // The gradient function of f.
   //  f : (K*T, T, T) -> T
   //  g : (K*T, T, T, T) -> (K*T, T, T)

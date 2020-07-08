@@ -442,7 +442,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
        {kXlaFrontendAttributesAttrName, kXlaOutsideCompilationAttrName,
         kTpuReplicateAttrName}) {
     string attr_val;
-    if (GetNodeAttr(frame->loop_cond->def(), attr_name, &attr_val).ok()) {
+    if (GetNodeAttribute(frame->loop_cond->def(), attr_name, &attr_val).ok()) {
       builder.Attr(attr_name, attr_val);
     }
   }

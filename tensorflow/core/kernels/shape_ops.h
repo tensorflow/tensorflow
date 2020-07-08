@@ -194,7 +194,7 @@ class SqueezeOp : public OpKernel {
  public:
   explicit SqueezeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     std::vector<int32> squeeze_dims;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("squeeze_dims", &squeeze_dims));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("squeeze_dims", &squeeze_dims));
     squeeze_dims_.insert(squeeze_dims.begin(), squeeze_dims.end());
   }
 

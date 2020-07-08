@@ -20,8 +20,8 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/numeric_op_base.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
+#include "tensorflow/core/framework/numeric_op_base.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -67,13 +67,13 @@ template <typename Device, typename T, class OpKernelT,
           class OpKernelConstructionT, class OpKernelContextT>
 class Conv3DOp : public BinaryOpBase<T, OpKernelT, OpKernelConstructionT> {
  public:
-  explicit Conv3DOp(OpKernelConstructionT* context) :
-      BinaryOpBase<T, OpKernelT, OpKernelConstructionT>(context) {
+  explicit Conv3DOp(OpKernelConstructionT* context)
+      : BinaryOpBase<T, OpKernelT, OpKernelConstructionT>(context) {
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 5 dimensions"));
@@ -89,7 +89,7 @@ class Conv3DOp : public BinaryOpBase<T, OpKernelT, OpKernelConstructionT> {
          GetTensorDim(stride_, data_format_, '1') > 0 &&
          GetTensorDim(stride_, data_format_, '2') > 0),
         errors::InvalidArgument("Spatial strides should be larger than 0."));
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dilations", &dilation_));
     OP_REQUIRES(context, dilation_.size() == 5,
                 errors::InvalidArgument("Dilation rates field must "
                                         "specify 5 dimensions"));
@@ -105,7 +105,7 @@ class Conv3DOp : public BinaryOpBase<T, OpKernelT, OpKernelConstructionT> {
          GetTensorDim(dilation_, data_format_, '1') > 0 &&
          GetTensorDim(dilation_, data_format_, '2') > 0),
         errors::InvalidArgument("Dilated rates should be larger than 0."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
 #if GOOGLE_CUDA
     cudnn_use_autotune_ = CudnnUseAutotune();
 #else
@@ -168,9 +168,8 @@ class Conv3DOp : public BinaryOpBase<T, OpKernelT, OpKernelConstructionT> {
     if (out_shape.num_elements() == 0) return;
 
     LaunchConvOp<Device, T, OpKernelContextT>::launch(
-        context, cudnn_use_autotune_, input, filter,
-        dilations, strides, padding_, data_format_,
-        output);
+        context, cudnn_use_autotune_, input, filter, dilations, strides,
+        padding_, data_format_, output);
   }
 
  private:
@@ -182,6 +181,5 @@ class Conv3DOp : public BinaryOpBase<T, OpKernelT, OpKernelConstructionT> {
 };
 
 }  // namespace tensorflow
-
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_OPS_3D_H_

@@ -99,7 +99,7 @@ Status CheckTypesAndGetShapes(const GraphProperties& graph_properties,
     AttrSlice n_attrs = AttrSlice(*n);
     DataType dtype;
     // Check that op has an explicit data type attr "T".
-    LOG_WARNING_AND_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "T", &dtype));
+    LOG_WARNING_AND_RETURN_IF_ERROR(GetNodeAttribute(n_attrs, "T", &dtype));
     VLOG(2) << "op " << n->name() << " has type " << dtype << " shapes.size() "
             << shapes->size();
     if (!graph_properties.HasOutputProperties(n->name())) {
@@ -372,7 +372,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       VLOG(2) << "get attrs for " << nd.from_node_def->name();
       AttrSlice n_attrs = AttrSlice(*nd.from_node_def);
       std::vector<int32> scope_ids;
-      Status ss = GetNodeAttr(n_attrs, kScopedAllocatorAttrName, &scope_ids);
+      Status ss =
+          GetNodeAttribute(n_attrs, kScopedAllocatorAttrName, &scope_ids);
       // Check that both output name and output slot match.  It is okay to have
       // different outputs of the input committed to different scope ids.
       if (ss.ok() && scope_ids[0] == nd.output_slot) {
@@ -1149,9 +1150,9 @@ struct InstanceKeyLess {
     AttrSlice b_attrs = AttrSlice(*b);
     int32 a_key = -1;
     int32 b_key = -1;
-    Status s = GetNodeAttr(a_attrs, "instance_key", &a_key);
+    Status s = GetNodeAttribute(a_attrs, "instance_key", &a_key);
     CHECK(s.ok());
-    s = GetNodeAttr(b_attrs, "instance_key", &b_key);
+    s = GetNodeAttribute(b_attrs, "instance_key", &b_key);
     CHECK(s.ok());
     return a_key < b_key;
   }
@@ -1167,7 +1168,7 @@ bool IsCollectiveNode(const NodeDef& n) {
   AttrSlice attrs = AttrSlice(n);
   int key = -1;
   if (!IsCollective(n)) return false;
-  Status s = GetNodeAttr(attrs, "instance_key", &key);
+  Status s = GetNodeAttribute(attrs, "instance_key", &key);
   if (s.ok() && key >= 0) {
     return true;
   }

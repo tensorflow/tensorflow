@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -32,19 +31,21 @@ limitations under the License.
 #include "tensorflow/core/util/rpc/call_container.h"
 #include "tensorflow/core/util/rpc/rpc_factory.h"
 #include "tensorflow/core/util/rpc/rpc_factory_registry.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tensorflow {
 
 class RpcOp : public AsyncOpKernel {
  public:
   explicit RpcOp(OpKernelConstruction* context) : AsyncOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("protocol", &protocol_));
+    OP_REQUIRES_OK(context, context->GetAttribute("protocol", &protocol_));
     OP_REQUIRES(context, !protocol_.empty(),
                 errors::InvalidArgument("protocol must be non-empty."));
     bool fail_fast;
-    OP_REQUIRES_OK(context, context->GetAttr("fail_fast", &fail_fast));
+    OP_REQUIRES_OK(context, context->GetAttribute("fail_fast", &fail_fast));
     int64 timeout_in_ms;
-    OP_REQUIRES_OK(context, context->GetAttr("timeout_in_ms", &timeout_in_ms));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("timeout_in_ms", &timeout_in_ms));
 
     RPCFactoryRegistry::RPCFactoryFn* rpc_factory_fn =
         RPCFactoryRegistry::Global()->Get(protocol_);

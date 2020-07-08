@@ -35,8 +35,8 @@ class SparseTensorDenseMatMulOp : public OpKernel {
  public:
   explicit SparseTensorDenseMatMulOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("adjoint_a", &adjoint_a_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("adjoint_b", &adjoint_b_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("adjoint_a", &adjoint_a_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("adjoint_b", &adjoint_b_));
   }
 
   void Compute(OpKernelContext* ctx) override {

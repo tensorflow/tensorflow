@@ -346,15 +346,15 @@ class LaunchXsmmConvOp<CPUDevice, float> {
 
 Status InitConv2DParameters(const OpKernelConstruction* context,
                             Conv2DParameters* params) {
-  TF_RETURN_IF_ERROR(context->GetAttr("dilations", &params->dilations));
-  TF_RETURN_IF_ERROR(context->GetAttr("strides", &params->strides));
-  TF_RETURN_IF_ERROR(context->GetAttr("padding", &params->padding));
+  TF_RETURN_IF_ERROR(context->GetAttribute("dilations", &params->dilations));
+  TF_RETURN_IF_ERROR(context->GetAttribute("strides", &params->strides));
+  TF_RETURN_IF_ERROR(context->GetAttribute("padding", &params->padding));
   if (context->HasAttr("explicit_paddings")) {
     TF_RETURN_IF_ERROR(
-        context->GetAttr("explicit_paddings", &params->explicit_paddings));
+        context->GetAttribute("explicit_paddings", &params->explicit_paddings));
   }
   string data_format_string;
-  TF_RETURN_IF_ERROR(context->GetAttr("data_format", &data_format_string));
+  TF_RETURN_IF_ERROR(context->GetAttribute("data_format", &data_format_string));
   TF_REQUIRES(FormatFromString(data_format_string, &params->data_format),
               errors::InvalidArgument("Invalid data format"));
 
@@ -511,7 +511,8 @@ class Conv2DOp : public BinaryOp<T> {
   explicit Conv2DOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
     OP_REQUIRES_OK(context, InitConv2DParameters(context, &params_));
 
-    OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
   }

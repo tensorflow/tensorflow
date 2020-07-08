@@ -65,7 +65,7 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       string config_string;
-      TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
+      TF_RETURN_IF_ERROR(c->GetAttribute("config", &config_string));
       tpu::TPUEmbeddingConfiguration config;
       if (!config.ParseFromString(config_string)) {
         return errors::InvalidArgument("Malformed tpu_embedding_config.");
@@ -91,7 +91,7 @@ REGISTER_OP("TPUEmbeddingActivations")
     .Output("output: float32")
     .Attr("table_id: int >= 0")
     .Attr("lookup_id: int >= 0")
-    .SetShapeFn([](shape_inference::InferenceContext *c) {
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(1));
       return Status::OK();
     });
@@ -105,7 +105,7 @@ REGISTER_OP("SendTPUEmbeddingGradients")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       int nn;
-      TF_RETURN_IF_ERROR(c->GetAttr("NN", &nn));
+      TF_RETURN_IF_ERROR(c->GetAttribute("NN", &nn));
       std::vector<shape_inference::ShapeHandle> learning_rates;
       TF_RETURN_IF_ERROR(c->input("learning_rates", &learning_rates));
       for (int i = 0; i < nn; ++i) {
@@ -140,9 +140,9 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseBatch")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
       std::vector<string> combiners;
-      TF_RETURN_IF_ERROR(c->GetAttr("combiners", &combiners));
+      TF_RETURN_IF_ERROR(c->GetAttribute("combiners", &combiners));
       int n;
-      TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+      TF_RETURN_IF_ERROR(c->GetAttribute("N", &n));
       if (!combiners.empty() && combiners.size() != n) {
         return errors::InvalidArgument("Invalid length of combiners. Have ",
                                        combiners.size(), " but expected 0 or ",

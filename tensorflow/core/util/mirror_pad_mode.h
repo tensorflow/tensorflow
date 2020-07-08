@@ -46,6 +46,8 @@ class NodeDef;
 // Specialization to parse an attribute directly into a MirrorPadMode enum.
 Status GetNodeAttr(const NodeDef& node_def, StringPiece attr_name,
                    MirrorPadMode* value);
+Status GetNodeAttribute(const NodeDef& node_def, StringPiece attr_name,
+                        MirrorPadMode* value);
 
 }  // end namespace tensorflow
 

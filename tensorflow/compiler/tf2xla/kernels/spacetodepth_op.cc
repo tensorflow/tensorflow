@@ -27,11 +27,11 @@ class SpaceToDepthOp : public XlaOpKernel {
  public:
   explicit SpaceToDepthOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("data_format", &data_format_str));
     OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("block_size", &block_size_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("block_size", &block_size_));
     OP_REQUIRES(
         ctx, block_size_ > 1,
         errors::InvalidArgument("Block size should be > 1: ", block_size_));

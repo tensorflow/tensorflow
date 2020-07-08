@@ -288,24 +288,28 @@ template <typename SplitsType>
 class RaggedCrossOp : public OpKernel {
  public:
   explicit RaggedCrossOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("num_buckets", &num_buckets_));
     // Read signed_hash_key_ as int64 since uint64 attributes are not
     // supported by REGISTER_OP.
     int64 signed_hash_key_;
-    OP_REQUIRES_OK(context, context->GetAttr("hash_key", &signed_hash_key_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("hash_key", &signed_hash_key_));
     hash_key_ = static_cast<uint64>(signed_hash_key_);
 
     int num_sparse;
-    OP_REQUIRES_OK(context, context->GetAttr("Nsparse", &num_sparse));
+    OP_REQUIRES_OK(context, context->GetAttribute("Nsparse", &num_sparse));
 
-    OP_REQUIRES_OK(context, context->GetAttr("ragged_values_types",
-                                             &ragged_values_types_));
-    OP_REQUIRES_OK(context, context->GetAttr("ragged_splits_types",
-                                             &ragged_splits_types_));
-    OP_REQUIRES_OK(context, context->GetAttr("sparse_values_types",
-                                             &sparse_values_types_));
-    OP_REQUIRES_OK(context, context->GetAttr("dense_types", &dense_types_));
-    OP_REQUIRES_OK(context, context->GetAttr("input_order", &input_order_));
+    OP_REQUIRES_OK(context, context->GetAttribute("ragged_values_types",
+                                                  &ragged_values_types_));
+    OP_REQUIRES_OK(context, context->GetAttribute("ragged_splits_types",
+                                                  &ragged_splits_types_));
+    OP_REQUIRES_OK(context, context->GetAttribute("sparse_values_types",
+                                                  &sparse_values_types_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("dense_types", &dense_types_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("input_order", &input_order_));
     OP_REQUIRES(context,
                 ragged_values_types_.size() == ragged_splits_types_.size(),
                 errors::InvalidArgument(

@@ -144,8 +144,8 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
 TensorDatasetOp::TensorDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kToutput_types, &output_types_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kToutput_types, &output_types_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute(kOutputShapes, &output_shapes_));
 }
 
 void TensorDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {

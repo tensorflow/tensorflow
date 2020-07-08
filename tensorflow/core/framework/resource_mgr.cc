@@ -278,13 +278,13 @@ Status ContainerInfo::Init(ResourceMgr* rmgr, const NodeDef& ndef,
   CHECK(rmgr);
   rmgr_ = rmgr;
   string attr_container;
-  TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "container", &attr_container));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(ndef, "container", &attr_container));
   if (!attr_container.empty() && !IsValidContainerName(attr_container)) {
     return errors::InvalidArgument("container contains invalid characters: ",
                                    attr_container);
   }
   string attr_shared_name;
-  TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "shared_name", &attr_shared_name));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(ndef, "shared_name", &attr_shared_name));
   if (!attr_shared_name.empty() && (attr_shared_name[0] == '_')) {
     return errors::InvalidArgument("shared_name cannot start with '_':",
                                    attr_shared_name);
@@ -331,7 +331,7 @@ Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
 
 Status ResourceHandlesShape(shape_inference::InferenceContext* c) {
   int n;
-  TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+  TF_RETURN_IF_ERROR(c->GetAttribute("N", &n));
   for (int i = 0; i < n; ++i) {
     c->set_output(i, c->Scalar());
   }

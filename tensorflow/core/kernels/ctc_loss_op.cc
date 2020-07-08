@@ -76,12 +76,12 @@ class CTCLossOp : public OpKernel {
 
  public:
   explicit CTCLossOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("preprocess_collapse_repeated",
-                                     &preprocess_collapse_repeated_));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("ctc_merge_repeated", &ctc_merge_repeated_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("ignore_longer_outputs_than_inputs",
-                                     &ignore_longer_outputs_than_inputs_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("preprocess_collapse_repeated",
+                                          &preprocess_collapse_repeated_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("ctc_merge_repeated", &ctc_merge_repeated_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("ignore_longer_outputs_than_inputs",
+                                          &ignore_longer_outputs_than_inputs_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -231,12 +231,12 @@ class CTCLossOpGPU : public OpKernel {
     bool preprocess_collapse_repeated;
     bool ctc_merge_repeated;
     bool ignore_longer_outputs_than_inputs;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("preprocess_collapse_repeated",
-                                     &preprocess_collapse_repeated));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("ctc_merge_repeated", &ctc_merge_repeated));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("ignore_longer_outputs_than_inputs",
-                                     &ignore_longer_outputs_than_inputs));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("preprocess_collapse_repeated",
+                                          &preprocess_collapse_repeated));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttribute("ctc_merge_repeated", &ctc_merge_repeated));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("ignore_longer_outputs_than_inputs",
+                                          &ignore_longer_outputs_than_inputs));
 
     OP_REQUIRES(ctx, !preprocess_collapse_repeated,
                 errors::InvalidArgument("GPU CTCLossOp requires "

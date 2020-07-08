@@ -36,6 +36,8 @@ void GetColocationConstraints(const Output& tensor,
   constraints->clear();
   TF_EXPECT_OK(GetNodeAttr(tensor.op().node()->attrs(), kColocationAttrName,
                            constraints));
+  TF_EXPECT_OK(GetNodeAttribute(tensor.op().node()->attrs(),
+                                kColocationAttrName, constraints));
 }
 
 TEST(CCOpTest, Basic) {

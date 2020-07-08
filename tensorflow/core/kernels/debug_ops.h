@@ -50,11 +50,12 @@ namespace tensorflow {
 class CopyOp : public OpKernel {
  public:
   explicit CopyOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("tensor_name", &tensor_name_));
 
     std::vector<string> debug_ops_spec;
     OP_REQUIRES_OK(context,
-                   context->GetAttr("debug_ops_spec", &debug_ops_spec));
+                   context->GetAttribute("debug_ops_spec", &debug_ops_spec));
     for (const string& debug_op_spec : debug_ops_spec) {
       // Assume debug_op_spec has the format
       // <debug_op>;<debug_url>;<gated_grpc>, e.g.,
@@ -134,13 +135,13 @@ class BaseDebugOp : public OpKernel {
   explicit BaseDebugOp(const string& debug_op_name,
                        OpKernelConstruction* context)
       : OpKernel(context), debug_op_name_(debug_op_name) {
-    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
-    OP_REQUIRES_OK(context, context->GetAttr("gated_grpc", &gated_grpc_));
+    OP_REQUIRES_OK(context, context->GetAttribute("debug_urls", &debug_urls_));
+    OP_REQUIRES_OK(context, context->GetAttribute("gated_grpc", &gated_grpc_));
 
     string device_name;
     string tensor_name;
-    OP_REQUIRES_OK(context, context->GetAttr("device_name", &device_name));
-    OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name));
+    OP_REQUIRES_OK(context, context->GetAttribute("device_name", &device_name));
+    OP_REQUIRES_OK(context, context->GetAttribute("tensor_name", &tensor_name));
 
     std::vector<string> name_items = str_util::Split(tensor_name, ':');
     string node_name;
@@ -278,10 +279,12 @@ class DebugNumericSummaryOp : public BaseDebugOp {
  public:
   explicit DebugNumericSummaryOp(OpKernelConstruction* context)
       : BaseDebugOp("DebugNumericSummary", context) {
-    OP_REQUIRES_OK(context, context->GetAttr("lower_bound", &lower_bound_));
-    OP_REQUIRES_OK(context, context->GetAttr("upper_bound", &upper_bound_));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("mute_if_healthy", &mute_if_healthy_));
+                   context->GetAttribute("lower_bound", &lower_bound_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("upper_bound", &upper_bound_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("mute_if_healthy", &mute_if_healthy_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -413,7 +416,7 @@ class DebugIdentityV2Op : public OpKernel {
         tensor_debug_mode_(0),
         tfdbg_run_id_() {
     std::vector<string> debug_urls;
-    OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls));
+    OP_REQUIRES_OK(context, context->GetAttribute("debug_urls", &debug_urls));
     for (const string& debug_url : debug_urls) {
       if (absl::StartsWith(debug_url, DebugIO::kFileURLScheme)) {
         dump_roots_.emplace_back(
@@ -423,21 +426,22 @@ class DebugIdentityV2Op : public OpKernel {
             errors::Internal("Unsupported debug URL schema in: ", debug_url));
       }
     }
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("tfdbg_context_id", &tfdbg_context_id_));
+    OP_REQUIRES_OK(context, context->GetAttribute("op_name", &op_name_));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("tfdbg_context_id", &tfdbg_context_id_));
-    OP_REQUIRES_OK(context, context->GetAttr("op_name", &op_name_));
-    OP_REQUIRES_OK(context, context->GetAttr("output_slot", &output_slot_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("tensor_debug_mode", &tensor_debug_mode_));
+                   context->GetAttribute("output_slot", &output_slot_));
+    OP_REQUIRES_OK(context, context->GetAttribute("tensor_debug_mode",
+                                                  &tensor_debug_mode_));
     if (context->HasAttr("circular_buffer_size")) {
-      OP_REQUIRES_OK(context, context->GetAttr("circular_buffer_size",
-                                               &circular_buffer_size_));
+      OP_REQUIRES_OK(context, context->GetAttribute("circular_buffer_size",
+                                                    &circular_buffer_size_));
     } else {
       circular_buffer_size_ =
           tfdbg::DebugEventsWriter::kDefaultCyclicBufferSize;
     }
     if (context->HasAttr("tfdbg_run_id")) {
-      OP_REQUIRES_OK(context, context->GetAttr("tfdbg_run_id", &tfdbg_run_id_));
+      OP_REQUIRES_OK(context, context->GetAttribute("tfdbg_run_id", &tfdbg_run_id_));
     }
   }
 
@@ -528,9 +532,9 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
  public:
   explicit DebugNumericSummaryV2Op(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("tensor_debug_mode", &tensor_debug_mode_));
-    OP_REQUIRES_OK(context, context->GetAttr("tensor_id", &tensor_id_));
+    OP_REQUIRES_OK(context, context->GetAttribute("tensor_debug_mode",
+                                                  &tensor_debug_mode_));
+    OP_REQUIRES_OK(context, context->GetAttribute("tensor_id", &tensor_id_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -713,9 +717,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
   explicit DebugNumericSummaryV2Op(OpKernelConstruction* context)
       : AsyncOpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("tensor_debug_mode", &tensor_debug_mode_));
-    OP_REQUIRES_OK(context, context->GetAttr("tensor_id", &tensor_id_));
+    OP_REQUIRES_OK(context, context->GetAttribute("tensor_debug_mode",
+                                                  &tensor_debug_mode_));
+    OP_REQUIRES_OK(context, context->GetAttribute("tensor_id", &tensor_id_));
   }
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {

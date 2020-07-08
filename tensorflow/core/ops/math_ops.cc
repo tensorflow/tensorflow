@@ -41,7 +41,7 @@ REGISTER_OP("AddN")
       c->set_output(0, cur);
 
       DataType dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("T", &dtype));
+      TF_RETURN_IF_ERROR(c->GetAttribute("T", &dtype));
 
       if (dtype != DT_VARIANT) {
         // Exit early if not DT_VARIANT.
@@ -201,12 +201,12 @@ REGISTER_OP("ComplexAbs")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 // Declares cwise unary operations signature: 't -> 't
-#define UNARY()                                                            \
-  Input("x: T")                                                            \
-      .Output("y: T")                                                      \
-      .Attr(                                                               \
-          "T: {bfloat16, half, float, double, int8, int16, int32, int64, " \
-          "complex64, complex128}")                                        \
+#define UNARY()                                                          \
+  Input("x: T")                                                          \
+      .Output("y: T")                                                    \
+      .Attr(                                                             \
+          "T: {bfloat16, half, float, double, int32, int64, complex64, " \
+          "complex128}")                                                 \
       .SetShapeFn(shape_inference::UnchangedShape)
 
 #define UNARY_REAL()                              \
@@ -717,8 +717,8 @@ REGISTER_OP("GreaterEqual").COMPARISON();
         ShapeHandle y = c->input(1);                                       \
         ShapeHandle output;                                                \
         bool incompatible_shape_error;                                     \
-        TF_RETURN_IF_ERROR(c->GetAttr("incompatible_shape_error",          \
-                                      &incompatible_shape_error));         \
+        TF_RETURN_IF_ERROR(c->GetAttribute("incompatible_shape_error",     \
+                                           &incompatible_shape_error));    \
         TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(           \
             c, x, y, incompatible_shape_error, &output));                  \
         c->set_output(0, output);                                          \
@@ -1473,7 +1473,7 @@ REGISTER_OP("Range")
       const Tensor* limit_t = c->input_tensor(1);
       const Tensor* delta_t = c->input_tensor(2);
       DataType dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
+      TF_RETURN_IF_ERROR(c->GetAttribute("Tidx", &dtype));
       if (start_t == nullptr || limit_t == nullptr || delta_t == nullptr) {
         c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
         return Status::OK();
@@ -1684,7 +1684,7 @@ REGISTER_OP("DenseBincount")
 
       int64 size_val;
       DataType dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
+      TF_RETURN_IF_ERROR(c->GetAttribute("Tidx", &dtype));
       if (dtype == DT_INT32) {
         size_val = static_cast<int64>(size_tensor->scalar<int32>()());
       } else if (dtype == DT_INT64) {
@@ -1725,7 +1725,7 @@ REGISTER_OP("SparseBincount")
 
       int64 size_val;
       DataType dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
+      TF_RETURN_IF_ERROR(c->GetAttribute("Tidx", &dtype));
       if (dtype == DT_INT32) {
         size_val = static_cast<int64>(size_tensor->scalar<int32>()());
       } else if (dtype == DT_INT64) {

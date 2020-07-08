@@ -87,9 +87,9 @@ REGISTER_OP("CudnnRNN")
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
       string direction;
-      TF_RETURN_IF_ERROR(c->GetAttr("direction", &direction));
+      TF_RETURN_IF_ERROR(c->GetAttribute("direction", &direction));
       string rnn_mode;
-      TF_RETURN_IF_ERROR(c->GetAttr("rnn_mode", &rnn_mode));
+      TF_RETURN_IF_ERROR(c->GetAttribute("rnn_mode", &rnn_mode));
       int dir_count = (direction == "bidirectional") ? 2 : 1;
       DimensionHandle output_size;
       TF_RETURN_IF_ERROR(c->Multiply(num_units, dir_count, &output_size));
@@ -130,9 +130,9 @@ REGISTER_OP("CudnnRNNV2")
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
       string direction;
-      TF_RETURN_IF_ERROR(c->GetAttr("direction", &direction));
+      TF_RETURN_IF_ERROR(c->GetAttribute("direction", &direction));
       string rnn_mode;
-      TF_RETURN_IF_ERROR(c->GetAttr("rnn_mode", &rnn_mode));
+      TF_RETURN_IF_ERROR(c->GetAttribute("rnn_mode", &rnn_mode));
       int dir_count = (direction == "bidirectional") ? 2 : 1;
       DimensionHandle output_size;
       TF_RETURN_IF_ERROR(c->Multiply(num_units, dir_count, &output_size));
@@ -178,9 +178,9 @@ REGISTER_OP("CudnnRNNV3")
       auto batch_size = c->Dim(input_shape, 1);
       auto num_units = c->Dim(input_h_shape, 2);
       string direction;
-      TF_RETURN_IF_ERROR(c->GetAttr("direction", &direction));
+      TF_RETURN_IF_ERROR(c->GetAttribute("direction", &direction));
       string rnn_mode;
-      TF_RETURN_IF_ERROR(c->GetAttr("rnn_mode", &rnn_mode));
+      TF_RETURN_IF_ERROR(c->GetAttribute("rnn_mode", &rnn_mode));
       int dir_count = (direction == "bidirectional") ? 2 : 1;
       DimensionHandle output_size;
       TF_RETURN_IF_ERROR(c->Multiply(num_units, dir_count, &output_size));
@@ -329,7 +329,7 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &unused));
       int num_params;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_params", &num_params));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_params", &num_params));
       // Set shape for weight matrices
       for (int i = 0; i < num_params; i++) {
         c->set_output(i, c->Matrix(InferenceContext::kUnknownDim,
@@ -364,8 +364,10 @@ REGISTER_OP("CudnnRNNParamsToCanonicalV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 1, &unused));
       int num_params_weights;
       int num_params_biases;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_params_weights", &num_params_weights));
-      TF_RETURN_IF_ERROR(c->GetAttr("num_params_biases", &num_params_biases));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("num_params_weights", &num_params_weights));
+      TF_RETURN_IF_ERROR(
+          c->GetAttribute("num_params_biases", &num_params_biases));
       // Set shape for weight matrices
       for (int i = 0; i < num_params_weights; i++) {
         c->set_output(i, c->Matrix(InferenceContext::kUnknownDim,

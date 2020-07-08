@@ -26,7 +26,7 @@ namespace {
 class OneHotOp : public XlaOpKernel {
  public:
   explicit OneHotOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("axis", &axis_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

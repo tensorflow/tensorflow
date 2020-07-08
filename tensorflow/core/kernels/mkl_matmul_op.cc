@@ -45,8 +45,8 @@ template <typename Device, typename T, bool USE_CUBLAS>
 class MklMatMulOp : public OpKernel {
  public:
   explicit MklMatMulOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("transpose_a", &transpose_a_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("transpose_b", &transpose_b_));
   }
 
   void Compute(OpKernelContext* ctx) override {

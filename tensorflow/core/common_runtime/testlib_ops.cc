@@ -32,8 +32,8 @@ REGISTER_OP("Error")
 class ErrorOp : public OpKernel {
  public:
   explicit ErrorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("message", &errmsg_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("log_error", &log_error_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("message", &errmsg_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("log_error", &log_error_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -59,7 +59,7 @@ REGISTER_OP("InvalidRefType")
 class InvalidRefType : public OpKernel {
  public:
   explicit InvalidRefType(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("TOut", &dtout_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("TOut", &dtout_));
     output_ = Tensor(dtout_, TensorShape({}));
   }
 
@@ -86,7 +86,7 @@ REGISTER_OP("Delay")
 class DelayOp : public AsyncOpKernel {
  public:
   explicit DelayOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("micros", &micros_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("micros", &micros_));
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {

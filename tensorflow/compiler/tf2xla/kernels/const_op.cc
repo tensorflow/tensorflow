@@ -29,7 +29,7 @@ class ConstOp : public XlaOpKernel {
  public:
   explicit ConstOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     const TensorProto* proto = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("value", &proto));
     proto_ = *proto;
     OP_REQUIRES(
         ctx, ctx->output_type(0) == proto_.dtype(),

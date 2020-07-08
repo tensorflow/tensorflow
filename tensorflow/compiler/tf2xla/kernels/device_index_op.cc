@@ -31,7 +31,7 @@ namespace {
 class DeviceIndexOp : public XlaOpKernel {
  public:
   explicit DeviceIndexOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("device_names", &device_names_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("device_names", &device_names_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

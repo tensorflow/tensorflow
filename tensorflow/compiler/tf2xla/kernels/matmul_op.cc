@@ -32,19 +32,19 @@ class MatMulOp : public XlaOpKernel {
  public:
   explicit MatMulOp(OpKernelConstruction* ctx, bool is_sparse = false)
       : XlaOpKernel(ctx), is_sparse_(is_sparse) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("transpose_a", &transpose_a_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("transpose_b", &transpose_b_));
     if (is_sparse) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("Ta", &a_type_));
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("Tb", &b_type_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("Ta", &a_type_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("Tb", &b_type_));
       // SparseMatMul is actually dense matmul with a hint that one or
       // both of the inputs may contain a lot of zeroes. On CPU these
       // inputs are dynamically converted to sparse representation
       // before multiplication. For now in XLA we ignore the hints
       // and always do dense multiplication.
       bool dummy_is_sparse;
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("a_is_sparse", &dummy_is_sparse));
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("b_is_sparse", &dummy_is_sparse));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("a_is_sparse", &dummy_is_sparse));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("b_is_sparse", &dummy_is_sparse));
     }
   }
 

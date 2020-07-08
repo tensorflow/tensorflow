@@ -46,7 +46,7 @@ Status SwitchNShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
   ShapeHandle out = c->input(0);
   int num_outs;
-  TF_RETURN_IF_ERROR(c->GetAttr("num_outs", &num_outs));
+  TF_RETURN_IF_ERROR(c->GetAttribute("num_outs", &num_outs));
   for (int i = 0; i < num_outs; i++) {
     c->set_output(i, out);
   }
@@ -178,7 +178,7 @@ REGISTER_OP("Enter")
       }
       // Propagate shape if output is a constant.
       bool is_constant;
-      TF_RETURN_IF_ERROR(c->GetAttr("is_constant", &is_constant));
+      TF_RETURN_IF_ERROR(c->GetAttribute("is_constant", &is_constant));
       if (is_constant) {
         c->set_output(0, c->input(0));
       }

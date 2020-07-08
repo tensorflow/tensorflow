@@ -29,14 +29,14 @@ namespace tensorflow {
 class MfccOp : public OpKernel {
  public:
   explicit MfccOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("upper_frequency_limit",
-                                             &upper_frequency_limit_));
-    OP_REQUIRES_OK(context, context->GetAttr("lower_frequency_limit",
-                                             &lower_frequency_limit_));
-    OP_REQUIRES_OK(context, context->GetAttr("filterbank_channel_count",
-                                             &filterbank_channel_count_));
-    OP_REQUIRES_OK(context, context->GetAttr("dct_coefficient_count",
-                                             &dct_coefficient_count_));
+    OP_REQUIRES_OK(context, context->GetAttribute("upper_frequency_limit",
+                                                  &upper_frequency_limit_));
+    OP_REQUIRES_OK(context, context->GetAttribute("lower_frequency_limit",
+                                                  &lower_frequency_limit_));
+    OP_REQUIRES_OK(context, context->GetAttribute("filterbank_channel_count",
+                                                  &filterbank_channel_count_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dct_coefficient_count",
+                                                  &dct_coefficient_count_));
   }
 
   void Compute(OpKernelContext* context) override {

@@ -269,7 +269,7 @@ template <typename T>
 class NonDeterministicIntsOp : public OpKernel {
  public:
   explicit NonDeterministicIntsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   void Compute(OpKernelContext* ctx) override {

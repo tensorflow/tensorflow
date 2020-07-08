@@ -271,18 +271,19 @@ xla::XlaOp BuildWhile(XlaOpKernelContext* ctx,
 
 XlaWhileOp::XlaWhileOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
   const NameAttrList* name_attr;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("cond", &name_attr));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("cond", &name_attr));
   cond_name_attr_ = *name_attr;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("body", &name_attr));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("body", &name_attr));
   body_name_attr_ = *name_attr;
-  if (!ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_).ok()) {
+  if (!ctx->GetAttribute(kXlaTokenInputNodesAttrName, &token_input_nodes_)
+           .ok()) {
     has_token_input_output_ = false;
   } else {
     has_token_input_output_ = !token_input_nodes_.empty();
   }
   if (ctx->HasAttr(kPropagateCompileTimeConsts)) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr(kPropagateCompileTimeConsts,
-                                     &propagate_compile_time_consts_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute(kPropagateCompileTimeConsts,
+                                          &propagate_compile_time_consts_));
   }
 }
 

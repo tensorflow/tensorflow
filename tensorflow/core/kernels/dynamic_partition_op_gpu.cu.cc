@@ -188,7 +188,7 @@ template <typename T>
 class DynamicPartitionOpGPU : public AsyncOpKernel {
  public:
   explicit DynamicPartitionOpGPU(OpKernelConstruction* c) : AsyncOpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("num_partitions", &num_partitions_));
+    OP_REQUIRES_OK(c, c->GetAttribute("num_partitions", &num_partitions_));
     OP_REQUIRES(c, num_partitions_ >= 1,
                 errors::InvalidArgument("num_partitions must be at least 1"));
   }

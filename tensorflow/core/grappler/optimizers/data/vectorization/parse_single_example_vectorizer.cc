@@ -51,7 +51,8 @@ class ParseSingleExampleVectorizer : public Vectorizer {
         [&s, &node](StringPiece attr_name,
                     std::vector<NodeBuilder::NodeOut>* result) {
           std::vector<string> attr_vals;
-          TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &attr_vals));
+          TF_RETURN_IF_ERROR(
+              GetNodeAttribute(node.attrs(), attr_name, &attr_vals));
           result->reserve(attr_vals.size());
 
           for (const auto& val : attr_vals) {

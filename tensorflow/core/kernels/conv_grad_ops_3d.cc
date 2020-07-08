@@ -180,7 +180,8 @@ class Conv3DBackpropInputOp : public OpKernel {
     // data_format is only available in V2.
     if (takes_shape_) {
       string data_format;
-      OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
       OP_REQUIRES(
@@ -189,7 +190,7 @@ class Conv3DBackpropInputOp : public OpKernel {
               "Conv3DBackpropInputOpV2 only supports NDHWC on the CPU."));
     }
 
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dilations", &dilation_));
     OP_REQUIRES(context, dilation_.size() == 5,
                 errors::InvalidArgument("Dilation rates field must "
                                         "specify 5 dimensions"));
@@ -209,7 +210,7 @@ class Conv3DBackpropInputOp : public OpKernel {
                     "Current CPU implementation does not yet support "
                     "dilation rates larger than 1."));
 
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 5 dimensions"));
@@ -219,7 +220,7 @@ class Conv3DBackpropInputOp : public OpKernel {
          GetTensorDim(stride_, data_format_, 'N') == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -287,7 +288,8 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
     // data_format is only available in V2.
     if (takes_shape_) {
       string data_format;
-      OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
       OP_REQUIRES(
@@ -296,7 +298,7 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
               "Conv3DBackpropInputOpV2 only supports NDHWC on the CPU."));
     }
 
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dilations", &dilation_));
     OP_REQUIRES(context, dilation_.size() == 5,
                 errors::InvalidArgument("Dilation rates field must "
                                         "specify 5 dimensions"));
@@ -316,7 +318,7 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
                     "Current CPU implementation does not yet support "
                     "dilation rates larger than 1."));
 
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 5 dimensions"));
@@ -326,7 +328,7 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
          GetTensorDim(stride_, data_format_, 'N') == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -638,7 +640,8 @@ class Conv3DBackpropFilterOp : public OpKernel {
     // data_format is only available in V2.
     if (takes_shape_) {
       string data_format;
-      OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
       OP_REQUIRES(
@@ -647,7 +650,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
               "Conv3DBackpropFilterOpV2 only supports NDHWC on the CPU."));
     }
 
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dilations", &dilation_));
     OP_REQUIRES(context, dilation_.size() == 5,
                 errors::InvalidArgument("Dilation rates field must "
                                         "specify 5 dimensions"));
@@ -667,7 +670,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
                     "Current CPU implementation does not yet support "
                     "dilation rates larger than 1."));
 
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 5 dimensions"));
@@ -677,7 +680,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
          GetTensorDim(stride_, data_format_, 'N') == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -750,7 +753,8 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
     // data_format is only available in V2.
     if (takes_shape_) {
       string data_format;
-      OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
       OP_REQUIRES(
@@ -759,7 +763,7 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
               "Conv3DBackpropFilterOpV2 only supports NDHWC on the CPU."));
     }
 
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dilations", &dilation_));
     OP_REQUIRES(context, dilation_.size() == 5,
                 errors::InvalidArgument("Dilation rates field must "
                                         "specify 5 dimensions"));
@@ -779,7 +783,7 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
                     "Current CPU implementation does not yet support "
                     "dilation rates larger than 1."));
 
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 5 dimensions"));
@@ -789,7 +793,7 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
          GetTensorDim(stride_, data_format_, 'N') == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -1108,11 +1112,12 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     // data_format is only available in V2.
     if (takes_shape_) {
       string data_format;
-      OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dilations", &dilation_));
     OP_REQUIRES(context, dilation_.size() == 5,
                 errors::InvalidArgument("Dilation rates field must "
                                         "specify 5 dimensions"));
@@ -1128,7 +1133,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
          GetTensorDim(dilation_, data_format_, '1') > 0 &&
          GetTensorDim(dilation_, data_format_, '2') > 0),
         errors::InvalidArgument("Dilated rates should be larger than 0."));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 5 dimensions"));
@@ -1144,7 +1149,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
          GetTensorDim(stride_, data_format_, '1') > 0 &&
          GetTensorDim(stride_, data_format_, '2') > 0),
         errors::InvalidArgument("Spatial strides should be larger than 0."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
   void Compute(OpKernelContext* context) override {
@@ -1600,11 +1605,12 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     // data_format is only available in V2.
     if (takes_shape_) {
       string data_format;
-      OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
     }
-    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilation_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dilations", &dilation_));
     OP_REQUIRES(context, dilation_.size() == 5,
                 errors::InvalidArgument("Dilation rates field must "
                                         "specify 5 dimensions"));
@@ -1620,7 +1626,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
          GetTensorDim(dilation_, data_format_, '1') > 0 &&
          GetTensorDim(dilation_, data_format_, '2') > 0),
         errors::InvalidArgument("Dilated rates should be larger than 0."));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 5 dimensions"));
@@ -1636,7 +1642,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
          GetTensorDim(stride_, data_format_, '1') > 0 &&
          GetTensorDim(stride_, data_format_, '2') > 0),
         errors::InvalidArgument("Spatial strides should be larger than 0."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
 

@@ -78,7 +78,7 @@ void LogNotCompilable(const Node& node, absl::string_view reason = "") {
 Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
                                  NodeDef* node_def) {
   const NameAttrList* name_attr;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &name_attr));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node.attrs(), attr_name, &name_attr));
   node_def->set_op(name_attr->name());
   *(node_def->mutable_attr()) = name_attr->attr();
   return Status::OK();

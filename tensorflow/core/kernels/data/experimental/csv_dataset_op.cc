@@ -31,8 +31,8 @@ class CSVDatasetOp : public DatasetOpKernel {
   explicit CSVDatasetOp(OpKernelConstruction* ctx)
       : DatasetOpKernel(ctx),
         op_version_(ctx->def().op() == "CSVDatasetV2" ? 2 : 1) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {

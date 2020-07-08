@@ -549,13 +549,13 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
  public:
   explicit DepthwiseConv2dNativeBackpropInputOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
 
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
 
@@ -572,9 +572,9 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
         context, (stride_n == 1 && stride_c == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("explicit_paddings", &explicit_paddings_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("explicit_paddings",
+                                                  &explicit_paddings_));
     OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
                                               /*num_dims=*/4, data_format_));
 
@@ -1055,13 +1055,13 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
  public:
   explicit DepthwiseConv2dNativeBackpropFilterOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
 
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
 
@@ -1078,9 +1078,9 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
         context, (stride_n == 1 && stride_c == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("explicit_paddings", &explicit_paddings_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("explicit_paddings",
+                                                  &explicit_paddings_));
     OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
                                               /*num_dims=*/4, data_format_));
 

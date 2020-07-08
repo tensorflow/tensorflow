@@ -224,7 +224,7 @@ void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx, TF_Status* status) {
     TF_SetStatus(status, TF_OK, "");                                           \
     cc_type v;                                                                 \
     auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx); \
-    ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);                   \
+    ::tensorflow::Status s = cc_ctx->GetAttribute(attr_name, &v);              \
     ::tensorflow::Set_TF_Status_from_Status(status, s);                        \
     if (s.ok()) {                                                              \
       *val = static_cast<c_type>(v);                                           \

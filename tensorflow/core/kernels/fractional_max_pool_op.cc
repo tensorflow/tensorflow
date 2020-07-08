@@ -19,15 +19,14 @@ limitations under the License.
 #include <random>
 #include <vector>
 
-#include "tensorflow/core/kernels/fractional_pool_common.h"
-
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/fractional_pool_common.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -37,9 +36,12 @@ class FractionalMaxPoolOp : public OpKernel {
  public:
   explicit FractionalMaxPoolOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("pooling_ratio", &pooling_ratio_));
-    OP_REQUIRES_OK(context, context->GetAttr("pseudo_random", &pseudo_random_));
-    OP_REQUIRES_OK(context, context->GetAttr("overlapping", &overlapping_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("pooling_ratio", &pooling_ratio_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("pseudo_random", &pseudo_random_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("overlapping", &overlapping_));
 
     OP_REQUIRES(context, pooling_ratio_.size() == 4,
                 errors::InvalidArgument("pooling_ratio field must "
@@ -50,9 +52,10 @@ class FractionalMaxPoolOp : public OpKernel {
         errors::Unimplemented("Fractional max pooling is not yet "
                               "supported on the batch nor channel dimension."));
 
-    OP_REQUIRES_OK(context, context->GetAttr("deterministic", &deterministic_));
-    OP_REQUIRES_OK(context, context->GetAttr("seed", &seed_));
-    OP_REQUIRES_OK(context, context->GetAttr("seed2", &seed2_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("deterministic", &deterministic_));
+    OP_REQUIRES_OK(context, context->GetAttribute("seed", &seed_));
+    OP_REQUIRES_OK(context, context->GetAttribute("seed2", &seed2_));
     if (deterministic_) {
       // If both seeds are not set when deterministic_ is true, force set seeds.
       if ((seed_ == 0) && (seed2_ == 0)) {
@@ -209,7 +212,8 @@ class FractionalMaxPoolGradOp : public OpKernel {
  public:
   explicit FractionalMaxPoolGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("overlapping", &overlapping_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("overlapping", &overlapping_));
   }
 
   void Compute(OpKernelContext* context) override {

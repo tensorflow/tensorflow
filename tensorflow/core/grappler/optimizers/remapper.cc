@@ -481,7 +481,8 @@ bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
 
   // Squeeze must not squeeze output channel dimension.
   std::vector<int32> dims;
-  if (!TryGetNodeAttr(*squeeze_node_def, "squeeze_dims", &dims)) return false;
+  if (!TryGetNodeAttribute(*squeeze_node_def, "squeeze_dims", &dims))
+    return false;
   for (auto dim : dims) {
     if (dim == 3) return false;
   }
@@ -524,7 +525,7 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
     return false;
 
   // Check that batch normalization is in inference mode.
-  const auto* training_attr = node_view->GetAttr(kIsTraining);
+  const auto* training_attr = node_view->GetAttribute(kIsTraining);
   if (training_attr != nullptr && training_attr->b()) return false;
 
   // Check that only 0th output is consumed by other nodes.
@@ -554,7 +555,8 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
   // We successfully found a Conv2D+FusedBatchNorm pattern.
   matched->contraction = conv2d_node_view->node_index();
   matched->fused_batch_norm = node_index;
-  if (!TryGetNodeAttr(*node_def, "epsilon", &matched->epsilon)) return false;
+  if (!TryGetNodeAttribute(*node_def, "epsilon", &matched->epsilon))
+    return false;
 
   return true;
 }
@@ -732,7 +734,7 @@ bool FindFusedBatchNorm(const RemapperContext& ctx, int node_index,
 
   // Check that the node is in inference mode.
   bool is_training = true;
-  if (!TryGetNodeAttr(*node_def, kIsTraining, &is_training)) return false;
+  if (!TryGetNodeAttribute(*node_def, kIsTraining, &is_training)) return false;
   if (is_training) return false;
 
   const auto& props = ctx.graph_properties.GetInputProperties(node_def->name());
@@ -811,7 +813,7 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 
     // Get the FusedBatchNorm training mode.
     bool is_training;
-    if (!GetNodeAttr(*fused_batch_norm_node_def, kIsTraining, &is_training)
+    if (!GetNodeAttribute(*fused_batch_norm_node_def, kIsTraining, &is_training)
              .ok())
       return false;
     // In training mode we rely on cuDNN for computing FusedBatchNorm with side
@@ -820,7 +822,8 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     if (is_training && NodeIsOnGpu(fused_batch_norm_node_def)) {
       // cuDNN only supports NHWC data layout.
       string data_format;
-      if (!GetNodeAttr(*fused_batch_norm_node_def, kDataFormat, &data_format)
+      if (!GetNodeAttribute(*fused_batch_norm_node_def, kDataFormat,
+                            &data_format)
                .ok())
         return false;
       if (data_format != "NHWC") return false;
@@ -1604,7 +1607,8 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     if (GetDataTypeFromAttr(*node_def, "T") != DT_FLOAT) return false;
 
     bool is_training = true;
-    if (!TryGetNodeAttr(*node_def, kIsTraining, &is_training)) return false;
+    if (!TryGetNodeAttribute(*node_def, kIsTraining, &is_training))
+      return false;
     if (is_training) return false;
 
     return true;

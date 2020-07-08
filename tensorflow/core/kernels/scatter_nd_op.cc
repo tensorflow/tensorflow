@@ -237,7 +237,7 @@ class ScatterNdUpdateOp : public OpKernel {
       // TODO(apassos): what to validate here?
     } else if (IsRefType(c->input_type(0))) {
       OP_REQUIRES_OK(c, c->MatchSignature({dt_ref, index_t, dt}, {dt_ref}));
-      OP_REQUIRES_OK(c, c->GetAttr("use_locking", &use_exclusive_lock_));
+      OP_REQUIRES_OK(c, c->GetAttribute("use_locking", &use_exclusive_lock_));
     } else {
       OP_REQUIRES_OK(c, c->MatchSignature({dt, index_t, dt}, {dt}));
       use_exclusive_lock_ = false;

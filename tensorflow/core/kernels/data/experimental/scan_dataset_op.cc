@@ -35,17 +35,17 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
       : UnaryDatasetOpKernel(ctx) {
     FunctionMetadata::Params params;
     if (ctx->HasAttr("use_default_device")) {
-      OP_REQUIRES_OK(ctx,
-                     ctx->GetAttr("use_default_device", &use_default_device_));
+      OP_REQUIRES_OK(
+          ctx, ctx->GetAttribute("use_default_device", &use_default_device_));
       params.use_default_device = use_default_device_;
     }
     OP_REQUIRES_OK(ctx,
                    FunctionMetadata::Create(ctx, "f", params, &func_metadata_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Tstate", &state_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("Tstate", &state_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
+        ctx, ctx->GetAttribute("preserve_cardinality", &preserve_cardinality_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,

@@ -20,13 +20,12 @@ limitations under the License.
 #include <arm_neon.h>
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-
 #include "tensorflow/core/kernels/quantization_utils.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #ifdef USE_NEON
 namespace {
@@ -255,15 +254,17 @@ class QuantizedInstanceNorm : public OpKernel {
  public:
   explicit QuantizedInstanceNorm(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("variance_epsilon", &variance_epsilon_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("min_separation", &min_separation_));
     OP_REQUIRES_OK(
-        context, context->GetAttr("output_range_given", &output_range_given_));
+        context, context->GetAttribute("variance_epsilon", &variance_epsilon_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("min_separation", &min_separation_));
+    OP_REQUIRES_OK(context, context->GetAttribute("output_range_given",
+                                                  &output_range_given_));
     if (output_range_given_) {
-      OP_REQUIRES_OK(context, context->GetAttr("given_y_min", &given_y_min_));
-      OP_REQUIRES_OK(context, context->GetAttr("given_y_max", &given_y_max_));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("given_y_min", &given_y_min_));
+      OP_REQUIRES_OK(context,
+                     context->GetAttribute("given_y_max", &given_y_max_));
       OP_REQUIRES(context, given_y_min_ < given_y_max_,
                   errors::InvalidArgument(
                       "given_y_min must be less than given_y_max : ",

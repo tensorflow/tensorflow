@@ -18,11 +18,12 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/batch_norm_op.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -37,11 +38,11 @@ class BatchNormOp : public OpKernel {
  public:
   explicit BatchNormOp(OpKernelConstruction* context) : OpKernel(context) {
     float variance_epsilon;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("variance_epsilon", &variance_epsilon));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("variance_epsilon", &variance_epsilon));
     variance_epsilon_ = T(variance_epsilon);
-    OP_REQUIRES_OK(context, context->GetAttr("scale_after_normalization",
-                                             &scale_after_normalization_));
+    OP_REQUIRES_OK(context, context->GetAttribute("scale_after_normalization",
+                                                  &scale_after_normalization_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -87,11 +88,11 @@ class BatchNormGradOp : public OpKernel {
  public:
   explicit BatchNormGradOp(OpKernelConstruction* context) : OpKernel(context) {
     float variance_epsilon;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("variance_epsilon", &variance_epsilon));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("variance_epsilon", &variance_epsilon));
     variance_epsilon_ = T(variance_epsilon);
-    OP_REQUIRES_OK(context, context->GetAttr("scale_after_normalization",
-                                             &scale_after_normalization_));
+    OP_REQUIRES_OK(context, context->GetAttribute("scale_after_normalization",
+                                                  &scale_after_normalization_));
   }
 
   void Compute(OpKernelContext* context) override {

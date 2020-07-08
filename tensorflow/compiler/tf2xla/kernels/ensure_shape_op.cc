@@ -31,7 +31,7 @@ namespace {
 class EnsureShapeOp : public XlaOpKernel {
  public:
   explicit EnsureShapeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("shape", &expected_shape_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

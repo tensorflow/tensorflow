@@ -51,11 +51,11 @@ class SkipgramOp : public OpKernel {
   explicit SkipgramOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), rng_(&philox_) {
     string filename;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("filename", &filename));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("batch_size", &batch_size_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("window_size", &window_size_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("min_count", &min_count_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("subsample", &subsample_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("filename", &filename));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("batch_size", &batch_size_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("window_size", &window_size_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("min_count", &min_count_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("subsample", &subsample_));
     OP_REQUIRES_OK(ctx, Init(ctx->env(), filename));
 
     mutex_lock l(mu_);
@@ -244,10 +244,11 @@ class NegTrainOp : public OpKernel {
   explicit NegTrainOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     base_.Init(0, 0);
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_negative_samples", &num_samples_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("num_negative_samples", &num_samples_));
 
     std::vector<int32> vocab_count;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("vocab_count", &vocab_count));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("vocab_count", &vocab_count));
 
     std::vector<float> vocab_weights;
     vocab_weights.reserve(vocab_count.size());

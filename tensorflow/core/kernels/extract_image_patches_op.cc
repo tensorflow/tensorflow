@@ -42,7 +42,7 @@ typedef Eigen::GpuDevice GPUDevice;
 static inline void ParseAttributeVec4(OpKernelConstruction* context,
                                       const string& attr_name,
                                       std::vector<int32>* attr) {
-  OP_REQUIRES_OK(context, context->GetAttr(attr_name, attr));
+  OP_REQUIRES_OK(context, context->GetAttribute(attr_name, attr));
   OP_REQUIRES(
       context, (*attr)[0] == 1 && (*attr)[3] == 1,
       errors::Unimplemented("Only support ", attr_name, " across space."));
@@ -58,7 +58,7 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
     ParseAttributeVec4(context, "ksizes", &ksizes_);
     ParseAttributeVec4(context, "strides", &strides_);
     ParseAttributeVec4(context, "rates", &rates_);
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
   }
 
   void Compute(OpKernelContext* context) override {

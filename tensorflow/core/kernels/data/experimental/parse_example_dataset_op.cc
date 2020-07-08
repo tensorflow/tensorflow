@@ -47,17 +47,17 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       : UnaryDatasetOpKernel(ctx),
         graph_def_version_(ctx->graph_def_version()),
         op_version_(ctx->HasAttr("deterministic") ? 2 : 1) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("sparse_keys", &sparse_keys_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dense_keys", &dense_keys_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("sparse_types", &sparse_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("Tdense", &dense_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dense_shapes", &dense_shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("sparse_keys", &sparse_keys_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dense_keys", &dense_keys_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("sparse_types", &sparse_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("Tdense", &dense_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dense_shapes", &dense_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
 
     if (op_version_ == 1) {
       bool sloppy;
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("sloppy", &sloppy));
       if (sloppy) {
         deterministic_ =
             DeterminismPolicy(DeterminismPolicy::Type::kNondeterministic);
@@ -67,18 +67,18 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     }
     if (op_version_ == 2) {
       std::string deterministic;
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("deterministic", &deterministic));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("deterministic", &deterministic));
       OP_REQUIRES_OK(
           ctx, DeterminismPolicy::FromString(deterministic, &deterministic_));
     }
 
     has_ragged_keys_ = ctx->HasAttr("ragged_keys");
     if (has_ragged_keys_) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("ragged_keys", &ragged_keys_));
-      OP_REQUIRES_OK(ctx,
-                     ctx->GetAttr("ragged_value_types", &ragged_value_types_));
-      OP_REQUIRES_OK(ctx,
-                     ctx->GetAttr("ragged_split_types", &ragged_split_types_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("ragged_keys", &ragged_keys_));
+      OP_REQUIRES_OK(
+          ctx, ctx->GetAttribute("ragged_value_types", &ragged_value_types_));
+      OP_REQUIRES_OK(
+          ctx, ctx->GetAttribute("ragged_split_types", &ragged_split_types_));
     }
     for (int i = 0; i < dense_shapes_.size(); ++i) {
       bool shape_ok = true;

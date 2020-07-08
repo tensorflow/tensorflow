@@ -24,7 +24,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -298,9 +298,9 @@ template <typename Device, typename T, bool USE_CUBLAS, GateLayout gate_layout>
 class LSTMBlockCellOp : public OpKernel {
  public:
   explicit LSTMBlockCellOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("forget_bias", &forget_bias_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("cell_clip", &cell_clip_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_peephole", &use_peephole_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("forget_bias", &forget_bias_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("cell_clip", &cell_clip_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_peephole", &use_peephole_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -458,7 +458,7 @@ template <typename Device, typename T, bool USE_CUBLAS, GateLayout gate_layout>
 class LSTMBlockCellGradOp : public OpKernel {
  public:
   explicit LSTMBlockCellGradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_peephole", &use_peephole_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_peephole", &use_peephole_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -830,13 +830,13 @@ class BlockLSTMOp : public OpKernel {
  public:
   explicit BlockLSTMOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     if (ctx->HasAttr("forget_bias")) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("forget_bias", &forget_bias_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttribute("forget_bias", &forget_bias_));
     } else {
       // V2 version does not have "forget_bias" attribute.
       forget_bias_ = 0.0;
     }
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("cell_clip", &cell_clip_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_peephole", &use_peephole_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("cell_clip", &cell_clip_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_peephole", &use_peephole_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -1070,7 +1070,7 @@ template <typename Device, typename T, bool USE_CUBLAS, GateLayout gate_layout>
 class BlockLSTMGradOp : public OpKernel {
  public:
   explicit BlockLSTMGradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_peephole", &use_peephole_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("use_peephole", &use_peephole_));
   }
 
   void Compute(OpKernelContext* ctx) override {

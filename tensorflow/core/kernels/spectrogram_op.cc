@@ -30,10 +30,11 @@ class AudioSpectrogramOp : public OpKernel {
  public:
   explicit AudioSpectrogramOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("window_size", &window_size_));
-    OP_REQUIRES_OK(context, context->GetAttr("stride", &stride_));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("magnitude_squared", &magnitude_squared_));
+                   context->GetAttribute("window_size", &window_size_));
+    OP_REQUIRES_OK(context, context->GetAttribute("stride", &stride_));
+    OP_REQUIRES_OK(context, context->GetAttribute("magnitude_squared",
+                                                  &magnitude_squared_));
   }
 
   void Compute(OpKernelContext* context) override {

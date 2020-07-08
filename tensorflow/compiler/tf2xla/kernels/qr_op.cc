@@ -23,7 +23,7 @@ namespace {
 class QROp : public XlaOpKernel {
  public:
   explicit QROp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("full_matrices", &full_matrices_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("full_matrices", &full_matrices_));
   }
   void Compile(XlaOpKernelContext* ctx) override {
     auto result = xla::QRDecomposition(ctx->Input(0), full_matrices_);

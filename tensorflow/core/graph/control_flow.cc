@@ -146,8 +146,8 @@ Status BuildControlFlowInfo(const Graph* g, std::vector<ControlFlowInfo>* info,
         } else {
           out_info->frame = out;
           out_info->parent_frame = frame;
-          TF_RETURN_IF_ERROR(
-              GetNodeAttr(out->attrs(), "frame_name", &out_info->frame_name));
+          TF_RETURN_IF_ERROR(GetNodeAttribute(out->attrs(), "frame_name",
+                                              &out_info->frame_name));
           if (out_info->frame_name.empty()) {
             return errors::InvalidArgument("The Enter ",
                                            FormatNodeForError(*out),

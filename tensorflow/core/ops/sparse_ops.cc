@@ -105,8 +105,8 @@ REGISTER_OP("SparseTensorDenseMatMul")
 
       bool adjoint_a;
       bool adjoint_b;
-      TF_RETURN_IF_ERROR(c->GetAttr("adjoint_a", &adjoint_a));
-      TF_RETURN_IF_ERROR(c->GetAttr("adjoint_b", &adjoint_b));
+      TF_RETURN_IF_ERROR(c->GetAttribute("adjoint_a", &adjoint_a));
+      TF_RETURN_IF_ERROR(c->GetAttribute("adjoint_b", &adjoint_b));
 
       DimensionHandle output_right = c->Dim(b, adjoint_b ? 0 : 1);
       DimensionHandle output_left = c->Dim(a_shape, adjoint_a ? 1 : 0);

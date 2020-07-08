@@ -98,7 +98,7 @@ xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
   }
   string value;
   xla::OpSharding sharding;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, kShardingAttribute, &value));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node_def, kShardingAttribute, &value));
   if (!sharding.ParseFromString(value)) {
     return xla::InvalidArgument(
         "Experimental _XlaSharding attribute was not a valid encoded "

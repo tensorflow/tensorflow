@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -97,8 +98,8 @@ class TextLineReaderOp : public ReaderOpKernel {
   explicit TextLineReaderOp(OpKernelConstruction* context)
       : ReaderOpKernel(context) {
     int skip_header_lines = -1;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("skip_header_lines", &skip_header_lines));
+    OP_REQUIRES_OK(context, context->GetAttribute("skip_header_lines",
+                                                  &skip_header_lines));
     OP_REQUIRES(context, skip_header_lines >= 0,
                 errors::InvalidArgument("skip_header_lines must be >= 0 not ",
                                         skip_header_lines));

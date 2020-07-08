@@ -67,7 +67,7 @@ class FingerprintOp : public OpKernel {
  public:
   explicit FingerprintOp(OpKernelConstruction* context) : OpKernel(context) {
     DataType dtype;
-    OP_REQUIRES_OK(context, context->GetAttr("T", &dtype));
+    OP_REQUIRES_OK(context, context->GetAttribute("T", &dtype));
     OP_REQUIRES(context, DataTypeCanUseMemcpy(dtype) || dtype == DT_STRING,
                 errors::InvalidArgument("Data type not supported: ",
                                         DataTypeString(dtype)));

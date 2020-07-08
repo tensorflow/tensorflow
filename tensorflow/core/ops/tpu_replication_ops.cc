@@ -58,7 +58,7 @@ REGISTER_OP("TPUReplicatedInput")
 
       // If this is a resource, unify the resource shapes.
       DataType dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("T", &dtype));
+      TF_RETURN_IF_ERROR(c->GetAttribute("T", &dtype));
       if (dtype == DT_RESOURCE) {
         const std::vector<shape_inference::ShapeAndType>* shapes_and_types =
             nullptr;

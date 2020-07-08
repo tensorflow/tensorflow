@@ -58,10 +58,10 @@ class BoostedTreesTrainingPredictOp : public OpKernel {
  public:
   explicit BoostedTreesTrainingPredictOp(OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_bucketized_features",
-                                             &num_bucketized_features_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("logits_dimension", &logits_dimension_));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_bucketized_features",
+                                                  &num_bucketized_features_));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("logits_dimension", &logits_dimension_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -201,10 +201,10 @@ class BoostedTreesPredictOp : public OpKernel {
  public:
   explicit BoostedTreesPredictOp(OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_bucketized_features",
-                                             &num_bucketized_features_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("logits_dimension", &logits_dimension_));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_bucketized_features",
+                                                  &num_bucketized_features_));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("logits_dimension", &logits_dimension_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -298,10 +298,10 @@ class BoostedTreesExampleDebugOutputsOp : public OpKernel {
   explicit BoostedTreesExampleDebugOutputsOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_bucketized_features",
-                                             &num_bucketized_features_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("logits_dimension", &logits_dimension_));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_bucketized_features",
+                                                  &num_bucketized_features_));
+    OP_REQUIRES_OK(
+        context, context->GetAttribute("logits_dimension", &logits_dimension_));
     OP_REQUIRES(context, logits_dimension_ == 1,
                 errors::InvalidArgument(
                     "Currently only one dimensional outputs are supported."));

@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <vector>
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -34,12 +35,13 @@ class ExtractGlimpseOp : public OpKernel {
   explicit ExtractGlimpseOp(OpKernelConstruction* context) : OpKernel(context) {
     const string& op = context->def().op();
     version_ = (op == "ExtractGlimpse") ? 1 : 2;
-    OP_REQUIRES_OK(context, context->GetAttr("normalized", &normalized_));
-    OP_REQUIRES_OK(context, context->GetAttr("centered", &centered_));
+    OP_REQUIRES_OK(context, context->GetAttribute("normalized", &normalized_));
+    OP_REQUIRES_OK(context, context->GetAttribute("centered", &centered_));
     bool uniform_noise = false;
     string noise;
-    OP_REQUIRES_OK(context, context->GetAttr("uniform_noise", &uniform_noise));
-    OP_REQUIRES_OK(context, context->GetAttr("noise", &noise));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("uniform_noise", &uniform_noise));
+    OP_REQUIRES_OK(context, context->GetAttribute("noise", &noise));
     OP_REQUIRES(context,
                 !(uniform_noise && (!noise.empty() && noise != "uniform")),
                 errors::InvalidArgument("The uniform_noise and noise could not "

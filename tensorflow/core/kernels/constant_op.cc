@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/constant_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/common_runtime/sycl/sycl_util.h"
@@ -77,7 +77,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
       tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
   ScopedMemoryDebugAnnotation op_annotation(name_view().data());
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
                           *proto, AllocatorAttributes(), &tensor_));
   OP_REQUIRES(
@@ -393,7 +393,7 @@ REGISTER_KERNEL_BUILDER(Name("OnesLike")
 #undef REGISTER_KERNEL
 
 PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("shape", &expected_shape_));
 }
 
 void PlaceholderOp::Compute(OpKernelContext* ctx) {

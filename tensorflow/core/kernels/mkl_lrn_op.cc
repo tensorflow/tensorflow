@@ -26,7 +26,6 @@ limitations under the License.
 #include <vector>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/util/work_sharder.h"
@@ -74,7 +74,8 @@ class MklLRNOp : public OpKernel {
   explicit MklLRNOp(OpKernelConstruction* context)
       : OpKernel(context), cpu_engine_(ENGINE_CPU, 0) {
     int64 depth_radius64;
-    OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("depth_radius", &depth_radius64));
     OP_REQUIRES(
         context,
         FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
@@ -82,12 +83,12 @@ class MklLRNOp : public OpKernel {
                                 " larger than int max"));
     depth_radius_ = static_cast<size_t>(depth_radius64);
 
-    OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
-    OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
-    OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
+    OP_REQUIRES_OK(context, context->GetAttribute("bias", &bias_));
+    OP_REQUIRES_OK(context, context->GetAttribute("alpha", &alpha_));
+    OP_REQUIRES_OK(context, context->GetAttribute("beta", &beta_));
     workspace_enabled_ = false;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("workspace_enabled", &workspace_enabled_));
+    OP_REQUIRES_OK(context, context->GetAttribute("workspace_enabled",
+                                                  &workspace_enabled_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -327,19 +328,20 @@ class MklLRNGradOp : public OpKernel {
   explicit MklLRNGradOp(OpKernelConstruction* context)
       : OpKernel(context), cpu_engine_(ENGINE_CPU, 0) {
     int64 depth_radius64;
-    OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("depth_radius", &depth_radius64));
     OP_REQUIRES(
         context,
         FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
         errors::InvalidArgument("depth_radius = ", depth_radius64,
                                 " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
-    OP_REQUIRES_OK(context, context->GetAttr("bias", &bias_));
-    OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha_));
-    OP_REQUIRES_OK(context, context->GetAttr("beta", &beta_));
+    OP_REQUIRES_OK(context, context->GetAttribute("bias", &bias_));
+    OP_REQUIRES_OK(context, context->GetAttribute("alpha", &alpha_));
+    OP_REQUIRES_OK(context, context->GetAttribute("beta", &beta_));
     workspace_enabled_ = false;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("workspace_enabled", &workspace_enabled_));
+    OP_REQUIRES_OK(context, context->GetAttribute("workspace_enabled",
+                                                  &workspace_enabled_));
     bwd_stream_.reset(new CPU_STREAM(cpu_engine_));
   }
 

@@ -16,13 +16,13 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
 #include "tensorflow/core/platform/logging.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tensorflow {
 
@@ -43,8 +43,9 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
   explicit BoostedTreesCalculateBestGainsPerFeatureOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
-    OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
+    OP_REQUIRES_OK(context, context->GetAttribute("max_splits", &max_splits_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("num_features", &num_features_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -236,8 +237,9 @@ class BoostedTreesCalculateBestFeatureSplitOp : public OpKernel {
   explicit BoostedTreesCalculateBestFeatureSplitOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
-    OP_REQUIRES_OK(context, context->GetAttr("split_type", &split_type_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("logits_dimension", &logits_dim_));
+    OP_REQUIRES_OK(context, context->GetAttribute("split_type", &split_type_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -559,8 +561,10 @@ class BoostedTreesCalculateBestFeatureSplitV2 : public OpKernel {
   explicit BoostedTreesCalculateBestFeatureSplitV2(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
-    OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("logits_dimension", &logits_dim_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("num_features", &num_features_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -949,9 +953,10 @@ class BoostedTreesSparseCalculateBestFeatureSplitOp : public OpKernel {
       OpKernelConstruction* const context)
       : OpKernel(context) {
     // TODO(crawles): Using logits_dim_ for multi-class split.
-    OP_REQUIRES_OK(context, context->GetAttr("logits_dimension", &logits_dim_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("logits_dimension", &logits_dim_));
     // TODO(tanzheny): Using this for equality split.
-    OP_REQUIRES_OK(context, context->GetAttr("split_type", &split_type_));
+    OP_REQUIRES_OK(context, context->GetAttribute("split_type", &split_type_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -1243,9 +1248,11 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
  public:
   explicit BoostedTreesMakeStatsSummaryOp(OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
-    OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
-    OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
+    OP_REQUIRES_OK(context, context->GetAttribute("max_splits", &max_splits_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("num_buckets", &num_buckets_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("num_features", &num_features_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -1270,10 +1277,10 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
 
     // Allocate temporary stats tensor (Rank 4).
     Tensor temp_stats_double_t;
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DT_DOUBLE,
-                                {num_features_, max_splits_, num_buckets_, 2},
-                                &temp_stats_double_t));
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(
+                       DT_DOUBLE, {num_features_, max_splits_, num_buckets_, 2},
+                       &temp_stats_double_t));
     auto temp_stats_double = temp_stats_double_t.tensor<double, 4>();
     temp_stats_double.setZero();
 
@@ -1311,8 +1318,9 @@ class BoostedTreesAggregateStatsOp : public OpKernel {
  public:
   explicit BoostedTreesAggregateStatsOp(OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
-    OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
+    OP_REQUIRES_OK(context, context->GetAttribute("max_splits", &max_splits_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("num_buckets", &num_buckets_));
   }
 
   void Compute(OpKernelContext* const context) override {
@@ -1516,8 +1524,9 @@ class BoostedTreesSparseAggregateStatsOp : public OpKernel {
   explicit BoostedTreesSparseAggregateStatsOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
-    OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
+    OP_REQUIRES_OK(context, context->GetAttribute("max_splits", &max_splits_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("num_buckets", &num_buckets_));
   }
 
   void Compute(OpKernelContext* const context) override {

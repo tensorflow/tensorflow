@@ -116,8 +116,8 @@ class ReduceJoinOp : public OpKernel {
   using OpKernel::OpKernel;
 
   explicit ReduceJoinOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("separator", &separator_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("keep_dims", &keep_dims_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("separator", &separator_));
   }
 
   void Compute(OpKernelContext* context) override {

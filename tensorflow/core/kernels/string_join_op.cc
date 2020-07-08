@@ -31,7 +31,7 @@ class StringJoinOp : public OpKernel {
   using OpKernel::OpKernel;
 
   explicit StringJoinOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("separator", &separator_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("separator", &separator_));
   }
 
   void Compute(OpKernelContext* context) override {

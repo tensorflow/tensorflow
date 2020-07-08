@@ -44,18 +44,18 @@ class DequantizeOp : public XlaOpKernel {
     int axis;
     bool narrow_range;
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("mode", &mode_string));
     OP_REQUIRES(
         ctx, (mode_string == "MIN_COMBINED"),
         errors::InvalidArgument("Mode string must be 'MIN_COMBINED' is " +
                                 mode_string + "'"));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("narrow_range", &narrow_range));
     OP_REQUIRES(ctx, narrow_range == false,
                 errors::InvalidArgument("narrow_range must be false"));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("axis", &axis));
     OP_REQUIRES(ctx, axis == -1,
                 errors::InvalidArgument("axis must be -1' is ", axis));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype_));
   }
 
   ~DequantizeOp() override = default;

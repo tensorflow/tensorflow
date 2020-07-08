@@ -43,7 +43,7 @@ class NeonDepthwiseConv2dNativeOp : public BinaryOp<float> {
  public:
   explicit NeonDepthwiseConv2dNativeOp(OpKernelConstruction* context)
       : BinaryOp<float>(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
+    OP_REQUIRES_OK(context, context->GetAttribute("strides", &strides_));
     OP_REQUIRES(context, strides_.size() == 4,
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
@@ -55,7 +55,7 @@ class NeonDepthwiseConv2dNativeOp : public BinaryOp<float> {
         context, (strides_[0] == 1 && strides_[3] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
-    OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttribute("padding", &padding_));
   }
 
   void Compute(OpKernelContext* context) override {

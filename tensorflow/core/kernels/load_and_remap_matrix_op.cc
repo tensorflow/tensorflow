@@ -18,7 +18,6 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -61,10 +61,10 @@ class LoadAndRemapMatrixOp : public OpKernel {
  public:
   explicit LoadAndRemapMatrixOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("num_rows", &num_rows_));
-    OP_REQUIRES_OK(context, context->GetAttr("num_cols", &num_cols_));
-    OP_REQUIRES_OK(
-        context, context->GetAttr("max_rows_in_memory", &max_rows_in_memory_));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_rows", &num_rows_));
+    OP_REQUIRES_OK(context, context->GetAttribute("num_cols", &num_cols_));
+    OP_REQUIRES_OK(context, context->GetAttribute("max_rows_in_memory",
+                                                  &max_rows_in_memory_));
   }
 
   void Compute(OpKernelContext* context) override {

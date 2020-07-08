@@ -43,8 +43,8 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx,
                    FunctionMetadata::Create(ctx, "finalize_func", /*params=*/{},
                                             &finalize_func_metadata_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_shapes", &output_shapes_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,

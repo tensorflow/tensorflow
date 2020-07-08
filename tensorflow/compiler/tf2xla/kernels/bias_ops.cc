@@ -30,7 +30,7 @@ class BiasOp : public XlaOpKernel {
  public:
   explicit BiasOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     string data_format;
-    if (ctx->GetAttr("data_format", &data_format).ok()) {
+    if (ctx->GetAttribute("data_format", &data_format).ok()) {
       OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
     } else {
@@ -79,7 +79,7 @@ class BiasAddGradOp : public XlaOpKernel {
  public:
   explicit BiasAddGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     string data_format;
-    if (ctx->GetAttr("data_format", &data_format).ok()) {
+    if (ctx->GetAttribute("data_format", &data_format).ok()) {
       OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
     } else {

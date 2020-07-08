@@ -53,7 +53,7 @@ REGISTER_OP("DynamicPartition")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
       int64 num_partitions;
-      TF_RETURN_IF_ERROR(c->GetAttr("num_partitions", &num_partitions));
+      TF_RETURN_IF_ERROR(c->GetAttribute("num_partitions", &num_partitions));
 
       ShapeHandle data_shape = c->input(0);
       ShapeHandle partitions_shape = c->input(1);
@@ -90,7 +90,7 @@ namespace {
 
 Status DynamicStitchShapeFunction(InferenceContext* c) {
   int32 num_partitions;
-  TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
+  TF_RETURN_IF_ERROR(c->GetAttribute("N", &num_partitions));
 
   bool all_indices_constant = true;
   int32 max_index = -1;
@@ -630,11 +630,11 @@ REGISTER_OP("TensorArrayV3")
       c->set_output(1, c->Scalar());
       bool identical_shapes;
       TF_RETURN_IF_ERROR(
-          c->GetAttr("identical_element_shapes", &identical_shapes));
+          c->GetAttribute("identical_element_shapes", &identical_shapes));
       DataType t;
-      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &t));
+      TF_RETURN_IF_ERROR(c->GetAttribute("dtype", &t));
       PartialTensorShape p;
-      TF_RETURN_IF_ERROR(c->GetAttr("element_shape", &p));
+      TF_RETURN_IF_ERROR(c->GetAttribute("element_shape", &p));
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(p, &s));
       if (c->FullyDefined(s) || identical_shapes) {
@@ -786,7 +786,7 @@ REGISTER_OP("TensorArrayGatherV3")
         return Status::OK();
       } else {
         PartialTensorShape p;
-        TF_RETURN_IF_ERROR(c->GetAttr("element_shape", &p));
+        TF_RETURN_IF_ERROR(c->GetAttribute("element_shape", &p));
         ShapeHandle s;
         TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(p, &s));
         ShapeHandle output_shape;

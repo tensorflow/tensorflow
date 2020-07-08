@@ -100,7 +100,7 @@ Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
     const ShapeAndType& key_shape_and_type = (*handle_data)[0];
     const ShapeAndType& value_shape_and_type = (*handle_data)[1];
     DataType key_dtype;
-    TF_RETURN_IF_ERROR(c->GetAttr(key_dtype_attr, &key_dtype));
+    TF_RETURN_IF_ERROR(c->GetAttribute(key_dtype_attr, &key_dtype));
     if (key_shape_and_type.dtype != key_dtype) {
       return errors::InvalidArgument(
           "Trying to read value with wrong dtype. "
@@ -109,7 +109,7 @@ Status ValidateTableResourceHandle(InferenceContext* c, ShapeHandle keys,
           DataTypeString(key_dtype));
     }
     DataType value_dtype;
-    TF_RETURN_IF_ERROR(c->GetAttr(value_dtype_attr, &value_dtype));
+    TF_RETURN_IF_ERROR(c->GetAttribute(value_dtype_attr, &value_dtype));
     if (value_shape_and_type.dtype != value_dtype) {
       return errors::InvalidArgument(
           "Trying to read value with wrong dtype. "
@@ -321,10 +321,10 @@ Status MutableHashTableShape(InferenceContext* c, const ShapeHandle& key,
   TF_RETURN_IF_ERROR(c->WithRankAtMost(key, 1, &key_s));
 
   DataType key_t;
-  TF_RETURN_IF_ERROR(c->GetAttr("key_dtype", &key_t));
+  TF_RETURN_IF_ERROR(c->GetAttribute("key_dtype", &key_t));
 
   DataType value_t;
-  TF_RETURN_IF_ERROR(c->GetAttr("value_dtype", &value_t));
+  TF_RETURN_IF_ERROR(c->GetAttribute("value_dtype", &value_t));
 
   // ShapeAndType vector for {key, value}.
   c->set_output_handle_shapes_and_types(
@@ -398,7 +398,7 @@ REGISTER_OP("MutableHashTableOfTensorsV2")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       PartialTensorShape value_p;
-      TF_RETURN_IF_ERROR(c->GetAttr("value_shape", &value_p));
+      TF_RETURN_IF_ERROR(c->GetAttribute("value_shape", &value_p));
       ShapeHandle value_s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(value_p, &value_s));
       return MutableHashTableShape(c, /*key=*/c->Scalar(), /*value=*/value_s);
@@ -433,7 +433,7 @@ REGISTER_OP("MutableDenseHashTableV2")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       PartialTensorShape value_p;
-      TF_RETURN_IF_ERROR(c->GetAttr("value_shape", &value_p));
+      TF_RETURN_IF_ERROR(c->GetAttribute("value_shape", &value_p));
       ShapeHandle value_s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(value_p, &value_s));
       return MutableHashTableShape(c, /*key=*/c->input(0), /*value=*/value_s);

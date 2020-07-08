@@ -43,7 +43,7 @@ using ::nvinfer1::IRuntime;
 class CreateTRTResourceHandle : public OpKernel {
  public:
   explicit CreateTRTResourceHandle(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("resource_name", &resource_name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("resource_name", &resource_name_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -83,8 +83,8 @@ REGISTER_KERNEL_BUILDER(Name("CreateTRTResourceHandle")
 class InitializeTRTResource : public OpKernel {
  public:
   explicit InitializeTRTResource(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("max_cached_engines_count", &max_cached_engines_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("max_cached_engines_count",
+                                          &max_cached_engines_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -179,7 +179,8 @@ REGISTER_KERNEL_BUILDER(Name("InitializeTRTResource")
 class SerializeTRTResource : public OpKernel {
  public:
   explicit SerializeTRTResource(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("delete_resource", &delete_resource_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttribute("delete_resource", &delete_resource_));
   }
 
   void Compute(OpKernelContext* ctx) override {

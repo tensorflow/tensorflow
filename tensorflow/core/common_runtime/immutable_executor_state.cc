@@ -112,8 +112,10 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
       // `DirectSession`) to relax this constraint.
       string send_device;
       string recv_device;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "send_device", &send_device));
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "recv_device", &recv_device));
+      TF_RETURN_IF_ERROR(
+          GetNodeAttribute(n->attrs(), "send_device", &send_device));
+      TF_RETURN_IF_ERROR(
+          GetNodeAttribute(n->attrs(), "recv_device", &recv_device));
       if (send_device != recv_device) {
         requires_control_flow_ = true;
       }
@@ -158,16 +160,17 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
     if (item->is_enter) {
       bool is_constant_enter;
       TF_RETURN_IF_ERROR(
-          GetNodeAttr(n->attrs(), "is_constant", &is_constant_enter));
+          GetNodeAttribute(n->attrs(), "is_constant", &is_constant_enter));
       item->is_constant_enter = is_constant_enter;
 
       string frame_name;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "frame_name", &frame_name));
+      TF_RETURN_IF_ERROR(
+          GetNodeAttribute(n->attrs(), "frame_name", &frame_name));
       FrameInfo* frame_info = frame_info_[frame_name].get();
 
       int parallel_iterations;
-      TF_RETURN_IF_ERROR(
-          GetNodeAttr(n->attrs(), "parallel_iterations", &parallel_iterations));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "parallel_iterations",
+                                          &parallel_iterations));
 
       if (frame_info->parallel_iterations == -1) {
         frame_info->parallel_iterations = parallel_iterations;
@@ -213,7 +216,8 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
     frame_info->nodes->push_back(item);
     if (item->is_enter) {
       string enter_name;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "frame_name", &enter_name));
+      TF_RETURN_IF_ERROR(
+          GetNodeAttribute(n->attrs(), "frame_name", &enter_name));
       EnsureFrameInfo(enter_name)->input_count++;
     }
 
@@ -310,7 +314,7 @@ Status ImmutableExecutorState::BuildControlFlowInfo(const Graph* g,
     if (IsEnter(curr_node)) {
       // Enter a child frame.
       TF_RETURN_IF_ERROR(
-          GetNodeAttr(curr_node->attrs(), "frame_name", &frame_name));
+          GetNodeAttribute(curr_node->attrs(), "frame_name", &frame_name));
       parent = curr_node;
     } else if (IsExit(curr_node)) {
       // Exit to the parent frame.

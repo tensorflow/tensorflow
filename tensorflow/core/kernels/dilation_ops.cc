@@ -22,7 +22,6 @@ limitations under the License.
 #include <cfloat>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/util/padding.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -42,7 +42,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 void ParseAttributes(OpKernelConstruction* context, std::vector<int32>* strides,
                      std::vector<int32>* rates, Padding* padding) {
-  OP_REQUIRES_OK(context, context->GetAttr("strides", strides));
+  OP_REQUIRES_OK(context, context->GetAttribute("strides", strides));
   OP_REQUIRES(context, strides->size() == 4,
               errors::InvalidArgument("Sliding window stride field must "
                                       "specify 4 dimensions"));
@@ -50,7 +50,7 @@ void ParseAttributes(OpKernelConstruction* context, std::vector<int32>* strides,
               errors::Unimplemented(
                   "Stride is only supported across spatial dimensions."));
 
-  OP_REQUIRES_OK(context, context->GetAttr("rates", rates));
+  OP_REQUIRES_OK(context, context->GetAttribute("rates", rates));
   OP_REQUIRES(context, rates->size() == 4,
               errors::InvalidArgument("Input stride (atrous rate) field "
                                       "must specify 4 dimensions"));
@@ -58,7 +58,7 @@ void ParseAttributes(OpKernelConstruction* context, std::vector<int32>* strides,
               errors::Unimplemented(
                   "Rate is only supported across spatial dimensions."));
 
-  OP_REQUIRES_OK(context, context->GetAttr("padding", padding));
+  OP_REQUIRES_OK(context, context->GetAttribute("padding", padding));
 }
 
 void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,

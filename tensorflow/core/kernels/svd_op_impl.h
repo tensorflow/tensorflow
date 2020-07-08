@@ -23,7 +23,6 @@ limitations under the License.
 // improve compilation times.
 #include <algorithm>
 
-#include "third_party/eigen3/Eigen/SVD"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/Eigen/SVD"
 
 namespace tensorflow {
 
@@ -41,8 +41,9 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
   typedef LinearAlgebraOp<Scalar> Base;
 
   explicit SvdOp(OpKernelConstruction* context) : Base(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("compute_uv", &compute_uv_));
-    OP_REQUIRES_OK(context, context->GetAttr("full_matrices", &full_matrices_));
+    OP_REQUIRES_OK(context, context->GetAttribute("compute_uv", &compute_uv_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("full_matrices", &full_matrices_));
   }
 
   using TensorShapes = typename Base::TensorShapes;

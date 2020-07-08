@@ -148,7 +148,7 @@ class StatelessCategoricalOp : public CategoricalOp {
   explicit StatelessCategoricalOp(OpKernelConstruction* ctx)
       : CategoricalOp(ctx),
         device_type_string_(ctx->device_type().type_string()) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
   }
 
   xla::XlaOp GetLogUniforms(xla::Shape uniform_shape, xla::PrimitiveType type,

@@ -49,7 +49,7 @@ absl::flat_hash_map<string, string> GetXlaInternalScopes(const Graph& graph) {
   absl::flat_hash_map<string, string> scopes;
   for (Node* node : graph.nodes()) {
     string scope;
-    if (GetNodeAttr(node->attrs(), kXlaInternalScopeAttr, &scope).ok()) {
+    if (GetNodeAttribute(node->attrs(), kXlaInternalScopeAttr, &scope).ok()) {
       scopes[node->name()] = scope;
     }
   }

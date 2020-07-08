@@ -58,7 +58,7 @@ REGISTER_XLA_OP(Name("Relu6"), Relu6Op);
 class LeakyReluOp : public XlaOpKernel {
  public:
   explicit LeakyReluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("alpha", &alpha_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("alpha", &alpha_));
   }
   void Compile(XlaOpKernelContext* ctx) override {
     auto features = ctx->Input("features");
@@ -110,7 +110,7 @@ REGISTER_XLA_OP(Name("Relu6Grad"), Relu6GradOp);
 class LeakyReluGradOp : public XlaOpKernel {
  public:
   explicit LeakyReluGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("alpha", &alpha_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("alpha", &alpha_));
   }
   void Compile(XlaOpKernelContext* ctx) override {
     auto gradients = ctx->Input("gradients");

@@ -38,7 +38,7 @@ class SendOp : public XlaOpKernel {
 };
 
 SendOp::SendOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_name", &tensor_name_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("tensor_name", &tensor_name_));
 }
 
 void SendOp::Compile(XlaOpKernelContext* ctx) {
@@ -63,12 +63,12 @@ class RecvOp : public XlaOpKernel {
 };
 
 RecvOp::RecvOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("tensor_name", &tensor_name_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("tensor_name", &tensor_name_));
 
   TensorShape tensor_shape;
   DataType dtype;
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &tensor_shape));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("shape", &tensor_shape));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("dtype", &dtype));
   OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, tensor_shape, &shape_));
 }
 

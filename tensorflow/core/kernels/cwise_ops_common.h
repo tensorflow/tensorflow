@@ -230,7 +230,7 @@ class ApproximateEqualOp : public OpKernel {
   explicit ApproximateEqualOp(OpKernelConstruction* context)
       : OpKernel(context) {
     float tolerance;
-    OP_REQUIRES_OK(context, context->GetAttr("tolerance", &tolerance));
+    OP_REQUIRES_OK(context, context->GetAttribute("tolerance", &tolerance));
     tolerance_ = T(tolerance);
   }
   void Compute(OpKernelContext* context) override {

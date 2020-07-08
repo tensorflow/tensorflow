@@ -298,7 +298,7 @@ Status GraphToFunctionDefHelper(
   auto add_arg_or_retval = [](Node* node,
                               std::vector<OutputTensor>* args_or_retvals) {
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(node->attrs(), "index", &index));
     if (index >= args_or_retvals->size()) {
       args_or_retvals->resize(index + 1);
     }

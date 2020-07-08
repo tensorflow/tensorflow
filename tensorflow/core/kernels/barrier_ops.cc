@@ -15,6 +15,7 @@ limitations under the License.
 // See docs in ../ops/data_flow_ops.cc.
 
 #include <limits.h>
+
 #include <unordered_map>
 #include <vector>
 
@@ -443,17 +444,17 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
  public:
   explicit BarrierOp(OpKernelConstruction* context)
       : ResourceOpKernel(context) {
-    OP_REQUIRES_OK(
-        context, context->GetAttr("component_types", &value_component_types_));
+    OP_REQUIRES_OK(context, context->GetAttribute("component_types",
+                                                  &value_component_types_));
     OP_REQUIRES_OK(context,
-                   context->GetAttr("shapes", &value_component_shapes_));
+                   context->GetAttribute("shapes", &value_component_shapes_));
     OP_REQUIRES(context,
                 value_component_shapes_.size() == value_component_types_.size(),
                 errors::InvalidArgument(
                     "All of the component shapes must be specified"));
 
     int32 value_capacity;
-    OP_REQUIRES_OK(context, context->GetAttr("capacity", &value_capacity));
+    OP_REQUIRES_OK(context, context->GetAttribute("capacity", &value_capacity));
     OP_REQUIRES(context, value_capacity == -1,
                 errors::InvalidArgument(
                     "Barrier only accepts capacity=-1.  Feed the "
@@ -525,7 +526,7 @@ class InsertManyOp : public BarrierOpKernel {
   explicit InsertManyOp(OpKernelConstruction* context)
       : BarrierOpKernel(context) {
     OP_REQUIRES_OK(context,
-                   context->GetAttr("component_index", &component_index_));
+                   context->GetAttribute("component_index", &component_index_));
   }
 
  protected:
@@ -568,13 +569,13 @@ class TakeManyOp : public BarrierOpKernel {
  public:
   explicit TakeManyOp(OpKernelConstruction* context)
       : BarrierOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("timeout_ms", &timeout_));
+    OP_REQUIRES_OK(context, context->GetAttribute("timeout_ms", &timeout_));
     // TODO(keveman): Enable timeout.
     OP_REQUIRES(context, timeout_ == -1,
                 errors::InvalidArgument("Timeout not supported yet."));
 
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("allow_small_batch", &allow_small_batch_));
+    OP_REQUIRES_OK(context, context->GetAttribute("allow_small_batch",
+                                                  &allow_small_batch_));
   }
 
  protected:
@@ -632,8 +633,8 @@ class BarrierCloseOp : public BarrierOpKernel {
  public:
   explicit BarrierCloseOp(OpKernelConstruction* context)
       : BarrierOpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("cancel_pending_enqueues",
-                                             &cancel_pending_enqueues_));
+    OP_REQUIRES_OK(context, context->GetAttribute("cancel_pending_enqueues",
+                                                  &cancel_pending_enqueues_));
   }
 
  protected:

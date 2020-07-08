@@ -36,7 +36,7 @@ class XlaAotOnlyVarHandleOp : public XlaOpKernel {
 
 XlaAotOnlyVarHandleOp::XlaAotOnlyVarHandleOp(OpKernelConstruction* c)
     : XlaOpKernel(c) {
-  OP_REQUIRES_OK(c, c->GetAttr("shared_name", &name_));
+  OP_REQUIRES_OK(c, c->GetAttribute("shared_name", &name_));
 }
 
 void XlaAotOnlyVarHandleOp::Compile(XlaOpKernelContext* context) {
@@ -67,9 +67,9 @@ Internal VarHandleOp registration used for XLA AOT compilation.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       DataType t;
-      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &t));
+      TF_RETURN_IF_ERROR(c->GetAttribute("dtype", &t));
       PartialTensorShape p;
-      TF_RETURN_IF_ERROR(c->GetAttr("shape", &p));
+      TF_RETURN_IF_ERROR(c->GetAttribute("shape", &p));
       shape_inference::ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(p, &s));
       c->set_output_handle_shapes_and_types(

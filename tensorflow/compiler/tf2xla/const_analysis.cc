@@ -36,7 +36,7 @@ Status GetFunctionBody(FunctionLibraryRuntime* flib_runtime,
                        const NodeDef& node, StringPiece func_attr_name,
                        const FunctionBody** fbody) {
   NameAttrList name_attr_list;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node, func_attr_name, &name_attr_list));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(node, func_attr_name, &name_attr_list));
   FunctionLibraryRuntime::Handle func_handle;
   TF_RETURN_IF_ERROR(flib_runtime->Instantiate(
       name_attr_list.name(), AttrSlice(&name_attr_list.attr()), &func_handle));
@@ -48,7 +48,8 @@ Status GetFunctionBodies(FunctionLibraryRuntime* flib_runtime,
                          const NodeDef& node, StringPiece func_list_attr_name,
                          std::vector<const FunctionBody*>* fbodies) {
   std::vector<NameAttrList> name_attr_lists;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node, func_list_attr_name, &name_attr_lists));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttribute(node, func_list_attr_name, &name_attr_lists));
   for (const NameAttrList& name_attr_list : name_attr_lists) {
     FunctionLibraryRuntime::Handle func_handle;
     TF_RETURN_IF_ERROR(flib_runtime->Instantiate(
@@ -218,7 +219,7 @@ Status BackwardsConstAnalysis(
     if ((*compile_time_const_nodes)[node->id()]) {
       if (node->type_string() == "_Arg") {
         int index;
-        status = GetNodeAttr(node->attrs(), "index", &index);
+        status = GetNodeAttribute(node->attrs(), "index", &index);
         if (!status.ok()) return;
         if (compile_time_const_arg_indices) {
           (*compile_time_const_arg_indices)[index] = true;

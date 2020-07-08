@@ -99,7 +99,7 @@ class SingleThreadedExecutorImpl : public Executor {
 
       if (n->IsArg()) {
         int32 arg_index;
-        TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &arg_index));
+        TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &arg_index));
         if (arg_index < 0) {
           return errors::InvalidArgument("Invalid argument index ", arg_index,
                                          " in node ", n->name());
@@ -286,7 +286,7 @@ class SingleThreadedExecutorImpl : public Executor {
     params.step_id = args.step_id;
     Device* device = params_.device;
     params.device = device;
-    params.log_memory = false;              // TODO(mrry): Too severe?
+    params.log_memory = false;  // TODO(mrry): Too severe?
     params.rendezvous = args.rendezvous;
     params.session_state = args.session_state;
     params.tensor_store = args.tensor_store;

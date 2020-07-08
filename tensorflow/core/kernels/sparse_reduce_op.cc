@@ -154,7 +154,7 @@ template <typename T, typename Op>
 class SparseReduceOp : public OpKernel {
  public:
   explicit SparseReduceOp(OpKernelConstruction *ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("keep_dims", &keep_dims_));
   }
 
   void Compute(OpKernelContext *ctx) override {
@@ -250,7 +250,7 @@ template <typename T, typename Op>
 class SparseReduceSparseOp : public OpKernel {
  public:
   explicit SparseReduceSparseOp(OpKernelConstruction *ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("keep_dims", &keep_dims_));
   }
 
   void Compute(OpKernelContext *ctx) override {

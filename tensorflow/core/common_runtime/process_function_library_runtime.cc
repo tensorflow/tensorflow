@@ -360,15 +360,14 @@ const string* AssignedOrRequestedDeviceName(const Node& node) {
   return &node.requested_device();
 }
 
-Status SetArgShape(
-    const std::unordered_map<int, DtypeAndPartialTensorShape>&
-        input_resource_dtypes_and_shapes,
-    const std::vector<Node*>& arg_nodes) {
+Status SetArgShape(const std::unordered_map<int, DtypeAndPartialTensorShape>&
+                       input_resource_dtypes_and_shapes,
+                   const std::vector<Node*>& arg_nodes) {
   for (Node* n : arg_nodes) {
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "index", &index));
     DataType dtype;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtype));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "T", &dtype));
     if (dtype == DT_RESOURCE) {
       auto dtype_and_shape_iter = input_resource_dtypes_and_shapes.find(index);
       if (dtype_and_shape_iter != input_resource_dtypes_and_shapes.end()) {
@@ -420,7 +419,7 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
   for (Node* node : ret_nodes) {
     if (output_devices.empty()) {
       DataType dtype;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &dtype));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(node->attrs(), "T", &dtype));
 
       VLOG(3) << "Trying to determine device for node " << node->name()
               << "[T=" << DataTypeString(dtype) << "]";
@@ -1291,25 +1290,24 @@ ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
     FunctionLibraryRuntime::DoneCallback done, const int64 step_id,
     const Rendezvous* created_rendezvous) const {
-  return
-      [this, items, done = std::move(done), step_id,
-       created_rendezvous](const Status& status) {
-        if (created_rendezvous) {
-          DCHECK(rendezvous_factory_);
-          created_rendezvous->Unref();
-          Status s = rendezvous_factory_.CleanUp(step_id);
-          if (!s.ok()) {
-            LOG(ERROR) << s;
-          }
-        }
-        auto* local_status = new Status(status);
-        CleanUp(items, [local_status, done](const Status& cleanup_status) {
-          local_status->Update(cleanup_status);
-          done(*local_status);
-          delete local_status;
-        });
-        delete items;
-      };
+  return [this, items, done = std::move(done), step_id,
+          created_rendezvous](const Status& status) {
+    if (created_rendezvous) {
+      DCHECK(rendezvous_factory_);
+      created_rendezvous->Unref();
+      Status s = rendezvous_factory_.CleanUp(step_id);
+      if (!s.ok()) {
+        LOG(ERROR) << s;
+      }
+    }
+    auto* local_status = new Status(status);
+    CleanUp(items, [local_status, done](const Status& cleanup_status) {
+      local_status->Update(cleanup_status);
+      done(*local_status);
+      delete local_status;
+    });
+    delete items;
+  };
 }
 
 Status ProcessFunctionLibraryRuntime::CreateRendezvous(

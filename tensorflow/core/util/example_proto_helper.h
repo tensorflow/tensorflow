@@ -163,22 +163,22 @@ struct ParseExampleAttrs {
  public:
   template <typename ContextType>
   Status Init(ContextType* ctx, int op_version = 1) {
-    TF_RETURN_IF_ERROR(ctx->GetAttr("sparse_types", &sparse_types));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Tdense", &dense_types));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("dense_shapes", &dense_shapes));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("sparse_types", &sparse_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("Tdense", &dense_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("dense_shapes", &dense_shapes));
     TF_RETURN_IF_ERROR(
         GetDenseShapes(dense_shapes, &variable_length, &elements_per_stride));
     switch (op_version) {
       case 1:
-        TF_RETURN_IF_ERROR(ctx->GetAttr("Nsparse", &num_sparse));
-        TF_RETURN_IF_ERROR(ctx->GetAttr("Ndense", &num_dense));
+        TF_RETURN_IF_ERROR(ctx->GetAttribute("Nsparse", &num_sparse));
+        TF_RETURN_IF_ERROR(ctx->GetAttribute("Ndense", &num_dense));
         break;
       case 2:
         TF_RETURN_IF_ERROR(
-            ctx->GetAttr("ragged_value_types", &ragged_value_types));
-        TF_RETURN_IF_ERROR(ctx->GetAttr("num_sparse", &num_sparse));
+            ctx->GetAttribute("ragged_value_types", &ragged_value_types));
+        TF_RETURN_IF_ERROR(ctx->GetAttribute("num_sparse", &num_sparse));
         TF_RETURN_IF_ERROR(
-            ctx->GetAttr("ragged_split_types", &ragged_split_types));
+            ctx->GetAttribute("ragged_split_types", &ragged_split_types));
         break;
       default:
         return errors::InvalidArgument("Unexpected op_version", op_version);
@@ -207,14 +207,14 @@ struct ParseSingleExampleAttrs {
  public:
   template <typename ContextType>
   Status Init(ContextType* ctx) {
-    TF_RETURN_IF_ERROR(ctx->GetAttr("sparse_keys", &sparse_keys));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("sparse_types", &sparse_types));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("dense_keys", &dense_keys));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Tdense", &dense_types));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("dense_shapes", &dense_shapes));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("sparse_keys", &sparse_keys));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("sparse_types", &sparse_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("dense_keys", &dense_keys));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("Tdense", &dense_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("dense_shapes", &dense_shapes));
 
     int num_sparse;
-    TF_RETURN_IF_ERROR(ctx->GetAttr("num_sparse", &num_sparse));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("num_sparse", &num_sparse));
     if (num_sparse != sparse_keys.size() || num_sparse != sparse_types.size()) {
       return errors::InvalidArgument(
           "num_sparse (", num_sparse, ") must match the size of sparse_keys (",
@@ -247,51 +247,54 @@ struct ParseSequenceExampleAttrs {
     switch (op_version) {
       case 1: {
         std::vector<string> missing_empty_vector;
-        TF_RETURN_IF_ERROR(ctx->GetAttr(
+        TF_RETURN_IF_ERROR(ctx->GetAttribute(
             "feature_list_dense_missing_assumed_empty", &missing_empty_vector));
         for (const string& feature : missing_empty_vector) {
           feature_list_dense_missing_assumed_empty.insert(feature);
         }
       }
         TF_RETURN_IF_ERROR(
-            ctx->GetAttr("context_sparse_keys", &context_sparse_keys));
+            ctx->GetAttribute("context_sparse_keys", &context_sparse_keys));
         TF_RETURN_IF_ERROR(
-            ctx->GetAttr("context_dense_keys", &context_dense_keys));
-        TF_RETURN_IF_ERROR(ctx->GetAttr("feature_list_sparse_keys",
-                                        &feature_list_sparse_keys));
+            ctx->GetAttribute("context_dense_keys", &context_dense_keys));
+        TF_RETURN_IF_ERROR(ctx->GetAttribute("feature_list_sparse_keys",
+                                             &feature_list_sparse_keys));
+        TF_RETURN_IF_ERROR(ctx->GetAttribute("feature_list_dense_keys",
+                                             &feature_list_dense_keys));
         TF_RETURN_IF_ERROR(
-            ctx->GetAttr("feature_list_dense_keys", &feature_list_dense_keys));
-        TF_RETURN_IF_ERROR(ctx->GetAttr("Ncontext_dense", &num_context_dense));
+            ctx->GetAttribute("Ncontext_dense", &num_context_dense));
         break;
       case 2:
-        TF_RETURN_IF_ERROR(ctx->GetAttr("context_ragged_value_types",
-                                        &context_ragged_value_types));
-        TF_RETURN_IF_ERROR(ctx->GetAttr("context_ragged_split_types",
-                                        &context_ragged_split_types));
-        TF_RETURN_IF_ERROR(ctx->GetAttr("feature_list_ragged_value_types",
-                                        &feature_list_ragged_value_types));
-        TF_RETURN_IF_ERROR(ctx->GetAttr("feature_list_ragged_split_types",
-                                        &feature_list_ragged_split_types));
+        TF_RETURN_IF_ERROR(ctx->GetAttribute("context_ragged_value_types",
+                                             &context_ragged_value_types));
+        TF_RETURN_IF_ERROR(ctx->GetAttribute("context_ragged_split_types",
+                                             &context_ragged_split_types));
+        TF_RETURN_IF_ERROR(ctx->GetAttribute("feature_list_ragged_value_types",
+                                             &feature_list_ragged_value_types));
+        TF_RETURN_IF_ERROR(ctx->GetAttribute("feature_list_ragged_split_types",
+                                             &feature_list_ragged_split_types));
         break;
       default:
         return errors::InvalidArgument("Unexpected op_version", op_version);
     }
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("context_sparse_types", &context_sparse_types));
+        ctx->GetAttribute("context_sparse_types", &context_sparse_types));
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("Nfeature_list_dense", &num_feature_list_dense));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Ncontext_sparse", &num_context_sparse));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Tcontext_dense", &context_dense_types));
+        ctx->GetAttribute("Nfeature_list_dense", &num_feature_list_dense));
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("feature_list_sparse_types", &feature_list_sparse_types));
+        ctx->GetAttribute("Ncontext_sparse", &num_context_sparse));
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("feature_list_dense_types", &feature_list_dense_types));
+        ctx->GetAttribute("Tcontext_dense", &context_dense_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("feature_list_sparse_types",
+                                         &feature_list_sparse_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("feature_list_dense_types",
+                                         &feature_list_dense_types));
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("Nfeature_list_sparse", &num_feature_list_sparse));
+        ctx->GetAttribute("Nfeature_list_sparse", &num_feature_list_sparse));
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("context_dense_shapes", &context_dense_shapes));
-    TF_RETURN_IF_ERROR(
-        ctx->GetAttr("feature_list_dense_shapes", &feature_list_dense_shapes));
+        ctx->GetAttribute("context_dense_shapes", &context_dense_shapes));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("feature_list_dense_shapes",
+                                         &feature_list_dense_shapes));
     return FinishInit(op_version);
   }
 
@@ -328,22 +331,24 @@ struct ParseSingleSequenceExampleAttrs {
   template <typename ContextType>
   Status Init(ContextType* ctx) {
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("context_sparse_types", &context_sparse_types));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Ncontext_dense", &num_context_dense));
+        ctx->GetAttribute("context_sparse_types", &context_sparse_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("Ncontext_dense", &num_context_dense));
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("Nfeature_list_dense", &num_feature_list_dense));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Ncontext_sparse", &num_context_sparse));
-    TF_RETURN_IF_ERROR(ctx->GetAttr("Tcontext_dense", &context_dense_types));
+        ctx->GetAttribute("Nfeature_list_dense", &num_feature_list_dense));
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("feature_list_sparse_types", &feature_list_sparse_types));
+        ctx->GetAttribute("Ncontext_sparse", &num_context_sparse));
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("feature_list_dense_types", &feature_list_dense_types));
+        ctx->GetAttribute("Tcontext_dense", &context_dense_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("feature_list_sparse_types",
+                                         &feature_list_sparse_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("feature_list_dense_types",
+                                         &feature_list_dense_types));
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("Nfeature_list_sparse", &num_feature_list_sparse));
+        ctx->GetAttribute("Nfeature_list_sparse", &num_feature_list_sparse));
     TF_RETURN_IF_ERROR(
-        ctx->GetAttr("context_dense_shapes", &context_dense_shapes));
-    TF_RETURN_IF_ERROR(
-        ctx->GetAttr("feature_list_dense_shapes", &feature_list_dense_shapes));
+        ctx->GetAttribute("context_dense_shapes", &context_dense_shapes));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("feature_list_dense_shapes",
+                                         &feature_list_dense_shapes));
     return FinishInit();
   }
 

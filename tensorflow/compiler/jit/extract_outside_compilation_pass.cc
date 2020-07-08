@@ -90,9 +90,9 @@ Status GetArgDataTypes(const std::vector<Node*>& arg_nodes,
   recv_at_host_dtypes->resize(arg_nodes.size(), DT_INVALID);
   for (auto* n : arg_nodes) {
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
     DataType dtype;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "T", &dtype));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "T", &dtype));
     (*recv_at_host_dtypes)[index] = dtype;
   }
   for (int i = 0; i < recv_at_host_dtypes->size(); i++) {
@@ -142,7 +142,7 @@ xla::StatusOr<Node*> ReplaceArgNodesWithRecvAtHostNode(
                           key_placeholder));
   for (auto* n : arg_nodes) {
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
     // Record out edges and remove `n` before adding those edges to RecvAtHost.
     // This is to avoid multiple producers.
     std::vector<OutEdgeInfo> out_edge_info;
@@ -191,9 +191,9 @@ Status GetRetDataTypes(const std::vector<Node*>& ret_nodes,
   send_from_host_dtypes->resize(ret_nodes.size(), DT_INVALID);
   for (auto* n : ret_nodes) {
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
     DataType dtype;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "T", &dtype));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "T", &dtype));
     (*send_from_host_dtypes)[index] = dtype;
   }
   for (int i = 0; i < send_from_host_dtypes->size(); i++) {
@@ -225,7 +225,7 @@ xla::StatusOr<Node*> BuildSendFromHostNode(
   std::vector<NodeDefBuilder::NodeOut> inputs(send_from_host_dtypes.size());
   for (auto* n : ret_nodes) {
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
     if (index < 0 || index >= send_from_host_dtypes.size()) {
       return errors::Internal("Invalid _Retval index: ", index);
     }
@@ -258,7 +258,7 @@ xla::StatusOr<Node*> ReplaceRetNodesWithSendFromHostNode(
                             *send_from_host_dtypes, key_placeholder));
   for (auto* n : ret_nodes) {
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
     for (auto edge : n->in_edges()) {
       if (edge->src_output() == Graph::kControlSlot) {
         g->AddControlEdge(edge->src(), send_from_host_node);
@@ -285,7 +285,8 @@ absl::optional<std::vector<PartialTensorShape>> GetInferredInputShapes(
     }
 
     std::vector<PartialTensorShape> shapes;
-    if (!GetNodeAttr(e->src()->attrs(), kXlaInferredShapesAttrName, &shapes)
+    if (!GetNodeAttribute(e->src()->attrs(), kXlaInferredShapesAttrName,
+                          &shapes)
              .ok()) {
       return absl::nullopt;
     }
@@ -310,7 +311,7 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
     const Node* call_node, const std::map<string, int>& host_compute_core,
     const absl::flat_hash_map<string, std::vector<string>>& cluster_deps) {
   string original_oc_name;
-  TF_RETURN_IF_ERROR(GetNodeAttr(
+  TF_RETURN_IF_ERROR(GetNodeAttribute(
       call_node->attrs(), "_outside_compilation_subgraph", &original_oc_name));
   NodeDefBuilder host_compute_builder(host_compute_node_name(original_oc_name),
                                       "XlaHostCompute");
@@ -354,7 +355,8 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
 
   // Populate inputs.
   std::vector<DataType> input_dtypes;
-  TF_RETURN_IF_ERROR(GetNodeAttr(call_node->attrs(), "Tinputs", &input_dtypes));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttribute(call_node->attrs(), "Tinputs", &input_dtypes));
   std::vector<NodeDefBuilder::NodeOut> inputs(input_dtypes.size());
   for (auto e : call_node->in_edges()) {
     if (e->IsControlEdge()) {
@@ -408,7 +410,8 @@ Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
       for (const string& attr_name :
            std::vector<string>{"then_branch", "else_branch"}) {
         NameAttrList branch_func;
-        TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), attr_name, &branch_func));
+        TF_RETURN_IF_ERROR(
+            GetNodeAttribute(n->attrs(), attr_name, &branch_func));
         (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
         n->ClearAttr(attr_name);
         n->AddAttr(attr_name, branch_func);
@@ -416,7 +419,8 @@ Status ResetDeviceOrdinalToPlaceholderValue(Graph* g) {
     } else if (n->IsWhileNode()) {
       for (const string& attr_name : std::vector<string>{"cond", "body"}) {
         NameAttrList branch_func;
-        TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), attr_name, &branch_func));
+        TF_RETURN_IF_ERROR(
+            GetNodeAttribute(n->attrs(), attr_name, &branch_func));
         (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
         n->ClearAttr(attr_name);
         n->AddAttr(attr_name, branch_func);
@@ -454,8 +458,8 @@ LiftedArgsAndOutsideCompilationNodesInFunctionBody(
   for (Node* n : function_body.graph->op_nodes()) {
     string oc_cluster;
     if (n->type_string() == "Placeholder" &&
-        GetNodeAttr(n->def(), kXlaLiftedArgOutsideCompilationAttrName,
-                    &oc_cluster)
+        GetNodeAttribute(n->def(), kXlaLiftedArgOutsideCompilationAttrName,
+                         &oc_cluster)
             .ok()) {
       TF_RET_CHECK(outside_compilation_attr_to_node.find(oc_cluster) !=
                    outside_compilation_attr_to_node.end());
@@ -473,7 +477,7 @@ xla::StatusOr<std::vector<DataType>> UpdateTypesAttribute(
         lifted_arg_nodes_and_outside_compilation_nodes,
     const string& type_attr_name, Node* n) {
   std::vector<DataType> data_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), type_attr_name, &data_types));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), type_attr_name, &data_types));
   for (auto pair : lifted_arg_nodes_and_outside_compilation_nodes) {
     Node* outside_compilation_node = pair.second;
     DataType data_type;
@@ -481,10 +485,10 @@ xla::StatusOr<std::vector<DataType>> UpdateTypesAttribute(
                  outside_compilation_node->type_string() == "Placeholder");
     if (outside_compilation_node->IsIdentity()) {
       TF_RETURN_IF_ERROR(
-          GetNodeAttr(outside_compilation_node->def(), "T", &data_type));
+          GetNodeAttribute(outside_compilation_node->def(), "T", &data_type));
     } else {
-      TF_RETURN_IF_ERROR(
-          GetNodeAttr(outside_compilation_node->def(), "dtype", &data_type));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(outside_compilation_node->def(),
+                                          "dtype", &data_type));
     }
     data_types.push_back(data_type);
   }
@@ -572,7 +576,7 @@ Status PostprocessLiftedArgsForWhile(
 
   // Check if there is any lifted args in body function.
   NameAttrList body_func;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "body", &body_func));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "body", &body_func));
   const FunctionDef* body_function_def = fld->Find(body_func.name());
   TF_RET_CHECK(body_function_def);
 
@@ -640,7 +644,7 @@ Status PostprocessLiftedArgsForWhile(
 
   // In cond_graph, just add new _Arg nodes.
   NameAttrList cond_func;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "cond", &cond_func));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "cond", &cond_func));
   const FunctionDef* cond_function_def = fld->Find(cond_func.name());
   TF_RET_CHECK(cond_function_def);
   std::unique_ptr<FunctionBody> cond_function_body;
@@ -671,13 +675,15 @@ Status PostprocessLiftedArgsForIf(
   TF_RET_CHECK(n->IsIfNode());
 
   NameAttrList then_branch_func;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "then_branch", &then_branch_func));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttribute(n->def(), "then_branch", &then_branch_func));
   const FunctionDef* then_branch_function_def =
       fld->Find(then_branch_func.name());
   TF_RET_CHECK(then_branch_function_def);
 
   NameAttrList else_branch_func;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "else_branch", &else_branch_func));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttribute(n->def(), "else_branch", &else_branch_func));
   const FunctionDef* else_branch_function_def =
       fld->Find(else_branch_func.name());
   TF_RET_CHECK(else_branch_function_def);
@@ -744,7 +750,7 @@ Status PostprocessLiftedArgsForIf(
 
   // Append lifted args' types to If node's Tin attribute.
   std::vector<DataType> data_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "Tin", &data_types));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "Tin", &data_types));
   for (Node* n : outside_compilation_nodes) {
     data_types.push_back(n->output_type(0));
   }
@@ -823,10 +829,10 @@ Status PostprocessLiftedArgsForCall(
                  outside_compilation_node->type_string() == "Placeholder");
     if (outside_compilation_node->IsIdentity()) {
       TF_RETURN_IF_ERROR(
-          GetNodeAttr(outside_compilation_node->def(), "T", &data_type));
+          GetNodeAttribute(outside_compilation_node->def(), "T", &data_type));
     } else {
-      TF_RETURN_IF_ERROR(
-          GetNodeAttr(outside_compilation_node->def(), "dtype", &data_type));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(outside_compilation_node->def(),
+                                          "dtype", &data_type));
     }
     data_types.push_back(data_type);
   }
@@ -886,9 +892,10 @@ xla::StatusOr<std::unordered_map<string, Node*>> OutsideCompilationAttrToNode(
   for (Node* n : g.op_nodes()) {
     bool is_lifted_arg;
     string outside_compilation_attr;
-    if (TryGetNodeAttr(n->def(), kXlaIsLiftedArgAttrName, &is_lifted_arg) &&
-        TryGetNodeAttr(n->def(), "_xla_outside_compilation",
-                       &outside_compilation_attr)) {
+    if (TryGetNodeAttribute(n->def(), kXlaIsLiftedArgAttrName,
+                            &is_lifted_arg) &&
+        TryGetNodeAttribute(n->def(), "_xla_outside_compilation",
+                            &outside_compilation_attr)) {
       TF_RET_CHECK(is_lifted_arg);
       TF_RET_CHECK(n->IsIdentity() || n->type_string() == "Placeholder");
       outside_compilation_attr_to_node[outside_compilation_attr] = n;
@@ -1766,7 +1773,7 @@ TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
     typedef protobuf::Map<string, AttrValue> AttrMap;
     *func.mutable_attr() = AttrMap(n->attrs().begin(), n->attrs().end());
   } else if (n->IsPartitionedCall()) {
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "f", &func));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "f", &func));
   } else {
     TF_RET_CHECK(n->type_string() == FunctionLibraryDefinition::kGradientOp);
     func.set_name(FunctionLibraryDefinition::kGradientOp);
@@ -1775,7 +1782,7 @@ TF_ATTRIBUTE_NOINLINE Status ExtractOutsideCompilationForFuncCallNode(
   string canonical_func_name;
   if (func.name() == FunctionLibraryDefinition::kGradientOp) {
     NameAttrList forward_func;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "f", &forward_func));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "f", &forward_func));
     canonical_func_name = absl::StrCat("gradient_", forward_func.name());
   } else {
     canonical_func_name = func.name();
@@ -1845,8 +1852,8 @@ Status ExtractOutsideCompilationForIfNode(
     bool* has_outside_compilation) {
   // Instantiate "then_branch" and "else_branch".
   NameAttrList then_branch, else_branch;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "then_branch", &then_branch));
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "else_branch", &else_branch));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "then_branch", &then_branch));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "else_branch", &else_branch));
 
   // Extract outside compilation for then_branch and else_branch.
   bool then_branch_has_outside_compilation = false;
@@ -1964,8 +1971,8 @@ Status ExtractOutsideCompilationForWhileNode(
     bool* has_outside_compilation) {
   // Instantiate "cond" and "body".
   NameAttrList cond, body;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "cond", &cond));
-  TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "body", &body));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "cond", &cond));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "body", &body));
 
   // Extract outside compilation for cond and body.
   bool cond_has_outside_compilation = false;
@@ -2326,8 +2333,8 @@ Status ExtractOutsideCompilationForFunction(
         // we will set the "shape_inference_graph" attribute. In that case, copy
         // outside compilation subgraph as shape inference graph in `fld`.
         auto shape_inference_graph = absl::make_unique<NameAttrList>();
-        TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "shape_inference_graph",
-                                       shape_inference_graph.get()));
+        TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "shape_inference_graph",
+                                            shape_inference_graph.get()));
         if (!shape_inference_graph->name().empty()) {
           shape_inference_graphs->push_back(shape_inference_graph->name());
           shape_inference_graphs_to_rewrite.push_back(
@@ -2362,9 +2369,9 @@ Status ExtractOutsideCompilationForFunction(
     for (const auto& iter : host_compute_nodes) {
       Node* host_compute_node = iter.second;
       std::vector<string> token_input_node_names;
-      TF_RETURN_IF_ERROR(GetNodeAttr(host_compute_node->def(),
-                                     kXlaTokenInputNodesAttrName,
-                                     &token_input_node_names));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(host_compute_node->def(),
+                                          kXlaTokenInputNodesAttrName,
+                                          &token_input_node_names));
       for (const string& node_name : token_input_node_names) {
         if (node_name == kXlaTokenArgNodeName) {
           continue;

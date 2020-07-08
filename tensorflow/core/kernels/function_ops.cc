@@ -37,8 +37,8 @@ namespace tensorflow {
 static const char* const kGradientOp = FunctionLibraryDefinition::kGradientOp;
 
 ArgOp::ArgOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("index", &index_));
 }
 
 void ArgOp::Compute(OpKernelContext* ctx) {
@@ -69,8 +69,8 @@ void ArgOp::Compute(OpKernelContext* ctx) {
 }
 
 RetvalOp::RetvalOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("index", &index_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("T", &dtype_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("index", &index_));
 }
 
 void RetvalOp::Compute(OpKernelContext* ctx) {
@@ -322,10 +322,10 @@ REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_SYCL),
 #endif  // TENSORFLOW_USE_SYCL
 
 RemoteCallOp::RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
-  OP_REQUIRES_OK(ctx,
-                 ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, &func_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("Tin", &input_dtypes_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("Tout", &output_dtypes_));
+  OP_REQUIRES_OK(
+      ctx, ctx->GetAttribute(FunctionLibraryDefinition::kFuncAttr, &func_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("Tin", &input_dtypes_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttribute("Tout", &output_dtypes_));
 }
 
 void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {

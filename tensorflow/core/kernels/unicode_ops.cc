@@ -21,18 +21,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "unicode/appendable.h"  // from @icu
-#include "unicode/schriter.h"  // from @icu
-#include "unicode/uchar.h"  // from @icu
-#include "unicode/ucnv.h"  // from @icu
-#include "unicode/ucnv_err.h"  // from @icu
-#include "unicode/umachine.h"  // from @icu
-#include "unicode/uniset.h"  // from @icu
-#include "unicode/unistr.h"  // from @icu
-#include "unicode/uset.h"  // from @icu
-#include "unicode/utf.h"  // from @icu
-#include "unicode/utypes.h"  // from @icu
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op.h"
@@ -49,6 +37,18 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
 #include "tensorflow/core/util/ptr_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unicode/appendable.h"  // from @icu
+#include "unicode/schriter.h"    // from @icu
+#include "unicode/uchar.h"       // from @icu
+#include "unicode/ucnv.h"        // from @icu
+#include "unicode/ucnv_err.h"    // from @icu
+#include "unicode/umachine.h"    // from @icu
+#include "unicode/uniset.h"      // from @icu
+#include "unicode/unistr.h"      // from @icu
+#include "unicode/uset.h"        // from @icu
+#include "unicode/utf.h"         // from @icu
+#include "unicode/utypes.h"      // from @icu
 
 namespace tensorflow {
 namespace {
@@ -209,7 +209,7 @@ Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
   *out = ErrorOptions();
 
   string error_policy;
-  TF_RETURN_IF_ERROR(ctx->GetAttr("errors", &error_policy));
+  TF_RETURN_IF_ERROR(ctx->GetAttribute("errors", &error_policy));
 
   if (error_policy == "replace") {
     out->elide_replacement = false;
@@ -223,7 +223,7 @@ Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
   }
 
   int32 replacement_char;
-  TF_RETURN_IF_ERROR(ctx->GetAttr("replacement_char", &replacement_char));
+  TF_RETURN_IF_ERROR(ctx->GetAttribute("replacement_char", &replacement_char));
 
   if (replacement_char >= UCHAR_MIN_VALUE &&
       replacement_char <= UCHAR_MAX_VALUE) {
@@ -234,8 +234,8 @@ Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
   }
 
   if (ctx->HasAttr("replace_control_characters")) {
-    TF_RETURN_IF_ERROR(ctx->GetAttr("replace_control_characters",
-                                    &(out->replace_control_chars)));
+    TF_RETURN_IF_ERROR(ctx->GetAttribute("replace_control_characters",
+                                         &(out->replace_control_chars)));
   }
 
   return Status::OK();
@@ -254,11 +254,11 @@ class UnicodeTranscodeOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetErrorOptions(ctx, &error_options_));
 
     string output_encoding;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_encoding", &output_encoding));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_encoding", &output_encoding));
     OP_REQUIRES_OK(ctx,
                    ParseUnicodeEncoding(output_encoding, &output_encoding_));
 
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("input_encoding", &input_encoding_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("input_encoding", &input_encoding_));
     // Make a temporary UConverter to ensure it will create without error
     // at execution time (and to warm any data caches the converter needs).
     // This instance is not used.
@@ -358,7 +358,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
   explicit UnicodeDecodeBaseOp(OpKernelConstruction* ctx, bool generate_offsets)
       : OpKernel(ctx), generate_offsets_(generate_offsets) {
     OP_REQUIRES_OK(ctx, GetErrorOptions(ctx, &error_options_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("input_encoding", &input_encoding_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("input_encoding", &input_encoding_));
     // Make a temporary UConverter to ensure it will create without error
     // at execution time (and to warm any data caches the converter needs).
     // This instance is not used.
@@ -511,7 +511,7 @@ class UnicodeEncodeOp : public OpKernel {
  public:
   explicit UnicodeEncodeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string encoding_tmp;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_encoding", &encoding_tmp));
+    OP_REQUIRES_OK(ctx, ctx->GetAttribute("output_encoding", &encoding_tmp));
     OP_REQUIRES_OK(ctx, ParseUnicodeEncoding(encoding_tmp, &encoding_));
     OP_REQUIRES_OK(ctx, GetErrorOptions(ctx, &error_options_));
   }

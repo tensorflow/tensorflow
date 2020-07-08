@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -24,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #define GET_FLAG(bn_flag) static_cast<int>(BN_FLAGS::bn_flag)
 #define IS_SET(cflag) (context_.flags & GET_FLAG(cflag))
@@ -781,17 +781,19 @@ class MklFusedBatchNormOp : public OpKernel {
   explicit MklFusedBatchNormOp(OpKernelConstruction* context)
       : OpKernel(context) {
     float epsilon;
-    OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
+    OP_REQUIRES_OK(context, context->GetAttribute("epsilon", &epsilon));
     epsilon_ = epsilon;
     float exponential_avg_factor;
-    OP_REQUIRES_OK(context, context->GetAttr("exponential_avg_factor",
-                                             &exponential_avg_factor));
+    OP_REQUIRES_OK(context, context->GetAttribute("exponential_avg_factor",
+                                                  &exponential_avg_factor));
     exponential_avg_factor_ = static_cast<U>(exponential_avg_factor);
     string tensor_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("is_training", &is_training_));
     depth_ = 0;
     mean_values_ = nullptr;
     variance_values_ = nullptr;
@@ -805,8 +807,8 @@ class MklFusedBatchNormOp : public OpKernel {
       activation_mode_ = FusedBNActivationMode::kIdentity;
     } else {
       int num_side_inputs;
-      OP_REQUIRES_OK(context,
-                     context->GetAttr("num_side_inputs", &num_side_inputs));
+      OP_REQUIRES_OK(
+          context, context->GetAttribute("num_side_inputs", &num_side_inputs));
       // Currently _MKLFusedBatchNormEx do not support "SideInput"
       OP_REQUIRES(context, num_side_inputs == 0,
                   errors::InvalidArgument(
@@ -1197,13 +1199,15 @@ class MklFusedBatchNormGradOp : public OpKernel {
   explicit MklFusedBatchNormGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
     float epsilon;
-    OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
+    OP_REQUIRES_OK(context, context->GetAttribute("epsilon", &epsilon));
     epsilon_ = epsilon;
     string tensor_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
-    OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("is_training", &is_training_));
     depth_ = 0;
   }
 

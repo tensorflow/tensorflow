@@ -402,13 +402,13 @@ RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
     std::vector<TensorShape>* shapes) {
   Status status;
   if (data_types != nullptr) {
-    status = GetNodeAttr(attrs, ATTR_OUTPUT_DATA_TYPES, data_types);
+    status = GetNodeAttribute(attrs, ATTR_OUTPUT_DATA_TYPES, data_types);
   }
   if (!status.ok()) {
     return status;
   }
   if (shapes != nullptr) {
-    status = GetNodeAttr(attrs, ATTR_OUTPUT_SHAPES, shapes);
+    status = GetNodeAttribute(attrs, ATTR_OUTPUT_SHAPES, shapes);
     if (status.ok() && data_types != nullptr) {
       CHECK_EQ(data_types->size(), shapes->size());
     }
@@ -1186,7 +1186,7 @@ RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
 
   for (const NodeDef& node_def : input_graph_def.node()) {
     string attr_str;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node_def, ATTR_NODE_TYPE, &attr_str));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(node_def, ATTR_NODE_TYPE, &attr_str));
     std::vector<std::vector<string>> attr_strs;
     for (const string& str : str_util::Split(attr_str, ":")) {
       attr_strs.emplace_back(str_util::Split(str, ","));
@@ -1326,7 +1326,7 @@ RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
       return false;
     }
     string attr;
-    const Status status = GetNodeAttr(*node_def, ATTR_NODE_TYPE, &attr);
+    const Status status = GetNodeAttribute(*node_def, ATTR_NODE_TYPE, &attr);
     if (!status.ok() || attr.empty()) {
       return false;
     }

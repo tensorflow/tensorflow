@@ -164,7 +164,7 @@ REGISTER_KERNEL_BUILDER(Name("SaveV2").Device(DEVICE_CPU), SaveV2);
 class RestoreV2 : public OpKernel {
  public:
   explicit RestoreV2(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("dtypes", &dtypes_));
+    OP_REQUIRES_OK(context, context->GetAttribute("dtypes", &dtypes_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -217,7 +217,7 @@ class MergeV2Checkpoints : public OpKernel {
   explicit MergeV2Checkpoints(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context,
-                   context->GetAttr("delete_old_dirs", &delete_old_dirs_));
+                   context->GetAttribute("delete_old_dirs", &delete_old_dirs_));
   }
 
   void Compute(OpKernelContext* context) override {

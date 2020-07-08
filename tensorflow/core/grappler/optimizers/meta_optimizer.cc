@@ -671,7 +671,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     NameAttrList function;
     for (const NodeDef& node : nodes) {
       if (!IsXlaLaunch(node)) continue;
-      if (!GetNodeAttr(node, "function", &function).ok()) continue;
+      if (!GetNodeAttribute(node, "function", &function).ok()) continue;
       xla_compiled_functions.insert(function.name());
     }
   };

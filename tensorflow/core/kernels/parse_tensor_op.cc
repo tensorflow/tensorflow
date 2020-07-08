@@ -28,7 +28,7 @@ namespace tensorflow {
 class ParseTensorOp : public OpKernel {
  public:
   explicit ParseTensorOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("out_type", &out_type_));
+    OP_REQUIRES_OK(context, context->GetAttribute("out_type", &out_type_));
   }
 
   void Compute(OpKernelContext* ctx) override {

@@ -18,10 +18,11 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/data_format_ops.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -34,9 +35,9 @@ class DataFormatDimMapOp : public OpKernel {
   explicit DataFormatDimMapOp(OpKernelConstruction* context)
       : OpKernel(context) {
     string src_format;
-    OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("src_format", &src_format));
     string dst_format;
-    OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("dst_format", &dst_format));
     OP_REQUIRES(context, src_format.size() == 4,
                 errors::InvalidArgument(strings::StrCat(
                     "Source format must of length 4, received src_format = ",
@@ -76,9 +77,9 @@ class DataFormatVecPermuteOp : public OpKernel {
   explicit DataFormatVecPermuteOp(OpKernelConstruction* context)
       : OpKernel(context) {
     string src_format;
-    OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("src_format", &src_format));
     string dst_format;
-    OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
+    OP_REQUIRES_OK(context, context->GetAttribute("dst_format", &dst_format));
     src_format_ = src_format;
     dst_format_ = dst_format;
   }

@@ -18,13 +18,13 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
@@ -306,7 +306,8 @@ class LRNOp : public OpKernel {
  public:
   explicit LRNOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
-    OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("depth_radius", &depth_radius64));
     OP_REQUIRES(
         context,
         FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
@@ -314,11 +315,11 @@ class LRNOp : public OpKernel {
                                 " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
     float tmp;
-    OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));
+    OP_REQUIRES_OK(context, context->GetAttribute("bias", &tmp));
     bias_ = T(tmp);
-    OP_REQUIRES_OK(context, context->GetAttr("alpha", &tmp));
+    OP_REQUIRES_OK(context, context->GetAttribute("alpha", &tmp));
     alpha_ = T(tmp);
-    OP_REQUIRES_OK(context, context->GetAttr("beta", &tmp));
+    OP_REQUIRES_OK(context, context->GetAttribute("beta", &tmp));
     beta_ = T(tmp);
   }
 
@@ -636,7 +637,8 @@ class LRNGradOp : public OpKernel {
  public:
   explicit LRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
-    OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
+    OP_REQUIRES_OK(context,
+                   context->GetAttribute("depth_radius", &depth_radius64));
     OP_REQUIRES(
         context,
         FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
@@ -644,11 +646,11 @@ class LRNGradOp : public OpKernel {
                                 " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
     float tmp;
-    OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));
+    OP_REQUIRES_OK(context, context->GetAttribute("bias", &tmp));
     bias_ = T(tmp);
-    OP_REQUIRES_OK(context, context->GetAttr("alpha", &tmp));
+    OP_REQUIRES_OK(context, context->GetAttribute("alpha", &tmp));
     alpha_ = T(tmp);
-    OP_REQUIRES_OK(context, context->GetAttr("beta", &tmp));
+    OP_REQUIRES_OK(context, context->GetAttribute("beta", &tmp));
     beta_ = T(tmp);
   }
 
