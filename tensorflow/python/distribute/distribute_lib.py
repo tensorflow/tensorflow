@@ -533,7 +533,7 @@ class ValueContext(object):
 
   2. Passed in by `experimental_distribute_values_from_function`.
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> def value_fn(value_context):
   ...   return value_context.num_replicas_in_sync
   >>> distributed_values = (
@@ -541,7 +541,7 @@ class ValueContext(object):
   ...        value_fn))
   >>> local_result = strategy.experimental_local_results(distributed_values)
   >>> local_result
-  (1,)
+  (2, 2)
 
   """
 
@@ -792,13 +792,14 @@ class StrategyBase(object):
 
     This method returns a context manager, and is used as follows:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> # Variable created inside scope:
     >>> with strategy.scope():
     ...   mirrored_variable = tf.Variable(1.)
     >>> mirrored_variable
     MirroredVariable:{
-      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>,
+      1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=1.0>
     }
     >>> # Variable created outside scope:
     >>> regular_variable = tf.Variable(1.)
@@ -1157,18 +1158,21 @@ class StrategyBase(object):
 
     1. Constant tensor input.
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> tensor_input = tf.constant(3.0)
     >>> @tf.function
     ... def replica_fn(input):
     ...   return input*2.0
     >>> result = strategy.run(replica_fn, args=(tensor_input,))
     >>> result
-    <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
+    PerReplica:{
+      0: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>,
+      1: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
+    }
 
     2. DistributedValues input.
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> @tf.function
     ... def run():
     ...   def value_fn(value_context):
@@ -1181,7 +1185,7 @@ class StrategyBase(object):
     ...   return strategy.run(replica_fn2, args=(distributed_values,))
     >>> result = run()
     >>> result
-    <tf.Tensor: shape=(), dtype=int32, numpy=2>
+    <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
     Args:
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
@@ -1218,7 +1222,7 @@ class StrategyBase(object):
   def reduce(self, reduce_op, value, axis):
     """Reduce `value` across replicas and return result on current device.
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> def step_fn():
     ...   i = tf.distribute.get_replica_context().replica_id_in_sync_group
     ...   return tf.identity(i)
@@ -1226,7 +1230,7 @@ class StrategyBase(object):
     >>> per_replica_result = strategy.run(step_fn)
     >>> total = strategy.reduce("SUM", per_replica_result, axis=None)
     >>> total
-    <tf.Tensor: shape=(), dtype=int32, numpy=0>
+    <tf.Tensor: shape=(), dtype=int32, numpy=1>
 
     To see how this would look with multiple replicas, consider the same
     example with MirroredStrategy with 2 GPUs:
@@ -1749,7 +1753,7 @@ class Strategy(StrategyBase):
 
     1. Return constant value per replica:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> def value_fn(ctx):
     ...   return tf.constant(1.)
     >>> distributed_values = (
@@ -1757,11 +1761,12 @@ class Strategy(StrategyBase):
     ...        value_fn))
     >>> local_result = strategy.experimental_local_results(distributed_values)
     >>> local_result
-    (<tf.Tensor: shape=(), dtype=float32, numpy=1.0>,)
+    (<tf.Tensor: shape=(), dtype=float32, numpy=1.0>,
+     <tf.Tensor: shape=(), dtype=float32, numpy=1.0>)
 
     2. Distribute values in array based on replica_id:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> array_value = np.array([3., 2., 1.])
     >>> def value_fn(ctx):
     ...   return array_value[ctx.replica_id_in_sync_group]
@@ -1770,11 +1775,11 @@ class Strategy(StrategyBase):
     ...        value_fn))
     >>> local_result = strategy.experimental_local_results(distributed_values)
     >>> local_result
-    (3.0,)
+    (3.0, 2.0)
 
     3. Specify values using num_replicas_in_sync:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> def value_fn(ctx):
     ...   return ctx.num_replicas_in_sync
     >>> distributed_values = (
@@ -1782,7 +1787,7 @@ class Strategy(StrategyBase):
     ...        value_fn))
     >>> local_result = strategy.experimental_local_results(distributed_values)
     >>> local_result
-    (1,)
+    (2, 2)
 
     4. Place values on devices and distribute:
 
