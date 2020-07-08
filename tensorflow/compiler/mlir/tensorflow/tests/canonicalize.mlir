@@ -363,6 +363,20 @@ func @testDoubleReciprocal(%arg0: tensor<8x16x32x64xi32>) -> tensor<8x16x32x64xi
 // CHECK: return %arg0
 }
 
+// CHECK-LABEL: testRedundantReshape
+func @testRedundantReshape(%arg0: tensor<4x4xi32>) -> tensor<2x8xi32> {
+  %0 = "tf.Const"() {value = dense<[8, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tf.Const"() {value = dense<[2, 8]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %2 = "tf.Reshape"(%arg0, %0) : (tensor<4x4xi32>, tensor<2xi32>) -> tensor<8x2xi32>
+  %3 = "tf.Reshape"(%2, %1) : (tensor<8x2xi32>, tensor<2xi32>) -> tensor<2x8xi32>
+  return %3: tensor<2x8xi32>
+
+  // CHECK: %0 = "tf.Const"
+  // CHECK-SAME: value = dense<[2, 8]> : tensor<2xi32>
+  // CHECK: %1 = "tf.Reshape"(%arg0, %0)
+  // CHECK: return %1 : tensor<2x8xi32>
+}
+
 // CHECK-LABEL: testSelectScalarPred
 func @testSelectScalarPred(%arg0: tensor<i1>, %arg1: tensor<4x2xf16>, %arg2: tensor<4x2xf16>) -> tensor<4x2xf16> {
   // CHECK-NEXT: "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<4x2xf16>, tensor<4x2xf16>) -> tensor<4x2xf16>

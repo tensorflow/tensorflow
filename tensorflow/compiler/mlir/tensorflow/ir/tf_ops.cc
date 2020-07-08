@@ -2889,6 +2889,11 @@ void ReshapeOp::build(OpBuilder &builder, OperationState &result, Value tensor,
   return unranked();
 }
 
+void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                            MLIRContext *context) {
+  results.insert<RedundantReshape>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//
