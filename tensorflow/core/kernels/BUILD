@@ -18,7 +18,7 @@ load(
     "tf_opts_nortti_if_lite_protos",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
-load("//tensorflow/core/kernels:build_defs.bzl", "if_mlir_generated_gpu_kernels_enabled")
+load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "if_mlir_generated_gpu_kernels_enabled")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "if_nccl")
@@ -124,13 +124,6 @@ config_setting(
     name = "no_mkldnn_contraction_kernel",
     define_values = {
         "tensorflow_mkldnn_contraction_kernel": "0",
-    },
-)
-
-config_setting(
-    name = "mlir_generated_gpu_kernels_enabled",
-    define_values = {
-        "tensorflow_enable_mlir_generated_gpu_kernels": "1",
     },
 )
 
@@ -417,6 +410,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:op_requires",
     ],
 )
 
@@ -3045,6 +3039,7 @@ IMAGE_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:png_internal",
     "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core/util/tensor_bundle",
 ]
 
 tf_kernel_library(
@@ -4149,40 +4144,7 @@ tf_kernel_library(
     name = "cwise_op",
     copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]),
     prefix = "cwise_op",
-    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = [":mlir_generated_cwise_op"]),
-)
-
-tf_kernel_library(
-    name = "mlir_generated_cwise_op",
-    gpu_srcs = ["mlir_generated_cwise_op_gpu_tanh.cu.cc"],
-    tags = ["manual"],
-    deps = if_cuda([
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
-        "//tensorflow/core/kernels/cubin_headers:tanh_kernels",
-    ]),
-)
-
-tf_cuda_cc_test(
-    name = "mlir_generated_op_gpu_tanh_test",
-    size = "small",
-    srcs = if_mlir_generated_gpu_kernels_enabled(["mlir_generated_op_gpu_tanh_test.cc"]),
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
-    deps = [
-        ":cwise_op",
-        ":ops_testutil",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime:device",
-        "//tensorflow/core/common_runtime:device_factory",
-    ],
+    deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_op"]),
 )
 
 tf_kernel_library(
@@ -6798,10 +6760,12 @@ filegroup(
         "cwise_op_abs.cc",
         "cwise_op_add_1.cc",
         "cwise_op_add_2.cc",
+        "cwise_op_atan.cc",
         "cwise_op_bitwise_and.cc",
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
         "cwise_op_ceil.cc",
+        "cwise_op_complex.cc",
         "cwise_op_conj.cc",
         "cwise_op_cos.cc",
         "cwise_op_cosh.cc",
@@ -6945,7 +6909,6 @@ filegroup(
         "queue_op.cc",
         "queue_ops.cc",
         "ragged_range_op.cc",
-        "ragged_tensor_to_tensor_op.cc",
         "random_op.cc",
         "random_op_cpu.h",
         "random_poisson_op.cc",

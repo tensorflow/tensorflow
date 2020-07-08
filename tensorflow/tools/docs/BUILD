@@ -11,7 +11,18 @@ package(
 
 exports_files(["LICENSE"])
 
-tpu_module = "tpu.,distribute.tpu_strategy,distribute.cluster_resolver.tpu,distribute.cluster_resolver.tpu_oss"
+tpu_module = [
+    "tpu.",
+    "distribute.tpu_strategy",
+    "distribute.cluster_resolver.tpu",
+    "distribute.cluster_resolver.tpu_oss",
+]
+
+# tf.distribute docstring often uses GPU, so they're only covered in
+# tf_doctest_gpu.
+distribute_module = [
+    "distribute.",
+]
 
 py_library(
     name = "tf_doctest_lib",
@@ -25,7 +36,7 @@ py_library(
 py_test(
     name = "tf_doctest",
     srcs = ["tf_doctest.py"],
-    args = ["--module_prefix_skip=" + tpu_module],
+    args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module)],
     python_version = "PY3",
     tags = [
         "no_oss_py2",
@@ -46,7 +57,7 @@ py_test(
 tpu_py_test(
     name = "tf_doctest_tpu",
     srcs = ["tf_doctest.py"],
-    args = ["--module=" + tpu_module],
+    args = ["--module=" + ",".join(tpu_module)],
     disable_experimental = True,
     disable_v3 = True,
     main = "tf_doctest.py",
@@ -70,11 +81,13 @@ py_test(
     srcs = ["tf_doctest.py"],
     args = [
         "--module=distribute.",
-        "--module_prefix_skip=" + tpu_module,
+        "--module_prefix_skip=" + ",".join(tpu_module),
+        "--required_gpus=2",
     ],
     main = "tf_doctest.py",
     python_version = "PY3",
     tags = [
+        "gpu",
         "no_oss_py2",
         "no_pip",
         "no_rocm",
@@ -201,7 +214,6 @@ py_test(
         "nomsan",
         "notsan",
         "optonly",
-        "notap",
     ],
     deps = [
         ":generate2_lib",

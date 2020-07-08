@@ -41,115 +41,6 @@ func @metadata_op_removed() {
 // CHECK-NOT:  "tf.TPUReplicateMetadata"
 
 
-// Test ops in an island with the same `_tpu_replicate` attribute are merged
-// under a `tf_device.cluster`.
-// CHECK-LABEL: func @simple_island
-// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
-func @simple_island(%arg0 : tensor<i1>) -> tensor<i1> {
-  %0 = tf_executor.graph {
-    %1:2 = tf_executor.island {
-      "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-      %3 = "tf.opA"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      %4 = "tf.opB"() : () -> tensor<i1>
-      %5 = "tf.opC"(%3) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      tf_executor.yield %5 : tensor<i1>
-    }
-    tf_executor.fetch %1#0 : tensor<i1>
-  }
-  return %0 : tensor<i1>
-}
-
-// CHECK:          "tf.opB"
-// CHECK:          %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ( {
-// CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
-// CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
-// CHECK-NEXT:       tf_device.return %[[OP_C]]
-// CHECK-NEXT:     _tpu_replicate = "replicate"
-// CHECK-SAME:     device = "device"
-// CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[CLUSTER]]
-
-
-// Test ops in an island with the same `_tpu_replicate` attribute are merged
-// under a `tf_device.cluster`, even when the associated TPUReplicateMetadata op
-// is in a different island.
-// CHECK-LABEL: func @simple_island_separate_metadata
-// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
-func @simple_island_separate_metadata(%arg0 : tensor<i1>) -> tensor<i1> {
-  %0 = tf_executor.graph {
-    %1 = tf_executor.island {
-      "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-    }
-    %2:2 = tf_executor.island {
-      %3 = "tf.opA"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      %4 = "tf.opB"() : () -> tensor<i1>
-      %5 = "tf.opC"(%3) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      tf_executor.yield %5 : tensor<i1>
-    }
-    tf_executor.fetch %2#0 : tensor<i1>
-  }
-  return %0 : tensor<i1>
-}
-
-// CHECK:          "tf.opB"
-// CHECK:          %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ( {
-// CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
-// CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
-// CHECK-NEXT:       tf_device.return %[[OP_C]]
-// CHECK-NEXT:     _tpu_replicate = "replicate"
-// CHECK-SAME:     device = "device"
-// CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[CLUSTER]]
-
-
-// Test ops in multiple islands with the same `_tpu_replicate` attribute are
-// merged under `tf_device.cluster` ops only within their respective island.
-// CHECK-LABEL: func @multiple_islands_separate_metadata
-// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
-func @multiple_islands_separate_metadata(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
-  %0:2 = tf_executor.graph {
-    %1 = tf_executor.island {
-      "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-    }
-    %2:2 = tf_executor.island {
-      %3 = "tf.opA"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      %4 = "tf.opB"() : () -> tensor<i1>
-      %5 = "tf.opC"(%3) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      tf_executor.yield %5 : tensor<i1>
-    }
-    %6:2 = tf_executor.island {
-      %7 = "tf.opD"(%2#0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      %8 = "tf.opE"() : () -> tensor<i1>
-      %9 = "tf.opF"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      tf_executor.yield %9 : tensor<i1>
-    }
-    tf_executor.fetch %2#0, %6#0 : tensor<i1>, tensor<i1>
-  }
-  return %0#0, %0#1 : tensor<i1>, tensor<i1>
-}
-
-// CHECK:        %[[ISLAND_1:.*]], %[[ISLAND_1_control:.*]] = tf_executor.island {
-// CHECK:          "tf.opB"
-// CHECK:          %[[CLUSTER_0:[0-9]*]] = "tf_device.cluster"() ( {
-// CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
-// CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
-// CHECK-NEXT:       tf_device.return %[[OP_C]]
-// CHECK-NEXT:     _tpu_replicate = "replicate"
-// CHECK-SAME:     device = "device"
-// CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[CLUSTER_0]]
-// CHECK:        tf_executor.island {
-// CHECK:          "tf.opE"
-// CHECK:          %[[CLUSTER_1:[0-9]*]] = "tf_device.cluster"() ( {
-// CHECK-NEXT:       %[[OP_D:[0-9]*]] = "tf.opD"(%[[ISLAND_1]])
-// CHECK-NEXT:       %[[OP_F:[0-9]*]] = "tf.opF"(%[[ARG_0]])
-// CHECK-NEXT:       tf_device.return %[[OP_F]]
-// CHECK-NEXT:     _tpu_replicate = "replicate"
-// CHECK-SAME:     device = "device"
-// CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[CLUSTER_1]]
-
-
 // Test ops in a function body with the same `_tpu_replicate` attribute are
 // merged under a `tf_device.cluster` op.
 // CHECK-LABEL: func @ops_in_func_body
@@ -185,9 +76,9 @@ func @ops_in_func_body(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
 func @nested_cluster_op_user(%arg0 : tensor<i1>) -> (tensor<i1>) {
   %0 = "tf.opA"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-  %1 = tf_executor.graph {
-    tf_executor.fetch %0 : tensor<i1>
-  }
+  %1 = "tf_device.launch"() ( {
+    tf_device.return %0 : tensor<i1>
+  }) {device = "device"} : () -> tensor<i1>
   %2 = "tf.opB"(%0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
   return %2 : tensor<i1>
@@ -200,8 +91,8 @@ func @nested_cluster_op_user(%arg0 : tensor<i1>) -> (tensor<i1>) {
 // CHECK-NEXT: _tpu_replicate = "replicate"
 // CHECK-SAME: device = "device"
 // CHECK-SAME: topology = "topology"
-// CHECK:      tf_executor.graph {
-// CHECK-NEXT:   tf_executor.fetch %[[CLUSTER]]#0
+// CHECK:      tf_device.launch
+// CHECK-NEXT:   tf_device.return %[[CLUSTER]]#0
 // CHECK:      return %[[CLUSTER]]#1
 
 

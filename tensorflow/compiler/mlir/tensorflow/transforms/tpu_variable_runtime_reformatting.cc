@@ -282,6 +282,7 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
   OpBuilder builder(replicate);
   auto new_replicate = builder.create<tf_device::ReplicateOp>(
       replicate.getLoc(), num_replicas, devices, new_replicated_inputs,
+      /*packed_inputs=*/ArrayRef<Value>{},
       llvm::to_vector<8>(
           replicate.GetBody().getTerminator()->getOperandTypes()));
   for (auto arg : replicate.GetBody().getArguments()) {
@@ -529,7 +530,7 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   // With all replicated inputs, now build the replicate op.
   auto unformat_replicate = builder.create<tf_device::ReplicateOp>(
       while_op.getLoc(), num_replicas, devices, unformat_replicate_operands,
-      ArrayRef<Type>{});
+      /*packed_inputs=*/ArrayRef<Value>{}, ArrayRef<Type>{});
   // Then build the unformat op in the replicate op.
   builder.setInsertionPointToEnd(&unformat_replicate.GetBody());
   llvm::SmallVector<Value, 8> unformat_operands;

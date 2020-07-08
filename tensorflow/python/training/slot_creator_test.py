@@ -147,12 +147,12 @@ class SlotCreatorTest(test.TestCase):
         slot = slot_creator.create_slot(v, s.initialized_value(), name="slot")
         si = slot._save_slice_info
 
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         self.assertEqual("var/part_%d/slot" % i, slot.op.name)
         self.assertEqual([2], slot.get_shape().as_list())
         self.assertEqual(dtypes.float32, slot.dtype.base_dtype)
-        self.assertAllEqual([1.0, 2.5], slot.eval())
+        self.assertAllEqual([1.0, 2.5], slot)
         self.assertAllEqual([2], si.full_shape)
         self.assertAllEqual([i], si.var_offset)
         self.assertAllEqual([1], si.var_shape)
@@ -168,12 +168,12 @@ class SlotCreatorTest(test.TestCase):
       for i, v in enumerate(p_v):
         slot = slot_creator.create_slot(v, s.initialized_value(), name="slot")
 
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         self.assertEqual("var/part_%d/slot" % i, slot.op.name)
         self.assertEqual([], slot.get_shape().as_list())
         self.assertEqual(dtypes.float32, slot.dtype.base_dtype)
-        self.assertAllEqual(1.0, slot.eval())
+        self.assertAllEqual(1.0, slot)
 
 
 if __name__ == "__main__":

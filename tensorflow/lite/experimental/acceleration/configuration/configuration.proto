@@ -69,6 +69,13 @@ enum NNAPIExecutionPreference {
   NNAPI_SUSTAINED_SPEED = 3;
 }
 
+enum NNAPIExecutionPriority {
+  NNAPI_PRIORITY_UNDEFINED = 0;
+  NNAPI_PRIORITY_LOW = 1;
+  NNAPI_PRIORITY_MEDIUM = 2;
+  NNAPI_PRIORITY_HIGH = 3;
+}
+
 // One possible acceleration configuration.
 message ComputeSettings {
   // Which preference to use this accelerator for.
@@ -110,6 +117,8 @@ message NNAPISettings {
   // performs less well than the TfLite built-in kernels; but allowing allows a
   // model to be partially accelerated which may be a win.
   optional bool allow_nnapi_cpu_on_android_10_plus = 7;
+
+  optional NNAPIExecutionPriority execution_priority = 8;
 }
 
 // Which GPU backend to select. Default behaviour on Android is to try OpenCL

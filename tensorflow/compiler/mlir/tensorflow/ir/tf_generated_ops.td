@@ -4223,6 +4223,35 @@ tf.imag(input) ==> [4.75, 5.75]
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_InitializeTableFromTextFileV2Op : TF_Op<"InitializeTableFromTextFileV2", []> {
+  let summary = "Initializes a table from a text file.";
+
+  let description = [{
+It inserts one key-value pair into the table for each line of the file.
+The key and value is extracted from the whole line content, elements from the
+split line based on `delimiter` or the line number (starting from zero).
+Where to extract the key and value from a line is specified by `key_index` and
+`value_index`.
+
+- A value of -1 means use the line number(starting from zero), expects `int64`.
+- A value of -2 means use the whole line content, expects `string`.
+- A value >= 0 means use the index (starting at zero) of the split line based
+  on `delimiter`.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$table_handle,
+    TF_StrTensor:$filename,
+
+    Confined<I64Attr, [IntMinValue<-2>]>:$key_index,
+    Confined<I64Attr, [IntMinValue<-2>]>:$value_index,
+    Confined<DefaultValuedAttr<I64Attr, "-1">, [IntMinValue<-1>]>:$vocab_size,
+    DefaultValuedAttr<StrAttr, "\t">:$delimiter
+  );
+
+  let results = (outs);
+}
+
 def TF_InvOp : TF_Op<"Inv", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes the reciprocal of x element-wise.";
 
@@ -5682,6 +5711,32 @@ def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape]>,
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MergeV2CheckpointsOp : TF_Op<"MergeV2Checkpoints", []> {
+  let summary = [{
+V2 format specific: merges the metadata files of sharded checkpoints.  The
+  }];
+
+  let description = [{
+result is one logical checkpoint, with one physical metadata file and renamed
+data files.
+
+Intended for "grouping" multiple checkpoints in a sharded checkpoint setup.
+
+If delete_old_dirs is true, attempts to delete recursively the dirname of each
+path in the input checkpoint_prefixes.  This is useful when those paths are non
+user-facing temporary locations.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$checkpoint_prefixes,
+    TF_StrTensor:$destination_prefix,
+
+    DefaultValuedAttr<BoolAttr, "true">:$delete_old_dirs
+  );
+
+  let results = (outs);
 }
 
 def TF_MinOp : TF_Op<"Min", [NoSideEffect]> {
@@ -7510,6 +7565,38 @@ This operation computes
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<2>;
 }
 
+def TF_RestoreV2Op : TF_Op<"RestoreV2", []> {
+  let summary = "Restores tensors from a V2 checkpoint.";
+
+  let description = [{
+For backward compatibility with the V1 format, this Op currently allows
+restoring from a V1 checkpoint as well:
+  - This Op first attempts to find the V2 index file pointed to by "prefix", and
+    if found proceed to read it as a V2 checkpoint;
+  - Otherwise the V1 read path is invoked.
+Relying on this behavior is not recommended, as the ability to fall back to read
+V1 might be deprecated and eventually removed.
+
+By default, restores the named tensors in full.  If the caller wishes to restore
+specific slices of stored tensors, "shape_and_slices" should be non-empty
+strings and correspondingly well-formed.
+
+Callers must ensure all the named tensors are indeed stored in the checkpoint.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$prefix,
+    TF_StrTensor:$tensor_names,
+    TF_StrTensor:$shape_and_slices
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$tensors
+  );
+
+  TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_ReverseSequenceOp : TF_Op<"ReverseSequence", [NoSideEffect]> {
   let summary = "Reverses variable length slices.";
 
@@ -8282,6 +8369,26 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
   let hasFolder = 1;
 }
 
+def TF_ShardedFilenameOp : TF_Op<"ShardedFilename", [NoSideEffect]> {
+  let summary = [{
+Generate a sharded filename. The filename is printf formatted as
+  }];
+
+  let description = [{
+%s-%05d-of-%05d, basename, shard, num_shards.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$basename,
+    I32Tensor:$shard,
+    I32Tensor:$num_shards
+  );
+
+  let results = (outs
+    TF_StrTensor:$filename
+  );
+}
+
 def TF_SigmoidOp : TF_Op<"Sigmoid", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes sigmoid of `x` element-wise.";
 
@@ -8735,6 +8842,128 @@ x = [[[[1, 2, 3, 4],
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SparseFillEmptyRowsOp : TF_Op<"SparseFillEmptyRows", [NoSideEffect]> {
+  let summary = [{
+Fills empty rows in the input 2-D `SparseTensor` with a default value.
+  }];
+
+  let description = [{
+The input `SparseTensor` is represented via the tuple of inputs
+(`indices`, `values`, `dense_shape`).  The output `SparseTensor` has the
+same `dense_shape` but with indices `output_indices` and values
+`output_values`.
+
+This op inserts a single entry for every row that doesn't have any values.
+The index is created as `[row, 0, ..., 0]` and the inserted value
+is `default_value`.
+
+For example, suppose `sp_input` has shape `[5, 6]` and non-empty values:
+
+    [0, 1]: a
+    [0, 3]: b
+    [2, 0]: c
+    [3, 1]: d
+
+Rows 1 and 4 are empty, so the output will be of shape `[5, 6]` with values:
+
+    [0, 1]: a
+    [0, 3]: b
+    [1, 0]: default_value
+    [2, 0]: c
+    [3, 1]: d
+    [4, 0]: default_value
+
+The output `SparseTensor` will be in row-major order and will have the
+same shape as the input.
+
+This op also returns an indicator vector shaped `[dense_shape[0]]` such that
+
+    empty_row_indicator[i] = True iff row i was an empty row.
+
+And a reverse index map vector shaped `[indices.shape[0]]` that is used during
+backpropagation,
+
+    reverse_index_map[j] = out_j s.t. indices[j, :] == output_indices[out_j, :]
+  }];
+
+  let arguments = (ins
+    I64Tensor:$indices,
+    TF_Tensor:$values,
+    I64Tensor:$dense_shape,
+    TF_Tensor:$default_value
+  );
+
+  let results = (outs
+    I64Tensor:$output_indices,
+    TF_Tensor:$output_values,
+    I1Tensor:$empty_row_indicator,
+    I64Tensor:$reverse_index_map
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_SparseReshapeOp : TF_Op<"SparseReshape", [NoSideEffect]> {
+  let summary = [{
+Reshapes a SparseTensor to represent values in a new dense shape.
+  }];
+
+  let description = [{
+This operation has the same semantics as reshape on the represented dense
+tensor.  The `input_indices` are recomputed based on the requested `new_shape`.
+
+If one component of `new_shape` is the special value -1, the size of that
+dimension is computed so that the total dense size remains constant.  At
+most one component of `new_shape` can be -1.  The number of dense elements
+implied by `new_shape` must be the same as the number of dense elements
+originally implied by `input_shape`.
+
+Reshaping does not affect the order of values in the SparseTensor.
+
+If the input tensor has rank `R_in` and `N` non-empty values, and `new_shape`
+has length `R_out`, then `input_indices` has shape `[N, R_in]`,
+`input_shape` has length `R_in`, `output_indices` has shape `[N, R_out]`, and
+`output_shape` has length `R_out`.
+  }];
+
+  let arguments = (ins
+    I64Tensor:$input_indices,
+    I64Tensor:$input_shape,
+    I64Tensor:$new_shape
+  );
+
+  let results = (outs
+    I64Tensor:$output_indices,
+    I64Tensor:$output_shape
+  );
+}
+
+def TF_SparseSegmentSqrtNOp : TF_Op<"SparseSegmentSqrtN", [NoSideEffect]> {
+  let summary = [{
+Computes the sum along sparse segments of a tensor divided by the sqrt of N.
+  }];
+
+  let description = [{
+N is the size of the segment being reduced.
+
+See `tf.sparse.segment_sum` for usage examples.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F32, F64]>:$data,
+    TF_I32OrI64Tensor:$indices,
+    TF_I32OrI64Tensor:$segment_ids
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F32, F64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tsegmentids = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_SparseSoftmaxCrossEntropyWithLogitsOp : TF_Op<"SparseSoftmaxCrossEntropyWithLogits", [NoSideEffect]> {
@@ -9257,6 +9486,34 @@ shape of `StridedSlice`'s `input`.
       ::llvm::SmallVectorImpl<int64_t> *slice_end,
       ::llvm::SmallVectorImpl<int64_t> *slice_stride);
   }];
+}
+
+def TF_StringJoinOp : TF_Op<"StringJoin", [NoSideEffect]> {
+  let summary = [{
+Joins the strings in the given list of string tensors into one tensor;
+  }];
+
+  let description = [{
+with the given separator (default is an empty separator).
+
+Examples:
+
+>>> s = ["hello", "world", "tensorflow"]
+>>> tf.strings.join(s, " ")
+<tf.Tensor: shape=(), dtype=string, numpy=b'hello world tensorflow'>
+  }];
+
+  let arguments = (ins
+    Variadic<TF_StrTensor>:$inputs,
+
+    StrAttr:$separator
+  );
+
+  let results = (outs
+    TF_StrTensor:$output
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape]>,
@@ -10740,6 +10997,22 @@ tf.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
   TF_DerivedOperandTypeAttr Tnumsegments = TF_DerivedOperandTypeAttr<2>;
 
   let verifier = [{ return VerifyUnsortedSegmentReduction(*this); }];
+}
+
+def TF_VarIsInitializedOp : TF_Op<"VarIsInitializedOp", []> {
+  let summary = [{
+Checks whether a resource handle-based variable has been initialized.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource
+  );
+
+  let results = (outs
+    I1Tensor:$is_initialized
+  );
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_VariableShapeOp : TF_Op<"VariableShape", []> {

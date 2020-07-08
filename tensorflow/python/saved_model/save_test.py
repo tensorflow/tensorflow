@@ -176,7 +176,7 @@ class SaveTest(test.TestCase):
       return nested_f()
 
     root.f = f
-    with self.assertRaisesRegexp(ValueError, "ERROR MSG"):
+    with self.assertRaisesRegex(ValueError, "ERROR MSG"):
       save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
 
   def test_version_information_included(self):
@@ -196,8 +196,7 @@ class SaveTest(test.TestCase):
     root.f = def_function.function(lambda x: 2. * x)
     root.f(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(
-        ValueError, "Expected a TensorFlow function"):
+    with self.assertRaisesRegex(ValueError, "Expected a TensorFlow function"):
       save.save(root, save_dir, root.f)
 
   def test_captures_unreachable_variable(self):
@@ -216,7 +215,7 @@ class SaveTest(test.TestCase):
 
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
 
-    with self.assertRaisesRegexp(KeyError, "not reachable from root"):
+    with self.assertRaisesRegex(KeyError, "not reachable from root"):
       save.save(root, save_dir)
 
   def test_nested_inputs(self):
@@ -233,8 +232,7 @@ class SaveTest(test.TestCase):
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(
-        ValueError, "non-flat outputs"):
+    with self.assertRaisesRegex(ValueError, "non-flat outputs"):
       save.save(root, save_dir, to_save)
 
   def test_nested_dict_outputs(self):
@@ -244,8 +242,8 @@ class SaveTest(test.TestCase):
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(
-        ValueError, "dictionary containing non-Tensor value"):
+    with self.assertRaisesRegex(ValueError,
+                                "dictionary containing non-Tensor value"):
       save.save(root, save_dir, to_save)
 
   def test_variable(self):
@@ -355,7 +353,7 @@ class SaveTest(test.TestCase):
   def test_signature_attribute_reserved(self):
     root = util.Checkpoint(signatures=variables.Variable(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegexp(ValueError, "del obj.signatures"):
+    with self.assertRaisesRegex(ValueError, "del obj.signatures"):
       save.save(root, save_dir)
     del root.signatures
     save.save(root, save_dir)
@@ -395,8 +393,8 @@ class SaveTest(test.TestCase):
       return 1
     root = tracking.AutoTrackable()
     root.f = f.get_concrete_function()
-    with self.assertRaisesRegexp(ValueError,
-                                 "tf.Variable inputs cannot be exported"):
+    with self.assertRaisesRegex(ValueError,
+                                "tf.Variable inputs cannot be exported"):
       save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
                 signatures=root.f)
 
@@ -472,7 +470,7 @@ class SavingOptionsTest(test.TestCase):
     graph_def = graph_pb2.GraphDef()
     text_format.Merge("node { name: 'A' op: 'Test>CustomOp' }",
                       graph_def)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Attempted to save ops from non-whitelisted namespaces"):
       save._verify_ops(graph_def, [])
     save._verify_ops(graph_def, ["Test"])
@@ -480,7 +478,7 @@ class SavingOptionsTest(test.TestCase):
     # Test with multiple carrots in op name.
     text_format.Merge("node { name: 'A' op: 'Test>>A>CustomOp' }",
                       graph_def)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Attempted to save ops from non-whitelisted namespaces"):
       save._verify_ops(graph_def, [])
     save._verify_ops(graph_def, ["Test"])
@@ -622,7 +620,8 @@ class AssetTests(test.TestCase):
     @def_function.function
     def _calls_save():
       save.save(root, export_dir)
-    with self.assertRaisesRegexp(AssertionError, "tf.function"):
+
+    with self.assertRaisesRegex(AssertionError, "tf.function"):
       _calls_save()
 
 

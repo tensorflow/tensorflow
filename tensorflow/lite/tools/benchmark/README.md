@@ -53,6 +53,10 @@ and the following optional parameters:
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
     and the path to include the name of the output CSV; otherwise results are
     printed to `stdout`.
+*  `verbose`: `bool` (default=false) \
+    Whether to log parameters whose values are not set. By default, only log
+    those parameters that are set by parsing their values from the commandline
+    flags.
 
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by
@@ -76,7 +80,11 @@ Note when `use_legacy_nnapi` is selected, this parameter won't work.
 *   `use_nnapi`: `bool` (default=false) \
     Note some Android P devices will fail to use NNAPI for models in
     `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
-*   `nnapi_accelerator_name`: `str` (default="")
+*   `nnapi_execution_preference`: `str` (default="")
+*   `nnapi_execution_priority`: `str` (default="") \
+    Note this requires Anroid 11+.
+*   `nnapi_accelerator_name`: `str` (default="") \
+    Note this requires Anroid 10+.
 *   `disable_nnapi_cpu`: `bool` (default=false)
 *   `nnapi_allow_fp16`: `bool` (default=false)
 

@@ -153,6 +153,33 @@ func @testLogOfSoftmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK: return %0
 }
 
+// CHECK-LABEL: testLogToLog1p
+func @testLogToLog1p(%arg0 : tensor<4x4xf32>) -> tensor<4x4xf32> {
+  %0 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<1xf32>
+  %1 = "tf.Const"() {value = dense<2.0> : tensor<f32>} : () -> tensor<1xf32>
+  %2 = "tf.Const"() {value = dense<[1.0, 1.0, 1.0, 1.0]> : tensor<4xf32>} : () -> tensor<4xf32>
+
+  // CHECK: %2 = "tf.Log1p"(%arg0) : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  %3 = "tf.AddV2"(%arg0, %0): (tensor<4x4xf32>, tensor<1xf32>) -> tensor<4x4xf32>
+  %4 = "tf.Log"(%3): (tensor<4x4xf32>) -> tensor<4x4xf32>
+
+  // CHECK: %3 = "tf.AddV2"
+  // CHECK: %4 = "tf.Log"(%3)
+  %5 = "tf.AddV2"(%4, %1): (tensor<4x4xf32>, tensor<1xf32>) -> tensor<4x4xf32>
+  %6 = "tf.Log"(%5): (tensor<4x4xf32>) -> tensor<4x4xf32>
+
+  // This is a legal canonicalization because constant shape 4xf32 is
+  // broadcastable to 4x4xf32, however we currently do not support this case,
+  // and canonicalize only if the constant is a scalar.
+  // CHECK: %5 = "tf.AddV2"
+  // CHECK: %6 = "tf.Log"(%5)
+  %7 = "tf.AddV2"(%6, %2): (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
+  %8 = "tf.Log"(%7): (tensor<4x4xf32>) -> tensor<4x4xf32>
+
+  // CHECK: return %6
+  return %8: tensor<4x4xf32>
+}
+
 // CHECK-LABEL: testSubOfNeg
 func @testSubOfNeg(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Neg"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>
@@ -609,4 +636,164 @@ func @testBatchToSpaceDynamicCrops(%arg0: tensor<?x?x?x?xf32>, %arg1: tensor<*xi
   // CHECK-NOT: "tf.BatchToSpaceND"
   %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 8 : i64} : (tensor<?x?x?x?xf32>, tensor<*xi32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: @erase_tf_var_is_initialized
+func @erase_tf_var_is_initialized(%arg0 : tensor<!tf.resource<tensor<f32>>>) -> tensor<i1> {
+  %vh = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
+  %is = "tf.VarIsInitializedOp"(%vh) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<i1>
+  %res = "tf.UnknownOp"(%vh) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<i1>
+  return %res : tensor<i1>
+}
+// Unused VarIsInitializedOp is erased.
+// CHECK: tf.VarHandleOp
+// CHECK-NEXT: tf.UnknownOp
+
+
+// Simple pass through value
+// CHECK-LABEL: testWhileRegionSimplePassThrough
+func @testWhileRegionSimplePassThrough(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
+  // CHECK: "tf.WhileRegion"(%arg1)
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
+      %zero = constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
+      %one = constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%barg0, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: return %arg0 : tensor<*xf32>
+  return %0#0 : tensor<*xf32>
+}
+
+// Multiple pass through values
+// CHECK-LABEL: testWhileRegionMultiplePassThrough
+func @testWhileRegionMultiplePassThrough(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<*xf32>, %arg3 : tensor<i32>) -> tensor<*xf32> {
+  // Verify that first 3 operands are elimiinated.
+  // CHECK: "tf.WhileRegion"(%arg3)
+  %0:4 = "tf.WhileRegion"(%arg0, %arg1, %arg2, %arg3) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0 : tensor<*xf32>, %carg1 : tensor<*xf32>, %carg2 : tensor<*xf32>, %carg3 : tensor<i32>):
+      %zero = constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg3, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0 : tensor<*xf32>, %barg1 : tensor<*xf32>, %barg2 : tensor<*xf32>, %barg3 : tensor<i32>):
+      %one = constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg3, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%barg0, %barg1, %barg2, %sub) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>)
+
+  // CHECK: %[[SUB0:.*]] = "tf.Sub"(%arg0, %arg1)
+  // CHECK: %[[SUB1:.*]] = "tf.Sub"(%arg2, %[[SUB0]])
+  // CHECK: return %[[SUB1]]
+  %sub0 = "tf.Sub" (%0#0, %0#1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  %sub1 = "tf.Sub" (%0#2, %sub0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %sub1 : tensor<*xf32>
+}
+
+// Multiple non contiguous pass through values
+// CHECK-LABEL: testWhileRegionMultiplePassThroughNonContiguous
+func @testWhileRegionMultiplePassThroughNonContiguous(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<*xf32>, %arg3 : tensor<i32>) -> tensor<*xf32> {
+  // Verify arg0 and arg2 are eliminated
+  // CHECK: %[[WHILE_OUT:.*]]:2 = "tf.WhileRegion"(%arg1, %arg3)
+  %0:4 = "tf.WhileRegion"(%arg0, %arg1, %arg2, %arg3) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0 : tensor<*xf32>, %carg1 : tensor<*xf32>, %carg2 : tensor<*xf32>, %carg3 : tensor<i32>):
+      %zero = constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg3, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0 : tensor<*xf32>, %barg1 : tensor<*xf32>, %barg2 : tensor<*xf32>, %barg3 : tensor<i32>):
+      %arg1neg = "tf.Neg"(%barg1) : (tensor<*xf32>) -> tensor<*xf32>
+      %one = constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg3, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%barg0, %arg1neg, %barg2, %sub) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>)
+
+  // Verify that use of while loop results corresponding to result #0 and 2 of
+  // the while are replaces with corresponding WhileRegion operands
+  // CHECK: %[[SUB0:.*]] = "tf.Sub"(%arg0, %[[WHILE_OUT]]#0)
+  // CHECK: %[[SUB1:.*]] = "tf.Sub"(%arg2, %[[SUB0]])
+  // CHECK: return %[[SUB1]]
+  %sub0 = "tf.Sub" (%0#0, %0#1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  %sub1 = "tf.Sub" (%0#2, %sub0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %sub1 : tensor<*xf32>
+}
+
+// Pass through but with type mismatch (tensor<*xf32> is compatible with
+// tensor<?x?xf32> in the body). WhileRegion canonicalization does not handle
+// this.
+// CHECK-LABEL: testWhileRegionPassThroughTypeMismatch
+func @testWhileRegionPassThroughTypeMismatch(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
+  // Verify that the While stay's unchanged
+  // CHECK: "tf.WhileRegion"(%arg0, %arg1)
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
+      %zero = constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<?x?xf32>, %barg1: tensor<i32>):
+      %one = constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%barg0, %sub) : (tensor<?x?xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // Verify that the result stays uchanged
+  // CHECK: return %arg0 : tensor<*xf32>
+  return %0#0 : tensor<*xf32>
+}
+
+// Unused value flowing through the while (operand 2 and 3, is unused in the
+// while and the corresponding result is unused as well). Canonicalization will
+// eliminate them.
+// CHECK-LABEL: testWhileRegionUnusedValue
+func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %arg2: tensor<i32>) -> tensor<*xf32> {
+  %cst = constant dense <33.0> : tensor<f32>
+  // Verify that last 2 operands of while (unused) are removed
+  // CHECK: %[[WHILE_OUT:.*]]:2 = "tf.WhileRegion"(%arg0, %arg1)
+  %0:4 = "tf.WhileRegion"(%arg0, %arg1, %arg2, %cst) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>, %carg2:tensor<i32>, %carg3:tensor<f32>):
+      %zero = constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>, %barg2:tensor<i32>, %barg3:tensor<f32>):
+      %add = "tf.Add"(%barg0, %barg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+      %one = constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      %dummy0 = constant dense<7> : tensor<i32>
+      %dummy1 = constant dense<3.0> : tensor<f32>
+      "tf.Yield"(%add, %sub, %dummy0, %dummy1) : (tensor<*xf32>, tensor<i32>, tensor<i32>, tensor<f32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>,  tensor<i32>, tensor<f32>) -> (tensor<*xf32>, tensor<i32>,  tensor<i32>, tensor<f32>)
+
+  // Verify that return still uses while result # 0
+  // CHECK: return %[[WHILE_OUT]]#0 : tensor<*xf32>
+  return %0#0 : tensor<*xf32>
 }

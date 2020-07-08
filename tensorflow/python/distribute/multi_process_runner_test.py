@@ -97,7 +97,7 @@ class MultiProcessRunnerTest(test.TestCase):
         multi_worker_test_base.create_cluster_spec(num_workers=1, num_ps=1),
         max_run_time=20)
     runner.start()
-    with self.assertRaisesRegexp(ValueError, 'This is an error.'):
+    with self.assertRaisesRegex(ValueError, 'This is an error.'):
       runner.join()
 
   def test_multi_process_runner_queue_emptied_between_runs(self):
@@ -287,7 +287,7 @@ class MultiProcessRunnerTest(test.TestCase):
     mpr.start()
     time.sleep(60)
     mpr.terminate_all()
-    with self.assertRaisesRegexp(ValueError, 'This is an error.'):
+    with self.assertRaisesRegex(ValueError, 'This is an error.'):
       mpr.join()
 
   def test_barrier(self):
@@ -402,7 +402,7 @@ class MultiProcessPoolRunnerTest(test.TestCase):
     cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
     runner = multi_process_runner.MultiProcessPoolRunner(cluster_spec)
     pid = runner.run(proc_func_that_returns_pid)
-    with self.assertRaisesRegexp(ValueError, 'This is an error.'):
+    with self.assertRaisesRegex(ValueError, 'This is an error.'):
       runner.run(proc_func_that_errors)
     self.assertAllEqual(runner.run(proc_func_that_returns_pid), pid)
 

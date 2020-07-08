@@ -39,6 +39,7 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
   params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));
   params.AddParam("warmup_runs", BenchmarkParam::Create<int32_t>(1));
   params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
+  params.AddParam("verbose", BenchmarkParam::Create<bool>(false));
   return params;
 }
 
@@ -100,30 +101,30 @@ std::vector<Flag> BenchmarkModel::GetFlags() {
           "warmup_min_secs", &params_,
           "minimum number of seconds to rerun for, potentially making the "
           "actual number of warm-up runs to be greater than warmup_runs"),
+      CreateFlag<bool>("verbose", &params_,
+                       "Whether to log parameters whose values are not set. "
+                       "By default, only log those parameters that are set by "
+                       "parsing their values from the commandline flags."),
   };
 }
 
 void BenchmarkModel::LogParams() {
-  TFLITE_LOG(INFO) << "Min num runs: [" << params_.Get<int32_t>("num_runs")
-                   << "]";
-  TFLITE_LOG(INFO) << "Min runs duration (seconds): ["
-                   << params_.Get<float>("min_secs") << "]";
-  TFLITE_LOG(INFO) << "Max runs duration (seconds): ["
-                   << params_.Get<float>("max_secs") << "]";
-  TFLITE_LOG(INFO) << "Inter-run delay (seconds): ["
-                   << params_.Get<float>("run_delay") << "]";
-  TFLITE_LOG(INFO) << "Num threads: [" << params_.Get<int32_t>("num_threads")
-                   << "]";
-  TFLITE_LOG(INFO) << "Use caching: [" << params_.Get<bool>("use_caching")
-                   << "]";
-  TFLITE_LOG(INFO) << "Benchmark name: ["
-                   << params_.Get<std::string>("benchmark_name") << "]";
-  TFLITE_LOG(INFO) << "Output prefix: ["
-                   << params_.Get<std::string>("output_prefix") << "]";
-  TFLITE_LOG(INFO) << "Min warmup runs: ["
-                   << params_.Get<int32_t>("warmup_runs") << "]";
-  TFLITE_LOG(INFO) << "Min warmup runs duration (seconds): ["
-                   << params_.Get<float>("warmup_min_secs") << "]";
+  const bool verbose = params_.Get<bool>("verbose");
+  TFLITE_LOG(INFO) << "Log parameter values verbosely: [" << verbose << "]";
+
+  LOG_BENCHMARK_PARAM(int32_t, "num_runs", "Min num runs", verbose);
+  LOG_BENCHMARK_PARAM(float, "min_secs", "Min runs duration (seconds)",
+                      verbose);
+  LOG_BENCHMARK_PARAM(float, "max_secs", "Max runs duration (seconds)",
+                      verbose);
+  LOG_BENCHMARK_PARAM(float, "run_delay", "Inter-run delay (seconds)", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "num_threads", "Num threads", verbose);
+  LOG_BENCHMARK_PARAM(bool, "use_caching", "Use caching", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "benchmark_name", "Benchmark name", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "output_prefix", "Output prefix", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "warmup_runs", "Min warmup runs", verbose);
+  LOG_BENCHMARK_PARAM(float, "warmup_min_secs",
+                      "Min warmup runs duration (seconds)", verbose);
 }
 
 TfLiteStatus BenchmarkModel::PrepareInputData() { return kTfLiteOk; }

@@ -3247,10 +3247,8 @@ TEST_P(MemorySpaceAssignmentTest, InputOutputAlias) {
   TF_CHECK_OK(module->set_schedule(schedule));
 
   // Make input {0} alias with output {0} and input {1} alias with output {1}.
-  TF_CHECK_OK(module->input_output_alias_config().SetUpAlias(
-      {0}, 0, {0}, HloInputOutputAliasConfig::AliasKind::kSystemAlias));
-  TF_CHECK_OK(module->input_output_alias_config().SetUpAlias(
-      {1}, 0, {1}, HloInputOutputAliasConfig::AliasKind::kSystemAlias));
+  TF_CHECK_OK(module->input_output_alias_config().SetUpAlias({0}, 0, {0}));
+  TF_CHECK_OK(module->input_output_alias_config().SetUpAlias({1}, 0, {1}));
 
   AssignMemorySpace(module.get());
 
