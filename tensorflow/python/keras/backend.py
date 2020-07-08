@@ -4693,7 +4693,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
         labels=target, logits=output, axis=axis)
 
   if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Softmax'):
+      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
     # When softmax activation function is used for output operation, we
     # use logits from the softmax function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -4738,7 +4738,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
 
   if (not from_logits and
       not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Softmax'):
+      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
     # When softmax activation function is used for output operation, we
     # use logits from the softmax function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -4817,7 +4817,7 @@ def binary_crossentropy(target, output, from_logits=False):
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
   if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Sigmoid'):
+      output.op.type == 'Sigmoid') and not hasattr(output, '_keras_history'):
     # When sigmoid activation function is used for output operation, we
     # use logits from the sigmoid function directly to compute loss in order
     # to prevent collapsing zero when training.
