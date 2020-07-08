@@ -179,6 +179,18 @@ class SaveTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "ERROR MSG"):
       save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
 
+  def test_untracked_variable_useful_message(self):
+    root = module.Module()
+    v = variables.Variable(1., name="some_unique_name")
+
+    @def_function.function(input_signature=[])
+    def f():
+      return v.read_value()
+
+    root.f = f
+    with self.assertRaisesRegex(AssertionError, "some_unique_name"):
+      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
+
   def test_version_information_included(self):
     root = tracking.AutoTrackable()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -597,6 +609,24 @@ class AssetTests(test.TestCase):
     self.assertAllClose(
         {"output_0": [2, 1]},
         _import_and_infer(second_dir, {"keys": ["gamma", "beta"]}))
+
+  def test_untracked_table_useful_message(self):
+    root = module.Module()
+    initializer = lookup_ops.TextFileInitializer(
+        self._vocab_path,
+        key_dtype=dtypes.string,
+        key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+        value_dtype=dtypes.int64,
+        value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+    table = lookup_ops.HashTable(
+        initializer, default_value=-1)
+    root.table_user = def_function.function(
+        table.lookup,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
+    root.table_user(constant_op.constant("gamma"))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    with self.assertRaisesRegexp(AssertionError, "HashTable"):
+      save.save(root, save_dir)
 
   def test_unused_asset(self):
     root = tracking.AutoTrackable()
