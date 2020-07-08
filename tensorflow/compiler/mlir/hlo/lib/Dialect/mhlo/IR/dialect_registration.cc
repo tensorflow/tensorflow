@@ -19,6 +19,5 @@ limitations under the License.
 
 // Static initialization for XLA dialect registration.
 static mlir::DialectRegistration<mlir::mhlo::XlaHloDialect> mhlo_ops;
-static mlir::DialectRegistration<mlir::xla_chlo::XlaHloClientDialect>
-    xla_chlo_ops;
+static mlir::DialectRegistration<mlir::chlo::HloClientDialect> chlo_ops;
 static mlir::DialectRegistration<mlir::lmhlo::LmhloDialect> lmhlo_ops;

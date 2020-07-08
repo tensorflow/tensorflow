@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
 
 namespace mlir {
-namespace xla_chlo {
+namespace chlo {
 
 namespace {
 
@@ -235,5 +235,5 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
       context, patterns);
 }
 
-}  // namespace xla_chlo
+}  // namespace chlo
 }  // namespace mlir

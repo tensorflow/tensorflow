@@ -84,14 +84,14 @@ void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
 
 }  // namespace lmhlo
 
-namespace xla_chlo {
+namespace chlo {
 
 // Populates a collection of conversion patterns for legalizing client-HLO to
 // HLO.
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns);
 
-}  // namespace xla_chlo
+}  // namespace chlo
 
 namespace xla {
 
