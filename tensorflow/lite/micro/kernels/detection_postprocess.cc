@@ -309,14 +309,12 @@ void DequantizeBoxEncodings(const TfLiteTensor* input_box_encodings, int idx,
 
 template <class T>
 T ReInterpretTensor(const TfLiteTensor* tensor) {
-  // TODO (chowdhery): check float
   const float* tensor_base = GetTensorData<float>(tensor);
   return reinterpret_cast<T>(tensor_base);
 }
 
 template <class T>
 T ReInterpretTensor(TfLiteTensor* tensor) {
-  // TODO (chowdhery): check float
   float* tensor_base = GetTensorData<float>(tensor);
   return reinterpret_cast<T>(tensor_base);
 }
@@ -791,7 +789,6 @@ TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  // TODO(chowdhery): Generalize for any batch size
   TF_LITE_ENSURE(context, (kBatchSize == 1));
 
   // Set up scratch buffers
@@ -837,17 +834,20 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // highest scoring non-overlapping boxes.
   TF_LITE_ENSURE_STATUS(NonMaxSuppressionMultiClass(context, node, op_data));
 
-  // TODO(chowdhery): Generalize for any batch size
-
   return kTfLiteOk;
 }
 
 }  // namespace detection_postprocess
 
 TfLiteRegistration* Register_DETECTION_POSTPROCESS() {
-  static TfLiteRegistration r = {
-      detection_postprocess::Init, detection_postprocess::Free,
-      detection_postprocess::Prepare, detection_postprocess::Eval};
+  static TfLiteRegistration r = {/*init=*/detection_postprocess::Init,
+                                 /*free=*/detection_postprocess::Free,
+                                 /*prepare=*/detection_postprocess::Prepare,
+                                 /*invoke=*/detection_postprocess::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

@@ -176,7 +176,6 @@ tflite_micro_cc_test(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro/testing:micro_test",
-        "@flatbuffers",
     ],
 )
 
