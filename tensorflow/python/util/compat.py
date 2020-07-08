@@ -195,8 +195,6 @@ def path_to_bytes(path):
   Usage:
     In case a simplified `bytes` version of the path is needed from an
     `os.PathLike` object
-
-  ```
   """
   if hasattr(path, '__fspath__'):
     path = path.__fspath__()
