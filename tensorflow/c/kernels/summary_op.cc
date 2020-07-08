@@ -30,6 +30,33 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include <typeinfo>
 
+// Struct that stores the status and TF_Tensor inputs to the opkernel. 
+// Used to delete tensor and status in its destructor upon kernel return. 
+typedef struct Params{ 
+  TF_Tensor* tags; 
+  TF_Tensor* values; 
+  TF_Status* status; 
+  Params(TF_OpKernelContext* ctx) {
+    status = TF_NewStatus();
+    TF_GetInput(ctx, 0, &tags, status);
+    if (TF_GetCode(status) == TF_OK){ 
+      TF_GetInput(ctx, 1, &values, status);
+    }
+    else{
+      values = nullptr; 
+    }
+  }; 
+  ~Params(){ 
+    TF_DeleteStatus(status); 
+    TF_DeleteTensor(tags); 
+    // edge case if params fails to initialize 
+    if (values != nullptr){
+      TF_DeleteTensor(values); 
+    }
+  }
+}; 
+
+// dummy functions used for kernel registration 
 static void* SummaryScalarOp_Create(TF_OpKernelConstruction* ctx) {
   void* ptr; 
   return ptr; 
@@ -45,55 +72,48 @@ static tensorflow::string SingleTag(TF_Tensor* tags);
 
 template<typename T>
 static void SummaryScalarOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
-  TF_Tensor* tags;
-  TF_Tensor* values; 
-  TF_Status* status = TF_NewStatus();
-  TF_GetInput(ctx, 0, &tags, status);
-  if (TF_GetCode(status) == TF_OK) {
-    TF_GetInput(ctx, 1, &values, status);
-  } 
-  if (TF_GetCode(status) == TF_OK) {
-    if (!IsSameSize(tags, values)) {
-      std::ostringstream err;
-      err << "tags and values not the same shape: " 
-          << TF_ShapeDebugString(tags) << " != " << TF_ShapeDebugString(values)
-          << SingleTag(tags); 
-      TF_SetStatus(status, TF_INVALID_ARGUMENT, err.str().c_str());
-    }
+  Params params(ctx);
+  if (TF_GetCode(params.status) != TF_OK){ 
+    TF_OpKernelContext_Failure(ctx, params.status);
+    return; 
   }
-  // Copy tag and string data into summary protobuf 
-  tensorflow::Summary s; 
-  if (TF_GetCode(status) == TF_OK) {
-    // Convert tags and values tensor to array to access elements by index 
-    auto tags_array = static_cast<tensorflow::tstring*>(TF_TensorData(tags)); 
-    auto values_array = static_cast<T*>(TF_TensorData(values)); 
-    // Copy tags and values into summary protobuf 
-    for (int i = 0; i < TF_TensorElementCount(tags); ++i) { 
-      tensorflow::Summary::Value* v = s.add_value();
-      const tensorflow::tstring& Ttags_i = tags_array[i];  
-      v->set_tag(Ttags_i.data(), Ttags_i.size());
-      v->set_simple_value(float(values_array[i]));
-    }
-    TF_Tensor* summary_tensor = TF_AllocateOutput(ctx, 0,
-        TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
-        sizeof(tensorflow::tstring), status);
-    if (TF_GetCode(status) == TF_OK) {
-      tensorflow::tstring summary_tstring;
-      SerializeToTString(s, &summary_tstring);
-      TF_TString* output_tf_tstring = reinterpret_cast<TF_TString*>(TF_TensorData(summary_tensor)); 
-      TF_TString_Init(output_tf_tstring); 
-      tensorflow::tstring* output_tstring = reinterpret_cast<tensorflow::tstring*>(output_tf_tstring); 
-      *output_tstring = summary_tstring; // may want to use std::move 
-    } 
-    TF_DeleteTensor(summary_tensor);
+  if (!IsSameSize(params.tags, params.values)) {
+    std::ostringstream err;
+    err << "tags and values not the same shape: " 
+        << TF_ShapeDebugString(params.tags) << " != " 
+        << TF_ShapeDebugString(params.values)
+        << SingleTag(params.tags); 
+    TF_SetStatus(params.status, TF_INVALID_ARGUMENT, err.str().c_str());
+  }
+  if (TF_GetCode(params.status) != TF_OK){ 
+    TF_OpKernelContext_Failure(ctx, params.status);
+    return; 
+  }
 
+  // Convert tags and values tensor to array to access elements by index 
+  tensorflow::Summary s; 
+  auto tags_array = static_cast<tensorflow::tstring*>(
+      TF_TensorData(params.tags));
+  auto values_array = static_cast<T*>(TF_TensorData(params.values)); 
+  // Copy tags and values into summary protobuf 
+  for (int i = 0; i < TF_TensorElementCount(params.tags); ++i) { 
+    tensorflow::Summary::Value* v = s.add_value();
+    const tensorflow::tstring& Ttags_i = tags_array[i];  
+    v->set_tag(Ttags_i.data(), Ttags_i.size());
+    v->set_simple_value(float(values_array[i]));
   }
-  if (TF_GetCode(status) != TF_OK) {
-    TF_OpKernelContext_Failure(ctx, status);
+  TF_Tensor* summary_tensor = TF_AllocateOutput(ctx, 0,
+      TF_ExpectedOutputDataType(ctx, 0), nullptr, 0, 
+      sizeof(tensorflow::tstring), params.status);
+  if (TF_GetCode(params.status) != TF_OK){ 
+    TF_DeleteTensor(summary_tensor); 
+    TF_OpKernelContext_Failure(ctx, params.status);
+    return; 
   }
-  TF_DeleteStatus(status);
-  TF_DeleteTensor(tags);
-  TF_DeleteTensor(values); 
+  tensorflow::tstring* output_tstring = reinterpret_cast<tensorflow::tstring*>(
+      TF_TensorData(summary_tensor)); 
+  SerializeToTString(s, output_tstring);
+  TF_DeleteTensor(summary_tensor);
 }
 
 bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2){ 

@@ -80,7 +80,6 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
   params.inputs = &inputs;
   OpKernelContext ctx(&params, 1); 
   kernel->Compute(&ctx);
-
   ASSERT_EQ(expected_code, ctx.status().code());
   if (expected_code == error::OK){ 
     Summary summary; 
@@ -90,7 +89,7 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
   } 
 }
 
-TEST(ScalarSummaryOpTest, Test) {
+TEST(ScalarSummaryOpTest, SimpleFloat) {
   int vectorSize = 3; 
   Tensor tags(DT_STRING, {vectorSize}); 
   Tensor values(DT_FLOAT, {vectorSize}); 
@@ -104,7 +103,7 @@ TEST(ScalarSummaryOpTest, Test) {
                       value { tag: 'tag1' simple_value: 1.0 }
                       value { tag: 'tag2' simple_value: -0.73}
                       value { tag: 'tag3' simple_value: 10000.0})", error::OK); 
-}
+}                
 
 TEST(ScalarSummaryOpTest, SimpleDouble) {
   int vectorSize = 3; 
@@ -121,6 +120,7 @@ TEST(ScalarSummaryOpTest, SimpleDouble) {
                       value { tag: 'tag2' simple_value: -0.73}
                       value { tag: 'tag3' simple_value: 10000.0})", error::OK); 
 }
+
 
 TEST(ScalarSummaryOpTest, SimpleHalf) {
   int vectorSize = 3; 
@@ -167,6 +167,7 @@ TEST(ScalarSummaryOpTest, Error_WrongWithSingleTag) {
   values.matrix<float>()(1, 0) = -2.0f; 
   TestScalarSummaryOp(&tags, &values, R"()", error::INVALID_ARGUMENT); 
 }
+
 
 TEST(ScalarSummaryOpTest, IsRegistered){ 
   const OpRegistrationData* reg;
