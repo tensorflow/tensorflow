@@ -231,47 +231,6 @@ void XlaComputationLaunchContext::PopulateInputs(
   }
 }
 
-static bool MustAliasOutput(
-    const xla::HloInputOutputAliasConfig& input_output_alias, int output_num) {
-  xla::ShapeIndex output_index;
-  if (input_output_alias.shape().IsTuple()) {
-    output_index = {output_num};
-  } else {
-    DCHECK_EQ(output_num, 0)
-        << "output_num must be 0 for non-tuple shapes but is " << output_num;
-    output_index = {};
-  }
-  if (input_output_alias.shape().tuple_shapes_size() == 0) {
-    return false;
-  }
-  return input_output_alias.OutputHasAlias(output_index);
-}
-
-// Returns an aliased tensor if it exists, nullptr otherwise.
-static const Tensor* FindAliasedTensorForOutput(
-    int output_num, OpKernelContext* ctx, int missing_ctx_input_prefix,
-    const xla::HloInputOutputAliasConfig& input_output_alias,
-    absl::Span<const int> input_mapping,
-    const ResourceVarsSnapshot& resource_var_snapshots) {
-  if (MustAliasOutput(input_output_alias, output_num)) {
-    int xla_param = input_output_alias.GetAliasedParameter({output_num})
-                        .value()
-                        .parameter_number;
-    int tf_param = input_mapping[xla_param] - missing_ctx_input_prefix;
-    const Tensor* input_tensor = &ctx->input(tf_param);
-
-    // If input tensor is a resource variable, alias to the snapshot we took at
-    // entry time.
-    if (input_tensor->dtype() == DT_RESOURCE) {
-      auto& v = resource_var_snapshots.at(missing_ctx_input_prefix + tf_param);
-      CHECK(v.has_value());
-      return &v.value();
-    }
-    return input_tensor;
-  }
-  return nullptr;
-}
-
 // Construct the tensor for given type and buffer.
 static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
                          se::DeviceMemoryBase buffer, Allocator* allocator) {
@@ -283,6 +242,16 @@ static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
   return t;
 }
 
+static absl::optional<xla::HloInputOutputAliasConfig::Alias>
+AliasedParameterForOutput(
+    int output_num, const xla::HloInputOutputAliasConfig& input_output_alias) {
+  xla::ShapeIndex output_index = input_output_alias.shape().IsTuple()
+                                     ? xla::ShapeIndex({output_num})
+                                     : xla::ShapeIndex({});
+  CHECK(input_output_alias.shape().IsTuple() || output_num == 0);
+  return input_output_alias.GetAliasedParameter(output_index);
+}
+
 // Get aliased tensor, or make a new one for the corresponding output operation.
 static Tensor GetOrCreateTensorForOutput(
     int output_num, OpKernelContext* ctx, int missing_ctx_input_prefix,
@@ -291,10 +260,21 @@ static Tensor GetOrCreateTensorForOutput(
     const ResourceVarsSnapshot& resource_var_snapshots, DataType output_dtype,
     const TensorShape& output_shape, se::DeviceMemoryBase output_buffer,
     Allocator* output_allocator) {
-  if (const Tensor* aliased_tensor = FindAliasedTensorForOutput(
-          output_num, ctx, missing_ctx_input_prefix, input_output_alias,
-          input_mapping, resource_var_snapshots)) {
-    return *aliased_tensor;
+  if (absl::optional<xla::HloInputOutputAliasConfig::Alias> alias =
+          AliasedParameterForOutput(output_num, input_output_alias)) {
+    int tf_param =
+        input_mapping[alias->parameter_number] - missing_ctx_input_prefix;
+    const Tensor* input_tensor = &ctx->input(tf_param);
+
+    // If input tensor is a resource variable, alias to the snapshot we took at
+    // entry time.
+    if (input_tensor->dtype() == DT_RESOURCE) {
+      const absl::optional<Tensor>& v =
+          resource_var_snapshots.at(missing_ctx_input_prefix + tf_param);
+      CHECK(v.has_value());
+      return *v;
+    }
+    return *input_tensor;
   }
   return MakeTensor(output_dtype, output_shape, output_buffer,
                     output_allocator);
@@ -306,22 +286,19 @@ static Status SetBufferForTensorUnderAllocateXlaTensors(
     xla::ScopedShapedBuffer* output,
     std::shared_ptr<se::Event> definition_event, se::Stream* stream,
     bool use_multiple_streams) {
-  if (MustAliasOutput(input_output_alias, output_num)) {
+  if (AliasedParameterForOutput(output_num, input_output_alias)) {
     return errors::Unimplemented(
         "Aliasing is not yet supported for allocate_xla_tensors_.");
   }
   Tensor* output_tensor;
   TF_RETURN_IF_ERROR(ctx->allocate_output(i, shape, &output_tensor));
-  XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor);
-  if (xla_tensor) {
+  if (output_tensor->TotalBytes() > 0) {
+    XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor);
+    CHECK(xla_tensor);
     xla_tensor->set_shaped_buffer(output->TakeSubTree({output_num}));
     if (use_multiple_streams) {
       xla_tensor->ResetDefinitionEvent(definition_event, stream);
     }
-  } else {
-    // xla_tensor wasn't valid, which must mean this is a zero-element
-    // tensor.
-    CHECK_EQ(output_tensor->TotalBytes(), 0);
   }
   return Status::OK();
 }
@@ -333,7 +310,7 @@ static Status SetBufferForResourceVarTensorUnderAllocateXlaTensors(
     std::shared_ptr<se::Event> definition_event,
     absl::Span<const VariableInfo> variable_infos, se::Stream* stream,
     bool use_multiple_streams) {
-  if (MustAliasOutput(input_output_alias, output_num)) {
+  if (AliasedParameterForOutput(output_num, input_output_alias)) {
     return errors::Unimplemented(
         "Aliasing is not yet supported for allocate_xla_tensors_.");
   }
