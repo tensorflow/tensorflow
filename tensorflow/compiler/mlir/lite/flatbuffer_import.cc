@@ -443,8 +443,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   if (auto float_type = elem_type.dyn_cast<mlir::FloatType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertFloatBuffer(shaped_type, float_type, buffer));
-  } else if (elem_type.isa<mlir::IntegerType>() ||
-             elem_type.isa<QuantizedType>()) {
+  } else if (elem_type.isa<mlir::IntegerType, QuantizedType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertIntBuffer(shaped_type, elem_type, buffer));
   } else if (elem_type.isa<mlir::TF::StringType>()) {
@@ -456,8 +455,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
       refs.push_back({ref.data(), ref.size()});
 
     value = mlir::DenseStringElementsAttr::get(shaped_type, refs);
-  } else if (elem_type.isa<mlir::ComplexType>() ||
-             elem_type.isa<mlir::TF::TensorFlowType>()) {
+  } else if (elem_type.isa<mlir::ComplexType, mlir::TF::TensorFlowType>()) {
     auto dialect = elem_type.getContext()->getRegisteredDialect("tf");
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
     std::string mangled = tensorflow::mangling_util::MangleTensor(repr);

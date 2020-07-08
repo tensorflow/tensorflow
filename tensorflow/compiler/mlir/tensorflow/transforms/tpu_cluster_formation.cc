@@ -495,8 +495,7 @@ void TPUClusterFormation::runOnFunction() {
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
   auto remove_result = getFunction().walk([&](Operation* op) {
-    if (!llvm::isa<TF::TPUReplicatedInputOp>(op) &&
-        !llvm::isa<TF::TPUReplicatedOutputOp>(op))
+    if (!llvm::isa<TF::TPUReplicatedInputOp, TF::TPUReplicatedOutputOp>(op))
       return WalkResult::advance();
 
     // Forward operand to result. When `num_replicas` attribute is 1, no

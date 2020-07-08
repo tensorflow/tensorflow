@@ -694,8 +694,7 @@ void QuantizationDriver::SetupAllStates() {
   fn_.walk([&](Operation *op) {
     if (op->isKnownTerminator() ||
         op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-        llvm::isa<quant::DequantizeCastOp>(op) ||
-        llvm::isa<quant::QuantizeCastOp>(op))
+        llvm::isa<quant::DequantizeCastOp, quant::QuantizeCastOp>(op))
       return;
     work_list_.push_back(op);
 
