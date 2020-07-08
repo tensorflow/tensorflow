@@ -95,6 +95,13 @@ else:
     return False
 
 
+# Differences created by Generic typing.
+_NORMALIZE_TYPE[(
+    'tensorflow.python.framework.ops.Tensor')] = (
+        "<class 'tensorflow.python.framework.ops.Tensor'>")
+_NORMALIZE_TYPE['typing.Generic'] = "<class 'typing.Generic'>"
+
+
 if sys.version_info.major == 3 and sys.version_info.minor >= 8:
   _NORMALIZE_TYPE["<class '_collections._tuplegetter'>"] = "<type 'property'>"
 

@@ -139,12 +139,25 @@ bool HasFunctionRun(EventNode* event_node) {
   return false;
 }
 
+bool IsImplicitRootEvent(const XEventVisitor& event) {
+  static const auto* const kImplicitRootEvents = new absl::flat_hash_set<int64>{
+      HostEventType::kFunctionRun, HostEventType::kSessionRun,
+      HostEventType::kRunGraph, HostEventType::kExecutorStateProcess};
+  return event.Type().has_value() &&
+         kImplicitRootEvents->contains(*event.Type());
+}
+
 void ProcessRootEvent(int64 group_id, EventNode* root_event,
                       EventGroupNameMap* event_group_name_map) {
   root_event->PropagateGroupId(group_id);
   std::string group_name = root_event->GetGroupName();
   // TODO(jihochoi): change event name instead.
-  root_event->AddStepName(group_name);
+  if (!IsImplicitRootEvent(root_event->GetEventVisitor())) {
+    // Add the `step_name` stat for the user-defined root events only. When an
+    // XEvent is converted to a trace event, the trace event name is set to the
+    // `step_name` stat's value if present.
+    root_event->AddStepName(group_name);
+  }
   event_group_name_map->emplace(group_id, std::move(group_name));
 }
 
@@ -336,6 +349,8 @@ std::string EventNode::GetGroupName() const {
   if (absl::optional<XStatVisitor> stat =
           GetContextStat(StatType::kGraphType)) {
     absl::StrAppend(&name, stat->StrOrRefValue(), " ");
+  } else if (!(IsImplicitRootEvent(visitor_))) {
+    absl::StrAppend(&name, GetEventVisitor().Name(), " ");
   }
   int64 step_num = group_id_.value_or(0);
   if (absl::optional<XStatVisitor> stat = GetContextStat(StatType::kIterNum)) {

@@ -108,6 +108,10 @@ class PackedDistributedVariable(resource_variable_ops.BaseResourceVariable):
     else:
       return self._handle
 
+  @property
+  def packed_handle(self):
+    return self._handle
+
   def _read_variable_op(self):
     if context.executing_eagerly():
       return self.get_var_on_current_device().value()

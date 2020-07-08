@@ -205,6 +205,52 @@ class CollectiveOpTest(test.TestCase):
     elapsed = time.time() - start_time
     self.assertAllGreaterEqual(elapsed, timeout)
 
+  @test_util.run_v2_only
+  def testParamResolutionAfterTimeoutV2(self):
+    context._reset_context()
+    timeout = 1.5
+    cpus = config.list_physical_devices('CPU')
+    self.assertEqual(len(cpus), 1)
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
+    ])
+    context.ensure_initialized()
+
+    group_key = 20
+    instance_key = 30
+    input_data = constant_op.constant([1, 2, 3, 4])
+
+    # This timeout comes from param solution.
+    with self.assertRaisesRegex(
+        errors.DeadlineExceededError,
+        'Collective has timed out waiting for other workers'):
+      with ops.device('CPU:0'):
+        collective_ops.all_reduce(
+            input_data,
+            group_size=2,
+            group_key=group_key,
+            instance_key=instance_key,
+            merge_op='Add',
+            final_op='Id',
+            timeout=timeout)
+
+    # We launch the second device after the first device times out. This is to
+    # simulate the situation when other workers are slow and the timeout is
+    # short. Since the CPU:0 times out in the param resolution phase, CPU:1
+    # should times out as well, but in the execute phase.
+    with self.assertRaisesRegex(errors.DeadlineExceededError,
+                                'Collective has timed out during execution'):
+      with ops.device('CPU:1'):
+        collective_ops.all_reduce(
+            input_data,
+            group_size=2,
+            group_key=group_key,
+            instance_key=instance_key,
+            merge_op='Add',
+            final_op='Id',
+            timeout=timeout)
+
   def testNcclHintFallbackToRingReduce(self):
     """Tests that setting `communication_hint=nccl` works on non-GPU builds."""
     if kernels.get_registered_kernels_for_op('NcclAllReduce'):
@@ -426,8 +472,8 @@ class CollectiveOpTest(test.TestCase):
         run_options = config_pb2.RunOptions()
         run_options.experimental.collective_graph_key = 1
         sess.run([c0, c1], options=run_options)
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     'Shape mismatch'):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    'Shape mismatch'):
           sess.run([c0, c2], options=run_options)
 
   def testCollectiveGatherShapeMismatchAcrossDevices(self):
@@ -447,8 +493,8 @@ class CollectiveOpTest(test.TestCase):
           c1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
         run_options = config_pb2.RunOptions()
         run_options.experimental.collective_graph_key = 1
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     'Shape mismatch'):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    'Shape mismatch'):
           sess.run([c0, c1], options=run_options)
 
   def testCollectiveGatherPolymorphicShape(self):
@@ -510,8 +556,8 @@ class CollectiveOpTest(test.TestCase):
             merge_op='Add', final_op='Id')
       return c0, c1
 
-    with self.assertRaisesRegexp(errors.InternalError,
-                                 'but that group has size'):
+    with self.assertRaisesRegex(errors.InternalError,
+                                'but that group has size'):
       run_all_reduce()
 
   @test_util.run_v2_only

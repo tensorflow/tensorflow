@@ -11,6 +11,9 @@ tensorflow::Status SetTpuConfigStructFns(void* library_handle) {
   TFTPU_SET_FN(config_fn, DisconnectDistributedTpuChipsOp_DoWork);
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_FreeCharArray);
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_FreeInt32Array);
+  TFTPU_SET_FN(config_fn, TpuConfigurationApi_HasTPUPodState);
+  TFTPU_SET_FN(config_fn, TpuConfigurationApi_TpusPerHost);
+  TFTPU_SET_FN(config_fn, TpuConfigurationApi_TpuMemoryLimit);
 
   return tensorflow::Status::OK();
 }
@@ -137,6 +140,7 @@ tensorflow::Status SetTpuNodeContextStructFns(void* library_handle) {
 
   TFTPU_SET_FN(node_context_fn, TpuNodeContext_Create);
   TFTPU_SET_FN(node_context_fn, TpuNodeContext_Free);
+  TFTPU_SET_FN(node_context_fn, TpuNodeContext_Initialize);
   TFTPU_SET_FN(node_context_fn, TpuNodeContext_StopChipHeartbeats);
   TFTPU_SET_FN(node_context_fn, TpuNodeContext_CloseTpuHost);
 
@@ -147,6 +151,7 @@ tensorflow::Status SetTpuUtilStructFns(void* library_handle) {
   auto* util_fn = tensorflow::tpu::UtilApiFn();
 
   TFTPU_SET_FN(util_fn, TpuCompile_IsTpuCompilationEnabled);
+  TFTPU_SET_FN(util_fn, TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
   TFTPU_SET_FN(util_fn, TpuCompile_ToTpuShapeRepresentation);
 
   return tensorflow::Status::OK();

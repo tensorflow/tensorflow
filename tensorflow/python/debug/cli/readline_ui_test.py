@@ -88,13 +88,13 @@ class CursesTest(test_util.TensorFlowTestCase):
     self.assertIsInstance(ui, readline_ui.ReadlineUI)
 
   def testUIFactoryRaisesExceptionOnInvalidUIType(self):
-    with self.assertRaisesRegexp(ValueError, "Invalid ui_type: 'foobar'"):
+    with self.assertRaisesRegex(ValueError, "Invalid ui_type: 'foobar'"):
       ui_factory.get_ui(
           "foobar",
           config=cli_config.CLIConfig(config_file_path=self._tmp_config_path))
 
   def testUIFactoryRaisesExceptionOnInvalidUITypeGivenAvailable(self):
-    with self.assertRaisesRegexp(ValueError, "Invalid ui_type: 'readline'"):
+    with self.assertRaisesRegex(ValueError, "Invalid ui_type: 'readline'"):
       ui_factory.get_ui(
           "readline",
           available_ui_types=["curses"],

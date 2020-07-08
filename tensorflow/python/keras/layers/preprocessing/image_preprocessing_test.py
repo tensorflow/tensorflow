@@ -26,6 +26,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import gen_stateful_random_ops
@@ -187,8 +188,8 @@ class CenterCropTest(keras_parameterized.TestCase):
       ('center_crop_10_by_8', 10, 8),
       ('center_crop_10_by_12', 10, 12))
   def test_invalid_center_crop(self, expected_height, expected_width):
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r'assertion failed'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r'assertion failed'):
       self._run_test(expected_height, expected_width)
 
   def test_config_with_custom_name(self):
@@ -1271,6 +1272,39 @@ class RandomWidthTest(keras_parameterized.TestCase):
     config = layer.get_config()
     layer_1 = image_preprocessing.RandomWidth.from_config(config)
     self.assertEqual(layer_1.name, layer.name)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class LearningPhaseTest(keras_parameterized.TestCase):
+
+  def test_plain_call(self):
+    layer = image_preprocessing.RandomWidth(.5, seed=123)
+    shape = (12, 12, 3)
+    img = np.random.random((12,) + shape)
+    out = layer(img)  # Default to training=True
+    self.assertNotEqual(tuple(int(i) for i in out.shape[1:]), shape)
+
+    out = layer(img, training=True)
+    self.assertNotEqual(tuple(int(i) for i in out.shape[1:]), shape)
+
+    out = layer(img, training=False)
+    self.assertEqual(tuple(int(i) for i in out.shape[1:]), shape)
+
+  def test_call_in_container(self):
+    layer1 = image_preprocessing.RandomWidth(.5, seed=123)
+    layer2 = image_preprocessing.RandomHeight(.5, seed=123)
+    seq = sequential.Sequential([layer1, layer2])
+
+    shape = (12, 12, 3)
+    img = np.random.random((12,) + shape)
+    out = seq(img)  # Default to training=True
+    self.assertNotEqual(tuple(int(i) for i in out.shape[1:]), shape)
+
+    out = seq(img, training=True)
+    self.assertNotEqual(tuple(int(i) for i in out.shape[1:]), shape)
+
+    out = seq(img, training=False)
+    self.assertEqual(tuple(int(i) for i in out.shape[1:]), shape)
 
 
 if __name__ == '__main__':

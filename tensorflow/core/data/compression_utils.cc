@@ -116,7 +116,7 @@ Status UncompressElement(const CompressedElement& compressed,
           compressed_data.data(), compressed_data.size(), &uncompressed_size)) {
     return errors::Internal("Could not get snappy uncompressed length");
   }
-  if (uncompressed_size != total_size) {
+  if (uncompressed_size != static_cast<size_t>(total_size)) {
     return errors::Internal(
         "Uncompressed size mismatch. Snappy expects ", uncompressed_size,
         " whereas the tensor metadata suggests ", total_size);

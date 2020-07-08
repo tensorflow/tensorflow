@@ -73,12 +73,12 @@ class TypeIndex {
 #endif  // defined(MACOS) || defined(TARGET_OS_MAC)
 
 #else
-#if defined(MACOS) || defined(TARGET_OS_MAC)
+#if TARGET_OS_OSX
     // Warn MacOS users that not using RTTI can cause problems (b/156979412).
 #warning \
     "Compiling with RTTI disabled on MacOS can cause problems when comparing " \
     "types across shared libraries."
-#endif  // defined(MACOS) || defined(TARGET_OS_MAC)
+#endif  // TARGET_OS_OSX
 
     // No type names available.
     return TypeIndex(static_cast<uint64>(reinterpret_cast<intptr_t>(hash_bit)),
@@ -94,11 +94,6 @@ class TypeIndex {
   uint64 hash_;
   const char* name_;
 };
-
-template <typename T>
-inline TypeIndex MakeTypeIndex() {
-  return TypeIndex::Make<T>();
-}
 
 }  // namespace tensorflow
 

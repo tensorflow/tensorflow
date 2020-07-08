@@ -54,10 +54,21 @@ struct GPUImageBufferDescriptor {
   cl_mem memory;
 };
 
+struct GPUCustomMemoryDescriptor {
+  std::string type_name;
+  cl_mem memory;
+};
+
+enum class MemoryType { GLOBAL, CONSTANT, LOCAL };
+
+std::string MemoryTypeToCLType(MemoryType type);
+
 struct GPUBufferDescriptor {
   DataType data_type;
   AccessType access_type;
   int element_size;
+  MemoryType memory_type = MemoryType::GLOBAL;
+  std::vector<std::string> attributes;
   cl_mem memory;
 };
 
@@ -69,6 +80,8 @@ struct GPUResources {
   std::vector<std::pair<std::string, GPUImage2DArrayDescriptor>> image2d_arrays;
   std::vector<std::pair<std::string, GPUImage3DDescriptor>> images3d;
   std::vector<std::pair<std::string, GPUImageBufferDescriptor>> image_buffers;
+  std::vector<std::pair<std::string, GPUCustomMemoryDescriptor>>
+      custom_memories;
 
   std::vector<std::string> GetNames() const {
     std::vector<std::string> names = ints;
@@ -88,6 +101,9 @@ struct GPUResources {
     for (const auto& obj : image_buffers) {
       names.push_back(obj.first);
     }
+    for (const auto& obj : custom_memories) {
+      names.push_back(obj.first);
+    }
     return names;
   }
 };
@@ -100,6 +116,7 @@ struct GPUResourcesWithValue {
   std::vector<std::pair<std::string, cl_mem>> image2d_arrays;
   std::vector<std::pair<std::string, cl_mem>> images3d;
   std::vector<std::pair<std::string, cl_mem>> image_buffers;
+  std::vector<std::pair<std::string, cl_mem>> custom_memories;
 };
 
 class GPUObjectDescriptor {
@@ -122,12 +139,14 @@ class GPUObjectDescriptor {
     *result = "";
     return absl::OkStatus();
   }
-  virtual GPUResources GetGPUResources(AccessType access_type) const {
-    return GPUResources();
-  }
+  virtual GPUResources GetGPUResources() const { return GPUResources(); }
+
+  void SetAccess(AccessType access_type) { access_type_ = access_type; }
+  AccessType GetAccess() const { return access_type_; }
 
  protected:
   mutable std::map<std::string, std::string> state_vars_;
+  AccessType access_type_;
 };
 
 using GPUObjectDescriptorPtr = std::unique_ptr<GPUObjectDescriptor>;
@@ -141,8 +160,9 @@ class GPUObject {
   GPUObject(const GPUObject&) = delete;
   GPUObject& operator=(const GPUObject&) = delete;
   virtual ~GPUObject() = default;
-  virtual GPUResourcesWithValue GetGPUResources(
-      AccessType access_type) const = 0;
+  virtual absl::Status GetGPUResources(
+      const GPUObjectDescriptor* obj_ptr,
+      GPUResourcesWithValue* resources) const = 0;
 };
 
 using GPUObjectPtr = std::unique_ptr<GPUObject>;

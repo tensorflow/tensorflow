@@ -280,6 +280,8 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
   return node_def;
 }
 
+// TODO(b/160014479): Support exporting function result attributes as optional
+// attributes.
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     mlir::FuncOp function, Value operand, unsigned index,
     llvm::StringRef name) {
@@ -574,9 +576,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // Adds nodes for operations.
   for (Operation& inst : graph_op.GetBody()) {
     for (auto type : inst.getResultTypes())
-      if (!type.isa<mlir::TensorType>() &&
-          !type.isa<mlir::tf_executor::ControlType>() &&
-          !type.isa<mlir::tf_executor::TokenType>())
+      if (!type.isa<mlir::TensorType, mlir::tf_executor::ControlType,
+                    mlir::tf_executor::TokenType>())
         return errors::InvalidArgument(
             "Values must be of tensor type, TensorFlow control type, or "
             "TensorFlow token type. Found ",

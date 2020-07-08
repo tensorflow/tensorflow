@@ -22,6 +22,10 @@ limitations under the License.
 
 extern UART_HandleTypeDef DEBUG_UART_HANDLE;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifdef __GNUC__
 int __io_putchar(int ch) {
   HAL_UART_Transmit(&DEBUG_UART_HANDLE, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
@@ -36,4 +40,8 @@ int fputc(int ch, FILE *f) {
 }
 #endif /* __GNUC__ */
 
-extern "C" void DebugLog(const char *s) { fprintf(stderr, "%s", s); }
+void DebugLog(const char *s) { fprintf(stderr, "%s", s); }
+
+#ifdef __cplusplus
+}
+#endif

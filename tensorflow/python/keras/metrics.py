@@ -53,6 +53,7 @@ from tensorflow.python.keras.losses import poisson
 from tensorflow.python.keras.losses import sparse_categorical_crossentropy
 from tensorflow.python.keras.losses import squared_hinge
 from tensorflow.python.keras.saving.saved_model import metric_serialization
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
@@ -67,7 +68,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
@@ -350,7 +350,7 @@ class Reduce(Metric):
     if sample_weight is not None:
       sample_weight = math_ops.cast(sample_weight, self._dtype)
       # Update dimensions of weights to match with values if possible.
-      values, _, sample_weight = tf_losses_utils.squeeze_or_expand_dimensions(
+      values, _, sample_weight = losses_utils.squeeze_or_expand_dimensions(
           values, sample_weight=sample_weight)
       try:
         # Broadcast weights if possible.
@@ -544,7 +544,7 @@ class MeanRelativeError(Mean):
     [y_pred, y_true], sample_weight = \
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
             [y_pred, y_true], sample_weight)
-    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+    y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
     y_pred, self.normalizer = confusion_matrix.remove_squeezable_dimensions(
@@ -605,7 +605,7 @@ class MeanMetricWrapper(Mean):
     [y_true, y_pred], sample_weight = \
         metrics_utils.ragged_assert_compatible_and_get_flat_values(
             [y_true, y_pred], sample_weight)
-    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+    y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
     ag_fn = autograph.tf_convert(self._fn, ag_ctx.control_status_ctx())
@@ -2593,7 +2593,7 @@ class RootMeanSquaredError(Mean):
     """
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+    y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
     error_sq = math_ops.squared_difference(y_pred, y_true)
     return super(RootMeanSquaredError, self).update_state(
@@ -2921,7 +2921,7 @@ class MeanTensor(Metric):
       sample_weight = math_ops.cast(sample_weight, self._dtype)
 
       # Update dimensions of weights to match with values if possible.
-      values, _, sample_weight = tf_losses_utils.squeeze_or_expand_dimensions(
+      values, _, sample_weight = losses_utils.squeeze_or_expand_dimensions(
           values, sample_weight=sample_weight)
       try:
         # Broadcast weights if possible.
@@ -3185,7 +3185,7 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
   def update_state(self, y_true, y_pred, sample_weight=None):
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
-    y_pred, y_true = tf_losses_utils.squeeze_or_expand_dimensions(
+    y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
         y_pred, y_true)
 
     ag_fn = autograph.tf_convert(self._fn, ag_ctx.control_status_ctx())

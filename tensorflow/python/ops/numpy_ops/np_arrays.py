@@ -31,6 +31,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 
 
 def convert_to_tensor(value, dtype=None, dtype_hint=None):
@@ -52,7 +53,7 @@ def convert_to_tensor(value, dtype=None, dtype_hint=None):
   if (dtype is None and isinstance(value, six.integer_types) and
       value >= 2**63):
     dtype = dtypes.uint64
-  elif (dtype is None and isinstance(value, float)):
+  elif dtype is None and dtype_hint is None and isinstance(value, float):
     dtype = np_dtypes.default_float_type()
   return ops.convert_to_tensor(value, dtype=dtype, dtype_hint=dtype_hint)
 
@@ -67,6 +68,7 @@ class NdarraySpec(type_spec.BatchableTypeSpec):
       raise ValueError('NdarraySpec.__init__ was expecting a tf.TypeSpec, '
                        'but got a {} instead.'.format(type(data_spec)))
     self._data_spec = data_spec
+    self._hash = None
 
   @property
   def _component_specs(self):
@@ -87,8 +89,14 @@ class NdarraySpec(type_spec.BatchableTypeSpec):
   def _unbatch(self):
     return NdarraySpec(self._data_spec._unbatch())  # pylint: disable=protected-access
 
+  def __hash__(self):
+    if self._hash is None:
+      self._hash = hash((type(self), self._data_spec))
+    return self._hash
 
-class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
+
+@np_export.np_export('ndarray')  # pylint: disable=invalid-name
+class ndarray(composite_tensor.CompositeTensor):
   """Equivalent of numpy.ndarray backed by TensorFlow tensors.
 
   This does not support all features of NumPy ndarrays e.g. strides and

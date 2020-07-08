@@ -2399,7 +2399,7 @@ ENTRY c2 {
 
 TEST_F(HloParserTest, SimpleAliasing) {
   const string original = R"(
-HloModule Module, input_output_alias={ {0}: (0, {0}, USER), {1}: (0, {1}, USER) }
+HloModule Module, input_output_alias={ {0}: (0, {0}), {1}: (0, {1}) }
 
 ENTRY entry {
   %p = (f32[], f32[]) parameter(0)
@@ -2537,22 +2537,6 @@ ENTRY entry {
   ExpectHasSubstr(
       ParseAndReturnUnverifiedModule(original).status().error_message(),
       "expects integer");
-}
-
-TEST_F(HloParserTest, AliasingUnexpectedKind) {
-  const string original = R"(
-HloModule Module, input_output_alias={ {0}: (0, {0}, UNKNOWN), {1}: (0, {1}, UNKNOWN) }
-
-ENTRY entry {
-  %p = (f32[], f32[]) parameter(0)
-  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
-  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
-  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
-}
-  )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Unexpected aliasing kind");
 }
 
 TEST_F(HloParserTest, MultipleRoots) {

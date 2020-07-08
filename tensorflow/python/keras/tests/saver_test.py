@@ -27,7 +27,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
-from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import saver as saver_module
@@ -112,7 +112,7 @@ class TrackableCompatibilityTests(test.TestCase):
       save_path = object_saver.save(file_prefix=checkpoint_prefix)
 
       # An incompatible object-based checkpoint to check error messages
-      var = resource_variable_ops.ResourceVariable(1., name="a")
+      var = variables.Variable(1., name="a")
       self.evaluate(var.initializer)
       second_saver = trackable_utils.Checkpoint(v=var)
       second_path = second_saver.save(file_prefix=os.path.join(
@@ -131,8 +131,8 @@ class TrackableCompatibilityTests(test.TestCase):
       saver.restore(sess=sess, save_path=save_path)
       self.assertEqual(before_second_restore_ops,
                        restore_graph.get_operations())
-      with self.assertRaisesRegexp(errors.NotFoundError,
-                                   "Could not find some variables"):
+      with self.assertRaisesRegex(errors.NotFoundError,
+                                  "Could not find some variables"):
         saver.restore(sess=sess, save_path=second_path)
 
   def testLoadFromObjectBasedEager(self):

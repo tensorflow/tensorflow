@@ -840,8 +840,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         self._handle_activity_regularization(inputs, outputs)
       self._set_mask_metadata(inputs, outputs, input_masks,
                               build_graph=False)
+      outputs = nest.map_structure(
+          keras_tensor.keras_tensor_from_tensor, outputs)
 
-    outputs = nest.map_structure(keras_tensor.keras_tensor_from_tensor, outputs)
     if hasattr(self, '_set_inputs') and not self.inputs:
       # TODO(kaftan): figure out if we ned to do this at all
       # Subclassed network: explicitly set metadata normally set by
@@ -2891,9 +2892,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._expects_training_arg = ('training' in call_fn_args or
                                   self._call_accepts_kwargs)
     # The default training arg will be any (non-None) default specified in the
-    # method signature, or `False` if no non-None default is specified.
+    # method signature, or None if no value is specified.
     self._default_training_arg = self._call_fn_arg_defaults.get(
-        'training') or False
+        'training')
     self._expects_mask_arg = ('mask' in call_fn_args or
                               self._call_accepts_kwargs)
 
@@ -3092,6 +3093,9 @@ class TensorFlowOpLayer(Layer):
     # Layer uses original op unless it is called on new inputs.
     # This means `built` is not set in `__call__`.
     self.built = True
+
+    # Do not individually trace TensorflowOpLayers in the SavedModel.
+    self._must_restore_from_config = True
 
   def call(self, inputs):
     if context.executing_eagerly():

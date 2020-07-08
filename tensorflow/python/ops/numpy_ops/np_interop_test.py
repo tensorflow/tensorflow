@@ -93,9 +93,8 @@ class InteropTest(tf.test.TestCase):
 
     dx, dy = t.gradient([xx, yy], [x, y])
 
-    # # TODO(nareshmodi): Figure out a way to rewrap ndarray as tensors.
-    # self.assertIsInstance(dx, np.ndarray)
-    # self.assertIsInstance(dy, np.ndarray)
+    self.assertIsInstance(dx, np.ndarray)
+    self.assertIsInstance(dy, np.ndarray)
     self.assertAllClose(dx, 2.0)
     self.assertAllClose(dy, 3.0)
 
@@ -181,19 +180,17 @@ class InteropTest(tf.test.TestCase):
 
     multiplier = np.asarray(5.)
 
-    with strategy.scope():
+    @tf.function
+    def run():
+      ctx = tf.distribute.get_replica_context()
+      val = np.asarray(ctx.replica_id_in_sync_group)
+      return val * multiplier
 
-      @tf.function
-      def run():
-        ctx = tf.distribute.get_replica_context()
-        val = np.asarray(ctx.replica_id_in_sync_group)
-        return val * multiplier
+    distributed_values = strategy.run(run)
+    reduced = strategy.reduce(
+        tf.distribute.ReduceOp.SUM, distributed_values, axis=None)
 
-      distributed_values = strategy.run(run)
-      reduced = strategy.reduce(
-          tf.distribute.ReduceOp.SUM, distributed_values, axis=None)
-
-    values = distributed_values.values
+    values = strategy.experimental_local_results(distributed_values)
 
     # Note that this should match the number of virtual CPUs.
     self.assertLen(values, 3)
@@ -207,6 +204,101 @@ class InteropTest(tf.test.TestCase):
     # "strategy.reduce" doesn't rewrap in ndarray.
     # self.assertIsInstance(reduced, np.ndarray)
     self.assertAllClose(reduced, 15)
+
+  def testPyFuncInterop(self):
+    def py_func_fn(a, b):
+      return a + b
+
+    @tf.function
+    def fn(a, b):
+      result = tf.py_function(py_func_fn, [a, b], a.dtype)
+      return np.asarray(result)
+
+    a = np.asarray(1.)
+    b = np.asarray(2.)
+
+    result = fn(a, b)
+    self.assertIsInstance(result, np.ndarray)
+    self.assertAllClose(result, 3.)
+
+  def testDatasetInterop(self):
+    values = [1, 2, 3, 4, 5, 6]
+    values_as_array = np.asarray(values)
+
+    # Tensor dataset
+    dataset = tf.data.Dataset.from_tensors(values_as_array)
+
+    for value, value_from_dataset in zip([values_as_array], dataset):
+      self.assertIsInstance(value_from_dataset, np.ndarray)
+      self.assertAllEqual(value_from_dataset, value)
+
+    # Tensor slice dataset
+    dataset = tf.data.Dataset.from_tensor_slices(values_as_array)
+
+    for value, value_from_dataset in zip(values, dataset):
+      self.assertIsInstance(value_from_dataset, np.ndarray)
+      self.assertAllEqual(value_from_dataset, value)
+
+    # # TODO(nareshmodi): as_numpy_iterator() doesn't work.
+    # items = list(dataset.as_numpy_iterator())
+
+    # Map over a dataset.
+    dataset = dataset.map(lambda x: np.add(x, 1))
+
+    for value, value_from_dataset in zip(values, dataset):
+      self.assertIsInstance(value_from_dataset, np.ndarray)
+      self.assertAllEqual(value_from_dataset, value + 1)
+
+    # Batch a dataset.
+    dataset = tf.data.Dataset.from_tensor_slices(values_as_array).batch(2)
+
+    for value, value_from_dataset in zip([[1, 2], [3, 4], [5, 6]], dataset):
+      self.assertIsInstance(value_from_dataset, np.ndarray)
+      self.assertAllEqual(value_from_dataset, value)
+
+  def testKerasInterop(self):
+    # Return an ndarray from the model.
+    inputs = tf.keras.layers.Input(shape=(10,))
+    output_layer = tf.keras.layers.Lambda(np.square)(inputs)
+    model = tf.keras.Model([inputs], output_layer)
+
+    values = onp.arange(10, dtype=onp.float32)
+    values_as_array = np.asarray(values)
+
+    result = model(values)
+    self.assertIsInstance(result, np.ndarray)
+    self.assertAllClose(result, onp.square(values))
+
+    result = model(values_as_array)
+    self.assertIsInstance(result, np.ndarray)
+    self.assertAllClose(result, onp.square(values))
+
+  def testPForInterop(self):
+    def outer_product(a):
+      return np.tensordot(a, a, 0)
+
+    batch_size = 100
+    a = np.ones((batch_size, 32, 32))
+    c = tf.vectorized_map(outer_product, a)
+
+    # # TODO(nareshmodi): vectorized_map doesn't rewrap tensors in ndarray.
+    # self.assertIsInstance(c, np.ndarray)
+    self.assertEqual(c.shape, (batch_size, 32, 32, 32, 32))
+
+  def testJacobian(self):
+    with tf.GradientTape() as g:
+      x = np.asarray([1., 2.])
+      y = np.asarray([3., 4.])
+      g.watch(x)
+      g.watch(y)
+      z = x * x * y
+
+    jacobian = g.jacobian(z, [x, y])
+    answer = [tf.linalg.diag(2 * x * y), tf.linalg.diag(x * x)]
+
+    self.assertIsInstance(jacobian[0], np.ndarray)
+    self.assertIsInstance(jacobian[1], np.ndarray)
+    self.assertAllClose(jacobian, answer)
 
 
 class FunctionTest(InteropTest):

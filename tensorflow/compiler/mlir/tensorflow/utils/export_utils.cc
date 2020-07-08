@@ -64,7 +64,6 @@ std::set<std::string>* GlobalOpPrefixes() {
   static std::set<std::string>* global_op_prefixes = [] {
     std::set<std::string>* result = new std::set<std::string>;
     result->insert("tf.");
-    result->insert("_tf.");
     result->insert("tf_executor.");
     return result;
   }();
@@ -276,7 +275,7 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   // When being converted to MLIR, some prefixes and suffixes are added to the
   // operation types, and we have to remove them when converting the
   // operations back to a graph:
-  // - "_tf.", "tf." or "tf_executor." : every operation type has this prefix.
+  // - "tf." or "tf_executor." : every operation type has this prefix.
   // - ".sink" or ".Sink": only the NextIteration operation has this suffix. We
   // don't need to consider ".source"/".Source" because the nodes with this
   // suffix are skipped by the caller and will not be added to the graph.
@@ -313,9 +312,8 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
     // Some control flow ops in TensorFlow Graph have their respective "Ref" ops
     // as well. For example there is Enter and RefEnter op. RefEnter forwards
     // the input ref buffer to output. However both Enter and RefEnter are
-    // mapped to tf_executor::EnterOp during import and then to _tf.Enter op in
-    // control dialect. Check if it is a Ref op to correctly map to the
-    // TensorFlow Graph op.
+    // mapped to tf_executor::EnterOp during import. Check if it is a Ref op to
+    // correctly map to the TensorFlow Graph op.
     if (IsRefTypeControlOp(inst)) op_name = "Ref";
     TF_ASSIGN_OR_RETURN(auto tf_name,
                         GetTensorFlowOpName(inst->getName().getStringRef()));
@@ -516,8 +514,7 @@ Status SetSizeAttribute(absl::string_view name, size_t size,
 }
 
 bool IsLegacyCallInstruction(mlir::Operation* inst) {
-  return llvm::dyn_cast<mlir::TF::LegacyCallOp>(inst) ||
-         inst->getName().getStringRef().compare("_tf.LegacyCall") == 0;
+  return llvm::dyn_cast<mlir::TF::LegacyCallOp>(inst);
 }
 
 Status AddTensorFlowOpPrefix(std::string prefix) {

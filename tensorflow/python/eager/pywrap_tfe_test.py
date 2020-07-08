@@ -207,18 +207,17 @@ class Tests(test.TestCase):
     ctx_handle = ctx._handle  # pylint: disable=protected-access
 
     # Not enough base params
-    with self.assertRaisesRegexp(ValueError,
-                                 "at least 5 items in the input tuple"):
+    with self.assertRaisesRegex(ValueError,
+                                "at least 5 items in the input tuple"):
       pywrap_tfe.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name, "Identity")
 
     # Not enough inputs
-    with self.assertRaisesRegexp(ValueError,
-                                 "Expected to be at least 6, was 5"):
+    with self.assertRaisesRegex(ValueError, "Expected to be at least 6, was 5"):
       pywrap_tfe.TFE_Py_FastPathExecute(ctx_handle, ctx_handle, "Identity",
                                         None, [])
 
     # Bad type
-    with self.assertRaisesRegexp(TypeError, "expected a string for op_name"):
+    with self.assertRaisesRegex(TypeError, "expected a string for op_name"):
       pywrap_tfe.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name, ctx_handle,
                                         None, [], a_2_by_2)
 
@@ -239,11 +238,11 @@ class Tests(test.TestCase):
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def testInvalidNumOutputs(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         Exception, r"Value for number_attr\(\) -1 < 0 \[Op:Split\]"):
       array_ops.split(value=[1, 2, 3], num_or_size_splits=-1)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         Exception,
         "Value for attr 'num_split' of 0 must be at least minimum 1"):
       array_ops.split(value=[1, 2, 3], num_or_size_splits=0)
@@ -263,8 +262,8 @@ class Tests(test.TestCase):
     with ops.Graph().as_default():
       a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
       m = resource_variable_ops.ResourceVariable(a_2_by_2)
-      with self.assertRaisesRegexp(TypeError,
-                                   "Expected list for 'values' argument"):
+      with self.assertRaisesRegex(TypeError,
+                                  "Expected list for 'values' argument"):
         _ = array_ops.stack(m, axis=1)
 
   def testGraphResourceVariableRaisesFallback(self):

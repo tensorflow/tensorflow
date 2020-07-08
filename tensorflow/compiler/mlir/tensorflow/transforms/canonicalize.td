@@ -134,6 +134,18 @@ def InvertNested : Pat<(TF_InvertOp (TF_InvertOp $arg)),
 
 def LogOfSoftmax : Pat<(TF_LogOp (TF_SoftmaxOp $arg)), (TF_LogSoftmaxOp $arg)>;
 
+// Canonicalize: Log(1.0 + x) to Log1p(x)
+//
+// We currently do this rewrite only if the constant `1` is a scalar, because
+// it is safely broadcastable to any shape. To be able to canonicalize when
+// constant values is not a scalar, we have to first prove that it is
+// broadcastable to `x`, which requires static shape information.
+def LogToLog1p : Pat<
+    (TF_LogOp (TF_AddV2Op
+                $arg,
+                (TF_ConstOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">))),
+    (TF_Log1pOp $arg)>;
+
 //===----------------------------------------------------------------------===//
 // LogicalNot op patterns.
 //===----------------------------------------------------------------------===//
@@ -181,6 +193,13 @@ def RealDivWithSqrtDivisor : Pat<(TF_RealDivOp $arg0, (TF_SqrtOp $arg1)),
 
 def ReciprocalNested : Pat<(TF_ReciprocalOp (TF_ReciprocalOp $arg)),
                            (replaceWithValue $arg)>;
+
+//===----------------------------------------------------------------------===//
+// Reshape op patterns.
+//===----------------------------------------------------------------------===//
+
+def RedundantReshape : Pat<(TF_ReshapeOp (TF_ReshapeOp $arg, $unused), $shape),
+                           (TF_ReshapeOp $arg, $shape)>;
 
 //===----------------------------------------------------------------------===//
 // Select op patterns.

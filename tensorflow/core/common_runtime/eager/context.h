@@ -377,8 +377,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // class/struct.
   //
   // Enables the eager context to communicate with remote devices. When
-  // initializing with this method, this context will be the master context,
-  // which will kill all its slaves in shutdown.
+  // initializing with this method, this context will be the primary context,
+  // which will kill all its remote contexts in shutdown.
   //
   // - server: A ServerInterface that exports the tensorflow.WorkerService.
   // Note that this class expects the server to already have been started.
@@ -478,11 +478,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // On mobile, it just cleans the caches.
   void WaitForAndCloseRemoteContexts();
 
-  bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
+  bool PinSmallOpsToCPU() const { return pin_small_ops_to_cpu_; }
 
   tensorflow::Env* TFEnv() const { return env_; }
-
-  std::vector<const FunctionDef*> ListRegisteredFunctions();
 
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
@@ -513,7 +511,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void InitPrioritizedDeviceTypeList();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
   Status RegisterExistingFunctionsOnRemoteWorkers(
-      const std::vector<const FunctionDef*>& function_defs,
       const std::vector<string>& remote_workers);
 
   void ResetPFLR(const DeviceMgr* device_mgr, Env* env,
@@ -668,6 +665,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
+
+  // For LLVM style RTTI.
+  static bool classof(const AbstractContext* ptr) {
+    return ptr->getKind() == kEager;
+  }
 
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should

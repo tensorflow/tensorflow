@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cc_test", "tf_cuda_library", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_tpu", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cc_test", "tf_cuda_library", "tf_gen_op_wrapper_py")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
@@ -558,7 +558,7 @@ cc_library(
     deps = [
         ":bfloat16_lib",
         ":numpy_lib",
-        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_no_xla",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -978,6 +978,7 @@ cc_library(
 
 cc_header_only_library(
     name = "py_func_headers_lib",
+    features = ["-parse_headers"],
     tags = ["no-ide"],
     deps = [
         ":py_func_lib",
@@ -997,11 +998,13 @@ tf_python_pybind_extension(
 
 cc_library(
     name = "safe_ptr",
-    srcs = ["lib/core/safe_ptr.cc"],
+    srcs = [
+        "lib/core/safe_ptr.cc",
+        "//tensorflow/c/eager:headers",
+    ],
     hdrs = ["lib/core/safe_ptr.h"],
     deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c:c_api_no_xla",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -1046,7 +1049,6 @@ cc_library(
         ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":safe_ptr",
-        "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_tensor_internal",
@@ -1060,6 +1062,7 @@ cc_library(
     name = "py_seq_tensor",
     srcs = ["lib/core/py_seq_tensor.cc"],
     hdrs = ["lib/core/py_seq_tensor.h"],
+    features = ["-parse_headers"],
     deps = [
         ":ndarray_tensor",
         ":ndarray_tensor_bridge",
@@ -1212,6 +1215,7 @@ cc_header_only_library(
     extra_deps = [
         "//tensorflow/core:protos_all_cc",
     ],
+    features = ["-parse_headers"],
     tags = ["no-ide"],
     deps = [
         ":python_op_gen",
@@ -1953,6 +1957,7 @@ py_library(
     srcs = ["framework/tensor_util.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":errors",
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
@@ -6088,7 +6093,7 @@ pywrap_tensorflow_macro(
         "//conditions:default": [
             "//tensorflow/lite/delegates/flex:delegate",
         ],
-    }),
+    }) + if_tpu(["//tensorflow/core/tpu:tpu_api_dlsym_initializer"]),
 )
 
 # ** Targets for Windows build (start) **

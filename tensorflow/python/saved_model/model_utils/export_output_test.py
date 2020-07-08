@@ -39,26 +39,26 @@ class ExportOutputTest(test.TestCase):
   def test_regress_value_must_be_float(self):
     with context.graph_mode():
       value = array_ops.placeholder(dtypes.string, 1, name='output-tensor-1')
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Regression output value must be a float32 Tensor'):
         export_output_lib.RegressionOutput(value)
 
   def test_classify_classes_must_be_strings(self):
     with context.graph_mode():
       classes = array_ops.placeholder(dtypes.float32, 1, name='output-tensor-1')
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Classification classes must be a string Tensor'):
         export_output_lib.ClassificationOutput(classes=classes)
 
   def test_classify_scores_must_be_float(self):
     with context.graph_mode():
       scores = array_ops.placeholder(dtypes.string, 1, name='output-tensor-1')
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Classification scores must be a float32 Tensor'):
         export_output_lib.ClassificationOutput(scores=scores)
 
   def test_classify_requires_classes_or_scores(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'At least one of scores and classes must be set.'):
       export_output_lib.ClassificationOutput()
 
@@ -216,14 +216,12 @@ class ExportOutputTest(test.TestCase):
     export_output_lib.PredictOutput(constant_op.constant([0]))
 
   def test_predict_outputs_invalid(self):
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Prediction output key must be a string'):
+    with self.assertRaisesRegex(ValueError,
+                                'Prediction output key must be a string'):
       export_output_lib.PredictOutput({1: constant_op.constant([0])})
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Prediction output value must be a Tensor'):
+    with self.assertRaisesRegex(ValueError,
+                                'Prediction output value must be a Tensor'):
       export_output_lib.PredictOutput({
           'prediction1': sparse_tensor.SparseTensor(
               indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
@@ -276,13 +274,13 @@ class SupervisedOutputTest(test.TestCase):
     self.assertIsNone(outputter.metrics)
 
   def test_supervised_outputs_invalid(self):
-    with self.assertRaisesRegexp(ValueError, 'predictions output value must'):
+    with self.assertRaisesRegex(ValueError, 'predictions output value must'):
       MockSupervisedOutput(constant_op.constant([0]), [3], None)
-    with self.assertRaisesRegexp(ValueError, 'loss output value must'):
+    with self.assertRaisesRegex(ValueError, 'loss output value must'):
       MockSupervisedOutput('str', None, None)
-    with self.assertRaisesRegexp(ValueError, 'metrics output value must'):
+    with self.assertRaisesRegex(ValueError, 'metrics output value must'):
       MockSupervisedOutput(None, None, (15.3, 4))
-    with self.assertRaisesRegexp(ValueError, 'loss output key must'):
+    with self.assertRaisesRegex(ValueError, 'loss output key must'):
       MockSupervisedOutput({25: 'Tensor'}, None, None)
 
   def test_supervised_outputs_tuples(self):

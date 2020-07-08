@@ -123,6 +123,15 @@ class TPUTest(test.TestCase):
       result = bar() + 1
       self.assertAllEqual(result, 2)
 
+  def test_on_demand_op_with_dynamic_output(self):
+    with ops.device("/device:TPU:0"):
+      where_output = array_ops.where([True, False, True])
+    self.assertAllEqual(where_output, [[0], [2]])
+
+    with ops.device("/device:TPU:0"):
+      repeat_output = array_ops.repeat(math_ops.range(2), [1, 4])
+    self.assertAllEqual(repeat_output, [0, 1, 1, 1, 1])
+
 
 @parameterized.named_parameters([("PackedVar", True), ("", False)])
 class TPUStrategyTest(test.TestCase, parameterized.TestCase):
@@ -554,6 +563,13 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     with strategy.scope():
       update_variable.get_concrete_function()
       self.assertLen(strategy.extended.worker_devices, trace_count[0])
+
+  def test_cluster_resolver_available(self, enable_packed_var):
+    resolver = get_tpu_cluster_resolver()
+    remote.connect_to_cluster(resolver)
+    tpu_strategy_util.initialize_tpu_system(resolver)
+    strategy = tpu_lib.TPUStrategy(resolver)
+    self.assertIs(strategy.cluster_resolver, resolver)
 
 
 class TPUStrategyDataPrefetchTest(test.TestCase):

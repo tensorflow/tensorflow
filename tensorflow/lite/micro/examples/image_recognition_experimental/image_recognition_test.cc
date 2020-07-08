@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/first_10_cifar_images.h"
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/image_recognition_model.h"
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/util.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
@@ -44,14 +43,10 @@ TF_LITE_MICRO_TEST(TestImageRecognitionInvoke) {
 
   tflite::MicroMutableOpResolver<4> micro_op_resolver;
 
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_CONV_2D,
-                               tflite::ops::micro::Register_CONV_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_MAX_POOL_2D,
-                               tflite::ops::micro::Register_MAX_POOL_2D());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_FULLY_CONNECTED,
-                               tflite::ops::micro::Register_FULLY_CONNECTED());
-  micro_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                               tflite::ops::micro::Register_SOFTMAX());
+  micro_op_resolver.AddConv2D();
+  micro_op_resolver.AddMaxPool2D();
+  micro_op_resolver.AddFullyConnected();
+  micro_op_resolver.AddSoftmax();
 
   const int tensor_arena_size = 50 * 1024;
   uint8_t tensor_arena[tensor_arena_size];

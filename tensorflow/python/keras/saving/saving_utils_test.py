@@ -70,8 +70,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     inputs = array_ops.ones((8, 5))
 
     if input_dim is None:
-      with self.assertRaisesRegexp(ValueError,
-                                   'input shapes have not been set'):
+      with self.assertRaisesRegex(ValueError, 'input shapes have not been set'):
         saving_utils.trace_model_call(model)
       model._set_inputs(inputs)
 
@@ -130,8 +129,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     input_b_np = np.random.random((10, input_dim)).astype(np.float32)
 
     if testing_utils.get_model_type() == 'subclass':
-      with self.assertRaisesRegexp(ValueError,
-                                   'input shapes have not been set'):
+      with self.assertRaisesRegex(ValueError, 'input shapes have not been set'):
         saving_utils.trace_model_call(model)
 
     model.compile(
@@ -182,7 +180,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     model = testing_utils.get_small_sequential_mlp(10, 3, None)
     inputs = array_ops.ones((8, 5))
 
-    with self.assertRaisesRegexp(ValueError, 'input shapes have not been set'):
+    with self.assertRaisesRegex(ValueError, 'input shapes have not been set'):
       saving_utils.trace_model_call(model)
 
     fn = saving_utils.trace_model_call(

@@ -165,7 +165,7 @@ class PadOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testPaddingsNonNegative(self):
     with self.session(use_gpu=True):
-      with self.assertRaisesRegexp(ValueError, "must be non-negative"):
+      with self.assertRaisesRegex(ValueError, "must be non-negative"):
         array_ops.pad(constant_op.constant(
             [1], shape=[1]),
                       constant_op.constant(
@@ -174,7 +174,7 @@ class PadOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testPaddingsNonNegative2(self):
     with self.session(use_gpu=True):
-      with self.assertRaisesRegexp(ValueError, "must be non-negative"):
+      with self.assertRaisesRegex(ValueError, "must be non-negative"):
         array_ops.pad(constant_op.constant(
             [1], shape=[1]),
                       constant_op.constant(
@@ -198,7 +198,7 @@ class PadOpTest(test.TestCase):
   def testInvalid(self):
     with self.cached_session():
       x = [[1, 2, 3], [4, 5, 6]]
-      with self.assertRaisesRegexp(ValueError, "Unknown padding mode"):
+      with self.assertRaisesRegex(ValueError, "Unknown padding mode"):
         array_ops.pad(x, [[1, 0], [2, 1]], mode="weird").eval()
 
   def testPaddingTypes(self):
@@ -373,7 +373,7 @@ class PadOpTest(test.TestCase):
             [paddings_value[i][0] + inp.shape.dims[i].value for i in range(4)],
             [-1, -1, -1, -1])
         with self.cached_session(use_gpu=True):
-          self.assertAllEqual(inp.eval(), self.evaluate(middle))
+          self.assertAllEqual(inp, self.evaluate(middle))
           self.assertAllEqual(
               np.zeros([row[0] for row in paddings_value]), self.evaluate(left))
           self.assertAllEqual(

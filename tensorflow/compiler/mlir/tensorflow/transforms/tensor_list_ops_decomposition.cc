@@ -640,7 +640,7 @@ LogicalResult DecomposeTensorListOpsInternal(
         decomposed_partitioned_call_callees) {
   for (auto& op : llvm::make_early_inc_range(block->getOperations())) {
     // TODO(yuanzx): Add a pass to remove identities in device computation.
-    if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+    if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
       op.replaceAllUsesWith(op.getOperands());
       op.erase();
     } else if (auto list = llvm::dyn_cast<TF::EmptyTensorListOp>(&op)) {

@@ -51,6 +51,11 @@ def graph_only_combinations():
   return combinations.combine(tf_api_version=[1, 2], mode="graph")
 
 
+def v2_only_combinations():
+  """Returns the default test combinations for v1 only tf.data tests."""
+  return combinations.combine(tf_api_version=2, mode=["eager", "graph"])
+
+
 class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
 

@@ -220,7 +220,9 @@ class TPUStrategyV2(distribute_lib.Strategy):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    self._enable_packed_variable_in_eager_mode = False
+    # TODO(b/145922293): Enable this when MLIR bridge is enabled.
+    self._enable_packed_variable_in_eager_mode = (
+        not context.context().enable_mlir_bridge)
 
   def run(self, fn, args=(), kwargs=None, options=None):
     """Run the computation defined by `fn` on each TPU replica.
@@ -330,7 +332,9 @@ class TPUStrategy(distribute_lib.Strategy):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    self._enable_packed_variable_in_eager_mode = False
+    # TODO(b/145922293): Enable this when MLIR bridge is enabled.
+    self._enable_packed_variable_in_eager_mode = (
+        not context.context().enable_mlir_bridge)
 
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
@@ -344,6 +348,18 @@ class TPUStrategy(distribute_lib.Strategy):
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
     options = options or distribute_lib.RunOptions()
     return self.extended.tpu_run(fn, args, kwargs, options)
+
+  @property
+  def cluster_resolver(self):
+    """Returns the cluster resolver associated with this strategy.
+
+    `tf.distribute.experimental.TPUStrategy` provides the
+    associated `tf.distribute.cluster_resolver.ClusterResolver`. If the user
+    provides one in `__init__`, that instance is returned; if the user does
+    not, a default
+    `tf.distribute.cluster_resolver.TPUClusterResolver` is provided.
+    """
+    return self.extended._tpu_cluster_resolver  # pylint: disable=protected-access
 
 
 @tf_export(v1=["distribute.experimental.TPUStrategy"])
@@ -378,7 +394,9 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
     # function graph. It's only supported in eager mode.
-    self._enable_packed_variable_in_eager_mode = False
+    # TODO(b/145922293): Enable this when MLIR bridge is enabled.
+    self._enable_packed_variable_in_eager_mode = (
+        not context.context().enable_mlir_bridge)
 
   @property
   def steps_per_run(self):
@@ -465,7 +483,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       # not specified.
       steps_per_run = 1
 
+    # `self._tpu_function_cache` is a dict of `tf.function`s, thus if a
+    # `tf.function` is passed into `strategy.run` in eager mode, the
+    # `tf.function` won't get retraced.
     self._tpu_function_cache = weakref.WeakKeyDictionary()
+
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = self._tpu_cluster_resolver.get_tpu_system_metadata()
     self._device_assignment = device_assignment
@@ -1083,7 +1105,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return func(args, kwargs)
 
   def _tpu_function_creator(self, fn, options):
-    if fn in self._tpu_function_cache:
+    if context.executing_eagerly() and fn in self._tpu_function_cache:
       return self._tpu_function_cache[fn]
 
     strategy = self._container_strategy()
@@ -1168,8 +1190,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     if context.executing_eagerly():
       tpu_function = def_function.function(tpu_function)
-
-    self._tpu_function_cache[fn] = tpu_function
+      self._tpu_function_cache[fn] = tpu_function
     return tpu_function
 
   def _in_multi_worker_mode(self):

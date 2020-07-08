@@ -736,7 +736,7 @@ class TensorUtilTest(test.TestCase):
 
     # Validate the helpful error message when trying to convert an
     # unconvertible list as strings.
-    with self.assertRaisesRegexp(TypeError, "Failed to convert object"):
+    with self.assertRaisesRegex(TypeError, "Failed to convert object"):
       tensor_util.make_tensor_proto([tensor_shape.Dimension(1)])
 
   def testTensorShapeVerification(self):
