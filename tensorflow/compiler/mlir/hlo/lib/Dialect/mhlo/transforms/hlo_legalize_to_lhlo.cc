@@ -391,16 +391,15 @@ struct HloLegalizeToLhlo
     target.addIllegalDialect<mhlo::XlaHloDialect>();
 
     BufferAssignmentTypeConverter converter;
+    auto isMemRefType = [](Type type) { return type.isa<BaseMemRefType>(); };
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();
-      return llvm::all_of(inputs,
-                          [](Type input) { return input.isa<MemRefType>(); }) &&
+      return llvm::all_of(inputs, isMemRefType) &&
              converter.isLegal(&op.getBody());
     });
     target.addDynamicallyLegalOp<mlir::ReturnOp>([&](mlir::ReturnOp returnOp) {
       return std::all_of(returnOp.operand_type_begin(),
-                         returnOp.operand_type_end(),
-                         [](Type type) { return type.isa<MemRefType>(); });
+                         returnOp.operand_type_end(), isMemRefType);
     });
 
     auto module = getOperation();
