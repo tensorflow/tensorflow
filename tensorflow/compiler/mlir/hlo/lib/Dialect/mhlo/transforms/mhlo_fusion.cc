@@ -60,7 +60,7 @@ limitations under the License.
 // shape dialect once it is ready.
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 namespace {
 
 using llvm::EquivalenceClasses;
@@ -544,7 +544,7 @@ struct XlaHloFusion : public mlir::PassWrapper<XlaHloFusion, FunctionPass> {
       }
 
       FusionOp fusion =
-          b.create<xla_hlo::FusionOp>(fused_loc, output_types, inputs);
+          b.create<mhlo::FusionOp>(fused_loc, output_types, inputs);
       Region& region = fusion.fused_computation();
       region.push_back(new Block);
       Block& block = region.front();
@@ -552,7 +552,7 @@ struct XlaHloFusion : public mlir::PassWrapper<XlaHloFusion, FunctionPass> {
         op->moveBefore(&block, block.end());
       }
       b.setInsertionPoint(&block, block.end());
-      b.create<xla_hlo::ReturnOp>(fused_loc, outputs);
+      b.create<mhlo::ReturnOp>(fused_loc, outputs);
 
       for (auto output_and_result : llvm::zip(outputs, fusion.getResults())) {
         Value output = std::get<0>(output_and_result);
@@ -572,8 +572,8 @@ std::unique_ptr<OperationPass<FuncOp>> createXlaHloFusion() {
   return std::make_unique<XlaHloFusion>();
 }
 
-static PassRegistration<XlaHloFusion> xla_hlo_fusion_pass(
-    "xla-hlo-fusion", "fuse xla_hlo ops to kLoop/kInput fusion patterns.");
+static PassRegistration<XlaHloFusion> mhlo_fusion_pass(
+    "xla-hlo-fusion", "fuse mhlo ops to kLoop/kInput fusion patterns.");
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir

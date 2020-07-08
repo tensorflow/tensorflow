@@ -73,6 +73,14 @@ void ParseGCSPath(const std::string& fname, bool object_empty_ok,
   }
 }
 
+/// Appends a trailing slash if the name doesn't already have one.
+static void MaybeAppendSlash(std::string* name) {
+  if (name->empty())
+    *name = "/";
+  else if (name->back() != '/')
+    name->push_back('/');
+}
+
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
@@ -408,6 +416,70 @@ void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
   } else if (read == 0) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
   }
+}
+
+void CreateDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  std::string bucket, object;
+  ParseGCSPath(path, true, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  if (object.empty()) {
+    auto bucket_metadata = gcs_file->gcs_client.GetBucketMetadata(bucket);
+    TF_SetStatusFromGCSStatus(bucket_metadata.status(), status);
+    return;
+  }
+
+  MaybeAppendSlash(&object);
+  auto object_metadata = gcs_file->gcs_client.GetObjectMetadata(bucket, object);
+  TF_SetStatusFromGCSStatus(object_metadata.status(), status);
+  if (TF_GetCode(status) == TF_NOT_FOUND) {
+    auto insert_metadata =
+        gcs_file->gcs_client.InsertObject(bucket, object, "");
+    TF_SetStatusFromGCSStatus(insert_metadata.status(), status);
+  } else if (TF_GetCode(status) == TF_OK) {
+    TF_SetStatus(status, TF_ALREADY_EXISTS, path);
+  }
+}
+
+void DeleteFile(const TF_Filesystem* filesystem, const char* path,
+                TF_Status* status) {
+  std::string bucket, object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  auto gcs_status = gcs_file->gcs_client.DeleteObject(bucket, object);
+  TF_SetStatusFromGCSStatus(gcs_status, status);
+}
+
+void DeleteDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  std::string bucket, object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  MaybeAppendSlash(&object);
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  int object_count = 0;
+  for (auto&& metadata :
+       gcs_file->gcs_client.ListObjects(bucket, gcs::Prefix(object))) {
+    if (!metadata) {
+      TF_SetStatusFromGCSStatus(metadata.status(), status);
+      return;
+    }
+    ++object_count;
+    // We consider a path is a non-empty directory in two cases:
+    // - There are more than two objects whose keys start with the name of this
+    // directory.
+    // - There is one object whose key contains the name of this directory ( but
+    // not equal ).
+    if (object_count > 1 || metadata->name() != object) {
+      TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                   "Cannot delete a non-empty directory.");
+      return;
+    }
+  }
+  auto gcs_status = gcs_file->gcs_client.DeleteObject(bucket, object);
+  TF_SetStatusFromGCSStatus(gcs_status, status);
 }
 
 }  // namespace tf_gcs_filesystem

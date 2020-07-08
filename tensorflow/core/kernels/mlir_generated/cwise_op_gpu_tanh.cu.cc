@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/cubin_headers/tanh_f16_kernel.h"
-#include "tensorflow/core/kernels/cubin_headers/tanh_f32_kernel.h"
-#include "tensorflow/core/kernels/cubin_headers/tanh_f64_kernel.h"
+#include "tensorflow/core/kernels/mlir_generated/tanh_f16_kernel.h"
+#include "tensorflow/core/kernels/mlir_generated/tanh_f32_kernel.h"
+#include "tensorflow/core/kernels/mlir_generated/tanh_f64_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -121,8 +121,9 @@ class MlirGeneratedTanhOp : public OpKernel {
     args.add_argument<int64_t>(inp.NumElements());
     args.add_argument<int64_t>(1);
 
-    // This has to be aligned with the configuration that was used when building
-    // the kernels. See the corresponding build rules in `cubin_headers/BUILD`.
+    // This has to be aligned with the configuration that was used when
+    // generating the kernels. See the corresponding build rules in the `BUILD`
+    // file.
     LaunchConfig config = GetLaunchConfiguration(
         {256}, {4}, {static_cast<uint64>(inp.NumElements())});
     OP_REQUIRES_OK(

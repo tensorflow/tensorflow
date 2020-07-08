@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: func @static_memref_cast
 func @static_memref_cast(%buf : memref<10x1x5xf32>) {
-  %0 = xla_lhlo.static_memref_cast %buf
+  %0 = lmhlo.static_memref_cast %buf
         : memref<10x1x5xf32> -> memref<10x5xf32, offset: 2, strides: [5, 1]>
   return
 }
@@ -38,7 +38,7 @@ func @dynamic_memref_cast(%buf : memref<?x?xf32>) {
   %size_Y = constant 50 : index
   %stride_X = constant 1 : index
   %stride_Y = constant 0 : index
-  %0 = xla_lhlo.dynamic_memref_cast %buf(%size_X, %size_Y)[%stride_X, %stride_Y]
+  %0 = lmhlo.dynamic_memref_cast %buf(%size_X, %size_Y)[%stride_X, %stride_Y]
         : memref<?x?xf32> -> memref<?x?xf32, offset: 0, strides: [?, ?]>
   return
 }

@@ -356,7 +356,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
 LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     Operation *op, NamedAttribute named_attr) {
   if (named_attr.first == "tf_saved_model.exported_names") {
-    if (!isa<FuncOp>(op) && !isa<GlobalTensorOp>(op)) {
+    if (!isa<FuncOp, GlobalTensorOp>(op)) {
       return op->emitError() << "'tf_saved_model.exported_names' must be on a "
                                 "'func' or 'tf_saved_model.global_tensor' op";
     }
@@ -415,12 +415,12 @@ bool HasTfSavedModelSemantics(ModuleOp module) {
   return module.getAttr("tf_saved_model.semantics") != nullptr;
 }
 
-GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
-                                const SymbolTable &symbol_table) {
+Operation *LookupBoundInput(FuncOp func, int arg_index,
+                            const SymbolTable &symbol_table) {
   auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
       arg_index, "tf_saved_model.bound_input");
   if (!attr) return nullptr;
-  return symbol_table.lookup<GlobalTensorOp>(attr.getValue());
+  return symbol_table.lookup(attr.getValue());
 }
 
 SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op) {

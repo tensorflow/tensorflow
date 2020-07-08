@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 
 namespace {
 
@@ -38,9 +38,9 @@ struct TestUnfuseBatchNormPass
 
 }  // namespace
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::xla_hlo::TestUnfuseBatchNormPass> pass(
+static mlir::PassRegistration<mlir::mhlo::TestUnfuseBatchNormPass> pass(
     "test-xla-unfuse-batch-norm",
     "Test pass for materializing 'broadcast_dimensions' attributes");

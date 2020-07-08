@@ -207,8 +207,8 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
       del feeds, fetch_keys
       return framework.WatchOptions(
           debug_ops=["DebugIdentity", "DebugNumericSummary"],
-          node_name_regex_whitelist=r".*/read",
-          op_type_regex_whitelist=None,
+          node_name_regex_allowlist=r".*/read",
+          op_type_regex_allowlist=None,
           tolerate_debug_op_creation_failures=True)
 
     u = variables.VariableV1(2.1, name="u")

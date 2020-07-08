@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 
 namespace mlir {
-namespace xla_lhlo {
+namespace lmhlo {
 namespace {
 
 using linalg::LinalgOp;
@@ -147,5 +147,5 @@ static PassRegistration<LhloFuseLinalg> legalize_pass(
     "lhlo-fuse-linalg",
     "Greedily fuse linalg ops obtained after LHLO lowering.");
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir

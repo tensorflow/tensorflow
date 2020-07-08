@@ -15,13 +15,13 @@
 # ==============================================================================
 #
 # A script to merge Mach-O object files into a single object file and hide
-# their internal symbols. Only whitelisted symbols will be visible in the
+# their internal symbols. Only allowed symbols will be visible in the
 # symbol table after this script.
 
 # To run this script, you must set several variables:
 #   INPUT_FRAMEWORK: a zip file containing the iOS static framework.
 #   BUNDLE_NAME: the pod/bundle name of the iOS static framework.
-#   WHITELIST_FILE_PATH: contains the whitelisted symbols.
+#   ALLOWLIST_FILE_PATH: contains the allowed symbols.
 #   OUTPUT: the output zip file.
 
 # Halt on any error or any unknown variable.
@@ -32,15 +32,15 @@ LD_DEBUGGABLE_FLAGS="-x"
 # library at a time.
 # LD_DEBUGGABLE_FLAGS="-d"
 
-# Exits if C++ symbols are found in the whitelist list.
-if grep -q "^__Z" "${WHITELIST_FILE_PATH}"
+# Exits if C++ symbols are found in the allowlist.
+if grep -q "^__Z" "${ALLOWLIST_FILE_PATH}"
 then
   echo "ERROR: Failed in symbol hiding. This rule does not permit hiding of" \
        "C++ symbols due to possible serious problems mixing symbol hiding," \
        "shared libraries and the C++ runtime." \
        "More info can be found in go/ios-symbols-hiding." \
-       "Please recheck the whitelist list and remove C++ symbols:"
-  echo "$(grep "^__Z" "${WHITELIST_FILE_PATH}")"
+       "Please recheck the allowlist and remove C++ symbols:"
+  echo "$(grep "^__Z" "${ALLOWLIST_FILE_PATH}")"
   exit 1 # terminate and indicate error
 fi
 # Unzips the framework zip file into a temp workspace.
@@ -87,7 +87,7 @@ do
     mv *.o "${archdir}"/
 
     objects_file_list=$(mktemp)
-    # Hides the symbols except the whitelisted ones.
+    # Hides the symbols except the allowed ones.
     find "${archdir}" -name "*.o" >> "${objects_file_list}"
 
     # Checks whether bitcode is enabled in the framework.
@@ -104,13 +104,13 @@ do
     if [[ "$all_objects_have_bitcode" = "true" ]]; then
       echo "The ${arch} in ${executable_file} is fully bitcode-enabled."
       xcrun ld -r -bitcode_bundle -exported_symbols_list \
-        "${WHITELIST_FILE_PATH}" \
+        "${ALLOWLIST_FILE_PATH}" \
         $LD_DEBUGGABLE_FLAGS \
         -filelist "${objects_file_list}" -o "${arch_file}_processed.o"
     else
       echo "The ${arch} in ${executable_file} is NOT fully bitcode-enabled."
       xcrun ld -r -exported_symbols_list \
-        "${WHITELIST_FILE_PATH}" \
+        "${ALLOWLIST_FILE_PATH}" \
         $LD_DEBUGGABLE_FLAGS \
         -filelist "${objects_file_list}" -o "${arch_file}_processed.o"
     fi

@@ -56,8 +56,15 @@ bool HasTfSavedModelSemantics(ModuleOp module);
 
 // Returns the tf_saved_model.global_tensor op that func's arg_index'th argument
 // refers to as a bound input, or null.
-GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
-                                const SymbolTable &symbol_table);
+Operation *LookupBoundInput(FuncOp func, int arg_index,
+                            const SymbolTable &symbol_table);
+
+template <typename T>
+T LookupBoundInputOfType(FuncOp func, int arg_index,
+                         const SymbolTable &symbol_table) {
+  return llvm::dyn_cast_or_null<T>(
+      LookupBoundInput(func, arg_index, symbol_table));
+}
 
 // Gets the type that an exported function arg that is bound to symbol ops such
 // as `global_tensor` and `asset` should have.

@@ -563,21 +563,8 @@ bool HloParserImpl::ParseAliasing(AliasingData* data) {
     if (!ParseShapeIndex(&param_idx)) {
       return false;
     }
-    HloInputOutputAliasConfig::AliasKind alias_kind =
-        HloInputOutputAliasConfig::kUserAlias;
-    if (EatIfPresent(TokKind::kComma)) {
-      std::string type;
-      ParseName(&type);
-      if (type == "SYSTEM") {
-        alias_kind = HloInputOutputAliasConfig::kSystemAlias;
-      } else if (type == "USER") {
-        alias_kind = HloInputOutputAliasConfig::kUserAlias;
-      } else {
-        return TokenError("Unexpected aliasing kind; expected SYSTEM or USER");
-      }
-    }
     data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
-                  std::forward_as_tuple(alias_kind, param_num, param_idx));
+                  std::forward_as_tuple(param_num, param_idx));
     if (!ParseToken(TokKind::kRparen, errmsg)) {
       return false;
     }
@@ -627,9 +614,8 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   if (aliasing_data) {
     HloInputOutputAliasConfig alias_config(module->result_shape());
     for (auto& p : *aliasing_data) {
-      Status st =
-          alias_config.SetUpAlias(p.first, p.second.parameter_number,
-                                  p.second.parameter_index, p.second.kind);
+      Status st = alias_config.SetUpAlias(p.first, p.second.parameter_number,
+                                          p.second.parameter_index);
       if (!st.ok()) {
         return TokenError(st.error_message());
       }

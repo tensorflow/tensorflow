@@ -27,7 +27,7 @@ class LLVMTypeConverter;
 class LowerToLLVMOptions;
 class OwningRewritePatternList;
 class BufferAssignmentPlacer;
-namespace xla_hlo {
+namespace mhlo {
 
 // Collection of rewrite patterns for lowering a general dot product.
 void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
@@ -73,25 +73,25 @@ void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
 void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 
-namespace xla_lhlo {
+namespace lmhlo {
 
 /// Collect a set of patterns to convert from the LHLO dialect to LLVM.
 void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
                                           LLVMTypeConverter *converter,
                                           OwningRewritePatternList *patterns);
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 
-namespace xla_chlo {
+namespace chlo {
 
 // Populates a collection of conversion patterns for legalizing client-HLO to
 // HLO.
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns);
 
-}  // namespace xla_chlo
+}  // namespace chlo
 
 namespace xla {
 

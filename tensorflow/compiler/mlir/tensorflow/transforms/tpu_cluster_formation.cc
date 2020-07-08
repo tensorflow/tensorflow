@@ -362,7 +362,8 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
   auto replicate_op = builder.create<tf_device::ReplicateOp>(
       cluster.getLoc(), num_replicas,
       llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>(),
-      replicated_inputs, cluster.getResultTypes());
+      replicated_inputs, /*packed_inputs=*/llvm::ArrayRef<Value>{},
+      cluster.getResultTypes());
   if (has_replicated_input_index)
     replicate_op.setAttr(kReplicatedInputIndicesAttr,
                          builder.getI64ArrayAttr(replicated_input_indices));
@@ -494,8 +495,7 @@ void TPUClusterFormation::runOnFunction() {
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
   auto remove_result = getFunction().walk([&](Operation* op) {
-    if (!llvm::isa<TF::TPUReplicatedInputOp>(op) &&
-        !llvm::isa<TF::TPUReplicatedOutputOp>(op))
+    if (!llvm::isa<TF::TPUReplicatedInputOp, TF::TPUReplicatedOutputOp>(op))
       return WalkResult::advance();
 
     // Forward operand to result. When `num_replicas` attribute is 1, no

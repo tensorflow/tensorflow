@@ -60,16 +60,14 @@ limitations under the License.
 
 namespace mlir {
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.cc.inc"
-namespace xla_hlo {
+namespace mhlo {
 
-Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
-                                              Attribute value, Type type,
-                                              Location loc) {
+Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
+                                            Type type, Location loc) {
   // HLO dialect constants only support ElementsAttr unlike standard dialect
   // constant which supports all attributes.
   if (value.isa<ElementsAttr>())
-    return builder.create<xla_hlo::ConstOp>(loc, type,
-                                            value.cast<ElementsAttr>());
+    return builder.create<mhlo::ConstOp>(loc, type, value.cast<ElementsAttr>());
   return nullptr;
 }
 
@@ -167,7 +165,7 @@ void ConstOp::build(OpBuilder& builder, OperationState& result,
   }
 
   // TODO: support other XLA specific types.
-  assert(type && "unsupported attribute type for building xla_hlo.constant");
+  assert(type && "unsupported attribute type for building mhlo.constant");
   result.types.push_back(type);
   result.addAttribute("value", value);
 }
@@ -215,6 +213,41 @@ static LogicalResult Verify(IotaOp op) {
   return success();
 }
 
+// Iota operations across multiple dimensions can be reduced to an iota and a
+// ranked broadcast.
+struct IotaBroadcast : public OpRewritePattern<IotaOp> {
+  using OpRewritePattern<IotaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(IotaOp iota,
+                                PatternRewriter& rewriter) const override {
+    auto result_ty = iota.getType().cast<ShapedType>();
+    if (!result_ty.hasRank() || result_ty.getRank() < 2) {
+      return failure();
+    }
+
+    auto iota_dimension = iota.iota_dimension();
+
+    auto iota_type = RankedTensorType::get(
+        {result_ty.getDimSize(iota_dimension.getLimitedValue())},
+        result_ty.getElementType());
+
+    auto new_iota = rewriter.create<IotaOp>(iota.getLoc(), iota_type,
+                                            rewriter.getI64IntegerAttr(0));
+
+    auto broadcast_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({1}, rewriter.getIntegerType(64)),
+        {iota_dimension});
+    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(iota, result_ty, new_iota,
+                                                  broadcast_attr);
+    return success();
+  }
+};
+
+void IotaOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                         MLIRContext* context) {
+  results.insert<IotaBroadcast>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicIotaOp
 //===----------------------------------------------------------------------===//
@@ -236,11 +269,63 @@ struct DynamicIotaIsStatic : public OpRewritePattern<DynamicIotaOp> {
   }
 };
 
+// Dynamic Iota operations across multiple dimensions can be reduced to an iota
+// and a ranked broadcast.
+struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
+  using OpRewritePattern<DynamicIotaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicIotaOp iota,
+                                PatternRewriter& rewriter) const override {
+    auto result_ty = iota.getType().cast<ShapedType>();
+    if (!result_ty.hasRank() || result_ty.getRank() < 2) {
+      return failure();
+    }
+
+    auto iota_dimension = iota.iota_dimension();
+    auto iota_dimension_int = iota_dimension.getLimitedValue();
+
+    auto converted_shape = rewriter.create<IndexCastOp>(
+        iota.getLoc(),
+        RankedTensorType::get(
+            iota.output_shape().getType().cast<ShapedType>().getShape(),
+            rewriter.getI64Type()),
+        iota.output_shape());
+
+    auto sliced_shape = rewriter.create<SliceOp>(
+        iota.getLoc(), converted_shape,
+        GetI64ElementsAttr(iota_dimension_int, &rewriter),
+        GetI64ElementsAttr(iota_dimension_int + 1, &rewriter),
+        GetI64ElementsAttr(1, &rewriter));
+
+    auto converted_sliced_shape = rewriter.create<IndexCastOp>(
+        iota.getLoc(),
+        RankedTensorType::get(
+            {1},
+            iota.output_shape().getType().cast<ShapedType>().getElementType()),
+        sliced_shape);
+
+    auto iota_type = RankedTensorType::get(
+        {result_ty.getDimSize(iota_dimension_int)}, result_ty.getElementType());
+
+    auto new_iota = rewriter.create<DynamicIotaOp>(
+        iota.getLoc(), iota_type, converted_sliced_shape,
+        rewriter.getI64IntegerAttr(0));
+
+    auto broadcast_attr = DenseIntElementsAttr::get(
+        RankedTensorType::get({1}, rewriter.getIntegerType(64)),
+        {iota_dimension});
+    rewriter.replaceOpWithNewOp<DynamicBroadcastInDimOp>(
+        iota, result_ty, new_iota, iota.output_shape(), broadcast_attr);
+    return success();
+  }
+};
+
 }  // namespace
 
 void DynamicIotaOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<DynamicIotaIsStatic>(context);
+  results.insert<DynamicIotaBroadcast>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -387,7 +472,7 @@ static LogicalResult Verify(GetTupleElementOp op) {
 
 OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> operands) {
   if (auto tupleOp =
-          dyn_cast_or_null<xla_hlo::TupleOp>(getOperand().getDefiningOp())) {
+          dyn_cast_or_null<mhlo::TupleOp>(getOperand().getDefiningOp())) {
     return tupleOp.getOperand(index().getLimitedValue());
   }
 
@@ -693,10 +778,8 @@ void ComplexOp::build(OpBuilder& builder, OperationState& state, Value lhs,
 }
 
 OpFoldResult ComplexOp::fold(ArrayRef<Attribute> operands) {
-  auto real_op =
-      dyn_cast_or_null<xla_hlo::RealOp>(getOperand(0).getDefiningOp());
-  auto imag_op =
-      dyn_cast_or_null<xla_hlo::ImagOp>(getOperand(1).getDefiningOp());
+  auto real_op = dyn_cast_or_null<mhlo::RealOp>(getOperand(0).getDefiningOp());
+  auto imag_op = dyn_cast_or_null<mhlo::ImagOp>(getOperand(1).getDefiningOp());
   if (real_op && imag_op && real_op.getOperand() == imag_op.getOperand()) {
     return real_op.getOperand();
   }
@@ -727,7 +810,7 @@ void ImagOp::build(OpBuilder& builder, OperationState& state, Value val) {
 
 OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
   if (auto complex_op =
-          dyn_cast_or_null<xla_hlo::ComplexOp>(getOperand().getDefiningOp())) {
+          dyn_cast_or_null<mhlo::ComplexOp>(getOperand().getDefiningOp())) {
     return complex_op.getOperand(1);
   }
 
@@ -740,7 +823,7 @@ void RealOp::build(OpBuilder& builder, OperationState& state, Value val) {
 
 OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
   if (auto complex_op =
-          dyn_cast_or_null<xla_hlo::ComplexOp>(getOperand().getDefiningOp())) {
+          dyn_cast_or_null<mhlo::ComplexOp>(getOperand().getDefiningOp())) {
     return complex_op.getOperand(0);
   }
 
@@ -1148,7 +1231,7 @@ static LogicalResult Verify(MapOp op) {
 // RecvOp
 //===----------------------------------------------------------------------===//
 
-// Checks that the result type is of the form `tuple<any_type, xla_hlo::token>`
+// Checks that the result type is of the form `tuple<any_type, mhlo::token>`
 static LogicalResult Verify(RecvOp op) {
   auto result_ty = op.getResult().getType().cast<TupleType>();
   auto subtypes = result_ty.getTypes();
@@ -2020,7 +2103,7 @@ void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
-// xla_hlo Dialect Interfaces
+// mhlo Dialect Interfaces
 //===----------------------------------------------------------------------===//
 
 namespace {
@@ -2032,7 +2115,7 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
                        BlockAndValueMapping& valueMapping) const final {
     return true;
   }
-  // Operations in xla_hlo dialect are always legal to inline since they are
+  // Operations in mhlo dialect are always legal to inline since they are
   // pure.
   bool isLegalToInline(Operation*, Region*, BlockAndValueMapping&) const final {
     return true;
@@ -2041,10 +2124,10 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
 }  // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
-// xla_hlo Dialect Constructor
+// mhlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-XlaHloDialect::XlaHloDialect(MLIRContext* context)
+MhloDialect::MhloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
@@ -2056,22 +2139,21 @@ XlaHloDialect::XlaHloDialect(MLIRContext* context)
   // allowUnknownOperations();
 }
 
-Type XlaHloDialect::parseType(DialectAsmParser& parser) const {
+Type MhloDialect::parseType(DialectAsmParser& parser) const {
   StringRef data_type;
   if (parser.parseKeyword(&data_type)) return Type();
 
   if (data_type == "token") return TokenType::get(getContext());
-  parser.emitError(parser.getNameLoc())
-      << "unknown xla_hlo type: " << data_type;
+  parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << data_type;
   return nullptr;
 }
 
-void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
+void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
   if (type.isa<TokenType>()) {
     os << "token";
     return;
   }
-  os << "<unknown xla_hlo type>";
+  os << "<unknown mhlo type>";
 }
 
 //===----------------------------------------------------------------------===//
@@ -2106,5 +2188,5 @@ LogicalResult deriveShapeFromFirstOperand(
   return success();
 }
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir

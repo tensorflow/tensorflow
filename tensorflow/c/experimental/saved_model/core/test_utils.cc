@@ -139,5 +139,13 @@ void CheckBufferDataIsEqual(DataType dtype, int64 num_elements, void* a,
   }
 }
 
+AbstractTensorPtr TensorHandleToTensor(ImmediateExecutionTensorHandle* handle) {
+  Status status;
+  AbstractTensorPtr tensor(handle->Resolve(&status));
+  CHECK(status.ok()) << status.error_message();
+  CHECK_NE(tensor.get(), nullptr);
+  return tensor;
+}
+
 }  // namespace testing
 }  // namespace tensorflow

@@ -86,6 +86,15 @@ func @mul_no_nan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32
   return %0 : tensor<2x3xf32>
 }
 
+// CHECK-LABEL: @is_nan
+func @is_nan(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
+  // CHECK: %[[NAN:.*]] = "tf.Const"() {value = dense<0x7FC00000> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = "tf.Equal"(%arg0, %[[NAN]]) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
+  %0 = "tf.IsNan"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
+  // CHECK: return %[[RESULT]]
+  return %0 : tensor<3x4xi1>
+}
+
 // CHECK-LABEL: func @fill
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<*xi64>, %[[ARG1:.*]]: tensor<*xf32>)
 func @fill(%arg0: tensor<*xi64>, %arg1: tensor<*xf32>) -> tensor<*xf32> {

@@ -38,11 +38,11 @@ class UtilsTest(test.TestCase):
 
     expected = """TensorFlow variant of `numpy.np_fun`.
 
+Unsupported arguments: `x`.
+
 f docstring.
 
-Documentation for `numpy.np_fun`:
-
-np_fun docstring."""
+"""
     self.assertEqual(expected, f.__doc__)
 
   def testNpDocName(self):
@@ -58,34 +58,61 @@ f docstring.
 """
     self.assertEqual(expected, f.__doc__)
 
-  def testNpDocErrors(self):
+  # pylint: disable=unused-variable
+  def testSigMismatchIsError(self):
+    """Tests that signature mismatch is an error (when configured so)."""
+    if not np_utils._supports_signature():
+      self.skipTest('inspect.signature not supported')
 
-    self.skipTest('Enable once np signature checking is done.')
-    # if not np_utils._supports_signature():
-    #   self.skipTest("inspect.signature not supported")
+    old_flag = np_utils.is_sig_mismatch_an_error()
+    np_utils.set_is_sig_mismatch_an_error(True)
 
     def np_fun(x, y=1, **kwargs):
       return
 
-    # pylint: disable=unused-variable
     with self.assertRaisesRegex(TypeError, 'Cannot find parameter'):
-
       @np_utils.np_doc(None, np_fun=np_fun)
       def f1(a):
         return
 
     with self.assertRaisesRegex(TypeError, 'is of kind'):
-
       @np_utils.np_doc(None, np_fun=np_fun)
       def f2(x, kwargs):
         return
 
-    with self.assertRaisesRegex(TypeError,
-                                'Parameter "y" should have a default value'):
-
+    with self.assertRaisesRegex(
+        TypeError, 'Parameter "y" should have a default value'):
       @np_utils.np_doc(None, np_fun=np_fun)
       def f3(x, y):
         return
+
+    np_utils.set_is_sig_mismatch_an_error(old_flag)
+
+  def testSigMismatchIsNotError(self):
+    """Tests that signature mismatch is not an error (when configured so)."""
+    old_flag = np_utils.is_sig_mismatch_an_error()
+    np_utils.set_is_sig_mismatch_an_error(False)
+
+    def np_fun(x, y=1, **kwargs):
+      return
+
+    # The following functions all have signature mismatches, but they shouldn't
+    # throw errors when is_sig_mismatch_an_error() is False.
+
+    @np_utils.np_doc(None, np_fun=np_fun)
+    def f1(a):
+      return
+
+    def f2(x, kwargs):
+      return
+
+    @np_utils.np_doc(None, np_fun=np_fun)
+    def f3(x, y):
+      return
+
+    np_utils.set_is_sig_mismatch_an_error(old_flag)
+
+  # pylint: enable=unused-variable
 
 
 if __name__ == '__main__':

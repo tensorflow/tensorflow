@@ -472,7 +472,7 @@ class ImportGraphDefTest(test.TestCase):
             node { name: 'B' op: 'FloatInput' input: 'A:0' }
             """))
 
-  def testShapeWhitelistViolation(self):
+  def testShapeAllowlistViolation(self):
     # L2 loss produces a scalar shape, but the graph
     # has the wrong shape, so raise an error.
     with ops.Graph().as_default():

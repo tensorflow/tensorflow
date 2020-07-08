@@ -190,6 +190,27 @@ func @testSubOfNeg(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8
 // CHECK: return %0
 }
 
+// CHECK-LABEL: testSubOfZero
+func @testSubOfZero(%arg0: tensor<?x1xf32>, %arg1: tensor<4x1xf32>) -> (tensor<?x1xf32>, tensor<4x1xf32>) {
+  %0 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+  %1 = "tf.Sub"(%arg0, %0) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %2 = "tf.Sub"(%arg1, %0) : (tensor<4x1xf32>, tensor<f32>) -> tensor<4x1xf32>
+  return %1, %2: tensor<?x1xf32>, tensor<4x1xf32>
+
+// CHECK: return %arg0, %arg1
+}
+
+// CHECK-LABEL: testSubOfZeroWithBroadcasting
+func @testSubOfZeroWithBroadcasting(%arg0: tensor<4x1xf32>) -> tensor<4x4xf32> {
+  // This is an identity arithmetic operation, however we do not currently fold
+  // it because it has a broadcasting.
+  %0 = "tf.Const"() {value = dense<[[0.0, 0.0, 0.0, 0.0]]> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
+  %1 = "tf.Sub"(%arg0, %0) : (tensor<4x1xf32>, tensor<1x4xf32>) -> tensor<4x4xf32>
+  return %1 : tensor<4x4xf32>
+
+// CHECK: return %1
+}
+
 // CHECK-LABEL: testSquareOfSub
 func @testSquareOfSub(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Sub"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
@@ -257,6 +278,46 @@ func @testAddV2OfNegRight(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> t
 // CHECK: return %0
 }
 
+// CHECK-LABEL: testAddV2IdentityScalar
+func @testAddV2IdentityScalar(%arg0: tensor<f32>, %arg1: tensor<?xf32>, %arg2: tensor<4xf32>) -> (tensor<f32>, tensor<?xf32>, tensor<4xf32>) {
+  %0 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+
+  // Identity scalar (0.0) is foldable with operand of any shape because
+  // scalar is safely broadcastable to any shape.
+
+  %1 = "tf.AddV2"(%arg0, %0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %2 = "tf.AddV2"(%arg1, %0) : (tensor<?xf32>, tensor<f32>) -> tensor<?xf32>
+  %3 = "tf.AddV2"(%arg2, %0) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+
+  %4 = "tf.AddV2"(%0, %1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  %5 = "tf.AddV2"(%0, %2) : (tensor<f32>, tensor<?xf32>) -> tensor<?xf32>
+  %6 = "tf.AddV2"(%0, %3) : (tensor<f32>, tensor<4xf32>) -> tensor<4xf32>
+
+  // CHECK: return %arg0, %arg1, %arg2
+  return %4, %5, %6: tensor<f32>, tensor<?xf32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: testAddV2IdentityTensor
+func @testAddV2IdentityTensor(%arg0: tensor<f32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) {
+  %0 = "tf.Const"() {value = dense<[0.0, 0.0, 0.0, 0.0]> : tensor<4xf32>} : () -> tensor<4xf32>
+
+  // If operand is a scalar, then the identity value (0.0 for addition) can
+  // be of any shape, because operand is safely broadcastable to any shape.
+  //
+  // However we can't fold this arithmetic operation because the operand
+  // shape does not match the result shape.
+
+  %1 = "tf.AddV2"(%arg0, %0) : (tensor<f32>, tensor<4xf32>) -> tensor<4xf32>
+  %2 = "tf.AddV2"(%0, %arg0) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+
+  // If operand has the same shape as a result, we can fold it.
+  %3 = "tf.AddV2"(%arg1, %0) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  %4 = "tf.AddV2"(%0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  // CHECK: return %1, %2, %arg1, %arg1
+  return %1, %2, %3, %4: tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
+}
+
 // CHECK-LABEL: testDoubleConj
 func @testDoubleConj(%arg0: tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>> {
   %0 = "tf.Conj"(%arg0) : (tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>>
@@ -300,6 +361,20 @@ func @testDoubleReciprocal(%arg0: tensor<8x16x32x64xi32>) -> tensor<8x16x32x64xi
   return %1: tensor<8x16x32x64xi32>
 
 // CHECK: return %arg0
+}
+
+// CHECK-LABEL: testRedundantReshape
+func @testRedundantReshape(%arg0: tensor<4x4xi32>) -> tensor<2x8xi32> {
+  %0 = "tf.Const"() {value = dense<[8, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tf.Const"() {value = dense<[2, 8]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %2 = "tf.Reshape"(%arg0, %0) : (tensor<4x4xi32>, tensor<2xi32>) -> tensor<8x2xi32>
+  %3 = "tf.Reshape"(%2, %1) : (tensor<8x2xi32>, tensor<2xi32>) -> tensor<2x8xi32>
+  return %3: tensor<2x8xi32>
+
+  // CHECK: %0 = "tf.Const"
+  // CHECK-SAME: value = dense<[2, 8]> : tensor<2xi32>
+  // CHECK: %1 = "tf.Reshape"(%arg0, %0)
+  // CHECK: return %1 : tensor<2x8xi32>
 }
 
 // CHECK-LABEL: testSelectScalarPred

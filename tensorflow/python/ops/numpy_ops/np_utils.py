@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect
+import os
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -30,8 +31,10 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
+
 
 tensor_to_ndarray = np_arrays.tensor_to_ndarray
 
@@ -214,22 +217,41 @@ def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None):
   if _has_docstring(f):
     doc += f.__doc__
     doc = _add_blank_line(doc)
-  if _has_docstring(np_f):
-    doc += 'Documentation for `numpy.%s`:\n\n' % np_f.__name__
-    # TODO(wangpeng): It looks like code snippets in numpy doc don't work
-    # correctly with doctest. Fix that and remove the reformatting of the np_f
-    # comment.
-    doc += np_f.__doc__.replace('>>>', '>')
+  # TODO(wangpeng): Re-enable the following and choose inlined vs. link to numpy
+  #   doc according to some global switch.
+  # if _has_docstring(np_f):
+  #   doc += 'Documentation for `numpy.%s`:\n\n' % np_f.__name__
+  #   # TODO(wangpeng): It looks like code snippets in numpy doc don't work
+  #   # correctly with doctest. Fix that and remove the reformatting of the np_f
+  #   # comment.
+  #   doc += np_f.__doc__.replace('>>>', '>')
   return doc
 
 
-def np_doc(np_fun_name, np_fun=None):
+_is_sig_mismatch_an_error = (
+    os.getenv('TF_NP_SIG_MISMATCH_IS_ERROR', 'False') in ('True', 'true', '1'))
+
+
+def is_sig_mismatch_an_error():
+  return _is_sig_mismatch_an_error
+
+
+def set_is_sig_mismatch_an_error(value):
+  global _is_sig_mismatch_an_error
+  _is_sig_mismatch_an_error = value
+
+
+def np_doc(np_fun_name, np_fun=None, export=True):
   """Attachs numpy docstring to a function.
 
   Args:
     np_fun_name: name for the np_fun symbol. At least one of np_fun or
       np_fun_name shoud be set.
     np_fun: (optional) the numpy function whose docstring will be used.
+    export: whether to export this symbol under module
+      `tf.experimental.numpy`. Note that if `export` is `True`, `np_fun` must be
+      a function directly under the `numpy` module, not under any submodule of
+      `numpy` (e.g. `numpy.random`).
 
   Returns:
     A function decorator that attaches the docstring from `np_fun` to the
@@ -246,37 +268,44 @@ def np_doc(np_fun_name, np_fun=None):
         sig = inspect.signature(f)
       except ValueError:
         sig = None
-      # TODO(wangpeng): Enable this.
-      # Looks like this may not work with different versions of numpy.
-      # if sig is not None:
-      #   for name, param in sig.parameters.items():
-      #     np_param = np_sig.parameters.get(name)
-      #     if np_param is None:
-      #       raise TypeError('Cannot find parameter "%s" in the numpy
-      #          function\'s ' 'signature' % name)
-      #     if not _is_compatible_param_kind(param.kind, np_param.kind):
-      #       raise TypeError(
-      #           'Parameter "%s" is of kind %s while in numpy it is of '
-      #           'kind %s' % (name, param.kind, np_param.kind))
-      #     has_default = (param.default != inspect.Parameter.empty)
-      #     np_has_default = (np_param.default != inspect.Parameter.empty)
-      #     if has_default != np_has_default:
-      #       raise TypeError('Parameter "%s" should%s have a default value' %
-      #                       (name, '' if np_has_default else ' not'))
-      #   for name in np_sig.parameters:
-      #     if name not in sig.parameters:
-      #       unsupported_params.append(name)
+      if sig is not None:
+        for name, param in sig.parameters.items():
+          np_param = np_sig.parameters.get(name)
+          if np_param is None:
+            if is_sig_mismatch_an_error():
+              raise TypeError(
+                  'Cannot find parameter "%s" in the numpy function\'s '
+                  'signature (which has these parameters: %s)' %
+                  (name, list(np_sig.parameters.keys())))
+            else:
+              continue
+          if (is_sig_mismatch_an_error() and
+              not _is_compatible_param_kind(param.kind, np_param.kind)):
+            raise TypeError(
+                'Parameter "%s" is of kind %s while in numpy it is of '
+                'kind %s' % (name, param.kind, np_param.kind))
+          has_default = (param.default != inspect.Parameter.empty)
+          np_has_default = (np_param.default != inspect.Parameter.empty)
+          if is_sig_mismatch_an_error() and has_default != np_has_default:
+            raise TypeError('Parameter "%s" should%s have a default value' %
+                            (name, '' if np_has_default else ' not'))
+        for name in np_sig.parameters:
+          if name not in sig.parameters:
+            unsupported_params.append(name)
     f.__doc__ = _np_doc_helper(
         f,
         np_fun,
         np_fun_name=np_fun_name,
         unsupported_params=unsupported_params)
-    return f
+    if export:
+      return np_export.np_export(np_fun_name)(f)
+    else:
+      return f
 
   return decorator
 
 
-def np_doc_only(np_fun_name, np_fun=None):
+def np_doc_only(np_fun_name, np_fun=None, export=True):
   """Attachs numpy docstring to a function.
 
   This differs from np_doc in that it doesn't check for a match in signature.
@@ -285,6 +314,10 @@ def np_doc_only(np_fun_name, np_fun=None):
     np_fun_name: name for the np_fun symbol. At least one of np_fun or
       np_fun_name shoud be set.
     np_fun: (optional) the numpy function whose docstring will be used.
+    export: whether to export this symbol under module
+      `tf.experimental.numpy`. Note that if `export` is `True`, `np_f` must be a
+      function directly under the `numpy` module, not under any submodule of
+      `numpy` (e.g. `numpy.random`).
 
   Returns:
     A function decorator that attaches the docstring from `np_fun` to the
@@ -294,7 +327,10 @@ def np_doc_only(np_fun_name, np_fun=None):
 
   def decorator(f):
     f.__doc__ = _np_doc_helper(f, np_fun, np_fun_name=np_fun_name)
-    return f
+    if export:
+      return np_export.np_export(np_fun_name)(f)
+    else:
+      return f
 
   return decorator
 

@@ -124,7 +124,8 @@ xla::XlaOp ReshapeFilterForDepthwiseConvolution(const xla::Shape& filter_shape,
 // convolutions (as currently implemented).
 Status CheckConvAttrs(const ConvOpAttrs& attrs) {
   const int num_dims = attrs.num_spatial_dims + 2;
-  if (attrs.strides.size() != num_dims) {
+  const int attrs_strides_size = attrs.strides.size();
+  if (attrs_strides_size != num_dims) {
     return errors::InvalidArgument("Sliding window strides field must specify ",
                                    num_dims, " dimensions");
   }
@@ -135,7 +136,8 @@ Status CheckConvAttrs(const ConvOpAttrs& attrs) {
         "Current implementation does not yet support strides in the batch and "
         "depth dimensions.");
   }
-  if (attrs.dilations.size() != num_dims) {
+  const int attrs_dilations_size = attrs.dilations.size();
+  if (attrs_dilations_size != num_dims) {
     return errors::InvalidArgument("Dilations field must specify ", num_dims,
                                    " dimensions");
   }

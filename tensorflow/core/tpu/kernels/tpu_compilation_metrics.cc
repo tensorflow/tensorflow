@@ -12,21 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
-
-#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
-#include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
 
 namespace tensorflow {
+namespace tpu {
 
-const std::vector<tensorflow::ImmediateExecutionTensorHandle*>&
-ConcreteFunction::GetCaptures() const {
-  return captures_;
+// TODO(henrytan): remove this once `TpuCompilationCache` migration to OSS is
+// completed.
+#if defined(LIBTFTPU)
+/* static */
+void TpuCompilationMetrics::IncrementCacheLookupCount(
+    bool is_cache_hit, absl::string_view session_name) {
+  // A placeholder for tracking metrics.
 }
 
-const FunctionMetadata& ConcreteFunction::GetFunctionMetadata() const {
-  return metadata_;
+/* static */
+void TpuCompilationMetrics::SetCacheEntryCount(int64 count) {
+  // A placeholder for tracking metrics.
 }
 
+/* static */
+void TpuCompilationMetrics::IncrementCompilationCount(
+    absl::string_view session_name) {
+  // A placeholder for tracking metrics.
+}
+#endif  // LIBTFTPU
+
+}  // namespace tpu
 }  // namespace tensorflow

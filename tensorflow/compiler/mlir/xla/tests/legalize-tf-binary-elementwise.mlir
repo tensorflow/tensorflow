@@ -11,8 +11,8 @@
 
 // CHECK-LABEL: func @add
 func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %[[SUM0:.*]] = xla_hlo.add %arg0, %arg0 : tensor<2xi32>
-  // CHECK-NEXT:  %[[SUM1:.*]] = xla_hlo.add %[[SUM0]], %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %[[SUM0:.*]] = mhlo.add %arg0, %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %[[SUM1:.*]] = mhlo.add %[[SUM0]], %arg0 : tensor<2xi32>
   // CHECK-NEXT:  return %[[SUM1]] : tensor<2xi32>
   %0 = "tf.Add"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   %1 = "tf.AddV2"(%0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
@@ -24,8 +24,8 @@ func @add(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // patterns unambiguous and more interesting (once broadcastable trait is
 // fixed upstream).
 func @broadcast_add(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-  // CHECK-NEXT: %[[LHS_BCAST:.+]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>}
-  // CHECK-NEXT: xla_hlo.add %[[LHS_BCAST]], %arg1
+  // CHECK-NEXT: %[[LHS_BCAST:.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-NEXT: mhlo.add %[[LHS_BCAST]], %arg1
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
   return %0: tensor<1x2xi32>
 }
@@ -34,8 +34,8 @@ func @broadcast_add(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2x
 // TODO(laurenzo): Change this to a (4x1x1 + 1x4x4x4) shaped add once upstream
 // broadcastable bug is fixed (helps make the CHECK matching unambiguous)
 func @broadcast_multi_dim_add(%arg0: tensor<4x1x1xi32>, %arg1: tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32> {
-  // CHECK-NEXT: %[[LHS_BCAST:.+]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>}
-  // CHECK-NEXT: xla_hlo.add %[[LHS_BCAST]], %arg1
+  // CHECK-NEXT: %[[LHS_BCAST:.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 2, 3]> : tensor<3xi64>}
+  // CHECK-NEXT: mhlo.add %[[LHS_BCAST]], %arg1
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<4x1x1xi32>, tensor<4x4x4x4xi32>) -> tensor<4x4x4x4xi32>
   return %0: tensor<4x4x4x4xi32>
 }
@@ -50,9 +50,9 @@ func @add_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi3
   // CHECK-DAG:    %[[RHS_SHAPE:.+]] = shape.shape_of %arg1
   // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = "shape.broadcast"(%[[LHS_SHAPE]], %[[RHS_SHAPE]])
   // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
-  // CHECK-NEXT:   %[[LHS_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<1> : tensor<1xi64>}
-  // CHECK-NEXT:   %[[RHS_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
-  // CHECK-NEXT:   %[[RESULT:.+]] = xla_hlo.add %[[LHS_BCAST]], %[[RHS_BCAST]] : tensor<?x?xi32>
+  // CHECK-NEXT:   %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-NEXT:   %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK-NEXT:   %[[RESULT:.+]] = mhlo.add %[[LHS_BCAST]], %[[RHS_BCAST]] : tensor<?x?xi32>
   // CHECK-NEXT:   shape.assuming_yield %[[RESULT]]
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
   return %0: tensor<?x?xi32>
@@ -60,7 +60,7 @@ func @add_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi3
 
 // CHECK-LABEL: func @div
 func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = xla_hlo.divide %arg0, %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %0 = mhlo.divide %arg0, %arg0 : tensor<2xi32>
   // CHECK-NEXT:  return %0 : tensor<2xi32>
   %0 = "tf.Div"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %0: tensor<2xi32>
@@ -68,7 +68,7 @@ func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK-LABEL: func @shift_left
 func @shift_left(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK:  xla_hlo.shift_left %arg0, %arg1 : tensor<4xi32>
+  // CHECK:  mhlo.shift_left %arg0, %arg1 : tensor<4xi32>
   %0 = "tf.LeftShift"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   return %0 : tensor<4xi32>
 }
@@ -82,21 +82,21 @@ func @div_unranked(%arg0: tensor<*xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi
 
 // CHECK-LABEL: func @maximum
 func @maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-  // CHECK-NEXT:  xla_hlo.maximum %arg0, %arg1 : tensor<4xf32>
+  // CHECK-NEXT:  mhlo.maximum %arg0, %arg1 : tensor<4xf32>
   %0 = "tf.Maximum"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
 
 // CHECK-LABEL: func @minimum
 func @minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-  // CHECK-NEXT:  xla_hlo.minimum %arg0, %arg1 : tensor<4xf32>
+  // CHECK-NEXT:  mhlo.minimum %arg0, %arg1 : tensor<4xf32>
   %0 = "tf.Minimum"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
 
 // CHECK-LABEL: func @mul
 func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = xla_hlo.multiply %arg0, %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %0 = mhlo.multiply %arg0, %arg0 : tensor<2xi32>
   // CHECK-NEXT:  return %0 : tensor<2xi32>
   %0 = "tf.Mul"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %0: tensor<2xi32>
@@ -104,14 +104,14 @@ func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK-LABEL: func @real_div
 func @real_div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = xla_hlo.divide %arg0, %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %0 = mhlo.divide %arg0, %arg0 : tensor<2xi32>
   %0 = "tf.RealDiv"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %0: tensor<2xi32>
 }
 
 // CHECK-LABEL: func @sub
 func @sub(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK-NEXT:  %0 = xla_hlo.subtract %arg0, %arg0 : tensor<2xi32>
+  // CHECK-NEXT:  %0 = mhlo.subtract %arg0, %arg0 : tensor<2xi32>
   // CHECK-NEXT:  return %0 : tensor<2xi32>
   %0 = "tf.Sub"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   return %0: tensor<2xi32>
@@ -119,7 +119,7 @@ func @sub(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK-LABEL: func @shift_right
 func @shift_right(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK:  xla_hlo.shift_right_arithmetic %arg0, %arg1 : tensor<4xi32>
+  // CHECK:  mhlo.shift_right_arithmetic %arg0, %arg1 : tensor<4xi32>
   %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   return %0 : tensor<4xi32>
 }
@@ -140,7 +140,7 @@ func @broadcast_shift_right_unsigned(%arg0: tensor<4xui8>, %arg1: tensor<2x4xui8
 
 // CHECK-LABEL: func @and
 func @and(%arg0: tensor<2xi1>) -> tensor<2xi1> {
-  // CHECK-NEXT:  xla_hlo.and
+  // CHECK-NEXT:  mhlo.and
   %0 = "tf.LogicalAnd"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
@@ -154,28 +154,28 @@ func @and_unranked(%arg0: tensor<*xi1>, %arg1: tensor<*xi1>) -> tensor<*xi1> {
 
 // CHECK-LABEL: func @or
 func @or(%arg0: tensor<2xi1>) -> tensor<2xi1> {
-  // CHECK-NEXT:  xla_hlo.or
+  // CHECK-NEXT:  mhlo.or
   %0 = "tf.LogicalOr"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
 // CHECK-LABEL: func @bitwise_or
 func @bitwise_or(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK-NEXT: xla_hlo.or
+  // CHECK-NEXT: mhlo.or
   %0 = "tf.BitwiseOr"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   return %0: tensor<4xi32>
 }
 
 // CHECK-LABEL: func @bitwise_and
 func @bitwise_and(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK-NEXT: xla_hlo.and
+  // CHECK-NEXT: mhlo.and
   %0 = "tf.BitwiseAnd"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   return %0: tensor<4xi32>
 }
 
 // CHECK-LABEL: func @pow
 func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK-NEXT:  xla_hlo.power
+  // CHECK-NEXT:  mhlo.power
   %0 = "tf.Pow"(%arg0, %arg0) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   return %0: tensor<2xf32>
 }
@@ -188,7 +188,7 @@ func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: func @equal
 func @equal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "EQ"}
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "EQ"}
   %0 = "tf.Equal"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
@@ -202,9 +202,9 @@ func @equal_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> 
   // CHECK-DAG:    %[[LHS_SHAPE1:.+]] = shape.shape_of %arg0
   // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = "shape.broadcast"(%[[LHS_SHAPE1]], %[[RHS_SHAPE]])
   // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
-  // CHECK-DAG:    %[[LHS_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
-  // CHECK-DAG:    %[[RHS_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
-  // CHECK-NEXT:   %[[RESULT:.+]] = "xla_hlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = "EQ"}
+  // CHECK-DAG:    %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // CHECK-DAG:    %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // CHECK-NEXT:   %[[RESULT:.+]] = "mhlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = "EQ"}
   // CHECK-NEXT:   shape.assuming_yield %[[RESULT]]
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
   return %0: tensor<?xi1>
@@ -212,8 +212,8 @@ func @equal_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> 
 
 // CHECK-LABEL: func @equal_broadcast
 func @equal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  // CHECK-DAG: %[[LHS_BCAST:.+]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>}
-  // CHECK-NEXT: "xla_hlo.compare"(%[[LHS_BCAST]], %arg1) {comparison_direction = "EQ"}
+  // CHECK-DAG: %[[LHS_BCAST:.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-NEXT: "mhlo.compare"(%[[LHS_BCAST]], %arg1) {comparison_direction = "EQ"}
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   return %0: tensor<1x2xi1>
 }
@@ -255,7 +255,7 @@ func @equal_unranked(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> tensor<*xi1>
 
 // CHECK-LABEL: func @notequal
 func @notequal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "NE"}
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "NE"}
   %0 = "tf.NotEqual"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
@@ -268,15 +268,15 @@ func @notequal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
 
 // CHECK-LABEL: func @greater
 func @greater(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK: "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "GT"}
+  // CHECK: "mhlo.compare"(%arg0, %arg0) {comparison_direction = "GT"}
   %0 = "tf.Greater"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
 // CHECK-LABEL: func @broadcast_greater
 func @broadcast_greater(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
-  // CHECK-NEXT: %[[LHS_BCAST:.+]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>}
-  // CHECK-NEXT: "xla_hlo.compare"(%[[LHS_BCAST]], %arg1) {comparison_direction = "GT"}
+  // CHECK-NEXT: %[[LHS_BCAST:.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>}
+  // CHECK-NEXT: "mhlo.compare"(%[[LHS_BCAST]], %arg1) {comparison_direction = "GT"}
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   return %0: tensor<1x2xi1>
 }
@@ -291,9 +291,9 @@ func @greater_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi1
   // CHECK-DAG:    %[[RHS_SHAPE1:.+]] = shape.shape_of %arg1
   // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = "shape.broadcast"(%[[LHS_SHAPE1]], %[[RHS_SHAPE1]])
   // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
-  // CHECK-DAG:    %[[LHS_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
-  // CHECK-DAG:    %[[RHS_BCAST:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
-  // CHECK-NEXT:   "xla_hlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = "GT"}
+  // CHECK-DAG:    %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // CHECK-DAG:    %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // CHECK-NEXT:   "mhlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = "GT"}
   %0 = "tf.Greater"(%arg0, %arg1) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi1>
   return %0: tensor<?xi1>
 }
@@ -307,21 +307,21 @@ func @greater_uranked(%arg0: tensor<*xi32>) -> tensor<*xi1> {
 
 // CHECK-LABEL: func @greater_equal
 func @greater_equal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "GE"}
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "GE"}
   %0 = "tf.GreaterEqual"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
 // CHECK-LABEL: func @less
 func @less(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "LT"}
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "LT"}
   %0 = "tf.Less"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
 // CHECK-LABEL: func @less_equal
 func @less_equal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "LE"}
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "LE"}
   %0 = "tf.LessEqual"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }

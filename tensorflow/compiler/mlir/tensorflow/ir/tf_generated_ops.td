@@ -7270,6 +7270,8 @@ reshape(t, []) ==> 7
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_ResizeBilinearOp : TF_Op<"ResizeBilinear", [NoSideEffect]> {

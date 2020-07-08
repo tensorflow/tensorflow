@@ -12,24 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_DELEGATES_FLEX_WHITELISTED_FLEX_OPS_H_
-#define TENSORFLOW_LITE_DELEGATES_FLEX_WHITELISTED_FLEX_OPS_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_H_
+#define TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_H_
 
 #include <string>
 
 namespace tflite {
 namespace flex {
 
-// Whether the given op has been statically whitelisted for flex export.
+// Whether the given op has been statically allowlisted for flex export.
 //
-// This static whitelist is formed by the intersection of ops supported by
+// This static allowlist is formed by the intersection of ops supported by
 // TensorFlowMobile on both iOS and Android. As the converter is likely running
 // on a host that has the full suite of TensorFlow ops available, we use this
-// static whitelist to ensure compatibility when deploying to a mobile device.
-// TODO(b/118389105): Automate generation of the whitelisted flex ops.
-bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name);
+// static allowlist to ensure compatibility when deploying to a mobile device.
+// TODO(b/118389105): Automate generation of the allowlisted flex ops.
+bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name);
 
 }  // namespace flex
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_FLEX_WHITELISTED_FLEX_OPS_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_H_

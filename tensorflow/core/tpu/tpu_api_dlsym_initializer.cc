@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/core/tpu/tpu_system_device.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/stream_executor/tpu/tpu_system_device.h"
 #endif
 
 #define TFTPU_SET_FN(Struct, FnName)                                         \
@@ -53,9 +53,10 @@ Status InitializeTpuLibrary(void* library_handle) {
   // loaded. We do not want to register a TPU platform in XLA without the
   // supporting library providing the necessary APIs.
   if (s.ok()) {
-    // TODO(frankchn): Make initialization actually work
-    // Initialize TPU platform when the platform code is loaded from a library.
-    // InitializeApiFn()->TfTpu_InitializeFn();
+    void (*initialize_fn)();
+    initialize_fn = reinterpret_cast<decltype(initialize_fn)>(
+        dlsym(library_handle, "TfTpu_Initialize"));
+    (*initialize_fn)();
 
     RegisterTpuPlatform();
     RegisterTpuSystemDevice();
