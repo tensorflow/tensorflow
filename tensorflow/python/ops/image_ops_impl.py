@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.compat import compat
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -4608,42 +4607,19 @@ def non_max_suppression_padded(boxes,
         boxes, scores, max_output_size, iou_threshold, score_threshold,
         pad_to_max_output_size, name)
   else:
-    with ops.name_scope(name, 'non_max_suppression_padded'):
-      if not pad_to_max_output_size:
-        # pad_to_max_output_size may be set to False only when the shape of
-        # boxes is [num_boxes, 4], i.e., a single image. We make best effort to
-        # detect violations at compile time. If `boxes` does not have a static
-        # rank, the check allows computation to proceed.
-        if boxes.get_shape().rank is not None and boxes.get_shape().rank > 2:
-          raise ValueError(
-              "'pad_to_max_output_size' (value {}) must be True for "
-              'batched input'.format(pad_to_max_output_size))
-      if name is None:
-        name = ''
-      idx, num_valid = non_max_suppression_padded_v2(
-          boxes, scores, max_output_size, iou_threshold, score_threshold,
-          sorted_input, canonicalized_coordinates, tile_size)
-      # def_function.function seems to lose shape information, so set it here.
-      if not pad_to_max_output_size:
-        idx = idx[0, :num_valid]
-      else:
-        batch_dims = array_ops.concat([
-            array_ops.shape(boxes)[:-2],
-            array_ops.expand_dims(max_output_size, 0)
-        ], 0)
-        idx = array_ops.reshape(idx, batch_dims)
-      return idx, num_valid
+    return non_max_suppression_padded_v2(
+        boxes, scores, max_output_size, iou_threshold, score_threshold,
+        pad_to_max_output_size, name, sorted_input, canonicalized_coordinates,
+        tile_size)
 
 
-# TODO(b/158709815): Improve performance regression due to
-# def_function.function.
-@def_function.function(
-    experimental_implements='non_max_suppression_padded_v2')
 def non_max_suppression_padded_v2(boxes,
                                   scores,
                                   max_output_size,
                                   iou_threshold=0.5,
                                   score_threshold=float('-inf'),
+                                  pad_to_max_output_size=False,
+                                  name=None,
                                   sorted_input=False,
                                   canonicalized_coordinates=False,
                                   tile_size=512):
@@ -4727,6 +4703,8 @@ def non_max_suppression_padded_v2(boxes,
       overlap too much with respect to IoU (intersection over union).
     score_threshold: a float representing the threshold for box scores. Boxes
       with a score that is not larger than this threshold will be suppressed.
+    pad_to_max_output_size: whether to pad the output idx to max_output_size.
+      Must be set to True when the input is a batch of images.
     name: name of operation.
     sorted_input: a boolean indicating whether the input boxes and scores
       are sorted in descending order by the score.
@@ -4780,101 +4758,104 @@ def non_max_suppression_padded_v2(boxes,
           [batch_size, -1, 4])
     return sorted_scores, sorted_boxes, sorted_scores_indices
 
-  batch_dims = array_ops.shape(boxes)[:-2]
-  num_boxes = array_ops.shape(boxes)[-2]
-  boxes = array_ops.reshape(boxes, [-1, num_boxes, 4])
-  scores = array_ops.reshape(scores, [-1, num_boxes])
-  batch_size = array_ops.shape(boxes)[0]
-  if score_threshold != float('-inf'):
-    with ops.name_scope('filter_by_score'):
-      score_mask = math_ops.cast(scores > score_threshold, scores.dtype)
-      scores *= score_mask
-      box_mask = array_ops.expand_dims(
-          math_ops.cast(score_mask, boxes.dtype), 2)
-      boxes *= box_mask
+  with ops.name_scope(name, 'non_max_suppression_padded'):
+    if not pad_to_max_output_size:
+      # pad_to_max_output_size may be set to False only when the shape of boxes`
+      # is [num_boxes, 4], i.e., a single image. We make best effort to detect
+      # violations at compile time. If `boxes` does not have a static rank,
+      # the check allows computation to proceed.
+      if boxes.get_shape().rank is not None and boxes.get_shape().rank > 2:
+        raise ValueError("'pad_to_max_output_size' (value {}) must be True for "
+                         "batched input".format(pad_to_max_output_size))
 
-  if not canonicalized_coordinates:
-    with ops.name_scope('canonicalize_coordinates'):
-      y_1, x_1, y_2, x_2 = array_ops.split(
-          value=boxes, num_or_size_splits=4, axis=2)
-      y_1_is_min = math_ops.reduce_all(
-          math_ops.less_equal(y_1[0, 0, 0], y_2[0, 0, 0]))
-      y_min, y_max = control_flow_ops.cond(
-          y_1_is_min, lambda: (y_1, y_2), lambda: (y_2, y_1))
-      x_1_is_min = math_ops.reduce_all(
-          math_ops.less_equal(x_1[0, 0, 0], x_2[0, 0, 0]))
-      x_min, x_max = control_flow_ops.cond(
-          x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
-      boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
+    batch_dims = array_ops.shape(boxes)[:-2]
+    num_boxes = array_ops.shape(boxes)[-2]
+    boxes = array_ops.reshape(boxes, [-1, num_boxes, 4])
+    scores = array_ops.reshape(scores, [-1, num_boxes])
+    batch_size = array_ops.shape(boxes)[0]
+    if score_threshold != float('-inf'):
+      with ops.name_scope('filter_by_score'):
+        score_mask = math_ops.cast(scores > score_threshold, scores.dtype)
+        scores *= score_mask
+        box_mask = array_ops.expand_dims(
+            math_ops.cast(score_mask, boxes.dtype), 2)
+        boxes *= box_mask
 
-  if not sorted_input:
-    scores, boxes, sorted_indices = _sort_scores_and_boxes(scores, boxes)
-  else:
-    # Default value required for Autograph.
-    sorted_indices = array_ops.zeros_like(scores, dtype=dtypes.int32)
+    if not canonicalized_coordinates:
+      with ops.name_scope('canonicalize_coordinates'):
+        y_1, x_1, y_2, x_2 = array_ops.split(
+            value=boxes, num_or_size_splits=4, axis=2)
+        y_1_is_min = math_ops.reduce_all(
+            math_ops.less_equal(y_1[0, 0, 0], y_2[0, 0, 0]))
+        y_min, y_max = control_flow_ops.cond(
+            y_1_is_min, lambda: (y_1, y_2), lambda: (y_2, y_1))
+        x_1_is_min = math_ops.reduce_all(
+            math_ops.less_equal(x_1[0, 0, 0], x_2[0, 0, 0]))
+        x_min, x_max = control_flow_ops.cond(
+            x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
+        boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
 
-  pad = math_ops.cast(
-      math_ops.ceil(
-          math_ops.cast(
-              math_ops.maximum(num_boxes, max_output_size), dtypes.float32) /
-          math_ops.cast(tile_size, dtypes.float32)),
-      dtypes.int32) * tile_size - num_boxes
-  boxes = array_ops.pad(
-      math_ops.cast(boxes, dtypes.float32), [[0, 0], [0, pad], [0, 0]])
-  scores = array_ops.pad(
-      math_ops.cast(scores, dtypes.float32), [[0, 0], [0, pad]])
-  num_boxes_after_padding = num_boxes + pad
-  num_iterations = num_boxes_after_padding // tile_size
-  def _loop_cond(unused_boxes, unused_threshold, output_size, idx):
-    return math_ops.logical_and(
-        math_ops.reduce_min(output_size) < max_output_size,
-        idx < num_iterations)
+    if not sorted_input:
+      scores, boxes, sorted_indices = _sort_scores_and_boxes(scores, boxes)
 
-  def suppression_loop_body(boxes, iou_threshold, output_size, idx):
-    return _suppression_loop_body(
-        boxes, iou_threshold, output_size, idx, tile_size)
+    pad = math_ops.cast(
+        math_ops.ceil(
+            math_ops.cast(math_ops.maximum(num_boxes, max_output_size),
+                          dtypes.float32) / tile_size
+            ),
+        dtypes.int32) * tile_size - num_boxes
+    boxes = array_ops.pad(
+        math_ops.cast(boxes, dtypes.float32), [[0, 0], [0, pad], [0, 0]])
+    scores = array_ops.pad(
+        math_ops.cast(scores, dtypes.float32), [[0, 0], [0, pad]])
+    num_boxes_after_padding = num_boxes + pad
+    num_iterations = num_boxes_after_padding // tile_size
+    def _loop_cond(unused_boxes, unused_threshold, output_size, idx):
+      return math_ops.logical_and(
+          math_ops.reduce_min(output_size) < max_output_size,
+          idx < num_iterations)
 
-  selected_boxes, _, output_size, _ = control_flow_ops.while_loop(
-      _loop_cond,
-      suppression_loop_body,
-      [
-          boxes, iou_threshold,
-          array_ops.zeros([batch_size], dtypes.int32),
-          constant_op.constant(0)
-      ],
-      shape_invariants=[
-          tensor_shape.TensorShape([None, None, 4]),
-          tensor_shape.TensorShape([]),
-          tensor_shape.TensorShape([None]),
-          tensor_shape.TensorShape([]),
-      ],
-  )
-  num_valid = math_ops.minimum(output_size, max_output_size)
-  idx = num_boxes_after_padding - math_ops.cast(
-      nn_ops.top_k(
-          math_ops.cast(math_ops.reduce_any(
-              selected_boxes > 0, [2]), dtypes.int32) *
-          array_ops.expand_dims(
-              math_ops.range(num_boxes_after_padding, 0, -1), 0),
-          max_output_size)[0], dtypes.int32)
-  idx = math_ops.minimum(idx, num_boxes - 1)
+    def suppression_loop_body(boxes, iou_threshold, output_size, idx):
+      return _suppression_loop_body(
+          boxes, iou_threshold, output_size, idx, tile_size)
 
-  if not sorted_input:
-    index_offsets = math_ops.range(batch_size) * num_boxes
-    gather_idx = array_ops.reshape(
-        idx + array_ops.expand_dims(index_offsets, 1), [-1])
-    idx = array_ops.reshape(
-        array_ops.gather(array_ops.reshape(sorted_indices, [-1]),
-                         gather_idx),
-        [batch_size, -1])
-  invalid_index = array_ops.fill([batch_size, max_output_size], 0)
-  idx_index = array_ops.expand_dims(math_ops.range(max_output_size), 0)
-  num_valid_expanded = array_ops.expand_dims(num_valid, 1)
-  idx = array_ops.where(idx_index < num_valid_expanded,
-                        idx, invalid_index)
+    selected_boxes, _, output_size, _ = control_flow_ops.while_loop(
+        _loop_cond, suppression_loop_body,
+        [boxes, iou_threshold, array_ops.zeros([batch_size], dtypes.int32),
+         constant_op.constant(0)]
+        )
+    num_valid = math_ops.minimum(output_size, max_output_size)
+    idx = num_boxes_after_padding - math_ops.cast(
+        nn_ops.top_k(
+            math_ops.cast(math_ops.reduce_any(
+                selected_boxes > 0, [2]), dtypes.int32) *
+            array_ops.expand_dims(
+                math_ops.range(num_boxes_after_padding, 0, -1), 0),
+            max_output_size)[0], dtypes.int32)
+    idx = math_ops.minimum(idx, num_boxes - 1)
 
-  num_valid = array_ops.reshape(num_valid, batch_dims)
-  return idx, num_valid
+    if not sorted_input:
+      index_offsets = math_ops.range(batch_size) * num_boxes
+      gather_idx = array_ops.reshape(
+          idx + array_ops.expand_dims(index_offsets, 1), [-1])
+      idx = array_ops.reshape(
+          array_ops.gather(array_ops.reshape(sorted_indices, [-1]),
+                           gather_idx),
+          [batch_size, -1])
+    invalid_index = array_ops.fill([batch_size, max_output_size], 0)
+    idx_index = array_ops.expand_dims(math_ops.range(max_output_size), 0)
+    num_valid_expanded = array_ops.expand_dims(num_valid, 1)
+    idx = array_ops.where(idx_index < num_valid_expanded,
+                          idx, invalid_index)
+
+    num_valid = array_ops.reshape(num_valid, batch_dims)
+    if not pad_to_max_output_size:
+      idx = idx[0, :num_valid]
+      return idx, num_valid
+    last_dim = constant_op.constant(-1, shape=[1])
+    batch_dims = array_ops.concat([batch_dims, last_dim], 0)
+    idx = array_ops.reshape(idx, batch_dims)
+    return idx, num_valid
 
 
 def non_max_suppression_padded_v1(boxes,

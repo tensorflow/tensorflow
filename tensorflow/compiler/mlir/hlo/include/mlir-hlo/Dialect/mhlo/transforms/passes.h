@@ -60,7 +60,7 @@ std::unique_ptr<OperationPass<FuncOp>> createXlaHloFusionPass();
 
 }  // namespace mhlo
 
-namespace xla_lhlo {
+namespace lmhlo {
 
 // Lowers from LHLO dialect to Affine dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToAffinePass();
@@ -92,7 +92,7 @@ std::unique_ptr<Pass> createLhloCopyRemovalPass();
 // Lowers from LHLO dialect to parallel loops.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 
 namespace xla {
 

@@ -514,6 +514,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_SOFTMAX:
+    case BuiltinOperator_PAD:
+    case BuiltinOperator_PADV2:
       // In case of int16 inputs, the version is 3.
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 3;
@@ -537,8 +539,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_ADD:
-    case BuiltinOperator_PAD:
-    case BuiltinOperator_PADV2:
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_MEAN:

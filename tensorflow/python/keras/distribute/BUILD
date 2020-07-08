@@ -77,6 +77,22 @@ cuda_py_test(
     ],
 )
 
+distribute_py_test(
+    name = "checkpointing_test",
+    srcs = ["checkpointing_test.py"],
+    main = "checkpointing_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/training/tracking:util",
+    ],
+)
+
 cuda_py_test(
     name = "collective_all_reduce_strategy_test",
     srcs = ["collective_all_reduce_strategy_test.py"],
@@ -131,6 +147,25 @@ distribute_py_test(
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_metrics_test",
+    srcs = ["custom_training_loop_metrics_test.py"],
+    main = "custom_training_loop_metrics_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:metrics",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

@@ -1165,4 +1165,35 @@ array([0, 2, 2])
   );
 }
 
+def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
+  let summary = "Calls a function placed on a specified TPU device.";
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+    I32Tensor:$device_ordinal,
+
+    SymbolRefAttr:$f,
+    DefaultValuedAttr<I64Attr, "0">:$autotuner_thresh
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let extraClassDeclaration = [{
+    // Gets the argument operands to the called function.
+    operand_range getArgOperands() { return args(); }
+
+    // Returns the callee of this operation.
+    CallInterfaceCallable getCallableForCallee() {
+      return getAttrOfType<SymbolRefAttr>("f");
+    }
+  }];
+
+  let verifier = [{ return VerifyPartitionedCall(*this); }];
+}
+
 #endif // TF_OPS

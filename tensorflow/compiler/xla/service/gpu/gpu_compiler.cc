@@ -518,8 +518,11 @@ static Status CompileModuleToLlvmIrImpl(
 
   {
     XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
-    TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));
+    TF_RETURN_IF_ERROR(entry_computation->AcceptOrdered(
+        &ir_emitter, (*hlo_schedule)->ThunkLaunchOrder()));
   }
+  // The order of `thunk_sequence` corresponds to
+  // `hlo_schedule->ThunkLaunchOrder()`.
   *thunk_sequence = ir_emitter.ConsumeThunkSequence();
   return Status::OK();
 }
@@ -610,8 +613,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                                           gpu_version, stream_exec));
 
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
-      std::move(thunk_sequence), std::move(stream_assignment),
-      hlo_schedule->ThunkLaunchOrder());
+      std::move(thunk_sequence), std::move(stream_assignment));
   if (DumpingEnabledForHloModule(*module)) {
     DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
                             thunk_schedule->ToString());

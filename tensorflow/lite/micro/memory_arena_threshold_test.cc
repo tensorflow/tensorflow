@@ -95,7 +95,8 @@ void EnsureAllocatedSizeThreshold(const char* allocation_type, size_t actual,
   // TODO(b/158651472): Better auditing of non-64 bit systems:
   if (kIs64BitSystem) {
     // 64-bit systems should check floor and ceiling to catch memory savings:
-    TF_LITE_MICRO_EXPECT_NEAR(actual, expected, kAllocationThreshold);
+    TF_LITE_MICRO_EXPECT_NEAR(actual, expected,
+                              expected * kAllocationThreshold);
     if (actual != expected) {
       TF_LITE_REPORT_ERROR(micro_test::reporter,
                            "%s threshold failed: %d != %d", allocation_type,

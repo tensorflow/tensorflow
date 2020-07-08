@@ -1932,10 +1932,6 @@ register_extension_info(
 def py_strict_library(name, **kwargs):
     native.py_library(name = name, **kwargs)
 
-# Placeholder to use until bazel supports py_strict_test.
-def py_strict_test(name, **kwargs):
-    native.py_test(name = name, **kwargs)
-
 def tf_custom_op_py_library(
         name,
         srcs = [],

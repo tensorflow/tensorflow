@@ -7,6 +7,6 @@ ENTRY %Const () -> s32[100] {
 }
 
 // CHECK: func @constant(%[[ARG0:.*]]: memref<i32>)
-// CHECK:   "xla_lhlo.constant"(%[[ARG0]]) {value = dense<10> : tensor<i32>}
+// CHECK:   "lmhlo.constant"(%[[ARG0]]) {value = dense<10> : tensor<i32>}
 // CHECK: func @broadcast(%[[ARG1:.*]]: memref<i32>, %[[ARG2:.*]]: memref<100xi32>)
-// CHECK:   "xla_lhlo.broadcast_in_dim"(%[[ARG1]], %[[ARG2]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>}
+// CHECK:   "lmhlo.broadcast_in_dim"(%[[ARG1]], %[[ARG2]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>}

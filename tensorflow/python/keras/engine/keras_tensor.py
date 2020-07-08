@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec as type_spec_module
 from tensorflow.python.ops import array_ops
@@ -122,6 +123,35 @@ class KerasTensor(object):
   def get_shape(self):
     return self.shape
 
+  def __len__(self):
+    raise TypeError('Keras Functional inputs/outputs do not '
+                    'implement `__len__`. You may be '
+                    'seeing this error if you are passing them '
+                    'to a TF API that Keras cannot automatically '
+                    'convert to a lambda layer.')
+
+  @property
+  def is_tensor_like(self):
+    return True
+
+  def set_shape(self, shape):
+    """Updates the shape of this KerasTensor. Mimics `tf.Tensor.set_shape()`."""
+    if not isinstance(shape, tensor_shape.TensorShape):
+      shape = tensor_shape.TensorShape(shape)
+    if shape.dims is not None:
+      dim_list = [dim.value for dim in shape.dims]
+      for dim in range(len(dim_list)):
+        if dim_list[dim] is None and self.shape.dims is not None:
+          dim_list[dim] = self.shape.dims[dim]
+      shape = tensor_shape.TensorShape(dim_list)
+    if not self.shape.is_compatible_with(shape):
+      raise ValueError(
+          "Keras Intermediate Value's shape %s is not"
+          "compatible with supplied shape %s" %
+          (self.shape, shape))
+    else:
+      self._internal_type_spec._shape = shape  # pylint: disable=protected-access
+
   @property
   def dtype(self):
     """Returns the `dtype` of elements in the tensor."""
@@ -167,6 +197,11 @@ class KerasTensor(object):
     """Register overloads for all operators."""
     for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
       cls._overload_operator(operator)
+
+    # We include `experimental_ref` for versions of TensorFlow that
+    # still include the deprecated method in Tensors.
+    if hasattr(ops.Tensor, 'experimental_ref'):
+      cls._overload_operator('experimental_ref')
 
   @classmethod
   def _overload_operator(cls, operator):  # pylint: disable=invalid-name

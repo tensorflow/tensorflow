@@ -58,7 +58,7 @@ using ::xla::gpu::Thunk;
 using ::xla::gpu::ThunkEmitter;
 using ::xla::gpu::ThunkSequence;
 
-namespace lhlo = ::mlir::xla_lhlo;
+namespace lhlo = ::mlir::lmhlo;
 
 // TODO(b/137624192) Use tablegen for this.
 Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
@@ -226,8 +226,10 @@ absl::string_view LhloDialectEmitter::platform_name() const {
   return platform_->Name();
 }
 
-Status LhloDialectEmitter::EmitComputation(const HloComputation& computation) {
-  return computation.root_instruction()->Accept(this);
+Status LhloDialectEmitter::EmitComputation(
+    const HloComputation& computation,
+    absl::Span<HloInstruction* const> ordering) {
+  return computation.AcceptOrdered(this, ordering);
 }
 
 StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(

@@ -75,23 +75,23 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
 
 }  // namespace mhlo
 
-namespace xla_lhlo {
+namespace lmhlo {
 
 /// Collect a set of patterns to convert from the LHLO dialect to LLVM.
 void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
                                           LLVMTypeConverter *converter,
                                           OwningRewritePatternList *patterns);
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 
-namespace xla_chlo {
+namespace chlo {
 
 // Populates a collection of conversion patterns for legalizing client-HLO to
 // HLO.
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns);
 
-}  // namespace xla_chlo
+}  // namespace chlo
 
 namespace xla {
 

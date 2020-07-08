@@ -28,18 +28,18 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 
 namespace mlir {
-namespace xla_chlo {
+namespace chlo {
 
-class XlaHloClientDialect : public Dialect {
+class HloClientDialect : public Dialect {
  public:
-  explicit XlaHloClientDialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "xla_chlo"; }
+  explicit HloClientDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "chlo"; }
 };
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h.inc"
 
-}  // namespace xla_chlo
+}  // namespace chlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_CHLO_OPS_H_

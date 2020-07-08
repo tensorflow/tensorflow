@@ -49,19 +49,16 @@ void ThunkSchedule::AddDependenciesOnTransitiveOperands(
 
 ThunkSchedule::ThunkSchedule(
     std::unique_ptr<ThunkSequence> thunks,
-    std::unique_ptr<StreamAssignment> stream_assignment,
-    const std::vector<HloInstruction*>& hlo_total_order)
+    std::unique_ptr<StreamAssignment> stream_assignment)
     : thunks_(std::move(thunks)),
       stream_assignment_(std::move(stream_assignment)) {
+  for (auto& thunk : *thunks_) {
+    thunk_total_order_.push_back(thunk.get());
+  }
+
   absl::flat_hash_map<const HloInstruction*, Thunk*> hlo_to_thunk;
   for (const auto& thunk : *thunks_) {
     InsertOrDie(&hlo_to_thunk, thunk->hlo_instruction(), thunk.get());
-  }
-
-  for (HloInstruction* hlo : hlo_total_order) {
-    if (Thunk** thunk = tensorflow::gtl::FindOrNull(hlo_to_thunk, hlo)) {
-      thunk_total_order_.push_back(*thunk);
-    }
   }
 
   for (const Thunk* thunk : thunk_total_order_) {

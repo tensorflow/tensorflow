@@ -2250,7 +2250,7 @@ class DatasetV1(DatasetV2):
     # by value _make_dataset() function would try to capture these variant
     # tensor dataset inputs, which are marked as stateful ops and would throw
     # an error if we try and capture them. We therefore traverse the graph
-    # to find all these ops and whitelist them so that the capturing
+    # to find all these ops and allowlist them so that the capturing
     # logic instead of throwing an error recreates these ops which is what was
     # happening before.
     all_ds_ops = traverse.obtain_all_variant_tensor_ops(self)
@@ -2258,7 +2258,7 @@ class DatasetV1(DatasetV2):
 
     # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
     # a 0-argument function.
-    @function.Defun(capture_by_value=True, whitelisted_stateful_ops=all_ds_ops)
+    @function.Defun(capture_by_value=True, allowlisted_stateful_ops=all_ds_ops)
     def _make_dataset():
       """Factory function for a dataset."""
       # NOTE(mrry): `Defun` does not capture the graph-level seed from the

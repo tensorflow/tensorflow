@@ -203,14 +203,14 @@ class ApiTest(test.TestCase):
         z = x + y
         return z
 
-      test_method_whitelisted = api.do_not_convert(test_method)
+      test_method_allowlisted = api.do_not_convert(test_method)
 
     tc = TestClass()
-    self.assertTrue(tf_inspect.ismethod(tc.test_method_whitelisted))
+    self.assertTrue(tf_inspect.ismethod(tc.test_method_allowlisted))
     # Because the wrapped function is not generated, we can't preserve its
     # arg spec.
     self.assertEqual((),
-                     tuple(function_utils.fn_args(tc.test_method_whitelisted)))
+                     tuple(function_utils.fn_args(tc.test_method_allowlisted)))
 
   def test_do_not_convert_callable_object(self):
 
@@ -521,12 +521,12 @@ class ApiTest(test.TestCase):
     ag_logging.set_verbosity(0, False)
     os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '1'
 
-  def test_converted_call_partial_of_whitelisted_function(self):
+  def test_converted_call_partial_of_allowlisted_function(self):
 
     def test_fn(_):
       self.assertFalse(converter_testing.is_inside_generated_code())
 
-    converter_testing.whitelist(test_fn)
+    converter_testing.allowlist(test_fn)
     api.converted_call(
         functools.partial(test_fn, None), (), None, options=DEFAULT_RECURSIVE)
 
@@ -563,7 +563,7 @@ class ApiTest(test.TestCase):
         f, (g, constant_op.constant(1)), None, options=DEFAULT_RECURSIVE)
     self.assertEqual(self.evaluate(x), 1)
 
-  def test_converted_call_forced_when_explicitly_whitelisted(self):
+  def test_converted_call_forced_when_explicitly_allowlisted(self):
 
     @api.do_not_convert()
     def f(x):
@@ -606,7 +606,7 @@ class ApiTest(test.TestCase):
     self.assertIsNotNone(
         api.converted_call(f, (1, 2, 3, 4), None, options=opts))
 
-  def test_converted_call_whitelisted_method(self):
+  def test_converted_call_allowlisted_method(self):
 
     class TestClass(object):
 
@@ -614,19 +614,19 @@ class ApiTest(test.TestCase):
         return converter_testing.is_inside_generated_code()
 
     obj = TestClass()
-    converter_testing.whitelist(obj.method.__func__)
+    converter_testing.allowlist(obj.method.__func__)
 
     self.assertFalse(
         api.converted_call(obj.method, (), {}, options=DEFAULT_RECURSIVE))
 
-  def test_converted_call_whitelisted_method_via_owner(self):
+  def test_converted_call_allowlisted_method_via_owner(self):
 
     class TestClass(object):
 
       def method(self):
         return converter_testing.is_inside_generated_code()
 
-    converter_testing.whitelist(TestClass)
+    converter_testing.allowlist(TestClass)
 
     obj = TestClass()
     self.assertFalse(
@@ -852,7 +852,7 @@ class ApiTest(test.TestCase):
     # invocation would fail.
     self.assertEqual(self.evaluate(call_in_default_context()), 1)
 
-  def test_converted_call_caching_of_whitelisted_bound_methods(self):
+  def test_converted_call_caching_of_allowlisted_bound_methods(self):
 
     class TestClass(object):
 
@@ -863,7 +863,7 @@ class ApiTest(test.TestCase):
         return self.__private
 
     # TODO(mdan): Refactor to avoid this use of global state.
-    cache_size_before = len(conversion._WHITELIST_CACHE)
+    cache_size_before = len(conversion._ALLOWLIST_CACHE)
 
     # First invocation with fallback on, to allow recording it into cache.
     os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '0'
@@ -871,15 +871,15 @@ class ApiTest(test.TestCase):
     api.converted_call(tc.test_method, (), None, options=DEFAULT_RECURSIVE)
     os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '1'
 
-    # Entry should be added to the whitelist cache.
-    self.assertEqual(len(conversion._WHITELIST_CACHE), cache_size_before + 1)
+    # Entry should be added to the allowlist cache.
+    self.assertEqual(len(conversion._ALLOWLIST_CACHE), cache_size_before + 1)
 
     # A second invocation should go through even with fallback off.
     tc = TestClass()
     api.converted_call(tc.test_method, (), None, options=DEFAULT_RECURSIVE)
 
-    # No new entries should appear in the whitelist cache.
-    self.assertEqual(len(conversion._WHITELIST_CACHE), cache_size_before + 1)
+    # No new entries should appear in the allowlist cache.
+    self.assertEqual(len(conversion._ALLOWLIST_CACHE), cache_size_before + 1)
 
   def test_context_tracking_direct_calls(self):
 
@@ -1102,7 +1102,7 @@ class ApiTest(test.TestCase):
 
     test_fn(ag_ctx.ControlStatusCtx(status=ag_ctx.Status.UNSPECIFIED))
 
-  def test_tf_convert_whitelisted_method(self):
+  def test_tf_convert_allowlisted_method(self):
 
     if six.PY2:
       self.skipTest('Test bank not comptible with Python 2.')
@@ -1112,7 +1112,7 @@ class ApiTest(test.TestCase):
       def method(self):
         return converter_testing.is_inside_generated_code()
 
-    converter_testing.whitelist(TestClass.method)
+    converter_testing.allowlist(TestClass.method)
 
     obj = TestClass()
     converted_call = api.tf_convert(

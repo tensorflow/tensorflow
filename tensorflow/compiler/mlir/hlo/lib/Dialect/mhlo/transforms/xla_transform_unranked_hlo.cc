@@ -152,7 +152,7 @@ struct TransformUnrankedHloPass
     // Setup conversion target.
     MLIRContext &ctx = getContext();
     ConversionTarget target(ctx);
-    target.addLegalDialect<XlaHloDialect, StandardOpsDialect,
+    target.addLegalDialect<MhloDialect, StandardOpsDialect,
                            shape::ShapeDialect>();
     target.addLegalOp<FuncOp>();
     AddLegalOpOnRankedTensor<SqrtOp>(&target);

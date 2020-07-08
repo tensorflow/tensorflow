@@ -33,7 +33,7 @@ namespace xla {
 static std::string GetMlirOpName(HloOpcode opcode) {
   std::string op_name = HloOpcodeString(opcode);
   absl::c_replace(op_name, '-', '_');
-  return mlir::mhlo::XlaHloDialect::getDialectNamespace().str() + "." + op_name;
+  return mlir::mhlo::MhloDialect::getDialectNamespace().str() + "." + op_name;
 }
 
 static std::string ToString(mlir::Type ty) {

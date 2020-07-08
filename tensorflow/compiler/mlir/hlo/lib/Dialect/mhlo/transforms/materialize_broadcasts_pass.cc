@@ -34,7 +34,7 @@ struct TestMaterializeBroadcastsPass
     OwningRewritePatternList conversionPatterns;
 
     // Consider the mhlo dialect legal for tests.
-    conversionTarget.addLegalDialect<XlaHloDialect>();
+    conversionTarget.addLegalDialect<MhloDialect>();
     // The conversion uses helpers from the Standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
 

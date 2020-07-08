@@ -472,11 +472,11 @@ def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
 
 
 @np_utils.np_doc('imag')
-def imag(a):
-  a = asarray(a)
-  # TODO(srbs): np.imag returns a scalar if a is a scalar, whereas we always
+def imag(val):
+  val = asarray(val)
+  # TODO(srbs): np.imag returns a scalar if `val` is a scalar, whereas we always
   # return an ndarray.
-  return np_utils.tensor_to_ndarray(math_ops.imag(a.data))
+  return np_utils.tensor_to_ndarray(math_ops.imag(val.data))
 
 
 _TO_INT_ = 0
@@ -874,16 +874,17 @@ setattr(np_arrays.ndarray, 'reshape', _reshape_method_wrapper)
 
 
 @np_utils.np_doc('pad')
-def pad(ary, pad_width, mode, constant_values=0):
+def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-name
   """Only supports modes 'constant', 'reflect' and 'symmetric' currently."""
+  constant_values = kwargs.get('constant_values', 0)
   if not (mode == 'constant' or mode == 'reflect' or mode == 'symmetric'):
     raise ValueError('Unsupported padding mode: ' + mode)
   mode = mode.upper()
-  ary = asarray(ary)
+  array = asarray(array)
   pad_width = asarray(pad_width, dtype=dtypes.int32)
   return np_utils.tensor_to_ndarray(
       array_ops.pad(
-          tensor=ary.data,
+          tensor=array.data,
           paddings=pad_width.data,
           mode=mode,
           constant_values=constant_values))
@@ -959,8 +960,8 @@ def ndim(a):
 
 
 @np_utils.np_doc('isscalar')
-def isscalar(a):
-  return ndim(a) == 0
+def isscalar(num):
+  return ndim(num) == 0
 
 
 def _boundaries_to_sizes(a, boundaries, axis):

@@ -947,10 +947,7 @@ distribute_py_test(
     deps = [
         ":combinations",
         ":strategy_combinations",
-        ":tpu_strategy",
-        "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
         "//tensorflow/python/training/tracking:util",
     ],
 )
@@ -1302,25 +1299,6 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "custom_training_loop_metrics_test",
-    srcs = ["custom_training_loop_metrics_test.py"],
-    main = "custom_training_loop_metrics_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
     name = "strategy_reduce_test",
     srcs = ["strategy_reduce_test.py"],
     main = "strategy_reduce_test.py",
@@ -1352,6 +1330,7 @@ distribute_py_test(
         ":mirrored_strategy",
         ":single_loss_example",
         ":strategy_combinations",
+        ":strategy_test_lib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:framework_ops",
@@ -1361,8 +1340,6 @@ distribute_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras/layers",
-        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -1374,6 +1351,7 @@ py_library(
     srcs = ["single_loss_example.py"],
     deps = [
         ":step_fn",
+        ":strategy_test_lib",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:layers",

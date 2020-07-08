@@ -39,9 +39,9 @@ class OpBuilder;
 
 namespace mhlo {
 
-class XlaHloDialect : public Dialect {
+class MhloDialect : public Dialect {
  public:
-  explicit XlaHloDialect(MLIRContext *context);
+  explicit MhloDialect(MLIRContext *context);
   static StringRef getDialectNamespace() { return "mhlo"; }
 
   // Registered hook to materialize a constant operation from a given attribute

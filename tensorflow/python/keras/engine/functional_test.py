@@ -34,6 +34,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import models
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
@@ -1903,6 +1904,37 @@ class AddLossTest(keras_parameterized.TestCase):
     model2.fit(x, y, batch_size=2, epochs=1)
 
     self.assertAllClose(model.get_weights(), model2.get_weights())
+
+  def test_add_loss_crossentropy_backtracking(self):
+    inputs = input_layer_lib.Input((2,))
+    labels = input_layer_lib.Input((1,))
+    outputs = layers.Dense(1, activation='sigmoid')(inputs)
+    model = functional.Functional([inputs, labels], outputs)
+    model.add_loss(losses.binary_crossentropy(labels, outputs))
+    model.compile('adam')
+    x = np.random.random((2, 2))
+    y = np.random.random((2, 1))
+    model.fit([x, y])
+
+    inputs = input_layer_lib.Input((2,))
+    labels = input_layer_lib.Input((2,))
+    outputs = layers.Dense(2, activation='softmax')(inputs)
+    model = functional.Functional([inputs, labels], outputs)
+    model.add_loss(losses.categorical_crossentropy(labels, outputs))
+    model.compile('adam')
+    x = np.random.random((2, 2))
+    y = np.random.random((2, 2))
+    model.fit([x, y])
+
+    inputs = input_layer_lib.Input((2,))
+    labels = input_layer_lib.Input((1,), dtype='int32')
+    outputs = layers.Dense(2, activation='softmax')(inputs)
+    model = functional.Functional([inputs, labels], outputs)
+    model.add_loss(losses.sparse_categorical_crossentropy(labels, outputs))
+    model.compile('adam')
+    x = np.random.random((2, 2))
+    y = np.random.randint(0, 2, size=(2, 1))
+    model.fit([x, y])
 
 
 @combinations.generate(combinations.keras_mode_combinations())

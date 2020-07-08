@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
 
 namespace mlir {
-namespace xla_chlo {
+namespace chlo {
 
 template <typename T>
 static LogicalResult Verify(T op) {
@@ -263,10 +263,10 @@ BROADCAST_BINARY_OP_DEFS(BroadcastXorOp);
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
-// xla_chlo Dialect Constructor
+// chlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-XlaHloClientDialect::XlaHloClientDialect(MLIRContext* context)
+HloClientDialect::HloClientDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
@@ -274,5 +274,5 @@ XlaHloClientDialect::XlaHloClientDialect(MLIRContext* context)
       >();
 }
 
-}  // namespace xla_chlo
+}  // namespace chlo
 }  // namespace mlir

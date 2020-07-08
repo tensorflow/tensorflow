@@ -624,6 +624,7 @@ cc_library(
         "transforms/tpu_rewrite_pass.cc",
         "transforms/tpu_sharding_identification_pass.cc",
         "transforms/tpu_space_to_depth_pass.cc",
+        "transforms/tpu_update_embedding_enqueue_op_inputs.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
         "translate/breakup-islands.cc",
         "translate/tf_executor_to_functional.cc",

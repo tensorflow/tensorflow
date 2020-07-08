@@ -21,11 +21,9 @@ package tensorflow
 #include <string.h>
 #include "tensorflow/c/c_api.h"
 
-TF_TString toNewTString(_GoString_ gstr) {
-    TF_TString tstr;
-    TF_TString_Init(&tstr);
-    TF_TString_Copy(&tstr, _GoStringPtr(gstr), _GoStringLen(gstr));
-    return tstr;
+void toNewTString(_GoString_ gstr, TF_TString *tstr) {
+    TF_TString_Init(tstr);
+    TF_TString_Copy(tstr, _GoStringPtr(gstr), _GoStringLen(gstr));
 }
 */
 import "C"
@@ -448,7 +446,8 @@ func encodeTensorWithSlices(w *bytes.Buffer, v reflect.Value, shape []int64) err
 		}
 	} else if v.Kind() == reflect.String {
 		s := v.Interface().(string)
-		tstr := C.toNewTString(s)
+		var tstr C.TF_TString
+		C.toNewTString(s, &tstr)
 		ptr := unsafe.Pointer(&tstr)
 		return copyPtr(w, ptr, C.sizeof_TF_TString)
 	} else if v.Kind() != reflect.Array {

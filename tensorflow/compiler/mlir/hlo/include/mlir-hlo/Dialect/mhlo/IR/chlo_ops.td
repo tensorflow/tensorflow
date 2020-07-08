@@ -22,7 +22,7 @@ limitations under the License.
 //
 // The typical use of this dialect is for client libraries to be able to emit
 // less constrained ops and rely on the conversion framework to lower any
-// xla_chlo ops to canonical mhlo ops.
+// chlo ops to canonical mhlo ops.
 //
 // See: https://www.tensorflow.org/xla/operation_semantics
 
@@ -35,8 +35,8 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 
 def HLOClient_Dialect : Dialect {
-  let name = "xla_chlo";
-  let cppNamespace = "xla_chlo";
+  let name = "chlo";
+  let cppNamespace = "chlo";
   let summary = [{
     XLA Client HLO Ops
   }];

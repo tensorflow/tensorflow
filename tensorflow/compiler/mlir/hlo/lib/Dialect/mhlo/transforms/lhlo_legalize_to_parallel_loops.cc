@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 
 namespace mlir {
-namespace xla_lhlo {
+namespace lmhlo {
 namespace {
 
 // Clones and adapts the code in `lhlo_block` that works on buffers and has a
@@ -154,14 +154,14 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
   return b->create<scf::ParallelOp>(loc, lower, upper, step);
 }
 
-// Converts `xla_lhlo.ReduceOp` into two scf::ParallelOp and a scf::ReduceOp.
+// Converts `lmhlo.ReduceOp` into two scf::ParallelOp and a scf::ReduceOp.
 // The outper `ParallelOp` refers to the parallel loops if there are
 // any. The inner `ParalleOp` refers to the reduction loops and `ReduceOp`
 // contains the reduction operator.
 //
 // Example:
 //
-//  "xla_lhlo.reduce"(%buffer, %init_buf, %result) ( {
+//  "lmhlo.reduce"(%buffer, %init_buf, %result) ( {
 //    ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
 //      <LHLO ops>
 //    } ) {dimensions = dense<[1]> : tensor<1xi64>}
@@ -187,12 +187,12 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
 //    } : f32
 //    scf.yield
 //  }
-class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
+class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
  public:
-  using OpConversionPattern<xla_lhlo::ReduceOp>::OpConversionPattern;
+  using OpConversionPattern<lmhlo::ReduceOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      xla_lhlo::ReduceOp xla_reduce_op, ArrayRef<Value> /*args*/,
+      lmhlo::ReduceOp xla_reduce_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/137624192) Implement variadic reduce.
     if (xla_reduce_op.out().size() != 1) return failure();
@@ -226,7 +226,7 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
   //    scf.yield
   //  }
   scf::ReduceOp CreateReduceOpInNestedParallelLoops(
-      xla_lhlo::ReduceOp xla_reduce_op,
+      lmhlo::ReduceOp xla_reduce_op,
       ConversionPatternRewriter* rewriter) const {
     auto loc = xla_reduce_op.getLoc();
     DenseSet<int> reducing_dims;
@@ -314,7 +314,7 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
 //     accumulator = reduction_operator(output[O], value)
 //   output[O] = accumulator
 //
-// Converts `xla_lhlo.ReduceWindowOp` into two scf::ParallelOp and a
+// Converts `lmhlo.ReduceWindowOp` into two scf::ParallelOp and a
 // scf::ReduceOp.
 // The outper `ParallelOp` refers to the parallel loops that traverese output
 // buffer. The inner `ParalleOp` refers to the reduction loops that traverse
@@ -325,11 +325,11 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
 // func @reduce_window(%arg: memref<112x112xf32>,
 //              %init: memref<f32>,
 //              %result: memref<56x56xf32>) {
-//   "xla_lhlo.reduce_window"(%arg, %init, %result) ( {
+//   "lmhlo.reduce_window"(%arg, %init, %result) ( {
 //     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
-//       "xla_lhlo.maximum"(%lhs, %rhs, %res)
+//       "lmhlo.maximum"(%lhs, %rhs, %res)
 //         : (memref<f32>, memref<f32>, memref<f32>) -> ()
-//       "xla_lhlo.terminator"() : () -> ()
+//       "lmhlo.terminator"() : () -> ()
 //     }) {
 //       padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
 //       window_dimensions = dense<[3, 3]> : tensor<2xi64>,
@@ -359,12 +359,12 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
 //    return
 //  }
 class ReduceWindowOpConverter
-    : public OpConversionPattern<xla_lhlo::ReduceWindowOp> {
+    : public OpConversionPattern<lmhlo::ReduceWindowOp> {
  public:
-  using OpConversionPattern<xla_lhlo::ReduceWindowOp>::OpConversionPattern;
+  using OpConversionPattern<lmhlo::ReduceWindowOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      xla_lhlo::ReduceWindowOp xla_reduce_window_op, ArrayRef<Value> /*args*/,
+      lmhlo::ReduceWindowOp xla_reduce_window_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
     scf::ParallelOp output_loop, window_loop;
     std::tie(output_loop, window_loop) =
@@ -383,7 +383,7 @@ class ReduceWindowOpConverter
  private:
   std::pair<scf::ParallelOp, scf::ParallelOp>
   CreateParallelLoopsToTraverseOutputAndWindow(
-      xla_lhlo::ReduceWindowOp xla_reduce_window_op,
+      lmhlo::ReduceWindowOp xla_reduce_window_op,
       ConversionPatternRewriter* rewriter) const {
     auto loc = xla_reduce_window_op.getLoc();
     Value init_value =
@@ -415,9 +415,8 @@ class ReduceWindowOpConverter
   }
 
   scf::ReduceOp CreateReduceOpInNestedParallelLoops(
-      xla_lhlo::ReduceWindowOp xla_reduce_window_op,
-      scf::ParallelOp output_loop, scf::ParallelOp window_loop,
-      ConversionPatternRewriter* rewriter) const {
+      lmhlo::ReduceWindowOp xla_reduce_window_op, scf::ParallelOp output_loop,
+      scf::ParallelOp window_loop, ConversionPatternRewriter* rewriter) const {
     rewriter->setInsertionPointToStart(window_loop.getBody());
     auto loc = xla_reduce_window_op.getLoc();
 
@@ -481,12 +480,12 @@ class ReduceWindowOpConverter
 //              initialized_flag = true
 //    output(selected_index) = scatter(output(selected_index), source(S))
 class SelectAndScatterOpConverter
-    : public OpConversionPattern<xla_lhlo::SelectAndScatterOp> {
+    : public OpConversionPattern<lmhlo::SelectAndScatterOp> {
  public:
-  using OpConversionPattern<xla_lhlo::SelectAndScatterOp>::OpConversionPattern;
+  using OpConversionPattern<lmhlo::SelectAndScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      xla_lhlo::SelectAndScatterOp s_and_s_op, ArrayRef<Value> /*args*/,
+      lmhlo::SelectAndScatterOp s_and_s_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = s_and_s_op.getLoc();
     InitializeOutput(s_and_s_op, &rewriter);
@@ -515,7 +514,7 @@ class SelectAndScatterOpConverter
   }
 
  private:
-  void InitializeOutput(xla_lhlo::SelectAndScatterOp s_and_s_op,
+  void InitializeOutput(lmhlo::SelectAndScatterOp s_and_s_op,
                         OpBuilder* b) const {
     auto loc = s_and_s_op.getLoc();
     Value init_value = b->create<LoadOp>(loc, s_and_s_op.init_value());
@@ -533,7 +532,7 @@ class SelectAndScatterOpConverter
     SmallVector<Value, 2> window_ivs;
     scf::ForOp inner_loop;
   };
-  WindowLoops InsertWindowLoops(xla_lhlo::SelectAndScatterOp s_and_s_op,
+  WindowLoops InsertWindowLoops(lmhlo::SelectAndScatterOp s_and_s_op,
                                 scf::ParallelOp loop_over_src,
                                 OpBuilder* b) const {
     auto loc = s_and_s_op.getLoc();
@@ -598,7 +597,7 @@ class SelectAndScatterOpConverter
     SmallVector<Value, 4> ivs_val_flag_;
   };
 
-  SmallVector<Value, 2> SelectIvs(xla_lhlo::SelectAndScatterOp s_and_s_op,
+  SmallVector<Value, 2> SelectIvs(lmhlo::SelectAndScatterOp s_and_s_op,
                                   scf::ParallelOp loop_over_src,
                                   OpBuilder* b) const {
     auto loc = s_and_s_op.getLoc();
@@ -636,9 +635,10 @@ class SelectAndScatterOpConverter
     return window_loops.selected_ivs;
   }
 
-  SmallVector<Value, 4> SelectOrInitialize(
-      xla_lhlo::SelectAndScatterOp s_and_s_op, ArrayRef<Value> operand_ivs,
-      IterArgs* ivs_val_flag, OpBuilder* b) const {
+  SmallVector<Value, 4> SelectOrInitialize(lmhlo::SelectAndScatterOp s_and_s_op,
+                                           ArrayRef<Value> operand_ivs,
+                                           IterArgs* ivs_val_flag,
+                                           OpBuilder* b) const {
     auto loc = s_and_s_op.getLoc();
     Value true_i1 = b->create<mlir::ConstantOp>(
         loc, b->getI1Type(), b->getIntegerAttr(b->getI1Type(), 1));
@@ -707,9 +707,9 @@ struct LhloLegalizeToParallelLoops
 
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           scf::SCFDialect, XlaLhloDialect>();
-    target.addIllegalOp<xla_lhlo::ReduceOp, xla_lhlo::ReduceWindowOp,
-                        xla_lhlo::SelectAndScatterOp>();
+                           scf::SCFDialect, LmhloDialect>();
+    target.addIllegalOp<lmhlo::ReduceOp, lmhlo::ReduceWindowOp,
+                        lmhlo::SelectAndScatterOp>();
 
     if (failed(applyPartialConversion(func, target, patterns))) {
       signalPassFailure();
@@ -727,5 +727,5 @@ static PassRegistration<LhloLegalizeToParallelLoops> legalize_lhlo_pass(
     "lhlo-legalize-to-parallel-loops",
     "Legalize from LHLO dialect to parallel loops.");
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir
