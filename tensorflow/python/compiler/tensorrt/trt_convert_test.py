@@ -353,18 +353,35 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           self._MayRemoveGraphSequenceNumber(node.name): node.op
           for node in graph_def.node
       }
-      self.assertEqual(
-          {
-              "input1": "Placeholder",
-              "input2": "Placeholder",
-              "TRTEngineOp_0": "TRTEngineOp",
-              "output": "Identity"
-          }, node_name_to_op)
+      if device is not None and device.startswith("/CPU:"):
+        self.assertEqual(
+            {
+                "add": "AddV2",
+                "add/ReadVariableOp": "Const",
+                "add_1": "AddV2",
+                "add_2": "AddV2",
+                "input1": "Placeholder",
+                "input2": "Placeholder",
+                "mul": "Mul",
+                "output": "Identity"
+            }, node_name_to_op)
+      else:
+        self.assertEqual(
+            {
+                "input1": "Placeholder",
+                "input2": "Placeholder",
+                "TRTEngineOp_0": "TRTEngineOp",
+                "output": "Identity"
+            }, node_name_to_op)
 
       if need_calibration:
         trt_engine_nodes = [
             node for node in graph_def.node if node.op == "TRTEngineOp"
         ]
+        if device is not None and device.startswith("/CPU:"):
+          self.assertEmpty(trt_engine_nodes)
+          return
+
         self.assertNotEmpty(trt_engine_nodes)
         for node in trt_engine_nodes:
           self.assertTrue(len(node.attr["calibration_data"].s))
