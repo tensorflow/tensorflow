@@ -41,8 +41,20 @@ from tensorflow.python.ops import map_ops
 class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testEmptyTensorMap(self):
     m = map_ops.empty_tensor_map()
-    print("empty tensor map created")
-    
+    print("test EmptyTensorMap")
+  
+  def testTensorMapSize(self):
+    m = map_ops.empty_tensor_map()
+    s = map_ops.tensor_map_size(m)
+    print("size: ", s)
+
+  def testTensorMapInsert(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    v = constant_op.constant(2.0)
+    m = map_ops.tensor_map_insert(m, k, v)
+    print("test TensorMapInsert")
+
   '''
   @parameterized.named_parameters(("NoMaxNumElements", None),
                                   ("WithMaxNumElements", 2))

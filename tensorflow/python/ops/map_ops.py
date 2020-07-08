@@ -31,10 +31,18 @@ from tensorflow.python.ops.gen_map_ops import *
 #zero_out = zero_out_ops.zero_out 
 
 def empty_tensor_map():
+  print("hello gen_map_ops.empty_tensor_map")
   return gen_map_ops.empty_tensor_map()
 
+def tensor_map_size(input_handle):
+  print("hello gen_map_ops.tensor_map_size")
+  return gen_map_ops.tensor_map_size(input_handle)
+
+def tensor_map_insert(input_handle, key, value):
+  print("hello gen_map_ops.tensor_map_insert")
+  return gen_map_ops.tensor_map_insert(input_handle, key, value)
+
 def zero_out(to_zero):
-    print("Hello World - Python Op")
     return gen_map_ops.zero_out(to_zero)
 
 @ops.RegisterGradient("ZeroOut")
