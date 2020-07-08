@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
-#include <typeinfo>
 
 // Struct that stores the status and TF_Tensor inputs to the opkernel. 
 // Used to delete tensor and status in its destructor upon kernel return. 

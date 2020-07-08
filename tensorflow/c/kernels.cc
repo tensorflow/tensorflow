@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/framework/tensor_shape.h"
 
 // This file forms the basis of a stable ABI for third-party kernel
 // implementations. It is crucial that changes to this file are made cautiously
@@ -96,11 +95,6 @@ void TF_KernelBuilder_TypeConstraint(TF_KernelBuilder* kernel_builder,
 void TF_KernelBuilder_HostMemory(TF_KernelBuilder* kernel_builder,
                                  const char* arg_name) {
   kernel_builder->cc_builder->HostMemory(arg_name);
-}
-
-void TF_KernelBuilder_Priority(TF_KernelBuilder* kernel_builder, 
-                               int32_t priority_number){ 
-  kernel_builder->cc_builder->Priority(priority_number); 
 }
 
 namespace tensorflow {
@@ -273,28 +267,3 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
   }
   return tf_tensor;
 }
-
-TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype, 
-                     			 int64_t* dims, int num_dims, TF_Status* status){
-  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
-  TF_SetStatus(status, TF_OK, ""); 
-  tensorflow::TensorShape shape;
-  for(int i = 0; i < num_dims; ++i){
-    shape.AddDim(dims[i]); 
-  }
-  tensorflow::Status s;
-  tensorflow::Tensor tensor_temp;  
-  TF_Tensor* tf_tensor_temp; 
-  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), shape, &tensor_temp);
-  if (!s.ok()){ 
-  	::tensorflow::Set_TF_Status_from_Status(status, s); 
-  	return nullptr; 
-  }
-  tf_tensor_temp = TF_TensorFromTensor(tensor_temp, &s); 
-  if (!s.ok()){ 
-    ::tensorflow::Set_TF_Status_from_Status(status, s); 
-    return nullptr; 
-  }  
-  return tf_tensor_temp; 
-}
-

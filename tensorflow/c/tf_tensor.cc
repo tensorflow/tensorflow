@@ -293,6 +293,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
     std::memcpy(TF_TensorData(t), str.c_str(), str.size());
     return t;
   }
+
   Tensor tensor;
   if (!tensor.CopyFrom(src, src.shape())) {
     return nullptr;
@@ -330,5 +331,3 @@ bool TensorInterface::IsAligned() const { return tensor_.IsAligned(); }
 }  // namespace tensorflow
 
 bool TF_TensorIsAligned(const TF_Tensor* t) { return t->tensor->IsAligned(); }
-
-
