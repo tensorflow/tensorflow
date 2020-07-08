@@ -302,6 +302,27 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
 
+@keras_export('keras.activations.gelu')
+@dispatch.add_dispatch_support
+def gelu(x, approximate=True):
+  """Gaussian Error Linear Unit.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The gaussian error linear activation:
+      `0.5 * x * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x^3)))`
+      if `approximate` is `True` or
+      `x * P(X <= x) = 0.5 * x * (1 + erf(x / sqrt(2)))`, where P(X) ~ N(0, 1),
+      if `approximate` is `False`.
+
+  Reference:
+    - [Gaussian Error Linear Units (GELUs)](https://arxiv.org/abs/1606.08415)
+  """
+  return nn.gelu(x, approximate)
+
+
 @keras_export('keras.activations.tanh')
 @dispatch.add_dispatch_support
 def tanh(x):
