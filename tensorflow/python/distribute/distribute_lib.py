@@ -2728,6 +2728,7 @@ class ReplicaContext(object):
     self._replica_id_in_sync_group = replica_id_in_sync_group
     self._summary_recording_distribution_strategy = None
 
+  @doc_controls.do_not_generate_docs
   def __enter__(self):
     _push_per_thread_mode(self._thread_context)
 
@@ -2740,6 +2741,7 @@ class ReplicaContext(object):
         summary_state.is_recording_distribution_strategy)
     summary_state.is_recording_distribution_strategy = replica_id_is_zero
 
+  @doc_controls.do_not_generate_docs
   def __exit__(self, exception_type, exception_value, traceback):
     summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
     summary_state.is_recording_distribution_strategy = (
