@@ -283,6 +283,14 @@ For example:
 
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
+    unsigned GetNumReplicatedBlockArguments();
+    unsigned GetNumPackedBlockArguments();
+    llvm::ArrayRef<BlockArgument> GetPackedBlockArguments();
+    llvm::ArrayRef<BlockArgument> GetReplicatedBlockArguments();
+    bool IsReplicatedBlockArgument(BlockArgument block_arg);
+    bool IsPackedBlockArgument(BlockArgument block_arg);
+    unsigned GetReplicaOperandIndexForBlockArgument(BlockArgument block_arg, unsigned replica);
+    Value GetReplicaOperandForBlockArgument(BlockArgument block_arg, unsigned replica);
   }];
 
   let builders = [
