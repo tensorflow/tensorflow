@@ -5466,7 +5466,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   } else {
     target.addLegalDialect<chlo::HloClientDialect>();
   }
-  target.addLegalDialect<XlaHloDialect>();
+  target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<StandardOpsDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
   target.addLegalOp<CallOp>();

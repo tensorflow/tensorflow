@@ -33,7 +33,7 @@ struct TestChloLegalizeToHloPass
 
     conversionTarget.addIllegalDialect<HloClientDialect>();
     // Consider the mhlo dialect legal for tests.
-    conversionTarget.addLegalDialect<mhlo::XlaHloDialect>();
+    conversionTarget.addLegalDialect<mhlo::MhloDialect>();
     // The conversion uses helpers from the Standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
     conversionTarget.addLegalDialect<mlir::shape::ShapeDialect>();

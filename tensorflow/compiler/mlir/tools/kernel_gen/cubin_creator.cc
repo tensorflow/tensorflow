@@ -88,7 +88,7 @@ struct MaterializeBroadcastsPass
     mlir::OwningRewritePatternList conversionPatterns;
 
     // Consider the mhlo dialect legal for tests.
-    conversionTarget.addLegalDialect<mlir::mhlo::XlaHloDialect>();
+    conversionTarget.addLegalDialect<mlir::mhlo::MhloDialect>();
     // The conversion uses helpers from the Standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
 

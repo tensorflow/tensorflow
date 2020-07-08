@@ -413,7 +413,7 @@ struct HloLegalizeToLhlo
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addLegalOp<ModuleTerminatorOp>();
     target.addLegalOp<TensorFromElementsOp>();
-    target.addIllegalDialect<mhlo::XlaHloDialect>();
+    target.addIllegalDialect<mhlo::MhloDialect>();
 
     BufferAssignmentTypeConverter converter;
     auto isMemRefType = [](Type type) { return type.isa<BaseMemRefType>(); };
