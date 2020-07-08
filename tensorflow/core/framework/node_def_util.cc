@@ -1093,7 +1093,7 @@ void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def) {
 #define ADD_NODE_ATTR(T)                                           \
   void AddNodeAttr(StringPiece name, T value, NodeDef* node_def) { \
     AttrValue attr_value;                                          \
-    SetAttributeValue(value, &attr_value);                         \
+    SetAttrValue(value, &attr_value);                              \
     AddNodeAttr(name, attr_value, node_def);                       \
   }
 ADD_NODE_ATTR(StringPiece)
