@@ -226,8 +226,10 @@ absl::string_view LhloDialectEmitter::platform_name() const {
   return platform_->Name();
 }
 
-Status LhloDialectEmitter::EmitComputation(const HloComputation& computation) {
-  return computation.root_instruction()->Accept(this);
+Status LhloDialectEmitter::EmitComputation(
+    const HloComputation& computation,
+    absl::Span<HloInstruction* const> ordering) {
+  return computation.AcceptOrdered(this, ordering);
 }
 
 StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(

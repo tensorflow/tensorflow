@@ -47,7 +47,8 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
                      ::mlir::ModuleOp mlir_module);
   ~LhloDialectEmitter() override = default;
 
-  Status EmitComputation(const HloComputation& computation);
+  Status EmitComputation(const HloComputation& computation,
+                         absl::Span<HloInstruction* const> ordering);
 
   // The following methods implement the DfsHloVisitor interface.
   //
