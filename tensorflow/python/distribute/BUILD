@@ -947,10 +947,7 @@ distribute_py_test(
     deps = [
         ":combinations",
         ":strategy_combinations",
-        ":tpu_strategy",
-        "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
         "//tensorflow/python/training/tracking:util",
     ],
 )
