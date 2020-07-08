@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -22,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
@@ -40,47 +42,41 @@ struct TPUUpdateEmbeddingEnqueueOpInputs
 // clear the attribute from the operation. This ensures that future optimization
 // passes does not trigger additional logic due to presence of this attribute.
 LogicalResult ExtractEmbeddingAttribute(
-    Operation* op, std::map<std::string, mlir::Operation*>* embedding_op_map) {
+    Operation* op, llvm::StringMap<Operation*>* embedding_op_map) {
   auto embedding_attr = op->getAttrOfType<StringAttr>(kTPUEmbeddingAttr);
   if (!embedding_attr)
-    return op->emitOpError(
-        "missing required attribute: `_tpu_embedding_layer`");
+    return op->emitOpError("requires attribute '_tpu_embedding_layer'");
 
-  auto it = embedding_op_map->emplace(embedding_attr.getValue().str(), op);
-  if (!it.second)
+  if (!embedding_op_map->insert({embedding_attr.getValue(), op}).second)
     return op->emitOpError(
-        "found duplicate tpu embedding ops. This usually happens when "
-        "there are multiple TPUEmbedding layers.");
+        "found duplicate TPU embedding ops potentially from multiple "
+        "TPUEmbedding layers");
 
   op->removeAttr(kTPUEmbeddingAttr);
   return success();
 }
 
 LogicalResult FindTPUEmbeddingOps(
-    FuncOp func_op, std::map<std::string, Operation*>* enqueue_op_map,
-    std::map<std::string, Operation*>* recv_activation_op_map,
-    std::map<std::string, Operation*>* send_gradient_op_map) {
+    FuncOp func_op, llvm::StringMap<Operation*>* enqueue_op_map,
+    llvm::StringMap<Operation*>* recv_activation_op_map,
+    llvm::StringMap<Operation*>* send_gradient_op_map) {
   auto walk_result = func_op.walk([&](Operation* op) {
-    if (llvm::isa<TF::RecvTPUEmbeddingActivationsOp>(op)) {
+    if (llvm::isa<TF::RecvTPUEmbeddingActivationsOp>(op))
       if (failed(ExtractEmbeddingAttribute(op, recv_activation_op_map)))
         return WalkResult::interrupt();
-    }
 
-    if (llvm::isa<TF::SendTPUEmbeddingGradientsOp>(op)) {
+    if (llvm::isa<TF::SendTPUEmbeddingGradientsOp>(op))
       if (failed(ExtractEmbeddingAttribute(op, send_gradient_op_map)))
         return WalkResult::interrupt();
-    }
 
-    if (llvm::isa<TF::EnqueueTPUEmbeddingSparseTensorBatchOp>(op) ||
-        llvm::isa<TF::EnqueueTPUEmbeddingRaggedTensorBatchOp>(op)) {
+    if (llvm::isa<TF::EnqueueTPUEmbeddingSparseTensorBatchOp,
+                  TF::EnqueueTPUEmbeddingRaggedTensorBatchOp>(op))
       if (failed(ExtractEmbeddingAttribute(op, enqueue_op_map)))
         return WalkResult::interrupt();
-    }
+
     return WalkResult::advance();
   });
-  if (walk_result.wasInterrupted()) return failure();
-
-  return success();
+  return failure(walk_result.wasInterrupted());
 }
 
 // Updates the operand of TPU embedding enqueue ops depending on whether
@@ -89,16 +85,16 @@ LogicalResult FindTPUEmbeddingOps(
 // training mode. As so, correctly feed in `then` branch value of SelectV2
 // operand as inputs to the TPU embedding enqueue ops.
 LogicalResult UpdateEmbeddingEnqueueOpInput(
-    const std::map<std::string, Operation*>& enqueue_op_map,
-    const std::map<std::string, Operation*>& recv_activation_op_map,
-    const std::map<std::string, Operation*>& send_gradient_op_map) {
+    const llvm::StringMap<Operation*>& enqueue_op_map,
+    const llvm::StringMap<Operation*>& recv_activation_op_map,
+    const llvm::StringMap<Operation*>& send_gradient_op_map) {
   for (const auto& it : enqueue_op_map) {
-    const auto embedding_attr = it.first;
+    const auto& embedding_attr = it.getKey();
     Operation* embedding_op = it.second;
     if (!recv_activation_op_map.count(embedding_attr))
-      return embedding_op->emitOpError(
-          "TPU embedding enqueue op must have corresponding "
-          "RecvTPUEmbeddingActivations op");
+      return embedding_op->emitOpError()
+             << "must have a corresponding '"
+             << TF::RecvTPUEmbeddingActivationsOp::getOperationName() << "' op";
 
     // TPU Embedding enqueue ops take different inputs depending on whether
     // graph is in training mode or in eval/prediction mode. The inputs to the
@@ -129,18 +125,19 @@ void TPUUpdateEmbeddingEnqueueOpInputs::runOnFunction() {
   // `_tpu_embedding_layer` attribute along with corresponding string attribute.
   // Store all tpu embedding layer related ops with value of
   // `_tpu_embedding_layer` attribute as map key.
-  std::map<std::string, mlir::Operation*> enqueue_op_map;
-  std::map<std::string, mlir::Operation*> recv_activation_op_map;
-  std::map<std::string, mlir::Operation*> send_gradient_op_map;
+  llvm::StringMap<Operation*> enqueue_op_map;
+  llvm::StringMap<Operation*> recv_activation_op_map;
+  llvm::StringMap<Operation*> send_gradient_op_map;
   if (failed(FindTPUEmbeddingOps(func_op, &enqueue_op_map,
                                  &recv_activation_op_map,
                                  &send_gradient_op_map)))
     return signalPassFailure();
 
   if (enqueue_op_map.size() != recv_activation_op_map.size()) {
-    func_op.emitError(
-        "Number of embedding enqueue ops must match the number "
-        "of RecvTPUEmbeddingActivation op");
+    func_op.emitError() << "expects the number of embedding enqueue ops to "
+                           "match the number of '"
+                        << TF::RecvTPUEmbeddingActivationsOp::getOperationName()
+                        << "' ops";
     return signalPassFailure();
   }
 
