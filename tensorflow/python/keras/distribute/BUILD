@@ -115,6 +115,45 @@ cuda_py_test(
 )
 
 distribute_py_test(
+    name = "ctl_correctness_test",
+    srcs = ["ctl_correctness_test.py"],
+    main = "ctl_correctness_test.py",
+    shard_count = 5,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_metrics_test",
+    srcs = ["custom_training_loop_metrics_test.py"],
+    main = "custom_training_loop_metrics_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:metrics",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
     name = "custom_training_loop_models_test",
     srcs = ["custom_training_loop_models_test.py"],
     main = "custom_training_loop_models_test.py",
@@ -137,6 +176,26 @@ distribute_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
         "//tensorflow/python/module",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_optimizer_test",
+    srcs = ["custom_training_loop_optimizer_test.py"],
+    main = "custom_training_loop_optimizer_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -293,6 +352,25 @@ distribute_py_test(
     xla_enable_strict_auto_jit = False,  # Tensorflow also fails.
     deps = [
         ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_metrics_test",
+    srcs = ["keras_metrics_test.py"],
+    main = "keras_metrics_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:metrics",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

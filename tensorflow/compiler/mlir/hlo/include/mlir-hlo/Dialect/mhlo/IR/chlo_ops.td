@@ -17,12 +17,12 @@ limitations under the License.
 // These ops are not necessarily orthogonal or optimized for transformation but
 // for ease of expression in certain cases deemed important for client
 // libraries (i.e. implicit broadcasting, helper ops, etc).
-// This dialect is considered to exist in addition to augment the xla_hlo
+// This dialect is considered to exist in addition to augment the mhlo
 // dialect for ergonomic needs, not duplicate/replace it.
 //
 // The typical use of this dialect is for client libraries to be able to emit
 // less constrained ops and rely on the conversion framework to lower any
-// xla_chlo ops to canonical xla_hlo ops.
+// xla_chlo ops to canonical mhlo ops.
 //
 // See: https://www.tensorflow.org/xla/operation_semantics
 
@@ -44,7 +44,7 @@ def HLOClient_Dialect : Dialect {
   let description = [{
     This dialect contains ops that align closely with the API surface area
     of the XlaBuilder C++ API, where such ops have semantics that go beyond
-    what exists in the lower level dialects (such as `xla_hlo`). Essentially,
+    what exists in the lower level dialects (such as `mhlo`). Essentially,
     whenever the client library uses syntactic sugar or composition
     of multiple ops for an API call, this dialect tries to model the API call
     and provide conversion patterns to fully materialize into lower level
@@ -65,7 +65,7 @@ class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
 // broadcasting (via the broadcast_dimensions attribute) and implicit degenerate
 // shape broadcasting.
 //
-// These correspond to operations in the xla_hlo dialect without the
+// These correspond to operations in the mhlo dialect without the
 // "broadcast_" prefix, except that those ops require same-shaped operands and
 // results.
 //

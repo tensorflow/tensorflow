@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 
 namespace {
 
@@ -86,5 +86,5 @@ void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
   patterns->insert<ClampWithBroadcastConvert>(context);
 }
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir

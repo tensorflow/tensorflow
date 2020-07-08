@@ -37,19 +37,29 @@ class TpuCompileOpKernelCommon {
  public:
   TpuCompileOpKernelCommon(const std::string& mlir_module,
                            const tpu::TPUCompileMetadataProto metadata,
-                           int num_computations)
+                           int num_computations, bool return_hlo_protos,
+                           bool unload_cache_on_session_close,
+                           bool has_persistent_cache)
       : metadata_(metadata),
         use_mlir_(true),
         mlir_module_(mlir_module),
-        num_computations_(num_computations) {}
+        num_computations_(num_computations),
+        return_hlo_protos_(return_hlo_protos),
+        unload_cache_entry_on_session_close_(unload_cache_on_session_close),
+        has_persistent_cache_(has_persistent_cache) {}
 
   TpuCompileOpKernelCommon(const NameAttrList& function,
                            const tpu::TPUCompileMetadataProto metadata,
-                           int num_computations)
+                           int num_computations, bool return_hlo_protos,
+                           bool unload_cache_on_session_close,
+                           bool has_persistent_cache)
       : metadata_(metadata),
         use_mlir_(false),
         function_(function),
-        num_computations_(num_computations) {}
+        num_computations_(num_computations),
+        return_hlo_protos_(return_hlo_protos),
+        unload_cache_entry_on_session_close_(unload_cache_on_session_close),
+        has_persistent_cache_(has_persistent_cache) {}
 
   virtual ~TpuCompileOpKernelCommon() = default;
 
@@ -152,6 +162,18 @@ class TpuCompileOpKernelCommon {
   // Number of different programs to compile. This maps to number of cores in
   // each replica.
   int num_computations_;
+
+  // A flag to populate HLO protos field in CompilationResultProto. The HLO
+  // metadata could be large so default to not populating it unless explicitly
+  // requested.
+  bool return_hlo_protos_;
+
+  // If enabled, DirectSession::Close will unload cache entries created during
+  // the lifetime of the session.
+  bool unload_cache_entry_on_session_close_;
+
+  // True if persistent caching is enabled.
+  bool has_persistent_cache_;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileOpKernelCommon);

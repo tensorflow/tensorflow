@@ -32,43 +32,19 @@ class HloModule;
 // parameter index in the entry computation.
 class HloInputOutputAliasConfig {
  public:
-  // The kind of aliases which can be set. A kUserAlias is one setup at
-  // compilation time by the user, and has to be respected. A kSystemAlias one
-  // might be setup by the compiler, if it decides it is convenient to do so.
-  enum AliasKind {
-    kUserAlias,
-    kSystemAlias,
-  };
-
-  static std::string AliasKindToString(AliasKind kind) {
-    switch (kind) {
-      case kUserAlias:
-        return "USER";
-      case kSystemAlias:
-        return "SYSTEM";
-    }
-  }
-
   // Defines the alias information for a given output buffer. A given output
   // buffer shape index can refer only to one parameter+index.
   struct Alias {
-    Alias(AliasKind kind, int64 parameter_number, ShapeIndex parameter_index)
-        : kind(kind),
-          parameter_number(parameter_number),
+    Alias(int64 parameter_number, ShapeIndex parameter_index)
+        : parameter_number(parameter_number),
           parameter_index(std::move(parameter_index)) {}
 
-    AliasKind kind;
     int64 parameter_number;
     ShapeIndex parameter_index;
 
     std::string ToString() {
-      if (kind == kUserAlias) {
-        return absl::StrFormat("(%lld, %s)", parameter_number,
-                               parameter_index.ToString());
-      }
-      return absl::StrFormat("(%lld, %s, %s)", parameter_number,
-                             parameter_index.ToString(),
-                             AliasKindToString(kind));
+      return absl::StrFormat("(%lld, %s)", parameter_number,
+                             parameter_index.ToString());
     }
   };
 
@@ -82,19 +58,13 @@ class HloInputOutputAliasConfig {
   // Sets up alias config from `output_index` to `param_index` at
   // `param_number`.
   Status SetUpAlias(const ShapeIndex& output_index, int64 param_number,
-                    const ShapeIndex& param_index,
-                    AliasKind kind = AliasKind::kUserAlias);
-
-  // Returns the kind of alias for the given parameter number and parameter
-  // index.
-  absl::optional<AliasKind> ParameterAliasKind(
-      int64 param_number, const ShapeIndex& param_index) const;
+                    const ShapeIndex& param_index);
 
   // Returns true if the given parameter is aliased with one of the output
   // buffers.
   bool ParameterHasAlias(int64 param_number,
                          const ShapeIndex& param_index) const {
-    return ParameterAliasKind(param_number, param_index).has_value();
+    return GetAliasedOutput(param_number, param_index).has_value();
   }
 
   // Checks whether the provided output index has already been aliased.

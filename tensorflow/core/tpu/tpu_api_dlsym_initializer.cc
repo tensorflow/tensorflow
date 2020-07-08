@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/core/tpu/tpu_system_device.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #endif
 
@@ -57,6 +58,7 @@ Status InitializeTpuLibrary(void* library_handle) {
     // InitializeApiFn()->TfTpu_InitializeFn();
 
     RegisterTpuPlatform();
+    RegisterTpuSystemDevice();
   }
 
   return s;
@@ -71,7 +73,6 @@ bool FindAndLoadTpuLibrary() {
 }
 
 static bool tpu_library_finder = FindAndLoadTpuLibrary();
-
 #endif  // PLATFORM_GOOGLE
 
 }  // namespace tpu

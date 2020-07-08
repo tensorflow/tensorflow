@@ -17,85 +17,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import os
 
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
-from tensorflow.python.framework import constant_op
-from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.training import adam as adam_v1
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import training_util
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 
 
-class NonLayerTrackable(tracking.AutoTrackable):
-
-  def __init__(self):
-    super(NonLayerTrackable, self).__init__()
-    self.a_variable = trackable_utils.add_variable(
-        self, name="a_variable", shape=[])
-
-
-class Subclassed(training.Model):
-  """A concrete Model for testing."""
-
-  def __init__(self):
-    super(Subclassed, self).__init__()
-    self._named_dense = core.Dense(1, use_bias=True)
-    self._second = core.Dense(1, use_bias=False)
-    # We can still track Trackables which aren't Layers.
-    self._non_layer = NonLayerTrackable()
-
-  def call(self, values):
-    ret = self._second(self._named_dense(values))
-    return ret
-
-
 class TrainingCheckpointTests(test.TestCase, parameterized.TestCase):
-
-  def testEagerTPUDistributionStrategy(self):
-    self.skipTest("b/121387144")
-    num_training_steps = 10
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-
-    def _train_fn(optimizer, model):
-      input_value = constant_op.constant([[3.]])
-      optimizer.minimize(
-          functools.partial(model, input_value),
-          global_step=root.optimizer_step)
-
-    for training_continuation in range(3):
-      strategy = tpu_strategy.TPUStrategy()
-      with strategy.scope():
-        model = Subclassed()
-        optimizer = adam_v1.AdamOptimizer(0.001)
-        root = trackable_utils.Checkpoint(
-            optimizer=optimizer, model=model,
-            optimizer_step=training_util.get_or_create_global_step())
-        root.restore(checkpoint_management.latest_checkpoint(
-            checkpoint_directory))
-
-        for _ in range(num_training_steps):
-          strategy.extended.call_for_each_replica(
-              functools.partial(_train_fn, optimizer, model))
-        root.save(file_prefix=checkpoint_prefix)
-        self.assertEqual((training_continuation + 1) * num_training_steps,
-                         root.optimizer_step.numpy())
 
   @combinations.generate(
       combinations.combine(

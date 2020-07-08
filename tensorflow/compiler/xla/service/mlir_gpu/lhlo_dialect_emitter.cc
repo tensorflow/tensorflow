@@ -311,7 +311,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
 
 Status LhloDialectEmitter::HandleGather(HloInstruction* instr) {
   HloGatherInstruction* gather = static_cast<HloGatherInstruction*>(instr);
-  mlir::xla_hlo::GatherDimensionNumbers dim_numbers =
+  mlir::mhlo::GatherDimensionNumbers dim_numbers =
       xla::CreateGatherDimensionNumbers(gather->gather_dimension_numbers(),
                                         builder_);
   mlir::DenseIntElementsAttr slice_sizes = CreateDenseIntElementsAttrFromVector(

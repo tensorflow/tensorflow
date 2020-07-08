@@ -42,7 +42,7 @@ using ::mlir::RankedTensorType;
 using ::mlir::Type;
 using ::mlir::Value;
 
-namespace hlo = ::mlir::xla_hlo;
+namespace hlo = ::mlir::mhlo;
 
 // TODO(b/137624192) Use tablegen for this.
 StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
@@ -185,7 +185,7 @@ Status HloDialectEmitter::HandleConstant(HloInstruction* instr) {
 
 Status HloDialectEmitter::HandleGather(HloInstruction* instr) {
   HloGatherInstruction* gather = static_cast<HloGatherInstruction*>(instr);
-  mlir::xla_hlo::GatherDimensionNumbers dimension_numbers =
+  mlir::mhlo::GatherDimensionNumbers dimension_numbers =
       xla::CreateGatherDimensionNumbers(gather->gather_dimension_numbers(),
                                         builder_);
   mlir::DenseIntElementsAttr slice_sizes = CreateDenseIntElementsAttrFromVector(

@@ -87,15 +87,15 @@ struct MaterializeBroadcastsPass
     mlir::ConversionTarget conversionTarget(getContext());
     mlir::OwningRewritePatternList conversionPatterns;
 
-    // Consider the xla_hlo dialect legal for tests.
-    conversionTarget.addLegalDialect<mlir::xla_hlo::XlaHloDialect>();
+    // Consider the mhlo dialect legal for tests.
+    conversionTarget.addLegalDialect<mlir::mhlo::XlaHloDialect>();
     // The conversion uses helpers from the Standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
 
-    mlir::xla_hlo::SetupMaterializeBroadcastsLegality(&getContext(),
-                                                      &conversionTarget);
-    mlir::xla_hlo::PopulateMaterializeBroadcastsPatterns(&getContext(),
-                                                         &conversionPatterns);
+    mlir::mhlo::SetupMaterializeBroadcastsLegality(&getContext(),
+                                                   &conversionTarget);
+    mlir::mhlo::PopulateMaterializeBroadcastsPatterns(&getContext(),
+                                                      &conversionPatterns);
 
     if (failed(applyPartialConversion(getFunction(), conversionTarget,
                                       conversionPatterns))) {
@@ -108,7 +108,7 @@ struct UnfuseBatchNormPass
     : public mlir::PassWrapper<UnfuseBatchNormPass, mlir::FunctionPass> {
   void runOnFunction() override {
     mlir::OwningRewritePatternList patterns;
-    mlir::xla_hlo::PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
+    mlir::mhlo::PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
     mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
   }
 };
@@ -122,11 +122,11 @@ Status LowerTfOpToLhloWithDynamicShapes(mlir::ModuleOp module) {
                       /*shouldPrintAfterPass=*/enable_if_vlog_is_on,
                       /*printModuleScope=*/false,
                       /*printAfterOnlyOnChange=*/false, llvm::dbgs());
-  pm.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass(false));
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(false));
   pm.addNestedPass<mlir::FuncOp>(
       absl::make_unique<MaterializeBroadcastsPass>());
   pm.addNestedPass<mlir::FuncOp>(absl::make_unique<UnfuseBatchNormPass>());
-  pm.addPass(mlir::xla_hlo::createLegalizeToLhloPass(
+  pm.addPass(mlir::mhlo::createLegalizeToLhloPass(
       /*results_escape_functions=*/true));
   pm.addNestedPass<mlir::FuncOp>(mlir::xla_lhlo::createLhloCopyRemovalPass());
 

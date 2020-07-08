@@ -29,7 +29,7 @@ template <typename T>
 class OperationPass;
 class Pass;
 
-namespace xla_hlo {
+namespace mhlo {
 
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
@@ -55,10 +55,10 @@ std::unique_ptr<OperationPass<FuncOp>> createTransformUnrankedHloPass();
 // necessary to export to XLA.
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
 
-// fuse xla_hlo ops to kLoop/kInput fusion patterns
+// fuse mhlo ops to kLoop/kInput fusion patterns
 std::unique_ptr<OperationPass<FuncOp>> createXlaHloFusionPass();
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 
 namespace xla_lhlo {
 

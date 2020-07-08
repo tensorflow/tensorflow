@@ -1302,50 +1302,6 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "custom_training_loop_metrics_test",
-    srcs = ["custom_training_loop_metrics_test.py"],
-    main = "custom_training_loop_metrics_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
-    name = "custom_training_loop_optimizer_test",
-    srcs = ["custom_training_loop_optimizer_test.py"],
-    main = "custom_training_loop_optimizer_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":distribute_lib",
-        ":reduce_util",
-        ":strategy_combinations",
-        ":values",
-        "//tensorflow/python:clip_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
     name = "strategy_reduce_test",
     srcs = ["strategy_reduce_test.py"],
     main = "strategy_reduce_test.py",
@@ -1404,7 +1360,6 @@ py_library(
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/keras/optimizer_v2",
     ],
 )
 
@@ -1560,26 +1515,6 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "keras_metrics_test",
-    srcs = ["keras_metrics_test.py"],
-    main = "keras_metrics_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        ":tpu_strategy",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:metrics",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
     name = "zero_batch_test",
     srcs = ["zero_batch_test.py"],
     main = "zero_batch_test.py",
@@ -1635,26 +1570,6 @@ distribute_py_test(
     deps = [
         ":saved_model_test_base",
         "//tensorflow/python/saved_model",
-    ],
-)
-
-distribute_py_test(
-    name = "ctl_correctness_test",
-    srcs = ["ctl_correctness_test.py"],
-    main = "ctl_correctness_test.py",
-    shard_count = 5,
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:keras_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:util",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
     ],
 )
 

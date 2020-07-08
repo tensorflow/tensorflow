@@ -91,7 +91,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow:translate_utils",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -116,9 +115,9 @@ cc_library(
 )
 
 cc_library(
-    name = "xla_hlo_to_lhlo_with_xla",
-    srcs = ["transforms/xla_hlo_to_lhlo_with_xla.cc"],
-    hdrs = ["transforms/xla_hlo_to_lhlo_with_xla.h"],
+    name = "mhlo_to_lhlo_with_xla",
+    srcs = ["transforms/mhlo_to_lhlo_with_xla.cc"],
+    hdrs = ["transforms/mhlo_to_lhlo_with_xla.h"],
     deps = [
         ":hlo_module_importer",
         ":hlo_utils",
@@ -364,7 +363,7 @@ cc_library(
         "//tensorflow/compiler/mlir:__subpackages__",
     ],
     deps = [
-        ":xla_hlo_to_lhlo_with_xla",
+        ":mhlo_to_lhlo_with_xla",
         ":xla_legalize_tf",
         ":xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/hlo",
@@ -377,7 +376,7 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
         "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_parallel_loops",
-        "//tensorflow/compiler/mlir/hlo:xla_hlo_fusion",
+        "//tensorflow/compiler/mlir/hlo:mhlo_fusion",
         "//tensorflow/compiler/mlir/hlo:xla_legalize_control_flow",
         "//tensorflow/compiler/mlir/hlo:xla_legalize_tanh_to_approximation",
         "//tensorflow/compiler/mlir/hlo:xla_legalize_to_linalg",

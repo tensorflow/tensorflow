@@ -482,8 +482,8 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "xla_hlo_fusion",
-    srcs = ["lib/Dialect/mhlo/transforms/xla_hlo_fusion.cc"],
+    name = "mhlo_fusion",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_fusion.cc"],
     deps = [
         ":cycle_detector",
         ":hlo",
@@ -679,4 +679,41 @@ cc_library(
         "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "all_xla_passes_for_testing",
+    visibility = [
+        "//tensorflow/compiler/mlir:__subpackages__",
+    ],
+    deps = [
+        ":chlo_legalize_to_hlo",
+        ":hlo_dialect_registration",
+        ":hlo_legalize_to_lhlo",
+        ":lhlo",
+        ":lhlo_copy_removal",
+        ":lhlo_fuse_linalg",
+        ":lhlo_legalize_to_affine",
+        ":lhlo_legalize_to_gpu",
+        ":lhlo_legalize_to_parallel_loops",
+        ":mhlo_fusion",
+        ":xla_legalize_control_flow",
+        ":xla_legalize_tanh_to_approximation",
+        ":xla_legalize_to_linalg",
+        ":xla_legalize_to_standard",
+        ":xla_lower",
+        ":xla_sink_constants_to_control_flow",
+        ":xla_test_passes",
+        ":xla_transform_unranked_hlo",
+    ],
+)
+
+cc_binary(
+    name = "mlir-hlo-opt",
+    deps = [
+        ":all_xla_passes_for_testing",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:MlirOptMain",
+    ],
 )

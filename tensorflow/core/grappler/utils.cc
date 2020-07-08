@@ -517,5 +517,42 @@ Status IsKernelRegisteredForNode(const NodeDef& node) {
                                    node.device(), AttrSlice(&node.attr()));
 }
 
+namespace {
+void RemoveAttributes(const std::vector<absl::string_view>& to_remove,
+                      NodeDef* node) {
+  if (to_remove.size() == node->attr_size()) {
+    node->clear_attr();
+  } else {
+    for (const auto& key : to_remove) {
+      node->mutable_attr()->erase(string(key));
+    }
+  }
+}
+}  // namespace
+
+int EraseRegularNodeAttributes(NodeDef* node) {
+  std::vector<absl::string_view> to_remove;
+  for (const auto& attr : node->attr()) {
+    if (!attr.first.empty() && (attr.first)[0] != '_') {
+      to_remove.push_back(attr.first);
+    }
+  }
+  RemoveAttributes(to_remove, node);
+  return to_remove.size();
+}
+
+int EraseNodeOutputAttributes(NodeDef* node) {
+  std::vector<absl::string_view> to_remove;
+  for (const auto& attr : node->attr()) {
+    const string& attr_name = attr.first;
+    if (attr_name == "_xla_inferred_shapes" ||
+        absl::StartsWith(attr_name, "_output_")) {
+      to_remove.push_back(attr_name);
+    }
+  }
+  RemoveAttributes(to_remove, node);
+  return to_remove.size();
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

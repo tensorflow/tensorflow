@@ -40,9 +40,7 @@ class UtilsTest(test.TestCase):
 
 f docstring.
 
-Documentation for `numpy.np_fun`:
-
-np_fun docstring."""
+"""
     self.assertEqual(expected, f.__doc__)
 
   def testNpDocName(self):

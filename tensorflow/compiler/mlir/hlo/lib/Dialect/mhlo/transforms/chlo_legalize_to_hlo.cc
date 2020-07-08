@@ -30,7 +30,7 @@ namespace xla_chlo {
 namespace {
 
 // Converts binary ops that statically are determined to not broadcast directly
-// to the corresponding xla_hlo non-broadcasting op.
+// to the corresponding mhlo non-broadcasting op.
 template <typename ChloOpTy, typename HloOpTy, typename Adaptor>
 struct ConvertTrivialNonBroadcastBinaryOp : public OpRewritePattern<ChloOpTy> {
   using OpRewritePattern<ChloOpTy>::OpRewritePattern;
@@ -63,7 +63,7 @@ struct ConvertTrivialNonBroadcastBinaryOp : public OpRewritePattern<ChloOpTy> {
 };
 
 // Converts a binary op with ranked broadcasting operands to explicitly
-// broadcast and invoke the corresponding xla_hlo non-broadcasting op.
+// broadcast and invoke the corresponding mhlo non-broadcasting op.
 // Note that dynamic broadcasting supported by this pattern is only valid for
 // "numpy" broadcasting semantics as defined here:
 //   https://docs.scipy.org/doc/numpy/reference/ufuncs.html
@@ -136,7 +136,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     // properly.
     auto lhs_broadcast_dimensions = llvm::to_vector<4>(
         llvm::seq<int64_t>(result_rank - lhs_type.getRank(), result_rank));
-    Value broadcasted_lhs = rewriter.create<xla_hlo::DynamicBroadcastInDimOp>(
+    Value broadcasted_lhs = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
         loc,
         RankedTensorType::get(result_type.getShape(),
                               lhs_type.getElementType()),
@@ -144,7 +144,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
         rewriter.getI64TensorAttr(lhs_broadcast_dimensions));
     auto rhs_broadcast_dimensions = llvm::to_vector<4>(
         llvm::seq<int64_t>(result_rank - rhs_type.getRank(), result_rank));
-    Value broadcasted_rhs = rewriter.create<xla_hlo::DynamicBroadcastInDimOp>(
+    Value broadcasted_rhs = rewriter.create<mhlo::DynamicBroadcastInDimOp>(
         loc,
         RankedTensorType::get(result_type.getShape(),
                               rhs_type.getElementType()),
@@ -182,23 +182,21 @@ struct HloBinaryElementwiseAdaptor {
 };
 
 struct HloComplexAdaptor {
-  static xla_hlo::ComplexOp CreateOp(BroadcastComplexOp from_op,
-                                     Type result_type, Value broadcasted_lhs,
-                                     Value broadcasted_rhs,
-                                     OpBuilder &builder) {
-    return builder.create<xla_hlo::ComplexOp>(from_op.getLoc(), result_type,
-                                              broadcasted_lhs, broadcasted_rhs);
+  static mhlo::ComplexOp CreateOp(BroadcastComplexOp from_op, Type result_type,
+                                  Value broadcasted_lhs, Value broadcasted_rhs,
+                                  OpBuilder &builder) {
+    return builder.create<mhlo::ComplexOp>(from_op.getLoc(), result_type,
+                                           broadcasted_lhs, broadcasted_rhs);
   }
 };
 
 struct HloCompareAdaptor {
-  static xla_hlo::CompareOp CreateOp(BroadcastCompareOp from_op,
-                                     Type result_type, Value broadcasted_lhs,
-                                     Value broadcasted_rhs,
-                                     OpBuilder &builder) {
-    return builder.create<xla_hlo::CompareOp>(from_op.getLoc(), result_type,
-                                              broadcasted_lhs, broadcasted_rhs,
-                                              from_op.comparison_direction());
+  static mhlo::CompareOp CreateOp(BroadcastCompareOp from_op, Type result_type,
+                                  Value broadcasted_lhs, Value broadcasted_rhs,
+                                  OpBuilder &builder) {
+    return builder.create<mhlo::CompareOp>(from_op.getLoc(), result_type,
+                                           broadcasted_lhs, broadcasted_rhs,
+                                           from_op.comparison_direction());
   }
 };
 
@@ -214,28 +212,27 @@ void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                       HloBinaryElementwiseAdaptor<ChloOp, HloOp>>(context, \
                                                                   patterns);
 
-  POPULATE_BCAST(BroadcastAddOp, xla_hlo::AddOp);
-  POPULATE_BCAST(BroadcastAndOp, xla_hlo::AndOp);
-  POPULATE_BCAST(BroadcastAtan2Op, xla_hlo::Atan2Op);
-  POPULATE_BCAST(BroadcastDivOp, xla_hlo::DivOp);
-  POPULATE_BCAST(BroadcastMaxOp, xla_hlo::MaxOp);
-  POPULATE_BCAST(BroadcastMinOp, xla_hlo::MinOp);
-  POPULATE_BCAST(BroadcastMulOp, xla_hlo::MulOp);
-  POPULATE_BCAST(BroadcastOrOp, xla_hlo::OrOp);
-  POPULATE_BCAST(BroadcastPowOp, xla_hlo::PowOp);
-  POPULATE_BCAST(BroadcastRemOp, xla_hlo::RemOp);
-  POPULATE_BCAST(BroadcastShiftLeftOp, xla_hlo::ShiftLeftOp);
-  POPULATE_BCAST(BroadcastShiftRightArithmeticOp,
-                 xla_hlo::ShiftRightArithmeticOp);
-  POPULATE_BCAST(BroadcastShiftRightLogicalOp, xla_hlo::ShiftRightLogicalOp);
-  POPULATE_BCAST(BroadcastSubOp, xla_hlo::SubOp);
-  POPULATE_BCAST(BroadcastXorOp, xla_hlo::XorOp);
+  POPULATE_BCAST(BroadcastAddOp, mhlo::AddOp);
+  POPULATE_BCAST(BroadcastAndOp, mhlo::AndOp);
+  POPULATE_BCAST(BroadcastAtan2Op, mhlo::Atan2Op);
+  POPULATE_BCAST(BroadcastDivOp, mhlo::DivOp);
+  POPULATE_BCAST(BroadcastMaxOp, mhlo::MaxOp);
+  POPULATE_BCAST(BroadcastMinOp, mhlo::MinOp);
+  POPULATE_BCAST(BroadcastMulOp, mhlo::MulOp);
+  POPULATE_BCAST(BroadcastOrOp, mhlo::OrOp);
+  POPULATE_BCAST(BroadcastPowOp, mhlo::PowOp);
+  POPULATE_BCAST(BroadcastRemOp, mhlo::RemOp);
+  POPULATE_BCAST(BroadcastShiftLeftOp, mhlo::ShiftLeftOp);
+  POPULATE_BCAST(BroadcastShiftRightArithmeticOp, mhlo::ShiftRightArithmeticOp);
+  POPULATE_BCAST(BroadcastShiftRightLogicalOp, mhlo::ShiftRightLogicalOp);
+  POPULATE_BCAST(BroadcastSubOp, mhlo::SubOp);
+  POPULATE_BCAST(BroadcastXorOp, mhlo::XorOp);
 
   // Broadcasting ops requiring special construction.
-  PopulateForBinaryOp<BroadcastComplexOp, xla_hlo::ComplexOp,
-                      HloComplexAdaptor>(context, patterns);
-  PopulateForBinaryOp<BroadcastCompareOp, xla_hlo::CompareOp,
-                      HloCompareAdaptor>(context, patterns);
+  PopulateForBinaryOp<BroadcastComplexOp, mhlo::ComplexOp, HloComplexAdaptor>(
+      context, patterns);
+  PopulateForBinaryOp<BroadcastCompareOp, mhlo::CompareOp, HloCompareAdaptor>(
+      context, patterns);
 }
 
 }  // namespace xla_chlo

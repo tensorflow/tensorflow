@@ -29,7 +29,7 @@ template <typename T>
 class OperationPass;
 class Pass;
 
-namespace xla_hlo {
+namespace mhlo {
 
 /// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
 /// false, emits an error if there is any operation that can't be legalized.
@@ -51,7 +51,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();
 LogicalResult legalizeTF(Operation* op, bool allow_partial_conversion = false,
                          bool legalize_chlo = true);
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_

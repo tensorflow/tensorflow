@@ -106,7 +106,8 @@ class ConstantFolding : public GraphOptimizer {
   void ReplaceOperationWithSnapshot(int input_to_forward,
                                     const GraphProperties& properties,
                                     NodeDef* node, GraphDef* graph);
-  void ReplaceOperationWithNoOp(NodeDef* node, GraphDef* graph);
+  void ReplaceOperationWithNoOp(NodeDef* node, GraphProperties* properties,
+                                GraphDef* graph);
   void ReplaceBinaryOperationWithBroadcastTo(int input_to_broadcast,
                                              const GraphProperties& properties,
                                              NodeDef* node, GraphDef* graph);
@@ -289,7 +290,7 @@ class ConstantFolding : public GraphOptimizer {
                       GraphDef* optimized_graph, NodeDef* node);
 
   // Replaces variable updates that are effectively no-ops with NoOp nodes.
-  void RemoveRedundantVariableUpdates(const GraphProperties& properties,
+  void RemoveRedundantVariableUpdates(GraphProperties* properties,
                                       GraphDef* optimized_graph, NodeDef* node);
 
   // Removes Reverse op over dimensions with size 1.
@@ -311,8 +312,8 @@ class ConstantFolding : public GraphOptimizer {
                            GraphDef* optimized_graph, NodeDef* node);
 
   bool GetConcatAxis(const NodeDef& node, int* axis);
-  bool MergeConcat(bool use_shape_info, GraphDef* optimized_graph,
-                   NodeDef* node);
+  bool MergeConcat(bool use_shape_info, GraphProperties* properties,
+                   GraphDef* optimized_graph, NodeDef* node);
 
   Status AddQuantizedMatMulMinMaxOutConstNodes(NodeDef* node,
                                                GraphDef* optimized_graph);

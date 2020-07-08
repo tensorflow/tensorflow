@@ -102,6 +102,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
@@ -119,6 +120,7 @@ namespace tensorflow {
 using mlir::NamedAttrList;
 using mlir::TensorType;
 using mlir::TF::VarHandleOp;
+using mlir::tf_saved_model::AssetOp;
 using mlir::tf_saved_model::GlobalTensorOp;
 using mlir::tf_saved_model::SessionInitializerOp;
 using stream_executor::port::StatusOr;
@@ -2894,8 +2896,8 @@ void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
     llvm::SmallVector<mlir::Type, 4> new_input_types;
     for (int i = 0, e = func.getNumArguments(); i < e; i++) {
       auto arg = func.front().getArgument(i);
-      auto global_tensor =
-          mlir::tf_saved_model::LookupBoundInput(func, i, symbol_table);
+      auto global_tensor = mlir::tf_saved_model::LookupBoundInputOfType<
+          mlir::tf_saved_model::GlobalTensorOp>(func, i, symbol_table);
       if (global_tensor) {
         auto old_type = arg.getType();
         auto new_type =
@@ -2978,6 +2980,18 @@ void SortSavedModelModule(mlir::ModuleOp module) {
            std::make_tuple(b.name.empty(), b.name);
   });
 
+  struct NamedAsset {
+    llvm::StringRef name;
+    AssetOp asset;
+  };
+  llvm::SmallVector<NamedAsset, 4> assets;
+  for (auto asset : module.getOps<AssetOp>()) {
+    assets.push_back({asset.getName(), asset});
+  }
+  llvm::stable_sort(assets, [](const NamedAsset& a, const NamedAsset& b) {
+    return a.name < b.name;
+  });
+
   // Move onto the front of the module in reverse of the final desired order.
   for (auto named_func : llvm::reverse(named_funcs)) {
     named_func.func.getOperation()->moveBefore(&module.getBody()->front());
@@ -2985,6 +2999,10 @@ void SortSavedModelModule(mlir::ModuleOp module) {
   for (auto named_global_tensor : llvm::reverse(named_global_tensors)) {
     named_global_tensor.global_tensor.getOperation()->moveBefore(
         &module.getBody()->front());
+  }
+
+  for (auto asset : assets) {
+    asset.asset.getOperation()->moveBefore(&module.getBody()->front());
   }
 
   auto initializers = module.getOps<SessionInitializerOp>();
@@ -3297,8 +3315,13 @@ class SavedModelSignatureDefImporter {
   Status ConvertSignature(const std::string& sig_def_key,
                           const SignatureDef& signature_def);
 
+  struct AssetInfo {
+    std::string tensor_name;
+    mlir::tf_saved_model::AssetOp op;
+  };
+  StatusOr<std::vector<AssetInfo>> ConvertAssets();
   // Converts the initialization graph in the SavedModel to an MLIR function.
-  Status ConvertInitializer();
+  Status ConvertInitializer(const std::vector<AssetInfo>& assets);
 
   // Converts a graph with feeds and fetches to an MLIR function.
   StatusOr<mlir::OwningModuleRef> ConvertGraph(
@@ -3352,31 +3375,66 @@ Status SavedModelSignatureDefImporter::InitializeGraph(bool upgrade_legacy) {
   return Status::OK();
 }
 
-Status SavedModelSignatureDefImporter::ConvertInitializer() {
+StatusOr<std::vector<SavedModelSignatureDefImporter::AssetInfo>>
+SavedModelSignatureDefImporter::ConvertAssets() {
   std::vector<AssetFileDef> asset_file_defs;
   TF_RETURN_IF_ERROR(
       internal::GetAssetFileDefs(bundle_.meta_graph_def, &asset_file_defs));
 
-  if (!asset_file_defs.empty())
-    return errors::Unimplemented(
-        absl::StrCat("Assets are not supported in signaturedef importer"));
+  std::vector<AssetInfo> results;
+  results.reserve(asset_file_defs.size());
 
+  mlir::OpBuilder builder(module_->getBodyRegion());
+  for (const auto& asset : asset_file_defs) {
+    auto asset_op = builder.create<mlir::tf_saved_model::AssetOp>(
+        module_->getLoc(),
+        /*sym_name=*/
+        builder.getStringAttr(
+            absl::StrCat("__tf_saved_model_asset_", asset.filename())),
+        /*filename=*/
+        builder.getStringAttr(
+            io::JoinPath(kSavedModelAssetsDirectory, asset.filename())));
+
+    results.push_back({asset.tensor_info().name(), asset_op});
+  }
+
+  return results;
+}
+
+Status SavedModelSignatureDefImporter::ConvertInitializer(
+    const std::vector<AssetInfo>& assets) {
   std::string init_node_name;
   TF_RETURN_IF_ERROR(
       internal::GetInitOp("", bundle_.meta_graph_def, &init_node_name));
 
   if (init_node_name.empty()) return Status::OK();
 
-  TF_ASSIGN_OR_RETURN(auto sub_module,
-                      ConvertGraph(init_node_name, {}, {}, {init_node_name}));
+  std::vector<std::pair<std::string, TensorInfo>> inputs;
+  inputs.reserve(assets.size());
+  for (const auto& asset : assets) {
+    TensorInfo tensor_info;
+    tensor_info.set_name(asset.tensor_name);
+    tensor_info.set_dtype(DT_STRING);
+    inputs.push_back({asset.tensor_name, tensor_info});
+  }
+
+  TF_ASSIGN_OR_RETURN(auto sub_module, ConvertGraph(init_node_name, inputs, {},
+                                                    {init_node_name}));
 
   mlir::SymbolTable symbol_table(*sub_module);
 
   auto init_func_op = symbol_table.lookup<mlir::FuncOp>(init_node_name);
-
   init_func_op.removeAttr("tf.entry_function");
 
   mlir::OpBuilder builder(module_->getBodyRegion());
+
+  // Bind asset inputs to asset ops.
+  assert(init_func_op.getNumArguments() == assets.size());
+  for (const auto& iter : llvm::enumerate(assets)) {
+    auto asset_op = iter.value().op;
+    init_func_op.setArgAttr(iter.index(), "tf_saved_model.bound_input",
+                            builder.getSymbolRefAttr(asset_op.getName()));
+  }
 
   // Set the exported name of init function to an reserved name for
   // tf_saved_model.
@@ -3426,7 +3484,8 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
     TF_RETURN_IF_ERROR(ConvertSignature(sig_def_key, signature_def));
   }
 
-  TF_RETURN_IF_ERROR(ConvertInitializer());
+  TF_ASSIGN_OR_RETURN(auto assets, ConvertAssets());
+  TF_RETURN_IF_ERROR(ConvertInitializer(assets));
 
   mlir::OpBuilder builder(module_->getBodyRegion());
   module_->setAttr("tf_saved_model.semantics", builder.getUnitAttr());

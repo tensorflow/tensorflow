@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 namespace {
 
 // TODO(frgossen): Make it variadic.
@@ -69,7 +69,7 @@ struct UnaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
         rewriter.create<TensorFromElementsOp>(loc, numElementsAsIndex);
     auto flatTensorTy = RankedTensorType::get({ShapedType::kDynamicSize},
                                               operandTy.getElementType());
-    Value flatOperand = rewriter.create<xla_hlo::DynamicReshapeOp>(
+    Value flatOperand = rewriter.create<mhlo::DynamicReshapeOp>(
         loc, flatTensorTy, operand, flatShapeAsDimTensor);
 
     // Generate IR for the actual operation.
@@ -80,7 +80,7 @@ struct UnaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
                                                 rewriter.getIndexType());
     Value shapeAsExtentTensor =
         rewriter.create<shape::ToExtentTensorOp>(loc, extentTensorTy, shape);
-    Value result = rewriter.create<xla_hlo::DynamicReshapeOp>(
+    Value result = rewriter.create<mhlo::DynamicReshapeOp>(
         loc, operandTy, flatResult, shapeAsExtentTensor);
     rewriter.replaceOp(op, result);
 
@@ -184,5 +184,5 @@ static PassRegistration<TransformUnrankedHloPass> transform_unranked_hlo_pass(
     "transform-unranked-hlo",
     "Realize element-wise operations on ranked tensors where possible");
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir

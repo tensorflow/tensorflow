@@ -108,7 +108,7 @@ class CollectiveOpsTest : public HloTestBase {
   }
 
   template <typename LiteralType>
-  void TestAllOps() {
+  void TestAllOpsForReduce() {
     auto cast = [&](int value) { return static_cast<LiteralType>(value); };
     auto to_literal = [&](absl::Span<const LiteralType> values) {
       return LiteralUtil::CreateR1<LiteralType>(values);
@@ -183,39 +183,39 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceSingleOutput_float32) {
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_int8) {
-  TestAllOps<int8>();
+  TestAllOpsForReduce<int8>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_uint8) {
-  TestAllOps<uint8>();
+  TestAllOpsForReduce<uint8>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_uint32) {
-  TestAllOps<uint32>();
+  TestAllOpsForReduce<uint32>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_int32) {
-  TestAllOps<int32>();
+  TestAllOpsForReduce<int32>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_int64) {
-  TestAllOps<int64>();
+  TestAllOpsForReduce<int64>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_uint64) {
-  TestAllOps<uint64>();
+  TestAllOpsForReduce<uint64>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_float32) {
-  TestAllOps<float>();
+  TestAllOpsForReduce<float>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_double) {
-  TestAllOps<double>();
+  TestAllOpsForReduce<double>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_half) {
-  TestAllOps<Eigen::half>();
+  TestAllOpsForReduce<Eigen::half>();
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
@@ -591,6 +591,98 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
   // Nothing writes to replica 3, so it is memzero'ed.
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({0, 0}),
                                      results[3]));
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_EmptyReplicaGroups)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    a = f32[2] constant({10, 10})
+    b = f32[2] constant({20, 20})
+    c = f32[2] constant({30, 30})
+    d = f32[2] constant({40, 40})
+    all2all = (f32[2], f32[2], f32[2], f32[2]) all-to-all(a, b, c, d), replica_groups={}
+    a_prime = f32[2] get-tuple-element(all2all), index=0
+    b_prime = f32[2] get-tuple-element(all2all), index=1
+    c_prime = f32[2] get-tuple-element(all2all), index=2
+    d_prime = f32[2] get-tuple-element(all2all), index=3
+    ROOT out = f32[8] concatenate(a_prime, b_prime, c_prime, d_prime), dimensions={0}
+  }
+  )";
+  const int64 kNumReplicas = 4;
+  auto config = GetModuleConfigForTest(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; i++) {
+    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
+        LiteralUtil::CreateR1<float>({10, 10, 20, 20, 30, 30, 40, 40}),
+        results[i], ErrorSpec{1e-5, 1e-5}));
+  }
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_OrderedReplicaGroups)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    a = f32[2] constant({10, 10})
+    b = f32[2] constant({20, 20})
+    c = f32[2] constant({30, 30})
+    d = f32[2] constant({40, 40})
+    all2all = (f32[2], f32[2], f32[2], f32[2]) all-to-all(a, b, c, d), replica_groups={{3,2,1,0}}
+    a_prime = f32[2] get-tuple-element(all2all), index=0
+    b_prime = f32[2] get-tuple-element(all2all), index=1
+    c_prime = f32[2] get-tuple-element(all2all), index=2
+    d_prime = f32[2] get-tuple-element(all2all), index=3
+    ROOT out = f32[8] concatenate(a_prime, b_prime, c_prime, d_prime), dimensions={0}
+  }
+  )";
+  const int64 kNumReplicas = 4;
+  auto config = GetModuleConfigForTest(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; i++) {
+    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
+        LiteralUtil::CreateR1<float>({40, 40, 30, 30, 20, 20, 10, 10}),
+        results[i], ErrorSpec{1e-5, 1e-5}));
+  }
+}
+
+XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_GPU(AllToAll_TwoReplicaGroups)) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    a = f32[2] constant({10, 10})
+    b = f32[2] constant({20, 20})
+    all2all = (f32[2], f32[2]) all-to-all(a, b), replica_groups={{2,1},{3,0}}
+    a_prime = f32[2] get-tuple-element(all2all), index=0
+    b_prime = f32[2] get-tuple-element(all2all), index=1
+    ROOT out = f32[4] concatenate(a_prime, b_prime), dimensions={0}
+  }
+  )";
+  const int64 kNumReplicas = 4;
+  auto config = GetModuleConfigForTest(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                                            /*use_threads=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; i++) {
+    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
+        LiteralUtil::CreateR1<float>({20, 20, 10, 10}), results[i],
+        ErrorSpec{1e-5, 1e-5}));
+  }
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {

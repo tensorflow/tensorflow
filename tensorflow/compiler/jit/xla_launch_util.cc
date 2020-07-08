@@ -244,9 +244,7 @@ static bool MustAliasOutput(
   if (input_output_alias.shape().tuple_shapes_size() == 0) {
     return false;
   }
-  return input_output_alias.OutputHasAlias(output_index) &&
-         input_output_alias.GetAliasedParameter(output_index).value().kind ==
-             xla::HloInputOutputAliasConfig::kUserAlias;
+  return input_output_alias.OutputHasAlias(output_index);
 }
 
 // Returns an aliased tensor if it exists, nullptr otherwise.

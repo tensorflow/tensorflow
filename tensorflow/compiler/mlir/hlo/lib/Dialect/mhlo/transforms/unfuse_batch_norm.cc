@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 
 namespace {
 
@@ -40,12 +40,12 @@ Value BroadcastToFeatureDim(Location loc, RankedTensorType result_type,
   auto dims_type = RankedTensorType::get({1}, b.getIntegerType(64));
   auto dims = DenseIntElementsAttr::get(dims_type, {feature_dim});
   if (shape_value) {
-    return rewriter.createOrFold<xla_hlo::DynamicBroadcastInDimOp>(
+    return rewriter.createOrFold<mhlo::DynamicBroadcastInDimOp>(
         loc, result_type, value_1d, shape_value, dims);
   }
   assert(result_type.hasStaticShape());
-  return rewriter.create<xla_hlo::BroadcastInDimOp>(loc, result_type, value_1d,
-                                                    dims);
+  return rewriter.create<mhlo::BroadcastInDimOp>(loc, result_type, value_1d,
+                                                 dims);
 }
 
 // Calculate the shape value of operand, assuming it is a dynamic shape with
@@ -89,25 +89,25 @@ Value MaterializeEpsilon(Operation* op, FloatAttr epsilon_attr,
   auto epsilon_tensor_attr =
       DenseElementsAttr::get(scalar_type, {epsilon_attr.cast<Attribute>()});
   Value epsilon =
-      rewriter.create<xla_hlo::ConstOp>(op->getLoc(), epsilon_tensor_attr);
+      rewriter.create<mhlo::ConstOp>(op->getLoc(), epsilon_tensor_attr);
   auto dims_type = RankedTensorType::get({0}, b.getIntegerType(64));
   auto dims = DenseIntElementsAttr::get(dims_type, SmallVector<int64_t, 1>{});
   if (broadcast_to_type.hasStaticShape()) {
-    return rewriter.create<xla_hlo::BroadcastInDimOp>(
+    return rewriter.create<mhlo::BroadcastInDimOp>(
         op->getLoc(), broadcast_to_type, epsilon, /*broadcast_dims=*/dims);
   }
   Value shape_value = CalculateShapeValue(op->getLoc(), variance, rewriter);
-  return rewriter.createOrFold<xla_hlo::DynamicBroadcastInDimOp>(
+  return rewriter.createOrFold<mhlo::DynamicBroadcastInDimOp>(
       op->getLoc(), broadcast_to_type, epsilon, shape_value,
       /*broadcast_dims=*/dims);
 }
 
 class UnfuseBatchNormInferencePattern
-    : public OpRewritePattern<xla_hlo::BatchNormInferenceOp> {
+    : public OpRewritePattern<mhlo::BatchNormInferenceOp> {
  public:
-  using OpRewritePattern<xla_hlo::BatchNormInferenceOp>::OpRewritePattern;
+  using OpRewritePattern<mhlo::BatchNormInferenceOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(xla_hlo::BatchNormInferenceOp bn_op,
+  LogicalResult matchAndRewrite(mhlo::BatchNormInferenceOp bn_op,
                                 PatternRewriter& rewriter) const override {
     // Enforce type invariants.
     // Note that we deduce the actual element type from the variance,
@@ -132,9 +132,9 @@ class UnfuseBatchNormInferencePattern
     if (!epsilon) {
       return failure();
     }
-    Value stddev = rewriter.create<xla_hlo::AddOp>(bn_op.getLoc(),
-                                                   bn_op.variance(), epsilon);
-    stddev = rewriter.create<xla_hlo::SqrtOp>(bn_op.getLoc(), stddev);
+    Value stddev =
+        rewriter.create<mhlo::AddOp>(bn_op.getLoc(), bn_op.variance(), epsilon);
+    stddev = rewriter.create<mhlo::SqrtOp>(bn_op.getLoc(), stddev);
 
     // Broadcast all terms.
     Value shape_value;
@@ -156,14 +156,13 @@ class UnfuseBatchNormInferencePattern
 
     // Compute:
     // scale * (input - mean) / stddev + offset
-    Value result = rewriter.create<xla_hlo::SubOp>(
-        bn_op.getLoc(), bn_op.operand(), broadcast_mean);
-    result = rewriter.create<xla_hlo::MulOp>(bn_op.getLoc(), result,
-                                             broadcast_scale);
-    result = rewriter.create<xla_hlo::DivOp>(bn_op.getLoc(), result,
-                                             broadcast_stddev);
-    rewriter.replaceOpWithNewOp<xla_hlo::AddOp>(bn_op, result,
-                                                broadcast_offset);
+    Value result = rewriter.create<mhlo::SubOp>(bn_op.getLoc(), bn_op.operand(),
+                                                broadcast_mean);
+    result =
+        rewriter.create<mhlo::MulOp>(bn_op.getLoc(), result, broadcast_scale);
+    result =
+        rewriter.create<mhlo::DivOp>(bn_op.getLoc(), result, broadcast_stddev);
+    rewriter.replaceOpWithNewOp<mhlo::AddOp>(bn_op, result, broadcast_offset);
 
     return success();
   }
@@ -180,5 +179,5 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext* context,
   patterns->insert<UnfuseBatchNormInferencePattern>(context);
 }
 
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir

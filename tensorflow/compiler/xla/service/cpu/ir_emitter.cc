@@ -359,7 +359,7 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   // to the output buffer of its corresponding operand. A GetTupleElement
   // instruction forwards a pointer to the tuple element buffer at the given
   // index.
-  auto operand = get_tuple_element->operand(0);
+  const HloInstruction* operand = get_tuple_element->operand(0);
   const Shape& shape = get_tuple_element->shape();
   emitted_value_[get_tuple_element] = llvm_ir::EmitGetTupleElement(
       shape, get_tuple_element->tuple_index(), MinimumAlignmentForShape(shape),
@@ -1432,6 +1432,83 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   return HandleAllReduceMultipleReplica(crs);
 }
 
+Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
+  auto* instr = Cast<HloAllToAllInstruction>(instruction);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instruction));
+  CHECK(!instr->split_dimension() && instr->shape().IsTuple())
+      << "Only tuple AllToAll is supported";
+
+  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
+  llvm::Type* int32_type = b_.getInt32Ty();
+  llvm::Type* int64_type = b_.getInt64Ty();
+
+  // TODO(cheshire): 3 statements below should be a single line.
+  llvm::FunctionType* all_to_all_func_ty =
+      llvm::FunctionType::get(b_.getVoidTy(),
+                              {/*run_options=*/i8_ptr_type,
+                               /*channel_id_present=*/int32_type,
+                               /*op_id=*/int64_type,
+                               /*replica_groups=*/i8_ptr_type,
+                               /*replica_groups_size=*/int32_type,
+                               /*num_buffers=*/int32_type,
+                               /*buffer_size=*/int64_type,
+                               /*input_buffer=*/i8_ptr_type,
+                               /*output_buffer=*/i8_ptr_type},
+                              /*isVarArg=*/false);
+  auto all_to_all_func = llvm::dyn_cast<llvm::Function>(
+      module_
+          ->getOrInsertFunction(runtime::kAllToAllSymbolName,
+                                all_to_all_func_ty)
+          .getCallee());
+  all_to_all_func->setCallingConv(llvm::CallingConv::C);
+
+  std::string replica_groups =
+      ReplicaGroupsToString(instruction->replica_groups());
+  int32 replica_groups_size = replica_groups.size();
+  llvm::Value* replica_groups_v = b_.CreateGlobalStringPtr(replica_groups);
+
+  int64 buffer_size = -1;
+  std::vector<llvm::Value*> input_buffer_ptrs;
+  std::vector<llvm::Value*> output_buffer_ptrs;
+
+  for (int64 i = 0; i < instruction->operand_count(); i++) {
+    const HloInstruction* op = instruction->operand(i);
+    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
+                        assignment_.GetUniqueSlice(instruction, {i}));
+    const Shape& operand_shape = instruction->operand(i)->shape();
+    CHECK(operand_shape.IsArray())
+        << "Operands to all-to-all must be arrays: " << instruction->ToString();
+    output_buffer_ptrs.push_back(EmitBufferPointer(out_slice, operand_shape));
+    input_buffer_ptrs.push_back(GetEmittedValueFor(op));
+    CHECK(buffer_size == -1 || buffer_size == out_slice.size());
+    buffer_size = out_slice.size();
+  }
+
+  llvm::Value* input_buffers =
+      EncodeArrayFunctionArguments(input_buffer_ptrs, "input_buffers", &b_);
+  llvm::Value* output_buffers =
+      EncodeArrayFunctionArguments(output_buffer_ptrs, "output_buffers", &b_);
+
+  b_.CreateCall(
+      all_to_all_func,
+      {/*run_options=*/GetExecutableRunOptionsArgument(),
+       /*channel_id_present=*/
+       b_.getInt32(static_cast<int32>(instruction->channel_id().has_value())),
+       /*op_id=*/
+       b_.getInt64(instruction->channel_id().has_value()
+                       ? *instruction->channel_id()
+                       : instruction->GetModule()->unique_id()),
+       /*replica_groups=*/replica_groups_v,
+       /*replica_groups_size=*/b_.getInt32(replica_groups_size),
+       /*num_buffers=*/b_.getInt32(instruction->operand_count()),
+       /*buffer_size=*/b_.getInt64(buffer_size),
+       /*source_buffers=*/b_.CreateBitCast(input_buffers, i8_ptr_type),
+       /*destination_buffers=*/b_.CreateBitCast(output_buffers, i8_ptr_type)});
+
+  llvm_ir::EmitTuple(GetIrArrayFor(instruction), output_buffer_ptrs, &b_);
+  return Status::OK();
+}
+
 Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
   auto* instr = Cast<HloCollectivePermuteInstruction>(crs);
   std::string source_target_pairs = absl::StrJoin(
@@ -2015,10 +2092,6 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   }
 
   return DefaultAction(reduce);
-}
-
-Status IrEmitter::HandleAllToAll(HloInstruction*) {
-  return Unimplemented("AllToAll is not implemented on CPU.");
 }
 
 Status IrEmitter::HandleSend(HloInstruction* send) {
@@ -2749,10 +2822,10 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
                      element_alignment);
     target_array.AnnotateLoadStoreInstructionWithMetadata(store_instruction);
   } else {
-    auto* memcpy_instruction =
-        MemCpy(target, /*DstAlign=*/llvm::Align(element_alignment), source,
-               /*SrcAlign=*/llvm::Align(element_alignment),
-               element_count * primitive_type_size);
+    auto* memcpy_instruction = b_.CreateMemCpy(
+        target, /*DstAlign=*/llvm::Align(element_alignment), source,
+        /*SrcAlign=*/llvm::Align(element_alignment),
+        element_count * primitive_type_size);
 
     // The memcpy does the load and the store internally.  The aliasing related
     // metadata has to reflect that.

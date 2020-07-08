@@ -49,7 +49,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -363,7 +362,8 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
   auto replicate_op = builder.create<tf_device::ReplicateOp>(
       cluster.getLoc(), num_replicas,
       llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>(),
-      replicated_inputs, cluster.getResultTypes());
+      replicated_inputs, /*packed_inputs=*/llvm::ArrayRef<Value>{},
+      cluster.getResultTypes());
   if (has_replicated_input_index)
     replicate_op.setAttr(kReplicatedInputIndicesAttr,
                          builder.getI64ArrayAttr(replicated_input_indices));
@@ -492,15 +492,6 @@ void TPUClusterFormation::runOnFunction() {
   for (Block& block : getFunction())
     if (failed(FormClustersInBlock(&block, metadata_map)))
       return signalPassFailure();
-
-  auto island_result = getFunction().walk([&](tf_executor::IslandOp island) {
-    if (failed(FormClustersInBlock(&island.GetBody(), metadata_map)))
-      return WalkResult::interrupt();
-
-    return WalkResult::advance();
-  });
-
-  if (island_result.wasInterrupted()) return signalPassFailure();
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
   auto remove_result = getFunction().walk([&](Operation* op) {

@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 
 // Static initialization for XLA dialect registration.
-static mlir::DialectRegistration<mlir::xla_hlo::XlaHloDialect> xla_hlo_ops;
+static mlir::DialectRegistration<mlir::mhlo::XlaHloDialect> mhlo_ops;
 static mlir::DialectRegistration<mlir::xla_chlo::XlaHloClientDialect>
     xla_chlo_ops;
 static mlir::DialectRegistration<mlir::xla_lhlo::XlaLhloDialect> xla_lhlo_ops;
