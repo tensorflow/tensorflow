@@ -387,6 +387,26 @@ tf_cuda_library(
     ],
 )
 
+tf_cuda_library(
+    name = "mnist_util",
+    testonly = 1,
+    srcs = ["mnist_util.cc"],
+    hdrs = ["mnist_util.h"],
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "c_api_test",
     size = "small",
@@ -633,6 +653,33 @@ tf_cuda_cc_test(
         ":c_api",
         ":c_api_experimental",
         ":c_api_test_util",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "mnist_util_test",
+    size = "small",
+    srcs = [
+        "mnist_util_test.cc",
+    ],
+    args = ["--heap_check=local"],
+    extra_copts = tfe_xla_copts(),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        ":mnist_util",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/cc/profiler",
