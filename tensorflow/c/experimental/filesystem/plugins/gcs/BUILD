@@ -69,3 +69,29 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "expiring_lru_cache",
+    hdrs = ["expiring_lru_cache.h"],
+    deps = [
+         "//tensorflow/c:tf_status",
+         "//tensorflow/c:env",
+         "@com_google_absl//absl/base",
+         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "expiring_lru_cache_test",
+    size = "small",
+    srcs = ["expiring_lru_cache_test.cc"],
+    deps = [
+        ":expiring_lru_cache",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_status_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform/cloud:now_seconds_env",
+    ],
+)
