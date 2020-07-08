@@ -142,7 +142,7 @@ Status ConvertGraphDefToXlaViaMlir(
         std::string* file_name = debug_info.mutable_files(i);
         size_t location =
             file_name->rfind(std::string(debug_info_path_begin_marker));
-        if (location != -1) {
+        if (location != std::string::npos) {
           *file_name = file_name->substr(location +
                                          debug_info_path_begin_marker.length());
         }
