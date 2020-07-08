@@ -195,6 +195,13 @@ def ReciprocalNested : Pat<(TF_ReciprocalOp (TF_ReciprocalOp $arg)),
                            (replaceWithValue $arg)>;
 
 //===----------------------------------------------------------------------===//
+// Reshape op patterns.
+//===----------------------------------------------------------------------===//
+
+def RedundantReshape : Pat<(TF_ReshapeOp (TF_ReshapeOp $arg, $unused), $shape),
+                           (TF_ReshapeOp $arg, $shape)>;
+
+//===----------------------------------------------------------------------===//
 // Select op patterns.
 //===----------------------------------------------------------------------===//
 

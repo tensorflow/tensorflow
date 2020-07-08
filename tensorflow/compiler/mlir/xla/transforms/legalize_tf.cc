@@ -715,7 +715,7 @@ static void CreateWhile32(Location loc, int num_iterations,
     auto one =
         builder->create<mhlo::ConstOp>(loc, builder->getI32IntegerAttr(1));
     auto scalar_broadcast_dims = GetI64ElementsAttr({}, builder);
-    auto plus_one = builder->create<xla_chlo::BroadcastAddOp>(
+    auto plus_one = builder->create<chlo::BroadcastAddOp>(
         loc, old_values[0], one, scalar_broadcast_dims);
     // Prepend with the updated loop induction variable.
     new_values.insert(new_values.begin(), plus_one);
@@ -1483,7 +1483,7 @@ class ConvertFusedBatchNormGradBase
       RankedTensorType scalar_float = RankedTensorType::get({}, kernel_type);
       auto epsilon = rewriter.create<ConstOp>(
           loc, DenseFPElementsAttr::get(scalar_float, {op.epsilon()}));
-      auto add_op = rewriter.create<xla_chlo::BroadcastAddOp>(
+      auto add_op = rewriter.create<chlo::BroadcastAddOp>(
           loc, var, epsilon.getResult(), scalar_broadcast_dims);
 
       Value scratch1 = rewriter.create<RsqrtOp>(loc, add_op);
@@ -1601,7 +1601,7 @@ class ConvertFusedBatchNormV3Op
       auto factor_const_op = rewriter.create<mhlo::ConstOp>(
           op.getLoc(), rewriter.getFloatAttr(scale_element_type, factor));
 
-      Value corrected_variance = rewriter.create<xla_chlo::BroadcastMulOp>(
+      Value corrected_variance = rewriter.create<chlo::BroadcastMulOp>(
           op.getLoc(), batch_variance.getType(), batch_variance,
           factor_const_op, /*broadcast_dimensions=*/DenseIntElementsAttr());
 
@@ -1621,26 +1621,24 @@ class ConvertFusedBatchNormV3Op
             rewriter.getFloatAttr(mean_element_type, exponential_avg_factor));
 
         // new_running_mean = alpha * old_mean + beta * batch_mean.
-        auto alpha_mul_old_mean = rewriter.create<xla_chlo::BroadcastMulOp>(
+        auto alpha_mul_old_mean = rewriter.create<chlo::BroadcastMulOp>(
             op.getLoc(), op.mean().getType(), alpha, op.mean(),
             /*broadcast_dimensions=*/DenseIntElementsAttr());
-        auto beta_mul_batch_mean = rewriter.create<xla_chlo::BroadcastMulOp>(
+        auto beta_mul_batch_mean = rewriter.create<chlo::BroadcastMulOp>(
             op.getLoc(), batch_mean.getType(), beta, batch_mean,
             /*broadcast_dimensions=*/DenseIntElementsAttr());
-        batch_mean = rewriter.create<xla_chlo::BroadcastAddOp>(
+        batch_mean = rewriter.create<chlo::BroadcastAddOp>(
             op.getLoc(), alpha_mul_old_mean, beta_mul_batch_mean,
             /*broadcast_dimensions=*/DenseIntElementsAttr());
 
         // new_running_variance = alpha * old_variance + beta * batch_variance.
-        auto alpha_mul_old_variance = rewriter.create<xla_chlo::BroadcastMulOp>(
+        auto alpha_mul_old_variance = rewriter.create<chlo::BroadcastMulOp>(
             op.getLoc(), op.variance().getType(), alpha, op.variance(),
             /*broadcast_dimensions=*/DenseIntElementsAttr());
-        auto beta_mul_batch_variance =
-            rewriter.create<xla_chlo::BroadcastMulOp>(
-                op.getLoc(), corrected_variance.getType(), beta,
-                corrected_variance,
-                /*broadcast_dimensions=*/DenseIntElementsAttr());
-        corrected_variance = rewriter.create<xla_chlo::BroadcastAddOp>(
+        auto beta_mul_batch_variance = rewriter.create<chlo::BroadcastMulOp>(
+            op.getLoc(), corrected_variance.getType(), beta, corrected_variance,
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+        corrected_variance = rewriter.create<chlo::BroadcastAddOp>(
             op.getLoc(), alpha_mul_old_variance, beta_mul_batch_variance,
             /*broadcast_dimensions=*/DenseIntElementsAttr());
       }
@@ -1810,7 +1808,7 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
     Value divisor =
         GetScalarConstOfType(sum_element_type, op.getLoc(), count, &rewriter);
     auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
-    Value result = rewriter.create<xla_chlo::BroadcastDivOp>(
+    Value result = rewriter.create<chlo::BroadcastDivOp>(
         op.getLoc(), result_type, reduce, divisor, scalar_broadcast_dims);
 
     // Convert back if we enlarged the element type's bitwidth.
@@ -1914,7 +1912,7 @@ class ConvertAvgPoolGradOp : public OpRewritePattern<OpTy> {
       Value divisor =
           GetScalarConstOfType(element_type, loc, window_count, &rewriter);
       auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
-      out_grad_divided = rewriter.create<xla_chlo::BroadcastDivOp>(
+      out_grad_divided = rewriter.create<chlo::BroadcastDivOp>(
           loc, out_grad_type, out_grad, divisor, scalar_broadcast_dims);
     } else {
       assert(op.padding() == "SAME");
@@ -2335,7 +2333,7 @@ class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
       auto dim = rewriter.create<GetDimensionSizeOp>(
           op.getLoc(), result_type, input,
           rewriter.getIntegerAttr(rewriter.getIntegerType(32), i));
-      size = rewriter.create<xla_chlo::BroadcastMulOp>(
+      size = rewriter.create<chlo::BroadcastMulOp>(
           op.getLoc(), size->getResult(0), dim.getResult(),
           /*DenseIntElementsAttr=*/DenseIntElementsAttr());
     }
@@ -3021,10 +3019,10 @@ class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
 
     auto iota = rewriter.create<IotaOp>(op.getLoc(), result_type,
                                         rewriter.getI64IntegerAttr(0));
-    auto scaled = rewriter.create<xla_chlo::BroadcastMulOp>(
+    auto scaled = rewriter.create<chlo::BroadcastMulOp>(
         op.getLoc(), result_type, iota, op.delta(),
         xla::getBroadcastDimensionsAttr(&rewriter, iota, op.delta()));
-    rewriter.replaceOpWithNewOp<xla_chlo::BroadcastAddOp>(
+    rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(
         op, result_type, scaled, op.start(),
         xla::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
     return success();
@@ -3101,10 +3099,10 @@ class ConvertDynamicRangeOp : public OpRewritePattern<TF::RangeOp> {
 
     auto iota = rewriter.create<DynamicIotaOp>(
         op.getLoc(), result_type, reshape, rewriter.getI64IntegerAttr(0));
-    auto scaled = rewriter.create<xla_chlo::BroadcastMulOp>(
+    auto scaled = rewriter.create<chlo::BroadcastMulOp>(
         op.getLoc(), result_type, iota, delta_out_cast,
         xla::getBroadcastDimensionsAttr(&rewriter, iota, delta_cast));
-    rewriter.replaceOpWithNewOp<xla_chlo::BroadcastAddOp>(
+    rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(
         op, result_type, scaled, start_out_cast,
         xla::getBroadcastDimensionsAttr(&rewriter, scaled, start_out_cast));
     return success();
@@ -3152,7 +3150,7 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
     int64_t num = (*num_attr.begin()).getSExtValue();
 
     // Calculate the scaling that needs to be applied to the iota.
-    auto step_numerator = rewriter.create<xla_chlo::BroadcastSubOp>(
+    auto step_numerator = rewriter.create<chlo::BroadcastSubOp>(
         op.getLoc(), op.start().getType(), op.stop(), op.start(),
         xla::getBroadcastDimensionsAttr(&rewriter, op.stop(), op.start()));
     Value step_denominator = rewriter.create<ConvertOp>(
@@ -3160,11 +3158,11 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
     if (num > 1) {
       Value one = GetScalarConstOfType(result_type.getElementType(),
                                        op.getLoc(), 1, &rewriter);
-      step_denominator = rewriter.create<xla_chlo::BroadcastSubOp>(
+      step_denominator = rewriter.create<chlo::BroadcastSubOp>(
           op.getLoc(), step_denominator.getType(), step_denominator, one,
           xla::getBroadcastDimensionsAttr(&rewriter, step_denominator, one));
     }
-    auto step = rewriter.create<xla_chlo::BroadcastDivOp>(
+    auto step = rewriter.create<chlo::BroadcastDivOp>(
         op.getLoc(), step_numerator.getType(), step_numerator, step_denominator,
         xla::getBroadcastDimensionsAttr(&rewriter, step_numerator,
                                         step_denominator));
@@ -3172,10 +3170,10 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
     // Scale the iota and add the offset.
     auto iota = rewriter.create<IotaOp>(op.getLoc(), result_type,
                                         rewriter.getI64IntegerAttr(0));
-    auto scaled = rewriter.create<xla_chlo::BroadcastMulOp>(
+    auto scaled = rewriter.create<chlo::BroadcastMulOp>(
         op.getLoc(), result_type, iota, step,
         xla::getBroadcastDimensionsAttr(&rewriter, iota, step));
-    rewriter.replaceOpWithNewOp<xla_chlo::BroadcastAddOp>(
+    rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(
         op, result_type, scaled, op.start(),
         xla::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
     return success();
@@ -3251,7 +3249,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
       auto divisor = GetScalarConstOfType(reduce_element_type, loc,
                                           divisor_count, &rewriter);
       auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
-      result = rewriter.create<xla_chlo::BroadcastDivOp>(
+      result = rewriter.create<chlo::BroadcastDivOp>(
           loc, result, divisor.getResult(), broadcast_dims);
     }
 
@@ -5008,11 +5006,11 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
     Value iota = builder->create<IotaOp>(
         loc, RankedTensorType::get({m}, builder->getIntegerType(32)),
         builder->getI64IntegerAttr(0));
-    Value gtk = builder->create<xla_chlo::BroadcastCompareOp>(
+    Value gtk = builder->create<chlo::BroadcastCompareOp>(
         loc, iota, k, GetI64ElementsAttr({}, builder),
         StringAttr::get("GT", builder->getContext()));
     gtk = builder->create<ConvertOp>(loc, gtk, x_type.getElementType());
-    Value x_after_k = builder->create<xla_chlo::BroadcastMulOp>(
+    Value x_after_k = builder->create<chlo::BroadcastMulOp>(
         loc, x, gtk, GetI64ElementsAttr({minor_dim}, builder));
     Value x_after_k_sq = builder->create<MulOp>(loc, x_after_k, x_after_k);
     // sigma = np.dot(x[k+1:], x[k+1:])
@@ -5024,15 +5022,15 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
     Value mu = builder->create<SqrtOp>(
         loc, builder->create<AddOp>(loc, alpha_sq, sigma.getResult(0)));
 
-    Value sigma_is_zero = builder->create<xla_chlo::BroadcastCompareOp>(
+    Value sigma_is_zero = builder->create<chlo::BroadcastCompareOp>(
         loc, sigma.getResult(0), zero, GetI64ElementsAttr({}, builder),
         StringAttr::get("EQ", builder->getContext()));
-    Value alpha_is_negative = builder->create<xla_chlo::BroadcastCompareOp>(
+    Value alpha_is_negative = builder->create<chlo::BroadcastCompareOp>(
         loc, alpha, zero, GetI64ElementsAttr({}, builder),
         StringAttr::get("LT", builder->getContext()));
     auto batch_size_one = builder->create<BroadcastOp>(
         loc, alpha.getType(), one, GetI64ElementsAttr(batch_dims, builder));
-    Value signed_mu = builder->create<xla_chlo::BroadcastMulOp>(
+    Value signed_mu = builder->create<chlo::BroadcastMulOp>(
         loc,
         builder->create<SelectOp>(loc, mu.getType(), alpha_is_negative,
                                   batch_size_one,
@@ -5050,7 +5048,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
     divisor = builder->create<SelectOp>(loc, divisor.getType(), sigma_is_zero,
                                         batch_size_one, divisor);
 
-    Value eqk = builder->create<xla_chlo::BroadcastCompareOp>(
+    Value eqk = builder->create<chlo::BroadcastCompareOp>(
         loc, iota, k, GetI64ElementsAttr({}, builder),
         StringAttr::get("EQ", builder->getContext()));
     eqk = builder->create<ConvertOp>(loc, eqk, x_type.getElementType());
@@ -5064,7 +5062,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
     // Form v as [0, 0, ..., 1] ++ x[k+1:] / divisor
     // If sigma is zero, x[k+1:] is zero, so use any non-zero divisor.
     // Note that the add performs a degenerate broadcast.
-    *v = builder->create<xla_chlo::BroadcastAddOp>(
+    *v = builder->create<chlo::BroadcastAddOp>(
         loc, e_k,
         StaticBinaryBroadcast<DivOp>(loc, x_after_k, divisor,
                                      GetI64ElementsAttr(batch_dim_ids, builder),
@@ -5154,12 +5152,12 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
       auto iota = builder->create<IotaOp>(
           loc, RankedTensorType::get({m, 1}, builder->getIntegerType(32)),
           builder->getI64IntegerAttr(0));
-      Value predecessor_mask = builder->create<xla_chlo::BroadcastCompareOp>(
+      Value predecessor_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota, j, GetI64ElementsAttr({}, builder),
           StringAttr::get("LT", builder->getContext()));
       predecessor_mask = builder->create<ConvertOp>(loc, predecessor_mask,
                                                     a_type.getElementType());
-      Value mask = builder->create<xla_chlo::BroadcastCompareOp>(
+      Value mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota, j, GetI64ElementsAttr({}, builder),
           StringAttr::get("EQ", builder->getContext()));
       mask = builder->create<ConvertOp>(loc, mask, a_type.getElementType());
@@ -5189,7 +5187,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
           loc,
           RankedTensorType::get(a_type.getShape(), builder->getIntegerType(32)),
           builder->getI64IntegerAttr(minor_dim + 1));
-      Value xa_mask = builder->create<xla_chlo::BroadcastCompareOp>(
+      Value xa_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_mn, j, GetI64ElementsAttr({}, builder),
           StringAttr::get("EQ", builder->getContext()));
       a = builder->create<SelectOp>(loc, a_type, xa_mask, new_x, a);
@@ -5226,7 +5224,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
           loc, taus.getType(), taus_zeros,
           GetI64ElementsAttr(taus.getType().cast<RankedTensorType>().getShape(),
                              builder));
-      Value taus_mask = builder->create<xla_chlo::BroadcastCompareOp>(
+      Value taus_mask = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_n, j, GetI64ElementsAttr({}, builder),
           StringAttr::get("EQ", builder->getContext()));
       auto taus_update = builder->create<SelectOp>(
@@ -5311,7 +5309,7 @@ class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
           loc, vs.getType(), zero,
           GetI64ElementsAttr(vs.getType().cast<RankedTensorType>().getShape(),
                              builder));
-      auto compare = builder->create<xla_chlo::BroadcastCompareOp>(
+      auto compare = builder->create<chlo::BroadcastCompareOp>(
           loc, iota_mn, j, GetI64ElementsAttr({}, builder),
           StringAttr::get("GE", builder->getContext()));
       auto y = builder->create<SelectOp>(loc, vs.getType(), compare, zero, vs);
@@ -5459,16 +5457,16 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
   // CHLO first.
   if (legalize_chlo) {
-    xla_chlo::PopulateLegalizeChloToHloPatterns(context, &patterns);
+    chlo::PopulateLegalizeChloToHloPatterns(context, &patterns);
   }
 
   ConversionTarget target(*context);
   if (legalize_chlo) {
-    target.addIllegalDialect<xla_chlo::XlaHloClientDialect>();
+    target.addIllegalDialect<chlo::HloClientDialect>();
   } else {
-    target.addLegalDialect<xla_chlo::XlaHloClientDialect>();
+    target.addLegalDialect<chlo::HloClientDialect>();
   }
-  target.addLegalDialect<XlaHloDialect>();
+  target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<StandardOpsDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
   target.addLegalOp<CallOp>();

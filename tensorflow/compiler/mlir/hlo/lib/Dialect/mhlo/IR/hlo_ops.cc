@@ -62,9 +62,8 @@ namespace mlir {
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.cc.inc"
 namespace mhlo {
 
-Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
-                                              Attribute value, Type type,
-                                              Location loc) {
+Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
+                                            Type type, Location loc) {
   // HLO dialect constants only support ElementsAttr unlike standard dialect
   // constant which supports all attributes.
   if (value.isa<ElementsAttr>())
@@ -2128,7 +2127,7 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
 // mhlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-XlaHloDialect::XlaHloDialect(MLIRContext* context)
+MhloDialect::MhloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
@@ -2140,7 +2139,7 @@ XlaHloDialect::XlaHloDialect(MLIRContext* context)
   // allowUnknownOperations();
 }
 
-Type XlaHloDialect::parseType(DialectAsmParser& parser) const {
+Type MhloDialect::parseType(DialectAsmParser& parser) const {
   StringRef data_type;
   if (parser.parseKeyword(&data_type)) return Type();
 
@@ -2149,7 +2148,7 @@ Type XlaHloDialect::parseType(DialectAsmParser& parser) const {
   return nullptr;
 }
 
-void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
+void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
   if (type.isa<TokenType>()) {
     os << "token";
     return;

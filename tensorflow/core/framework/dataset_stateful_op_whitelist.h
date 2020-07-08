@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_FRAMEWORK_DATASET_STATEFUL_OP_WHITELIST_H_
-#define TENSORFLOW_CORE_FRAMEWORK_DATASET_STATEFUL_OP_WHITELIST_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_DATASET_STATEFUL_OP_ALLOWLIST_H_
+#define TENSORFLOW_CORE_FRAMEWORK_DATASET_STATEFUL_OP_ALLOWLIST_H_
 
 #include <unordered_set>
 #include "tensorflow/core/lib/core/status.h"
@@ -23,7 +23,7 @@ namespace tensorflow {
 namespace data {
 // Registry for stateful ops that need to be used in dataset functions.
 // See below macro for usage details.
-class WhitelistedStatefulOpRegistry {
+class AllowlistedStatefulOpRegistry {
  public:
   Status Add(string op_name) {
     op_names_.insert(std::move(op_name));
@@ -37,29 +37,29 @@ class WhitelistedStatefulOpRegistry {
 
   bool Contains(const string& op_name) { return op_names_.count(op_name); }
 
-  static WhitelistedStatefulOpRegistry* Global() {
-    static auto* reg = new WhitelistedStatefulOpRegistry;
+  static AllowlistedStatefulOpRegistry* Global() {
+    static auto* reg = new AllowlistedStatefulOpRegistry;
     return reg;
   }
 
  private:
-  WhitelistedStatefulOpRegistry() = default;
-  WhitelistedStatefulOpRegistry(WhitelistedStatefulOpRegistry const& copy) =
+  AllowlistedStatefulOpRegistry() = default;
+  AllowlistedStatefulOpRegistry(AllowlistedStatefulOpRegistry const& copy) =
       delete;
-  WhitelistedStatefulOpRegistry operator=(
-      WhitelistedStatefulOpRegistry const& copy) = delete;
+  AllowlistedStatefulOpRegistry operator=(
+      AllowlistedStatefulOpRegistry const& copy) = delete;
 
   std::unordered_set<string> op_names_;
 };
 
 }  // namespace data
 
-// Use this macro to whitelist an op that is marked stateful but needs to be
+// Use this macro to allowlist an op that is marked stateful but needs to be
 // used inside a map_fn in an input pipeline. This is only needed if you wish
 // to be able to checkpoint the state of the input pipeline. We currently
 // do not allow stateful ops to be defined inside of map_fns since it is not
 // possible to save their state.
-// Note that the state of the whitelisted ops inside functions will not be
+// Note that the state of the allowlisted ops inside functions will not be
 // saved during checkpointing, hence this should only be used if the op is
 // marked stateful for reasons like to avoid constant folding during graph
 // optimization but is not stateful.
@@ -73,9 +73,9 @@ class WhitelistedStatefulOpRegistry {
 #define WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ_HELPER(ctr, name) \
   WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ(ctr, name)
 #define WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS_UNIQ(ctr, name)   \
-  static ::tensorflow::Status whitelist_op##ctr TF_ATTRIBUTE_UNUSED = \
-      ::tensorflow::data::WhitelistedStatefulOpRegistry::Global()->Add(name)
+  static ::tensorflow::Status allowlist_op##ctr TF_ATTRIBUTE_UNUSED = \
+      ::tensorflow::data::AllowlistedStatefulOpRegistry::Global()->Add(name)
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_FRAMEWORK_DATASET_STATEFUL_OP_WHITELIST_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_DATASET_STATEFUL_OP_ALLOWLIST_H_

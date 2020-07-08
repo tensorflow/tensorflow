@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
 

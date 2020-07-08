@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
-
 #include <set>
+
+#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 
 namespace tflite {
 namespace flex {
 
-bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
-  static const std::set<std::string>* whitelisted_flex_ops =
+bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
+  static const std::set<std::string>* allowlisted_flex_ops =
       new std::set<std::string>({
           // go/keep-sorted start
           "Abort",
@@ -538,8 +538,8 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "_Send",
           // go/keep-sorted end
       });
-  return whitelisted_flex_ops->find(tensorflow_op_name) !=
-         whitelisted_flex_ops->end();
+  return allowlisted_flex_ops->find(tensorflow_op_name) !=
+         allowlisted_flex_ops->end();
   // Prevent lint error about this function being too long. This function
   // is a set of ops, and making it shorter won't help readbility.
   // NOLINTNEXTLINE

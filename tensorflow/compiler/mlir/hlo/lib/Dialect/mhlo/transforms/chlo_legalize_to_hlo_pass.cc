@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 
 namespace mlir {
-namespace xla_chlo {
+namespace chlo {
 
 namespace {
 
@@ -31,9 +31,9 @@ struct TestChloLegalizeToHloPass
     ConversionTarget conversionTarget(getContext());
     OwningRewritePatternList conversionPatterns;
 
-    conversionTarget.addIllegalDialect<XlaHloClientDialect>();
+    conversionTarget.addIllegalDialect<HloClientDialect>();
     // Consider the mhlo dialect legal for tests.
-    conversionTarget.addLegalDialect<mhlo::XlaHloDialect>();
+    conversionTarget.addLegalDialect<mhlo::MhloDialect>();
     // The conversion uses helpers from the Standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
     conversionTarget.addLegalDialect<mlir::shape::ShapeDialect>();
@@ -49,9 +49,9 @@ struct TestChloLegalizeToHloPass
 
 }  // namespace
 
-}  // namespace xla_chlo
+}  // namespace chlo
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::xla_chlo::TestChloLegalizeToHloPass> pass(
+static mlir::PassRegistration<mlir::chlo::TestChloLegalizeToHloPass> pass(
     "test-xla-chlo-legalize-to-hlo",
     "Test pass for applying chlo -> hlo legalization patterns");

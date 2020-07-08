@@ -690,6 +690,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
   module->AddEntryComputation(std::move(cloned_computation));
+  module->input_output_alias_config() = input_output_alias_config();
 
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module.get());
