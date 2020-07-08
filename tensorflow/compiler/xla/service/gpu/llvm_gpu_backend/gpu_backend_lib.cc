@@ -86,14 +86,20 @@ static string GetSmName(std::pair<int, int> compute_capability) {
   int sm_version = 30;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  for (int v : {75, 72, 70, 62, 61, 60, 53, 52, 50, 37, 35, 32, 30}) {
+  int supported_versions[] = {75, 72, 70, 62, 61, 60, 53, 52, 50, 37, 35, 32, 30};
+  for (int v : supported_versions) {
     if (v <= compute_capability_version) {
       sm_version = v;
       break;
     }
   }
 
-  if (sm_version != compute_capability_version) {
+  // If the current CC isn't supported by LLVM and it is newer then
+  // the max supported LLVM version, do not warn about it. The end
+  // user can't do anything about this. PTX compiled for SM75 will
+  // run on SM80 too.
+  if (sm_version != compute_capability_version &&
+      compute_capability_version < supported_versions[0]) {
     LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
                  << ", " << compute_capability.second << ") ."
                  << "Defaulting to telling LLVM that we're compiling for sm_"
