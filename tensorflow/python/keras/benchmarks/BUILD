@@ -78,8 +78,8 @@ py_test(
         "no_windows",  # b/160628318
     ],
     deps = [
-        ":perfzero_benchmark_lib",
         ":benchmark_util",
+        ":perfzero_benchmark_lib",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -99,9 +99,9 @@ py_library(
         "perfzero_benchmark.py",
     ],
     deps = [
+        "//tensorflow:tensorflow_py",
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",
         "@absl_py//absl/testing:flagsaver",
-        "//tensorflow:tensorflow_py",
     ],
 )
