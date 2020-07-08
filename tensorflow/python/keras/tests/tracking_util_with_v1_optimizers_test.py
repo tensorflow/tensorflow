@@ -33,8 +33,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
@@ -242,7 +242,7 @@ class CheckpointingTests(test.TestCase):
     self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
     self.assertAllEqual(optimizer_variables[2:],
                         self.evaluate(on_create_optimizer.variables()))
-    dummy_var = resource_variable_ops.ResourceVariable([1.])
+    dummy_var = variables.Variable([1.])
     on_create_optimizer.minimize(loss=dummy_var.read_value)
     status.assert_existing_objects_matched()
     status.assert_consumed()
@@ -470,8 +470,8 @@ class CheckpointingTests(test.TestCase):
 
       def __init__(self):
         super(Model, self).__init__()
-        self.w = resource_variable_ops.ResourceVariable(0.0)
-        self.b = resource_variable_ops.ResourceVariable(0.0)
+        self.w = variables.Variable(0.0)
+        self.b = variables.Variable(0.0)
         self.vars = [self.w, self.b]
 
       def call(self, x):
@@ -649,11 +649,11 @@ class CheckpointCompatibilityTests(test.TestCase):
       else:
         # When graph building, we haven't read any keys, so we don't know
         # whether the restore will be complete.
-        with self.assertRaisesRegexp(AssertionError, "not restored"):
+        with self.assertRaisesRegex(AssertionError, "not restored"):
           status.assert_consumed()
-        with self.assertRaisesRegexp(AssertionError, "not restored"):
+        with self.assertRaisesRegex(AssertionError, "not restored"):
           status.assert_existing_objects_matched()
-        with self.assertRaisesRegexp(AssertionError, "not restored"):
+        with self.assertRaisesRegex(AssertionError, "not restored"):
           status.assert_nontrivial_match()
       status.run_restore_ops()
       self._check_sentinels(root)
@@ -663,7 +663,7 @@ class CheckpointCompatibilityTests(test.TestCase):
       self._check_sentinels(root)
       # Check that there is no error when keys are missing from the name-based
       # checkpoint.
-      root.not_in_name_checkpoint = resource_variable_ops.ResourceVariable([1.])
+      root.not_in_name_checkpoint = variables.Variable([1.])
       status = object_saver.restore(save_path)
       with self.assertRaises(AssertionError):
         status.assert_existing_objects_matched()

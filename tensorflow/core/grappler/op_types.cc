@@ -429,6 +429,10 @@ bool IsReadVariableOp(const NodeDef& node) {
   return node.op() == "ReadVariableOp";
 }
 
+bool IsReadVariablesOp(const NodeDef& node) {
+  return node.op() == "_ReadVariablesOp";
+}
+
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
 bool IsRealDiv(const NodeDef& node) { return node.op() == "RealDiv"; }

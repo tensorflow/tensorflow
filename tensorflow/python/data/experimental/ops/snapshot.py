@@ -312,7 +312,7 @@ def snapshot(path, compression="AUTO", reader_func=None, shard_func=None):
       reader_func=user_reader_func))
   ```
 
-  By default, snapshot parallelize reads by the number of cores available on
+  By default, snapshot parallelizes reads by the number of cores available on
   the system, but will not attempt to shuffle the data.
 
   Args:

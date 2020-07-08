@@ -33,7 +33,6 @@ from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -43,8 +42,8 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+      var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+      var1 = variables.Variable([3.0, 4.0], dtype=dtype)
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
       grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
       sgd = gradient_descent.SGD(3.0)
@@ -59,8 +58,8 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
                                          self.evaluate(var1))
 
   def _test_basic_sgd_with_learning_rate_decay(self, sgd, dtype):
-    var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-    var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+    var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+    var1 = variables.Variable([3.0, 4.0], dtype=dtype)
     grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
     grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
     if not context.executing_eagerly():
@@ -117,8 +116,8 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasicCallableParams(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+      var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+      var1 = variables.Variable([3.0, 4.0], dtype=dtype)
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
       grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
       lr = lambda: 3.0
@@ -136,8 +135,8 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testMinimizeResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
-      var1 = resource_variable_ops.ResourceVariable([3.0], dtype=dtype)
+      var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
+      var1 = variables.Variable([3.0], dtype=dtype)
       x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
       loss = lambda: math_ops.matmul(var0, x) + var1  # pylint: disable=cell-var-from-loop
       sgd = gradient_descent.SGD(1.0)
@@ -154,8 +153,8 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     with ops.Graph().as_default():
       for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
+        var1 = variables.Variable([3.0], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
         def loss():
@@ -264,7 +263,7 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
       optimizer = gradient_descent.SGD(1.0)
 
       def step():
-        self.v = resource_variable_ops.ResourceVariable(1.0)
+        self.v = variables.Variable(1.0)
         with backprop.GradientTape() as tape:
           loss = self.v**2
         grad = tape.gradient(loss, self.v)
@@ -303,12 +302,8 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasic(self):
     for _, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                    dtype=dtype,
-                                                    name="var0")
-      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0],
-                                                    dtype=dtype,
-                                                    name="var1")
+      var0 = variables.Variable([1.0, 2.0], dtype=dtype, name="var0")
+      var1 = variables.Variable([3.0, 4.0], dtype=dtype, name="var1")
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
       grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
       learning_rate = 2.0
@@ -368,12 +363,8 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     with ops.Graph().as_default():
       for dtype in [dtypes.float32, dtypes.float64]:
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                      dtype=dtype,
-                                                      name="var0")
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0],
-                                                      dtype=dtype,
-                                                      name="var1")
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype, name="var0")
+        var1 = variables.Variable([3.0, 4.0], dtype=dtype, name="var1")
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
@@ -411,10 +402,8 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
         accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-        var0 = resource_variable_ops.ResourceVariable(
-            var0_np, dtype=dtype, name="var0")
-        var1 = resource_variable_ops.ResourceVariable(
-            var1_np, dtype=dtype, name="var1")
+        var0 = variables.Variable(var0_np, dtype=dtype, name="var0")
+        var1 = variables.Variable(var1_np, dtype=dtype, name="var1")
         mom_op = gradient_descent.SGD(
             learning_rate=2.0, momentum=0.9, nesterov=True)
         x_feed = array_ops.placeholder(dtype)
@@ -437,7 +426,7 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     with ops.Graph().as_default():
       for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
 
         # pylint: disable=cell-var-from-loop
         def loss():
@@ -457,7 +446,7 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testMinimizeWith2DIndicesForEmbeddingLookup(self):
-    var0 = resource_variable_ops.ResourceVariable(array_ops.ones([2, 2]))
+    var0 = variables.Variable(array_ops.ones([2, 2]))
 
     def loss():
       return math_ops.reduce_sum(embedding_ops.embedding_lookup(var0, [[1]]))
@@ -697,7 +686,7 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(opt3.nesterov)
 
   def testNesterovWithoutMomentum(self):
-    with self.assertRaisesRegexp(ValueError, "must be between"):
+    with self.assertRaisesRegex(ValueError, "must be between"):
       gradient_descent.SGD(learning_rate=1.0, momentum=2.0)
 
   def testConstructMomentumWithLR(self):

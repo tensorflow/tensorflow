@@ -38,12 +38,13 @@ from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_utils
 
 
-pi = np.pi
-e = np.e
-inf = np.inf
+pi = np_export.np_export_constant(__name__, 'pi', np.pi)
+e = np_export.np_export_constant(__name__, 'e', np.e)
+inf = np_export.np_export_constant(__name__, 'inf', np.inf)
 
 
 @np_utils.np_doc_only('dot')
@@ -126,7 +127,9 @@ def true_divide(x1, x2):  # pylint: disable=missing-function-docstring
   return _bin_op(f, x1, x2)
 
 
-divide = true_divide
+@np_utils.np_doc('divide')
+def divide(x1, x2):  # pylint: disable=missing-function-docstring
+  return true_divide(x1, x2)
 
 
 @np_utils.np_doc('floor_divide')
@@ -155,7 +158,9 @@ def mod(x1, x2):  # pylint: disable=missing-function-docstring
   return _bin_op(f, x1, x2)
 
 
-remainder = mod
+@np_utils.np_doc('remainder')
+def remainder(x1, x2):  # pylint: disable=missing-function-docstring
+  return mod(x1, x2)
 
 
 @np_utils.np_doc('divmod')
@@ -204,14 +209,16 @@ def clip(a, a_min, a_max):  # pylint: disable=missing-docstring
 
 @np_utils.np_doc('matmul')
 def matmul(x1, x2):  # pylint: disable=missing-docstring
-
   def f(x1, x2):
     try:
+      if x1.shape.rank == 2 and x2.shape.rank == 2:
+        # Fast path for known ranks.
+        return math_ops.matmul(x1, x2)
       return np_utils.cond(
-          math_ops.equal(array_ops.rank(x2), 1),
+          math_ops.equal(np_utils.tf_rank(x2), 1),
           lambda: math_ops.tensordot(x1, x2, axes=1),
           lambda: np_utils.cond(  # pylint: disable=g-long-lambda
-              math_ops.equal(array_ops.rank(x1), 1),
+              math_ops.equal(np_utils.tf_rank(x1), 1),
               lambda: math_ops.tensordot(  # pylint: disable=g-long-lambda
                   x1, x2, axes=[[0], [-2]]),
               lambda: math_ops.matmul(x1, x2)))

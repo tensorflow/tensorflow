@@ -267,6 +267,8 @@ NegOpModel/.+,29
 # Dynamic tensors are not supported
 -.*Pad.*OpTest/.+Dynamic.*Test
 -QuantizedPad.*OpTest/.+ZeroNotInQuantizationRange
+# 16-bit tests are not supported
+-QuantizedPadOpTest/.*Int16.*
 QuantizedPadOpTest/.+,29
 QuantizedPadV2OpTest/.+,29
 PadOpTest/.+,29

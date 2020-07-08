@@ -9,8 +9,7 @@
 func @main(%value: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // The only expected instruction is a copy from the input into the output.
   // CHECK: %[[C0:.*]] = constant 0 : index
-  // CHECK: %[[C02:.*]] = constant 0 : index
-  // CHECK: %[[OUTPUT:.*]] = std.view %[[ARG1]][%[[C02]]][] : memref<16xi8> to memref<2x2xf32>
+  // CHECK: %[[OUTPUT:.*]] = std.view %[[ARG1]][%[[C0]]][] : memref<16xi8> to memref<2x2xf32>
   // CHECK: xla_lhlo.copy
   // CHECK-SAME: %[[ARG0]], %[[OUTPUT]]
   return %value : tensor<2x2xf32>

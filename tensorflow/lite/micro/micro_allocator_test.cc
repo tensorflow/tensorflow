@@ -158,7 +158,7 @@ TF_LITE_MICRO_TEST(TestMissingQuantization) {
 TF_LITE_MICRO_TEST(TestFailsWhenModelStartsTwice) {
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   TfLiteContext context;
-  tflite::testing::MockOpResolver mock_resolver;
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
@@ -166,17 +166,17 @@ TF_LITE_MICRO_TEST(TestFailsWhenModelStartsTwice) {
       tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, op_resolver,
                                                  &node_and_registration));
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteError, allocator->StartModelAllocation(
-                                            model, &context, mock_resolver,
-                                            &node_and_registration));
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteError, allocator->StartModelAllocation(
+                        model, &context, op_resolver, &node_and_registration));
 }
 
 TF_LITE_MICRO_TEST(TestFailsWhenModelFinishesBeforeStart) {
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   TfLiteContext context;
-  tflite::testing::MockOpResolver mock_resolver;
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
@@ -190,7 +190,7 @@ TF_LITE_MICRO_TEST(TestFailsWhenModelFinishesBeforeStart) {
 TF_LITE_MICRO_TEST(TestMockModelAllocation) {
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   TfLiteContext context;
-  tflite::testing::MockOpResolver mock_resolver;
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
@@ -198,7 +198,7 @@ TF_LITE_MICRO_TEST(TestMockModelAllocation) {
       tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, op_resolver,
                                                  &node_and_registration));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           allocator->FinishModelAllocation(model, &context));
@@ -233,7 +233,7 @@ TF_LITE_MICRO_TEST(TestMockModelAllocation) {
 TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {
   const tflite::Model* model = tflite::testing::GetSimpleModelWithBranch();
   TfLiteContext context;
-  tflite::testing::MockOpResolver mock_resolver;
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 4096;
   uint8_t arena[arena_size];
@@ -241,7 +241,7 @@ TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {
       tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, op_resolver,
                                                  &node_and_registration));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           allocator->FinishModelAllocation(model, &context));
@@ -268,7 +268,7 @@ TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {
 TF_LITE_MICRO_TEST(TestAllocationForComplexModelAllocation) {
   const tflite::Model* model = tflite::testing::GetComplexMockModel();
   TfLiteContext context;
-  tflite::testing::MockOpResolver mock_resolver;
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 2048;
   uint8_t arena[arena_size];
@@ -276,7 +276,7 @@ TF_LITE_MICRO_TEST(TestAllocationForComplexModelAllocation) {
       tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, op_resolver,
                                                  &node_and_registration));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           allocator->FinishModelAllocation(model, &context));
@@ -312,7 +312,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerBranchesAllOnline) {
   int version = 1;
   int subgraph = 0;
   constexpr int nbr_tensors = 4;
-  tflite::testing::MockOpResolver mock_resolver;
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {version, subgraph,
@@ -346,7 +346,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerBranchesAllOnline) {
       tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
 
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, op_resolver,
                                                  &node_and_registration));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           allocator->FinishModelAllocation(model, &context));
@@ -364,7 +364,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerBranchesAllOnline) {
 
 TF_LITE_MICRO_TEST(OfflinePlannerBasic) {
   constexpr int nbr_tensors = 4;
-  tflite::testing::MockOpResolver mock_resolver;
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {1,  0, nbr_tensors,
@@ -402,7 +402,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerBasic) {
       tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
 
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, op_resolver,
                                                  &node_and_registration));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           allocator->FinishModelAllocation(model, &context));
@@ -416,7 +416,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerBasic) {
 
 TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
   constexpr int nbr_tensors = 4;
-  tflite::testing::MockOpResolver mock_resolver;
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {
@@ -454,7 +454,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
       tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
 
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, op_resolver,
                                                  &node_and_registration));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           allocator->FinishModelAllocation(model, &context));
@@ -469,7 +469,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
 
 TF_LITE_MICRO_TEST(OfflinePlannerOfflineOnline) {
   constexpr int nbr_tensors = 5;
-  tflite::testing::MockOpResolver mock_resolver;
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
   tflite::NodeAndRegistration* node_and_registration;
   const int32_t metadata_buffer[tflite::testing::kOfflinePlannerHeaderSize +
                                 nbr_tensors] = {
@@ -509,7 +509,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerOfflineOnline) {
       tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
 
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk, allocator->StartModelAllocation(model, &context, mock_resolver,
+      kTfLiteOk, allocator->StartModelAllocation(model, &context, op_resolver,
                                                  &node_and_registration));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           allocator->FinishModelAllocation(model, &context));

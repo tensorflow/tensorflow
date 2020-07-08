@@ -268,7 +268,7 @@ class LuBenchmark(test.Benchmark):
           ops.device("/cpu:0"):
         matrix = variables.Variable(self._GenerateMatrix(shape))
         lu, p = linalg_ops.lu(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(lu, p),
@@ -281,7 +281,7 @@ class LuBenchmark(test.Benchmark):
             ops.device("/device:GPU:0"):
           matrix = variables.Variable(self._GenerateMatrix(shape))
           lu, p = linalg_ops.lu(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(lu, p),

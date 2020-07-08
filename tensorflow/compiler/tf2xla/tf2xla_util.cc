@@ -302,6 +302,7 @@ Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
 
 }  // namespace
 
+const char kTpuReplicateAttrName[] = "_tpu_replicate";
 const char kXlaOutsideCompilationAttrName[] = "_xla_outside_compilation";
 
 Status ValidateConfig(const tf2xla::Config& config) {

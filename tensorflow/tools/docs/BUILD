@@ -201,7 +201,6 @@ py_test(
         "nomsan",
         "notsan",
         "optonly",
-        "notap",
     ],
     deps = [
         ":generate2_lib",

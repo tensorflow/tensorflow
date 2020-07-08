@@ -21,9 +21,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
-#if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/tpu/tpu_api_dlsym_initializer.h"
-#endif  // IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
@@ -99,17 +96,6 @@ Status LoadLibrary(const char* library_filename, void** result,
   memcpy(str_buf, str.data(), str.length());
   *buf = str_buf;
   *len = str.length();
-
-#if !defined(IS_MOBILE_PLATFORM)
-  // Determine if this library is a TPU library, and if so, calls the TPU
-  // initialization functions to populate function tables, etc...
-  void* unused_symbol;
-  if (env->GetSymbolFromLibrary(library.handle, "TfTpu_Initialize",
-                                &unused_symbol)
-          .ok()) {
-    TF_RETURN_IF_ERROR(tensorflow::tpu::InitializeTpuLibrary(library.handle));
-  }
-#endif  // IS_MOBILE_PLATFORM
 
   *result = library.handle;
   return Status::OK();

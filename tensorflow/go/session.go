@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 	"unsafe"
 )
@@ -359,16 +360,56 @@ type cRunArgs struct {
 	targets      []*C.TF_Operation
 }
 
+type feedsort struct {
+	feeds       []C.TF_Output
+	feedTensors []*C.TF_Tensor
+}
+
+func (f *feedsort) Less(i, j int) bool {
+	// Ideally we would sort on the output names. But that's not easy for us to
+	// do efficiently as loads of Go name strings would be created from the C
+	// strings and destroyed. But we can sort on the addresses of the operation
+	// names. This won't sort alphabetically, but for a given set of feeds it
+	// should give consistent results from one run to the next.
+	ni := uintptr(unsafe.Pointer(C.TF_OperationName(f.feeds[i].oper)))
+	nj := uintptr(unsafe.Pointer(C.TF_OperationName(f.feeds[j].oper)))
+	if ni == nj {
+		// if the names are the same the index may differ
+		return f.feeds[i].index < f.feeds[j].index
+	}
+	return ni < nj
+}
+
+func (f *feedsort) Swap(i, j int) {
+	f.feeds[i], f.feeds[j] = f.feeds[j], f.feeds[i]
+	f.feedTensors[i], f.feedTensors[j] = f.feedTensors[j], f.feedTensors[i]
+}
+
+func (f *feedsort) Len() int {
+	return len(f.feeds)
+}
+
 func newCRunArgs(feeds map[Output]*Tensor, fetches []Output, targets []*Operation) *cRunArgs {
 	c := &cRunArgs{
 		fetches:      make([]C.TF_Output, len(fetches)),
 		fetchTensors: make([]*C.TF_Tensor, len(fetches)),
 		targets:      make([]*C.TF_Operation, len(targets)),
 	}
+	// Go map iteration order is random. So our list of input names will be
+	// random for each Run. This interacts badly with the TF core code which
+	// builds a executor cache key from these names in the order we provide
+	// them. We'll eventually enumerate every possible order and store it in the
+	// executor cache. With n inputs that's n! entries. That gets very big very
+	// quickly.
 	for o, t := range feeds {
 		c.feeds = append(c.feeds, o.c())
 		c.feedTensors = append(c.feedTensors, t.c)
 	}
+	if len(c.feeds) > 1 {
+		fs := feedsort{feeds: c.feeds, feedTensors: c.feedTensors}
+		sort.Sort(&fs)
+	}
+
 	for i, o := range fetches {
 		c.fetches[i] = o.c()
 	}

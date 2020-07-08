@@ -143,24 +143,16 @@ ElementwiseOneInput& ElementwiseOneInput::operator=(
   return *this;
 }
 
-std::string ElementwiseOneInput::GetCoreCode(
-    const LinkingContext& context) const {
-  return GetOneInputCode(op_type_, definition_.precision, context.var_name);
-}
-
 ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
                                               const OperationType& op_type) {
   ElementwiseOneInput operation(definition, op_type);
-  operation.SetLinkIndex(0);
   return operation;
 }
 
 ElementwiseOneRuntimeOneScalar::ElementwiseOneRuntimeOneScalar(
     const OperationDef& definition, const OperationType& op_type,
     float scalar_parameter, CalculationsPrecision scalar_precision)
-    : ElementwiseOperation(definition),
-      op_type_(op_type),
-      scalar_parameter_(FLT(scalar_precision, scalar_parameter)) {
+    : ElementwiseOperation(definition), op_type_(op_type) {
   if (definition.precision == CalculationsPrecision::F32) {
     args_.AddFloat("scalar", scalar_parameter);
   } else {
@@ -173,41 +165,16 @@ ElementwiseOneRuntimeOneScalar::ElementwiseOneRuntimeOneScalar(
     ElementwiseOneRuntimeOneScalar&& operation)
     : ElementwiseOperation(std::move(operation)),
       link_index_(operation.link_index_),
-      op_type_(operation.op_type_),
-      scalar_parameter_(std::move(operation.scalar_parameter_)) {}
+      op_type_(operation.op_type_) {}
 
 ElementwiseOneRuntimeOneScalar& ElementwiseOneRuntimeOneScalar::operator=(
     ElementwiseOneRuntimeOneScalar&& operation) {
   if (this != &operation) {
     link_index_ = operation.link_index_;
     op_type_ = operation.op_type_;
-    scalar_parameter_ = operation.scalar_parameter_;
     ElementwiseOperation::operator=(std::move(operation));
   }
   return *this;
-}
-
-void ElementwiseOneRuntimeOneScalar::SetLinkIndex(int index) {
-  link_index_ = index;
-  scalar_parameter_.SetName(absl::StrCat("scalar_parmeter_", index));
-}
-
-std::string ElementwiseOneRuntimeOneScalar::GetCoreCode(
-    const LinkingContext& context) const {
-  std::string second_var =
-      absl::StrCat("(FLT)(", scalar_parameter_.GetName(), ")");
-  return GetTwoInputCode(op_type_, context.var_name, second_var);
-}
-
-std::string ElementwiseOneRuntimeOneScalar::GetArgsDeclaration() const {
-  std::string args;
-  absl::StrAppend(&args, ",\n    ", scalar_parameter_.GetDeclaration());
-  return args;
-}
-
-absl::Status ElementwiseOneRuntimeOneScalar::BindArguments(CLKernel* kernel) {
-  RETURN_IF_ERROR(kernel->SetBytesAuto(scalar_parameter_));
-  return absl::OkStatus();
 }
 
 ElementwiseOneRuntimeOneScalar CreateElementwiseOneRuntimeOneScalar(
@@ -218,7 +185,6 @@ ElementwiseOneRuntimeOneScalar CreateElementwiseOneRuntimeOneScalar(
                                     : definition.precision;
   ElementwiseOneRuntimeOneScalar operation(definition, op_type,
                                            scalar_parameter, scalar_precision);
-  operation.SetLinkIndex(0);
   return operation;
 }
 
@@ -227,8 +193,7 @@ ElementwiseTwoInput::ElementwiseTwoInput(const OperationDef& definition,
                                          const BroadcastSettings& broadcast)
     : ElementwiseOperation(definition),
       op_type_(op_type),
-      broadcast_(broadcast),
-      use_constant_tensor_(false) {
+      broadcast_(broadcast) {
   auto src_desc =
       absl::make_unique<TensorDescriptor>(definition.src_tensors[1]);
   if (definition.IsBatchSupported()) {
@@ -254,12 +219,11 @@ ElementwiseTwoInput::ElementwiseTwoInput(const OperationDef& definition,
                                          Tensor&& constant_tensor)
     : ElementwiseOperation(definition),
       op_type_(op_type),
-      broadcast_(broadcast),
-      use_constant_tensor_(true),
-      constant_tensor_(std::move(constant_tensor)) {
-  args_.AddObjectRef(
-      "second_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(constant_tensor.GetDescriptor()));
+      broadcast_(broadcast) {
+  auto descriptor = constant_tensor.GetDescriptor();
+  args_.AddObject("second_tensor", AccessType::READ,
+                  absl::make_unique<Tensor>(std::move(constant_tensor)),
+                  absl::make_unique<TensorDescriptor>(descriptor));
   const std::string x_coord = broadcast.width ? "0" : "X_COORD";
   const std::string y_coord = broadcast.height ? "0" : "Y_COORD";
   const std::string s_coord = broadcast.channels ? "0" : "S_COORD";
@@ -277,9 +241,7 @@ ElementwiseTwoInput::ElementwiseTwoInput(ElementwiseTwoInput&& operation)
     : ElementwiseOperation(std::move(operation)),
       link_index_(operation.link_index_),
       op_type_(operation.op_type_),
-      broadcast_(operation.broadcast_),
-      use_constant_tensor_(operation.use_constant_tensor_),
-      constant_tensor_(std::move(operation.constant_tensor_)) {}
+      broadcast_(operation.broadcast_) {}
 
 ElementwiseTwoInput& ElementwiseTwoInput::operator=(
     ElementwiseTwoInput&& operation) {
@@ -287,73 +249,15 @@ ElementwiseTwoInput& ElementwiseTwoInput::operator=(
     link_index_ = operation.link_index_;
     op_type_ = operation.op_type_;
     broadcast_ = operation.broadcast_;
-    use_constant_tensor_ = operation.use_constant_tensor_;
-    constant_tensor_ = std::move(operation.constant_tensor_);
     ElementwiseOperation::operator=(std::move(operation));
   }
   return *this;
 }
 
-void ElementwiseTwoInput::SetLinkIndex(int index) {
-  link_index_ = index;
-}
-
-std::string ElementwiseTwoInput::GetCoreCode(
-    const LinkingContext& context) const {
-  std::string result;
-  std::string second_var;
-  const std::string size_name = "src_size_" + std::to_string(link_index_);
-  TensorDescriptor descriptor = use_constant_tensor_
-                                    ? constant_tensor_.GetDescriptor()
-                                    : definition_.src_tensors[1];
-  TensorCodeGenerator src_tensor(
-      absl::StrCat("src_data_", link_index_),
-      WHSPoint{size_name + ".x", size_name + ".y", size_name + ".z"},
-      descriptor);
-  const std::string x_coord = broadcast_.width ? "0" : context.x_coord;
-  const std::string y_coord = broadcast_.height ? "0" : context.y_coord;
-  const std::string s_coord = broadcast_.channels ? "0" : context.s_coord;
-  second_var = "second_var_" + std::to_string(link_index_);
-  result = "  FLT4 " + second_var + " = " +
-           src_tensor.ReadWHS(x_coord, y_coord, s_coord) + ";\n";
-  if (broadcast_.channels) {
-    result += "  " + second_var + ".y = " + second_var + ".x;\n";
-    result += "  " + second_var + ".z = " + second_var + ".x;\n";
-    result += "  " + second_var + ".w = " + second_var + ".x;\n";
-  }
-  return result + GetTwoInputCode(op_type_, context.var_name, second_var);
-}
-
-std::string ElementwiseTwoInput::GetArgsDeclaration() const {
-  std::string args;
-  TensorDescriptor descriptor = use_constant_tensor_
-                                    ? constant_tensor_.GetDescriptor()
-                                    : definition_.src_tensors[1];
-  absl::StrAppend(
-      &args, ",\n",
-      GetTensorDeclaration(AccessType::READ,
-                           absl::StrCat("src_data_", link_index_), descriptor));
-  absl::StrAppend(&args, ",\n   int4 src_size_", link_index_);
-  return args;
-}
-
-absl::Status ElementwiseTwoInput::BindArguments(CLKernel* kernel) {
-  if (use_constant_tensor_) {
-    RETURN_IF_ERROR(kernel->SetMemoryAuto(constant_tensor_.GetMemoryPtr()));
-    RETURN_IF_ERROR(kernel->SetBytesAuto(constant_tensor_.GetWBatchedHSB()));
-  } else {
-    RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[1]->GetMemoryPtr()));
-    RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetWBatchedHSB()));
-  }
-  return absl::OkStatus();
-}
-
 absl::Status ElementwiseTwoInput::SetArgs(const std::string& unique_postfix,
                                           Arguments* args) {
   std::string tensor_name = absl::StrCat("second_tensor", unique_postfix);
-  if (use_constant_tensor_) {
-    RETURN_IF_ERROR(args->SetObjectRef(tensor_name, &constant_tensor_));
-  } else {
+  if (src_.size() == 2) {
     RETURN_IF_ERROR(args->SetObjectRef(tensor_name, src_[1]));
   }
   return absl::OkStatus();
@@ -382,7 +286,6 @@ absl::Status CreateElementwiseTwoInput(
   broadcast.channels = shape.c == 1;
   *result = ElementwiseTwoInput(definition, op_type, broadcast,
                                 std::move(gpu_tensor));
-  result->SetLinkIndex(0);
   return absl::OkStatus();
 }
 
@@ -410,7 +313,6 @@ absl::Status CreateElementwiseTwoInput(
   broadcast.channels = shape.c == 1;
   *result = ElementwiseTwoInput(definition, op_type, broadcast,
                                 std::move(gpu_tensor));
-  result->SetLinkIndex(0);
   return absl::OkStatus();
 }
 
@@ -422,7 +324,6 @@ ElementwiseTwoInput CreateElementwiseTwoInput(const OperationDef& definition,
   broadcast.height = shape.h == 1;
   broadcast.channels = shape.c == 1;
   ElementwiseTwoInput operation(definition, op_type, broadcast);
-  operation.SetLinkIndex(0);
   return operation;
 }
 
@@ -433,7 +334,6 @@ ElementwiseTwoInput CreateElementwiseTwoInput(const OperationDef& definition,
   broadcast.height = false;
   broadcast.channels = false;
   ElementwiseTwoInput operation(definition, op_type, broadcast);
-  operation.SetLinkIndex(0);
   return operation;
 }
 

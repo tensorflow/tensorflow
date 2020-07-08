@@ -89,7 +89,7 @@ class TFETest(test_util.TensorFlowTestCase):
     else:
       # TODO(gjn): Figure out how to make this work for tf.Tensor
       # self.assertNotIsInstance(b, collections.Hashable)
-      with self.assertRaisesRegexp(TypeError, 'unhashable'):
+      with self.assertRaisesRegex(TypeError, 'unhashable'):
         set([a, b])
 
   def testEquality(self):
@@ -464,7 +464,7 @@ class TFETest(test_util.TensorFlowTestCase):
   def testContextConfig(self):
     ctx = context.Context(config=config_pb2.ConfigProto(
         device_count={'GPU': 0}))
-    self.assertEquals(0, ctx.num_gpus())
+    self.assertEqual(0, ctx.num_gpus())
 
   def testPickle(self):
     tmp_dir = self.get_temp_dir()
@@ -485,7 +485,7 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertEndsWith(current_device(), 'CPU:0')
     gpu.__enter__()
     self.assertEndsWith(current_device(), 'GPU:0')
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         RuntimeError, 'Exiting device scope without proper scope nesting'):
       cpu.__exit__()
       self.assertEndsWith(current_device(), 'GPU:0')
@@ -926,7 +926,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
     x = constant_op.constant(1)
     three_x = add(add(x, x), x)
-    self.assertEquals(dtypes.int32, three_x.dtype)
+    self.assertEqual(dtypes.int32, three_x.dtype)
     self.assertAllEqual(3, three_x)
 
   @test_util.run_gpu_only
@@ -953,7 +953,7 @@ class TFETest(test_util.TensorFlowTestCase):
     types, tensors = execute_lib.convert_to_mixed_eager_tensors(
         [array, tensor], context.context())
     for typ, t in zip(types, tensors):
-      self.assertEquals(typ, dtypes.float32)
+      self.assertEqual(typ, dtypes.float32)
       self.assertIsInstance(t, ops.EagerTensor)
 
   def testConvertMixedEagerTensorsWithVariables(self):

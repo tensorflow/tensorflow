@@ -182,7 +182,7 @@ class LoadTest(test.TestCase):
     return path
 
   def test_multi_meta_graph_loading(self):
-    with self.assertRaisesRegexp(ValueError, "2 MetaGraphs"):
+    with self.assertRaisesRegex(ValueError, "2 MetaGraphs"):
       load.load(self._v1_multi_metagraph_saved_model())
     first_imported = load.load(self._v1_multi_metagraph_saved_model(),
                                tags=["first"])
@@ -191,9 +191,9 @@ class LoadTest(test.TestCase):
                          first_start=constant_op.constant(2.))))
     second_imported = load.load(self._v1_multi_metagraph_saved_model(),
                                 tags=set(["second"]))
-    with self.assertRaisesRegexp(TypeError, "second_start"):
+    with self.assertRaisesRegex(TypeError, "second_start"):
       second_imported.signatures["second_key"](x=constant_op.constant(2.))
-    with self.assertRaisesRegexp(TypeError, "second_start"):
+    with self.assertRaisesRegex(TypeError, "second_start"):
       second_imported.signatures["second_key"](
           second_start=constant_op.constant(2.),
           x=constant_op.constant(2.))
@@ -424,7 +424,7 @@ class LoadTest(test.TestCase):
 
   def test_unfed_placeholder_exception(self):
     path = self._unfed_placeholder_signature()
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         lift_to_graph.UnliftableError,
         "signature needs an input for each placeholder.*\n\nUnable to lift"):
       load.load(path)

@@ -799,7 +799,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       y = control_flow_ops.cond(x < x, true_fn, false_fn)
 
     if not context.executing_eagerly():
-      with self.assertRaisesRegexp(NotImplementedError, 'tf.gradients'):
+      with self.assertRaisesRegex(NotImplementedError, 'tf.gradients'):
         dy = g.gradient(y, [x])[0]
     else:
       dy = g.gradient(y, [x])[0]
@@ -822,7 +822,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       _, y = control_flow_ops.while_loop(cond, body, [i, x])
 
     if not context.executing_eagerly():
-      with self.assertRaisesRegexp(NotImplementedError, 'tf.gradients'):
+      with self.assertRaisesRegex(NotImplementedError, 'tf.gradients'):
         dy = g.gradient(y, [x])[0]
     else:
       dy = g.gradient(y, [x])[0]
@@ -836,7 +836,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       y = x * x
       z = y * y
     g.gradient(z, [x])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         RuntimeError, 'GradientTape.gradient can only be called once'):
       g.gradient(y, [x])
 
@@ -958,7 +958,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     with backprop.GradientTape() as g:
       g.watch([x, y])
       z = y * 2
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Unknown value for unconnected_gradients: 'nonsense'"):
       g.gradient(z, x, unconnected_gradients='nonsense')
 
@@ -989,8 +989,8 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     with backprop.GradientTape() as g:
       g.watch(x)
       tape_lib.record_operation('InvalidBackprop', [y], [x], lambda dy: [])
-    with self.assertRaisesRegexp(errors_impl.InternalError,
-                                 'InvalidBackprop.*too few gradients'):
+    with self.assertRaisesRegex(errors_impl.InternalError,
+                                'InvalidBackprop.*too few gradients'):
       g.gradient(y, x)
 
   @test_util.assert_no_new_tensors
@@ -1295,13 +1295,13 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     y = constant_op.constant(2)
 
     loss_grads_fn = backprop.implicit_val_and_grad(fn)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Cannot differentiate a function that returns None; '
         'did you forget to return a value from fn?'):
       loss_grads_fn(x, y)
 
     val_and_grads_fn = backprop.val_and_grad_function(fn)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Cannot differentiate a function that returns None; '
         'did you forget to return a value from fn?'):
       val_and_grads_fn(x, y)
@@ -1499,12 +1499,12 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       tf_max = max_pooling3d(
           tf_aa, pool_size=pool_size, strides=strides, padding='SAME')
       tf_da = gradients.gradients(tf_max, [tf_aa])
-      self.assertAllEqual(da[0], tf_da[0].eval())
+      self.assertAllEqual(da[0], tf_da[0])
 
   @test_util.run_in_graph_and_eager_modes
   def testWatchBadThing(self):
     g = backprop.GradientTape()
-    with self.assertRaisesRegexp(ValueError, 'ndarray'):
+    with self.assertRaisesRegex(ValueError, 'ndarray'):
       g.watch(np.array(1.))
 
   def testWatchComposite(self):
@@ -1659,7 +1659,7 @@ class JacobianTest(test.TestCase):
       x = constant_op.constant([1.0, 2.0])
       g.watch(x)
       y = x * x
-    with self.assertRaisesRegexp(RuntimeError, 'persistent'):
+    with self.assertRaisesRegex(RuntimeError, 'persistent'):
       g.jacobian(y, x, experimental_use_pfor=False)
 
   @test_util.run_v1_only('b/120545219')
@@ -1749,28 +1749,28 @@ class BatchJacobianTest(test.TestCase, parameterized.TestCase):
       x = constant_op.constant([[1.0, 2.0]])
       g.watch(x)
       y = x * x
-    with self.assertRaisesRegexp(RuntimeError, 'persistent'):
+    with self.assertRaisesRegex(RuntimeError, 'persistent'):
       g.batch_jacobian(y, x, experimental_use_pfor=False)
 
   def testBadShape(self):
     x = random_ops.random_uniform([2, 3])
     with backprop.GradientTape() as g:
       y = array_ops.concat([x, x], axis=0)
-    with self.assertRaisesRegexp(ValueError, 'Need first dimension'):
+    with self.assertRaisesRegex(ValueError, 'Need first dimension'):
       g.batch_jacobian(y, x)
 
   def testBadInputRank(self):
     x = random_ops.random_uniform([2])
     with backprop.GradientTape() as g:
       y = random_ops.random_uniform([2, 2])
-    with self.assertRaisesRegexp(ValueError, 'must have rank at least 2'):
+    with self.assertRaisesRegex(ValueError, 'must have rank at least 2'):
       g.batch_jacobian(y, x)
 
   def testBadOutputRank(self):
     x = random_ops.random_uniform([2, 2])
     with backprop.GradientTape() as g:
       y = random_ops.random_uniform([2])
-    with self.assertRaisesRegexp(ValueError, 'must have rank at least 2'):
+    with self.assertRaisesRegex(ValueError, 'must have rank at least 2'):
       g.batch_jacobian(y, x)
 
   def test_parallel_iterations(self):

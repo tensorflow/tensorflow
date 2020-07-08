@@ -149,9 +149,8 @@ class TimeDistributedTest(keras_parameterized.TestCase):
 
   def test_timedistributed_invalid_init(self):
     x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Please initialize `TimeDistributed` layer with a '
+    with self.assertRaisesRegex(
+        ValueError, 'Please initialize `TimeDistributed` layer with a '
         '`tf.keras.layers.Layer` instance.'):
       keras.layers.TimeDistributed(x)
 
@@ -306,13 +305,13 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     self.assertEqual(out_2.shape.as_list(), [None, 1, 5])
 
     ph_3 = keras.backend.placeholder(shape=(None, 1, 18))
-    with self.assertRaisesRegexp(ValueError, 'is incompatible with layer'):
+    with self.assertRaisesRegex(ValueError, 'is incompatible with layer'):
       time_dist(ph_3)
 
   def test_TimeDistributed_with_invalid_dimensions(self):
     time_dist = keras.layers.TimeDistributed(keras.layers.Dense(5))
     ph = keras.backend.placeholder(shape=(None, 10))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         '`TimeDistributed` Layer should be passed an `input_shape `'):
       time_dist(ph)
@@ -511,7 +510,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   def test_bidirectional_invalid_init(self):
     x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'Please initialize `Bidirectional` layer with a `Layer` instance.'):
       keras.layers.Bidirectional(x)
@@ -1053,15 +1052,15 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
     forward_layer = rnn(units)
     backward_layer = rnn(units)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'should have different `go_backwards` value.'):
+    with self.assertRaisesRegex(ValueError,
+                                'should have different `go_backwards` value.'):
       keras.layers.Bidirectional(
           forward_layer, merge_mode='concat', backward_layer=backward_layer)
 
     for attr in ('stateful', 'return_sequences', 'return_state'):
       kwargs = {attr: True}
       backward_layer = rnn(units, go_backwards=True, **kwargs)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'expected to have the same value for attribute ' + attr):
         keras.layers.Bidirectional(
             forward_layer, merge_mode='concat', backward_layer=backward_layer)

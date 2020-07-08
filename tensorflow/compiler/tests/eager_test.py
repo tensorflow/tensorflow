@@ -704,8 +704,8 @@ class EagerFunctionTest(xla_test.XLATestCase):
       self.assertAllEqual([0.0, 4.0], r_y)
       if context.executing_eagerly():
         # backing_device is only available for eager tensors.
-        self.assertRegexpMatches(r_x.backing_device, self.device)
-        self.assertRegexpMatches(r_y.backing_device, self.device)
+        self.assertRegex(r_x.backing_device, self.device)
+        self.assertRegex(r_y.backing_device, self.device)
 
       # When function is executed op-by-op, requested devices will be
       # respected.
@@ -714,8 +714,8 @@ class EagerFunctionTest(xla_test.XLATestCase):
       self.assertAllEqual([0.0, 4.0], r_y)
       if context.executing_eagerly():
         # backing_device is only available for eager tensors.
-        self.assertRegexpMatches(r_x.backing_device, self.device)
-        self.assertRegexpMatches(r_y.backing_device, 'device:CPU:0')
+        self.assertRegex(r_x.backing_device, self.device)
+        self.assertRegex(r_y.backing_device, 'device:CPU:0')
 
 
 class ExcessivePaddingTest(xla_test.XLATestCase):

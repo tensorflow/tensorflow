@@ -228,7 +228,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
 
       # this is the error message we expect the function to raise
       err_msg = "Last dimension of a grayscale image should be size 1"
-      with self.assertRaisesRegexp(ValueError, err_msg):
+      with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
 
     # tests if an exception is raised if a two dimensional
@@ -241,7 +241,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
 
       # this is the error message we expect the function to raise
       err_msg = "must be at least two-dimensional"
-      with self.assertRaisesRegexp(ValueError, err_msg):
+      with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
 
   @test_util.run_deprecated_v1
@@ -283,7 +283,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegexp(ValueError, err_msg):
+      with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
   @test_util.run_deprecated_v1
@@ -296,7 +296,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegexp(ValueError, err_msg):
+      with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
   @test_util.run_deprecated_v1
@@ -312,7 +312,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       image = image_ops.adjust_gamma(x, gamma=y)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, err_msg):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, err_msg):
         self.evaluate(image)
 
   def _test_adjust_gamma_uint8(self, gamma):
@@ -525,7 +525,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     x_np = np.random.rand(2, 3) * 255.
     delta_h = np.random.rand() * 2.0 - 1.0
     fused = False
-    with self.assertRaisesRegexp(ValueError, "Shape must be at least rank 3"):
+    with self.assertRaisesRegex(ValueError, "Shape must be at least rank 3"):
       self._adjustHueTf(x_np, delta_h)
     x_np = np.random.rand(4, 2, 4) * 255.
     delta_h = np.random.rand() * 2.0 - 1.0
@@ -1311,7 +1311,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       transformed_unknown_width = op(p_unknown_width)
       self.assertEqual(3, transformed_unknown_width.get_shape().ndims)
 
-      with self.assertRaisesRegexp(ValueError, "must be > 0"):
+      with self.assertRaisesRegex(ValueError, "must be > 0"):
         op(p_zero_dim)
 
     #Ops that support 4D input
@@ -1324,8 +1324,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
       transformed_unknown_batch = op(p_unknown_batch)
       self.assertEqual(4, transformed_unknown_batch.get_shape().ndims)
-      with self.assertRaisesRegexp(ValueError,
-                                   "must be at least three-dimensional"):
+      with self.assertRaisesRegex(ValueError,
+                                  "must be at least three-dimensional"):
         op(p_wrong_rank)
 
   def testRot90GroupOrder(self):
@@ -1448,8 +1448,8 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
     x_shape = [1, 2, 2, 3]
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 1"):
       image_ops.adjust_contrast(x_np, [2.0])
 
 
@@ -4153,14 +4153,14 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       image = constant_op.constant(x_np)
       y = image_ops.convert_image_dtype(image, output_dtype)
       self.assertTrue(y.dtype == output_dtype)
-      self.assertAllClose(y.eval(), y_np, atol=1e-5)
+      self.assertAllClose(y, y_np, atol=1e-5)
       if output_dtype in [
           dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64
       ]:
         y_saturate = image_ops.convert_image_dtype(
             image, output_dtype, saturate=True)
         self.assertTrue(y_saturate.dtype == output_dtype)
-        self.assertAllClose(y_saturate.eval(), y_np, atol=1e-5)
+        self.assertAllClose(y_saturate, y_np, atol=1e-5)
 
   @test_util.run_deprecated_v1
   def testNoConvert(self):
@@ -4169,8 +4169,8 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       image = constant_op.constant([1], dtype=dtypes.uint8)
       image_ops.convert_image_dtype(image, dtypes.uint8)
       y = image_ops.convert_image_dtype(image, dtypes.uint8)
-      self.assertEquals(y.op.type, "Identity")
-      self.assertEquals(y.op.inputs[0], image)
+      self.assertEqual(y.op.type, "Identity")
+      self.assertEqual(y.op.inputs[0], image)
 
   @test_util.run_deprecated_v1
   def testConvertBetweenInteger(self):
@@ -4440,47 +4440,47 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
       iou_threshold = constant_op.constant(iou_threshold_np)
       selected_indices = image_ops.non_max_suppression(
           boxes, scores, max_output_size, iou_threshold)
-      self.assertAllClose(selected_indices.eval(), [3, 0, 5])
+      self.assertAllClose(selected_indices, [3, 0, 5])
 
   @test_util.run_deprecated_v1
   def testInvalidShape(self):
     # The boxes should be 2D of shape [num_boxes, 4].
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be rank 2 but is rank 1"):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 2 but is rank 1"):
       boxes = constant_op.constant([0.0, 0.0, 1.0, 1.0])
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
-    with self.assertRaisesRegexp(ValueError, "Dimension must be 4 but is 3"):
+    with self.assertRaisesRegex(ValueError, "Dimension must be 4 but is 3"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0]])
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
     # The boxes is of shape [num_boxes, 4], and the scores is
     # of shape [num_boxes]. So an error will be thrown.
-    with self.assertRaisesRegexp(ValueError,
-                                 "Dimensions must be equal, but are 1 and 2"):
+    with self.assertRaisesRegex(ValueError,
+                                "Dimensions must be equal, but are 1 and 2"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9, 0.75])
       image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
     # The scores should be 1D of shape [num_boxes].
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be rank 1 but is rank 2"):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 1 but is rank 2"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([[0.9]])
       image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
     # The max_output_size should be a scalar (0-D).
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be rank 0 but is rank 1"):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 1"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, [3], 0.5)
 
     # The iou_threshold should be a scalar (0-D).
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be rank 0 but is rank 2"):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 2"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, 3, [[0.5]])
@@ -4616,10 +4616,9 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
     self.assertEqual(selected_indices_padded.shape.is_fully_defined(), True)
     self.assertEqual(selected_indices.shape.is_fully_defined(), False)
     with self.cached_session():
-      self.assertAllClose(selected_indices_padded.eval(),
-                          [3, 0, 5, 0, 0])
+      self.assertAllClose(selected_indices_padded, [3, 0, 5, 0, 0])
       self.assertEqual(num_valid_padded.eval(), 3)
-      self.assertAllClose(selected_indices.eval(), [3, 0, 5])
+      self.assertAllClose(selected_indices, [3, 0, 5])
       self.assertEqual(num_valid.eval(), 3)
 
   @test_util.run_deprecated_v1
@@ -4646,7 +4645,7 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
     # The output shape of the padded operation must be fully defined.
     self.assertEqual(selected_indices.shape.is_fully_defined(), False)
     with self.cached_session():
-      self.assertAllClose(selected_indices.eval(), [0, 2, 4])
+      self.assertAllClose(selected_indices, [0, 2, 4])
       self.assertEqual(num_valid.eval(), 3)
 
 
@@ -4672,7 +4671,7 @@ class NonMaxSuppressionWithOverlapsTest(test_util.TensorFlowTestCase):
         overlaps, scores, max_output_size, overlap_threshold, score_threshold)
 
     with self.cached_session():
-      self.assertAllClose(selected_indices.eval(), [1])
+      self.assertAllClose(selected_indices, [1])
 
 
 class VerifyCompatibleImageShapesTest(test_util.TensorFlowTestCase):
@@ -5179,6 +5178,60 @@ class DecodeImageTest(test_util.TensorFlowTestCase):
       (2020, 7, 14),
       (2525, 1, 1),  # future behavior
   ]
+
+  def testBmpChannels(self):
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with test_util.use_gpu():
+          base = "tensorflow/core/lib/bmp/testdata"
+          # `rgba_transparent.bmp` has 4 channels with transparent pixels.
+          # Test consistency between `decode_image` and `decode_bmp` functions.
+          bmp0 = io_ops.read_file(os.path.join(base, "rgba_small.bmp"))
+          image0 = image_ops.decode_image(bmp0, channels=4)
+          image1 = image_ops.decode_bmp(bmp0, channels=4)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
+
+          # Test that 3 channels is returned with user request of `channels=3`
+          # even though image has 4 channels.
+          # Note that this operation simply drops 4th channel information. This
+          # is the same behavior as `decode_png`.
+          # e.g. pixel values [25, 25, 25, 100] becomes [25, 25, 25].
+          bmp1 = io_ops.read_file(os.path.join(base, "rgb_small.bmp"))
+          image2 = image_ops.decode_bmp(bmp0, channels=3)
+          image3 = image_ops.decode_bmp(bmp1)
+          image2, image3 = self.evaluate([image2, image3])
+          self.assertAllEqual(image2, image3)
+
+          # Test that 4 channels is returned with user request of `channels=4`
+          # even though image has 3 channels. Alpha channel should be set to
+          # UINT8_MAX.
+          bmp3 = io_ops.read_file(os.path.join(base, "rgb_small_255.bmp"))
+          bmp4 = io_ops.read_file(os.path.join(base, "rgba_small_255.bmp"))
+          image4 = image_ops.decode_bmp(bmp3, channels=4)
+          image5 = image_ops.decode_bmp(bmp4)
+          image4, image5 = self.evaluate([image4, image5])
+          self.assertAllEqual(image4, image5)
+
+          # Test that 3 channels is returned with user request of `channels=3`
+          # even though image has 1 channel (grayscale).
+          bmp6 = io_ops.read_file(os.path.join(base, "grayscale_small.bmp"))
+          bmp7 = io_ops.read_file(
+              os.path.join(base, "grayscale_small_3channels.bmp"))
+          image6 = image_ops.decode_bmp(bmp6, channels=3)
+          image7 = image_ops.decode_bmp(bmp7)
+          image6, image7 = self.evaluate([image6, image7])
+          self.assertAllEqual(image6, image7)
+
+          # Test that 4 channels is returned with user request of `channels=4`
+          # even though image has 1 channel (grayscale). Alpha channel should be
+          # set to UINT8_MAX.
+          bmp9 = io_ops.read_file(
+              os.path.join(base, "grayscale_small_4channels.bmp"))
+          image8 = image_ops.decode_bmp(bmp6, channels=4)
+          image9 = image_ops.decode_bmp(bmp9)
+          image8, image9 = self.evaluate([image8, image9])
+          self.assertAllEqual(image8, image9)
 
   def testJpegUint16(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:

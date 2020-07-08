@@ -2664,10 +2664,12 @@ def decode_image(contents,
       assert_decode = control_flow_ops.Assert(is_bmp, [decode_msg])
       bmp_channels = 0 if channels is None else channels
       good_channels = math_ops.not_equal(bmp_channels, 1, name='check_channels')
-      channels_msg = 'Channels must be in (None, 0, 3) when decoding BMP images'
+      channels_msg = ('Channels must be in (None, 0, 3, 4) when decoding BMP '
+                      'images')
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
       with ops.control_dependencies([assert_decode, assert_channels]):
-        return convert_image_dtype(gen_image_ops.decode_bmp(contents), dtype)
+        return convert_image_dtype(
+            gen_image_ops.decode_bmp(contents, channels=bmp_channels), dtype)
 
     def _gif():
       """Decodes a GIF image."""
@@ -4596,11 +4598,11 @@ def non_max_suppression_padded(boxes,
    Raises:
     ValueError: When set pad_to_max_output_size to False for batched input.
   """
-  # if no new arguments are used and no later than 2020/4/20, use the old
-  # version to give us time to fix TFLite conversion
+  # if no new arguments are used and no later than 2020/6/23, use the old
+  # version to give us time to fix TFLite conversion after the TF 2.3 release.
   if (not sorted_input) and \
       (not canonicalized_coordinates) and \
-      tile_size == 512 and not compat.forward_compatible(2020, 4, 20):
+      tile_size == 512 and not compat.forward_compatible(2020, 6, 23):
     return non_max_suppression_padded_v1(
         boxes, scores, max_output_size, iou_threshold, score_threshold,
         pad_to_max_output_size, name)

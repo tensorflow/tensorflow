@@ -25,8 +25,8 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
-#include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -226,8 +226,10 @@ absl::string_view LhloDialectEmitter::platform_name() const {
   return platform_->Name();
 }
 
-Status LhloDialectEmitter::EmitComputation(const HloComputation& computation) {
-  return computation.root_instruction()->Accept(this);
+Status LhloDialectEmitter::EmitComputation(
+    const HloComputation& computation,
+    absl::Span<HloInstruction* const> ordering) {
+  return computation.AcceptOrdered(this, ordering);
 }
 
 StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(
@@ -311,7 +313,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
 
 Status LhloDialectEmitter::HandleGather(HloInstruction* instr) {
   HloGatherInstruction* gather = static_cast<HloGatherInstruction*>(instr);
-  mlir::xla_hlo::GatherDimensionNumbers dim_numbers =
+  mlir::mhlo::GatherDimensionNumbers dim_numbers =
       xla::CreateGatherDimensionNumbers(gather->gather_dimension_numbers(),
                                         builder_);
   mlir::DenseIntElementsAttr slice_sizes = CreateDenseIntElementsAttrFromVector(

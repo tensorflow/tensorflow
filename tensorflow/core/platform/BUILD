@@ -762,6 +762,14 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "ctstring",
+    srcs = [
+        "ctstring.h",
+        "ctstring_internal.h",
+    ],
+)
+
 cc_library(
     name = "types",
     hdrs = ["types.h"],

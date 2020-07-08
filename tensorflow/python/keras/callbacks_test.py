@@ -274,7 +274,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(dataset, epochs=2, steps_per_epoch=10)
-      self.assertRegexpMatches(printed.contents(), expected_log)
+      self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_all_keras_modes
   def test_callback_warning(self):
@@ -320,7 +320,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(dataset, epochs=2, steps_per_epoch=10)
-      self.assertRegexpMatches(printed.contents(), expected_log)
+      self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
@@ -335,7 +335,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(training_dataset, epochs=2, validation_data=val_dataset)
-      self.assertRegexpMatches(printed.contents(), expected_log)
+      self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -350,7 +350,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(x, y, batch_size=10, epochs=2, validation_split=0.2)
-      self.assertRegexpMatches(printed.contents(), expected_log)
+      self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -381,7 +381,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(
           x=training, validation_data=validation, epochs=2, steps_per_epoch=20)
-      self.assertRegexpMatches(printed.contents(), expected_log)
+      self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -647,7 +647,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     os.remove(filepath.format(epoch=9))
 
     # Case 8: `ModelCheckpoint` with valid and invalid save_freq argument.
-    with self.assertRaisesRegexp(ValueError, 'Unrecognized save_freq'):
+    with self.assertRaisesRegex(ValueError, 'Unrecognized save_freq'):
       keras.callbacks.ModelCheckpoint(
           filepath,
           monitor=monitor,
@@ -669,7 +669,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         save_freq=3)
 
     # Case 9: `ModelCheckpoint` with valid and invalid `options` argument.
-    with self.assertRaisesRegexp(TypeError, 'tf.train.CheckpointOptions'):
+    with self.assertRaisesRegex(TypeError, 'tf.train.CheckpointOptions'):
       keras.callbacks.ModelCheckpoint(
           filepath,
           monitor=monitor,
@@ -677,7 +677,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           save_weights_only=True,
           mode=mode,
           options=save_options_lib.SaveOptions())
-    with self.assertRaisesRegexp(TypeError, 'tf.saved_model.SaveOptions'):
+    with self.assertRaisesRegex(TypeError, 'tf.saved_model.SaveOptions'):
       keras.callbacks.ModelCheckpoint(
           filepath,
           monitor=monitor,
@@ -881,8 +881,9 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     callback = keras.callbacks.ModelCheckpoint(filepath=filepath)
 
-    with self.assertRaisesRegexp(IOError, 'Please specify a non-directory '
-                                          'filepath for ModelCheckpoint.'):
+    with self.assertRaisesRegex(
+        IOError, 'Please specify a non-directory '
+        'filepath for ModelCheckpoint.'):
       model.fit(train_ds, epochs=1, callbacks=[callback])
 
   def test_ModelCheckpoint_with_bad_path_placeholders(self):
@@ -893,8 +894,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     filepath = os.path.join(temp_dir, 'chkpt_{epoch:02d}_{mape:.2f}.h5')
     callback = keras.callbacks.ModelCheckpoint(filepath=filepath)
 
-    with self.assertRaisesRegexp(KeyError, 'Failed to format this callback '
-                                           'filepath.*'):
+    with self.assertRaisesRegex(KeyError, 'Failed to format this callback '
+                                'filepath.*'):
       model.fit(train_ds, epochs=1, callbacks=[callback])
 
   def test_ModelCheckpoint_nonblocking(self):
@@ -971,7 +972,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       cb_list.on_test_batch_end(0, logs)
       cb_list.on_test_end(logs)
 
-      with self.assertRaisesRegexp(RuntimeError, 'NumPy conversion'):
+      with self.assertRaisesRegex(RuntimeError, 'NumPy conversion'):
         # on_epoch_end should still block.
         cb_list.on_epoch_end(0, logs)
       cb_list.on_train_end(logs)
@@ -1271,7 +1272,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
   def test_ReduceLROnPlateau_backwards_compatibility(self):
     with test.mock.patch.object(logging, 'warning') as mock_log:
       reduce_on_plateau = keras.callbacks.ReduceLROnPlateau(epsilon=1e-13)
-      self.assertRegexpMatches(
+      self.assertRegex(
           str(mock_log.call_args), '`epsilon` argument is deprecated')
     self.assertFalse(hasattr(reduce_on_plateau, 'epsilon'))
     self.assertTrue(hasattr(reduce_on_plateau, 'min_delta'))
@@ -2090,7 +2091,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     return result
 
   def test_TensorBoard_invalid_argument(self):
-    with self.assertRaisesRegexp(ValueError, 'Unrecognized arguments'):
+    with self.assertRaisesRegex(ValueError, 'Unrecognized arguments'):
       keras.callbacks.TensorBoard(wwrite_images=True)
 
   def test_TensorBoard_non_blocking(self):

@@ -49,6 +49,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["applications_saved_model_test.py"],
     shard_count = 8,
+    tags = [
+        "no_oss_py38",  # b/160170347
+        "no_windows",  # b/160269052
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras/applications",
@@ -62,5 +66,28 @@ cuda_py_test(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "keras_examples_benchmark_test",
+    size = "medium",
+    srcs = ["keras_examples_benchmark_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_windows",  # b/160628318
+    ],
+    deps = [
+        ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "benchmark_util",
+    srcs = ["benchmark_util.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
