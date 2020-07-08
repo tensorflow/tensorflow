@@ -1302,25 +1302,6 @@ distribute_py_test(
 )
 
 distribute_py_test(
-    name = "custom_training_loop_metrics_test",
-    srcs = ["custom_training_loop_metrics_test.py"],
-    main = "custom_training_loop_metrics_test.py",
-    tags = [
-        "multi_and_single_gpu",
-    ],
-    deps = [
-        ":combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
     name = "strategy_reduce_test",
     srcs = ["strategy_reduce_test.py"],
     main = "strategy_reduce_test.py",

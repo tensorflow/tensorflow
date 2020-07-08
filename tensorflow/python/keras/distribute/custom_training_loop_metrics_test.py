@@ -21,13 +21,13 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.keras import metrics
 
 
 class KerasMetricsTest(test.TestCase, parameterized.TestCase):
@@ -39,8 +39,8 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
       ))
   def test_multiple_keras_metrics_experimental_run(self, distribution):
     with distribution.scope():
-      loss_metric = keras.metrics.Mean("loss", dtype=np.float32)
-      loss_metric_2 = keras.metrics.Mean("loss_2", dtype=np.float32)
+      loss_metric = metrics.Mean("loss", dtype=np.float32)
+      loss_metric_2 = metrics.Mean("loss_2", dtype=np.float32)
 
     @def_function.function
     def train_step():
@@ -63,7 +63,7 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
       ))
   def test_update_keras_metric_declared_in_strategy_scope(self, distribution):
     with distribution.scope():
-      metric = keras.metrics.Mean("test_metric", dtype=np.float32)
+      metric = metrics.Mean("test_metric", dtype=np.float32)
 
     dataset = dataset_ops.Dataset.range(10).batch(2)
     dataset = distribution.experimental_distribute_dataset(dataset)
@@ -86,7 +86,7 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
       ))
   def test_update_keras_metric_outside_strategy_scope_cross_replica(
       self, distribution):
-    metric = keras.metrics.Mean("test_metric", dtype=np.float32)
+    metric = metrics.Mean("test_metric", dtype=np.float32)
 
     with distribution.scope():
       for i in range(10):
