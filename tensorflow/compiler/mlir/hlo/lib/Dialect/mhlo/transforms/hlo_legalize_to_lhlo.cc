@@ -422,9 +422,15 @@ struct HloLegalizeToLhlo
       return llvm::all_of(inputs, isMemRefType) &&
              converter.isLegal(&op.getBody());
     });
-    target.addDynamicallyLegalOp<mlir::ReturnOp>([&](mlir::ReturnOp returnOp) {
-      return std::all_of(returnOp.operand_type_begin(),
-                         returnOp.operand_type_end(), isMemRefType);
+    target.addDynamicallyLegalOp<CallOp>([&](CallOp op) {
+      return std::all_of(op.operand_type_begin(), op.operand_type_end(),
+                         isMemRefType) &&
+             std::all_of(op.result_type_begin(), op.result_type_end(),
+                         isMemRefType);
+    });
+    target.addDynamicallyLegalOp<mlir::ReturnOp>([&](mlir::ReturnOp op) {
+      return std::all_of(op.operand_type_begin(), op.operand_type_end(),
+                         isMemRefType);
     });
 
     auto module = getOperation();
