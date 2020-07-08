@@ -199,14 +199,13 @@ class MirroredStrategy(distribute_lib.Strategy):
   will use the available CPUs. Note that TensorFlow treats all CPUs on a
   machine as a single device, and uses threads internally for parallelism.
 
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+  >>> strategy = tf.distribute.MirroredStrategy()
   >>> with strategy.scope():
   ...   x = tf.Variable(1.)
   >>> x
   MirroredVariable:{
-    0: <tf.Variable ... shape=() dtype=float32, numpy=1.0>,
-    1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
-  }
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
+    }
 
   While using distribution strategies, all the variable creation should be done
   within the strategy's scope. This will replicate the variables across all the
@@ -220,15 +219,13 @@ class MirroredStrategy(distribute_lib.Strategy):
   ... def create_variable():
   ...   if not x:
   ...     x.append(tf.Variable(1.))
-  ...   return x[0]
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+  >>> strategy = tf.distribute.MirroredStrategy()
   >>> with strategy.scope():
-  ...   _ = create_variable()
-  ...   print(x[0])
+  ...   create_variable()
+  ...   print (x[0])
   MirroredVariable:{
-    0: <tf.Variable ... shape=() dtype=float32, numpy=1.0>,
-    1: <tf.Variable ... shape=() dtype=float32, numpy=1.0>
-  }
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
+    }
 
   `experimental_distribute_dataset` can be used to distribute the dataset across
   the replicas when writing your own training loop. If you are using `.fit` and
