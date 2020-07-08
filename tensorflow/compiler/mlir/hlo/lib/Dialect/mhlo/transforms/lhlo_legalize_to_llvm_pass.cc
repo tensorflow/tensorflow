@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 
 namespace mlir {
-namespace xla_lhlo {
+namespace lmhlo {
 namespace {
 
 class TestLhloToLLVMPass
@@ -42,7 +42,7 @@ class TestLhloToLLVMPass
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
-    target.addIllegalDialect<XlaLhloDialect>();
+    target.addIllegalDialect<LmhloDialect>();
 
     if (failed(applyFullConversion(m, target, patterns))) {
       signalPassFailure();
@@ -55,5 +55,5 @@ class TestLhloToLLVMPass
 static PassRegistration<TestLhloToLLVMPass> legalize_lhlo_pass(
     "test-lhlo-legalize-to-llvm", "Legalize from LHLO dialect to LLVM.");
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir

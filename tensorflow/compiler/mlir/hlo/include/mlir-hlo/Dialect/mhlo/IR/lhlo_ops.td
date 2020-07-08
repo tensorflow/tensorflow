@@ -38,8 +38,8 @@ include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 
 def LHLO_Dialect : Dialect {
-  let name = "xla_lhlo";
-  let cppNamespace = "xla_lhlo";
+  let name = "lmhlo";
+  let cppNamespace = "lmhlo";
 }
 
 //===----------------------------------------------------------------------===//
@@ -253,7 +253,7 @@ def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [
 
 // TODO(timshen): Add a custom parser to hide operand_segment_sizes. For example,
 // A tuple-like pattern match syntax could work:
-// xla_lhlo.case %index, (%input0, %input1, %input2), (%output0, %output1) {
+// lmhlo.case %index, (%input0, %input1, %input2), (%output0, %output1) {
 //   ...
 // }, {
 //   ...
@@ -337,7 +337,7 @@ def HLO_StaticMemRefCastOp: Op<LHLO_Dialect, "static_memref_cast",
     Example:
     ```mlir
     %buf_transformed =
-        xla_lhlo.static_memref_cast %buf
+        lmhlo.static_memref_cast %buf
         : memref<1x5xf32> -> memref<5xf32, offset: 2, strides: [1]>
 
     // The result of the op is a rank-1 memref with `[5]` shape, stride 1 and
@@ -379,7 +379,7 @@ def HLO_DynamicMemRefCastOp: Op<LHLO_Dialect, "dynamic_memref_cast",
     Example:
     ```mlir
     %buf_transformed =
-        xla_lhlo.dynamic_memref_cast %buf(%size_X, %size_Y)[%step_X, %step_Y]
+        lmhlo.dynamic_memref_cast %buf(%size_X, %size_Y)[%step_X, %step_Y]
         : memref<?x?xf32> -> memref<?x?xf32, offset: 0, strides: [?, ?]>
     // The result of the op is a type-erased memref with `[%size_X, %size_Y]`
     // shape and `[%step_X, %step_Y]` strides. The offset will be inherited

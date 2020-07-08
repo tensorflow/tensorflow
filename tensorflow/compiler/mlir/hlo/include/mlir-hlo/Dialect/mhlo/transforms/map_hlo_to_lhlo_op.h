@@ -34,7 +34,7 @@ using HloToLhloOp = typename HloToLhloOpImpl<HloOpTy>::Type;
 #define MAP_HLO_TO_LHLO(OpName)          \
   template <>                            \
   struct HloToLhloOpImpl<mhlo::OpName> { \
-    using Type = xla_lhlo::OpName;       \
+    using Type = lmhlo::OpName;          \
   }
 
 MAP_HLO_TO_LHLO(AbsOp);

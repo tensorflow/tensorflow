@@ -60,7 +60,7 @@ namespace xla {
 namespace mlir_gpu {
 namespace {
 
-using ::mlir::xla_lhlo::FusionOp;
+using ::mlir::lmhlo::FusionOp;
 
 // Replaces a FusionOp by the operations contained in its region.
 struct FusionOpRemover
@@ -463,14 +463,14 @@ Status LowerLHLOToGPU(mlir::ModuleOp module, LowerLHLOToGPUOptions options) {
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
   // Remove unnecessary LHLO copies.
-  pm.addPass(::mlir::xla_lhlo::createLhloCopyRemovalPass());
+  pm.addPass(::mlir::lmhlo::createLhloCopyRemovalPass());
   // Transform LHLO operations to LinAlg.
-  pm.addPass(::mlir::xla_lhlo::createLegalizeLhloToLinalgPass());
+  pm.addPass(::mlir::lmhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations.
-  pm.addPass(::mlir::xla_lhlo::createLhloFuseLinalg(/*use_parallel_loops=*/true,
-                                                    tiling_for_unrolling));
+  pm.addPass(::mlir::lmhlo::createLhloFuseLinalg(/*use_parallel_loops=*/true,
+                                                 tiling_for_unrolling));
   // Legalize reduce operations directly to GPU dialect.
-  pm.addPass(::mlir::xla_lhlo::createLegalizeToGpuPass());
+  pm.addPass(::mlir::lmhlo::createLegalizeToGpuPass());
   // Transform the Linalg operations inside of the loop nest into parallel
   // loops.
   pm.addPass(::mlir::createConvertLinalgToParallelLoopsPass());

@@ -128,7 +128,7 @@ Status LowerTfOpToLhloWithDynamicShapes(mlir::ModuleOp module) {
   pm.addNestedPass<mlir::FuncOp>(absl::make_unique<UnfuseBatchNormPass>());
   pm.addPass(mlir::mhlo::createLegalizeToLhloPass(
       /*results_escape_functions=*/true));
-  pm.addNestedPass<mlir::FuncOp>(mlir::xla_lhlo::createLhloCopyRemovalPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::lmhlo::createLhloCopyRemovalPass());
 
   if (failed(pm.run(module))) {
     return InternalError("Lowering TF to LHLO failed.");

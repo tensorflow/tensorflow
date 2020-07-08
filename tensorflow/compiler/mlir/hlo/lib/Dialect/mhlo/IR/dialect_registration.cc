@@ -21,4 +21,4 @@ limitations under the License.
 static mlir::DialectRegistration<mlir::mhlo::XlaHloDialect> mhlo_ops;
 static mlir::DialectRegistration<mlir::xla_chlo::XlaHloClientDialect>
     xla_chlo_ops;
-static mlir::DialectRegistration<mlir::xla_lhlo::XlaLhloDialect> xla_lhlo_ops;
+static mlir::DialectRegistration<mlir::lmhlo::LmhloDialect> lmhlo_ops;
