@@ -3515,12 +3515,13 @@ def gelu(features, approximate=True, name=None):
     if approximate:
       pi = math_ops.cast(np.pi, features.dtype)
       coeff = math_ops.cast(0.044715, features.dtype)
-      return 0.5 * features * (1.0 + math_ops.tanh(
-        math_ops.sqrt(2.0 / pi) *
-        (features + coeff * math_ops.pow(features, 3))))
+      return 0.5 * features * (
+          1.0 + math_ops.tanh(math_ops.sqrt(2.0 / pi) * (
+              features + coeff * math_ops.pow(features, 3))))
     else:
-      return 0.5 * features * (1.0 + math_ops.erf(
-        features / math_ops.cast(1.4142135623730951, features.dtype)))
+      return 0.5 * features * (
+          1.0 + math_ops.erf(features / math_ops.cast(
+              1.4142135623730951, features.dtype)))
 
 
 def _flatten_outer_dims(logits):
