@@ -3493,6 +3493,36 @@ def leaky_relu(features, alpha=0.2, name=None):
     return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
 
 
+@tf_export("nn.gelu")
+@dispatch.add_dispatch_support
+def gelu(features, approximate=True, name=None):
+  """Compute the Gaussian Error Linear Unit (GELU) activation function.
+
+  Args:
+    features: A `Tensor` representing preactivation values.
+    approximate: An optional `bool`. Defaults to `True`.
+      Whether to enable approximation.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `features`.
+
+  References:
+    [Gaussian Error Linear Units (GELUs)](https://arxiv.org/abs/1606.08415).
+  """
+  with ops.name_scope(name, "Gelu", [features]):
+    features = ops.convert_to_tensor(features, name="features")
+    if approximate:
+      pi = math_ops.cast(np.pi, features.dtype)
+      coeff = math_ops.cast(0.044715, features.dtype)
+      return 0.5 * features * (1.0 + math_ops.tanh(
+        math_ops.sqrt(2.0 / pi) *
+        (features + coeff * math_ops.pow(features, 3))))
+    else:
+      return 0.5 * features * (1.0 + math_ops.erf(
+        features / math_ops.cast(1.4142135623730951, features.dtype)))
+
+
 def _flatten_outer_dims(logits):
   """Flattens logits' outer dimensions and keep its last dimension."""
   rank = array_ops.rank(logits)
