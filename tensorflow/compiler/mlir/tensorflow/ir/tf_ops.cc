@@ -506,28 +506,52 @@ LogicalResult FoldOperandsPermutation(
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Folder that returns LHS of an Arithmetic Op if the RHS is a constant
-// known to be Identity (e.g X+0)
+// Fold Arithmetic Op if one of the operands is a constant known to be an
+// Identity (e.g. X+0, X*1, etc...). For commutative operations fold if
+// known identity value is either lhs or rhs.
 template <
     typename OpT,
     typename std::enable_if<llvm::is_one_of<
         OpT, AddV2Op, SubOp, MulOp, DivOp, RealDivOp>::value>::type * = nullptr>
 OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
                                         ArrayRef<Attribute> operands) {
-  auto result_op_type = arithmetic_op.getResult().getType();
   auto lhs_type = arithmetic_op.x().getType().template cast<ShapedType>();
-  if (!result_op_type.template cast<ShapedType>().hasStaticShape()) return {};
+  auto rhs_type = arithmetic_op.y().getType().template cast<ShapedType>();
+  auto result_type =
+      arithmetic_op.getResult().getType().template cast<ShapedType>();
 
-  // We only handle non-broadcastable case.
-  if (result_op_type != lhs_type) {
-    return {};
-  }
+  // We can fold arithmetic operation only of we can prove that we will not
+  // accidentally hide a broadcasting error.
+  auto is_valid_broadcasting = [](ShapedType operand_ty, ShapedType identity_ty,
+                                  ShapedType result_ty) -> bool {
+    // Scalar identity is broadcastable to any operand shape, we only need to
+    // check that operand has the same shape as a result.
+    bool scalar_identity = identity_ty.hasRank() && identity_ty.getRank() == 0;
+    if (scalar_identity) return operand_ty == result_ty;
+
+    // If identity is not a scalar, we must verify that all shapes are equal
+    // and statically known.
+    //
+    // TODO(ezhulenev): Fold if identity shape is statically know to be
+    // broadcastable to the operand shape.
+    return operand_ty == result_ty && identity_ty == result_ty &&
+           result_ty.hasStaticShape();
+  };
+
+  // Check that we have a constant operand on one side (candidate for identity).
+  const bool is_commutative =
+      (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
+  auto lhs_attr = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhs_attr = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+  if (!rhs_attr && !(is_commutative && lhs_attr)) return {};
 
   // Mul and Div ops have identity value one while AddV2 and SubOp have identity
   // value zero.
-  int identity =
+  const int identity =
       (std::is_same<OpT, MulOp>::value || std::is_same<OpT, DivOp>::value ||
-       std::is_same<OpT, RealDivOp>::value);
+       std::is_same<OpT, RealDivOp>::value)
+          ? 1
+          : 0;
 
   Type element_ty = lhs_type.getElementType();
   Attribute identity_attr;
@@ -539,23 +563,19 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
     return {};
   }
 
-  if (auto attr = operands[1].dyn_cast_or_null<DenseElementsAttr>()) {
-    if (attr.isSplat() && attr.getSplatValue() == identity_attr)
+  // Fold: Op(Operand, Identity) -> Operand.
+  if (rhs_attr && is_valid_broadcasting(lhs_type, rhs_type, result_type)) {
+    if (rhs_attr.isSplat() && rhs_attr.getSplatValue() == identity_attr)
       return arithmetic_op.x();
   }
 
-  auto rhs_type = arithmetic_op.y().getType().template cast<ShapedType>();
-  // TODO(chhe): we could fold and add an identity to force the broadcast.
-  if (result_op_type != rhs_type) {
-    return {};
-  }
-
-  bool is_symmetric =
-      (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
-  if (auto attr = operands[0].dyn_cast_or_null<DenseElementsAttr>()) {
-    if (is_symmetric && attr.isSplat() && attr.getSplatValue() == identity_attr)
+  // Fold: Op(Identity, Operand) -> Operand for commutative operations.
+  if (lhs_attr && is_commutative &&
+      is_valid_broadcasting(rhs_type, lhs_type, result_type)) {
+    if (lhs_attr.isSplat() && lhs_attr.getSplatValue() == identity_attr)
       return arithmetic_op.y();
   }
+
   return {};
 }
 }  // namespace
