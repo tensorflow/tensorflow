@@ -27,6 +27,12 @@ from tensorflow.python.keras.benchmarks import benchmark_util
 _MAX_FEATURE = 20000
 _MAX_LEN = 200
 
+# Load common dataset.
+(_IMDB_X, _IMDB_Y), _ = tf.keras.datasets.imdb.load_data(
+    num_words=_MAX_FEATURE)
+_IMDB_X = tf.keras.preprocessing.sequence.pad_sequences(
+    _IMDB_X, maxlen=_MAX_LEN)
+
 
 class KerasExamplesBenchmark(PerfZeroBenchmark):
   """Required Arguments for measure_performance:
@@ -52,19 +58,87 @@ class KerasExamplesBenchmark(PerfZeroBenchmark):
     model = tf.keras.Model(inputs, outputs)
     return model
 
-  def benchmark_bidirect_lstm_imdb(self):
-    """Benchmark for Bidirectional LSTM on IMDB."""
-    # Load dataset.
-    (x_train, y_train), _ = tf.keras.datasets.imdb.load_data(
-        num_words=_MAX_FEATURE)
-    x_train = tf.keras.preprocessing.sequence.pad_sequences(
-        x_train, maxlen=_MAX_LEN)
+  def benchmark_bidirect_lstm_imdb_bs_32(self):
+    """Benchmark for Bidirectional LSTM on IMDB,
+       batch_size=32, run_iters=1."""
+    batch_size = 32
+    run_iters = 1
+    results = benchmark_util.measure_performance(
+        self._lstm_imdb_model,
+        x=_IMDB_X,
+        y=_IMDB_Y,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(
+        iters=run_iters, wall_time=results['wall_time'], extras=results)
+
+  def benchmark_bidirect_lstm_imdb_bs_64(self):
+    """Benchmark for Bidirectional LSTM on IMDB,
+       batch_size=64, run_iters=3."""
     batch_size = 64
+    run_iters = 3
+    results = benchmark_util.measure_performance(
+        self._lstm_imdb_model,
+        x=_IMDB_X,
+        y=_IMDB_Y,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(
+        iters=run_iters, wall_time=results['wall_time'], extras=results)
+
+  def benchmark_bidirect_lstm_imdb_bs_128(self):
+    """Benchmark for Bidirectional LSTM on IMDB,
+       batch_size=128, run_iters=2."""
+    batch_size = 128
     run_iters = 2
     results = benchmark_util.measure_performance(
         self._lstm_imdb_model,
-        x=x_train,
-        y=y_train,
+        x=_IMDB_X,
+        y=_IMDB_Y,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(
+        iters=run_iters, wall_time=results['wall_time'], extras=results)
+
+  def benchmark_bidirect_lstm_imdb_bs_256(self):
+    """Benchmark for Bidirectional LSTM on IMDB,
+       batch_size: 256, run_iters=3."""
+    batch_size = 256
+    run_iters = 3
+    results = benchmark_util.measure_performance(
+        self._lstm_imdb_model,
+        x=_IMDB_X,
+        y=_IMDB_Y,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(
+        iters=run_iters, wall_time=results['wall_time'], extras=results)
+
+  def benchmark_bidirect_lstm_imdb_bs_512(self):
+    """Benchmark for Bidirectional LSTM on IMDB,
+       batch_size=512, run_iters=2."""
+    batch_size = 512
+    run_iters = 2
+    results = benchmark_util.measure_performance(
+        self._lstm_imdb_model,
+        x=_IMDB_X,
+        y=_IMDB_Y,
         batch_size=batch_size,
         run_iters=run_iters,
         optimizer='adam',
