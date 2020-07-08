@@ -61,6 +61,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                           op_context.input2->type);
   op_context.output->type = op_context.input1->type;
 
+  // We need to make sure both inputs have the same quantization params.
+  if (op_context.output->type == kTfLiteUInt8 ||
+      op_context.output->type == kTfLiteInt8) {
+    TF_LITE_ENSURE(context, std::abs(op_context.input1->params.scale -
+                                     op_context.input2->params.scale) < 1e-5);
+    TF_LITE_ENSURE_EQ(context, op_context.input1->params.zero_point,
+                      op_context.input2->params.zero_point);
+  }
+
   bool requires_broadcast =
       !HaveSameShapes(op_context.input1, op_context.input2);
 
