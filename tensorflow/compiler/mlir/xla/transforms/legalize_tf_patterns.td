@@ -366,7 +366,7 @@ class GetDimensionSizeFromEnd<string dimFromEnd>: NativeCodeCall<
 // For now, this op needs to be created in C++ because the expected output type
 // cannot be inferred.
 class createIotaOp<string dim>: NativeCodeCall<
-  "$_builder.create<xla_hlo::IotaOp>($0.getOwner()->getLoc(), "
+  "$_builder.create<mhlo::IotaOp>($0.getOwner()->getLoc(), "
   "Get2DTensorType($1), $_builder.getI64IntegerAttr(" # dim # "))">;
 
 // This op needs to be created in C++ because the generated Convert Op has no

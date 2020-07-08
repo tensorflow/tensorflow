@@ -131,6 +131,699 @@ TfLitePadding ConvertPadding(Padding padding) {
   return kTfLitePaddingUnknown;
 }
 
+TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
+                               ErrorReporter* error_reporter,
+                               BuiltinDataAllocator* allocator,
+                               void** builtin_data) {
+  auto parseLSHProjectionType = [](LSHProjectionType type) {
+    switch (type) {
+      case LSHProjectionType_SPARSE:
+        return kTfLiteLshProjectionSparse;
+      case LSHProjectionType_DENSE:
+        return kTfLiteLshProjectionDense;
+      default:
+        return kTfLiteLshProjectionUnknown;
+    }
+  };
+  auto parseCombinerType = [](CombinerType type) {
+    switch (type) {
+      case CombinerType_MEAN:
+        return kTfLiteCombinerTypeMean;
+      case CombinerType_SQRTN:
+        return kTfLiteCombinerTypeSqrtn;
+      case CombinerType_SUM:
+      default:
+        return kTfLiteCombinerTypeSum;
+    }
+  };
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  *builtin_data = nullptr;
+  switch (op_type) {
+    case BuiltinOperator_ABS: {
+      return ParseAbs(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_ADD: {
+      return ParseAdd(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_ARG_MAX: {
+      return ParseArgMax(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_ARG_MIN: {
+      return ParseArgMin(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_AVERAGE_POOL_2D: {
+      return ParsePool(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_CEIL: {
+      return ParseCeil(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_CONCATENATION: {
+      return ParseConcatenation(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_CONV_2D: {
+      return ParseConv2D(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_DEPTHWISE_CONV_2D: {
+      return ParseDepthwiseConv2D(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_DEQUANTIZE: {
+      return ParseDequantize(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_FLOOR: {
+      return ParseFloor(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_FULLY_CONNECTED: {
+      return ParseFullyConnected(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_GREATER: {
+      return ParseGreater(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_GREATER_EQUAL: {
+      return ParseGreaterEqual(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_HARD_SWISH: {
+      return ParseHardSwish(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_L2_NORMALIZATION: {
+      return ParseL2Normalization(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_L2_POOL_2D: {
+      return ParsePool(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_LESS: {
+      return ParseLess(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_LESS_EQUAL: {
+      return ParseLessEqual(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_LOG: {
+      return ParseLog(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_LOGICAL_AND: {
+      return ParseLogicalAnd(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_LOGICAL_NOT: {
+      return ParseLogicalNot(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_LOGICAL_OR: {
+      return ParseLogicalOr(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_LOGISTIC: {
+      return ParseLogistic(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_MAXIMUM: {
+      return ParseMaximum(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_MAX_POOL_2D: {
+      return ParsePool(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_MEAN: {
+      return ParseReducer(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_MINIMUM: {
+      return ParseMinimum(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_MUL: {
+      return ParseMul(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_NEG: {
+      return ParseNeg(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_NOT_EQUAL: {
+      return ParseNotEqual(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_PACK: {
+      return ParsePack(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_PAD: {
+      return ParsePad(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_PADV2: {
+      return ParsePadV2(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_PRELU: {
+      return ParsePrelu(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_QUANTIZE: {
+      return ParseQuantize(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_REDUCE_ANY: {
+      return ParseReducer(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_REDUCE_MAX: {
+      return ParseReducer(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_REDUCE_MIN: {
+      return ParseReducer(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_REDUCE_PROD: {
+      return ParseReducer(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_RELU: {
+      return ParseRelu(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_RELU6: {
+      return ParseRelu6(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_RESHAPE: {
+      return ParseReshape(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR: {
+      return ParseResizeNearestNeighbor(op, error_reporter, allocator,
+                                        builtin_data);
+    }
+
+    case BuiltinOperator_ROUND: {
+      return ParseRound(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_RSQRT: {
+      return ParseRsqrt(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_SIN: {
+      return ParseSin(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_SOFTMAX: {
+      return ParseSoftmax(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_SPLIT: {
+      return ParseSplit(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_SQRT: {
+      return ParseSqrt(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_SQUARE: {
+      return ParseSquare(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_STRIDED_SLICE: {
+      return ParseStridedSlice(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_SUB: {
+      return ParseSub(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_SUM: {
+      return ParseReducer(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_SVDF: {
+      return ParseSvdf(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_TANH: {
+      return ParseTanh(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_UNPACK: {
+      return ParseUnpack(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_CAST: {
+      auto params = safe_allocator.Allocate<TfLiteCastParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params = op->builtin_options_as_CastOptions()) {
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->in_data_type(),
+                                                &params->in_data_type,
+                                                error_reporter));
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->out_data_type(),
+                                                &params->out_data_type,
+                                                error_reporter));
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_LSH_PROJECTION: {
+      auto params = safe_allocator.Allocate<TfLiteLSHProjectionParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* lshParams =
+              op->builtin_options_as_LSHProjectionOptions()) {
+        params->type = parseLSHProjectionType(lshParams->type());
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN: {
+      auto params = safe_allocator.Allocate<TfLiteSequenceRNNParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* sequence_rnn_params =
+              op->builtin_options_as_SequenceRNNOptions()) {
+        params->activation =
+            ConvertActivation(sequence_rnn_params->fused_activation_function());
+        params->time_major = sequence_rnn_params->time_major();
+        params->asymmetric_quantize_inputs =
+            sequence_rnn_params->asymmetric_quantize_inputs();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN: {
+      auto params =
+          safe_allocator.Allocate<TfLiteBidirectionalSequenceRNNParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* bidi_sequence_rnn_params =
+              op->builtin_options_as_BidirectionalSequenceRNNOptions()) {
+        params->activation = ConvertActivation(
+            bidi_sequence_rnn_params->fused_activation_function());
+        params->time_major = bidi_sequence_rnn_params->time_major();
+        params->merge_outputs = bidi_sequence_rnn_params->merge_outputs();
+        params->asymmetric_quantize_inputs =
+            bidi_sequence_rnn_params->asymmetric_quantize_inputs();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_RNN: {
+      auto params = safe_allocator.Allocate<TfLiteRNNParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* rnn_params = op->builtin_options_as_RNNOptions()) {
+        params->activation =
+            ConvertActivation(rnn_params->fused_activation_function());
+        params->asymmetric_quantize_inputs =
+            rnn_params->asymmetric_quantize_inputs();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_EMBEDDING_LOOKUP_SPARSE: {
+      auto params =
+          safe_allocator.Allocate<TfLiteEmbeddingLookupSparseParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* embedding_params =
+              op->builtin_options_as_EmbeddingLookupSparseOptions()) {
+        params->combiner = parseCombinerType(embedding_params->combiner());
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+
+    case BuiltinOperator_HASHTABLE_LOOKUP:
+      // no-op.
+      return kTfLiteOk;
+    case BuiltinOperator_DIV: {
+      auto params = safe_allocator.Allocate<TfLiteDivParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params = op->builtin_options_as_DivOptions()) {
+        params->activation =
+            ConvertActivation(schema_params->fused_activation_function());
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION: {
+      auto params = safe_allocator.Allocate<TfLiteLocalResponseNormParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params =
+              op->builtin_options_as_LocalResponseNormalizationOptions()) {
+        params->radius = schema_params->radius();
+        params->bias = schema_params->bias();
+        params->alpha = schema_params->alpha();
+        params->beta = schema_params->beta();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_LSTM: {
+      auto params = safe_allocator.Allocate<TfLiteLSTMParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* lstm_params = op->builtin_options_as_LSTMOptions()) {
+        params->activation =
+            ConvertActivation(lstm_params->fused_activation_function());
+        params->cell_clip = lstm_params->cell_clip();
+        params->proj_clip = lstm_params->proj_clip();
+        switch (lstm_params->kernel_type()) {
+          case LSTMKernelType_FULL:
+            params->kernel_type = kTfLiteLSTMFullKernel;
+            break;
+          case LSTMKernelType_BASIC:
+            params->kernel_type = kTfLiteLSTMBasicKernel;
+            break;
+          default:
+            TF_LITE_REPORT_ERROR(error_reporter,
+                                 "Unhandled LSTM kernel type: %d",
+                                 lstm_params->kernel_type());
+            return kTfLiteError;
+        }
+        params->asymmetric_quantize_inputs =
+            lstm_params->asymmetric_quantize_inputs();
+      } else {
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "No valid LSTM builtin options exist");
+        return kTfLiteError;
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM: {
+      auto params =
+          safe_allocator.Allocate<TfLiteUnidirectionalSequenceLSTMParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* seq_lstm_params =
+              op->builtin_options_as_UnidirectionalSequenceLSTMOptions()) {
+        params->activation =
+            ConvertActivation(seq_lstm_params->fused_activation_function());
+        params->cell_clip = seq_lstm_params->cell_clip();
+        params->proj_clip = seq_lstm_params->proj_clip();
+        params->time_major = seq_lstm_params->time_major();
+        params->asymmetric_quantize_inputs =
+            seq_lstm_params->asymmetric_quantize_inputs();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM: {
+      auto params =
+          safe_allocator.Allocate<TfLiteBidirectionalSequenceLSTMParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* bidi_lstm_params =
+              op->builtin_options_as_BidirectionalSequenceLSTMOptions()) {
+        params->activation =
+            ConvertActivation(bidi_lstm_params->fused_activation_function());
+        params->cell_clip = bidi_lstm_params->cell_clip();
+        params->proj_clip = bidi_lstm_params->proj_clip();
+        params->merge_outputs = bidi_lstm_params->merge_outputs();
+        params->time_major = bidi_lstm_params->time_major();
+        params->asymmetric_quantize_inputs =
+            bidi_lstm_params->asymmetric_quantize_inputs();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_RESIZE_BILINEAR: {
+      auto params = safe_allocator.Allocate<TfLiteResizeBilinearParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params =
+              op->builtin_options_as_ResizeBilinearOptions()) {
+        params->align_corners = schema_params->align_corners();
+        params->half_pixel_centers = schema_params->half_pixel_centers();
+      } else {
+        // Some older models did not populate the ResizeBilinearOptions field in
+        // the flatbuffer, so ensure it's set to a sensible default.
+        params->align_corners = false;
+        params->half_pixel_centers = false;
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_SKIP_GRAM: {
+      auto params = safe_allocator.Allocate<TfLiteSkipGramParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* skip_gram_params =
+              op->builtin_options_as_SkipGramOptions()) {
+        params->ngram_size = skip_gram_params->ngram_size();
+        params->max_skip_size = skip_gram_params->max_skip_size();
+        params->include_all_ngrams = skip_gram_params->include_all_ngrams();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_SPACE_TO_DEPTH: {
+      auto params = safe_allocator.Allocate<TfLiteSpaceToDepthParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params =
+              op->builtin_options_as_SpaceToDepthOptions()) {
+        params->block_size = schema_params->block_size();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_DEPTH_TO_SPACE: {
+      auto params = safe_allocator.Allocate<TfLiteDepthToSpaceParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params =
+              op->builtin_options_as_DepthToSpaceOptions()) {
+        params->block_size = schema_params->block_size();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_GATHER: {
+      auto params = safe_allocator.Allocate<TfLiteGatherParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      params->axis = 0;
+      if (const auto* gather_params = op->builtin_options_as_GatherOptions()) {
+        params->axis = gather_params->axis();
+      }
+
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_SPLIT_V: {
+      auto params = safe_allocator.Allocate<TfLiteSplitParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params = op->builtin_options_as_SplitVOptions()) {
+        params->num_splits = schema_params->num_splits();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_SQUEEZE: {
+      auto params = safe_allocator.Allocate<TfLiteSqueezeParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
+        const auto* squeeze_dims = schema_params->squeeze_dims();
+        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+            sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
+            error_reporter, "squeeze"));
+        params->num_squeeze_dims = squeeze_dims->size();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_TRANSPOSE_CONV: {
+      auto params = safe_allocator.Allocate<TfLiteTransposeConvParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* transpose_conv_params =
+              op->builtin_options_as_TransposeConvOptions()) {
+        params->padding = ConvertPadding(transpose_conv_params->padding());
+        params->stride_width = transpose_conv_params->stride_w();
+        params->stride_height = transpose_conv_params->stride_h();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_SPARSE_TO_DENSE: {
+      auto params = safe_allocator.Allocate<TfLiteSparseToDenseParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* sparse_to_dense_params =
+              op->builtin_options_as_SparseToDenseOptions()) {
+        params->validate_indices = sparse_to_dense_params->validate_indices();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_SHAPE: {
+      auto params = safe_allocator.Allocate<TfLiteShapeParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params = op->builtin_options_as_ShapeOptions()) {
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(
+            schema_params->out_type(), &params->out_type, error_reporter));
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_DELEGATE: {
+      // TODO(ycling): Revisit when supporting saving delegated models.
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "DELEGATE op shouldn't exist in model.");
+      return kTfLiteError;
+    }
+    case BuiltinOperator_FAKE_QUANT: {
+      auto params = safe_allocator.Allocate<TfLiteFakeQuantParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params =
+              op->builtin_options_as_FakeQuantOptions()) {
+        params->min = schema_params->min();
+        params->max = schema_params->max();
+        params->num_bits = schema_params->num_bits();
+        params->narrow_range = schema_params->narrow_range();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_ONE_HOT: {
+      auto params = safe_allocator.Allocate<TfLiteOneHotParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* schema_params = op->builtin_options_as_OneHotOptions()) {
+        params->axis = schema_params->axis();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_LEAKY_RELU: {
+      auto params = safe_allocator.Allocate<TfLiteLeakyReluParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* leaky_relu_params =
+              op->builtin_options_as_LeakyReluOptions()) {
+        params->alpha = leaky_relu_params->alpha();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_MIRROR_PAD: {
+      auto params = safe_allocator.Allocate<TfLiteMirrorPaddingParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      const auto* mirror_pad_params = op->builtin_options_as_MirrorPadOptions();
+      if (mirror_pad_params != nullptr) {
+        params->mode =
+            mirror_pad_params->mode() == tflite::MirrorPadMode_REFLECT
+                ? TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingReflect
+                : TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingSymmetric;
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_UNIQUE: {
+      auto params = safe_allocator.Allocate<TfLiteUniqueParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      const auto* unique_params = op->builtin_options_as_UniqueOptions();
+      if (unique_params != nullptr) {
+        params->index_out_type =
+            unique_params->idx_out_type() == tflite::TensorType_INT64
+                ? TfLiteType::kTfLiteInt64
+                : TfLiteType::kTfLiteInt32;
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_REVERSE_SEQUENCE: {
+      auto params = safe_allocator.Allocate<TfLiteReverseSequenceParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* reverse_seq_params =
+              op->builtin_options_as_ReverseSequenceOptions()) {
+        params->seq_dim = reverse_seq_params->seq_dim();
+        params->batch_dim = reverse_seq_params->batch_dim();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_IF: {
+      auto params = safe_allocator.Allocate<TfLiteIfParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* if_params = op->builtin_options_as_IfOptions()) {
+        params->then_subgraph_index = if_params->then_subgraph_index();
+        params->else_subgraph_index = if_params->else_subgraph_index();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_WHILE: {
+      auto params = safe_allocator.Allocate<TfLiteWhileParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* while_params = op->builtin_options_as_WhileOptions()) {
+        params->cond_subgraph_index = while_params->cond_subgraph_index();
+        params->body_subgraph_index = while_params->body_subgraph_index();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    case BuiltinOperator_BATCH_MATMUL: {
+      auto params = safe_allocator.Allocate<TfLiteBatchMatMulParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* bmm_params =
+              op->builtin_options_as_BatchMatMulOptions()) {
+        params->adj_x = bmm_params->adj_x();
+        params->adj_y = bmm_params->adj_y();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
+    // Below are the ops with no builtin_data structure.
+    case BuiltinOperator_BATCH_TO_SPACE_ND:
+    // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
+    // ok for now, since there is no call implementation either.
+    case BuiltinOperator_CALL:
+    case BuiltinOperator_CONCAT_EMBEDDINGS:
+    case BuiltinOperator_COS:
+    case BuiltinOperator_CUSTOM:
+    case BuiltinOperator_ELU:
+    case BuiltinOperator_EMBEDDING_LOOKUP:
+    case BuiltinOperator_EQUAL:
+    case BuiltinOperator_EXP:
+    case BuiltinOperator_EXPAND_DIMS:
+    case BuiltinOperator_LOG_SOFTMAX:
+    case BuiltinOperator_MATRIX_DIAG:
+    case BuiltinOperator_MATRIX_SET_DIAG:
+    case BuiltinOperator_RELU_N1_TO_1:
+    case BuiltinOperator_SELECT:
+    case BuiltinOperator_SELECT_V2:
+    case BuiltinOperator_SLICE:
+    case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_TILE:
+    case BuiltinOperator_TOPK_V2:
+    case BuiltinOperator_TRANSPOSE:
+    case BuiltinOperator_POW:
+    case BuiltinOperator_FLOOR_DIV:
+    case BuiltinOperator_ZEROS_LIKE:
+    case BuiltinOperator_FILL:
+    case BuiltinOperator_FLOOR_MOD:
+    case BuiltinOperator_RANGE:
+    case BuiltinOperator_SQUARED_DIFFERENCE:
+    case BuiltinOperator_REVERSE_V2:
+    case BuiltinOperator_ADD_N:
+    case BuiltinOperator_GATHER_ND:
+    case BuiltinOperator_WHERE:
+    case BuiltinOperator_RANK:
+    case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
+    case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
+    case BuiltinOperator_SCATTER_ND:
+    case BuiltinOperator_DENSIFY:
+    case BuiltinOperator_SEGMENT_SUM:
+      return kTfLiteOk;
+  }
+  return kTfLiteError;
+}  // NOLINT[readability/fn_size]
+
 }  // namespace
 
 TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
@@ -1007,693 +1700,34 @@ TfLiteStatus ParseUnpack(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                          ErrorReporter* error_reporter,
                          BuiltinDataAllocator* allocator, void** builtin_data) {
-  auto parseLSHProjectionType = [](LSHProjectionType type) {
-    switch (type) {
-      case LSHProjectionType_SPARSE:
-        return kTfLiteLshProjectionSparse;
-      case LSHProjectionType_DENSE:
-        return kTfLiteLshProjectionDense;
-      default:
-        return kTfLiteLshProjectionUnknown;
-    }
-  };
-  auto parseCombinerType = [](CombinerType type) {
-    switch (type) {
-      case CombinerType_MEAN:
-        return kTfLiteCombinerTypeMean;
-      case CombinerType_SQRTN:
-        return kTfLiteCombinerTypeSqrtn;
-      case CombinerType_SUM:
-      default:
-        return kTfLiteCombinerTypeSum;
-    }
-  };
-
-  SafeBuiltinDataAllocator safe_allocator(allocator);
-  *builtin_data = nullptr;
-  switch (op_type) {
-    case BuiltinOperator_ABS: {
-      return ParseAbs(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_ADD: {
-      return ParseAdd(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_ARG_MAX: {
-      return ParseArgMax(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_ARG_MIN: {
-      return ParseArgMin(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_AVERAGE_POOL_2D: {
-      return ParsePool(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_CEIL: {
-      return ParseCeil(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_CONCATENATION: {
-      return ParseConcatenation(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_CONV_2D: {
-      return ParseConv2D(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_DEPTHWISE_CONV_2D: {
-      return ParseDepthwiseConv2D(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_DEQUANTIZE: {
-      return ParseDequantize(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_FLOOR: {
-      return ParseFloor(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_FULLY_CONNECTED: {
-      return ParseFullyConnected(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_GREATER: {
-      return ParseGreater(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_GREATER_EQUAL: {
-      return ParseGreaterEqual(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_HARD_SWISH: {
-      return ParseHardSwish(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_L2_NORMALIZATION: {
-      return ParseL2Normalization(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_L2_POOL_2D: {
-      return ParsePool(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_LESS: {
-      return ParseLess(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_LESS_EQUAL: {
-      return ParseLessEqual(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_LOG: {
-      return ParseLog(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_LOGICAL_AND: {
-      return ParseLogicalAnd(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_LOGICAL_NOT: {
-      return ParseLogicalNot(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_LOGICAL_OR: {
-      return ParseLogicalOr(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_LOGISTIC: {
-      return ParseLogistic(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_MAXIMUM: {
-      return ParseMaximum(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_MAX_POOL_2D: {
-      return ParsePool(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_MEAN: {
-      return ParseReducer(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_MINIMUM: {
-      return ParseMinimum(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_MUL: {
-      return ParseMul(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_NEG: {
-      return ParseNeg(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_NOT_EQUAL: {
-      return ParseNotEqual(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_PACK: {
-      return ParsePack(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_PAD: {
-      return ParsePad(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_PADV2: {
-      return ParsePadV2(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_PRELU: {
-      return ParsePrelu(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_QUANTIZE: {
-      return ParseQuantize(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_REDUCE_ANY: {
-      return ParseReducer(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_REDUCE_MAX: {
-      return ParseReducer(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_REDUCE_MIN: {
-      return ParseReducer(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_REDUCE_PROD: {
-      return ParseReducer(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_RELU: {
-      return ParseRelu(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_RELU6: {
-      return ParseRelu6(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_RESHAPE: {
-      return ParseReshape(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR: {
-      return ParseResizeNearestNeighbor(op, error_reporter, allocator,
-                                        builtin_data);
-    }
-
-    case BuiltinOperator_ROUND: {
-      return ParseRound(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_RSQRT: {
-      return ParseRsqrt(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_SIN: {
-      return ParseSin(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_SOFTMAX: {
-      return ParseSoftmax(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_SPLIT: {
-      return ParseSplit(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_SQRT: {
-      return ParseSqrt(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_SQUARE: {
-      return ParseSquare(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_STRIDED_SLICE: {
-      return ParseStridedSlice(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_SUB: {
-      return ParseSub(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_SUM: {
-      return ParseReducer(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_SVDF: {
-      return ParseSvdf(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_TANH: {
-      return ParseTanh(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_UNPACK: {
-      return ParseUnpack(op, error_reporter, allocator, builtin_data);
-    }
-
-    case BuiltinOperator_CAST: {
-      auto params = safe_allocator.Allocate<TfLiteCastParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_CastOptions()) {
-        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->in_data_type(),
-                                                &params->in_data_type,
-                                                error_reporter));
-        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->out_data_type(),
-                                                &params->out_data_type,
-                                                error_reporter));
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_LSH_PROJECTION: {
-      auto params = safe_allocator.Allocate<TfLiteLSHProjectionParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* lshParams =
-              op->builtin_options_as_LSHProjectionOptions()) {
-        params->type = parseLSHProjectionType(lshParams->type());
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN: {
-      auto params = safe_allocator.Allocate<TfLiteSequenceRNNParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* sequence_rnn_params =
-              op->builtin_options_as_SequenceRNNOptions()) {
-        params->activation =
-            ConvertActivation(sequence_rnn_params->fused_activation_function());
-        params->time_major = sequence_rnn_params->time_major();
-        params->asymmetric_quantize_inputs =
-            sequence_rnn_params->asymmetric_quantize_inputs();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN: {
-      auto params =
-          safe_allocator.Allocate<TfLiteBidirectionalSequenceRNNParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* bidi_sequence_rnn_params =
-              op->builtin_options_as_BidirectionalSequenceRNNOptions()) {
-        params->activation = ConvertActivation(
-            bidi_sequence_rnn_params->fused_activation_function());
-        params->time_major = bidi_sequence_rnn_params->time_major();
-        params->merge_outputs = bidi_sequence_rnn_params->merge_outputs();
-        params->asymmetric_quantize_inputs =
-            bidi_sequence_rnn_params->asymmetric_quantize_inputs();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_RNN: {
-      auto params = safe_allocator.Allocate<TfLiteRNNParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* rnn_params = op->builtin_options_as_RNNOptions()) {
-        params->activation =
-            ConvertActivation(rnn_params->fused_activation_function());
-        params->asymmetric_quantize_inputs =
-            rnn_params->asymmetric_quantize_inputs();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_EMBEDDING_LOOKUP_SPARSE: {
-      auto params =
-          safe_allocator.Allocate<TfLiteEmbeddingLookupSparseParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* embedding_params =
-              op->builtin_options_as_EmbeddingLookupSparseOptions()) {
-        params->combiner = parseCombinerType(embedding_params->combiner());
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-
-    case BuiltinOperator_HASHTABLE_LOOKUP:
-      // no-op.
-      return kTfLiteOk;
-    case BuiltinOperator_DIV: {
-      auto params = safe_allocator.Allocate<TfLiteDivParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_DivOptions()) {
-        params->activation =
-            ConvertActivation(schema_params->fused_activation_function());
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION: {
-      auto params = safe_allocator.Allocate<TfLiteLocalResponseNormParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params =
-              op->builtin_options_as_LocalResponseNormalizationOptions()) {
-        params->radius = schema_params->radius();
-        params->bias = schema_params->bias();
-        params->alpha = schema_params->alpha();
-        params->beta = schema_params->beta();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_LSTM: {
-      auto params = safe_allocator.Allocate<TfLiteLSTMParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* lstm_params = op->builtin_options_as_LSTMOptions()) {
-        params->activation =
-            ConvertActivation(lstm_params->fused_activation_function());
-        params->cell_clip = lstm_params->cell_clip();
-        params->proj_clip = lstm_params->proj_clip();
-        switch (lstm_params->kernel_type()) {
-          case LSTMKernelType_FULL:
-            params->kernel_type = kTfLiteLSTMFullKernel;
-            break;
-          case LSTMKernelType_BASIC:
-            params->kernel_type = kTfLiteLSTMBasicKernel;
-            break;
-          default:
-            TF_LITE_REPORT_ERROR(error_reporter,
-                                 "Unhandled LSTM kernel type: %d",
-                                 lstm_params->kernel_type());
-            return kTfLiteError;
-        }
-        params->asymmetric_quantize_inputs =
-            lstm_params->asymmetric_quantize_inputs();
-      } else {
-        TF_LITE_REPORT_ERROR(error_reporter,
-                             "No valid LSTM builtin options exist");
-        return kTfLiteError;
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM: {
-      auto params =
-          safe_allocator.Allocate<TfLiteUnidirectionalSequenceLSTMParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* seq_lstm_params =
-              op->builtin_options_as_UnidirectionalSequenceLSTMOptions()) {
-        params->activation =
-            ConvertActivation(seq_lstm_params->fused_activation_function());
-        params->cell_clip = seq_lstm_params->cell_clip();
-        params->proj_clip = seq_lstm_params->proj_clip();
-        params->time_major = seq_lstm_params->time_major();
-        params->asymmetric_quantize_inputs =
-            seq_lstm_params->asymmetric_quantize_inputs();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM: {
-      auto params =
-          safe_allocator.Allocate<TfLiteBidirectionalSequenceLSTMParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* bidi_lstm_params =
-              op->builtin_options_as_BidirectionalSequenceLSTMOptions()) {
-        params->activation =
-            ConvertActivation(bidi_lstm_params->fused_activation_function());
-        params->cell_clip = bidi_lstm_params->cell_clip();
-        params->proj_clip = bidi_lstm_params->proj_clip();
-        params->merge_outputs = bidi_lstm_params->merge_outputs();
-        params->time_major = bidi_lstm_params->time_major();
-        params->asymmetric_quantize_inputs =
-            bidi_lstm_params->asymmetric_quantize_inputs();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_RESIZE_BILINEAR: {
-      auto params = safe_allocator.Allocate<TfLiteResizeBilinearParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params =
-              op->builtin_options_as_ResizeBilinearOptions()) {
-        params->align_corners = schema_params->align_corners();
-        params->half_pixel_centers = schema_params->half_pixel_centers();
-      } else {
-        // Some older models did not populate the ResizeBilinearOptions field in
-        // the flatbuffer, so ensure it's set to a sensible default.
-        params->align_corners = false;
-        params->half_pixel_centers = false;
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_SKIP_GRAM: {
-      auto params = safe_allocator.Allocate<TfLiteSkipGramParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* skip_gram_params =
-              op->builtin_options_as_SkipGramOptions()) {
-        params->ngram_size = skip_gram_params->ngram_size();
-        params->max_skip_size = skip_gram_params->max_skip_size();
-        params->include_all_ngrams = skip_gram_params->include_all_ngrams();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_SPACE_TO_DEPTH: {
-      auto params = safe_allocator.Allocate<TfLiteSpaceToDepthParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params =
-              op->builtin_options_as_SpaceToDepthOptions()) {
-        params->block_size = schema_params->block_size();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_DEPTH_TO_SPACE: {
-      auto params = safe_allocator.Allocate<TfLiteDepthToSpaceParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params =
-              op->builtin_options_as_DepthToSpaceOptions()) {
-        params->block_size = schema_params->block_size();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_GATHER: {
-      auto params = safe_allocator.Allocate<TfLiteGatherParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      params->axis = 0;
-      if (const auto* gather_params = op->builtin_options_as_GatherOptions()) {
-        params->axis = gather_params->axis();
-      }
-
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_SPLIT_V: {
-      auto params = safe_allocator.Allocate<TfLiteSplitParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_SplitVOptions()) {
-        params->num_splits = schema_params->num_splits();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_SQUEEZE: {
-      auto params = safe_allocator.Allocate<TfLiteSqueezeParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
-        const auto* squeeze_dims = schema_params->squeeze_dims();
-        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
-            sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
-            error_reporter, "squeeze"));
-        params->num_squeeze_dims = squeeze_dims->size();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_TRANSPOSE_CONV: {
-      auto params = safe_allocator.Allocate<TfLiteTransposeConvParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* transpose_conv_params =
-              op->builtin_options_as_TransposeConvOptions()) {
-        params->padding = ConvertPadding(transpose_conv_params->padding());
-        params->stride_width = transpose_conv_params->stride_w();
-        params->stride_height = transpose_conv_params->stride_h();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_SPARSE_TO_DENSE: {
-      auto params = safe_allocator.Allocate<TfLiteSparseToDenseParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* sparse_to_dense_params =
-              op->builtin_options_as_SparseToDenseOptions()) {
-        params->validate_indices = sparse_to_dense_params->validate_indices();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_SHAPE: {
-      auto params = safe_allocator.Allocate<TfLiteShapeParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_ShapeOptions()) {
-        TF_LITE_ENSURE_STATUS(ConvertTensorType(
-            schema_params->out_type(), &params->out_type, error_reporter));
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_DELEGATE: {
-      // TODO(ycling): Revisit when supporting saving delegated models.
-      TF_LITE_REPORT_ERROR(error_reporter,
-                           "DELEGATE op shouldn't exist in model.");
-      return kTfLiteError;
-    }
-    case BuiltinOperator_FAKE_QUANT: {
-      auto params = safe_allocator.Allocate<TfLiteFakeQuantParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params =
-              op->builtin_options_as_FakeQuantOptions()) {
-        params->min = schema_params->min();
-        params->max = schema_params->max();
-        params->num_bits = schema_params->num_bits();
-        params->narrow_range = schema_params->narrow_range();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_ONE_HOT: {
-      auto params = safe_allocator.Allocate<TfLiteOneHotParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_OneHotOptions()) {
-        params->axis = schema_params->axis();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_LEAKY_RELU: {
-      auto params = safe_allocator.Allocate<TfLiteLeakyReluParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* leaky_relu_params =
-              op->builtin_options_as_LeakyReluOptions()) {
-        params->alpha = leaky_relu_params->alpha();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_MIRROR_PAD: {
-      auto params = safe_allocator.Allocate<TfLiteMirrorPaddingParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      const auto* mirror_pad_params = op->builtin_options_as_MirrorPadOptions();
-      if (mirror_pad_params != nullptr) {
-        params->mode =
-            mirror_pad_params->mode() == tflite::MirrorPadMode_REFLECT
-                ? TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingReflect
-                : TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingSymmetric;
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_UNIQUE: {
-      auto params = safe_allocator.Allocate<TfLiteUniqueParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      const auto* unique_params = op->builtin_options_as_UniqueOptions();
-      if (unique_params != nullptr) {
-        params->index_out_type =
-            unique_params->idx_out_type() == tflite::TensorType_INT64
-                ? TfLiteType::kTfLiteInt64
-                : TfLiteType::kTfLiteInt32;
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_REVERSE_SEQUENCE: {
-      auto params = safe_allocator.Allocate<TfLiteReverseSequenceParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* reverse_seq_params =
-              op->builtin_options_as_ReverseSequenceOptions()) {
-        params->seq_dim = reverse_seq_params->seq_dim();
-        params->batch_dim = reverse_seq_params->batch_dim();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_IF: {
-      auto params = safe_allocator.Allocate<TfLiteIfParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* if_params = op->builtin_options_as_IfOptions()) {
-        params->then_subgraph_index = if_params->then_subgraph_index();
-        params->else_subgraph_index = if_params->else_subgraph_index();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_WHILE: {
-      auto params = safe_allocator.Allocate<TfLiteWhileParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* while_params = op->builtin_options_as_WhileOptions()) {
-        params->cond_subgraph_index = while_params->cond_subgraph_index();
-        params->body_subgraph_index = while_params->body_subgraph_index();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_BATCH_MATMUL: {
-      auto params = safe_allocator.Allocate<TfLiteBatchMatMulParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* bmm_params =
-              op->builtin_options_as_BatchMatMulOptions()) {
-        params->adj_x = bmm_params->adj_x();
-        params->adj_y = bmm_params->adj_y();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    // Below are the ops with no builtin_data structure.
-    case BuiltinOperator_BATCH_TO_SPACE_ND:
-    // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
-    // ok for now, since there is no call implementation either.
-    case BuiltinOperator_CALL:
-    case BuiltinOperator_CONCAT_EMBEDDINGS:
-    case BuiltinOperator_COS:
-    case BuiltinOperator_CUSTOM:
-    case BuiltinOperator_ELU:
-    case BuiltinOperator_EMBEDDING_LOOKUP:
-    case BuiltinOperator_EQUAL:
-    case BuiltinOperator_EXP:
-    case BuiltinOperator_EXPAND_DIMS:
-    case BuiltinOperator_LOG_SOFTMAX:
-    case BuiltinOperator_MATRIX_DIAG:
-    case BuiltinOperator_MATRIX_SET_DIAG:
-    case BuiltinOperator_RELU_N1_TO_1:
-    case BuiltinOperator_SELECT:
-    case BuiltinOperator_SELECT_V2:
-    case BuiltinOperator_SLICE:
-    case BuiltinOperator_SPACE_TO_BATCH_ND:
-    case BuiltinOperator_TILE:
-    case BuiltinOperator_TOPK_V2:
-    case BuiltinOperator_TRANSPOSE:
-    case BuiltinOperator_POW:
-    case BuiltinOperator_FLOOR_DIV:
-    case BuiltinOperator_ZEROS_LIKE:
-    case BuiltinOperator_FILL:
-    case BuiltinOperator_FLOOR_MOD:
-    case BuiltinOperator_RANGE:
-    case BuiltinOperator_SQUARED_DIFFERENCE:
-    case BuiltinOperator_REVERSE_V2:
-    case BuiltinOperator_ADD_N:
-    case BuiltinOperator_GATHER_ND:
-    case BuiltinOperator_WHERE:
-    case BuiltinOperator_RANK:
-    case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
-    case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
-    case BuiltinOperator_SCATTER_ND:
-    case BuiltinOperator_DENSIFY:
-    case BuiltinOperator_SEGMENT_SUM:
-      return kTfLiteOk;
-  }
+// TODO(b/145762662): It would be preferable to have the build graph for TF Lite
+// Micro not have the ParseOpData function at all. This would require splitting
+// the current file into two separate files, one of which defines the
+// ParseOpData function and the other that defines the operator specific parse
+// functions (e.g. ParseAdd).
+//
+// Such a split was attempted but was not worth the effort at the time because
+// of the following reasons:
+//  * We could either duplicate the functions and the SafeBuiltinDataAllocator
+//    class in the anonymous namespace of this file, or attempt to make a common
+//    library with these helper functions and class.
+//  * Making a common library with a separate build target was not feasible as
+//    it introduced circular dependencies due to the ErrorReporter and a common
+//    .cc and .h within the same api build target the also cause circular
+//    dependencies due to the  BuiltinDataAllocator class.
+//  * If all the builtin operators were to have their own parse functions, or we
+//    were ok with some amount of code duplication, then this split of the .cc
+//    files would be a lot more feasible.
+#ifdef TF_LITE_STATIC_MEMORY
+  TF_LITE_REPORT_ERROR(
+      error_reporter,
+      "ParseOpData is unsupported on TfLiteMicro, please use the operator "
+      "specific parse functions (e.g. ParseAdd etc.).\n");
   return kTfLiteError;
-}  // NOLINT[readability/fn_size]
+#else
+  return ParseOpDataTfLite(op, op_type, error_reporter, allocator,
+                           builtin_data);
+#endif
+}
 
 }  // namespace tflite

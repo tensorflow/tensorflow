@@ -143,6 +143,7 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_node_context_c_api_hdrs",
     ] + select({
         "//tensorflow:oss": [
+            ":tpu_system_device",
             "//tensorflow/stream_executor/tpu:tpu_executor_base",
         ],
         "//conditions:default": [],
@@ -153,6 +154,22 @@ cc_library(
     name = "tpu_library_init_fns",
     hdrs = ["tpu_library_init_fns.inc"],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "tpu_system_device",
+    srcs = ["tpu_system_device.cc"],
+    hdrs = ["tpu_system_device.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":virtual_device",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/stream_executor/tpu:tpu_executor_base",
+    ],
 )
 
 cc_library(

@@ -1043,7 +1043,7 @@ class FunctionTest(test.TestCase):
         self.assertFalse(all(val4 == val2))
 
   @test_util.run_v1_only("currently failing on v2")
-  def testStatefulFunctionWithWhitelisting(self):
+  def testStatefulFunctionWithAllowlisting(self):
     t = random_ops.random_uniform([100], maxval=10, dtype=dtypes.int32)
 
     @function.Defun(capture_by_value=True)
@@ -1054,8 +1054,8 @@ class FunctionTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "Cannot capture a stateful node"):
       res = StatefulFn()
 
-    # This time we whitelist this op, so that its recreated.
-    @function.Defun(capture_by_value=True, whitelisted_stateful_ops=set([t.op]))
+    # This time we allowlist this op, so that its recreated.
+    @function.Defun(capture_by_value=True, allowlisted_stateful_ops=set([t.op]))
     def StatefulFn2():
       return t + constant_op.constant(3, dtype=dtypes.int32)
 

@@ -232,16 +232,16 @@ Status IsFunctionStateful(const FunctionLibraryDefinition& library,
   return Status::OK();
 }
 
-// Returns whether an op has been whitelisted as stateless. Uses a heuristic to
-// whitelist source dataset ops which have been marked stateful due to
+// Returns whether an op has been allowlisted as stateless. Uses a heuristic to
+// allowlist source dataset ops which have been marked stateful due to
 // b/65524810. Also looks up the `op_def->name` in the global
-// `WhitelistedStatefulOpRegistry`.
-bool IsOpWhitelisted(const OpDef* op_def) {
+// `AllowlistedStatefulOpRegistry`.
+bool IsOpAllowlisted(const OpDef* op_def) {
   return (op_def->output_arg_size() == 1 &&
           op_def->output_arg(0).type() == DT_VARIANT &&
           (absl::EndsWith(op_def->name(), "Dataset") ||
            absl::EndsWith(op_def->name(), "DatasetV2"))) ||
-         WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
+         AllowlistedStatefulOpRegistry::Global()->Contains(op_def->name());
 }
 
 Status LookupFunction(const FunctionLibraryDefinition& lib_def,
@@ -389,7 +389,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
   // TODO(jsimsa): Fix C++ unit tests so that we do not have to ignore
   // `LookUpOpDef` errors here.
   if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
-      IsOpWhitelisted(op_def) || !op_def->is_stateful() ||
+      IsOpAllowlisted(op_def) || !op_def->is_stateful() ||
       op_def->name() == "Assert") {
     return Status::OK();
   }

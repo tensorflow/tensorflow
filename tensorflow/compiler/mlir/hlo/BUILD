@@ -1,5 +1,8 @@
 load("//third_party/mlir:tblgen.bzl", "gentbl")
 
+# TODO(b/160617323): Decouple MLIR HLO from TensorFlow/XLA
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 package(
     default_visibility = [":friends"],
     licenses = ["notice"],  # Apache 2.0
@@ -120,6 +123,7 @@ gentbl(
     td_srcs = [":hlo_ops_td_files"],
 )
 
+#TODO(aminim): revisit the naming and grouping of these rules post-move.
 gentbl(
     name = "xla_canonicalize_inc_gen",
     tbl_outs = [
@@ -258,4 +262,460 @@ cc_library(
         "@llvm-project//mlir:IR",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_sink_constants_to_control_flow",
+    srcs = ["lib/Dialect/mhlo/transforms/sink_constants_to_control_flow.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "map_xla_to_scalar_op",
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_xla_to_scalar_op.h"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        ":map_hlo_to_lhlo_op",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
+    name = "map_hlo_to_lhlo_op",
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+    ],
+)
+
+cc_library(
+    name = "lhlo_legalize_to_affine",
+    srcs = ["lib/Dialect/mhlo/transforms/lhlo_legalize_to_affine.cc"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        ":map_xla_to_scalar_op",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_legalize_to_parallel_loops",
+    srcs = ["lib/Dialect/mhlo/transforms/lhlo_legalize_to_parallel_loops.cc"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_legalize_to_llvm",
+    srcs = ["lib/Dialect/mhlo/transforms/lhlo_legalize_to_llvm.cc"],
+    deps = [
+        ":lhlo",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_legalize_to_linalg",
+    srcs = ["lib/Dialect/mhlo/transforms/xla_legalize_to_linalg.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        ":map_xla_to_scalar_op",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_transform_unranked_hlo",
+    srcs = ["lib/Dialect/mhlo/transforms/xla_transform_unranked_hlo.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
+    deps = [
+        ":hlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_legalize_to_gpu",
+    srcs = ["lib/Dialect/mhlo/transforms/lhlo_legalize_to_gpu.cc"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        ":map_xla_to_scalar_op",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_fuse_linalg",
+    srcs = ["lib/Dialect/mhlo/transforms/lhlo_fuse_linalg.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_copy_removal",
+    srcs = ["lib/Dialect/mhlo/transforms/lhlo_copy_removal.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "hlo_legalize_to_lhlo",
+    srcs = ["lib/Dialect/mhlo/transforms/hlo_legalize_to_lhlo.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        ":map_hlo_to_lhlo_op",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "cycle_detector",
+    srcs = ["lib/utils/cycle_detector.cc"],
+    hdrs = ["include/mlir-hlo/utils/cycle_detector.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "cycle_detector_test",
+    srcs = ["lib/utils/cycle_detector_test.cc"],
+    deps = [
+        ":cycle_detector",
+        # TODO(b/160617323): Decouple MLIR HLO from TensorFlow/XLA
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "mhlo_fusion",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_fusion.cc"],
+    deps = [
+        ":cycle_detector",
+        ":hlo",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+    alwayslink = 1,
+)
+
+gentbl(
+    name = "xla_legalize_to_standard_inc_gen",
+    tbl_outs = [
+        ("-gen-rewriters", "lib/Dialect/mhlo/transforms/generated_legalize_to_standard.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "lib/Dialect/mhlo/transforms/legalize_to_standard_patterns.td",
+    td_relative_includes = [
+        "../hlo/include",
+    ],
+    td_srcs = [
+        ":hlo_ops_td_files",
+        "@llvm-project//mlir:StdOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "xla_legalize_control_flow",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_control_flow.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_legalize_to_standard",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_to_standard.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/passes.h"],
+    deps = [
+        ":hlo",
+        ":xla_legalize_tanh_to_approximation",
+        ":xla_legalize_to_standard_inc_gen",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_legalize_tanh_to_approximation",
+    srcs = ["lib/Dialect/mhlo/transforms/legalize_tanh_to_approximation.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+gentbl(
+    name = "xla_lower_complex_inc_gen",
+    tbl_outs = [
+        ("-gen-rewriters", "lib/Dialect/mhlo/transforms/generated_lower_complex.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "lib/Dialect/mhlo/transforms/lower_complex_patterns.td",
+    td_relative_includes = [
+        "../hlo/include",
+    ],
+    td_srcs = [
+        ":hlo_ops_td_files",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:StdOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "xla_lower",
+    srcs = [
+        "lib/Dialect/mhlo/transforms/generated_lower_complex.inc",
+        "lib/Dialect/mhlo/transforms/lower_complex.cc",
+        "lib/Dialect/mhlo/transforms/lower_general_dot.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        ":hlo_dialect_registration",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_materialize_broadcasts",
+    srcs = [
+        "lib/Dialect/mhlo/transforms/materialize_broadcasts.cc",
+    ],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+    ],
+    deps = [
+        ":hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "xla_unfuse_batch_norm",
+    srcs = ["lib/Dialect/mhlo/transforms/unfuse_batch_norm.cc"],
+    hdrs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/passes.h",
+    ],
+    deps = [
+        ":hlo",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "chlo_legalize_to_hlo",
+    srcs = ["lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"],
+    deps = [
+        ":hlo",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "xla_test_passes",
+    srcs = [
+        "include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h",
+        "lib/Dialect/mhlo/transforms/chlo_legalize_to_hlo_pass.cc",
+        "lib/Dialect/mhlo/transforms/lhlo_legalize_to_llvm_pass.cc",
+        "lib/Dialect/mhlo/transforms/materialize_broadcasts_pass.cc",
+        "lib/Dialect/mhlo/transforms/test_infer_shaped_type_pass.cc",
+        "lib/Dialect/mhlo/transforms/unfuse_batch_norm_pass.cc",
+    ],
+    deps = [
+        ":chlo_legalize_to_hlo",  # build-cleaner: keep
+        ":hlo",
+        ":lhlo",
+        ":lhlo_legalize_to_llvm",  # build-cleaner: keep
+        ":xla_materialize_broadcasts",  # build-cleaner: keep
+        ":xla_unfuse_batch_norm",  # build-cleaner: keep
+        "@llvm-project//mlir:AffineToStandardTransforms",
+        "@llvm-project//mlir:CFGTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "all_xla_passes_for_testing",
+    visibility = [
+        "//tensorflow/compiler/mlir:__subpackages__",
+    ],
+    deps = [
+        ":chlo_legalize_to_hlo",
+        ":hlo_dialect_registration",
+        ":hlo_legalize_to_lhlo",
+        ":lhlo",
+        ":lhlo_copy_removal",
+        ":lhlo_fuse_linalg",
+        ":lhlo_legalize_to_affine",
+        ":lhlo_legalize_to_gpu",
+        ":lhlo_legalize_to_parallel_loops",
+        ":mhlo_fusion",
+        ":xla_legalize_control_flow",
+        ":xla_legalize_tanh_to_approximation",
+        ":xla_legalize_to_linalg",
+        ":xla_legalize_to_standard",
+        ":xla_lower",
+        ":xla_sink_constants_to_control_flow",
+        ":xla_test_passes",
+        ":xla_transform_unranked_hlo",
+    ],
+)
+
+cc_binary(
+    name = "mlir-hlo-opt",
+    deps = [
+        ":all_xla_passes_for_testing",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:MlirOptMain",
+    ],
 )

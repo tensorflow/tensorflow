@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_CONCRETE_FUNCTION_H_
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_CONCRETE_FUNCTION_H_
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
-#include "tensorflow/core/framework/function.pb.h"
 
 namespace tensorflow {
 
@@ -35,19 +35,14 @@ namespace tensorflow {
 // and have only a single implementation.
 class ConcreteFunction {
  public:
-  virtual ~ConcreteFunction() = 0;
+  virtual ~ConcreteFunction() = default;
 
   // This method returns the "Call" Op used to execute the function.
-  virtual ImmediateExecutionOperation* GetCallOp() = 0;
+  virtual Status GetCallOp(ImmediateOpPtr* out) = 0;
 
-  const std::vector<tensorflow::ImmediateExecutionTensorHandle*>& GetCaptures()
-      const;
-  const FunctionMetadata& GetFunctionMetadata() const;
-
- private:
-  FunctionMetadata metadata_;
-  std::vector<tensorflow::ImmediateExecutionTensorHandle*> captures_;
-  FunctionDef* function_;
+  virtual const std::vector<ImmediateExecutionTensorHandle*>& GetCaptures()
+      const = 0;
+  virtual const FunctionMetadata& GetFunctionMetadata() const = 0;
 };
 
 }  // namespace tensorflow

@@ -37,7 +37,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
-from tensorflow.python.ops.losses import util as tf_losses_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -247,7 +246,7 @@ class LossFunctionWrapper(Loss):
       Loss values per sample.
     """
     if tensor_util.is_tensor(y_pred) and tensor_util.is_tensor(y_true):
-      y_pred, y_true = tf_losses_util.squeeze_or_expand_dimensions(
+      y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
           y_pred, y_true)
     ag_fn = autograph.tf_convert(self.fn, ag_ctx.control_status_ctx())
     return ag_fn(y_true, y_pred, **self._fn_kwargs)

@@ -406,7 +406,7 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
   def testGenerateSourceListWithNodeNameFilter(self):
     source_list = source_utils.list_source_files_against_dump(
-        self.dump, node_name_regex_whitelist=r"while/Add.*")
+        self.dump, node_name_regex_allowlist=r"while/Add.*")
 
     # Assert that the file paths are sorted.
     file_paths = [item[0] for item in source_list]
@@ -433,8 +433,8 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
     curr_file_basename = os.path.basename(self.curr_file_path)
     source_list = source_utils.list_source_files_against_dump(
         self.dump,
-        path_regex_whitelist=(
-            ".*" + curr_file_basename.replace(".", "\\.") + "$"))
+        path_regex_allowlist=(".*" + curr_file_basename.replace(".", "\\.") +
+                              "$"))
 
     self.assertEqual(1, len(source_list))
     (file_path, is_tf_py_library, num_nodes, num_tensors, num_dumps,

@@ -41478,13 +41478,13 @@ func ParseExample(scope *Scope, serialized tf.Output, names tf.Output, sparse_ke
 // DatasetToGraphAttr is an optional argument to DatasetToGraph.
 type DatasetToGraphAttr func(optionalAttr)
 
-// DatasetToGraphStatefulWhitelist sets the optional stateful_whitelist attribute to value.
+// DatasetToGraphStatefulAllowlist sets the optional stateful_allowlist attribute to value.
 // If not specified, defaults to <>
 //
 // REQUIRES: len(value) >= 0
-func DatasetToGraphStatefulWhitelist(value []string) DatasetToGraphAttr {
+func DatasetToGraphStatefulAllowlist(value []string) DatasetToGraphAttr {
 	return func(m optionalAttr) {
-		m["stateful_whitelist"] = value
+		m["stateful_allowlist"] = value
 	}
 }
 
@@ -42246,6 +42246,14 @@ func TPUReplicateMetadataStepMarkerLocation(value string) TPUReplicateMetadataAt
 func TPUReplicateMetadataAllowSoftPlacement(value bool) TPUReplicateMetadataAttr {
 	return func(m optionalAttr) {
 		m["allow_soft_placement"] = value
+	}
+}
+
+// TPUReplicateMetadataUseSpmdForXlaPartitioning sets the optional use_spmd_for_xla_partitioning attribute to value.
+// If not specified, defaults to false
+func TPUReplicateMetadataUseSpmdForXlaPartitioning(value bool) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["use_spmd_for_xla_partitioning"] = value
 	}
 }
 

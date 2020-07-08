@@ -53,6 +53,10 @@ and the following optional parameters:
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
     and the path to include the name of the output CSV; otherwise results are
     printed to `stdout`.
+*  `verbose`: `bool` (default=false) \
+    Whether to log parameters whose values are not set. By default, only log
+    those parameters that are set by parsing their values from the commandline
+    flags.
 
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by

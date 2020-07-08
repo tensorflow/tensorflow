@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace xla {
 
-// Provides a way to construct xla_hlo dialect ops in MLIR using XlaBuilder
+// Provides a way to construct mhlo dialect ops in MLIR using XlaBuilder
 // interface.
 //
 // Requires that all XlaOp arguments are either returned by any of the builder
