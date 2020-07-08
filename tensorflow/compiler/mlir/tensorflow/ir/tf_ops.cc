@@ -379,7 +379,7 @@ ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
   SmallVector<Attribute, 8> shuffled(values.size());
 
   for (size_t i = 0; i < permutation.size(); ++i) {
-    for (size_t j = 0; j < inner_size; ++j) {
+    for (int j = 0; j < inner_size; ++j) {
       shuffled[i * inner_size + j] = values[permutation[i] * inner_size + j];
     }
   }
@@ -416,7 +416,7 @@ static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
   for (const auto &value : perm1.getIntValues())
     perm1_values.push_back(value.getSExtValue());
 
-  for (int i = 0; i < perm0_values.size(); ++i) {
+  for (int i = 0, iter_limit = perm0_values.size(); i < iter_limit; ++i) {
     if (perm0_values[perm1_values[i]] != i) return false;
   }
 
@@ -1117,7 +1117,8 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
 
   for (DenseIntElementsAttr shape : llvm::drop_begin(shapes, 1)) {
     for (auto dims_and_idx : llvm::enumerate(llvm::zip(shape0, shape))) {
-      if (dims_and_idx.index() == concat_dim) continue;
+      const int64 dims_and_idx_index = dims_and_idx.index();
+      if (dims_and_idx_index == concat_dim) continue;
 
       if (std::get<0>(dims_and_idx.value()) !=
           std::get<1>(dims_and_idx.value()).getSExtValue())
@@ -1232,7 +1233,8 @@ static LogicalResult VerifyConvOpAttributes(OpT op, int num_dims) {
     return op.emitOpError("requires positive strides");
 
   int64_t dilations_size = op.strides().size();
-  if (op.dilations().size() != num_dims)
+  const int64 op_dilations_size = op.dilations().size();
+  if (op_dilations_size != num_dims)
     return op.emitOpError() << "requires dilations attribute length to be "
                             << num_dims << "; actual length " << dilations_size;
   if (llvm::any_of(op.dilations().getValue(), is_not_positive))
@@ -2359,8 +2361,9 @@ static LogicalResult Verify(OneHotOp op) {
   int64_t axis = op.axis().getSExtValue();
 
   auto indices_ty = op.indices().getType().dyn_cast<RankedTensorType>();
+  const int64 indices_ty_getShape_size = indices_ty.getShape().size();
   if (indices_ty &&
-      !(axis == -1 || (axis >= 0 && axis <= indices_ty.getShape().size()))) {
+      !(axis == -1 || (axis >= 0 && axis <= indices_ty_getShape_size))) {
     return op.emitOpError()
            << "expected axis (" << axis << ") to be -1 or between [0, "
            << indices_ty.getShape().size() << "]";
@@ -2474,8 +2477,9 @@ LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
   if (!paddings_op) return failure();
 
   auto paddings_value = paddings_op.value().dyn_cast<DenseElementsAttr>();
+  const int64 permutation_size_doubled = permutation.size() * 2;
   if (!paddings_value ||
-      paddings_value.getNumElements() != permutation.size() * 2)
+      paddings_value.getNumElements() != permutation_size_doubled)
     return failure();
 
   SmallVector<int32_t, 8> shuffled_paddings(paddings_value.getNumElements());
@@ -2535,11 +2539,13 @@ static LogicalResult Verify(ParseExampleV2Op op) {
     return op.emitError() << "attribute 'num_sparse' should be the same as "
                           << "the length of attribute 'sparse_types'";
   }
-  if (op.sparse_indices().size() != sparse_types_count) {
+  const int64 op_sparse_indices_size = op.sparse_indices().size(); 
+  if (op_sparse_indices_size != sparse_types_count) {
     return op.emitError() << "output 'sparse_indices' should have same length "
                           << "as attribute 'sparse_types'";
   }
-  if (op.sparse_shapes().size() != sparse_types_count) {
+  const int64 op_sparse_shapes_size = op.sparse_shapes().size();
+  if (op_sparse_shapes_size != sparse_types_count) {
     return op.emitError() << "output 'sparse_shapes' should have same length "
                           << "as attribute 'sparse_types'";
   }
@@ -2970,10 +2976,11 @@ LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
   auto operand_ranked_type = operand_type.dyn_cast_or_null<RankedTensorType>();
   if (operand_ranked_type) {
     // The operand is a ranked tensor.
+    const int64 op_rts_size = operand_ranked_type.getShape().size();
     if (result_ranked_type.hasStaticShape() &&
         !operand_ranked_type.getShape().empty() &&
         result_ranked_type.getDimSize(0) !=
-            operand_ranked_type.getShape().size())
+            op_rts_size)
       return op->emitOpError("requires dimension size of result")
              << variadic_idx_str << " to match rank of operand"
              << variadic_idx_str;
@@ -4152,7 +4159,7 @@ static LogicalResult Verify(WhileOp op) {
       auto &a = type_lists[i];
       auto &b = type_lists[j];
 
-      int a_size = a.second.size();
+      size_t a_size = a.second.size();
       if (a_size != b.second.size())
         return op.emitOpError(
             llvm::formatv("requires the number of {0}s to be equal to the "

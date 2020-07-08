@@ -207,7 +207,7 @@ Operation::result_range ParallelExecuteOp::GetRegionOutputs(
       GetRegionBlockWithIndex(region_index).getTerminator()->getNumOperands();
 
   int return_value_offset = 0;
-  for (int region_id = 0; region_id < region_index; ++region_id)
+  for (int region_id = 0; static_cast<int>(region_id) < region_index; ++region_id)
     return_value_offset +=
         GetRegionBlockWithIndex(region_id).getTerminator()->getNumOperands();
 
@@ -270,7 +270,8 @@ ParseResult SetOperands(
   for (int i = 0, e = operands.size(); i < e; ++i) {
     const auto& operand = operands[i];
     // Check if replicated input matches `n`.
-    if (operand.size() != *n)
+    const int operand_size = operand.size();
+    if (operand_size != *n)
       return parser->emitError(loc)
              << "expects number of operands for replicated input " << i
              << " to be 'n' (" << *n << "), got " << operand.size();

@@ -149,7 +149,8 @@ Status GetTPUDevices(
            std::next(system_devices.begin()), system_devices.end())) {
     auto host_tpu_devices = lookup(device_spec);
     // Check number of TPU devices per host all match.
-    if (num_tpus_per_host != host_tpu_devices.size())
+    const int64 host_tpu_devices_size = host_tpu_devices.size();
+    if (num_tpus_per_host != host_tpu_devices_size)
       return errors::InvalidArgument(
           "expected the number of TPU devices per host to be ",
           num_tpus_per_host, ", got ", host_tpu_devices.size());
@@ -354,7 +355,8 @@ GetGeneralTPUExecutionDeviceAssignment(
 
   const int expected_device_assignment_size =
       num_replicas * num_cores_per_replica * kTPUTopologyRank;
-  if (device_assignment_attr.size() != expected_device_assignment_size)
+  const int device_assignment_attr_size = device_assignment_attr.size();
+  if (device_assignment_attr_size != expected_device_assignment_size)
     return errors::InvalidArgument(
         "length of '", kDeviceAssignmentAttr,
         "' must be 'num_replicas' * 'num_cores_per_replica' * ",

@@ -342,7 +342,8 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
       replicated_inputs;
   for (auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
     auto input = pos_and_input.value();
-    if (input->getNumOperands() != num_replicas)
+    const int input_NumOperands = input->getNumOperands();
+    if (input_NumOperands != num_replicas)
       return input->emitOpError() << "requires " << num_replicas << " operands";
 
     replicated_inputs.push_back(
@@ -382,8 +383,9 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
         return cluster.emitError()
                << "requires output of " << cluster.getOperationName()
                << " to lead to a 'tf.TPUReplicatedOutput' op";
-
-      if (def->getNumResults() != num_replicas)
+      
+      const int def_NumResults = def->getNumResults();
+      if (def_NumResults != num_replicas)
         return def->emitOpError() << "requires " << num_replicas << " results";
 
       auto replicate_outputs = llvm::make_range(
