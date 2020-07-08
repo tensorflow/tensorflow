@@ -76,7 +76,7 @@ template <typename T, size_t N>
 using InlinedVector = tensorflow::gtl::InlinedVector<T, N>;  // non-absl ok
 
 static bool IsOpAllowlisted(Operation* op) {
-  // White-listed TensorFlow ops are known to have well behaved tf2xla kernels
+  // Allowlisted TensorFlow ops are known to have well behaved tf2xla kernels
   // building valid MLIR using MlirHloBuilder.
   // TODO(hinsu): Drop explicit allowlist when MLIR based bridge is enabled for
   // all tf2xla kernels.
