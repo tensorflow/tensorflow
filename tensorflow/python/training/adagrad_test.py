@@ -96,7 +96,7 @@ class AdagradOptimizerTest(test.TestCase):
   def testBasicLocked(self):
     self.doTestBasic(use_locking=True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("train.AdagradOptimizer is V1 only API.")
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -117,7 +117,7 @@ class AdagradOptimizerTest(test.TestCase):
                                            self.evaluate(var0),
                                            atol=0.01)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("train.AdagradOptimizer is V1 only API.")
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -144,7 +144,7 @@ class AdagradOptimizerTest(test.TestCase):
             np.array([2.715679168701172, 3.715679168701172]),
             self.evaluate(var1))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("train.AdagradOptimizer is V1 only API.")
   def testSparseBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -176,7 +176,7 @@ class AdagradOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             np.array([[3.0], [3.715679168701172]]), self.evaluate(var1))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("train.AdagradOptimizer is V1 only API.")
   def testSparseRepeatedIndices(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -207,7 +207,7 @@ class AdagradOptimizerTest(test.TestCase):
           self.assertAllClose(aggregated_update_var,
                               self.evaluate(repeated_index_update_var))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("train.AdagradOptimizer is V1 only API.")
   def testSparseRepeatedIndicesResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -232,7 +232,7 @@ class AdagradOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(
               self.evaluate(var_repeated), self.evaluate(var_aggregated))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("train.AdagradOptimizer is V1 only API.")
   def testSparseStability(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -269,7 +269,7 @@ class AdagradOptimizerTest(test.TestCase):
                   -0.01029443
               ]]), self.evaluate(var0))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("train.AdagradOptimizer is V1 only API.")
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -306,7 +306,7 @@ class AdagradOptimizerTest(test.TestCase):
             np.array([2.715679168701172, 3.715679168701172]),
             self.evaluate(var1))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("train.AdagradOptimizer is V1 only API.")
   def testDynamicShapeVariable_Ok(self):
     with self.cached_session():
       v = variable_scope.get_variable("v", initializer=constant_op.constant(1.),
@@ -315,7 +315,7 @@ class AdagradOptimizerTest(test.TestCase):
       # Creating optimizer should cause no exception.
       adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("train.AdagradOptimizer is V1 only API.")
   def testDynamicShapeVariableWithCallableInit(self):
     var0 = variable_scope.get_variable("var0",
                                        initializer=constant_op.constant(1.),
