@@ -15,8 +15,6 @@
 # limitations under the License.
 # ============================================================================
 
-#!/bin/bash
-
 { # try
   echo `python -c 'from tensorflow.python import _pywrap_util_port; print(_pywrap_util_port.IsMklEnabled())'`
   echo "PASS: MKL is enabled"
