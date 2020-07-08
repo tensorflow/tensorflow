@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
-#include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
@@ -43,14 +42,6 @@ Status TensorProtoToConstant(ImmediateExecutionContext* ctx,
 Status LoadSavedVariable(ImmediateExecutionContext* ctx,
                          const SavedVariable& variable,
                          std::unique_ptr<Variable>* output);
-
-// Creates a TFConcreteFunction from a SavedConcreteFunction.
-Status LoadTFConcreteFunction(
-    const SavedConcreteFunction& saved_concrete_function,
-    const FunctionDef* function_def,
-    const std::unordered_map<int, std::unique_ptr<TensorHandleConvertible>>&
-        captured_objects,
-    ImmediateExecutionContext* ctx, std::unique_ptr<TFConcreteFunction>* out);
 
 }  // namespace internal
 }  // namespace tensorflow

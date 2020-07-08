@@ -41,13 +41,11 @@ cc_library(
         ":tensorhandle_list",
         ":tensorhandle_list_type",
         "//tensorflow/c:c_api_macros",
-        "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/eager:immediate_execution_operation",
+        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tfe_op_internal",
         "//tensorflow/c/experimental/saved_model/core:concrete_function",
         "//tensorflow/c/experimental/saved_model/core:function_metadata",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -207,13 +205,9 @@ tf_cc_test(
     ],
     deps = [
         "//tensorflow/c:tf_status",
-        "//tensorflow/c:tf_tensor",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
-        "//tensorflow/c/eager:c_api_test_util",
-        "//tensorflow/c/experimental/saved_model/public:concrete_function",
         "//tensorflow/c/experimental/saved_model/public:saved_model_api",
-        "//tensorflow/c/experimental/saved_model/public:tensorhandle_list",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
