@@ -4670,15 +4670,15 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
     [[1. 0. 0.]
      [0. 1. 0.]
      [0. 0. 1.]], shape=(3, 3), dtype=float32)
-  >>> b = tf.constant([.9, .05, .05, .5, .89, .6, .05, .01, .94], shape=[3,3])
+  >>> b = tf.constant([.9, .05, .05, .05, .89, .06, .05, .01, .94], shape=[3,3])
   >>> print(b)
   tf.Tensor(
     [[0.9  0.05 0.05]
-     [0.5  0.89 0.6 ]
+     [0.05 0.89 0.06]
      [0.05 0.01 0.94]], shape=(3, 3), dtype=float32)
   >>> loss = tf.keras.backend.categorical_crossentropy(a, b)
   >>> print(np.around(loss, 5))
-  [0.10536 0.80467 0.06188]
+  [0.10536 0.11653 0.06188]
   >>> loss = tf.keras.backend.categorical_crossentropy(a, a)
   >>> print(np.around(loss, 5))
   [0. 0. 0.]
