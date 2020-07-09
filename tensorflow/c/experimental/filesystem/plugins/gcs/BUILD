@@ -66,7 +66,7 @@ cc_library(
         ":file_block_cache",
         "//tensorflow/c:env",
         "//tensorflow/c:tf_status",
-        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
 )

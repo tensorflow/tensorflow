@@ -28,8 +28,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Status ReadCache(tf_gcs_filesystem::RamFileBlockCache* cache, const string& filename,
-                 size_t offset, size_t n, std::vector<char>* out) {
+Status ReadCache(tf_gcs_filesystem::RamFileBlockCache* cache,
+                 const string& filename, size_t offset, size_t n,
+                 std::vector<char>* out) {
   out->clear();
   out->resize(n, 0);
   size_t bytes_transferred = 0;
@@ -146,7 +147,8 @@ TEST(RamFileBlockCacheTest, BlockAlignment) {
   for (size_t block_size = 2; block_size <= 4; block_size++) {
     // Make a cache of N-byte block size (1 block) and verify that reads of
     // varying offsets and lengths return correct data.
-    tf_gcs_filesystem::RamFileBlockCache cache(block_size, block_size, 0, fetcher);
+    tf_gcs_filesystem::RamFileBlockCache cache(block_size, block_size, 0,
+                                               fetcher);
     for (size_t offset = 0; offset < 10; offset++) {
       for (size_t n = block_size - 2; n <= block_size + 2; n++) {
         std::vector<char> got;
@@ -190,7 +192,8 @@ TEST(RamFileBlockCacheTest, CacheHits) {
     return TF_SetStatus(status, TF_OK, "");
   };
   const uint32 block_count = 256;
-  tf_gcs_filesystem::RamFileBlockCache cache(block_size, block_count * block_size, 0, fetcher);
+  tf_gcs_filesystem::RamFileBlockCache cache(
+      block_size, block_count * block_size, 0, fetcher);
   std::vector<char> out;
   out.resize(block_count, 0);
   // The cache has space for `block_count` blocks. The loop with i = 0 should
@@ -231,7 +234,8 @@ TEST(RamFileBlockCacheTest, OutOfRange) {
     *bytes_transferred = bytes_to_copy;
     return TF_SetStatus(status, TF_OK, "");
   };
-  tf_gcs_filesystem::RamFileBlockCache cache(block_size, block_size, 0, fetcher);
+  tf_gcs_filesystem::RamFileBlockCache cache(block_size, block_size, 0,
+                                             fetcher);
   std::vector<char> out;
   // Reading the first 16 bytes should be fine.
   TF_EXPECT_OK(ReadCache(&cache, "", 0, block_size, &out));
@@ -265,7 +269,8 @@ TEST(RamFileBlockCacheTest, Inconsistent) {
     *bytes_transferred = 1;
     return TF_SetStatus(status, TF_OK, "");
   };
-  tf_gcs_filesystem::RamFileBlockCache cache(block_size, 2 * block_size, 0, fetcher);
+  tf_gcs_filesystem::RamFileBlockCache cache(block_size, 2 * block_size, 0,
+                                             fetcher);
   std::vector<char> out;
   // Read the second block; this should yield an OK status and a single byte.
   TF_EXPECT_OK(ReadCache(&cache, "", block_size, block_size, &out));
@@ -294,7 +299,8 @@ TEST(RamFileBlockCacheTest, LRU) {
     return TF_SetStatus(status, TF_OK, "");
   };
   const uint32 block_count = 2;
-  tf_gcs_filesystem::RamFileBlockCache cache(block_size, block_count * block_size, 0, fetcher);
+  tf_gcs_filesystem::RamFileBlockCache cache(
+      block_size, block_count * block_size, 0, fetcher);
   std::vector<char> out;
   // Read blocks from the cache, and verify the LRU behavior based on the
   // fetcher calls that the cache makes.
@@ -340,8 +346,9 @@ TEST(RamFileBlockCacheTest, MaxStaleness) {
   std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
   // Create a cache with max staleness of 2 seconds, and verify that it works as
   // expected.
-  tf_gcs_filesystem::RamFileBlockCache cache1(8, 16, 2 /* max staleness */, fetcher,
-                           [&env]() { return env->NowSeconds(); });
+  tf_gcs_filesystem::RamFileBlockCache cache1(
+      8, 16, 2 /* max staleness */, fetcher,
+      [&env]() { return env->NowSeconds(); });
   // Execute the first read to load the block.
   TF_EXPECT_OK(ReadCache(&cache1, "", 0, 1, &out));
   EXPECT_EQ(calls, 1);
@@ -357,8 +364,9 @@ TEST(RamFileBlockCacheTest, MaxStaleness) {
   // as expected.
   calls = 0;
   env->SetNowSeconds(0);
-  tf_gcs_filesystem::RamFileBlockCache cache2(8, 16, 0 /* max staleness */, fetcher,
-                           [&env]() { return env->NowSeconds(); });
+  tf_gcs_filesystem::RamFileBlockCache cache2(
+      8, 16, 0 /* max staleness */, fetcher,
+      [&env]() { return env->NowSeconds(); });
   // Execute the first read to load the block.
   TF_EXPECT_OK(ReadCache(&cache2, "", 0, 1, &out));
   EXPECT_EQ(calls, 1);
@@ -447,8 +455,9 @@ TEST(RamFileBlockCacheTest, Prune) {
   std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
   uint64 now = Env::Default()->NowSeconds();
   env->SetNowSeconds(now);
-  tf_gcs_filesystem::RamFileBlockCache cache(8, 32, 1 /* max staleness */, fetcher,
-                          [&env]() { return env->NowSeconds(); });
+  tf_gcs_filesystem::RamFileBlockCache cache(
+      8, 32, 1 /* max staleness */, fetcher,
+      [&env]() { return env->NowSeconds(); });
   // Read three blocks into the cache, and advance the timestamp by one second
   // with each read. Start with a block of "a" at the current timestamp `now`.
   TF_EXPECT_OK(ReadCache(&cache, "a", 0, 1, &out));
@@ -513,7 +522,8 @@ TEST(RamFileBlockCacheTest, ParallelReads) {
     return TF_SetStatus(status, TF_OK, "");
   };
   const int block_size = 8;
-  tf_gcs_filesystem::RamFileBlockCache cache(block_size, 2 * callers * block_size, 0, fetcher);
+  tf_gcs_filesystem::RamFileBlockCache cache(
+      block_size, 2 * callers * block_size, 0, fetcher);
   std::vector<std::unique_ptr<Thread>> threads;
   for (int i = 0; i < callers; i++) {
     threads.emplace_back(
@@ -549,7 +559,8 @@ TEST(RamFileBlockCacheTest, CoalesceConcurrentReads) {
     Env::Default()->SleepForMicroseconds(100000);  // 0.1 secs
     return TF_SetStatus(status, TF_OK, "");
   };
-  tf_gcs_filesystem::RamFileBlockCache cache(block_size, block_size, 0, fetcher);
+  tf_gcs_filesystem::RamFileBlockCache cache(block_size, block_size, 0,
+                                             fetcher);
   // Fork off thread for parallel read.
   std::unique_ptr<Thread> concurrent(
       Env::Default()->StartThread({}, "concurrent", [&cache, block_size] {
