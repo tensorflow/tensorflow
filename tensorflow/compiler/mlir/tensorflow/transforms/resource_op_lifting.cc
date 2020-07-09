@@ -375,7 +375,7 @@ LogicalResult FindResourceArgUseInfo(
         info.data_type = assign.value().getType();
         continue;
       }
-      if (isa<TF::StackPushV2Op>(user) || isa<TF::StackPopV2Op>(user)) {
+      if (isa<TF::StackPushV2Op, TF::StackPopV2Op>(user)) {
         // Stacks will be handled by a separate pass.
         do_not_touch = true;
         break;

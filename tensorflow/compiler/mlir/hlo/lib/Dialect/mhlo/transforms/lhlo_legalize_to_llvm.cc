@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 
 namespace mlir {
-namespace xla_lhlo {
+namespace lmhlo {
 namespace {
 
 struct StaticMemRefCastOpConverter
@@ -132,5 +132,5 @@ void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
       *converter, options);
 }
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir

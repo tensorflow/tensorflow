@@ -297,3 +297,28 @@ some additional parameters as detailed below.
 *   `random_shuffle_benchmark_runs`: `bool` (default=true) \
     Whether to perform all benchmark runs, each of which has different
     performance options, in a random order.
+
+## Build the benchmark tool with Tensorflow ops support
+
+You can build the benchmark tool with [Tensorflow operators support](https://www.tensorflow.org/lite/guide/ops_select).
+
+### How to build
+
+To build the tool, you need to use 'benchmark_model_plus_flex' target with
+'--config=monolithic' option.
+
+```
+bazel build -c opt \
+  --config=monolithic \
+  tensorflow/lite/tools/benchmark:benchmark_model_plus_flex
+```
+
+### How to benchmark tflite model with Tensorflow ops
+
+Tensorflow ops support just works the benchmark tool is built with Tensorflow
+ops support. It doesn't require any additional option to use it.
+
+```
+bazel-bin/tensorflow/lite/tools/benchmark/benchmark_model_plus_flex \
+  --graph=model_converted_with_TF_ops.tflite \
+```

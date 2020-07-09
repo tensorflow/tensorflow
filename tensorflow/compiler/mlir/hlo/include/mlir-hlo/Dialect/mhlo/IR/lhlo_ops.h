@@ -35,18 +35,18 @@ class OpBuilder;
 
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_structs.h.inc"
 
-namespace xla_lhlo {
+namespace lmhlo {
 
-class XlaLhloDialect : public Dialect {
+class LmhloDialect : public Dialect {
  public:
-  explicit XlaLhloDialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "xla_lhlo"; }
+  explicit LmhloDialect(MLIRContext *context);
+  static StringRef getDialectNamespace() { return "lmhlo"; }
 };
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // end namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_IR_LHLO_OPS_H_

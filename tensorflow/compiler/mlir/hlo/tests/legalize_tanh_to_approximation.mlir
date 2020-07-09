@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -xla-legalize-tanh-to-approximation -split-input-file %s | FileCheck %s
+// RUN: mlir-hlo-opt -mhlo-legalize-tanh-to-approximation -split-input-file %s | FileCheck %s
 
 func @tanh_f64(%arg0 : f64) -> f64 {
   %res = tanh %arg0 : f64

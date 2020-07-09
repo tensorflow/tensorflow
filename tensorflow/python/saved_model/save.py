@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import gc
 import os
 
 from tensorflow.core.framework import versions_pb2
@@ -387,12 +388,27 @@ def _map_captures_to_created_tensors(original_captures, resource_map):
   for exterior, interior in original_captures:
     mapped_resource = resource_map.get(exterior, None)
     if mapped_resource is None:
+      trackable_referrers = []
+      # Try to figure out where the resource came from by iterating over objects
+      # which reference it. This is slow and doesn't help us figure out how to
+      # match it to other objects when loading the SavedModel as a checkpoint,
+      # so we can't continue saving. But we can at least tell the user what
+      # needs attaching.
+      for primary_referrer in gc.get_referrers(exterior):
+        if isinstance(primary_referrer, base.Trackable):
+          trackable_referrers.append(primary_referrer)
+        for secondary_referrer in gc.get_referrers(primary_referrer):
+          if isinstance(secondary_referrer, base.Trackable):
+            trackable_referrers.append(secondary_referrer)
       raise AssertionError(
-          ("Tried to export a function which references untracked object {}."
+          ("Tried to export a function which references untracked resource {}."
            "TensorFlow objects (e.g. tf.Variable) captured by functions must "
            "be tracked by assigning them to an attribute of a tracked object "
-           "or assigned to an attribute of the main object directly."
-          ).format(interior))
+           "or assigned to an attribute of the main object directly.\n\n"
+           "Trackable Python objects referring to this tensor "
+           "(from gc.get_referrers, limited to two hops):\n{}"
+          ).format(interior,
+                   "\n".join([repr(obj) for obj in trackable_referrers])))
     export_captures.append(mapped_resource)
   return export_captures
 

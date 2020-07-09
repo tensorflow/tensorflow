@@ -102,6 +102,7 @@ py_test(
         "no_pip",
         "no_windows",
         "noasan",  # b/144707533
+        "notsan",  # b/160824139
     ],
     deps = [
         ":tflite_convert",

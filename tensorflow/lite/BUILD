@@ -246,6 +246,7 @@ cc_library(
         ":graph_info",
         ":memory_planner",
         ":minimal_logging",
+        ":shared_library",
         ":simple_memory_arena",
         ":string",
         ":tflite_with_xnnpack_optional",
@@ -633,6 +634,13 @@ cc_test(
         ":minimal_logging",
         "@com_google_googletest//:gtest",
     ],
+)
+
+cc_library(
+    name = "shared_library",
+    hdrs = ["shared_library.h"],
+    copts = TFLITE_DEFAULT_COPTS,
+    linkopts = if_not_windows(["-ldl"]),
 )
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.

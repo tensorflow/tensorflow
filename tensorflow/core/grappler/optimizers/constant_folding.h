@@ -328,7 +328,7 @@ class ConstantFolding : public GraphOptimizer {
   std::unique_ptr<NodeMap> node_map_;
   std::unordered_set<string> nodes_to_preserve_;
   // TODO(rmlarsen): Could these be keyed on absl::string_view?
-  absl::flat_hash_set<string> nodes_whitelist_;
+  absl::flat_hash_set<string> nodes_allowlist_;
   absl::flat_hash_set<string> feed_nodes_;
   absl::flat_hash_map<string, bool> maybe_foldable_nodes_;
   bool has_fetch_;

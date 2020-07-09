@@ -560,7 +560,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
       return failure();
     ShapedType filter_type = filter_cst.getType();
 
-    if (llvm::isa<AddOp>(binary_op) || llvm::isa<SubOp>(binary_op)) {
+    if (llvm::isa<AddOp, SubOp>(binary_op)) {
       auto padding = fc_op.template getAttrOfType<StringAttr>("padding");
       if (padding && padding.getValue() != "VALID") return failure();
 
@@ -606,7 +606,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
           rewriter.create<ConstOp>(fc_op.getLoc(), new_bias_type, new_bias);
       fc_op.setOperand(0, binary_op->getOperand(0));
       fc_op.setOperand(2, new_bias_op);
-    } else if (llvm::isa<MulOp>(binary_op) || llvm::isa<DivOp>(binary_op)) {
+    } else if (llvm::isa<MulOp, DivOp>(binary_op)) {
       // The fusion of mul/div is actually applying the following
       // transformation:
       // w * (x ' c) + b => (w ' c) x + b

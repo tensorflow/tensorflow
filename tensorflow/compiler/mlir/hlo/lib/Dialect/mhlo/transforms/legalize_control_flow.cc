@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering XLA dialect to Standard dialect.
+// This file implements logic for lowering MHLO dialect to Standard dialect.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -107,8 +107,8 @@ LogicalResult LowerIfOp(mlir::mhlo::IfOp if_op) {
 }
 
 LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
-  // Converts an XLA while loop into control flow. This generates a set of MLIR
-  // blocks and branches, along with inlining the regions provided by the XLA
+  // Converts a MHLO while loop into control flow. This generates a set of MLIR
+  // blocks and branches, along with inlining the regions provided by the MHLO
   // while loop. The structure should be similar to below:
   //
   //   <prior operations>
@@ -232,5 +232,5 @@ mlir::mhlo::createLegalizeControlFlowPass() {
 }
 
 static PassRegistration<mlir::mhlo::LegalizeControlFlow> legalize_cf_pass(
-    "xla-legalize-control-flow",
-    "Legalize from XLA control flow to MLIR control flow");
+    "mhlo-legalize-control-flow",
+    "Legalize from MHLO control flow to CFG control flow");

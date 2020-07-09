@@ -45,7 +45,8 @@ from tensorflow.python.saved_model import model_utils
 from tensorflow.python.training import training as training_module
 
 
-@test_util.run_deprecated_v1  # Removed in v2.
+@test_util.run_v1_only(
+    'keras.experimental.load_from_saved_model is supported only in V1.')
 class TestModelSavingandLoading(parameterized.TestCase, test.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
@@ -279,7 +280,8 @@ def load_model(sess, path, mode):
   return inputs, outputs, meta_graph_def
 
 
-@test_util.run_deprecated_v1  # Removed in v2.
+@test_util.run_v1_only(
+    'keras.experimental.export_saved_model is supported only in V1.')
 class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):

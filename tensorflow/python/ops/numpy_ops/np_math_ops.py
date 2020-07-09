@@ -1348,7 +1348,9 @@ def meshgrid(*xi, **kwargs):
   return outputs
 
 
-@np_utils.np_doc('einsum')
+# Uses np_doc_only here because np.einsum (in 1.16) doesn't have argument
+# `subscripts`, even though the doc says it has.
+@np_utils.np_doc_only('einsum')
 def einsum(subscripts, *operands, **kwargs):  # pylint: disable=missing-docstring
   casting = kwargs.get('casting', 'safe')
   optimize = kwargs.get('optimize', False)

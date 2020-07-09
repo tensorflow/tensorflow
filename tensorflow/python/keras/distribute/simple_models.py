@@ -21,10 +21,10 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.distribute.model_collection import model_collection_base
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.keras.distribute import model_collection_base
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.module import module
 from tensorflow.python.ops import variables

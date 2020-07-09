@@ -205,9 +205,9 @@ GetSubtypes(Type type) {
 // Returns whether type can be further refined.
 bool CanBeRefined(Type type) {
   auto shape_type = type.dyn_cast<ShapedType>();
-  return shape_type && (!shape_type.hasStaticShape() ||
-                        shape_type.getElementType().isa<TF::ResourceType>() ||
-                        shape_type.getElementType().isa<TF::VariantType>());
+  return shape_type &&
+         (!shape_type.hasStaticShape() ||
+          shape_type.getElementType().isa<TF::ResourceType, TF::VariantType>());
 }
 
 // Infers the shape from a (Stateful)PartionedCall operation by looking up the
@@ -712,8 +712,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   // The shape function of these ops sometimes does not propagate subtypes
   // (handle shapes) for resource and variant types. We use a simple passthrough
   // to make sure they are preserved in the output.
-  if (isa<TF::IdentityOp>(op) || isa<TF::IdentityNOp>(op) ||
-      isa<TF::ZerosLikeOp>(op) || isa<TF::WhileOp>(op)) {
+  if (isa<TF::IdentityOp, TF::IdentityNOp, TF::ZerosLikeOp, TF::WhileOp>(op)) {
     return RefineTypeForPassThroughOperands(op, op->getOperands(),
                                             op->getResults());
   }
@@ -729,7 +728,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
 
   // Handle call operations by looking up callee and infering return shape as
   // needed.
-  if (isa<PartitionedCallOp>(op) || isa<StatefulPartitionedCallOp>(op))
+  if (isa<PartitionedCallOp, StatefulPartitionedCallOp, TPUPartitionedCallOp>(
+          op))
     return InferShapeForCall(op);
 
   // tf.Cast are only inferred if they have at least one user in the TF dialect
@@ -889,8 +889,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
     };
     auto new_element_type = shaped_type.getElementType();
     // Populate the handle shapes for a resource/variant.
-    if (new_element_type.isa<TF::ResourceType>() ||
-        new_element_type.isa<TF::VariantType>()) {
+    if (new_element_type.isa<TF::ResourceType, TF::VariantType>()) {
       auto handle_shapes_types = c.output_handle_shapes_and_types(output);
       if (handle_shapes_types) {
         SmallVector<TensorType, 1> subtypes;

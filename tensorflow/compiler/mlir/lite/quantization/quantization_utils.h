@@ -386,8 +386,7 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
 
     Operation* def = pre_quantized.getDefiningOp();
     if (!def) return failure();
-    if (llvm::isa<FixedOutputRangeInterface>(def) ||
-        llvm::isa<SameScalesOpInterface>(def) ||
+    if (llvm::isa<FixedOutputRangeInterface, SameScalesOpInterface>(def) ||
         def->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
       return failure();
     }
