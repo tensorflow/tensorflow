@@ -55,6 +55,18 @@ py_library(
 )
 
 py_library(
+    name = "optimizer_combinations",
+    srcs = ["optimizer_combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:training",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/keras/optimizer_v2",
+    ],
+)
+
+py_library(
     name = "worker_training_state",
     srcs = [
         "worker_training_state.py",
@@ -179,6 +191,7 @@ distribute_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
+        ":optimizer_combinations",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:util",
         "//tensorflow/python/compat:v2_compat",
@@ -262,6 +275,7 @@ py_library(
         "distribute_strategy_test.py",
     ],
     deps = [
+        ":optimizer_combinations",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
         "//tensorflow/python/distribute:combinations",
@@ -311,6 +325,7 @@ distribute_py_test(
     ],
     deps = [
         ":distribute_strategy_test_lib",
+        ":optimizer_combinations",
     ],
 )
 
@@ -499,6 +514,7 @@ distribute_py_test(
     ],
     deps = [
         ":keras_test_lib",
+        ":optimizer_combinations",
         "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     ],
@@ -535,6 +551,38 @@ cuda_py_test(
     ],
     deps = [
         ":keras_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "minimize_loss_test",
+    srcs = ["minimize_loss_test.py"],
+    main = "minimize_loss_test.py",
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/139815303): enable after this is fixed.
+        "noguitar",  # TODO(b/140755528): enable after this is fixed.
+        "notap",  # TODO(b/139815303): enable after this is fixed.
+    ],
+    deps = [
+        ":optimizer_combinations",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:control_flow_v2_toggles",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:single_loss_example",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:strategy_test_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/ops/losses",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -716,5 +764,26 @@ distribute_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras/saving",
+    ],
+)
+
+distribute_py_test(
+    name = "step_fn_test",
+    srcs = ["step_fn_test.py"],
+    main = "step_fn_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":optimizer_combinations",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:single_loss_example",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

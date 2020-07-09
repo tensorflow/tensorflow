@@ -26,6 +26,7 @@ from tensorflow.python.distribute.single_loss_example import single_loss_example
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.ops import variables
 
 
@@ -34,12 +35,12 @@ class SingleLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          strategy_combinations.distributions_and_v1_optimizers(),
+          optimizer_combinations.distributions_and_v1_optimizers(),
           combinations.combine(
               mode=strategy_combinations.graph_and_eager_modes),
           combinations.combine(is_tpu=[False])) + combinations.combine(
               distribution=[strategy_combinations.tpu_strategy],
-              optimizer_fn=strategy_combinations.optimizers_v1,
+              optimizer_fn=optimizer_combinations.optimizers_v1,
               mode=["graph"],
               is_tpu=[True]))
   def testTrainNetwork(self, distribution, optimizer_fn, is_tpu):
