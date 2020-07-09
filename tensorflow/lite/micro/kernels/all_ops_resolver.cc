@@ -77,6 +77,7 @@ AllOpsResolver::AllOpsResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION());
   AddBuiltin(BuiltinOperator_TANH, Register_TANH());
+  AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V());
 }
 
 }  // namespace micro
