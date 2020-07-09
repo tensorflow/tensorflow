@@ -405,7 +405,7 @@ StatusOr<HloInstruction*> MakeSortHlo(
   HloComputation* compare_computation;
   XlaBuilder b("Sort.Compare");
   std::vector<PrimitiveType> operand_types(operands.size());
-  for (int64 i = 0, iter_limit = operands.size(); i < it; ++i) {
+  for (int64 i = 0, iter_limit = operands.size(); i < iter_limit; ++i) {
     operand_types[i] = operands[i]->shape().element_type();
   }
   XlaComputation comparator = CreateScalarLtComputation(operand_types, &b);
