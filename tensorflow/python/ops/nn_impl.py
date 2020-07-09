@@ -509,15 +509,20 @@ def relu_layer(x, weights, biases, name=None):
     return nn_ops.relu(xw_plus_b, name=name)
 
 
-@tf_export("nn.swish")
+@tf_export("nn.silu", "nn.swish")
 @dispatch.add_dispatch_support
 @custom_gradient.custom_gradient
 def swish(features):
   # pylint: disable=g-doc-args
-  """Computes the Swish activation function: `x * sigmoid(x)`.
+  """Computes the SiLU or Swish activation function: `x * sigmoid(x)`.
 
-  Source: "Searching for Activation Functions" (Ramachandran et al. 2017)
-  https://arxiv.org/abs/1710.05941
+  The SiLU activation function was introduced in "Gaussian Error Linear Units
+  (GELUs)" [Hendrycks et al. 2016](https://arxiv.org/abs/1606.08415) and
+  "Sigmoid-Weighted Linear Units for Neural Network Function Approximation in
+  Reinforcement Learning"
+  [Elfwing et al. 2017](https://arxiv.org/abs/1702.03118) and was independently
+  discovered (and called swish) in "Searching for Activation Functions"
+  [Ramachandran et al. 2017](https://arxiv.org/abs/1710.05941)
 
   Args:
     features: A `Tensor` representing preactivation values.

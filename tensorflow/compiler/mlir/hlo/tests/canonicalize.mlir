@@ -365,6 +365,24 @@ func @dynamic_broadcast_in_dim_op_not_actually_dynamic(%arg0: tensor<4xf32>, %ar
   return %0 : tensor<5x4xf32>
 }
 
+// CHECK-LABEL: func @broadcast_in_dim_constant_fold_0d
+func @broadcast_in_dim_constant_fold_0d() -> tensor<1x64x224x224xf32> {
+  %cst = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %b = "mhlo.broadcast_in_dim"(%cst) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>) -> tensor<1x64x224x224xf32>
+  return %b : tensor<1x64x224x224xf32>
+}
+// CHECK-NEXT: %[[CST:.*]] = mhlo.constant dense<0.000000e+00> : tensor<1x64x224x224xf32>
+// CHECK-NEXT: return %[[CST]] : tensor<1x64x224x224xf32>
+
+// CHECK-LABEL: func @broadcast_in_dim_constant_fold
+func @broadcast_in_dim_constant_fold() -> tensor<1x64x4x4xf32> {
+  %cst = mhlo.constant dense<0.000000e+00> : tensor<4x4xf32>
+  %b = "mhlo.broadcast_in_dim"(%cst) {broadcast_dimensions = dense<[2, 3]> : tensor<2xi64>} : (tensor<4x4xf32>) -> tensor<1x64x4x4xf32>
+  return %b : tensor<1x64x4x4xf32>
+}
+// CHECK-NEXT: %[[CST:.*]] = mhlo.constant dense<0.000000e+00> : tensor<1x64x4x4xf32>
+// CHECK-NEXT: return %[[CST]] : tensor<1x64x4x4xf32>
+
 // CHECK-LABEL: @complex_expand_fold
 func @complex_expand_fold(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
   %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xcomplex<f32>>)

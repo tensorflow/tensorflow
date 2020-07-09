@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines the operations used in the XLA dialect.
+// This file defines the operations used in the MHLO dialect.
 
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
@@ -404,7 +404,7 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return xla::ConvertElementsAttr(elementsAttr,
+    return hlo::ConvertElementsAttr(elementsAttr,
                                     getElementTypeOrSelf(getResult()));
   }
 
@@ -620,17 +620,25 @@ static LogicalResult Verify(BroadcastInDimOp op) {
   return success();
 }
 
-OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute>) {
+OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
   auto type = getType().cast<RankedTensorType>();
-  if (type != getOperand().getType()) {
-    return nullptr;
+  if (type == getOperand().getType()) {
+    auto broadcast_values = broadcast_dimensions().getValues<int64_t>();
+    if (!std::equal(broadcast_values.begin(), broadcast_values.end(),
+                    llvm::seq<int64_t>(0, type.getRank()).begin())) {
+      return {};
+    }
+    return getOperand();
   }
-  auto broadcast_values = broadcast_dimensions().getValues<int64_t>();
-  if (!std::equal(broadcast_values.begin(), broadcast_values.end(),
-                  llvm::seq<int64_t>(0, type.getRank()).begin())) {
-    return nullptr;
-  }
-  return getOperand();
+
+  // Constant fold when an operand is a splat tensor attribute.
+  if (!attrs[0] || !type.hasStaticShape()) return {};
+  auto splatOperandAttr = attrs[0].dyn_cast<SplatElementsAttr>();
+  if (!splatOperandAttr) return {};
+  // MLIR core bug (https://bugs.llvm.org/show_bug.cgi?id=46588): dense element
+  // attribute iterator not implemented for complex element types.
+  if (type.getElementType().isa<ComplexType>()) return {};
+  return SplatElementsAttr::get(type, splatOperandAttr.getSplatValue());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2135,8 +2143,6 @@ MhloDialect::MhloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOInlinerInterface>();
   addTypes<TokenType>();
-  // Support unknown operations because not all XLA operations are registered.
-  // allowUnknownOperations();
 }
 
 Type MhloDialect::parseType(DialectAsmParser& parser) const {

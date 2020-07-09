@@ -15,16 +15,22 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"
 
+#include <algorithm>
 #include <memory>
 
+#include "absl/strings/str_split.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
+#include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 
 namespace tensorflow {
 namespace internal {
@@ -189,6 +195,55 @@ Status LoadTFConcreteFunction(
 
   return TFConcreteFunction::Create(function_def, std::move(captures), {}, ctx,
                                     out);
+}
+
+const SavedObject* FindNodeAtPath(StringPiece path,
+                                  const SavedObjectGraph& object_graph) {
+  const auto& nodes = object_graph.nodes();
+  if (nodes.empty()) {
+    return nullptr;
+  }
+
+  // Starting from the root, iterate through the saved object graph, matching
+  // object names as we go.
+  const SavedObject* current_node = &nodes.Get(0);
+
+  for (absl::string_view object_name : absl::StrSplit(path, '.')) {
+    auto child_node_iter = std::find_if(
+        current_node->children().begin(), current_node->children().end(),
+        [object_name](
+            const TrackableObjectGraph::TrackableObject::ObjectReference& obj) {
+          return object_name == obj.local_name();
+        });
+    if (child_node_iter == current_node->children().end()) {
+      return nullptr;
+    }
+    current_node = &nodes.Get(child_node_iter->node_id());
+  }
+
+  return current_node;
+}
+
+std::unordered_map<StringPiece, const AttrValueMap*, StringPieceHasher>
+NodeToAttrMap(const tensorflow::GraphDef& graphdef) {
+  std::unordered_map<StringPiece, const AttrValueMap*, StringPieceHasher>
+      result;
+  for (const tensorflow::NodeDef& node : graphdef.node()) {
+    result[node.name()] = &node.attr();
+  }
+  return result;
+}
+
+std::unordered_map<StringPiece, const tensorflow::FunctionDef*,
+                   StringPieceHasher>
+FunctionNameToFunctionDefMap(const FunctionDefLibrary& library) {
+  std::unordered_map<StringPiece, const tensorflow::FunctionDef*,
+                     StringPieceHasher>
+      result;
+  for (const FunctionDef& function_def : library.function()) {
+    result[function_def.signature().name()] = &function_def;
+  }
+  return result;
 }
 
 }  // namespace internal

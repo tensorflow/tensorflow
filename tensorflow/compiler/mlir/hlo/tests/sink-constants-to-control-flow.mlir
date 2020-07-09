@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -xla-hlo-sink-constants-to-control-flow | FileCheck %s
+// RUN: mlir-hlo-opt %s -mhlo-sink-constants-to-control-flow | FileCheck %s
 
 // Tests sinking constants to a while loop.
 

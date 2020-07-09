@@ -33,6 +33,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
@@ -72,20 +73,20 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          strategy_combinations.distributions_and_v1_optimizers(),
+          optimizer_combinations.distributions_and_v1_optimizers(),
           combinations.combine(mode=["graph"], use_callable_loss=[True, False])
           + combinations.combine(mode=["eager"], use_callable_loss=[True])) +
       combinations.times(
-          strategy_combinations.distributions_and_v2_optimizers(),
+          optimizer_combinations.distributions_and_v2_optimizers(),
           combinations.combine(
               mode=["graph", "eager"], use_callable_loss=[True])) +
       combinations.combine(
           distribution=[strategy_combinations.tpu_strategy],
-          optimizer_fn=strategy_combinations.optimizers_v2,
+          optimizer_fn=optimizer_combinations.optimizers_v2,
           mode=["graph"],
           use_callable_loss=[True]) + combinations.combine(
               distribution=[strategy_combinations.tpu_strategy],
-              optimizer_fn=strategy_combinations.optimizers_v1,
+              optimizer_fn=optimizer_combinations.optimizers_v1,
               mode=["graph"],
               use_callable_loss=[True, False]))
   def testTrainNetwork(self, distribution, optimizer_fn, use_callable_loss):
@@ -123,11 +124,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          strategy_combinations.distributions_and_v1_optimizers(),
+          optimizer_combinations.distributions_and_v1_optimizers(),
           combinations.combine(mode=["graph"], use_callable_loss=[True, False])
           + combinations.combine(mode=["eager"], use_callable_loss=[True])) +
       combinations.times(
-          strategy_combinations.distributions_and_v2_optimizers(),
+          optimizer_combinations.distributions_and_v2_optimizers(),
           combinations.combine(
               mode=["graph", "eager"], use_callable_loss=[True])))
   def testTrainNetworkByCallForEachReplica(self, distribution, optimizer_fn,
@@ -162,10 +163,10 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          strategy_combinations.distributions_and_v1_and_v2_optimizers(),
+          optimizer_combinations.distributions_and_v1_and_v2_optimizers(),
           combinations.combine(mode=["graph", "eager"])) + combinations.combine(
               distribution=[strategy_combinations.tpu_strategy],
-              optimizer_fn=strategy_combinations.optimizers_v1_and_v2,
+              optimizer_fn=optimizer_combinations.optimizers_v1_and_v2,
               mode=["graph"]))
   def testOptimizerInsideModelFn(self, distribution, optimizer_fn):
     if (not context.executing_eagerly() and
@@ -231,7 +232,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       combinations.times(
           combinations.combine(momentum=[0.8, 0.9, 0.99], renorm=[False, True]),
           combinations.times(
-              strategy_combinations.distributions_and_v1_and_v2_optimizers(),
+              optimizer_combinations.distributions_and_v1_and_v2_optimizers(),
               combinations.combine(
                   mode=["graph", "eager"],
                   # TODO(isaprykin):  Allow False here.  Currently subsequent
@@ -239,7 +240,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
                   update_ops_in_cross_replica_mode=[True])) +
           combinations.combine(
               distribution=[strategy_combinations.tpu_strategy],
-              optimizer_fn=strategy_combinations.optimizers_v1_and_v2,
+              optimizer_fn=optimizer_combinations.optimizers_v1_and_v2,
               mode=["graph"],
               update_ops_in_cross_replica_mode=[False])))
   def testTrainNetworkWithBatchNorm(self, distribution, optimizer_fn, momentum,
@@ -308,25 +309,25 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
                   strategy_combinations.mirrored_strategy_with_two_gpus
               ]),
               combinations.times(
-                  combinations.combine(optimizer_fn=strategy_combinations
+                  combinations.combine(optimizer_fn=optimizer_combinations
                                        .gradient_descent_optimizer_v1_fn),
                   combinations.combine(
                       mode=["graph"], use_callable_loss=[True, False]) +
                   combinations.combine(
                       mode=["eager"], use_callable_loss=[True])) +
               combinations.times(
-                  combinations.combine(optimizer_fn=strategy_combinations
+                  combinations.combine(optimizer_fn=optimizer_combinations
                                        .gradient_descent_optimizer_keras_v2_fn),
                   combinations.combine(
                       mode=["graph", "eager"], use_callable_loss=[True]))) +
           combinations.combine(
               distribution=[strategy_combinations.tpu_strategy],
-              optimizer_fn=strategy_combinations
+              optimizer_fn=optimizer_combinations
               .gradient_descent_optimizer_v1_fn,
               mode=["graph"],
               use_callable_loss=[True, False]) + combinations.combine(
                   distribution=[strategy_combinations.tpu_strategy],
-                  optimizer_fn=strategy_combinations
+                  optimizer_fn=optimizer_combinations
                   .gradient_descent_optimizer_keras_v2_fn,
                   mode=["graph"],
                   use_callable_loss=[True])))
@@ -412,11 +413,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          strategy_combinations.distributions_and_v1_and_v2_optimizers(),
+          optimizer_combinations.distributions_and_v1_and_v2_optimizers(),
           combinations.combine(mode=["graph", "eager"]),
           combinations.combine(is_tpu=[False])) + combinations.combine(
               distribution=[strategy_combinations.tpu_strategy],
-              optimizer_fn=strategy_combinations.optimizers_v1_and_v2,
+              optimizer_fn=optimizer_combinations.optimizers_v1_and_v2,
               mode=["graph"],
               is_tpu=[True]))
   def testRunStepsWithOutputContext(self, distribution, optimizer_fn, is_tpu):
@@ -541,7 +542,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(initial_loss.shape, loss_tensor.shape)
 
   @combinations.generate(
-      strategy_combinations.distributions_and_v2_optimizers())
+      optimizer_combinations.distributions_and_v2_optimizers())
   def test_empty_var_list(self, distribution, optimizer_fn):
     opt = optimizer_fn()
     with distribution.scope():

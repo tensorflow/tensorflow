@@ -13,34 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/experimental/saved_model/core/tf_saved_model_impl.h"
+#include "tensorflow/c/experimental/saved_model/core/tf_saved_model_api.h"
 
 #include <string>
 #include <unordered_set>
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
-Status TFSavedModelAPIImpl::GetFunction(const std::string& function_path,
-                                        ConcreteFunction** function) {
+Status TFSavedModelAPI::GetFunction(const std::string& function_path,
+                                    ConcreteFunction** function) {
   // TODO(bmzhao): Add support for retrieving a function.
   return errors::Unimplemented(
       "Retrieving functions is unimplemented currently");
 }
 
-Status TFSavedModelAPIImpl::GetSignatureDefFunction(
+Status TFSavedModelAPI::GetSignatureDefFunction(
     const std::string& signature_def_key, ConcreteFunction** function) {
   // TODO(bmzhao): Add support for retrieving a signaturedef function.
   return errors::Unimplemented(
       "Retrieving functions is unimplemented currently");
 }
 
-std::vector<ConcreteFunction*> TFSavedModelAPIImpl::ListFunctions() {
+std::vector<ConcreteFunction*> TFSavedModelAPI::ListFunctions() {
   std::vector<ConcreteFunction*> result;
   result.reserve(functions_.size());
   for (ConcreteFunction& function : functions_) {
@@ -49,10 +49,10 @@ std::vector<ConcreteFunction*> TFSavedModelAPIImpl::ListFunctions() {
   return result;
 }
 
-Status TFSavedModelAPIImpl::Load(
+Status TFSavedModelAPI::Load(
     const std::string& directory,
     const absl::optional<std::unordered_set<std::string>>& tags,
-    EagerContext* context, std::unique_ptr<TFSavedModelAPIImpl>* out) {
+    ImmediateExecutionContext* context, std::unique_ptr<TFSavedModelAPI>* out) {
   // TODO(bmzhao): Add support for loading a TFSavedModelImpl.
   return errors::Unimplemented(
       "TFSavedModelAPIImpl loading is unimplemented currently");

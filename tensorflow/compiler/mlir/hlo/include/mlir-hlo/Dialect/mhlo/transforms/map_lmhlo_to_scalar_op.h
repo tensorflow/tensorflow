@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_XLA_TO_SCALAR_OP_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_XLA_TO_SCALAR_OP_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_LMHLO_TO_SCALAR_OP_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_LMHLO_TO_SCALAR_OP_H_
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -150,15 +150,14 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::AndOp>(Location loc,
 }
 
 template <typename PredicateType>
-inline Optional<PredicateType> getCmpPredicate(
-    StringRef xla_comparison_direction) {
+inline Optional<PredicateType> getCmpPredicate(StringRef comparison_direction) {
   return llvm::None;
 }
 
 template <>
 inline Optional<CmpFPredicate> getCmpPredicate<CmpFPredicate>(
-    StringRef xla_comparison_direction) {
-  return llvm::StringSwitch<Optional<CmpFPredicate>>(xla_comparison_direction)
+    StringRef comparison_direction) {
+  return llvm::StringSwitch<Optional<CmpFPredicate>>(comparison_direction)
       .Case("EQ", CmpFPredicate::OEQ)
       .Case("NE", CmpFPredicate::ONE)
       .Case("GE", CmpFPredicate::OGE)
@@ -170,8 +169,8 @@ inline Optional<CmpFPredicate> getCmpPredicate<CmpFPredicate>(
 
 template <>
 inline Optional<CmpIPredicate> getCmpPredicate<CmpIPredicate>(
-    StringRef xla_comparison_direction) {
-  return llvm::StringSwitch<Optional<CmpIPredicate>>(xla_comparison_direction)
+    StringRef comparison_direction) {
+  return llvm::StringSwitch<Optional<CmpIPredicate>>(comparison_direction)
       .Case("EQ", CmpIPredicate::eq)
       .Case("NE", CmpIPredicate::ne)
       .Case("GE", CmpIPredicate::sge)
@@ -181,11 +180,11 @@ inline Optional<CmpIPredicate> getCmpPredicate<CmpIPredicate>(
       .Default(llvm::None);
 }
 
-template <typename XLACompareOpTy>
-inline Value MapXlaCompareOpToStdScalarOp(Location loc,
-                                          StringRef comparison_direction,
-                                          ArrayRef<Type> result_types,
-                                          ArrayRef<Value> args, OpBuilder* b) {
+template <typename CompareOpTy>
+inline Value MapCompareOpToStdScalarOp(Location loc,
+                                       StringRef comparison_direction,
+                                       ArrayRef<Type> result_types,
+                                       ArrayRef<Value> args, OpBuilder* b) {
   const auto& lhs = args[0];
   const auto& rhs = args[1];
   Type element_type = lhs.getType();
@@ -193,15 +192,15 @@ inline Value MapXlaCompareOpToStdScalarOp(Location loc,
     Optional<CmpIPredicate> predicate =
         getCmpPredicate<CmpIPredicate>(comparison_direction);
     assert(predicate.hasValue() && "expected valid comparison direction");
-    return b->create<ScalarIOp<XLACompareOpTy>>(loc, predicate.getValue(), lhs,
-                                                rhs);
+    return b->create<ScalarIOp<CompareOpTy>>(loc, predicate.getValue(), lhs,
+                                             rhs);
   }
   if (element_type.isa<FloatType>()) {
     Optional<CmpFPredicate> predicate =
         getCmpPredicate<CmpFPredicate>(comparison_direction);
     assert(predicate.hasValue() && "expected valid comparison direction");
-    return b->create<ScalarFOp<XLACompareOpTy>>(loc, predicate.getValue(), lhs,
-                                                rhs);
+    return b->create<ScalarFOp<CompareOpTy>>(loc, predicate.getValue(), lhs,
+                                             rhs);
   }
   return nullptr;
 }
@@ -337,10 +336,10 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SinOp>(Location loc,
       loc, result_types, args, b);
 }
 
-/// Implements the conversion of XLA op to scalar op (to use within region of a
+/// Implements the conversion of HLO op to scalar op (to use within region of a
 /// linalg.generic op) for compare-select style operations like min/max.
 template <typename... Args>
-struct XlaCompareSelectOpToStdScalarOp {
+struct CompareSelectOpToStdScalarOp {
   static Value map(Location loc, StringRef comparison_direction,
                    ArrayRef<Type> result_types, ArrayRef<Value> args,
                    OpBuilder* b) {
@@ -352,8 +351,8 @@ struct XlaCompareSelectOpToStdScalarOp {
 /// dialect with a given predicate based on the element type of the operand.
 template <typename SupportedType, typename StdCompareOp, typename Predicate,
           typename... Args>
-struct XlaCompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
-                                       Args...> {
+struct CompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
+                                    Args...> {
   static Value map(Location loc, StringRef comparison_direction,
                    ArrayRef<Type> result_types, ArrayRef<Value> args,
                    OpBuilder* b) {
@@ -365,8 +364,8 @@ struct XlaCompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
                                                   args[0], args[1]);
       return b->create<::mlir::SelectOp>(loc, cmp, args[0], args[1]);
     }
-    return XlaCompareSelectOpToStdScalarOp<Args...>::map(
-        loc, comparison_direction, result_types, args, b);
+    return CompareSelectOpToStdScalarOp<Args...>::map(loc, comparison_direction,
+                                                      result_types, args, b);
   }
 };
 
@@ -384,7 +383,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::MaxOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return XlaCompareSelectOpToStdScalarOp<
+  return CompareSelectOpToStdScalarOp<
       IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
       ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "GT", result_types,
                                                        args, b);
@@ -395,7 +394,7 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::MinOp>(Location loc,
                                                   ArrayRef<Type> result_types,
                                                   ArrayRef<Value> args,
                                                   OpBuilder* b) {
-  return XlaCompareSelectOpToStdScalarOp<
+  return CompareSelectOpToStdScalarOp<
       IntegerType, ScalarIOp<lmhlo::CompareOp>, CmpIPredicate, FloatType,
       ScalarFOp<lmhlo::CompareOp>, CmpFPredicate>::map(loc, "LT", result_types,
                                                        args, b);
@@ -475,25 +474,25 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::TanhOp>(Location loc,
 
 }  // namespace impl
 
-struct XlaOpToStdScalarOp {
+struct HloOpToStdScalarOp {
   // Implementation for LHLO ops except lmhlo::CompareOp.
-  template <typename XlaOpTy, typename LhloOpTy = XlaOpTy,
+  template <typename HloOpTy, typename LhloOpTy = HloOpTy,
             typename = std::enable_if_t<
                 !std::is_same<LhloOpTy, lmhlo::CompareOp>::value &&
                 std::is_same<typename mhlo::HloToLhloOp<LhloOpTy>,
                              std::false_type>::value>>
-  static Value map(XlaOpTy op, ArrayRef<Type> result_types,
+  static Value map(HloOpTy op, ArrayRef<Type> result_types,
                    ArrayRef<Value> args, OpBuilder* b, unsigned i = 0) {
     return impl::MapLhloOpToStdScalarOp<LhloOpTy>(op.getLoc(), result_types,
                                                   args, b);
   }
 
   // Implementation for HLO ops except mhlo::CompareOp.
-  template <typename XlaOpTy, typename LhloOpTy = mhlo::HloToLhloOp<XlaOpTy>,
+  template <typename HloOpTy, typename LhloOpTy = mhlo::HloToLhloOp<HloOpTy>,
             typename = std::enable_if_t<
                 !std::is_same<LhloOpTy, lmhlo::CompareOp>::value &&
                 !std::is_same<LhloOpTy, std::false_type>::value>>
-  static Value map(XlaOpTy op, ArrayRef<Type> result_types,
+  static Value map(HloOpTy op, ArrayRef<Type> result_types,
                    ArrayRef<Value> args, OpBuilder* b, int i = 0) {
     return impl::MapLhloOpToStdScalarOp<LhloOpTy>(op.getLoc(), result_types,
                                                   args, b);
@@ -505,7 +504,7 @@ struct XlaOpToStdScalarOp {
   static Value map(lmhlo::CompareOp op, ArrayRef<Type> result_types,
                    ArrayRef<Value> args, OpBuilder* b) {
     auto comparison_direction = op.comparison_direction();
-    return impl::MapXlaCompareOpToStdScalarOp<lmhlo::CompareOp>(
+    return impl::MapCompareOpToStdScalarOp<lmhlo::CompareOp>(
         op.getLoc(), comparison_direction, result_types, args, b);
   }
 
@@ -516,7 +515,7 @@ struct XlaOpToStdScalarOp {
   static Value map(mhlo::CompareOp op, ArrayRef<Type> result_types,
                    ArrayRef<Value> args, OpBuilder* b) {
     auto comparison_direction = op.comparison_direction();
-    return impl::MapXlaCompareOpToStdScalarOp<lmhlo::CompareOp>(
+    return impl::MapCompareOpToStdScalarOp<lmhlo::CompareOp>(
         op.getLoc(), comparison_direction, result_types, args, b);
   }
 };
@@ -524,4 +523,4 @@ struct XlaOpToStdScalarOp {
 }  // namespace lmhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_XLA_TO_SCALAR_OP_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_LMHLO_TO_SCALAR_OP_H_

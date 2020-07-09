@@ -35,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import losses
 from tensorflow.python.keras.distribute import distribute_strategy_test as keras_test_lib
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -363,7 +364,8 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager'],
-          optimizer=strategy_combinations.gradient_descent_optimizer_keras_v2_fn
+          optimizer=optimizer_combinations
+          .gradient_descent_optimizer_keras_v2_fn
       ))
   def test_masking(self, distribution, optimizer):
     with self.cached_session():
@@ -394,7 +396,7 @@ class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
           keras_test_lib.all_strategy_combinations(),
           combinations.combine(
               fused=[True, False],
-              optimizer=strategy_combinations
+              optimizer=optimizer_combinations
               .gradient_descent_optimizer_keras_v2_fn)))
   def test_batchnorm_correctness(self, distribution, fused, optimizer):
     with self.cached_session():
@@ -438,7 +440,7 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
           combinations.combine(
-              optimizer=strategy_combinations.rmsprop_optimizer_keras_v2_fn)))
+              optimizer=optimizer_combinations.rmsprop_optimizer_keras_v2_fn)))
   def test_save_load_h5(self, distribution, optimizer):
     with self.cached_session():
       dataset = keras_test_lib.get_dataset(distribution)
@@ -465,7 +467,7 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
           combinations.combine(
-              optimizer=strategy_combinations.rmsprop_optimizer_keras_v2_fn)))
+              optimizer=optimizer_combinations.rmsprop_optimizer_keras_v2_fn)))
   def test_save_load_trackable(self, distribution, optimizer):
     # TODO(b/123533246): Enable the test for TPU once bug is fixed
     if (isinstance(distribution,
