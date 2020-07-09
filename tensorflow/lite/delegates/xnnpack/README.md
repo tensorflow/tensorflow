@@ -224,6 +224,10 @@ Below is the list of current operators and limitations:
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
 
+### `SQRT`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 ### `SQUARE`
 
 * Inputs and outputs must be in 32-bit floating-point format.
