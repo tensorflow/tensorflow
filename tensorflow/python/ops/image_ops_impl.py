@@ -1092,7 +1092,8 @@ def resize_image_with_crop_or_pad(image, target_height, target_width, mode="CONS
       of shape `[height, width, channels]`.
     target_height: Target height.
     target_width: Target width.
-    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
+    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive),
+    refer to description of 'mode' in 'pad_to_bounding_box' for example cases
     name: A name for the operation (optional).
     constant_values: In "CONSTANT" mode, the scalar pad value to use. Must be
       same type as `tensor`.
