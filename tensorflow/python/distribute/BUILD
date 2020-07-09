@@ -19,10 +19,6 @@ py_library(
         ":strategy_combinations",
         ":strategy_test_lib",
         ":test_util",
-        "//tensorflow/python/keras/distribute:keras_correctness_test_lib",
-        "//tensorflow/python/keras/distribute:keras_test_lib",
-        "//tensorflow/python/keras/distribute:model_combinations",
-        "//tensorflow/python/keras/distribute:saved_model_test_base",
     ],
 )
 
@@ -1281,7 +1277,6 @@ distribute_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
