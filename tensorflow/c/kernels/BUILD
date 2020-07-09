@@ -87,6 +87,21 @@ tf_cc_test(
         "//tensorflow/core:testlib",
     ],
 )
+
+tf_cc_test(
+    name = "summary_op_benchmark_test",
+    srcs = ["summary_op_benchmark_test.cc"],
+    deps = [
+        "summary_op",
+        "summary_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
 # Changes to the Android srcs here should be replicated in
 # tensorflow/contrib/makefile/tf_op_files.txt.
 #

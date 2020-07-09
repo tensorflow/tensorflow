@@ -155,18 +155,6 @@ void RegisterSummaryScalarOpKernel() {
     CHECK_EQ(TF_OK, TF_GetCode(status))
         << "Error while registering Summary Scalar kernel";
   }
-#if GOOGLE_CUDA
-  {
-    auto* builder = TF_NewKernelBuilder("SummaryScalar", 
-                                        tensorflow::DEVICE_GPU,
-                                        &SummaryScalarOp_Create, 
-                                        &SummaryScalarOp_Compute<T>,
-                                        &SummaryScalarOp_Delete);
-    TF_RegisterKernelBuilder("SummaryScalar", builder, status);
-    CHECK_EQ(TF_OK, TF_GetCode(status))
-        << "Error while registering CUDA SummaryScalar kernel";
-  }
-#endif
   TF_DeleteStatus(status);
 }
 
