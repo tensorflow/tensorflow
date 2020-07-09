@@ -76,16 +76,26 @@ DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane) {
   return cap;
 }
 
-PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
+}  // namespace
+
+PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
+                    double peak_hbm_bw_giga_bytes_per_second) {
   PerfEnv result;
-  DeviceCapabilities cap = GetDeviceCapFromXPlane(device_plane);
-  result.set_peak_tera_flops_per_second(GetFlopMaxThroughputPerSM(cap) / 1000 *
-                                        cap.num_cores());
-  result.set_peak_hbm_bw_giga_bytes_per_second(cap.memory_bandwidth() / 1e9);
-  result.set_ridge_point(result.peak_tera_flops_per_second() * 1000 /
-                         result.peak_hbm_bw_giga_bytes_per_second());
+  result.set_peak_tera_flops_per_second(peak_tera_flops_per_second);
+  result.set_peak_hbm_bw_giga_bytes_per_second(
+      peak_hbm_bw_giga_bytes_per_second);
+  result.set_ridge_point(peak_tera_flops_per_second * 1000 /
+                         peak_hbm_bw_giga_bytes_per_second);
   return result;
 }
+
+PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
+  DeviceCapabilities cap = GetDeviceCapFromXPlane(device_plane);
+  return MakePerfEnv(GetFlopMaxThroughputPerSM(cap) / 1000 * cap.num_cores(),
+                     cap.memory_bandwidth() / 1e9);
+}
+
+namespace {
 
 void SetRunEnvironment(int32 accelerator_count, RunEnvironment* env) {
   // Currently, we only support profiling one host and one program.
