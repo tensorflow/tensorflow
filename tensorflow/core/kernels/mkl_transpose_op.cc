@@ -19,7 +19,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if !defined(INTEL_MKL_DNN_ONLY)
+#if !defined(ENABLE_MKLDNN_V1)
 #include "mkl_trans.h"
 #endif
 
@@ -50,7 +50,7 @@ namespace tensorflow {
 // REQUIRES: perm is a permutation.
 
 namespace {
-#if !defined(INTEL_MKL_DNN_ONLY)
+#if !defined(ENABLE_MKLDNN_V1)
 template <typename T>
 Status MKLTranspose2D(const char trans, const Tensor& in, Tensor* out);
 
@@ -104,7 +104,7 @@ Status MKLTranspose2D<complex128>(const char trans, const Tensor& in,
 static const char kMKLTranspose = 'T';
 static const char kMKLConjugateTranspose = 'C';
 
-#endif  // if !defined(INTEL_MKL_DNN_ONLY)
+#endif  // #if !defined(ENABLE_MKLDNN_V1)
 
 // MKL-DNN based Transpose implementation
 template <typename T>
@@ -174,7 +174,7 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
 Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
                                       gtl::ArraySlice<int32> perm,
                                       Tensor* out) {
-#if !defined(INTEL_MKL_DNN_ONLY)
+#if !defined(ENABLE_MKLDNN_V1)
   if (in.dims() == 2) {
     if (perm[0] == 0 && perm[1] == 1) {
       return Status::OK();
@@ -220,7 +220,7 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
                                                const Tensor& in,
                                                gtl::ArraySlice<int32> perm,
                                                Tensor* out) {
-#if !defined(INTEL_MKL_DNN_ONLY)
+#if !defined(ENABLE_MKLDNN_V1)
   if (in.dims() == 2 && perm[0] == 1 && perm[1] == 0) {
     // TODO(rmlarsen): By setting lda and ldb, we could use the MKL kernels
     // for any transpose that can be reduced to swapping the last two

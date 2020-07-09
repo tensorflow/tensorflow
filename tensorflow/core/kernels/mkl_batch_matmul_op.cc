@@ -25,7 +25,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if defined(INTEL_MKL)
+#if defined(INTEL_MKL) && !defined(ENABLE_MKLDNN_V1)
 #include <vector>
 
 #include "mkl_cblas.h"
