@@ -18,18 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import threading
 
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
-from tensorflow.python.eager import def_function
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
+from tensorflow.python.eager import function
 
 from tensorflow.python.framework import ops
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -140,31 +142,76 @@ def _jvp_helper(op_name, attr_tuple, inputs, outputs, tangents):
     return output_tangents
 
 
+def _jvp_helper_wrapper(op_name, attr_tuple, inputs, outputs, tangents,
+                        use_batch):
+  """Computes a batch of Jacobian-vector product for an op.
+
+  Args:
+    op_name: A string, the type of operation being executed.
+    attr_tuple: Attributes of the operation.
+    inputs: A flat list of input Tensors to the operation.
+    outputs: A flat list of output Tensors from the operation.
+    tangents: A flat list of Tensors, compatible with shape `[None] +
+      input_shape`.
+    use_batch: A bool, True to vetorize over batch of tangents of shape `[None]
+      + input_shape`.
+
+  Returns:
+    A flat list of tangents compatible with `outputs`
+    or `[None] + output_shape`.
+
+  Raises:
+    ValueError: if tangent shapes are not compatible with input shapes.
+  """
+  if use_batch:
+    for primal, tangent in zip(inputs, tangents):
+      if not tangent.shape.is_compatible_with([None] + primal.shape):
+        raise ValueError("Tangent {} was expected to be of shape "
+                         "{} but is instead of shape {}".format(
+                             tangent, [None] + primal.shape, tangent.shape))
+
+    return control_flow_ops.vectorized_map(
+        functools.partial(_jvp_helper, op_name, attr_tuple, inputs, outputs),
+        tangents,
+    )
+  return _jvp_helper(op_name, attr_tuple, inputs, outputs, tangents)
+
+
 # TODO(allenl): experimental_relax_shapes for gradients which rely on static
 # shape information are underspecialized. We may want hand-written forward
 # implementations, or a more satisfying story about how we re-specialize
 # gradients which were traced with relaxed shapes (e.g. use conds instead of
 # trace-time Python logic).
-_jvp_relaxed_shapes = def_function.function(
-    _jvp_helper, experimental_relax_shapes=True)
-_jvp_exact_shapes = def_function.function(
-    _jvp_helper, experimental_relax_shapes=False)
+#
+# Using function.defun rather than def_function.function avoids
+# tf.config.run_functions_eagerly(True). `_jvp_helper` doesn't successfully run
+# eagerly (infinite recursion), and even if it did it would use extra memory and
+# run unnecessary computation. The function does not create variables, so the
+# two symbols are otherwise equivalent.
+_jvp_relaxed_shapes = function.defun(
+    _jvp_helper_wrapper, experimental_relax_shapes=True)
+_jvp_exact_shapes = function.defun(
+    _jvp_helper_wrapper, experimental_relax_shapes=False)
 
 # The maximum number of exact-shape traces to perform for a single op before
 # switching to shape relaxation.
 _TRACE_COUNT_LIMIT = 32
 
 
-def _jvp_dispatch(op_name, attr_tuple, inputs, outputs, tangents):
+def _jvp_dispatch(op_name,
+                  attr_tuple,
+                  inputs,
+                  outputs,
+                  tangents,
+                  use_batch=False):
   """Determine which forwardprop function to call."""
   # Note that this _TRACE_COUNT read races with writes. That's fine, it just
   # means we may trace a few more exact shapes before moving on to relaxation.
   if _TRACE_COUNT.get(op_name, 0) < _TRACE_COUNT_LIMIT:
-    return _jvp_exact_shapes(
-        op_name, attr_tuple, inputs, outputs, tangents)
-  else:
-    return _jvp_relaxed_shapes(
-        op_name, attr_tuple, inputs, outputs, tangents)
+    return _jvp_exact_shapes(op_name, attr_tuple, inputs, outputs, tangents,
+                             use_batch)
+  return _jvp_relaxed_shapes(op_name, attr_tuple, inputs, outputs, tangents,
+                             use_batch)
 
 
 pywrap_tfe.TFE_Py_RegisterJVPFunction(_jvp_dispatch)
@@ -382,6 +429,7 @@ class ForwardAccumulator(object):
     unconnected_gradients = UnconnectedGradients(unconnected_gradients)
     if self._accumulator is None:
       raise ValueError("Called jvp() without first tracing anything.")
+
     def _fetch_jvp(tensor):
       if hasattr(tensor, "handle"):
         tensor = ops.convert_to_tensor(tensor.handle)

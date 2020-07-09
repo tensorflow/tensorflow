@@ -47,7 +47,8 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
                      ::mlir::ModuleOp mlir_module);
   ~LhloDialectEmitter() override = default;
 
-  Status EmitComputation(const HloComputation& computation);
+  Status EmitComputation(const HloComputation& computation,
+                         absl::Span<HloInstruction* const> ordering);
 
   // The following methods implement the DfsHloVisitor interface.
   //
@@ -60,6 +61,7 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
   Status HandleConstant(HloInstruction* instr) override;
   Status HandleCustomCall(HloInstruction* instr) override;
   Status HandleFusion(HloInstruction* instr) override;
+  Status HandleGather(HloInstruction* instr) override;
   Status HandleIota(HloInstruction* instr) override;
   Status HandleParameter(HloInstruction* instr) override;
   Status HandleReduce(HloInstruction* instr) override;
@@ -86,7 +88,7 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
   StatusOr<BufferAllocation::Slice> MaybeGetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index) const override;
   int64 ByteSizeOf(const Shape& shape) const override;
-  const se::Platform* platform() const override;
+  absl::string_view platform_name() const override;
   mlir::Location getLocation(const HloInstruction* instr) const;
 
   xla::mlir_gpu::EmissionContext* emission_context_;

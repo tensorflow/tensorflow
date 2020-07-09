@@ -19,26 +19,34 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import os
+import threading
+import time
 
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.distribute import cluster_resolver
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
@@ -69,7 +77,7 @@ def _make_per_replica(values, devices, regroup=False):
     with ops.device(d):
       placed_v = array_ops.identity(v)
     index.append(placed_v)
-  return value_lib.regroup(index)
+  return distribute_utils.regroup(index)
 
 
 # pylint: disable=g-doc-args,g-doc-return-or-yield
@@ -84,7 +92,7 @@ def _fake_mirrored(value, devices):
   for d in devices:
     with ops.device(d):
       values.append(array_ops.identity(value))
-  return value_lib.regroup(
+  return distribute_utils.regroup(
       values,
       wrap_class=value_lib.Mirrored)
 
@@ -101,7 +109,7 @@ def _make_indexed_slices(values, indices, dense_shape, device):
 def _make_mirrored_indexed_slices(devices, values, indices, dense_shape):
   values = [_make_indexed_slices(values, indices, dense_shape, d)
             for d in devices]
-  return value_lib.regroup(
+  return distribute_utils.regroup(
       values,
       wrap_class=value_lib.Mirrored)
 
@@ -120,7 +128,11 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
         self.evaluate(ops.convert_to_tensor(left)),
         self.evaluate(ops.convert_to_tensor(right)))
 
-  def _assert_mirrored_equal(self, left_list, right_list, sess):
+  def _assert_mirrored_equal(self,
+                             left_list,
+                             right_list,
+                             sess=None,
+                             run_options=None):
     if not isinstance(left_list, list):
       left_list, right_list = [left_list], [right_list]
 
@@ -136,12 +148,15 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
         left, right = [left], [right]
 
       for left_value, right_value in zip(left, right):
-        self.assertEqual(left_value.device, right_value.device)
+        self.assertEqual(
+            device_util.resolve(left_value.device),
+            device_util.resolve(right_value.device))
 
       # Densify IndexedSlices.
       left = [ops.convert_to_tensor(v) for v in left]
       right = [ops.convert_to_tensor(v) for v in right]
-      left, right = sess.run((left, right))
+      if not context.executing_eagerly():
+        left, right = sess.run((left, right), options=run_options)
       for left_value, right_value in zip(left, right):
         self.assertAllEqual(left_value, right_value)
 
@@ -506,15 +521,18 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         devices = ["/device:CPU:0"]
 
       if use_strategy_object:
-        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
-            communication=communication)
+        strategy = (
+            collective_all_reduce_strategy.CollectiveAllReduceStrategy
+            ._from_local_devices(devices, communication=communication))  # pylint: disable=protected-access
         strategy.extended._collective_keys = collective_keys
         strategy.extended._cross_device_ops._collective_keys = collective_keys
+        strategy.extended._host_cross_device_ops._collective_keys = (
+            collective_keys)
         return strategy, devices, ""
       else:
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
-            1,
-            num_gpus,
+            devices=devices,
+            group_size=len(devices),
             collective_keys=collective_keys,
             communication=communication)
         return collective_all_reduce_ops, devices, ""
@@ -533,24 +551,37 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         ]
 
       if use_strategy_object:
-        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
-            communication=communication)
-        strategy.configure(
-            cluster_spec=self._cluster_spec,
+        resolver = cluster_resolver.SimpleClusterResolver(
+            cluster_spec=multi_worker_util.normalize_cluster_spec(
+                self._cluster_spec),
             task_type=task_type,
-            task_id=task_id)
+            task_id=task_id,
+            num_accelerators={"GPU": num_gpus})
+        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+            cluster_resolver=resolver, communication=communication)
         strategy.extended._collective_keys = collective_keys
         strategy.extended._cross_device_ops._collective_keys = collective_keys
         return (strategy, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])
       else:
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
-            NUM_WORKERS,
-            num_gpus,
+            devices=devices,
+            group_size=len(devices) * NUM_WORKERS,
             collective_keys=collective_keys,
             communication=communication)
         return (collective_all_reduce_ops, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])
+
+  def _assert_mirrored_equal(self, left_list, right_list, sess=None):
+    if context.executing_eagerly():
+      run_options = None
+    else:
+      # TODO(b/151025792): figure out why missing run options would make the
+      # test flaky and whether this is a problem in TF 2.
+      run_options = config_pb2.RunOptions()
+      run_options.experimental.collective_graph_key = 5
+    super(CollectiveAllReduceTest, self)._assert_mirrored_equal(
+        left_list, right_list, sess, run_options=run_options)
 
   def _test_reduction(self,
                       task_type,
@@ -817,6 +848,103 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         variable_length=variable_length,
         local_mode=True)
 
+  @combinations.generate(
+      combinations.combine(
+          required_gpus=2,
+          mode="eager",
+          communication=[
+              CollectiveCommunication.NCCL, CollectiveCommunication.RING
+          ]))
+  def testEagerMultiThread(self, communication):
+    collective, devices, _ = self._get_test_objects(
+        None,
+        None,
+        num_gpus=2,
+        communication=communication,
+        use_strategy_object=False,
+        local_mode=True)
+
+    # We would like to simulate the following sequence:
+    #   thread-0  device0                 device1
+    #   thread-1          device0 device1
+    # If the kernel launch sequence is as-is the program will deadlock since
+    # NCCL requires the launch order to be same on each device.
+    v0 = _make_per_replica([1.0 for _ in devices], devices)
+    v1 = _make_per_replica([2.0 for _ in devices], devices)
+
+    # Add a delay to collective_ops.all_reduce according to the input tensors
+    # index in `sequence.`
+    sequence = [v0.values[0], v1.values[0], v1.values[1], v0.values[1]]
+    all_reduce = collective_ops.all_reduce
+
+    def delayed_all_reduce(input_tensor, *args, **kwargs):
+      for idx, v in enumerate(sequence):
+        if input_tensor is v:
+          time.sleep(idx)
+          break
+      return all_reduce(input_tensor, *args, **kwargs)
+
+    with test.mock.patch.object(collective_ops, "all_reduce",
+                                delayed_all_reduce):
+      # We only use NCCL for batch reduce with two or more values, so we use two
+      # values here.
+
+      def thread_fn():
+        reduced = collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v0, v0),
+                                                                     (v0, v0)])
+        self.assertAllEqual(reduced[0].values, [2.0, 2.0])
+        self.assertAllEqual(reduced[1].values, [2.0, 2.0])
+
+      t = threading.Thread(target=thread_fn)
+      t.start()
+      reduced = collective.batch_reduce(reduce_util.ReduceOp.SUM, [(v1, v1),
+                                                                   (v1, v1)])
+      self.assertAllEqual(reduced[0].values, [4.0, 4.0])
+      self.assertAllEqual(reduced[1].values, [4.0, 4.0])
+      t.join()
+
+  @combinations.generate(
+      combinations.combine(
+          required_gpus=2,
+          mode="eager",
+          communication=[
+              CollectiveCommunication.NCCL, CollectiveCommunication.RING
+          ]))
+  def testInputsAreFunctionArgs(self, communication):
+    # Function inputs don't have device placement.
+    hints = collective_util.Hints(bytes_per_pack=1)
+    collective, devices, _ = self._get_test_objects(
+        None,
+        None,
+        num_gpus=2,
+        communication=communication,
+        use_strategy_object=False,
+        local_mode=True)
+    devices = [device_util.canonicalize(d) for d in devices]
+
+    @def_function.function
+    def reduce_fn(v):
+      self.assertEqual(v.values[0].device, "")
+      self.assertEqual(v.values[1].device, "")
+      # We only use NCCL for batch reduce with two or more values, so we use two
+      # values here.
+      reduced = collective.batch_reduce(
+          reduce_util.ReduceOp.SUM, [(v, v), (v, v)], experimental_hints=hints)
+      self.assertEqual(reduced[0].values[0].device, devices[0])
+      self.assertEqual(reduced[0].values[1].device, devices[1])
+      self.assertEqual(reduced[1].values[0].device, devices[0])
+      self.assertEqual(reduced[1].values[1].device, devices[1])
+      # Returning Mirrored only evaluates the primary value, which causes
+      # hanging,
+      return [reduced[0].values, reduced[1].values]
+
+    v = _make_per_replica([1.0, 2.0], devices)
+    reduced = reduce_fn(v)
+    self.assertAllEqual(self.evaluate(reduced), [[3.0, 3.0], [3.0, 3.0]])
+
 
 if __name__ == "__main__":
+  # Set default inter op thread pool size to one to ensure we don't exhaust the
+  # thread pool with the additional executors to run collectives in eager.
+  os.environ["TF_NUM_INTEROP_THREADS"] = "1"
   test.main()

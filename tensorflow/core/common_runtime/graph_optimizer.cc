@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 
 #include "tensorflow/core/common_runtime/constant_folding.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
 
@@ -41,7 +42,7 @@ void GraphOptimizer::Optimize(
     const NodePredicate& cse_consider_fn, const NodePredicate& cf_consider_fn,
     bool inline_multi_device_functions,
     bool inline_impl_selection_group_functions,
-    bool inline_with_single_device_body_placer) {
+    bool inline_with_single_device_body_placer, bool ignore_noinline) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -115,6 +116,11 @@ void GraphOptimizer::Optimize(
             .inline_impl_selection_group_functions = true;
       }
 
+      if (ignore_noinline) {
+        expand_inline_opts.multi_device_options.ignore_noinline = true;
+        expand_inline_opts.native_options.ignore_noinline = true;
+      }
+
       bool was_mutated = ExpandInlineFunctions(runtime, g, expand_inline_opts);
       if (was_mutated) {
         DumpGraph("ExpandInlineFunctions", g);
@@ -137,11 +143,26 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
                               const Device* device,
                               std::unique_ptr<Graph>* graph,
                               const Options& options) {
-  Optimize(runtime, env, device, graph, options.shape_map,
-           options.cse_consider_fn, options.cf_consider_fn,
-           options.inline_multi_device_functions,
-           options.inline_impl_selection_group_functions,
-           options.inline_with_single_device_body_placer);
+  Optimize(
+      runtime, env, device, graph, options.shape_map, options.cse_consider_fn,
+      options.cf_consider_fn, options.inline_multi_device_functions,
+      options.inline_impl_selection_group_functions,
+      options.inline_with_single_device_body_placer, options.ignore_noinline);
+}
+
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,
+                   const GraphOptimizer::Options& graph_optimizer_options) {
+  OptimizerOptions opts;
+  opts.set_do_common_subexpression_elimination(true);
+  opts.set_do_function_inlining(true);
+  opts.set_do_constant_folding(true);
+  GraphOptimizer optimizer(opts);
+  optimizer.Optimize(lib, lib->env(), lib->device(), g,
+                     graph_optimizer_options);
+}
+
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
+  OptimizeGraph(lib, g, GraphOptimizer::Options());
 }
 
 }  // end namespace tensorflow

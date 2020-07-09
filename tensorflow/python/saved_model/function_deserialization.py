@@ -107,10 +107,14 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
       if not expected.shape.is_compatible_with(arg.shape):
         return False
     elif isinstance(expected, type_spec.TypeSpec):
-      return expected.is_compatible_with(arg)
-    elif (_is_tensor(arg) and
-          id(arg) != id(expected)) or (not _is_tensor(arg) and arg != expected):
-      return False
+      if not expected.is_compatible_with(arg):
+        return False
+    elif _is_tensor(arg):
+      if id(arg) != id(expected):
+        return False
+    else:
+      if arg != expected:
+        return False
   return True
 
 
@@ -396,8 +400,11 @@ def fix_node_def(node_def, functions, shared_name_suffix, debug_name):
   if node_def.op in functions:
     node_def.op = functions[node_def.op].name
   for _, attr_value in node_def.attr.items():
-    if attr_value.func.name:
+    if attr_value.WhichOneof("value") == "func":
       attr_value.func.name = functions[attr_value.func.name].name
+    elif attr_value.WhichOneof("value") == "list":
+      for fn in attr_value.list.func:
+        fn.name = functions[fn.name].name
 
   # Fix old table creation bug.
   if node_def.op == "HashTableV2":
@@ -467,6 +474,10 @@ def _list_function_deps(fdef, library_function_names):
       for _, attr_value in node_def.attr.items():
         if attr_value.WhichOneof("value") == "func":
           deps.add(attr_value.func.name)
+        elif attr_value.WhichOneof("value") == "list":
+          for fn in attr_value.list.func:
+            deps.add(fn.name)
+
   return deps
 
 

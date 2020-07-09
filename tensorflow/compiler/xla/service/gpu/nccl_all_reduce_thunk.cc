@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 
 #include <chrono>  // NOLINT (required by TF interfaces)
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -84,6 +85,11 @@ namespace gpu {
 namespace {
 
 using tensorflow::BlockingCounter;
+
+bool IsGlobalNcclConfig() {
+  static bool global_nccl_config = std::getenv("NCCL_COMM_ID") != nullptr;
+  return global_nccl_config;
+}
 
 // Functions to translate an ncclResult_t/cudaError_t to a Status object.  Used
 // by the macros below.
@@ -285,7 +291,6 @@ class NcclClique {
     std::vector<ncclComm_t> raw_comms(local_device_ordinals_.size(), nullptr);
     TF_ASSIGN_OR_RETURN(const absl::optional<std::string>& nccl_id_string,
                         maybe_nccl_unique_id);
-
     ncclUniqueId nccl_id;
     if (nccl_id_string) {
       TF_RETURN_IF_ERROR(StringToNcclUniqueId(*nccl_id_string, &nccl_id));
@@ -354,7 +359,7 @@ class RendezvousNcclAllReduce : public RendezvousBase {
       : RendezvousBase(k) {}
 
  protected:
-  StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
+  StatusOr<ParticipantImplOutput> RunCollectiveOp(
       const AllReduceParticipantData& participant) override;
 
   void CleanupImpl(std::shared_ptr<NcclClique> handle,
@@ -375,7 +380,7 @@ GlobalRendezvousMap() {
 }
 
 StatusOr<RendezvousNcclAllReduce::ParticipantImplOutput>
-RendezvousNcclAllReduce::SubmitParticipantImpl(
+RendezvousNcclAllReduce::RunCollectiveOp(
     const AllReduceParticipantData& participant) {
   // We pull into our thread a) the communication handle and b) whether we're
   // the "primary" thread for this rendezvous -- the "primary" thread has some
@@ -416,10 +421,12 @@ RendezvousNcclAllReduce::SubmitParticipantImpl(
         nccl_unique_id = (*participant.nccl_unique_id_callback)(clique_key);
       } else {
         if (participant.rendezvous_key.global_devices.size() !=
-            participant.rendezvous_key.num_local_participants) {
+                participant.rendezvous_key.num_local_participants &&
+            !IsGlobalNcclConfig()) {
           nccl_unique_id = InvalidArgument(
-              "Multihost AllReduce on GPU requires a nccl_unique_id_callback "
-              "to be provided by the client.");
+              "If not local devices are taking part of a collective API on "
+              "GPU, the nccl_unique_id_callback must be provided by the "
+              "client.");
         } else {
           nccl_unique_id = absl::optional<std::string>();
         }
@@ -568,6 +575,13 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
       std::vector<int64> global_participating_replicas,
       GetParticipatingReplicas(global_device_id, instr->replica_groups(),
                                replica_count_, *params.device_assn));
+  if (IsGlobalNcclConfig() &&
+      global_participating_replicas.size() != replica_count_) {
+    return InvalidArgument(
+        "Partial replica groups are not allowed when using NCCL_COMM_ID "
+        "environment configuration.");
+  }
+
   std::vector<GlobalDeviceId> global_devices;
   std::vector<std::pair<GlobalDeviceId, int64>> local_devices;
   local_devices.reserve(global_participating_replicas.size());
@@ -608,8 +622,8 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
             << ", local participants: "
             << absl::StrJoin(local_participants, ",");
   }
-  AllReduceParticipantData participant(rendezvous_key);
-  participant.device_ordinal = local_device_ordinal;
+  AllReduceParticipantData participant(rendezvous_key, local_device_ordinal,
+                                       params.stream);
   for (size_t i = 0; i < buffers_.size(); ++i) {
     const NcclAllReduceThunk::Buffer& buffer = buffers_[i];
     AllReduceParticipantData::Buffer pbuffer;
@@ -622,7 +636,6 @@ Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
         hlo_instruction()->operand(i)->shape().element_type();
     participant.buffers.push_back(pbuffer);
   }
-  participant.stream = params.stream;
   participant.local_devices = std::move(local_devices);
   participant.nccl_unique_id_callback = params.nccl_unique_id_callback;
   auto reduction_kind =

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/metrics.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -49,13 +49,14 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
-GraphMgr::GraphMgr(const WorkerEnv* worker_env, DeviceMgr* device_mgr)
+GraphMgr::GraphMgr(const WorkerEnv* worker_env, const DeviceMgr* device_mgr)
     : worker_env_(worker_env), device_mgr_(device_mgr), table_(5) {
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
@@ -419,8 +420,13 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
-  profiler::TraceMe activity(
-      [step_id] { return absl::StrCat("RunGraph#id=", step_id, "#"); },
+  profiler::TraceMeProducer activity(
+      // To TraceMeConsumers in ExecutorState::Process/Finish or RunGraphDone.
+      [step_id] {
+        return profiler::TraceMeEncode(
+            "RunGraph", {{"id", step_id}, {"_r", 1} /*root_event*/});
+      },
+      profiler::ContextType::kTfExecutor, step_id,
       profiler::TraceMeLevel::kInfo);
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
@@ -486,10 +492,12 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
       cancellation_manager, session,
       [item, rendezvous, ce_handle, done, start_time_usecs, input_size,
        step_id](const Status& s) {
-        profiler::TraceMe activity(
+        profiler::TraceMeConsumer activity(
+            // From TraceMeProducer in GraphMgr::ExecuteAsync.
             [step_id] {
-              return absl::StrCat("RunGraphDone#id=", step_id, "#");
+              return profiler::TraceMeEncode("RunGraphDone", {{"id", step_id}});
             },
+            profiler::ContextType::kTfExecutor, step_id,
             profiler::TraceMeLevel::kInfo);
         done(s);
         metrics::RecordGraphInputTensors(input_size);

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/master.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -56,7 +57,11 @@ class DataServiceMasterImpl {
                               GetOrRegisterDatasetResponse* response);
   Status CreateJob(const CreateJobRequest* request,
                    CreateJobResponse* response);
+  Status GetOrCreateJob(const GetOrCreateJobRequest* request,
+                        GetOrCreateJobResponse* response);
   Status GetTasks(const GetTasksRequest* request, GetTasksResponse* response);
+  Status GetWorkers(const GetWorkersRequest* request,
+                    GetWorkersResponse* response);
 
  private:
   class Worker {
@@ -72,7 +77,7 @@ class DataServiceMasterImpl {
     }
 
     std::string DebugString() {
-      return absl::StrCat("id: ", worker_id_, "address: ", address_);
+      return absl::StrCat("id: ", worker_id_, " address: ", address_);
     }
 
    private:
@@ -100,11 +105,17 @@ class DataServiceMasterImpl {
 
   class Job {
    public:
-    Job(int64 job_id, int64 dataset_id)
-        : job_id_(job_id), dataset_id_(dataset_id) {}
+    Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
+        absl::optional<absl::string_view> job_name)
+        : job_id_(job_id),
+          dataset_id_(dataset_id),
+          processing_mode_(processing_mode),
+          job_name_(job_name) {}
 
     int64 job_id() const { return job_id_; }
     int64 dataset_id() const { return dataset_id_; }
+    ProcessingMode processing_mode() const { return processing_mode_; }
+    absl::optional<std::string> name() const { return job_name_; }
     const std::vector<int64>& task_ids() const { return task_ids_; }
     void add_task_id(int64 task_id) { task_ids_.push_back(task_id); }
     void task_finished(int64 task_id) {
@@ -118,9 +129,30 @@ class DataServiceMasterImpl {
    private:
     const int64 job_id_;
     const int64 dataset_id_;
+    const ProcessingMode processing_mode_;
+    const absl::optional<std::string> job_name_;
     std::vector<int64> task_ids_;
     std::vector<int64> finished_tasks_;
     bool finished_ = false;
+  };
+
+  class NamedJobKey {
+   public:
+    NamedJobKey(absl::string_view name, int64 index)
+        : name_(name), index_(index) {}
+
+    friend bool operator==(const NamedJobKey& lhs, const NamedJobKey& rhs) {
+      return lhs.name_ == rhs.name_ && lhs.index_ == rhs.index_;
+    }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const NamedJobKey& k) {
+      return H::combine(std::move(h), k.name_, k.index_);
+    }
+
+   private:
+    const std::string name_;
+    const int64 index_;
   };
 
   class Task {
@@ -145,14 +177,27 @@ class DataServiceMasterImpl {
   };
 
   // Registers a dataset with the given fingerprint, returning a new dataset id.
-  int64 RegisterDataset(uint64 fingerprint, const DatasetDef& dataset);
+  int64 RegisterDataset(uint64 fingerprint, const DatasetDef& dataset)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Initializes a workers stub, if it hasn't been initialized already.
   Status EnsureWorkerStubInitialized(Worker* worker);
   // Instructs a worker to begin processing a task.
-  Status AllocateTaskToWorker(const Task& task_id, Worker* worker);
-  // Creates a new task for a job, returning the new task's id.
-  int64 CreateTask(Job* job, const std::string& worker_address);
-
+  Status AllocateTaskToWorker(const Task& task_id, Worker* worker)
+      LOCKS_EXCLUDED(mu_);
+  // Creates a job and stores its job_id in `*job_id`.
+  Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
+                   absl::optional<std::string> job_name, int64* out_job_id)
+      LOCKS_EXCLUDED(mu_);
+  // Creates a new task for a job, returning a reference to the task.
+  const Task& CreateTask(Job* job, const std::string& worker_address)
+      LOCKS_EXCLUDED(mu_);
+  // Same as `CreateTask`, but expects that the master lock is already held.
+  const Task& CreateTaskLocked(Job* job, const std::string& worker_address)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Validates that an existing job matches the given processing_mode and
+  // dataset_id, returning an error status describing any difference.
+  Status ValidateMatchingJob(const Job& job, ProcessingMode processing_mode,
+                             int64 dataset_id);
   // Protocol to use for communicating with workers.
   const std::string protocol_;
 
@@ -164,7 +209,7 @@ class DataServiceMasterImpl {
   int64 next_task_id_ TF_GUARDED_BY(mu_) = 0;
 
   // Registered workers.
-  std::vector<Worker> workers_ TF_GUARDED_BY(mu_);
+  std::vector<std::shared_ptr<Worker>> workers_ TF_GUARDED_BY(mu_);
   // Registered datasets, keyed by dataset ids.
   absl::flat_hash_map<int64, std::shared_ptr<Dataset>> datasets_by_id_
       TF_GUARDED_BY(mu_);
@@ -172,9 +217,13 @@ class DataServiceMasterImpl {
   absl::flat_hash_map<uint64, std::shared_ptr<Dataset>> datasets_by_fingerprint_
       TF_GUARDED_BY(mu_);
   // Information about jobs, keyed by job ids.
-  absl::flat_hash_map<int64, Job> jobs_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_ TF_GUARDED_BY(mu_);
   // Information about tasks, keyed by task ids.
   absl::flat_hash_map<int64, Task> tasks_ TF_GUARDED_BY(mu_);
+  // Named jobs, keyed by their names and indices. Not all jobs have names, so
+  // this is a subset of the jobs stored in `jobs_`.
+  absl::flat_hash_map<NamedJobKey, std::shared_ptr<Job>> named_jobs_
+      TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(DataServiceMasterImpl);
 };

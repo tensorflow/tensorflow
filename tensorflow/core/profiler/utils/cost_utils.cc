@@ -15,12 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/cost_utils.h"
 
+#include <string>
+#include <vector>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/grappler/costs/cost_estimator.h"
+#include "tensorflow/core/grappler/costs/op_context.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -72,35 +87,34 @@ grappler::DeviceInfo TfOpRoofLineCostEstimator::GetDeviceInfo(
 TfOpRoofLineCostEstimator::OpRoofLineStats TfOpRoofLineCostEstimator::Predict(
     const XEventVisitor& event) {
   TfOp tf_op;
-  bool has_shape_stats = false;
-  std::vector<std::string> input_tensors;
+  absl::string_view tensor_shapes;
   event.ForEachStat([&](const XStatVisitor& stat) {
-    if (stat.Type() == StatType::kLevel0) {
-      tf_op = ParseTfOpFullname(stat.StrOrRefValue());
-    } else if (stat.Type() == StatType::kTensorShapes) {
-      has_shape_stats = true;
-      auto shapes_stats = stat.StrOrRefValue();
-      absl::ConsumePrefix(&shapes_stats, "(");
-      absl::ConsumeSuffix(&shapes_stats, ")");
-      input_tensors = absl::StrSplit(shapes_stats, ';');
+    if (!stat.Type().has_value()) return;
+    switch (stat.Type().value()) {
+      case StatType::kLevel0:
+        tf_op = ParseTfOpFullname(stat.StrOrRefValue());
+        break;
+      case StatType::kTensorShapes:
+        tensor_shapes = stat.StrOrRefValue();
+        break;
     }
   });
 
   // Return empty OpRoofLineStats if shape is not traced or this is not a tf op.
-  if (tf_op.type.empty() || !has_shape_stats) {
+  if (tf_op.type.empty() || tensor_shapes.empty()) {
     return {0ULL, 0ULL, /*inaccurate=*/true};
   }
 
   grappler::OpContext op_context;
   op_context.name = std::string(tf_op.type);
   op_context.op_info.set_op(op_context.name);
-  for (const auto& tensor : input_tensors) {
+  for (absl::string_view tensor : ParseTensorShapes(tensor_shapes)) {
     *op_context.op_info.add_inputs() = GetTensorProperties(tensor);
   }
   grappler::Costs costs = PredictCosts(op_context);
   if (costs.inaccurate) unsupported_ops_.insert(std::string(tf_op.type));
 
-  VLOG(1) << tf_op.type << "[" << absl::StrJoin(input_tensors, ",") << "]"
+  VLOG(1) << tf_op.type << tensor_shapes
           << " flops:" << costs.compute_time.count()
           << " bytes:" << costs.memory_time.count();
 

@@ -83,16 +83,16 @@ def watch_graph(run_options,
                 graph,
                 debug_ops="DebugIdentity",
                 debug_urls=None,
-                node_name_regex_whitelist=None,
-                op_type_regex_whitelist=None,
-                tensor_dtype_regex_whitelist=None,
+                node_name_regex_allowlist=None,
+                op_type_regex_allowlist=None,
+                tensor_dtype_regex_allowlist=None,
                 tolerate_debug_op_creation_failures=False,
                 global_step=-1,
                 reset_disk_byte_usage=False):
   """Add debug watches to `RunOptions` for a TensorFlow graph.
 
-  To watch all `Tensor`s on the graph, let both `node_name_regex_whitelist`
-  and `op_type_regex_whitelist` be the default (`None`).
+  To watch all `Tensor`s on the graph, let both `node_name_regex_allowlist`
+  and `op_type_regex_allowlist` be the default (`None`).
 
   N.B.:
     1. Under certain circumstances, the `Tensor` may not get actually watched
@@ -114,17 +114,17 @@ def watch_graph(run_options,
       For debug op types with customizable attributes, each debug op name string
       can optionally contain a list of attribute names, in the syntax of:
         debug_op_name(attr_name_1=attr_value_1;attr_name_2=attr_value_2;...)
-    node_name_regex_whitelist: Regular-expression whitelist for node_name,
+    node_name_regex_allowlist: Regular-expression allowlist for node_name,
       e.g., `"(weight_[0-9]+|bias_.*)"`
-    op_type_regex_whitelist: Regular-expression whitelist for the op type of
+    op_type_regex_allowlist: Regular-expression allowlist for the op type of
       nodes, e.g., `"(Variable|Add)"`.
-      If both `node_name_regex_whitelist` and `op_type_regex_whitelist`
+      If both `node_name_regex_allowlist` and `op_type_regex_allowlist`
       are set, the two filtering operations will occur in a logical `AND`
       relation. In other words, a node will be included if and only if it
-      hits both whitelists.
-    tensor_dtype_regex_whitelist: Regular-expression whitelist for Tensor
+      hits both allowlists.
+    tensor_dtype_regex_allowlist: Regular-expression allowlist for Tensor
       data type, e.g., `"^int.*"`.
-      This whitelist operates in logical `AND` relations to the two whitelists
+      This allowlist operates in logical `AND` relations to the two allowlists
       above.
     tolerate_debug_op_creation_failures: (`bool`) whether debug op creation
       failures (e.g., due to dtype incompatibility) are to be tolerated by not
@@ -142,12 +142,14 @@ def watch_graph(run_options,
   if isinstance(debug_ops, str):
     debug_ops = [debug_ops]
 
-  node_name_pattern = (re.compile(node_name_regex_whitelist)
-                       if node_name_regex_whitelist else None)
-  op_type_pattern = (re.compile(op_type_regex_whitelist)
-                     if op_type_regex_whitelist else None)
-  tensor_dtype_pattern = (re.compile(tensor_dtype_regex_whitelist)
-                          if tensor_dtype_regex_whitelist else None)
+  node_name_pattern = (
+      re.compile(node_name_regex_allowlist)
+      if node_name_regex_allowlist else None)
+  op_type_pattern = (
+      re.compile(op_type_regex_allowlist) if op_type_regex_allowlist else None)
+  tensor_dtype_pattern = (
+      re.compile(tensor_dtype_regex_allowlist)
+      if tensor_dtype_regex_allowlist else None)
 
   ops = graph.get_operations()
   for op in ops:
@@ -210,7 +212,7 @@ def watch_graph_with_blacklists(run_options,
   """Add debug tensor watches, blacklisting nodes and op types.
 
   This is similar to `watch_graph()`, but the node names and op types are
-  blacklisted, instead of whitelisted.
+  blacklisted, instead of allowlisted.
 
   N.B.:
     1. Under certain circumstances, the `Tensor` may not get actually watched
@@ -238,7 +240,7 @@ def watch_graph_with_blacklists(run_options,
       neither of the blacklists.
     tensor_dtype_regex_blacklist: Regular-expression blacklist for Tensor
       data type, e.g., `"^int.*"`.
-      This blacklist operates in logical `OR` relations to the two whitelists
+      This blacklist operates in logical `OR` relations to the two allowlists
       above.
     tolerate_debug_op_creation_failures: (`bool`) whether debug op creation
       failures (e.g., due to dtype incompatibility) are to be tolerated by not

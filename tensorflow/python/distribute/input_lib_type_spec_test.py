@@ -30,11 +30,14 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import ragged_tensor as ragged_tensor_lib
+from tensorflow.python.util import nest
 
 
 class DistributedIteratorTest(test.TestCase,
@@ -62,6 +65,7 @@ class DistributedIteratorTest(test.TestCase,
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     with distribution.scope():
       iterator = iter(dist_dataset)
+      _check_type_spec_structure(iterator)
 
     spec = iterator._type_spec
     self.assertEqual(spec._input_workers, iterator._input_workers)
@@ -94,6 +98,7 @@ class DistributedIteratorTest(test.TestCase,
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     with distribution.scope():
       iterator = iter(dist_dataset)
+      _check_type_spec_structure(iterator)
 
     spec = iterator._type_spec
 
@@ -138,6 +143,7 @@ class DistributedIteratorTest(test.TestCase,
     with distribution.scope():
       for _ in range(3):
         iterator = iter(dist_dataset)
+        _check_type_spec_structure(iterator)
         counter = f(iterator)
 
         self.assertEqual(trace_count[0], 1)
@@ -172,6 +178,7 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
       ds = distribution.experimental_distribute_datasets_from_function(
           dataset_fn)
       iterator = iter(ds)
+      _check_type_spec_structure(iterator)
       type_spec = iterator.element_spec
 
     @def_function.function(input_signature=[type_spec])
@@ -205,6 +212,40 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
 
     for x in dist_dataset:
       process_inputs(x)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          input_type=["dataset"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+          ],
+          enable_get_next_as_optional=[True, False]))
+  def testMostSpecificCompatibleType(self, input_type, distribution,
+                                     enable_get_next_as_optional):
+    if not tf2.enabled():
+      self.skipTest("DistributedIterator has CompositeTensor support in "
+                    "TF 2 only.")
+    distribution.extended.experimental_enable_get_next_as_optional = (
+        enable_get_next_as_optional)
+
+    ds1 = dataset_ops.DatasetV2.range(10).batch(2).batch(5)
+    ds2 = dataset_ops.DatasetV2.from_tensors(
+        array_ops.zeros([5, 2], dtypes.int64))
+    dist_ds1 = distribution.experimental_distribute_dataset(ds1)
+    dist_ds2 = distribution.experimental_distribute_dataset(ds2)
+
+    with distribution.scope():
+      iter1 = iter(dist_ds1)
+      iter2 = iter(dist_ds2)
+
+    spec1 = iter1._type_spec  # Wrapped TensorSpec has shape [None, None]
+    spec2 = iter2._type_spec  # Wrapped TensorSpec has shape [None, 2]
+
+    self.assertNotEqual(spec1, spec2)
+    self.assertEqual(spec1, spec1.most_specific_compatible_type(spec2))
+    self.assertEqual(spec1, spec2.most_specific_compatible_type(spec1))
 
 
 class RaggedTensorDistributedIteratorTest(test.TestCase,
@@ -241,6 +282,7 @@ class RaggedTensorDistributedIteratorTest(test.TestCase,
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     with distribution.scope():
       iterator = iter(dist_dataset)
+      _check_type_spec_structure(iterator)
 
     spec = iterator._type_spec
     self.assertEqual(spec._input_workers, iterator._input_workers)
@@ -301,6 +343,7 @@ class RaggedTensorDistributedIteratorTest(test.TestCase,
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     with distribution.scope():
       iterator = iter(dist_dataset)
+      _check_type_spec_structure(iterator)
 
     spec = iterator._type_spec
 
@@ -356,10 +399,17 @@ class RaggedTensorDistributedIteratorTest(test.TestCase,
     with distribution.scope():
       for _ in range(3):
         iterator = iter(dist_dataset)
+        _check_type_spec_structure(iterator)
         counter = f(iterator)
 
         self.assertEqual(trace_count[0], 1)
         self.assertEqual(counter, 5)
+
+
+def _check_type_spec_structure(x):
+  """Verifies that `x` has the same structure as its `TypeSpec`."""
+  if isinstance(x, composite_tensor.CompositeTensor):
+    nest.assert_same_structure(x, x._type_spec, expand_composites=True)
 
 
 if __name__ == "__main__":

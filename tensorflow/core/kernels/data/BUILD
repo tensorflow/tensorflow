@@ -3,6 +3,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_not_mobile",
     "tf_cc_test",
     "tf_kernel_library",
 )
@@ -150,6 +151,7 @@ cc_library(
         ":dataset_utils",
         ":single_threaded_executor",
         ":stats_utils",
+        "@com_google_absl//absl/time",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -158,8 +160,10 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/time",
-    ],
+    ] + if_not_mobile([
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
+    ]),
 )
 
 cc_library(
@@ -167,9 +171,9 @@ cc_library(
     srcs = ["single_threaded_executor.cc"],
     hdrs = ["single_threaded_executor.h"],
     deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:core_cpu_internal",
+        "//tensorflow/core/common_runtime:entry",
         "//tensorflow/core/common_runtime:local_executor_params",
     ],
     alwayslink = 1,
@@ -466,6 +470,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
 )
 
@@ -605,6 +611,8 @@ tf_kernel_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -670,6 +678,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
 )
 

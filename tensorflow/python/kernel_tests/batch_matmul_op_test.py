@@ -235,7 +235,7 @@ class BatchMatMulBenchmark(test.Benchmark):
             GetRandomNormalInput(a_shape, np.float32))
         matrix_b = variables.Variable(
             GetRandomNormalInput(b_shape, np.float32))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Use batch matmul op's internal broadcasting.
         self.run_op_benchmark(

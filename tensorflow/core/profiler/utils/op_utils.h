@@ -16,13 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_OP_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_OP_UTILS_H_
 
-#include <string>
-
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -72,10 +70,14 @@ class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
   //                      picoseconds.
   //   flops = the number of floating-point operations computed.
   //   bytes_accessed = the sum of bytes read and bytes written by this OP.
+  //   memory_accessed_breakdown = the breakdown of memory accessed by operation
+  //                               type and memory space.
   void EnterOp(uint64 program_id, absl::string_view name,
                absl::string_view category, absl::string_view provenance,
                bool is_eager, uint64 occurrences, uint64 time_ps,
-               uint64 children_time_ps, int64 flops, int64 bytes_accessed);
+               uint64 children_time_ps, int64 flops, int64 bytes_accessed,
+               const protobuf::RepeatedPtrField<OpMetrics_MemoryAccessed>&
+                   memory_accessed_breakdown = {});
 
  protected:
   // Peak performance of a TensorCore or a GPU in TFLOP/s.

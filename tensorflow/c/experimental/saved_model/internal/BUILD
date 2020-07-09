@@ -23,13 +23,6 @@ package(
 )
 
 cc_library(
-    name = "conversion_macros",
-    hdrs = [
-        "conversion_macros.h",
-    ],
-)
-
-cc_library(
     name = "concrete_function",
     srcs = [
         "concrete_function.cc",
@@ -38,9 +31,6 @@ cc_library(
         "//tensorflow/c/experimental/saved_model/public:concrete_function.h",
     ],
     copts = tf_copts(),
-    # TODO(bmzhao): Remove this as we refactor C API to granular targets,
-    # so that we can depend on c/eager/c_api_unified_experimental.h.
-    features = ["-layering_check"],
     visibility = [
         "//tensorflow/c/experimental/saved_model/public:__pkg__",
     ],
@@ -48,11 +38,16 @@ cc_library(
         ":concrete_function_type",
         ":function_metadata",
         ":function_metadata_type",
+        ":tensorhandle_list",
+        ":tensorhandle_list_type",
         "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:immediate_execution_operation",
+        "//tensorflow/c/eager:tfe_op_internal",
         "//tensorflow/c/experimental/saved_model/core:concrete_function",
         "//tensorflow/c/experimental/saved_model/core:function_metadata",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -93,7 +88,7 @@ cc_library(
         "concrete_function_type.h",
     ],
     deps = [
-        ":conversion_macros",
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c/experimental/saved_model/core:concrete_function",
     ],
 )
@@ -123,7 +118,7 @@ cc_library(
         "function_metadata_type.h",
     ],
     deps = [
-        ":conversion_macros",
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c/experimental/saved_model/core:function_metadata",
     ],
 )
@@ -151,7 +146,9 @@ cc_library(
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/c/experimental/saved_model/core:saved_model_api",
+        "//tensorflow/c/experimental/saved_model/core:tf_saved_model_api",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:context",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -162,7 +159,40 @@ cc_library(
         "saved_model_api_type.h",
     ],
     deps = [
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c/experimental/saved_model/core:saved_model_api",
+    ],
+)
+
+cc_library(
+    name = "tensorhandle_list",
+    srcs = [
+        "tensorhandle_list.cc",
+    ],
+    hdrs = [
+        "//tensorflow/c/experimental/saved_model/public:tensorhandle_list.h",
+    ],
+    copts = tf_copts(),
+    visibility = [
+        "//tensorflow/c/experimental/saved_model/public:__pkg__",
+    ],
+    deps = [
+        ":tensorhandle_list_type",
+        "//tensorflow/c:c_api_macros",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
+    ],
+)
+
+cc_library(
+    name = "tensorhandle_list_type",
+    hdrs = [
+        "tensorhandle_list_type.h",
+    ],
+    deps = [
+        "//tensorflow/c:conversion_macros",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
     ],
 )
 
@@ -177,9 +207,13 @@ tf_cc_test(
     ],
     deps = [
         "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/c/experimental/saved_model/public:concrete_function",
         "//tensorflow/c/experimental/saved_model/public:saved_model_api",
+        "//tensorflow/c/experimental/saved_model/public:tensorhandle_list",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

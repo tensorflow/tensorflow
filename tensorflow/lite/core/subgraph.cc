@@ -533,6 +533,11 @@ void Subgraph::SetCancellationFunction(void* data,
   check_cancelled_func_ = check_cancelled_func;
 }
 
+bool Subgraph::IsCancelled() {
+  return (check_cancelled_func_ != nullptr) &&
+         (*check_cancelled_func_)(cancellation_data_);
+}
+
 void Subgraph::ReserveNodes(int count) {
   nodes_and_registration_.reserve(count);
 }
@@ -1183,7 +1188,8 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
   // Note that in theory we could resize kTfLiteArenaRwPersistent tensors too.
   if (tensor->allocation_type == kTfLiteArenaRw ||
       tensor->allocation_type == kTfLiteDynamic ||
-      tensor->allocation_type == kTfLiteArenaRwPersistent) {
+      tensor->allocation_type == kTfLiteArenaRwPersistent ||
+      tensor->allocation_type == kTfLitePersistentRo) {
     tensor_resized_since_op_invoke_ |=
         TfLiteIntArrayEqual(tensor->dims, new_size) == 0;
     if (tensor->type != kTfLiteString) {
@@ -1195,14 +1201,16 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
         return kTfLiteError;
       }
 
-      // Realloc space for kTfLiteDynamic tensors.
+      // Realloc space for heap-allocated tensors.
       TfLiteTensorRealloc(bytesRequired, tensor);
       tensor->bytes = bytesRequired;
     }
     if (tensor->dims) TfLiteIntArrayFree(tensor->dims);
     tensor->dims = new_size;
 
-    if (tensor->allocation_type != kTfLiteDynamic) {
+    // Reset arena-allocated tensors; they will be allocated later.
+    if (tensor->allocation_type == kTfLiteArenaRw ||
+        tensor->allocation_type == kTfLiteArenaRwPersistent) {
       tensor->data.raw = nullptr;
     }
   } else {
@@ -1311,6 +1319,22 @@ TfLiteStatus Subgraph::RemoveAllDelegates() {
   delegates_undone_ = false;
   TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
   return kTfLiteOk;
+}
+
+bool Subgraph::HasDelegates() { return !delegates_applied_.empty(); }
+
+void Subgraph::EnsureTensorsVectorCapacity() {
+  const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
+  if (required_capacity > tensors_.capacity()) {
+    // Whenever it's required to increase the vector capacity, make it at
+    // least twice bigger. The behavior is consistent with the default
+    // behavior of GCC STL's `std::vector::resize()`. This avoids frequently
+    // allocating and copying the underlying buffer.
+    size_t reserved_capacity =
+        std::max(required_capacity, tensors_.capacity() * 2);
+    tensors_.reserve(reserved_capacity);
+    context_.tensors = tensors_.data();
+  }
 }
 
 TfLiteStatus Subgraph::EnsureMemoryAllocations() {

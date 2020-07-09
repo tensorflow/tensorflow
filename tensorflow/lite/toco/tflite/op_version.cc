@@ -29,7 +29,7 @@ namespace tflite {
 
 // Deprecated and please register new ops/versions in
 // tflite/tools/versioning/op_version.cc".
-string GetMinimumRuntimeVersionForModel(const Model& model) {
+std::string GetMinimumRuntimeVersionForModel(const Model& model) {
   // Use this as the placeholder string if a particular op is not yet included
   // in any Tensorflow's RC/Final release source package. Once that op is
   // included in the release, please update this with the real version string.
@@ -37,17 +37,20 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
   // A map from the version key of an op to its minimum runtime version.
   // For example, {{kAveragePool, 1}, "1.5.0"},  means the 1st version of
   // AveragePool requires a minimum TF Lite runtime version '1.5.0`.
-  static const std::map<std::pair<OperatorType, int>, string>* op_version_map =
-      new std::map<std::pair<OperatorType, int>, string>({
+  static const std::map<std::pair<OperatorType, int>, std::string>*
+      op_version_map = new std::map<std::pair<OperatorType, int>, std::string>({
           {{OperatorType::kAveragePool, 1}, "1.5.0"},
           {{OperatorType::kAveragePool, 2}, "1.14.0"},
           {{OperatorType::kAveragePool, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kConv, 1}, "1.5.0"},
           {{OperatorType::kConv, 2}, "1.14.0"},
           {{OperatorType::kConv, 3}, "1.14.0"},
+          {{OperatorType::kConv, 4}, kPendingReleaseOpVersion},
           {{OperatorType::kDepthwiseConv, 1}, "1.5.0"},
           {{OperatorType::kDepthwiseConv, 2}, "1.12.0"},
           {{OperatorType::kDepthwiseConv, 3}, "1.14.0"},
+          {{OperatorType::kDepthwiseConv, 4}, "1.14.0"},
+          {{OperatorType::kDepthwiseConv, 5}, kPendingReleaseOpVersion},
           {{OperatorType::kAdd, 1}, "1.5.0"},
           {{OperatorType::kAdd, 2}, "1.14.0"},
           {{OperatorType::kAddN, 1}, "1.14.0"},
@@ -55,6 +58,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kSpaceToBatchND, 2}, "1.14.0"},
           {{OperatorType::kSub, 1}, "1.6.0"},
           {{OperatorType::kSub, 2}, "1.14.0"},
+          {{OperatorType::kSub, 4}, kPendingReleaseOpVersion},
           {{OperatorType::kDiv, 1}, "1.6.0"},
           {{OperatorType::kBatchToSpaceND, 1}, "1.6.0"},
           {{OperatorType::kBatchToSpaceND, 2}, "1.14.0"},
@@ -62,6 +66,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kCast, 1}, "1.5.0"},
           {{OperatorType::kConcatenation, 1}, "1.5.0"},
           {{OperatorType::kConcatenation, 2}, "1.14.0"},
+          {{OperatorType::kConcatenation, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kDepthToSpace, 1}, "2.1.0"},
           {{OperatorType::kFakeQuant, 1}, "1.5.0"},
           {{OperatorType::kFakeQuant, 2}, "1.10.0"},
@@ -71,6 +76,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kFullyConnected, 4}, "1.14.0"},
           {{OperatorType::kFullyConnected, 5}, "2.0.0"},
           {{OperatorType::kFullyConnected, 6}, "2.1.0"},
+          {{OperatorType::kFullyConnected, 7}, kPendingReleaseOpVersion},
           {{OperatorType::kGather, 1}, "1.6.0"},
           {{OperatorType::kGather, 2}, "1.14.0"},
           {{OperatorType::kGather, 3}, "1.15.0"},
@@ -89,21 +95,26 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kMaximum, 1}, "1.14.0"},
           {{OperatorType::kMaximum, 2}, "1.14.0"},
           {{OperatorType::kMaximum, 3}, kPendingReleaseOpVersion},
+          {{OperatorType::kMaximum, 4}, kPendingReleaseOpVersion},
           {{OperatorType::kMinimum, 1}, "1.14.0"},
           {{OperatorType::kMinimum, 2}, "1.14.0"},
           {{OperatorType::kMinimum, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kMul, 1}, "1.5.0"},
           {{OperatorType::kMul, 2}, "1.14.0"},
           {{OperatorType::kMul, 3}, "1.15.0"},
+          {{OperatorType::kMul, 4}, kPendingReleaseOpVersion},
           {{OperatorType::kPad, 1}, "1.5.0"},
           {{OperatorType::kPad, 2}, "1.14.0"},
+          {{OperatorType::kPad, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kTile, 1}, "1.10.1"},
           {{OperatorType::kTile, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kPadV2, 1}, "1.9.0"},
           {{OperatorType::kPadV2, 2}, "1.14.0"},
+          {{OperatorType::kPadV2, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kReshape, 1}, "1.5.0"},
           {{OperatorType::kSoftmax, 1}, "1.5.0"},
           {{OperatorType::kSoftmax, 2}, "1.14.0"},
+          {{OperatorType::kSoftmax, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kSpaceToDepth, 1}, "1.5.0"},
           {{OperatorType::kSpaceToDepth, 2}, "1.14.0"},
           {{OperatorType::kTranspose, 1}, "1.6.0"},
@@ -133,10 +144,12 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kResizeBilinear, 3}, "2.2.0"},
           {{OperatorType::kResizeNearestNeighbor, 1}, "1.13.1"},
           {{OperatorType::kResizeNearestNeighbor, 2}, "1.14.0"},
+          {{OperatorType::kResizeNearestNeighbor, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kSqueeze, 1}, "1.6.0"},
           {{OperatorType::kSplit, 1}, "1.5.0"},
           {{OperatorType::kSplit, 2}, "1.14.0"},
           {{OperatorType::kSplit, 3}, "1.14.0"},
+          {{OperatorType::kSplit, 4}, kPendingReleaseOpVersion},
           {{OperatorType::kSplitV, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kStridedSlice, 1}, "1.6.0"},
           {{OperatorType::kStridedSlice, 2}, "1.14.0"},
@@ -163,6 +176,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kSlice, 3}, "1.14.0"},
           {{OperatorType::kTanh, 1}, "1.14.0"},
           {{OperatorType::kTanh, 2}, "1.14.0"},
+          {{OperatorType::kTanh, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kOneHot, 1}, "1.11.0"},
           {{OperatorType::kCTCBeamSearchDecoder, 1}, "1.11.0"},
           {{OperatorType::kUnpack, 1}, "1.11.0"},
@@ -170,8 +184,10 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kUnpack, 3}, "2.2.0"},
           {{OperatorType::kUnpack, 4}, kPendingReleaseOpVersion},
           {{OperatorType::kLeakyRelu, 1}, "1.13.1"},
+          {{OperatorType::kLeakyRelu, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kLogistic, 1}, "1.14.0"},
           {{OperatorType::kLogistic, 2}, "1.14.0"},
+          {{OperatorType::kLogistic, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kLogSoftmax, 1}, "1.14.0"},
           {{OperatorType::kLogSoftmax, 2}, "1.14.0"},
           {{OperatorType::kSquaredDifference, 1}, "1.13.1"},
@@ -240,7 +256,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
       tflite::BuildOperatorByTypeMap(false /*enable_select_tf_ops=*/);
   OperatorSignature op_signature;
   op_signature.model = &model;
-  string model_min_version;
+  std::string model_min_version;
   for (const auto& op : model.operators) {
     if (op_types_map.find(op->type) == op_types_map.end()) continue;
     op_signature.op = op.get();

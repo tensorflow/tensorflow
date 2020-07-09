@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -71,8 +72,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
 }  // namespace
 
 absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
+                                 const tflite::OpResolver& op_resolver,
                                  GraphFloat32* graph) {
-  ops::builtin::BuiltinOpResolver op_resolver;
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder interpreter_builder(flatbuffer, op_resolver);
   if (interpreter_builder(&interpreter) != kTfLiteOk || !interpreter) {

@@ -22,6 +22,8 @@ limitations under the License.
 #include <unordered_map>
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
@@ -35,10 +37,16 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 
 namespace mlir {
 namespace quant {
+
+// A unit attribute can be attached to the quantize/dequantize ops which are
+// added by the quantization passes. These ops can be removed erased without
+// losing accuracy.
+constexpr char kVolatileOpAttrName[] = "volatile";
 
 using QuantParams = quant::QuantizedType;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
@@ -164,7 +172,7 @@ struct QuantizationPattern : public RewritePattern {
     Value quantized_value = op->getResult(0);
     for (Operation* quantized_op : quantized_value.getUsers()) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<Q>(quantized_op) || llvm::isa<DQ>(quantized_op)) {
+      if (llvm::isa<Q, DQ>(quantized_op)) {
         return failure();
       }
 
@@ -172,8 +180,8 @@ struct QuantizationPattern : public RewritePattern {
       // ops dialect, we shouldn't rewrite.
       if (quantized_op->isKnownTerminator() ||
           quantized_op->hasTrait<OpTrait::quant::NoQuantizableResult>() ||
-          llvm::isa<quant::QuantizeCastOp>(quantized_op) ||
-          llvm::isa<quant::DequantizeCastOp>(quantized_op)) {
+          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp>(
+              quantized_op)) {
         return failure();
       }
 
@@ -359,6 +367,54 @@ struct ConvertUnsignedToSigned : public OpRewritePattern<Q> {
     Type new_output_type = new_qtype.castFromExpressedType(
         QType::castToExpressedType(output_type));
     rewriter.replaceOpWithNewOp<Q>(op, new_output_type, op.arg());
+    return success();
+  }
+};
+
+// Fold Extra Requantize ops if the preceding ops has free scale requirement.
+template <typename RQ>
+struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
+  explicit FoldTrivalRequantizeOp(MLIRContext* context)
+      : OpRewritePattern<RQ>(context, 1) {}
+
+  LogicalResult matchAndRewrite(RQ op,
+                                PatternRewriter& rewriter) const override {
+    Value pre_quantized = op.input();
+    auto pre_quantized_type =
+        quant::QuantizedType::getQuantizedElementType(pre_quantized.getType());
+    if (!pre_quantized_type) return failure();
+
+    Operation* def = pre_quantized.getDefiningOp();
+    if (!def) return failure();
+    if (llvm::isa<FixedOutputRangeInterface, SameScalesOpInterface>(def) ||
+        def->hasTrait<OpTrait::quant::NoQuantizableResult>()) {
+      return failure();
+    }
+
+    op.emitWarning("Remove trivial `rescale` op. Please fix the source graph.");
+
+    llvm::SmallVector<Type, 4> new_output_types;
+    for (auto result : def->getResults()) {
+      result.getUsers().begin()->dump();
+      op.dump();
+      if (result.hasOneUse() && *result.getUsers().begin() == op) {
+        new_output_types.push_back(op.qtype());
+      } else {
+        new_output_types.push_back(result.getType());
+      }
+    }
+
+    // Remove this rescale op.
+    rewriter.replaceOp(op, {pre_quantized});
+
+    // Replace the output scale of the preceding op.
+    rewriter.setInsertionPointAfter(def);
+    OperationState new_state(def->getLoc(), def->getName().getStringRef(),
+                             def->getOperands(), new_output_types,
+                             def->getAttrs());
+    Operation* new_op = rewriter.createOperation(new_state);
+
+    rewriter.replaceOp(def, new_op->getResults());
     return success();
   }
 };

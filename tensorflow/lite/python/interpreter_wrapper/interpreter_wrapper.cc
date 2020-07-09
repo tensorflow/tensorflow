@@ -14,13 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 
-// Windows does not have dlfcn.h/dlsym, use GetProcAddress() instead.
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif  // defined(_WIN32)
-
 #include <stdarg.h>
 
 #include <sstream>
@@ -36,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
+#include "tensorflow/lite/shared_library.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/util.h"
 
@@ -154,25 +148,13 @@ bool RegisterCustomOpByName(const char* registerer_name,
 
   // Look for the Registerer function by name.
   RegistererFunctionType registerer = reinterpret_cast<RegistererFunctionType>(
-  // We don't have dlsym on Windows, use GetProcAddress instead.
-#if defined(_WIN32)
-      GetProcAddress(nullptr, registerer_name)
-#else
-      dlsym(RTLD_DEFAULT, registerer_name)
-#endif  // defined(_WIN32)
-  );
+      SharedLibrary::GetSymbol(registerer_name));
 
   // Fail in an informative way if the function was not found.
   if (registerer == nullptr) {
-    // We don't have dlerror on Windows, use GetLastError instead.
     *error_msg =
-#if defined(_WIN32)
-        absl::StrFormat("Looking up symbol '%s' failed with error (0x%x).",
-                        registerer_name, GetLastError());
-#else
         absl::StrFormat("Looking up symbol '%s' failed with error '%s'.",
-                        registerer_name, dlerror());
-#endif  // defined(_WIN32)
+                        registerer_name, SharedLibrary::GetError());
     return false;
   }
 
@@ -257,7 +239,7 @@ PyObject* InterpreterWrapper::OutputIndices() const {
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
 }
 
-PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value) {
+PyObject* InterpreterWrapper::ResizeInputTensorImpl(int i, PyObject* value) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
 
   std::unique_ptr<PyObject, PyDecrefDeleter> array_safe(
@@ -282,10 +264,27 @@ PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value) {
     return nullptr;
   }
 
+  PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(array),
+                      NPY_ARRAY_OWNDATA);
+  return PyArray_Return(reinterpret_cast<PyArrayObject*>(array));
+}
+
+PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value,
+                                                bool strict) {
+  PyArrayObject* array =
+      reinterpret_cast<PyArrayObject*>(ResizeInputTensorImpl(i, value));
+  if (array == nullptr) {
+    return nullptr;
+  }
+
   std::vector<int> dims(PyArray_SHAPE(array)[0]);
   memcpy(dims.data(), PyArray_BYTES(array), dims.size() * sizeof(int));
 
-  TFLITE_PY_CHECK(interpreter_->ResizeInputTensor(i, dims));
+  if (strict) {
+    TFLITE_PY_CHECK(interpreter_->ResizeInputTensorStrict(i, dims));
+  } else {
+    TFLITE_PY_CHECK(interpreter_->ResizeInputTensor(i, dims));
+  }
   Py_RETURN_NONE;
 }
 
@@ -592,6 +591,7 @@ PyObject* InterpreterWrapper::GetTensor(int i) const {
       size_t size_of_type;
       if (GetSizeOfType(nullptr, tensor->type, &size_of_type) != kTfLiteOk) {
         PyErr_SetString(PyExc_ValueError, "Unknown tensor type.");
+        free(data);
         return nullptr;
       }
       sparse_buffer_dims[0] = tensor->bytes / size_of_type;
@@ -685,6 +685,12 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
 PyObject* InterpreterWrapper::ResetVariableTensors() {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_CHECK(interpreter_->ResetVariableTensors());
+  Py_RETURN_NONE;
+}
+
+PyObject* InterpreterWrapper::SetNumThreads(int num_threads) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  interpreter_->SetNumThreads(num_threads);
   Py_RETURN_NONE;
 }
 

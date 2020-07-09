@@ -248,6 +248,15 @@ bool HloComputation::HasSideEffect() const {
   return false;
 }
 
+bool HloComputation::IsMarkedAsDead(const HloInstruction* inst) {
+  for (auto& to_be_delete : to_be_deleted_) {
+    if (to_be_delete.get() == inst) {
+      return true;
+    }
+  }
+  return false;
+}
+
 Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
@@ -540,7 +549,11 @@ string HloComputation::ToString(
     if (options.print_percent()) {
       s << "%";
     }
-    s << PrintName(name(), options.print_ids()) << " ";
+    if (options.print_ids() || !IsEntryComputation()) {
+      // Exclude entry computation's name because it includes and leads to
+      // non-deterministic fingerprint.
+      s << PrintName(name(), options.print_ids()) << " ";
+    }
   }
 
   if (options.print_program_shape()) {
@@ -994,11 +1007,15 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
         replacements,
     absl::Span<const HloInstruction* const> extra_parameters,
-    HloCloneContext* context, const string& suffix) {
+    HloCloneContext* context, const string& suffix,
+    const HloInstruction* new_root) {
   std::unique_ptr<HloCloneContext> context_ptr;
   if (context == nullptr) {
     context_ptr = absl::make_unique<HloCloneContext>(parent(), suffix);
     context = context_ptr.get();
+  }
+  if (new_root == nullptr) {
+    new_root = root_instruction();
   }
 
   // Look up instr in the replacements map, and return either the replacement,
@@ -1006,12 +1023,9 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
   //
   // Note: This can return null, indicating that instr should not be present in
   // the new computation.
-  auto replace = [&](HloInstruction* instr) {
+  auto replace = [&](const HloInstruction* instr) {
     auto it = replacements.find(instr);
-    if (it == replacements.end()) {
-      return instr;
-    }
-    return it->second.get();
+    return it != replacements.end() ? it->second.get() : instr;
   };
 
   VLOG(1) << "Cloning " << name() << " --> " << suffix << "\n";
@@ -1024,11 +1038,11 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
   // The postorder we want here is simpler than what MakeInstructionPostOrder()
   // does -- we only care about operand dependencies -- so let's just do it
   // ourselves.
-  std::vector<HloInstruction*> postorder;
-  absl::flat_hash_map<HloInstruction*, VisitState> visited;
+  std::vector<const HloInstruction*> postorder;
+  absl::flat_hash_map<const HloInstruction*, VisitState> visited;
   for (const auto& instr : instructions_) {
-    std::vector<HloInstruction*> dfs_stack;
-    HloInstruction* new_instr = replace(instr.get());
+    std::vector<const HloInstruction*> dfs_stack;
+    const HloInstruction* new_instr = replace(instr.get());
     if (!new_instr) {
       continue;
     }
@@ -1050,7 +1064,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
 
       visited.insert({cur, kVisiting});
       for (HloInstruction* operand : cur->operands()) {
-        HloInstruction* new_operand = replace(operand);
+        const HloInstruction* new_operand = replace(operand);
         if (new_operand) {
           dfs_stack.emplace_back(new_operand);
         }
@@ -1088,8 +1102,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     builder.AddInstruction(std::move(instr));
   }
   auto result = builder.Build(
-      /*root_instruction=*/context->GetInstruction(
-          replace(root_instruction())));
+      /*root_instruction=*/context->GetInstruction(replace(new_root)));
 
   // Clone control dependencies.
   for (auto instr : postorder) {

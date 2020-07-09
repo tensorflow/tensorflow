@@ -26,6 +26,7 @@ filegroup(
         "//tensorflow/compiler/mlir/lite:flatbuffer_to_string",
         "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )
 

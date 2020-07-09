@@ -27,6 +27,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -43,6 +44,48 @@ class CustomTensor(object):
 def test_op(x, y, z):
   """A fake op for testing dispatch of Python ops."""
   return x + (2 * y) + (3 * z)
+
+
+class TensorTracer(object):
+  """An object used to trace TensorFlow graphs.
+
+  This is an example class that is used to test global op dispatchers.  The
+  global op dispatcher for TensorTracers is defined below.
+  """
+
+  def __init__(self, name, args=None, kwargs=None):
+    self.name = name
+    self.args = args
+    self.kwargs = kwargs
+
+  def __repr__(self):
+    if self.args is None and self.kwargs is None:
+      return self.name
+    else:
+      args = [str(x) for x in self.args]
+      args += sorted(
+          ["{}={}".format(name, x) for (name, x) in self.kwargs.items()])
+      return "{}({})".format(self.name, ", ".join(args))
+
+
+class TensorTracerOpDispatcher(dispatch.GlobalOpDispatcher):
+  """Global op dispatcher for TensorTracer."""
+
+  def handle(self, op, args, kwargs):
+    # Dispatcher only applies if at least one arg is a TensorTracer.
+    if not (any(self.is_tensor_tracer_arg(x) for x in args) or
+            any(self.is_tensor_tracer_arg(x) for x in kwargs.values())):
+      return self.NOT_SUPPORTED
+
+    symbol_name = get_canonical_name_for_symbol(op)
+    return TensorTracer(symbol_name, args, kwargs)
+
+  def is_tensor_tracer_arg(self, value):
+    if isinstance(value, TensorTracer):
+      return True
+    if isinstance(value, (list, tuple)):
+      if any(isinstance(x, TensorTracer) for x in value):
+        return True
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -100,8 +143,10 @@ class DispatchTest(test_util.TensorFlowTestCase):
     test_op._tf_dispatchers = original_handlers
 
   def testDispatchForTypes_SignatureMismatch(self):
-    with self.assertRaisesRegexp(AssertionError, "The decorated function's "
-                                 "signature must exactly match.*"):
+    with self.assertRaisesRegex(
+        AssertionError, "The decorated function's "
+        "signature must exactly match.*"):
+
       @dispatch.dispatch_for_types(test_op, CustomTensor)
       def override_for_test_op(a, b, c):  # pylint: disable=unused-variable
         return CustomTensor(test_op(a.tensor, b.tensor, c.tensor),
@@ -111,7 +156,8 @@ class DispatchTest(test_util.TensorFlowTestCase):
     def some_op(x, y):
       return x + y
 
-    with self.assertRaisesRegexp(AssertionError, "Dispatching not enabled for"):
+    with self.assertRaisesRegex(AssertionError, "Dispatching not enabled for"):
+
       @dispatch.dispatch_for_types(some_op, CustomTensor)
       def override_for_some_op(x, y):  # pylint: disable=unused-variable
         return x if x.score > 0 else y
@@ -126,13 +172,42 @@ class DispatchTest(test_util.TensorFlowTestCase):
     some_op(5)
 
     message = mock_warning.call_args[0][0] % mock_warning.call_args[0][1:]
-    self.assertRegexpMatches(
-        message,
-        r".*some_op \(from __main__\) is deprecated and will be "
+    self.assertRegex(
+        message, r".*some_op \(from __main__\) is deprecated and will be "
         "removed in a future version.*")
 
+  def testGlobalDispatcher(self):
+    original_global_dispatchers = dispatch._GLOBAL_DISPATCHERS
+    try:
+      TensorTracerOpDispatcher().register()
+
+      x = TensorTracer("x")
+      y = TensorTracer("y")
+      trace = math_ops.reduce_sum(math_ops.add(math_ops.abs(x), y), axis=3)
+      self.assertEqual(
+          str(trace),
+          "math.reduce_sum(math.add(name=None, x=math.abs(x), y=y), axis=3)")
+
+    finally:
+      # Clean up.
+      dispatch._GLOBAL_DISPATCHERS = original_global_dispatchers
+
+  def testGlobalDispatcherConvertToTensor(self):
+    original_global_dispatchers = dispatch._GLOBAL_DISPATCHERS
+    try:
+      TensorTracerOpDispatcher().register()
+
+      x = TensorTracer("x")
+      y = TensorTracer("y")
+      trace = math_ops.add(math_ops.abs(
+          ops.convert_to_tensor_v2_with_dispatch(x)), y)
+      self.assertEqual(
+          str(trace),
+          "math.add(name=None, x=math.abs(convert_to_tensor(x)), y=y)")
+
+    finally:
+      # Clean up.
+      dispatch._GLOBAL_DISPATCHERS = original_global_dispatchers
 
 if __name__ == "__main__":
   googletest.main()
-
-

@@ -1,4 +1,4 @@
-// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+// RUN: xla-gpu-opt %s | FileCheck %s
 HloModule Iota
 
  ENTRY %Iota() -> s64[10, 5] {
@@ -6,6 +6,6 @@ HloModule Iota
 }
 
 //  CHECK: func @iota(%[[OUT:.*]]: [[OUT_T:.*]]) {
-//  CHECK:   "xla_lhlo.iota"(%[[OUT]])
+//  CHECK:   "lmhlo.iota"(%[[OUT]])
 //  CHECK:   {iota_dimension = 0 : i64} : ([[OUT_T]]) -> ()
 //  CHECK: }

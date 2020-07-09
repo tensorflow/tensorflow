@@ -57,7 +57,8 @@ extern "C" {
 
 TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
     TFE_TensorHandle* h, TF_Status* status) {
-  tensorflow::TensorHandle* handle = TensorHandleFromInterface(h->handle);
+  tensorflow::TensorHandle* handle =
+      TensorHandleFromInterface(tensorflow::unwrap(h));
   const tensorflow::Tensor* tensor;
   status->status = handle->Tensor(&tensor);
   if (!status->status.ok()) {

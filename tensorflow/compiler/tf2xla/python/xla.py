@@ -37,6 +37,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import special_math_ops
 
 # TODO(phawkins): provide wrappers for all XLA operators. Currently the missing
 # ops include:
@@ -103,8 +104,8 @@ sign = _unary_op(math_ops.sign)
 tanh = _unary_op(math_ops.tanh)
 
 # Bessel
-bessel_i0e = _unary_op(math_ops.bessel_i0e)
-bessel_i1e = _unary_op(math_ops.bessel_i1e)
+bessel_i0e = _unary_op(special_math_ops.bessel_i0e)
+bessel_i1e = _unary_op(special_math_ops.bessel_i1e)
 
 # Binary operators
 
@@ -416,6 +417,26 @@ sharding = gen_xla_ops.xla_sharding
 def _sharding_grad(op, grad):
   del op  # Unused
   return [grad]
+
+
+spmd_full_to_shard_shape = gen_xla_ops.xla_spmd_full_to_shard_shape
+spmd_shard_to_full_shape = gen_xla_ops.xla_spmd_shard_to_full_shape
+
+
+@ops.RegisterGradient("XlaSpmdFullToShardShape")
+def _spmd_full_to_shard_shape_grad(op, grad):
+  s2f = gen_xla_ops.xla_spmd_shard_to_full_shape(
+      grad,
+      manual_sharding=op.get_attr("manual_sharding"),
+      full_shape=op.inputs[0].shape.as_list())
+  return [s2f]
+
+
+@ops.RegisterGradient("XlaSpmdShardToFullShape")
+def _spmd_shard_to_full_shape_grad(op, grad):
+  f2s = gen_xla_ops.xla_spmd_full_to_shard_shape(
+      grad, manual_sharding=op.get_attr("manual_sharding"))
+  return [f2s]
 
 
 sort = gen_xla_ops.xla_sort

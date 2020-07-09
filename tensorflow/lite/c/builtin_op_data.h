@@ -67,8 +67,9 @@ typedef struct {
 typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
-  kTfLiteActRelu1,  // min(max(-1, x), 1)
-  kTfLiteActRelu6,  // min(max(0, x), 6)
+  kTfLiteActReluN1To1,                    // min(max(-1, x), 1)
+  kTfLiteActRelu1 = kTfLiteActReluN1To1,  // kTfLiteActRelu1 will be deprecated.
+  kTfLiteActRelu6,                        // min(max(0, x), 6)
   kTfLiteActTanh,
   kTfLiteActSignBit,
   kTfLiteActSigmoid,
@@ -209,8 +210,8 @@ typedef struct {
 } TfLiteBatchToSpaceNDParams;
 
 typedef struct {
-  bool adjoint_lhs;
-  bool adjoint_rhs;
+  bool adj_x;
+  bool adj_y;
 } TfLiteBatchMatMulParams;
 
 typedef struct {
@@ -297,6 +298,7 @@ typedef struct {
 
 typedef struct {
   bool align_corners;
+  bool half_pixel_centers;
 } TfLiteResizeNearestNeighborParams;
 
 typedef struct {

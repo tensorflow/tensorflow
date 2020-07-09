@@ -1,12 +1,12 @@
-# Tensorflow Lite Core ML Delegate
+# Tensorflow Lite Core ML delegate
 
-TensorFlow Lite Core ML Delegate enables running TensorFlow Lite models on
-[Core ML framework](https://developer.apple.com/documentation/coreml),
-which results in faster model inference on iOS devices.
+The TensorFlow Lite Core ML delegate enables running TensorFlow Lite models on
+[Core ML framework](https://developer.apple.com/documentation/coreml), which
+results in faster model inference on iOS devices.
 
 Note: This delegate is in experimental (beta) phase.
 
-Note: Core ML delegate is using Core ML version 2.1.
+Note: Core ML delegate supports Core ML version 2 and later.
 
 **Supported iOS versions and devices:**
 
@@ -19,23 +19,32 @@ Note: Core ML delegate is using Core ML version 2.1.
 
 **Supported models**
 
-The Core ML delegate currently supports float32 models.
+The Core ML delegate currently supports float (FP32 and FP16) models.
 
 ## Trying the Core ML delegate on your own model
 
 The Core ML delegate is already included in nightly release of TensorFlow lite
 CocoaPods. To use Core ML delegate, change your TensorFlow lite pod
-(`TensorflowLiteC` for C++ API, and `TensorFlowLiteSwift` for Swift) version to
-`0.0.1-nightly` in your `Podfile`.
+(`TensorflowLiteC` for C API, and `TensorFlowLiteSwift` for Swift) version to
+`0.0.1-nightly` in your `Podfile`, and include subspec `CoreML`
 
 ```
 target 'YourProjectName'
   # pod 'TensorFlowLiteSwift'
-  pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly'
+  pod 'TensorFlowLiteSwift/CoreML', '~> 0.0.1-nightly'
 ```
 
-Note: After updating `Podfile`, you should run `pod cache clean` and `pod
-update` to reflect changes.
+OR
+
+```
+target 'YourProjectName'
+  # pod 'TensorFlowLiteSwift'
+  pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly', :subspecs => ['CoreML']
+```
+
+Note: After updating `Podfile`, you should run `pod update` to reflect changes.
+If you can't see the latest `CoreMLDelegate.swift` file, try running `pod cache
+clean TensorFlowLiteSwift`.
 
 ### Swift
 
@@ -97,16 +106,15 @@ TfLiteCoreMlDelegateDelete(delegate);
 
 By default, Core ML delegate will only be created if the device has Neural
 Engine, and will return `null` if the delegate is not created. If you want to
-run Core ML delegate on other environments (for example, simulator), pass
-`.allDevices` as an option while creating delegate in Swift. On C++ (and
-Objective-C), you can pass `TfLiteCoreMlDelegateAllDevices`. Following example
-shows how to do this:
+run Core ML delegate on other environments (for example, simulator), pass `.all`
+as an option while creating delegate in Swift. On C++ (and Objective-C), you can
+pass `TfLiteCoreMlDelegateAllDevices`. Following example shows how to do this:
 
 #### Swift
 
 ```swift
 var options = CoreMLDelegate.Options()
-options.enabledDevices = .allDevices
+options.enabledDevices = .all
 let coreMLDelegate = CoreMLDelegate(options: options)!
 let interpreter: try Interpreter(modelPath: modelPath,
                                 delegates: [coreMLDelegate])
@@ -158,6 +166,14 @@ for more detail. Alternatively, you can implement your own set of blacklist
 devices using other libraries such as
 [DeviceKit](https://github.com/devicekit/DeviceKit).
 
+### Using older Core ML version
+
+Although iOS 13 supports Core ML 3, the model might work better when it is
+converted with Core ML 2 model specification. The target conversion version is
+set to the latest version by default, but you can change this by setting
+`coreMLVersion` (in Swift, `coreml_version` in C API) in the delegate option to
+older version.
+
 ## Supported ops
 
 Following ops are supported by the Core ML delegate.
@@ -187,6 +203,8 @@ Following ops are supported by the Core ML delegate.
 *   ReluN1To1
 *   Relu6
 *   Reshape
+    *   Only supported when target Core ML version is 2, not supported when
+        targeting Core ML 3.
 *   ResizeBilinear
 *   SoftMax
 *   Tanh

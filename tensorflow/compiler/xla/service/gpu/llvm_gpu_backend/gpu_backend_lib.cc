@@ -492,9 +492,10 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
 
 namespace nvptx {
 
-StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
-                              const HloModuleConfig& hlo_module_config,
-                              const string& libdevice_dir_path) {
+StatusOr<string> CompileToPtx(
+    llvm::Module* module, GpuVersion gpu_version,
+    const HloModuleConfig& hlo_module_config, const string& libdevice_dir_path,
+    std::function<void(llvm::TargetMachine*)> configure_target) {
   static absl::once_flag backend_init_flag;
   absl::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
 
@@ -524,6 +525,11 @@ StatusOr<string> CompileToPtx(llvm::Module* module, GpuVersion gpu_version,
     // Construct LLVM TargetMachine for NVPTX.
     std::unique_ptr<llvm::TargetMachine> target_machine = NVPTXGetTargetMachine(
         default_target_triple, *compute_capability, hlo_module_config);
+
+    // Apply target machine configuration from call-back if available.
+    if (configure_target) {
+      configure_target(target_machine.get());
+    }
 
     // Link with libdevice, and optimize the LLVM module.
     TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
@@ -689,7 +695,7 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, int amdgpu_version,
     const HloModuleConfig& hlo_module_config) {
   return GetTargetMachine(target_triple, absl::StrCat("gfx", amdgpu_version),
-                          hlo_module_config, "-code-object-v3");
+                          hlo_module_config, "+code-object-v3");
 }
 
 void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {

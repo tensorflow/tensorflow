@@ -194,7 +194,7 @@ class MatrixDeterminantBenchmark(test.Benchmark):
           config=benchmark.benchmark_config()) as sess, ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
         d = linalg_ops.matrix_determinant(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(
@@ -207,7 +207,7 @@ class MatrixDeterminantBenchmark(test.Benchmark):
             config=benchmark.benchmark_config()) as sess, ops.device("/gpu:0"):
           matrix = self._GenerateMatrix(shape)
           d = linalg_ops.matrix_determinant(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(

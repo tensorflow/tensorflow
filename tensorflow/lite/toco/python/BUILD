@@ -30,11 +30,13 @@ cc_library(
     name = "toco_python_api",
     srcs = ["toco_python_api.cc"],
     hdrs = ["toco_python_api.h"],
+    features = ["-parse_headers"],
     visibility = [
         "//tensorflow/python:__subpackages__",
     ],
     deps = [
         "@com_google_protobuf//:protobuf_headers",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "//tensorflow/core:lib",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
@@ -54,6 +56,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
+        "//tensorflow/lite/toco:types_proto_cc",
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
         # It requires to link with TensorFlow Ops to get the op definitions.

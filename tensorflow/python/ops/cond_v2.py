@@ -29,6 +29,7 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -942,7 +943,10 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
     return captured_tensor
 
 
-def indexed_case(branch_index, branch_fns, name="indexed_case"):
+def indexed_case(branch_index,
+                 branch_fns,
+                 name="indexed_case",
+                 lower_using_switch_merge=None):
   """Like conv_v2, except emits a Case op instead of an If."""
   if isinstance(branch_index, int):
     raise TypeError("branch_index must not be a Python int", branch_index)
@@ -976,7 +980,8 @@ def indexed_case(branch_index, branch_fns, name="indexed_case"):
     return _build_case(
         branch_index,
         branch_graphs, [g.external_captures for g in branch_graphs],
-        name=scope)
+        name=scope,
+        lower_using_switch_merge=lower_using_switch_merge)
 
 
 @ops.RegisterGradient("Case")
@@ -1057,14 +1062,27 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
   # This modifies the graphs in branch_grad_graphs.
   _make_output_composite_tensors_match(_CASE, branch_grad_graphs)
 
-  outputs = _build_case(case_op.inputs[0], branch_grad_graphs,
-                        branches_grad_inputs, name="gradient")
+  try:
+    lowering = case_op._get_attr_bool("_lower_using_switch_merge")
+  except errors_impl.NotFoundError:
+    lowering = None
+
+  outputs = _build_case(
+      case_op.inputs[0],
+      branch_grad_graphs,
+      branches_grad_inputs,
+      name="gradient",
+      lower_using_switch_merge=lowering)
 
   # The predicate has no gradient.
   return [None] + outputs
 
 
-def _build_case(branch_index, branch_graphs, branch_inputs, name=None):
+def _build_case(branch_index,
+                branch_graphs,
+                branch_inputs,
+                name=None,
+                lower_using_switch_merge=None):
   """Creates an `Case` op from `branch_index`, branch graphs and inputs.
 
   Note that this modifies `branch_graphs` to make the inputs match, and to
@@ -1080,6 +1098,7 @@ def _build_case(branch_index, branch_graphs, branch_inputs, name=None):
     branch_inputs: List of lists of Tensors to be passed to corresponding
       branch_graph as input.
     name: the name for the Case op.
+    lower_using_switch_merge: Lower this op using switch merge ops (optional).
 
   Returns:
     A list of Tensors which are the outputs of the Case op. Does not include
@@ -1105,7 +1124,7 @@ def _build_case(branch_index, branch_graphs, branch_inputs, name=None):
   case_op, tensors = _get_op_and_outputs(tensors)
 
   if case_op is not None:
-    util.maybe_set_lowering_attr(case_op)
+    util.maybe_set_lowering_attr(case_op, lower_using_switch_merge)
     util.maybe_propagate_compile_time_consts_in_xla(case_op)
     _set_read_only_resource_inputs_attr(case_op, branch_graphs)
     # Prevent fetching since the variant outputs can't be fetched directly.

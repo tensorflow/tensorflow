@@ -26,7 +26,6 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
@@ -197,7 +196,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       # Removed device and input tensor shape details from the error message
       # since the order of the device and the corresponding input tensor shape
       # is not deterministic over different runs.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Input tensor shapes do not match for '
           'distributed tensor inputs '
           'DistributedValues:.+'):
@@ -221,7 +220,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       # Removed device and input tensor dtype details from the error message
       # since the order of the device and the corresponding input tensor dtype
       # is not deterministic over different runs.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Input tensor dtypes do not match for '
           'distributed tensor inputs '
           'DistributedValues:.+'):
@@ -302,7 +301,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       model = _SimpleMLP(3)
 
       if not context.executing_eagerly():
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError,
             'We currently do not support distribution strategy with a '
             '`Sequential` model that is created without `input_shape`/'
@@ -331,7 +330,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
         model.compile(
             'sgd')
       else:
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError,
             'We currently do not support distribution strategy with a '
             '`Sequential` model that is created without '
@@ -346,7 +345,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
     with distribution.scope():
       loss_object = losses.MeanSquaredError()
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Please use `tf.keras.losses.Reduction.SUM` or '
           '`tf.keras.losses.Reduction.NONE`'):
         y = np.asarray([1, 0])
@@ -398,9 +397,6 @@ class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
               optimizer=strategy_combinations
               .gradient_descent_optimizer_keras_v2_fn)))
   def test_batchnorm_correctness(self, distribution, fused, optimizer):
-    if isinstance(distribution.extended,
-                  parameter_server_strategy.ParameterServerStrategyExtended):
-      self.skipTest('b/152353796')
     with self.cached_session():
       with distribution.scope():
         model = keras.models.Sequential()
@@ -505,7 +501,7 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
           keras_test_lib.all_strategy_combinations_minus_default()))
   def test_layer_outside_scope(self, distribution):
     with self.cached_session():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'was not created in the distribution strategy'):
         x = keras.layers.Input(shape=(3,), name='input')
         y = keras.layers.Dense(4, name='dense')(x)
@@ -523,7 +519,7 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
       keras_test_lib.all_strategy_combinations_minus_default())
   def test_model_outside_scope(self, distribution):
     with self.cached_session():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'was not created in the distribution strategy'):
         x = keras.layers.Input(shape=(3,), name='input')
         y = keras.layers.Dense(4, name='dense')(x)
@@ -546,9 +542,9 @@ class TestDistributionStrategyWithStaticShapes(test.TestCase,
           mode=['graph', 'eager']))
   def test_input_batch_size_not_divisible_by_num_replicas(self, distribution):
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, r'The `batch_size` argument \(5\) must be divisible by '
-                      r'the number of replicas \(2\)'):
+          r'the number of replicas \(2\)'):
         keras.layers.Input(shape=(3,), batch_size=5, name='input')
 
   @combinations.generate(

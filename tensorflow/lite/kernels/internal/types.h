@@ -765,12 +765,17 @@ struct ArithmeticParams {
   int input1_shift;
   int32 input2_multiplier;
   int input2_shift;
+
+  // TODO(b/158622529): Union the following activation params.
   // uint8, etc, activation params.
   int32 quantized_activation_min;
   int32 quantized_activation_max;
   // float activation params.
   float float_activation_min;
   float float_activation_max;
+  // int64 activation params.
+  int64_t int64_activation_min;
+  int64_t int64_activation_max;
 
   // Processed output dimensions.
   // Let input "a" be the one that broadcasts in the faster-changing dimension.
@@ -972,8 +977,10 @@ struct PreluParams {
   int32 input_offset;
   int32 alpha_offset;
   int32 output_offset;
-  int32 output_multiplier;
-  int output_shift;
+  int32 output_multiplier_1;
+  int32 output_shift_1;
+  int32 output_multiplier_2;
+  int32 output_shift_2;
 };
 
 struct PoolParams {
@@ -1007,6 +1014,7 @@ struct ResizeBilinearParams {
 
 struct ResizeNearestNeighborParams {
   bool align_corners;
+  bool half_pixel_centers;
 };
 
 struct SliceParams {
@@ -1032,6 +1040,8 @@ struct SoftmaxParams {
   float* table;
   int16_t* exp_lut;
   int16_t* one_over_one_plus_x_lut;
+  uint8_t* uint8_table1;
+  uint8_t* uint8_table2;
 };
 
 struct SpaceToBatchParams {
@@ -1110,6 +1120,12 @@ inline void SetActivationParams(int32 min, int32 max, P* params) {
 }
 
 template <typename P>
+inline void SetActivationParams(int64_t min, int64_t max, P* params) {
+  params->int64_activation_min = min;
+  params->int64_activation_max = max;
+}
+
+template <typename P>
 inline void GetActivationParams(const P& params, int32* min, int32* max) {
   *min = params.quantized_activation_min;
   *max = params.quantized_activation_max;
@@ -1121,6 +1137,11 @@ inline void GetActivationParams(const P& params, float* min, float* max) {
   *max = params.float_activation_max;
 }
 
+template <typename P>
+inline void GetActivationParams(const P& params, int64_t* min, int64_t* max) {
+  *min = params.int64_activation_min;
+  *max = params.int64_activation_max;
+}
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_TYPES_H_

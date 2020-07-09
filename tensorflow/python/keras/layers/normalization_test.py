@@ -22,7 +22,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
@@ -35,7 +34,6 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import normalization
 from tensorflow.python.keras.layers import normalization_v2
 from tensorflow.python.keras.mixed_precision.experimental import policy
-from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
@@ -148,7 +146,7 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         normalization_v2.BatchNormalization, dtype='float32')
 
   @keras_parameterized.run_all_keras_modes
-  def test_batchnorm_mixed_precision(self):
+  def test_batchnorm_float16(self):
     _run_batchnorm_correctness_test(
         normalization.BatchNormalization, dtype='float16')
     _run_batchnorm_correctness_test(
@@ -156,7 +154,7 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   @testing_utils.enable_v2_dtype_behavior
-  def test_batchnorm_policy(self):
+  def test_batchnorm_mixed_precision(self):
     norm = keras.layers.BatchNormalization(
         axis=-1,
         input_shape=(4, 4, 3),
@@ -168,8 +166,29 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     self.assertEqual(norm.beta.dtype.base_dtype, 'float32')
     self.assertEqual(norm.gamma.dtype.base_dtype, 'float32')
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager'],
+                                              fused=[True, False]))
+  @testing_utils.enable_v2_dtype_behavior
+  def test_batchnorm_mixed_precision_does_not_overflow(self, fused):
+    norm = keras.layers.BatchNormalization(
+        axis=-1,
+        input_shape=(1, 1, 1),
+        fused=fused,
+        dtype=policy.Policy('mixed_float16'))
+    x = np.array([-1000., 1000.]).reshape((2, 1, 1, 1))
+    y = norm(x, training=True)
+    expected_y = np.array([-1.0, 1.0]).reshape((2, 1, 1, 1))
+    self.assertAllClose(keras.backend.eval(y), expected_y)
+
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_batchnorm_non_trainable_with_fit(self):
+    # We use the same data shape for all the data we use in this test.
+    # This will prevent any used tf.functions from retracing.
+    # This helps us verify that changing trainable and recompiling really
+    # does update the training loop, rather than a different data shape
+    # triggering a retrace.
+    data_shape = (100, 3)
+
     inputs = keras.Input((3,))
     bn = normalization_v2.BatchNormalization()
     outputs = bn(inputs)
@@ -178,10 +197,10 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         'rmsprop',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly())
-    model.fit(np.random.random((100, 3)), np.random.random((100, 3)))
+    model.fit(np.random.random(data_shape), np.random.random(data_shape))
 
-    test_data = np.random.random((10, 3))
-    test_targets = np.random.random((10, 3))
+    test_data = np.random.random(data_shape)
+    test_targets = np.random.random(data_shape)
     test_loss = model.evaluate(test_data, test_targets)
 
     bn.trainable = False
@@ -191,41 +210,6 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     train_loss = model.train_on_batch(test_data, test_targets)
     self.assertAlmostEqual(test_loss, train_loss)
-
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def test_batchnorm_non_trainable_with_tf_function(self):
-    inputs = keras.Input((3,))
-    bn = normalization_v2.BatchNormalization()
-    outputs = bn(inputs)
-    model = keras.Model(inputs, outputs)
-    loss_fn = keras.losses.MeanSquaredError()
-    optimizer = rmsprop_v2.RMSprop()
-
-    @def_function.function()
-    def train_step(x, y):
-      with backprop.GradientTape() as tape:
-        y_pred = model(x, training=True)
-        loss = loss_fn(y, y_pred)
-      grads = tape.gradient(loss, model.trainable_weights)
-      optimizer.apply_gradients(zip(grads, model.trainable_weights))
-      return loss
-
-    @def_function.function()
-    def test_step(x, y):
-      y_pred = model(x, training=False)
-      loss = loss_fn(y, y_pred)
-      return loss
-
-    train_step(np.random.random((100, 3)), np.random.random((100, 3)))
-
-    test_data = np.random.random((10, 3))
-    test_targets = np.random.random((10, 3))
-    test_loss = test_step(test_data, test_targets)
-
-    bn.trainable = False
-    train_loss = train_step(test_data, test_targets)
-    if context.executing_eagerly():
-      self.assertAlmostEqual(test_loss.numpy(), train_loss.numpy())
 
   def test_eager_batchnorm_in_custom_model_call_with_tf_function(self):
 
@@ -318,41 +302,47 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     norm(inp)
     self.assertEqual(norm.fused, True)
 
-    with self.assertRaisesRegexp(ValueError, 'fused.*renorm'):
+    with self.assertRaisesRegex(ValueError, 'fused.*renorm'):
       normalization_v2.BatchNormalization(fused=True, renorm=True)
 
-    with self.assertRaisesRegexp(ValueError, 'fused.*when axis is 1 or 3'):
+    with self.assertRaisesRegex(ValueError, 'fused.*when axis is 1 or 3'):
       normalization_v2.BatchNormalization(fused=True, axis=2)
 
-    with self.assertRaisesRegexp(ValueError, 'fused.*when axis is 1 or 3'):
+    with self.assertRaisesRegex(ValueError, 'fused.*when axis is 1 or 3'):
       normalization_v2.BatchNormalization(fused=True, axis=[1, 3])
 
-    with self.assertRaisesRegexp(ValueError, 'fused.*virtual_batch_size'):
+    with self.assertRaisesRegex(ValueError, 'fused.*virtual_batch_size'):
       normalization_v2.BatchNormalization(fused=True, virtual_batch_size=2)
 
-    with self.assertRaisesRegexp(ValueError, 'fused.*adjustment'):
+    with self.assertRaisesRegex(ValueError, 'fused.*adjustment'):
       normalization_v2.BatchNormalization(fused=True,
                                           adjustment=lambda _: (1, 0))
 
     norm = normalization_v2.BatchNormalization(fused=True)
     self.assertEqual(norm.fused, True)
     inp = keras.layers.Input(shape=(4, 4))
-    with self.assertRaisesRegexp(ValueError, '4D input tensors'):
+    with self.assertRaisesRegex(ValueError, '4D input tensors'):
       norm(inp)
 
   def test_updates_in_wrap_function(self):
-    with context.eager_mode():
-      layer = keras.layers.BatchNormalization()
 
-      def my_func():
-        x = array_ops.ones((10, 1))
-        return layer(x, training=True)
-
-      wrapped_fn = wrap_function.wrap_function(my_func, [])
-      wrapped_fn()
-
+    def my_func():
+      layer = normalization.BatchNormalization()
+      x = array_ops.ones((10, 1))
+      y = layer(x, training=True)
       # Updates should be tracked in a `wrap_function`.
       self.assertLen(layer.updates, 2)
+      return y
+
+    wrapped_fn = wrap_function.wrap_function(my_func, [])
+    wrapped_fn()
+
+  @keras_parameterized.run_all_keras_modes
+  def test_basic_batchnorm_v2_none_shape_and_virtual_batch_size(self):
+    # Test case for GitHub issue for 32380
+    norm = normalization_v2.BatchNormalization(virtual_batch_size=8)
+    inp = keras.layers.Input(shape=(None, None, 3))
+    _ = norm(inp)
 
 
 def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
@@ -402,15 +392,11 @@ class NormalizationLayersGraphModeOnlyTest(
       model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       model.train_on_batch(x, x)
 
-      self.assertLen(bn.updates, 4)
-
       # Test model-level reuse
       x3 = keras.layers.Input(shape=(10,))
       y3 = model(x3)
       new_model = keras.models.Model(x3, y3, name='new_model')
 
-      self.assertLen(new_model.updates, 6)
-      self.assertLen(model.updates, 6)
       new_model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       new_model.train_on_batch(x, x)
 
@@ -425,10 +411,7 @@ class NormalizationLayersGraphModeOnlyTest(
       model = keras.models.Model(a, b)
 
       model.trainable = False
-      assert not model.updates
-
       model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
-      assert not model.updates
 
       x1 = model.predict(val_a)
       model.train_on_batch(val_a, val_out)
@@ -437,7 +420,6 @@ class NormalizationLayersGraphModeOnlyTest(
 
       model.trainable = True
       model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
-      assert model.updates
 
       model.train_on_batch(val_a, val_out)
       x2 = model.predict(val_a)
@@ -445,7 +427,6 @@ class NormalizationLayersGraphModeOnlyTest(
 
       layer.trainable = False
       model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
-      assert not model.updates
 
       x1 = model.predict(val_a)
       model.train_on_batch(val_a, val_out)
@@ -612,19 +593,19 @@ class LayerNormalizationTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testIncorrectAxisType(self):
-    with self.assertRaisesRegexp(
-        TypeError, r'Expected an int or a list/tuple of ints'):
+    with self.assertRaisesRegex(TypeError,
+                                r'Expected an int or a list/tuple of ints'):
       _ = normalization.LayerNormalization(axis={'axis': -1})
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInvalidAxis(self):
-    with self.assertRaisesRegexp(ValueError, r'Invalid axis: 3'):
+    with self.assertRaisesRegex(ValueError, r'Invalid axis: 3'):
       layer_norm = normalization.LayerNormalization(axis=3)
       layer_norm.build(input_shape=(2, 2, 2))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testDuplicateAxis(self):
-    with self.assertRaisesRegexp(ValueError, r'Duplicate axis:'):
+    with self.assertRaisesRegex(ValueError, r'Duplicate axis:'):
       layer_norm = normalization.LayerNormalization(axis=[-1, -1])
       layer_norm.build(input_shape=(2, 2, 2))
 

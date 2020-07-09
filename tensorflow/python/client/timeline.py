@@ -400,9 +400,10 @@ class Timeline(object):
   def _parse_kernel_label(self, label, node_name):
     """Parses the fields in a node timeline label."""
     # Expects labels of the form: retval (arg) detail @@annotation
-    match = re.match(r'.*@@(.*)\#id.*', label)
-    if match is not None:
-      node_name = match.group(1)
+    start = label.find('@@')
+    end = label.find('#')
+    if start >= 0 and end >= 0 and start + 2 < end:
+      node_name = label[start + 2:end]
     # Node names should always have the form 'name:op'.
     fields = node_name.split(':') + ['unknown']
     name, op = fields[:2]

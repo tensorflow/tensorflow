@@ -5,6 +5,7 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 package(
     default_visibility = [
         "//tensorflow:internal",
+        "//tensorflow:structured_tensor_whitelist",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

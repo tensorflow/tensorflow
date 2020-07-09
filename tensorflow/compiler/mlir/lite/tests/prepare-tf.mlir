@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-prepare-tf %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -tfl-prepare-tf %s | FileCheck %s
 
 func @conv(tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>, tensor<256x3x32x32xf32>) -> (tensor<256x30x30x16xf32>, tensor<256x16x30x30xf32>, tensor<256x30x30x16xf32>, tensor<256x30x30x16xf32>, tensor<256x30x30x16xf32>) {
 ^bb0(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>, %arg2: tensor<256x3x32x32xf32>) :
@@ -149,14 +149,14 @@ func @batchNormWithGlobalNormalizationWithScaleAfterNormalization(
 }
 
 // CHECK-LABEL: fakeQuantPerChannelForActivation
-func @fakeQuantPerChannelForActivation(%arg0: tensor<8x3xf32>) -> (tensor<8x3xf32>) {
-  %arg1 = constant dense<[0.0, -1.0, 1.0]> : tensor<3xf32>
-  %arg2 = constant dense<[255.0, 254.0, 256.0]> : tensor<3xf32>
-  %0 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<8x3xf32>
-  return %0 : tensor<8x3xf32>
+func @fakeQuantPerChannelForActivation(%arg0: tensor<8x4xf32>) -> (tensor<8x4xf32>) {
+  %arg1 = constant dense<[0.0, -1.0, 1.0, 0.0]> : tensor<4xf32>
+  %arg2 = constant dense<[255.0, 254.0, 256.0, 1.0e-9]> : tensor<4xf32>
+  %0 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<8x4xf32>
+  return %0 : tensor<8x4xf32>
 
 // CHECK:  %[[fq:.*]] = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %cst, %cst_0)
-// CHECK:  %[[q:.*]] = "tfl.quantize"(%[[fq]]) {qtype = tensor<8x3x!quant.uniform<u8:f32:1, {1.000000e+00,1.000000e+00:1,1.000000e+00}>>}
+// CHECK:  %[[q:.*]] = "tfl.quantize"(%[[fq]]) {qtype = tensor<8x4x!quant.uniform<u8:f32:1, {1.000000e+00,1.000000e+00:1,1.000000e+00,3.9215686274509805E-9:127}>>}
 // CHECK:  %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK:  return %[[dq]]
 }
@@ -526,6 +526,26 @@ func @PadStridedSliceNewAxisMask2(%arg0: tensor<4x64x64x1xf32>) -> tensor<1x4x64
   %0 = "tf.Squeeze"(%arg0) {T = f32, _output_shapes = ["tfshape$dim { size: 4 } dim { size: 64 } dim { size: 64 }"], device = "", squeeze_dims = []} : (tensor<4x64x64x1xf32>) -> tensor<4x64x64xf32>
   %1 = "tf.StridedSlice"(%0, %cst, %cst, %cst_0) {Index = i32, T = f32, _output_shapes = ["tfshape$dim { size: 1 } dim { size: 4 } dim { size: 64 } dim { size: 64 }"], begin_mask = 6 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 6 : i64, new_axis_mask = 1 : i64, shrink_axis_mask = 0 : i64} : (tensor<4x64x64xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x4x64x64xf32>
   return %1 : tensor<1x4x64x64xf32>
+}
+
+// CHECK-LABEL: @StridedSliceRewriteMasks
+func @StridedSliceRewriteMasks(%arg0: tensor<8x4x16x2xf32>) -> tensor<8x4x16x1xf32> {
+  %cst = "tf.Const"() {device = "", value = dense<[1, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %cst_0 = "tf.Const"() {device = "", value = dense<[1, 0, 0]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %cst_1 = "tf.Const"() {device = "", value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
+
+  // CHECK: %[[CST:.*]] = constant dense<[1, 0, 0, 1]> : tensor<4xi32>
+  // CHECK: %[[CST0:.*]] = constant dense<[1, 0, 0, 0]> : tensor<4xi32>
+  // CHECK: %[[CST1:.*]] = constant dense<1> : tensor<4xi32>
+  // CHECK: %[[RESULT:.*]] = "tf.StridedSlice"(%arg0, %[[CST]], %[[CST0]], %[[CST1]])
+  // CHECK-SAME: begin_mask = 7 : i64
+  // CHECK-SAME: ellipsis_mask = 0 : i64
+  // CHECK-SAME: end_mask = 14 : i64
+  // CHECK-SAME: new_axis_mask = 0 : i64
+  // CHECK-SAME: shrink_axis_mask = 0 : i64
+
+  %0 = "tf.StridedSlice"(%arg0, %cst, %cst_0, %cst_1) {begin_mask = 1 : i64, device = "", ellipsis_mask = 2 : i64, end_mask = 4 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<8x4x16x2xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<8x4x16x1xf32>
+  return %0 : tensor<8x4x16x1xf32>
 }
 
 // CHECK-LABEL: @MatrixSetDiagV2Conversion

@@ -788,7 +788,6 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -840,7 +839,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss_py38",  #TODO(b/151449908)
         "no_windows",
     ],
     deps = [
@@ -1335,6 +1333,7 @@ cuda_py_test(
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
         "no_windows",
+        "notap",  # TODO(b/160822489) flaky timeouts
         "notsan",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
@@ -1401,7 +1400,6 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )

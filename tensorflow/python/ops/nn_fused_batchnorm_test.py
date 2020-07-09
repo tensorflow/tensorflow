@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -376,17 +375,12 @@ class BatchNormalizationTest(test.TestCase):
     self.assertLess(err_grad_x_2, err_tolerance)
     self.assertLess(err_grad_scale, err_tolerance)
 
-  def _runtests(self, x_shape, is_training, gradient_test=False):
+  def _runtests(self, x_shape, is_training, gradient_test=False,
+                cpu_only=False):
     use_gpu_vals = [False]
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) and not cpu_only:
       use_gpu_vals += [True]
-    factors = [
-        1.0,
-    ]
-    if compat.forward_compatible(2020, 3, 6):
-      factors += [
-          0.6,
-      ]
+    factors = [1.0, 0.6]
     for dtype in [np.float16, np.float32]:
       for use_gpu in use_gpu_vals:
         for data_format in ['NHWC', 'NCHW']:
@@ -445,6 +439,11 @@ class BatchNormalizationTest(test.TestCase):
     x_shape = [0, 131, 127, 6]
     self._runtests(x_shape, False)
 
+  def testInferenceShape6(self):
+    x_shape = [1, 1, 1, 1]
+    # GPU kernel doesn't properly handle case where non-channel dimensions are 1
+    self._runtests(x_shape, False, cpu_only=True)
+
   def testTrainingShape1(self):
     x_shape = [1, 1, 6, 1]
     self._runtests(x_shape, True)
@@ -465,6 +464,11 @@ class BatchNormalizationTest(test.TestCase):
   def testTrainingShape5(self):
     x_shape = [0, 131, 127, 6]
     self._runtests(x_shape, True)
+
+  def testTrainingShape6(self):
+    x_shape = [1, 1, 1, 1]
+    # GPU kernel doesn't properly handle case where non-channel dimensions are 1
+    self._runtests(x_shape, True, cpu_only=True)
 
   @test_util.run_deprecated_v1
   def testBatchNormGradInferenceShape1(self):
@@ -493,6 +497,13 @@ class BatchNormalizationTest(test.TestCase):
     self._runtests(x_shape, is_training=False, gradient_test=True)
 
   @test_util.run_deprecated_v1
+  def testBatchNormGradInferenceShape6(self):
+    x_shape = [1, 1, 1, 1]
+    # GPU kernel doesn't properly handle case where non-channel dimensions are 1
+    self._runtests(x_shape, is_training=False, gradient_test=True,
+                   cpu_only=True)
+
+  @test_util.run_deprecated_v1
   def testBatchNormGradTrainingShape1(self):
     x_shape = [1, 1, 6, 1]
     self._runtests(x_shape, is_training=True, gradient_test=True)
@@ -517,6 +528,12 @@ class BatchNormalizationTest(test.TestCase):
   def testBatchNormGradTrainingShape5(self):
     x_shape = [0, 7, 11, 4]
     self._runtests(x_shape, is_training=True, gradient_test=True)
+
+  @test_util.run_deprecated_v1
+  def testBatchNormGradTrainingShape6(self):
+    x_shape = [1, 1, 1, 1]
+    # GPU kernel doesn't properly handle case where non-channel dimensions are 1
+    self._runtests(x_shape, is_training=True, gradient_test=True, cpu_only=True)
 
   def _testBatchNormGradGrad(self, config):
     shape = config['shape']

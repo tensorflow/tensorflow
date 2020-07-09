@@ -47,50 +47,18 @@ enum class ModelGraphType { FP32, INT8, STRING };
 
 BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
                              ModelGraphType graph_type = ModelGraphType::FP32) {
-  BenchmarkParams params;
-  params.AddParam("num_runs", BenchmarkParam::Create<int32_t>(num_runs));
-  params.AddParam("min_secs", BenchmarkParam::Create<float>(min_secs));
-  params.AddParam("max_secs", BenchmarkParam::Create<float>(max_secs));
-  params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
-  params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
-  params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
-  params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));
-  params.AddParam("warmup_runs", BenchmarkParam::Create<int32_t>(1));
+  BenchmarkParams params = BenchmarkTfLiteModel::DefaultParams();
+  params.Set<int32_t>("num_runs", num_runs);
+  params.Set<float>("min_secs", min_secs);
+  params.Set<float>("max_secs", max_secs);
 
   if (graph_type == ModelGraphType::INT8) {
-    params.AddParam("graph",
-                    BenchmarkParam::Create<std::string>(*g_int8_model_path));
+    params.Set<std::string>("graph", *g_int8_model_path);
   } else if (graph_type == ModelGraphType::STRING) {
-    params.AddParam("graph",
-                    BenchmarkParam::Create<std::string>(*g_string_model_path));
+    params.Set<std::string>("graph", *g_string_model_path);
   } else {
     // by default, simply use the fp32 one.
-    params.AddParam("graph",
-                    BenchmarkParam::Create<std::string>(*g_fp32_model_path));
-  }
-
-  params.AddParam("input_layer", BenchmarkParam::Create<std::string>(""));
-  params.AddParam("input_layer_shape", BenchmarkParam::Create<std::string>(""));
-  params.AddParam("input_layer_value_range",
-                  BenchmarkParam::Create<std::string>(""));
-  params.AddParam("input_layer_value_files",
-                  BenchmarkParam::Create<std::string>(""));
-  params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
-  params.AddParam("require_full_delegation",
-                  BenchmarkParam::Create<bool>(false));
-  params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
-  params.AddParam("use_legacy_nnapi", BenchmarkParam::Create<bool>(false));
-  params.AddParam("enable_op_profiling", BenchmarkParam::Create<bool>(false));
-  params.AddParam("max_profiling_buffer_entries",
-                  BenchmarkParam::Create<int32_t>(1024));
-  params.AddParam("profiling_output_csv_file",
-                  BenchmarkParam::Create<std::string>(""));
-  params.AddParam("enable_platform_tracing",
-                  BenchmarkParam::Create<bool>(false));
-
-  for (const auto& delegate_provider :
-       tools::GetRegisteredDelegateProviders()) {
-    params.Merge(delegate_provider->DefaultParams());
+    params.Set<std::string>("graph", *g_fp32_model_path);
   }
   return params;
 }
@@ -395,6 +363,14 @@ TEST(BenchmarkTest, RunWithWrongFlags) {
   ScopedCommandlineArgs scoped_argv({"--num_threads=str"});
   auto status = benchmark.Run(scoped_argv.argc(), scoped_argv.argv());
   EXPECT_EQ(kTfLiteError, status);
+}
+
+TEST(BenchmarkTest, RunWithUseCaching) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+  TestBenchmark benchmark(CreateFp32Params());
+  ScopedCommandlineArgs scoped_argv({"--use_caching=false"});
+  auto status = benchmark.Run(scoped_argv.argc(), scoped_argv.argv());
+  EXPECT_EQ(kTfLiteOk, status);
 }
 
 class MaxDurationWorksTestListener : public BenchmarkListener {

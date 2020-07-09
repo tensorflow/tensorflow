@@ -373,9 +373,8 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
 
   def testRepr(self):
     shape = RaggedTensorDynamicShape.from_dim_sizes([2, (2, 1), 2, 1])
-    self.assertRegexpMatches(
-        repr(shape),
-        r'RaggedTensorDynamicShape\('
+    self.assertRegex(
+        repr(shape), r'RaggedTensorDynamicShape\('
         r'partitioned_dim_sizes=\(<[^>]+>, <[^>]+>\), '
         r'inner_dim_sizes=<[^>]+>\)')
 

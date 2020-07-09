@@ -19,9 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import abc
+import atexit
 import collections
+import contextlib
 import enum  # pylint: disable=g-bad-import-order
+import gzip
 import inspect
 import os
 from typing import List, Sequence, Tuple, Union
@@ -47,130 +49,18 @@ ops = _xla.ops
 profiler = _xla.profiler
 
 
-class Backend(object, metaclass=abc.ABCMeta):
-  """Abstract base class for XLA backends."""
-
-  def __init__(self, platform):
-    """Creates a new Backend.
-
-    Args:
-      platform: A string naming the platform; for example 'gpu'.
-    """
-    self.platform = platform
-
-  @abc.abstractmethod
-  def device_count(self):
-    """Returns the number of devices known to the backend."""
-
-  @abc.abstractmethod
-  def local_device_count(self):
-    """Returns the number of devices local to this host."""
-
-  @abc.abstractmethod
-  def devices(self):
-    """Returns a list of `device_count()` Device subclasses."""
-
-  @abc.abstractmethod
-  def host_id(self):
-    """Returns the integer ID of this host."""
-
-  @abc.abstractmethod
-  def buffer_from_pyval(self, pyval, device=None, force_copy=False):
-    """Allocates a fresh buffer and populates it with `pyval`."""
-
-  @abc.abstractmethod
-  def compile(self, computation, compile_options=None):
-    """Compiles a computation. Returns an executable."""
-
-  @abc.abstractmethod
-  def get_default_device_assignment(self, num_replicas, num_partitions):
-    """Returns the default device assignment that `compile` would use.
-
-    If `compile_options.device_assignment` isn't set, `compile` will pick a
-    deterministic device assignment based on the number of replicas and
-    partitions, possibly optimizing for device locality. This method returns
-    that assignment, which is useful for e.g. manually replicating a value
-    before passing it to a compiled executable.
-
-    Args:
-      num_replicas: the number of replicas needed.
-      num_partitions: the number of partitions needed.
-
-    Returns:
-      A list of list of Devices of size `(num_replicas, num_partitions)`.
-    """
-
-
-class LocalBackend(Backend):
-  """XLA backend implemented using the in-process xla::LocalClient API."""
-
-  def __init__(self, platform, client):
-    """Creates a new LocalBackend.
-
-    Args:
-      platform: A string; the user-visible platform name, e.g. 'gpu'.
-      client: An _xla.PyLocalClient object.
-    """
-    super(LocalBackend, self).__init__(platform)
-    self.client = client
-
-  def device_count(self):
-    return self.client.device_count()
-
-  def local_device_count(self):
-    return self.client.local_device_count()
-
-  def devices(self):
-    return self.client.devices()
-
-  def local_devices(self):
-    return self.client.local_devices()
-
-  def host_id(self):
-    return self.client.host_id()
-
-  def buffer_from_pyval(self, pyval, device=None, force_copy=False):
-    if device is None:
-      device = self.local_devices()[0]
-    return _xla.PyLocalBuffer.from_python(pyval, self.client, device,
-                                          force_copy)
-
-  def compile(self, c_computation, compile_options=None):
-    compile_options = compile_options or CompileOptions()
-    options = _xla.ExecutableBuildOptions()
-    options.num_replicas = compile_options.num_replicas
-    options.num_partitions = compile_options.num_partitions
-    if compile_options.result_layout:
-      options.result_layout = compile_options.result_layout
-    options.debug_options.xla_cpu_fast_math_honor_infs = True
-    options.debug_options.xla_cpu_fast_math_honor_nans = True
-    options.debug_options.xla_cpu_fast_math_honor_division = True
-    options.debug_options.xla_cpu_fast_math_honor_functions = True
-    options.debug_options.xla_gpu_enable_fast_min_max = False
-    return _xla.LocalExecutable.Compile(c_computation,
-                                        compile_options.argument_layouts,
-                                        options, self.client,
-                                        compile_options.device_assignment,
-                                        compile_options.tuple_arguments)
-
-  def get_default_device_assignment(self, num_replicas, num_partitions=None):
-    if num_partitions is not None:
-      return self.client.GetDefaultDeviceAssignment(num_replicas,
-                                                    num_partitions)
-    else:
-      # TODO(skye): delete this case after all callers can handle 2D output
-      return self.client.GetDefaultDeviceAssignment(num_replicas)
-
-
 xla_platform_names = {
     'cpu': 'Host',
     'gpu': 'CUDA',
 }
 
 
+def _interpreter_backend_factory():
+  return _xla.get_interpreter_client()
+
+
 def _cpu_backend_factory():
-  client = _xla.get_cpu_client(asynchronous=True)
-  return LocalBackend(platform='cpu', client=client)
+  return _xla.get_cpu_client(asynchronous=True)
 
 
 def _gpu_backend_factory(distributed_client=None, node_id=0):
@@ -193,16 +83,16 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  client = _xla.get_nvidia_gpu_client(
+  return _xla.get_nvidia_gpu_client(
       asynchronous=True,
       allocator_config=config,
       distributed_client=distributed_client,
       node_id=node_id)
-  return LocalBackend(platform='gpu', client=client)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
 _local_backend_factories = collections.OrderedDict([
+    ('interpreter', _interpreter_backend_factory),
     ('cpu', _cpu_backend_factory),
     ('gpu', _gpu_backend_factory),
 ])
@@ -379,44 +269,6 @@ class ProgramShape(object):
 """
 
 
-class Buffer(object):
-  """Represents a handle to data owned by XLA.
-
-  The referent is ready for use in executing a local, compiled
-  Computation. On XLA platforms involving a device (e.g. GPU), this
-  means the referent is in device memory.
-  """
-
-  @staticmethod
-  def from_pyval(pyval, device=None, backend=None, force_copy=False):
-    """Copies the `pyval` to a freshly allocated on-device buffer."""
-    backend = backend or get_local_backend()
-    return backend.buffer_from_pyval(pyval, device, force_copy=force_copy)
-
-  # Buffer is not an instantiable type and exists only for its static methods.
-  # The underlying buffer objects are C++ object with the following
-  # API:
-  # def shape(self) -> Shape:
-  # def device(self) -> int:
-  # def delete(self):
-  # def is_deleted(self) -> bool:
-  # def block_host_until_ready(self):
-  #    """Blocks the calling thread until the buffer is ready on device."""
-  # def copy_to_host_async(self):
-  #    """Requests a copy of the buffer to the host.
-  #
-  #       Does not block waiting for the copy. Values fetched are available via
-  #       `to_py()`; the purpose of `copy_to_host_async` is to prefetch values
-  #       for subsequent `to_py()` calls, especially when requesting many values
-  #       at once.
-  #    """
-  # def to_py(self):
-  #    """Returns the value of the buffer as a Python tuple tree of ndarrays."""
-  #
-  # TODO(phawkins): remove Buffer and its static methods completely, have
-  # clients call methods on Backend to create buffers.
-
-
 def shape_from_pyval(pyval):
   """Returns a Shape that describes a tuple-tree of Numpy arrays."""
 
@@ -427,43 +279,6 @@ def shape_from_pyval(pyval):
       return Shape.array_shape(pyval.dtype, np.shape(pyval))
 
   return convert(pyval)
-
-
-def transfer_to_infeed(value, device=None):
-  """Transfers the given value into the XLA infeed queue.
-
-  XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
-  a totally ordered stream of values. This is dequeued from XLA computations via
-  the Infeed() operation.
-
-  Args:
-    value: the value that the caller would like to enqueue into the XLA infeed
-      queue
-    device: the device to infeed the value to. Each device has a distinct infeed
-      queue.
-  """
-  # TODO(phawkins): support non-default backends.
-  backend = get_local_backend()
-  device = device or backend.local_devices()[0]
-  device.TransferToInfeed(value)
-
-
-def transfer_from_outfeed(shape, device=None):
-  """Transfers a literal of the given shape from `device`'s outfeed.
-
-  Args:
-    shape: The shape of the value to transfer from outfeed.
-    device: The device from which to transfer the outfeed value. Each device has
-      a distinct outfeed queue..
-
-  Returns:
-    The literal value that is produced from the outfeed queue.
-  """
-  # TODO(phawkins): support non-default backends.
-  backend = get_local_backend()
-  device = device or backend.local_devices()[0]
-  return device.TransferFromOutfeed(
-      shape.with_major_to_minor_layout_if_absent())
 
 
 DeviceAssignment = _xla.DeviceAssignment
@@ -487,40 +302,20 @@ def computation_count():
 """
 
 Device = _xla.Device
+CompileOptions = _xla.CompileOptions
 
-
-class CompileOptions(object):
-  """Python object for XLA compile options.
-
-  These options can be passed to the 'compile' step when using a local XLA
-  client.
-  """
-
-  def __init__(self):
-    self.xla_dump_to = None
-    self.dump_hlo_pass_re = None
-    self.dump_hlo_module_re = None
-    self.dump_hlo_as_text = None
-    self.dump_hlo_as_proto = None
-    self.hlo_profile = None
-    self.num_replicas = 1
-    self.num_partitions = 1
-    self.argument_layouts = None
-    self.result_layout = None
-    self.device_assignment = None
-    self.tuple_arguments = False
-
+HostBufferSemantics = _xla.HostBufferSemantics
 
 # An Executable is a C++ class that duck types with the following API:
 # class Executable(object):
 #   def local_devices(self) -> [Device]:
-#   def Execute(self, arguments : [Buffer]) -> Buffer:
+#   def execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
 #
-#   def SizeOfGeneratedCodeInBytes(self) -> int:
+#   def size_of_generated_code_in_bytes(self) -> int:
 #     """Return generated binary size, or -1 if not known."""
 #
-#   def ExecuteOnLocalDevices(self, arguments: [[Buffer]]) -> [Buffer]:
+#   def execute_on_local_devices(self, arguments: [[Buffer]]) -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
 #
 #     Args:
@@ -536,21 +331,18 @@ class CompileOptions(object):
 # There are different implementations of Executable for different backends.
 
 
-def execute_with_python_values(executable, arguments=(), backend=None):
+def execute_with_python_values(executable, arguments, backend):
   """Execute on one replica with Python values as arguments and output."""
 
-  backend = backend or get_local_backend()
-
   def put(arg):
-    return Buffer.from_pyval(
-        arg, device=executable.local_devices()[0], backend=backend)
+    return backend.buffer_from_pyval(arg, device=executable.local_devices()[0])
 
   arguments = [put(arg) for arg in arguments]
-  outputs = executable.Execute(arguments)
+  outputs = executable.execute(arguments)
   return [x.to_py() for x in outputs]
 
 
-def execute_with_python_values_replicated(executable, arguments, backend=None):
+def execute_with_python_values_replicated(executable, arguments, backend):
   """Execute on many replicas with Python values as arguments and output.
 
   Arguments:
@@ -562,7 +354,6 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
   Returns:
     A list of python values, one per replica.
   """
-  backend = backend or get_local_backend()
   devices = executable.local_devices()
   # pylint: disable=g-complex-comprehension
   flat_args = [(arg, devices[replica])
@@ -577,7 +368,7 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
     flat_arg_buffers = flat_arg_buffers[len(replica_args):]
   return [[x.to_py()
            for x in xs]
-          for xs in executable.ExecuteOnLocalDevices(arg_buffers)]
+          for xs in executable.execute_on_local_devices(arg_buffers)]
 
 
 class PaddingType(enum.Enum):
@@ -619,6 +410,9 @@ def window_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 XlaBuilder = _xla.XlaBuilder
 XlaComputation = _xla.XlaComputation
 FftType = _xla.FftType
+Client = _xla.Client
+Buffer = _xla.Buffer
+Executable = _xla.Executable
 
 
 def register_custom_call_target(name, fn, platform='cpu'):
@@ -629,7 +423,7 @@ def register_custom_call_target(name, fn, platform='cpu'):
     fn: a PyCapsule object containing the function pointer.
     platform: the target platform.
   """
-  _xla.RegisterCustomCallTarget(name, fn, xla_platform_names[platform])
+  _xla.register_custom_call_target(name, fn, xla_platform_names[platform])
 
 
 # Deprecated. Use register_custom_call_target instead.
@@ -874,3 +668,27 @@ def make_replica_groups(replica_groups):
         _make_replica_group_proto(group) for group in replica_groups
     ]
   return replica_groups_protos
+
+
+Traceback = _xla.Traceback
+
+
+@contextlib.contextmanager
+def tracebacks(enabled=True):
+  """Context manager that enables or disables traceback collection."""
+  saved = Traceback.enabled
+  Traceback.enabled = enabled
+  try:
+    yield
+  finally:
+    Traceback.enabled = saved
+
+
+def heap_profile(client: Client) -> str:
+  """Returns a gzipped pprof protocol buffer containing a heap profile."""
+  return gzip.compress(client.heap_profile())
+
+
+# Perform one last garbage collection of deferred Python references. This is
+# mostly to keep ASAN happy.
+atexit.register(_xla.collect_garbage)

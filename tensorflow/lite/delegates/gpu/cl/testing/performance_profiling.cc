@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <chrono>  // NOLINT(build/c++11)
 #include <iostream>
 #include <string>
 
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/testing/tflite_model_reader.h"
+#include "tensorflow/lite/kernels/register.h"
 
 namespace tflite {
 namespace gpu {
@@ -31,7 +33,8 @@ namespace cl {
 absl::Status RunModelSample(const std::string& model_name) {
   auto flatbuffer = tflite::FlatBufferModel::BuildFromFile(model_name.c_str());
   GraphFloat32 graph_cl;
-  RETURN_IF_ERROR(BuildFromFlatBuffer(*flatbuffer, &graph_cl));
+  ops::builtin::BuiltinOpResolver op_resolver;
+  RETURN_IF_ERROR(BuildFromFlatBuffer(*flatbuffer, op_resolver, &graph_cl));
 
   Environment env;
   RETURN_IF_ERROR(CreateEnvironment(&env));
@@ -62,14 +65,13 @@ absl::Status RunModelSample(const std::string& model_name) {
 
   const int kNumRuns = 10;
   for (int i = 0; i < kNumRuns; ++i) {
-    const auto start = absl::Now();
+    const auto start = std::chrono::high_resolution_clock::now();
     for (int k = 0; k < num_runs_per_sec; ++k) {
       RETURN_IF_ERROR(context.AddToQueue(env.queue()));
     }
     RETURN_IF_ERROR(env.queue()->WaitForCompletion());
-    const auto end = absl::Now();
-    const double total_time_ms =
-        static_cast<double>((end - start) / absl::Nanoseconds(1)) * 1e-6;
+    const auto end = std::chrono::high_resolution_clock::now();
+    const double total_time_ms = (end - start).count() * 1e-6f;
     const double average_inference_time = total_time_ms / num_runs_per_sec;
     std::cout << "Total time - " << average_inference_time << "ms" << std::endl;
   }

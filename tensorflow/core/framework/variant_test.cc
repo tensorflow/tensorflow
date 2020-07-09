@@ -589,7 +589,7 @@ TEST(VariantTest, TensorListTest) {
   serialized.ToProto(&data);
   const Variant y_unknown = data;
   EXPECT_EQ(y_unknown.TypeName(), "TensorList");
-  EXPECT_EQ(y_unknown.TypeId(), MakeTypeIndex<VariantTensorDataProto>());
+  EXPECT_EQ(y_unknown.TypeId(), TypeIndex::Make<VariantTensorDataProto>());
   EXPECT_EQ(y_unknown.DebugString(),
             strings::StrCat(
                 "Variant<type: TensorList value: ", data.DebugString(), ">"));

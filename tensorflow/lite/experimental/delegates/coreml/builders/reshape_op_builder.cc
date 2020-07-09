@@ -114,7 +114,11 @@ TfLiteStatus ReshapeOpBuilder::RegisterOutputs(const TfLiteIntArray* outputs,
 }
 
 bool IsReshapeOpSupported(const TfLiteRegistration* registration,
-                          const TfLiteNode* node, TfLiteContext* context) {
+                          const TfLiteNode* node, TfLiteContext* context,
+                          int coreml_version) {
+  if (coreml_version >= 3) {
+    return false;
+  }
   if (node->inputs->size == 1) {
     const auto* params =
         reinterpret_cast<TfLiteReshapeParams*>(node->builtin_data);

@@ -49,6 +49,7 @@ from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
 from tensorflow.python.platform import test
 
+
 def random_gamma(shape):  # pylint: disable=invalid-name
   return random_ops.random_gamma(shape, 1.0)
 
@@ -145,7 +146,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
       while_loop_v2(lambda x: x < 10, Body, [x])
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         r"Loop var Const:0 enters the loop with type <dtype: 'float32'> "
         r"but has type <dtype: 'float16'> after 1 iteration."):
@@ -907,25 +908,21 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default():
       while_op = self._createWhile(None)
       self.assertEqual(while_op.name, "while")
-      self.assertRegexpMatches(
-          while_op.get_attr("cond").name, r"while_cond_\d*")
-      self.assertRegexpMatches(
-          while_op.get_attr("body").name, r"while_body_\d*")
+      self.assertRegex(while_op.get_attr("cond").name, r"while_cond_\d*")
+      self.assertRegex(while_op.get_attr("body").name, r"while_body_\d*")
 
     with ops.Graph().as_default():
       with ops.name_scope("foo"):
         while1_op = self._createWhile("")
         self.assertEqual(while1_op.name, "foo/while")
-        self.assertRegexpMatches(
-            while1_op.get_attr("cond").name, r"foo_while_cond_\d*")
-        self.assertRegexpMatches(
-            while1_op.get_attr("body").name, r"foo_while_body_\d*")
+        self.assertRegex(while1_op.get_attr("cond").name, r"foo_while_cond_\d*")
+        self.assertRegex(while1_op.get_attr("body").name, r"foo_while_body_\d*")
 
         while2_op = self._createWhile(None)
         self.assertEqual(while2_op.name, "foo/while_1")
-        self.assertRegexpMatches(
+        self.assertRegex(
             while2_op.get_attr("cond").name, r"foo_while_1_cond_\d*")
-        self.assertRegexpMatches(
+        self.assertRegex(
             while2_op.get_attr("body").name, r"foo_while_1_body_\d*")
 
   @test_util.enable_control_flow_v2
@@ -1221,6 +1218,25 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         for ns in dev_stat.node_stats:
           self.assertNotIn("switch", ns.node_name)
     control_flow_util_v2._DISABLE_LOWER_USING_SWITCH_MERGE = old
+
+  def _runBasicWithConfig(self, config):
+    with ops.device("/cpu:0"):
+      x = constant_op.constant(0)
+      ret, = while_loop_v2(lambda x: x < 1000, lambda x: x + 1, [x])
+    with self.cached_session(config=config):
+      self.assertEqual(1000, self.evaluate(ret))
+
+  @test_util.run_deprecated_v1
+  def testRunKernelsInline(self):
+    config = config_pb2.ConfigProto()
+    config.inter_op_parallelism_threads = -1
+    self._runBasicWithConfig(config)
+
+  @test_util.run_deprecated_v1
+  def testSingleThreadedExecution(self):
+    config = config_pb2.ConfigProto()
+    config.experimental.executor_type = "SINGLE_THREADED_EXECUTOR"
+    self._runBasicWithConfig(config)
 
 
 def ScalarShape():

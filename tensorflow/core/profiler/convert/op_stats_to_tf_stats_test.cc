@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
-#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
-#include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
+#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_test_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -55,8 +60,8 @@ TEST(OpStatsToTfStats, GpuTfStats) {
   constexpr int64 kKernel3DurationNs = 10000;
 
   XSpace space;
-  XPlaneBuilder device_plane(space.add_planes());
-  device_plane.SetName(absl::StrCat(kGpuPlanePrefix, ":0"));
+  XPlaneBuilder device_plane(
+      GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0));
   XLineBuilder stream1 = device_plane.GetOrCreateLine(/*line_id=*/10);
   AddTensorFlowOpEvent(absl::StrCat(kTfOp1, ":", kTfOp1), kKernel1StartNs,
                        kKernel1DurationNs, /*on_device=*/true, kKernel1,
@@ -75,8 +80,8 @@ TEST(OpStatsToTfStats, GpuTfStats) {
                        kKernel3DurationNs, /*on_device=*/true, kKernel3,
                        &device_plane, &stream2);
 
-  const OpStats& op_stats = ConvertXSpaceToOpStats(space);
-  const TfStatsDatabase& tf_stats = ConvertOpStatsToTfStats(op_stats);
+  const OpStats op_stats = ConvertXSpaceToOpStats(space);
+  const TfStatsDatabase tf_stats = ConvertOpStatsToTfStats(op_stats);
 
   // TfOp1, TfOp2, Idle
   EXPECT_EQ(3, tf_stats.with_idle().tf_stats_record_size());

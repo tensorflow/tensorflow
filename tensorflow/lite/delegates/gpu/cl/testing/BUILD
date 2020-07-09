@@ -12,6 +12,7 @@ cc_binary(
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/testing:tflite_model_reader",
+        "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/time",
     ],
 )

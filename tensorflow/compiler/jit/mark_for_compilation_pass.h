@@ -58,7 +58,7 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
                   RecursiveCompilabilityChecker::UncompilableNodesMap*
                       uncompilable_node_info = nullptr);
 
-absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable();
+absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable();
 
 namespace testing {
 // DO NOT USE IN PRODUCTION.
@@ -66,8 +66,8 @@ namespace testing {
 // Resets some internal state to let us write reliable unit tests.
 void ResetClusterSequenceNumber();
 
-// Return a list of operation that we choose not to put into the whitelist.
-absl::flat_hash_set<string> GetKnownXLAWhitelistOp();
+// Return a list of operation that we choose not to put into the allowlist.
+absl::flat_hash_set<string> GetKnownXLAAllowlistOp();
 }  // namespace testing
 }  // namespace tensorflow
 

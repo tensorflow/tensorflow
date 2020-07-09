@@ -336,8 +336,7 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
 }
 
 Status IteratorBase::InitializeBase(IteratorContext* ctx,
-                                    const IteratorBase* parent,
-                                    const string& output_prefix) {
+                                    const IteratorBase* parent) {
   parent_ = parent;
   id_ =
       Hash64CombineUnordered(Hash64(prefix()), reinterpret_cast<uint64>(this));
@@ -349,9 +348,8 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
     auto factory = [ctx, this](model::Node::Args args) {
       return CreateNode(ctx, std::move(args));
     };
-    model->AddNode(std::move(factory), prefix(), output_prefix, &node_);
-    cleanup_fns_.push_back(
-        [model, prefix = prefix()]() { model->RemoveNode(prefix); });
+    model->AddNode(std::move(factory), prefix(), parent->model_node(), &node_);
+    cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
   }
   return Status::OK();
 }
@@ -418,7 +416,7 @@ Status DatasetBase::MakeIterator(
     const string& output_prefix,
     std::unique_ptr<IteratorBase>* iterator) const {
   *iterator = MakeIteratorInternal(output_prefix);
-  Status s = (*iterator)->InitializeBase(ctx, parent, output_prefix);
+  Status s = (*iterator)->InitializeBase(ctx, parent);
   if (s.ok()) {
     s.Update((*iterator)->Initialize(ctx));
   }
@@ -482,10 +480,27 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " GetNext enter";
-  RecordStart(ctx, /*stop_output=*/true);
+  auto model = ctx->model();
+  if (model && model->collect_resource_usage() && node_) {
+    int64 now_nanos = EnvTime::NowNanos();
+    auto output = node_->output();
+    if (output) {
+      output->record_stop(now_nanos);
+    }
+    node_->record_start(now_nanos);
+  }
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-  if (s.ok() && !*end_of_sequence) RecordElement(ctx, out_tensors);
-  RecordStop(ctx, /*start_output=*/true);
+  if (TF_PREDICT_TRUE(s.ok() && !*end_of_sequence)) {
+    RecordElement(ctx, out_tensors);
+  }
+  if (model && model->collect_resource_usage() && node_) {
+    int64 now_nanos = EnvTime::NowNanos();
+    node_->record_stop(now_nanos);
+    auto output = node_->output();
+    if (output) {
+      output->record_start(now_nanos);
+    }
+  }
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
     s = errors::Internal("Iterator \"", params_.prefix,
                          "\" returned `OutOfRange`. This indicates an "

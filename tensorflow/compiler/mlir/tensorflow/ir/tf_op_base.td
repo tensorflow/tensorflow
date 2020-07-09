@@ -23,7 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
 //===----------------------------------------------------------------------===//
@@ -62,6 +62,43 @@ def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
 // Layout agnostic operations do not depend on the operands data layout (data
 // format), as an example all element wise operations are layout agnostic.
 def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
+
+// Variant of broadcastable trait that considers TF's subtype behavior.
+class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
+    TCOpResIsShapedTypePred<opId, resId>,
+    CPred<"mlir::TF::BroadcastCompatible("
+              "$_op.getOperand(" # opId # ").getType(), "
+              "$_op.getResult(" # resId # ").getType())">]>;
+
+
+class TF_AllTypesMatchPred<list<string> values> :
+    CPred<"TF::AreCastCompatible(llvm::makeArrayRef({"# StrJoin<values>.result #"}))">;
+
+class TF_AllTypesMatch<list<string> names> :
+    PredOpTrait<
+        "all of {" # StrJoin<names>.result # "} have dynamically equal types ",
+        TF_AllTypesMatchPred<
+            !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
+
+//===----------------------------------------------------------------------===//
+// TensorFlow op side effects
+//===----------------------------------------------------------------------===//
+
+class TF_ResourceBase<string resourceKind> :
+  Resource<!strconcat("::mlir::TF::ResourceEffects::", resourceKind)> {
+}
+
+def TF_VariableResource : TF_ResourceBase<"Variable">;
+def TF_StackResource : TF_ResourceBase<"Stack">;
+def TF_TensorArrayResource : TF_ResourceBase<"TensorArray">;
+
+def TF_VariableRead : MemRead<TF_VariableResource>;
+def TF_StackRead : MemRead<TF_StackResource>;
+def TF_TensorArrayRead : MemRead<TF_TensorArrayResource>;
+
+def TF_VariableWrite : MemWrite<TF_VariableResource>;
+def TF_StackWrite : MemWrite<TF_StackResource>;
+def TF_TensorArrayWrite : MemWrite<TF_TensorArrayResource>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
@@ -122,9 +159,16 @@ def TF_I32Or64 : SignlessIntOfWidths<[32, 64]>;
 def TF_I32OrI64Tensor : TensorOf<[TF_I32Or64]>;
 
 def TF_Uint8 : UI<8>;
+def TF_Uint8Tensor : TensorOf<[TF_Uint8]>;
+
 def TF_Uint16 : UI<16>;
+def TF_Uint16Tensor : TensorOf<[TF_Uint16]>;
+
 def TF_Uint32 : UI<32>;
+def TF_Uint32Tensor : TensorOf<[TF_Uint32]>;
+
 def TF_Uint64 : UI<64>;
+def TF_Uint64Tensor : TensorOf<[TF_Uint64]>;
 
 // Any unsigned integer type
 def TF_UInt : UnsignedIntOfWidths<[8, 16, 32, 64]>;
@@ -396,7 +440,7 @@ def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
 // behavior. The result type has the same element type as both operands.
 class WithBroadcastableBinOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value  x, Value  y",
+"OpBuilder &builder, OperationState &result, Value  x, Value  y",
 [{
   auto resultType =
       OpTrait::util::getBroadcastedType(x.getType(), y.getType());
@@ -411,12 +455,12 @@ class WithBroadcastableBinOpBuilder {
 // behavior. The result type has bool element type.
 class WithBroadcastableCmpOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value  x, Value  y",
+"OpBuilder &builder, OperationState &result, Value  x, Value  y",
 [{
   Type resultType;
   if (x.getType().isa<UnrankedTensorType>() ||
       y.getType().isa<UnrankedTensorType>()) {
-    resultType = UnrankedTensorType::get(builder->getI1Type());
+    resultType = UnrankedTensorType::get(builder.getI1Type());
   } else {
     SmallVector<int64_t, 4> resultShape;
     if (!OpTrait::util::getBroadcastedShape(
@@ -426,7 +470,7 @@ class WithBroadcastableCmpOpBuilder {
                       "operands have no broadcastable shapes");
     }
 
-    resultType = RankedTensorType::get(resultShape, builder->getI1Type());
+    resultType = RankedTensorType::get(resultShape, builder.getI1Type());
   }
   return build(builder, result, resultType, x, y);
 }]

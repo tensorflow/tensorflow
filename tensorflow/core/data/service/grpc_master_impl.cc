@@ -42,7 +42,9 @@ HANDLER(RegisterWorker);
 HANDLER(WorkerUpdate);
 HANDLER(GetOrRegisterDataset);
 HANDLER(CreateJob);
+HANDLER(GetOrCreateJob);
 HANDLER(GetTasks);
+HANDLER(GetWorkers);
 #undef HANDLER
 
 }  // namespace data

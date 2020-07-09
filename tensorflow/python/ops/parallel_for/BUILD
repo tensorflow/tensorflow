@@ -89,6 +89,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/ops/signal",
     ],
 )
 
@@ -114,6 +115,7 @@ cuda_py_test(
         ":test_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:gradients",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:parsing_ops",
@@ -131,6 +133,7 @@ cuda_py_test(
         # XLA is not enabled by default on Mac or Windows.
         "no_mac",
         "no_windows",
+        "nogpu",  # TODO(b/155761551): Flaky on GPU on TAP
     ],
     xla_enabled = True,
     deps = [
@@ -138,6 +141,8 @@ cuda_py_test(
         ":test_util",
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/compiler/xla",

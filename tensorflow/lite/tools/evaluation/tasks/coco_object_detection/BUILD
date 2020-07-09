@@ -26,7 +26,6 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
-        "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
@@ -36,6 +35,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
     ],
+    alwayslink = 1,
 )
 
 cc_binary(

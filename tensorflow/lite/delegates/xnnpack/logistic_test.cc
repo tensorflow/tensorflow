@@ -41,6 +41,7 @@ TEST(Logistic, 4D) {
 
   UnaryElementwiseTester()
       .Shape({batch, height, width, channels})
+      .RelativeTolerance(1.0e+4f)
       .Test(BuiltinOperator_LOGISTIC, xnnpack_delegate.get());
 }
 
@@ -59,6 +60,7 @@ TEST(Logistic, 3D) {
 
   UnaryElementwiseTester()
       .Shape({batch, width, channels})
+      .RelativeTolerance(1.0e+4f)
       .Test(BuiltinOperator_LOGISTIC, xnnpack_delegate.get());
 }
 
@@ -76,6 +78,7 @@ TEST(Logistic, 2D) {
 
   UnaryElementwiseTester()
       .Shape({batch, channels})
+      .RelativeTolerance(1.0e+4f)
       .Test(BuiltinOperator_LOGISTIC, xnnpack_delegate.get());
 }
 
@@ -90,8 +93,8 @@ TEST(Logistic, 1D) {
       std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
   const auto batch = shape_rng();
 
-  UnaryElementwiseTester().Shape({batch}).Test(BuiltinOperator_LOGISTIC,
-                                               xnnpack_delegate.get());
+  UnaryElementwiseTester().Shape({batch}).RelativeTolerance(1.0e+4f).Test(
+      BuiltinOperator_LOGISTIC, xnnpack_delegate.get());
 }
 
 TEST(Logistic, MultiThreading) {
@@ -113,6 +116,7 @@ TEST(Logistic, MultiThreading) {
 
   UnaryElementwiseTester()
       .Shape({batch, height, width, channels})
+      .RelativeTolerance(1.0e+4f)
       .Test(BuiltinOperator_LOGISTIC, xnnpack_delegate.get());
 }
 

@@ -1,4 +1,4 @@
-// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+// RUN: xla-gpu-opt %s | FileCheck %s
 HloModule Real
 
 ENTRY %Real (x: c64[2,2]{0,1}) -> f32[2,2] {
@@ -7,5 +7,5 @@ ENTRY %Real (x: c64[2,2]{0,1}) -> f32[2,2] {
 }
 
 // CHECK: func @real(%[[IN:.*]]: [[BUF_C64:.*]], %[[OUT:.*]]: [[BUF_F32:.*]]) {
-// CHECK:   "xla_lhlo.real"(%[[IN]], %[[OUT]]) : ([[BUF_C64]], [[BUF_F32]]) -> ()
+// CHECK:   "lmhlo.real"(%[[IN]], %[[OUT]]) : ([[BUF_C64]], [[BUF_F32]]) -> ()
 // CHECK: }

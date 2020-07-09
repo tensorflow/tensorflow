@@ -24,7 +24,7 @@ limitations under the License.
 
 // TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
-#include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
+#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
@@ -238,7 +238,7 @@ class SpaceToBatchND
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    const string& input_name = op_signature.op->inputs[0];
+    const std::string& input_name = op_signature.op->inputs[0];
     const Array& input_array = op_signature.model->GetArray(input_name);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
@@ -268,8 +268,8 @@ class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    const string& input1_name = op_signature.op->inputs[0];
-    const string& input2_name = op_signature.op->inputs[1];
+    const std::string& input1_name = op_signature.op->inputs[0];
+    const std::string& input2_name = op_signature.op->inputs[1];
     const Array& input1_array = op_signature.model->GetArray(input1_name);
     const Array& input2_array = op_signature.model->GetArray(input2_name);
     ::tflite::OpSignature op_sig =
@@ -305,8 +305,8 @@ class Div : public BuiltinOperator<DivOperator, ::tflite::DivOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    const string& input1_name = op_signature.op->inputs[0];
-    const string& input2_name = op_signature.op->inputs[1];
+    const std::string& input1_name = op_signature.op->inputs[0];
+    const std::string& input2_name = op_signature.op->inputs[1];
     const Array& input1_array = op_signature.model->GetArray(input1_name);
     const Array& input2_array = op_signature.model->GetArray(input2_name);
     ::tflite::OpSignature op_sig =
@@ -339,7 +339,7 @@ class BatchToSpaceND
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    const string& input_name = op_signature.op->inputs[0];
+    const std::string& input_name = op_signature.op->inputs[0];
     const Array& input_array = op_signature.model->GetArray(input_name);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
@@ -487,6 +487,7 @@ class FullyConnected
     op_sig.options.fully_connected.keep_num_dims = fc_op.keep_num_dims;
     op_sig.options.fully_connected.weights_format =
         GetWeightFormat(fc_op.weights_format);
+    op_sig.options.fully_connected.sparse_weight = false;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -661,9 +662,9 @@ class Mul : public BuiltinOperator<MulOperator, ::tflite::MulOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    const string& input1_name = op_signature.op->inputs[0];
-    const string& input2_name = op_signature.op->inputs[1];
-    const string& output_name = op_signature.op->outputs[0];
+    const std::string& input1_name = op_signature.op->inputs[0];
+    const std::string& input2_name = op_signature.op->inputs[1];
+    const std::string& output_name = op_signature.op->outputs[0];
     const Array& input1_array = op_signature.model->GetArray(input1_name);
     const Array& input2_array = op_signature.model->GetArray(input2_name);
     const Array& output_array = op_signature.model->GetArray(output_name);
@@ -1116,8 +1117,9 @@ class ResizeBilinear
         static_cast<const ResizeBilinearOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.resize_bilinear.half_pixel_centers =
+    op_sig.options.resize.half_pixel_centers =
         resize_bilinear_op.half_pixel_centers;
+    op_sig.options.resize.align_corners = resize_bilinear_op.align_corners;
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
@@ -1131,13 +1133,24 @@ class ResizeNearestNeighbor
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateResizeNearestNeighborOptions(*builder,
-                                                        op.align_corners);
+    return ::tflite::CreateResizeNearestNeighborOptions(
+        *builder, op.align_corners, op.half_pixel_centers);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
     op->align_corners = options.align_corners();
+    op->half_pixel_centers = options.half_pixel_centers();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const auto& resize_nn_op =
+        static_cast<const ResizeNearestNeighborOperator&>(*op_signature.op);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    op_sig.options.resize.half_pixel_centers = resize_nn_op.half_pixel_centers;
+    op_sig.options.resize.align_corners = resize_nn_op.align_corners;
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
 
@@ -1427,7 +1440,7 @@ class Unpack : public BuiltinOperator<UnpackOperator, ::tflite::UnpackOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    const string& input_name = op_signature.op->inputs[0];
+    const std::string& input_name = op_signature.op->inputs[0];
     const Array& input_array = op_signature.model->GetArray(input_name);
     // If the op take int8/uint8 input, it is version 2.
     if (input_array.data_type == ArrayDataType::kInt8 ||
@@ -1564,7 +1577,7 @@ class Where : public BuiltinOperator<WhereOperator, ::tflite::WhereOptions,
 };
 
 std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
-    const string& tensorflow_node_def) {
+    const std::string& tensorflow_node_def) {
   auto fbb = absl::make_unique<flexbuffers::Builder>();
 
   ::tensorflow::NodeDef node_def;
@@ -1584,7 +1597,7 @@ std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
 
 class TensorFlowUnsupported : public BaseOperator {
  public:
-  TensorFlowUnsupported(const string& name, OperatorType type,
+  TensorFlowUnsupported(const std::string& name, OperatorType type,
                         bool enable_select_tf_ops)
       : BaseOperator(name, type), enable_select_tf_ops_(enable_select_tf_ops) {}
 
@@ -1663,7 +1676,7 @@ class TensorFlowUnsupported : public BaseOperator {
         case tensorflow::AttrValue::kList:
           if (attr.list().s_size() > 0) {
             auto start = fbb->StartVector(key);
-            for (const string& v : attr.list().s()) {
+            for (const std::string& v : attr.list().s()) {
               fbb->Add(v);
             }
             fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
@@ -1723,10 +1736,11 @@ class TensorFlowUnsupported : public BaseOperator {
           break;
         case flexbuffers::FBT_BOOL:
           (*attr)[key].set_b(value.AsBool());
-          if (string(key) == "_output_quantized") {
+          if (std::string(key) == "_output_quantized") {
             op->quantized = value.AsBool();
           }
-          if (string(key) == "_support_output_type_float_in_quantized_op") {
+          if (std::string(key) ==
+              "_support_output_type_float_in_quantized_op") {
             op->support_output_type_float_in_quantized_op = value.AsBool();
           }
           break;
@@ -2082,9 +2096,9 @@ std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap(
   return result;
 }
 
-std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
+std::map<std::string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
     bool enable_select_tf_ops) {
-  std::map<string, std::unique_ptr<BaseOperator>> result;
+  std::map<std::string, std::unique_ptr<BaseOperator>> result;
 
   std::vector<std::unique_ptr<BaseOperator>> ops =
       BuildOperatorList(enable_select_tf_ops);
@@ -2096,13 +2110,13 @@ std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
 }
 
 bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
-                          const string& tensorflow_op_name) {
+                          const std::string& tensorflow_op_name) {
   // If Flex ops aren't allow at all, simply return false.
   if (!enable_select_tf_ops) {
     return false;
   }
   // Check if we can find the `OpDef` for the TensorFlow op. If we can find
-  // it and it has been whitelisted, export the op as an Flex op. Otherwise,
+  // it and it has been allowlisted, export the op as an Flex op. Otherwise,
   // export it as a regular custom op.
   const tensorflow::OpDef* op_def = nullptr;
   if (!tensorflow::OpRegistry::Global()
@@ -2111,9 +2125,9 @@ bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
     return false;
   }
 
-  if (!::tflite::flex::IsWhitelistedFlexOp(tensorflow_op_name)) {
+  if (!::tflite::flex::IsAllowlistedFlexOp(tensorflow_op_name)) {
     LOG(WARNING) << "Op " << tensorflow_op_name
-                 << " is a valid TensorFlow op but has not been whitelisted for"
+                 << " is a valid TensorFlow op but has not been allowlisted for"
                     " the TensorFlow Lite flex op set.";
     return false;
   }

@@ -127,7 +127,7 @@ bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim) {
   auto total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
   auto threads_per_block_limit = device_description.threads_per_block_limit();
-  if (total_threads > threads_per_block_limit) {
+  if (total_threads > static_cast<uint64>(threads_per_block_limit)) {
     VLOG(2) << "exceeded total-thread-per-block limit: " << total_threads
             << " vs limit " << threads_per_block_limit;
     return false;

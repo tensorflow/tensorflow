@@ -151,7 +151,7 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
   def testInvalidTrainableSynchronizationCombination(self):
     layer = base_layers.Layer(name='my_layer')
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Synchronization value can be set to '
         'VariableSynchronization.ON_READ only for non-trainable variables. '
         'You have specified trainable=True and '
@@ -162,7 +162,7 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           trainable=True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('Legacy TF Base layer is supported only in V1.')
   def testReusePartitionedVariablesAndRegularizers(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     partitioner = partitioned_variables.fixed_size_partitioner(3)
@@ -278,11 +278,11 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
 
     if not context.executing_eagerly():
       layer = CustomerLayer()
-      with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
+      with self.assertRaisesRegex(ValueError, r'requires a defined rank'):
         layer.apply(array_ops.placeholder('int32'))
 
     layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError, r'expected ndim=2'):
+    with self.assertRaisesRegex(ValueError, r'expected ndim=2'):
       layer.apply(constant_op.constant([1]))
 
     # Note that we re-create the layer since in Eager mode, input spec checks
@@ -305,11 +305,11 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
 
     if not context.executing_eagerly():
       layer = CustomerLayer()
-      with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
+      with self.assertRaisesRegex(ValueError, r'requires a defined rank'):
         layer.apply(array_ops.placeholder('int32'))
 
     layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError, r'expected min_ndim=2'):
+    with self.assertRaisesRegex(ValueError, r'expected min_ndim=2'):
       layer.apply(constant_op.constant([1]))
 
     # Works
@@ -333,11 +333,11 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
 
     if not context.executing_eagerly():
       layer = CustomerLayer()
-      with self.assertRaisesRegexp(ValueError, r'requires a defined rank'):
+      with self.assertRaisesRegex(ValueError, r'requires a defined rank'):
         layer.apply(array_ops.placeholder('int32'))
 
     layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError, r'expected max_ndim=2'):
+    with self.assertRaisesRegex(ValueError, r'expected max_ndim=2'):
       layer.apply(constant_op.constant([[[1], [2]]]))
 
     # Works
@@ -360,7 +360,7 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
         return inputs
 
     layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError, r'expected dtype=float32'):
+    with self.assertRaisesRegex(ValueError, r'expected dtype=float32'):
       layer.apply(constant_op.constant(1, dtype=dtypes.int32))
 
     # Works
@@ -380,7 +380,7 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
         return inputs
 
     layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError, r'expected axis'):
+    with self.assertRaisesRegex(ValueError, r'expected axis'):
       layer.apply(constant_op.constant([1, 2, 3]))
 
     # Works
@@ -402,7 +402,7 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
         return inputs
 
     layer = CustomerLayer()
-    with self.assertRaisesRegexp(ValueError, r'expected shape'):
+    with self.assertRaisesRegex(ValueError, r'expected shape'):
       layer.apply(constant_op.constant([[1, 2]]))
 
     # Works
@@ -464,7 +464,7 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
       self.assertTrue(isinstance(result, dict))
       self.assertEqual(set(['label', 'logits']), set(result.keys()))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('Legacy TF Base layer is supported only in V1.')
   def testActivityRegularizer(self):
     regularizer = math_ops.reduce_sum
     layer = base_layers.Layer(activity_regularizer=regularizer)
@@ -553,7 +553,7 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(len(layer.trainable_variables), 1)
         self.assertEqual(layer.variables[0].graph, outer_graph)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('Legacy TF Base layer is supported only in V1.')
   def testGetUpdateFor(self):
 
     class MyLayer(base_layers.Layer):
@@ -598,7 +598,7 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
     self.assertEqual(len(layer.get_updates_for([outputs])), 0)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('Legacy TF Base layer is supported only in V1.')
   def testGetLossesFor(self):
 
     class MyLayer(base_layers.Layer):
