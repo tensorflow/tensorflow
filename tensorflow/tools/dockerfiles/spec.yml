@@ -38,6 +38,8 @@ releases:
     versioned:
         tag_specs:
             - "{_TAG_PREFIX}{ubuntu}{jupyter}"
+    onednn:
+        tag_specs:
             - "{_TAG_PREFIX}{ubuntu-1604-onednn}"
             - "{_TAG_PREFIX}{ubuntu-1804-onednn}"
             - "{_TAG_PREFIX}{ubuntu-2004-onednn}"
@@ -190,6 +192,7 @@ slice_sets:
           args:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
+
 
     ubuntu-1604-onednn:
         - add_to_name: "-16.04-onednn"
