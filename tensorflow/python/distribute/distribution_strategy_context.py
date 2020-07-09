@@ -21,7 +21,6 @@ from __future__ import print_function
 import contextlib
 import threading
 
-from tensorflow.python import tf2
 from tensorflow.python.framework import ops
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
@@ -319,11 +318,7 @@ def _get_default_strategy():
         # Make sure distribute_lib module is loaded by accessing some member.
         _ = distribute_lib._creating_default_strategy_singleton
         distribute_lib._creating_default_strategy_singleton = True
-        if tf2.enabled():
-          _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()
-        else:
-          _defaults["strategy"] = (
-              distribute_lib._DefaultDistributionStrategyV1())
+        _defaults["strategy"] = distribute_lib._DefaultDistributionStrategy()
         distribute_lib._creating_default_strategy_singleton = False
         # pylint: enable=protected-access
   return _defaults["strategy"]

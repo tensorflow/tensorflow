@@ -3008,23 +3008,7 @@ def _batch_reduce_destination(x):
 _creating_default_strategy_singleton = False
 
 
-class _DefaultDistributionStrategyV1(StrategyV1):
-  """Default `tf.distribute.Strategy` if none is explicitly selected."""
-
-  def __init__(self):
-    if not _creating_default_strategy_singleton:
-      raise RuntimeError("Should only create a single instance of "
-                         "_DefaultDistributionStrategy")
-    super(_DefaultDistributionStrategyV1,
-          self).__init__(_DefaultDistributionExtended(self))
-
-  def __deepcopy__(self, memo):
-    del memo
-    raise RuntimeError("Should only create a single instance of "
-                       "_DefaultDistributionStrategy")
-
-
-class _DefaultDistributionStrategy(Strategy):
+class _DefaultDistributionStrategy(StrategyV1):
   """Default `tf.distribute.Strategy` if none is explicitly selected."""
 
   def __init__(self):
