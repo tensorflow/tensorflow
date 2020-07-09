@@ -1023,7 +1023,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         2. If `model.fit` is  wrapped in `tf.function`.
 
         ValueError: In case of mismatch between the provided input data
-            and what the model expects.
+            and what the model expects or when the input data is empty.
     """
     _keras_api_gauge.get_cell('fit').set(True)
     # Legacy graph support is contained in `training_v1.Model`.
@@ -1083,6 +1083,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       # happen after `callbacks.on_train_begin`.
       data_handler._initial_epoch = (  # pylint: disable=protected-access
           self._maybe_load_initial_epoch_from_ckpt(initial_epoch))
+      logs = None
       for epoch, iterator in data_handler.enumerate_epochs():
         self.reset_metrics()
         callbacks.on_epoch_begin(epoch)
@@ -1101,6 +1102,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               logs = tmp_logs  # No error, now safe to assign to logs.
               end_step = step + data_handler.step_increment
               callbacks.on_train_batch_end(end_step, logs)
+
+        if logs is None:
+          raise ValueError('Expect x to be a non-empty array or dataset.')
         epoch_logs = copy.copy(logs)
 
         # Run validation.

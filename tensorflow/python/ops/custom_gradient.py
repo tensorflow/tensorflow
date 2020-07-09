@@ -287,14 +287,22 @@ def get_variable_by_name(var_name):
     return None
 
 
-def get_dependent_variables(input_ops, output_ops):
-  """Finds variables involved in the subgraph b/w input_ops and output_ops."""
+def _get_dependent_variables(input_ops, output_ops):
+  """Finds variables involved in the subgraph between input_ops and output_ops.
+
+  Args:
+    input_ops: Flattened list of input ops
+    output_ops: Flattened list of output ops
+
+  Returns:
+    A list of variables
+  """
 
   # avoids the edge-case when input_ops == output_ops.
   output_ops = nest.map_structure(gen_array_ops.identity, output_ops)
   inbetween_ops = op_selector.get_backward_walk_ops(
-      seed_ops=nest.flatten(output_ops),
-      stop_at_ts=nest.flatten(input_ops),
+      seed_ops=output_ops,
+      stop_at_ts=input_ops,
       inclusive=False,
       only_differentiable=True)
   var_ops = (op for op in inbetween_ops if op.type in VAR_OP_TYPES)
@@ -312,7 +320,16 @@ def _graph_mode_decorator(f, args, kwargs):
         "The custom_gradient decorator currently supports keywords "
         "arguments only when eager execution is enabled.")
   name = "CustomGradient-%s" % ops.uid()
-  args = nest.map_structure(ops.convert_to_tensor, args)
+
+  default_graph = ops.get_default_graph()
+  def convert_arg(x):
+    x = ops.convert_to_tensor(x)
+    # If graph building, be sure to capture all inputs
+    if default_graph.building_function and x.graph != default_graph:
+      x = default_graph.capture(x)
+    return x
+
+  args = nest.map_structure(convert_arg, args)
 
   # Checking global and local variables attempts to ensure that no non-resource
   # Variables are added to the graph.
@@ -323,7 +340,11 @@ def _graph_mode_decorator(f, args, kwargs):
   ])
   with tape_lib.VariableWatcher() as variable_watcher:
     result, grad_fn = f(*args)
+
   args = nest.flatten(args)
+  flat_result = nest.flatten(result)
+  flat_result_len = len(flat_result)
+
   after_vars = set([
       v.ref() for v in current_var_scope.global_variables() +
       current_var_scope.local_variables()
@@ -336,32 +357,31 @@ def _graph_mode_decorator(f, args, kwargs):
           "All variables used by a function wrapped with @custom_gradient must "
           "be `ResourceVariable`s. Ensure that no `variable_scope` is created "
           "with `use_resource=False`.")
+
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
-  inputs = args
   variables_in_tape = frozenset([
       v.ref() for v in variable_watcher.watched_variables()
-  ]) - frozenset(v.ref() for v in inputs)
+  ])
   variables_in_subgraph = frozenset([
       v.ref()
-      for v in get_dependent_variables(input_ops=inputs, output_ops=result)
+      for v in _get_dependent_variables(input_ops=args, output_ops=flat_result)
   ])
   variables = list(
       [v.deref() for v in variables_in_subgraph.union(variables_in_tape)])
 
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   variables_in_signature = ("variables" in grad_argspec.args or
+                            "variables" in grad_argspec.kwonlyargs or
                             grad_argspec.varkw)
   if variables and not variables_in_signature:
-    raise TypeError("If using @custom_gradient with a function that "
-                    "uses variables, then grad_fn must accept a keyword "
-                    "argument 'variables'.")
+    raise TypeError(
+        "@tf.custom_gradient grad_fn must accept keyword argument 'variables', "
+        "since function uses variables: {}".format(variables))
   if variables_in_signature and not variables:
     # User seems to intend to use variables but none were captured.
     logging.warn("@custom_gradient grad_fn has 'variables' in signature, but "
                  "no ResourceVariables were used on the forward pass.")
-  flat_result = nest.flatten(result)
-  flat_result_len = len(flat_result)
 
   all_tensors = flat_result + args + variables
 
@@ -421,10 +441,11 @@ def _eager_mode_decorator(f, args, kwargs):
   ]
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   if (variables and ("variables" not in grad_argspec.args) and
+      ("variables" not in grad_argspec.kwonlyargs) and
       not grad_argspec.varkw):
-    raise TypeError("If using @custom_gradient with a function that "
-                    "uses variables, then grad_fn must accept a keyword "
-                    "argument 'variables'.")
+    raise TypeError(
+        "@tf.custom_gradient grad_fn must accept keyword argument 'variables', "
+        "since function uses variables: {}".format(variables))
   flat_result = nest.flatten(result)
   # TODO(apassos) consider removing the identity below.
   flat_result = [gen_array_ops.identity(x) for x in flat_result]
@@ -476,8 +497,8 @@ def recompute_grad(f):
     f: function `f(*x)` that returns a `Tensor` or sequence of `Tensor` outputs.
 
   Returns:
-   A function `g` that wraps `f`, but which recomputes `f` on the backwards
-   pass of a gradient call.
+    A function `g` that wraps `f`, but which recomputes `f` on the backwards
+    pass of a gradient call.
   """
   # TODO(cdfreeman) Add is_recomputing functionality from graph mode version
 
@@ -515,7 +536,8 @@ def recompute_grad(f):
 
         def transpose(*t_args, **t_kwargs):
           """Gradient function calculation for forward mode autodiff."""
-          # Just throw an error since gradients / activations are not stored on tape for recompute.
+          # Just throw an error since gradients / activations are not stored on
+          # tape for recompute.
           raise NotImplementedError(
               "recompute_grad tried to transpose grad of {}. "
               "Consider not using recompute_grad in forward mode"
@@ -568,8 +590,8 @@ def grad_pass_through(f):
       outputs.
 
   Returns:
-   A function `h(x)` which returns the same values as `f(x)` and whose
-   gradients are the same as those of an identity function.
+    A function `h(x)` which returns the same values as `f(x)` and whose
+    gradients are the same as those of an identity function.
   """
   @custom_gradient
   def _grad_pass_through_op(*args, **kwargs):

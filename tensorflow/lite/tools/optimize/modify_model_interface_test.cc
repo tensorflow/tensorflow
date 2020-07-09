@@ -334,7 +334,7 @@ TEST(ModelInterface, Int8SingleInputOutput) {
 
   // Verify results.
   EXPECT_EQ(model->subgraphs.size(), 1);
-  // TODO (b/158254056): Remove unused inputs and outputs from tensor list
+  // TODO(mnatraj): The float input tensor has not been removed.
   // EXPECT_EQ(model->subgraphs[0]->tensors.size(), 2);
   EXPECT_EQ(model->subgraphs[0]->tensors.size(), 3);
   EXPECT_EQ(model->subgraphs[0]->inputs.size(), 1);
@@ -464,7 +464,7 @@ TEST(ModelInterface, Int8MutipleInputOutput) {
 
   // Verify results.
   EXPECT_EQ(model->subgraphs.size(), 1);
-  // TODO (b/158254056): Remove unused inputs and outputs from tensor list
+  // TODO(mnatraj): The two float input tensors have not been removed.
   // EXPECT_EQ(model->subgraphs[0]->tensors.size(), 4);
   EXPECT_EQ(model->subgraphs[0]->tensors.size(), 6);
   EXPECT_EQ(model->subgraphs[0]->inputs.size(), 2);

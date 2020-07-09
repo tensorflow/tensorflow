@@ -50,7 +50,7 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
     p = [0.2, 0.8]
     dist = categorical.Categorical(probs=p)
     with self.cached_session():
-      self.assertAllClose(p, dist.probs.eval())
+      self.assertAllClose(p, dist.probs)
       self.assertAllEqual([2], dist.logits.get_shape())
 
   @test_util.run_deprecated_v1
@@ -70,9 +70,9 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_categorical(batch_shape, 10)
         self.assertAllEqual(batch_shape, dist.batch_shape)
-        self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+        self.assertAllEqual(batch_shape, dist.batch_shape_tensor())
         self.assertAllEqual([], dist.event_shape)
-        self.assertAllEqual([], dist.event_shape_tensor().eval())
+        self.assertAllEqual([], dist.event_shape_tensor())
         self.assertEqual(10, dist.event_size.eval())
         # event_size is available as a constant because the shape is
         # known at graph build time.
@@ -83,9 +83,9 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
             batch_shape, constant_op.constant(
                 10, dtype=dtypes.int32))
         self.assertAllEqual(len(batch_shape), dist.batch_shape.ndims)
-        self.assertAllEqual(batch_shape, dist.batch_shape_tensor().eval())
+        self.assertAllEqual(batch_shape, dist.batch_shape_tensor())
         self.assertAllEqual([], dist.event_shape)
-        self.assertAllEqual([], dist.event_shape_tensor().eval())
+        self.assertAllEqual([], dist.event_shape_tensor())
         self.assertEqual(10, dist.event_size.eval())
 
   def testDtype(self):
@@ -202,7 +202,7 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
     cdf_op = dist.cdf(event)
 
     with self.cached_session():
-      self.assertAllClose(cdf_op.eval(), expected_cdf)
+      self.assertAllClose(cdf_op, expected_cdf)
 
   @test_util.run_deprecated_v1
   def testCDFNoBatch(self):

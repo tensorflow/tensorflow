@@ -182,9 +182,9 @@ class GradientCheckerTest(test.TestCase):
         with g.gradient_override_map({"Identity": "BadGrad"}):
           y = array_ops.identity(x)
         bad = r"Empty gradient has wrong shape: expected \(0, 3\), got \(3, 0\)"
-        with self.assertRaisesRegexp(ValueError, bad):
+        with self.assertRaisesRegex(ValueError, bad):
           gradient_checker.compute_gradient(x, (0, 3), y, (0, 3))
-        with self.assertRaisesRegexp(ValueError, bad):
+        with self.assertRaisesRegex(ValueError, bad):
           gradient_checker.compute_gradient_error(x, (0, 3), y, (0, 3))
 
   def testNaNGradFails(self):
@@ -196,7 +196,7 @@ class GradientCheckerTest(test.TestCase):
           error = gradient_checker.compute_gradient_error(x, (), y, ())
           # Typical test would assert error < max_err, so assert this test would
           # raise AssertionError, since NaN is not < 1.0.
-          with self.assertRaisesRegexp(AssertionError, "False is not true"):
+          with self.assertRaisesRegex(AssertionError, "False is not true"):
             self.assertTrue(error < 1.0)
 
 

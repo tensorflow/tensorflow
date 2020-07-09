@@ -413,6 +413,23 @@ SaturatingRoundingMultiplyByPOTParam(
       SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
 }
 
+// Convert int32 multiplier to int16 with rounding.
+inline void DownScaleInt32ToInt16Multiplier(int32_t multiplier_int32,
+                                            int16_t* multiplier_int16) {
+  TFLITE_DCHECK_GE(multiplier_int32, 0);
+  static constexpr int32_t kRoundingOffset = 1 << 15;
+  if (multiplier_int32 >=
+      std::numeric_limits<int32_t>::max() - kRoundingOffset) {
+    *multiplier_int16 = std::numeric_limits<int16_t>::max();
+    return;
+  }
+  const int32_t result = (multiplier_int32 + kRoundingOffset) >> 16;
+  TFLITE_DCHECK_LE(result << 16, multiplier_int32 + kRoundingOffset);
+  TFLITE_DCHECK_GT(result << 16, multiplier_int32 - kRoundingOffset);
+  *multiplier_int16 = result;
+  TFLITE_DCHECK_EQ(*multiplier_int16, result);
+}
+
 // Minimum output bits to accommodate log of maximum input range.  It actually
 // does not matter if one considers, say, [-64,64] or [-64,64).
 //

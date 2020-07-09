@@ -3452,7 +3452,7 @@ _VALUE_SET_CODE_STRING = """
   >>> print(K.get_value(v))
   3.0
 
-  Variable semantics in TensorFlow 2 are eager execution friendly. The above 
+  Variable semantics in TensorFlow 2 are eager execution friendly. The above
   code is roughly equivalent to:
 
   >>> v = tf.Variable(1.)
@@ -4541,7 +4541,10 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Returns:
       A tensor.
   """
-
+  # While x can be a tensor or variable, we also see cases where
+  # numpy arrays, lists, tuples are passed as well.
+  # lists, tuples do not have 'dtype' attribute.
+  dtype = getattr(x, 'dtype', floatx())
   if alpha != 0.:
     if max_value is None and threshold == 0:
       return nn.leaky_relu(x, alpha=alpha)
@@ -4555,7 +4558,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
   if threshold != 0:
     # computes x for x > threshold else 0
-    x = x * math_ops.cast(math_ops.greater(x, threshold), floatx())
+    x = x * math_ops.cast(math_ops.greater(x, threshold), dtype=dtype)
   elif max_value == 6:
     # if no threshold, then can use nn.relu6 native TF op for performance
     x = nn.relu6(x)
@@ -4690,7 +4693,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
         labels=target, logits=output, axis=axis)
 
   if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Softmax'):
+      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
     # When softmax activation function is used for output operation, we
     # use logits from the softmax function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -4735,7 +4738,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
 
   if (not from_logits and
       not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Softmax'):
+      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
     # When softmax activation function is used for output operation, we
     # use logits from the softmax function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -4814,7 +4817,7 @@ def binary_crossentropy(target, output, from_logits=False):
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
   if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Sigmoid'):
+      output.op.type == 'Sigmoid') and not hasattr(output, '_keras_history'):
     # When sigmoid activation function is used for output operation, we
     # use logits from the sigmoid function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -6054,7 +6057,7 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
               the log probability of each decoded sequence.
   """
   input_shape = shape(y_pred)
-  samples, steps = input_shape[0], input_shape[1]
+  num_samples, num_steps = input_shape[0], input_shape[1]
   y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
   input_length = math_ops.cast(input_length, dtypes_module.int32)
 
@@ -6067,11 +6070,12 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
         sequence_length=input_length,
         beam_width=beam_width,
         top_paths=top_paths)
-  decoded_dense = [
-      sparse_ops.sparse_to_dense(
-          st.indices, (samples, steps), st.values, default_value=-1)
-      for st in decoded
-  ]
+  decoded_dense = []
+  for st in decoded:
+    st = sparse_tensor.SparseTensor(
+        st.indices, st.values, (num_samples, num_steps))
+    decoded_dense.append(
+        sparse_ops.sparse_tensor_to_dense(sp_input=st, default_value=-1))
   return (decoded_dense, log_prob)
 
 

@@ -227,7 +227,7 @@ class ClipTest(test.TestCase):
       x = array_ops.zeros([3])
       b = clip_ops.clip_by_norm(x, 1.)
       grad, = gradients_impl.gradients(b, x)
-      self.assertAllEqual(grad.eval(), [1., 1., 1.])
+      self.assertAllEqual(grad, [1., 1., 1.])
 
   def testClipByNormBadShape(self):
     with self.session(use_gpu=True):

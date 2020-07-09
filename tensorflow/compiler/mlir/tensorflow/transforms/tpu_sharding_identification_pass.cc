@@ -39,7 +39,7 @@ namespace mlir {
 namespace TFTPU {
 namespace {
 
-constexpr char kShardingAttr[] = "xla_hlo.sharding";
+constexpr char kShardingAttr[] = "mhlo.sharding";
 
 struct TPUShardingIdentificationPass
     : public PassWrapper<TPUShardingIdentificationPass,
@@ -67,7 +67,7 @@ void GetAdjacentXlaShardingOp(Operation* op,
     return;
   }
 
-  if (llvm::isa<TF::IdentityOp>(op) || llvm::isa<TF::CastOp>(op)) {
+  if (llvm::isa<TF::IdentityOp, TF::CastOp>(op)) {
     for (auto user : op->getUsers())
       GetAdjacentXlaShardingOp(user, sharding_op);
   }

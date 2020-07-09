@@ -227,13 +227,13 @@ class KerasLossesTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(self.evaluate(loss), 16, 1e-2)
 
   def test_invalid_reduction(self):
-    with self.assertRaisesRegexp(ValueError, 'Invalid Reduction Key Foo.'):
+    with self.assertRaisesRegex(ValueError, 'Invalid Reduction Key Foo.'):
       losses.MeanSquaredError(reduction='Foo')
 
     mse_obj = losses.MeanSquaredError()
     y = constant_op.constant([1])
     mse_obj.reduction = 'Bar'
-    with self.assertRaisesRegexp(ValueError, 'Invalid Reduction Key Bar.'):
+    with self.assertRaisesRegex(ValueError, 'Invalid Reduction Key Bar.'):
       mse_obj(y, y)
 
   def test_deserialization_error(self):
@@ -308,9 +308,9 @@ class MeanSquaredErrorTest(test.TestCase):
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3, 1))
     sample_weight = constant_op.constant([3, 6, 5, 0], shape=(2, 2))
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 (r'Incompatible shapes: \[2,3\] vs. \[2,2\]|'
-                                  'Dimensions must be equal')):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                (r'Incompatible shapes: \[2,3\] vs. \[2,2\]|'
+                                 'Dimensions must be equal')):
       mse_obj(y_true, y_pred, sample_weight=sample_weight)
 
   def test_no_reduction(self):
@@ -400,9 +400,9 @@ class MeanAbsoluteErrorTest(test.TestCase):
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3, 1))
     sample_weight = constant_op.constant([3, 6, 5, 0], shape=(2, 2))
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 (r'Incompatible shapes: \[2,3\] vs. \[2,2\]|'
-                                  'Dimensions must be equal')):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                (r'Incompatible shapes: \[2,3\] vs. \[2,2\]|'
+                                 'Dimensions must be equal')):
       mae_obj(y_true, y_pred, sample_weight=sample_weight)
 
   def test_no_reduction(self):
@@ -912,7 +912,7 @@ class CategoricalCrossentropyTest(test.TestCase):
                                    [.05, .01, .94]])
 
     cce_obj = losses.CategoricalCrossentropy()
-    with self.assertRaisesRegexp(ValueError, 'Shapes .+ are incompatible'):
+    with self.assertRaisesRegex(ValueError, 'Shapes .+ are incompatible'):
       cce_obj(y_true, y_pred)
 
 

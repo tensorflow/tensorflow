@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc
 
+#include <cstdint>
 #include <memory>
 
 #define EIGEN_USE_THREADS
@@ -31,7 +32,9 @@ limitations under the License.
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
 
 namespace tensorflow {
 namespace {
@@ -360,30 +363,114 @@ class DecodeImageOp : public OpKernel {
 class DecodeImageV2Op : public OpKernel {
  public:
   explicit DecodeImageV2Op(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
-    OP_REQUIRES(
-        context,
-        channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,
-        errors::InvalidArgument("`channels` must be 0, 1, 3 or 4 but got ",
-                                channels_));
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &data_type_));
-    OP_REQUIRES(
-        context,
-        data_type_ == DataType::DT_UINT8 || data_type_ == DataType::DT_UINT16 ||
-            data_type_ == DataType::DT_FLOAT,
-        errors::InvalidArgument(
-            "`dtype` must be unit8, unit16, float but got: ", data_type_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("expand_animations", &expand_animations_));
+    // Keep track of op string information because:
+    // [1] Currently by the API, PNG, JPEG and GIF can decode each other and
+    //     depending on the op type, we need to return either 3-D or 4-D shapes.
+    // [2] Different ops have different attributes. e.g. `DecodeImage` op has
+    //     `expand_animations` attribute that other ops don't.
+    //     `DecodeAndDropJpeg` also has additional attributes.
+    op_type_ = type_string();
+
+    // Validate op type.
+    OP_REQUIRES(context,
+                op_type_ == "DecodeJpeg" || op_type_ == "DecodeAndCropJpeg" ||
+                    op_type_ == "DecodePng" || op_type_ == "DecodeGif" ||
+                    op_type_ == "DecodeBmp" || op_type_ == "DecodeImage",
+                errors::InvalidArgument("Bad op type ", op_type_));
+
+    // Get attributes from `DecodeJpeg` and `DecodeAndCropJpeg` op
+    // invocations. For `DecodeImage` op, set JPEG decoding setting to TF
+    // default.
+    if (op_type_ == "DecodeJpeg" || op_type_ == "DecodeAndCropJpeg") {
+      OP_REQUIRES_OK(context, context->GetAttr("ratio", &flags_.ratio));
+      OP_REQUIRES(context,
+                  flags_.ratio == 1 || flags_.ratio == 2 || flags_.ratio == 4 ||
+                      flags_.ratio == 8,
+                  errors::InvalidArgument("ratio must be 1, 2, 4, or 8, got ",
+                                          flags_.ratio));
+      OP_REQUIRES_OK(context, context->GetAttr("fancy_upscaling",
+                                               &flags_.fancy_upscaling));
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("try_recover_truncated",
+                                      &flags_.try_recover_truncated_jpeg));
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("acceptable_fraction",
+                                      &flags_.min_acceptable_fraction));
+      string dct_method;
+      OP_REQUIRES_OK(context, context->GetAttr("dct_method", &dct_method));
+      OP_REQUIRES(
+          context,
+          (dct_method.empty() || dct_method == "INTEGER_FAST" ||
+           dct_method == "INTEGER_ACCURATE"),
+          errors::InvalidArgument("dct_method must be one of "
+                                  "{'', 'INTEGER_FAST', 'INTEGER_ACCURATE'}"));
+      // The TensorFlow-chosen default for JPEG decoding is IFAST, sacrificing
+      // image quality for speed.
+      if (dct_method.empty() || dct_method == "INTEGER_FAST") {
+        flags_.dct_method = JDCT_IFAST;
+      } else if (dct_method == "INTEGER_ACCURATE") {
+        flags_.dct_method = JDCT_ISLOW;
+      }
+    } else {
+      flags_ = jpeg::UncompressFlags();
+      flags_.dct_method = JDCT_IFAST;
+    }
+
+    // Get `dtype` attribute from `DecodePng` or `DecodeImage` op invocations.
+    if (op_type_ == "DecodePng" || op_type_ == "DecodeImage") {
+      OP_REQUIRES_OK(context, context->GetAttr("dtype", &data_type_));
+      if (op_type_ == "DecodePng") {
+        OP_REQUIRES(
+            context,
+            data_type_ == DataType::DT_UINT8 ||
+                data_type_ == DataType::DT_UINT16,
+            errors::InvalidArgument(
+                "`dtype` for `DecodePng` must be unit8, unit16 but got: ",
+                data_type_));
+      } else {
+        OP_REQUIRES(context,
+                    data_type_ == DataType::DT_UINT8 ||
+                        data_type_ == DataType::DT_UINT16 ||
+                        data_type_ == DataType::DT_FLOAT,
+                    errors::InvalidArgument("`dtype` for `DecodeImage` must be "
+                                            "unit8, unit16, float but got: ",
+                                            data_type_));
+        OP_REQUIRES_OK(context, context->GetAttr("expand_animations",
+                                                 &expand_animations_));
+      }
+    }
+
+    // Get `channels` attribute for all ops except `DecodeGif` op.
+    // `DecodeGif` doesn't have `channels` attribute but it supports 3
+    // channels by default.
+    if (op_type_ != "DecodeGif") {
+      OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
+      OP_REQUIRES(
+          context,
+          channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,
+          errors::InvalidArgument("`channels` must be 0, 1, 3 or 4 but got ",
+                                  channels_));
+    } else {
+      channels_ = 3;
+    }
   }
 
   // Helper for decoding BMP.
   inline int32 ByteSwapInt32ForBigEndian(int32 x) {
-#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-    return le32toh(x);
-#else
-    return x;
-#endif
+    if (!port::kLittleEndian) {
+      return BYTE_SWAP_32(x);
+    } else {
+      return x;
+    }
+  }
+
+  // Helper for decoding BMP.
+  inline int16 ByteSwapInt16ForBigEndian(int16 x) {
+    if (!port::kLittleEndian) {
+      return BYTE_SWAP_16(x);
+    } else {
+      return x;
+    }
   }
 
   void Compute(OpKernelContext* context) override {
@@ -423,14 +510,29 @@ class DecodeImageV2Op : public OpKernel {
 
   void DecodeJpegV2(OpKernelContext* context, StringPiece input) {
     OP_REQUIRES(context, channels_ == 0 || channels_ == 1 || channels_ == 3,
-                errors::InvalidArgument("JPEG does not support 4 channels."));
+                errors::InvalidArgument("JPEG does not support 4 channels"));
 
-    // Use default settings for `DecodeImage` op. Use local copy of flags to
-    // avoid race condition as the class member is shared among different
-    // invocations.
-    jpeg::UncompressFlags flags = jpeg::UncompressFlags();
+    // Use local copy of flags to avoid race condition as the class member is
+    // shared among different invocations.
+    jpeg::UncompressFlags flags = flags_;
     flags.components = channels_;
-    flags.dct_method = JDCT_IFAST;
+
+    if (op_type_ == "DecodeAndCropJpeg") {
+      flags.crop = true;
+      // Update flags to include crop window.
+      const Tensor& crop_window = context->input(1);
+      OP_REQUIRES(context, crop_window.dims() == 1,
+                  errors::InvalidArgument("crop_window must be 1-D, got shape ",
+                                          crop_window.shape().DebugString()));
+      OP_REQUIRES(context, crop_window.dim_size(0) == 4,
+                  errors::InvalidArgument("crop_size must have four elements ",
+                                          crop_window.shape().DebugString()));
+      auto crop_window_vec = crop_window.vec<int32>();
+      flags.crop_y = crop_window_vec(0);
+      flags.crop_x = crop_window_vec(1);
+      flags.crop_height = crop_window_vec(2);
+      flags.crop_width = crop_window_vec(3);
+    }
 
     // Output tensor and the image buffer size.
     Tensor* output = nullptr;
@@ -438,13 +540,22 @@ class DecodeImageV2Op : public OpKernel {
 
     // Decode JPEG. Directly allocate to the output buffer if data type is
     // uint8 (to save extra copying). Otherwise, allocate a new uint8 buffer
-    // with buffer size. `jpeg::Uncompress` support unit8 only.
+    // with buffer size. `jpeg::Uncompress` supports unit8 only.
     uint8* buffer = jpeg::Uncompress(
         input.data(), input.size(), flags, nullptr /* nwarn */,
         [&](int width, int height, int channels) -> uint8* {
           buffer_size = height * width * channels;
-          Status status = context->allocate_output(
-              0, TensorShape({height, width, channels}), &output);
+          Status status;
+          // By the existing API, we support decoding JPEG with `DecodeGif`
+          // op. We need to make sure to return 4-D shapes when using
+          // `DecodeGif`.
+          if (op_type_ == "DecodeGif") {
+            status = context->allocate_output(
+                0, TensorShape({1, height, width, channels}), &output);
+          } else {
+            status = context->allocate_output(
+                0, TensorShape({height, width, channels}), &output);
+          }
           if (!status.ok()) {
             VLOG(1) << status;
             context->SetStatus(status);
@@ -458,8 +569,10 @@ class DecodeImageV2Op : public OpKernel {
           }
         });
 
-    OP_REQUIRES(context, buffer,
-                errors::InvalidArgument("jpeg::Uncompress failed."));
+    OP_REQUIRES(
+        context, buffer,
+        errors::InvalidArgument(
+            "jpeg::Uncompress failed. Invalid JPEG data or crop window."));
 
     // For when desired data type if unit8, the output buffer is already
     // allocated during the `jpeg::Uncompress` call above; return.
@@ -487,8 +600,7 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   void DecodePngV2(OpKernelContext* context, StringPiece input) {
-    int channel_bits;
-    channel_bits = (data_type_ == DataType::DT_UINT8) ? 8 : 16;
+    int channel_bits = (data_type_ == DataType::DT_UINT8) ? 8 : 16;
     png::DecodeContext decode;
     OP_REQUIRES(
         context, png::CommonInitDecode(input, channels_, channel_bits, &decode),
@@ -514,8 +626,16 @@ class DecodeImageV2Op : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    const auto status = context->allocate_output(
-        0, TensorShape({height, width, decode.channels}), &output);
+    Status status;
+    // By the existing API, we support decoding PNG with `DecodeGif` op.
+    // We need to make sure to return 4-D shapes when using `DecodeGif`.
+    if (op_type_ == "DecodeGif") {
+      status = context->allocate_output(
+          0, TensorShape({1, height, width, decode.channels}), &output);
+    } else {
+      status = context->allocate_output(
+          0, TensorShape({height, width, decode.channels}), &output);
+    }
     if (!status.ok()) png::CommonFreeDecode(&decode);
     OP_REQUIRES_OK(context, status);
 
@@ -575,12 +695,28 @@ class DecodeImageV2Op : public OpKernel {
           buffer_size = num_frames * height * width * channels;
 
           Status status;
-          if (expand_animations_) {
+          // By the existing API, we support decoding GIF with `decode_jpeg` or
+          // with `decode_png` if the GIF is a single-frame GIF (non-animated).
+          // We need to make sure to return 3-D shapes when using in this case.
+          if (op_type_ == "DecodePng" || op_type_ == "DecodeJpeg") {
+            if (num_frames == 1) {
+              status = context->allocate_output(
+                  0, TensorShape({height, width, channels}), &output);
+            } else {
+              status = errors::InvalidArgument(
+                  "Got ", num_frames, " frames, but animated gifs ",
+                  "can only be decoded by tf.io.decode_gif or ",
+                  "tf.io.decode_image");
+            }
+          } else if (op_type_ == "DecodeGif" ||
+                     (op_type_ == "DecodeImage" && expand_animations_)) {
             status = context->allocate_output(
                 0, TensorShape({num_frames, height, width, channels}), &output);
-          } else {
+          } else if (op_type_ == "DecodeImage" && !expand_animations_) {
             status = context->allocate_output(
                 0, TensorShape({height, width, channels}), &output);
+          } else {
+            status = errors::InvalidArgument("Bad op type ", op_type_);
           }
           if (!status.ok()) {
             VLOG(1) << status;
@@ -626,9 +762,10 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   void DecodeBmpV2(OpKernelContext* context, StringPiece input) {
-    OP_REQUIRES(context, channels_ == 0 || channels_ == 3,
-                errors::InvalidArgument(
-                    "`channels` must be 0 or 3 for BMP, but got ", channels_));
+    OP_REQUIRES(
+        context, channels_ != 1,
+        errors::InvalidArgument(
+            "`channels` must be 0, 3 or 4 for BMP, but got ", channels_));
 
     OP_REQUIRES(context, (32 <= input.size()),
                 errors::InvalidArgument("Incomplete bmp content, requires at "
@@ -646,24 +783,19 @@ class DecodeImageV2Op : public OpKernel {
     int32 height_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 22)));
     const int32 height = ByteSwapInt32ForBigEndian(height_);
-    int32 bpp_ = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 28)));
-    const int32 bpp = ByteSwapInt32ForBigEndian(bpp_);
+    int16 bpp_ = internal::SubtleMustCopy(
+        *(reinterpret_cast<const int16*>(img_bytes + 28)));
+    const int16 bpp = ByteSwapInt16ForBigEndian(bpp_);
 
-    if (channels_) {
-      OP_REQUIRES(context, (channels_ == bpp / 8),
-                  errors::InvalidArgument(
-                      "channels attribute ", channels_,
-                      " does not match bits per pixel from file ", bpp / 8));
-    } else {
-      channels_ = bpp / 8;
-    }
-
-    // Current implementation only supports 1, 3 or 4 channel
-    // bitmaps.
-    OP_REQUIRES(context, (channels_ == 1 || channels_ == 3 || channels_ == 4),
-                errors::InvalidArgument(
-                    "Number of channels must be 1, 3 or 4, was ", channels_));
+    // `channels_` is desired number of channels. `img_channels` is number of
+    // channels inherent in the image.
+    int img_channels = bpp / 8;
+    OP_REQUIRES(
+        context, (img_channels == 1 || img_channels == 3 || img_channels == 4),
+        errors::InvalidArgument(
+            "Number of channels inherent in the image must be 1, 3 or 4, was ",
+            img_channels));
+    const int requested_channels = channels_ ? channels_ : img_channels;
 
     OP_REQUIRES(context, width > 0,
                 errors::InvalidArgument("Width must be positive"));
@@ -684,14 +816,24 @@ class DecodeImageV2Op : public OpKernel {
     const int32 abs_height = abs(height);
 
     // there may be padding bytes when the width is not a multiple of 4 bytes
-    const int row_size = (channels_ * width + 3) / 4 * 4;
+    const int row_size = (img_channels * width + 3) / 4 * 4;
+
+    // Make sure the size of input data matches up with the total size of
+    // headers plus height * row_size.
+    int size_diff = input.size() - header_size - (row_size * abs_height);
+    OP_REQUIRES(
+        context, size_diff == 0,
+        errors::InvalidArgument(
+            "Input size should match (header_size + row_size * abs_height) but "
+            "they differ by ",
+            size_diff));
 
     const int64 last_pixel_offset = static_cast<int64>(header_size) +
                                     (abs_height - 1) * row_size +
-                                    (width - 1) * channels_;
+                                    (width - 1) * img_channels;
 
     // [expected file size] = [last pixel offset] + [last pixel size=channels]
-    const int64 expected_file_size = last_pixel_offset + channels_;
+    const int64 expected_file_size = last_pixel_offset + img_channels;
 
     OP_REQUIRES(
         context, (expected_file_size <= input.size()),
@@ -706,20 +848,22 @@ class DecodeImageV2Op : public OpKernel {
     // Decode image, allocating tensor once the image size is known.
     Tensor* output = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(
-                     0, TensorShape({abs_height, width, channels_}), &output));
+        context,
+        context->allocate_output(
+            0, TensorShape({abs_height, width, requested_channels}), &output));
 
     const uint8* bmp_pixels = &img_bytes[header_size];
 
     if (data_type_ == DataType::DT_UINT8) {
       DecodeBMP(bmp_pixels, row_size, output->flat<uint8>().data(), width,
-                abs_height, channels_, top_down);
+                abs_height, requested_channels, img_channels, top_down);
     } else {
-      std::unique_ptr<uint8[]> buffer(new uint8[height * width * channels_]);
+      std::unique_ptr<uint8[]> buffer(
+          new uint8[height * width * requested_channels]);
       DecodeBMP(bmp_pixels, row_size, buffer.get(), width, abs_height,
-                channels_, top_down);
+                requested_channels, img_channels, top_down);
       TTypes<uint8, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
-                                                 channels_);
+                                                 requested_channels);
       // Convert the raw uint8 buffer to desired dtype.
       // Use eigen threadpooling to speed up the copy operation.
       const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
@@ -736,60 +880,83 @@ class DecodeImageV2Op : public OpKernel {
     }
   }
 
-  void DecodeBMP(const uint8* input, const int row_size, uint8* const output,
-                 const int width, const int height, const int channels,
-                 bool top_down);
-
  private:
+  void DecodeBMP(const uint8* input, const int row_size, uint8* const output,
+                 const int width, const int height, const int output_channels,
+                 const int input_channels, bool top_down);
+
   int channels_ = 0;
-  DataType data_type_;
-  bool expand_animations_;
+  DataType data_type_ = DataType::DT_UINT8;
+  bool expand_animations_ = true;
+  jpeg::UncompressFlags flags_;
+  string op_type_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("DecodeJpeg").Device(DEVICE_CPU), DecodeImageOp);
-REGISTER_KERNEL_BUILDER(Name("DecodePng").Device(DEVICE_CPU), DecodeImageOp);
-REGISTER_KERNEL_BUILDER(Name("DecodeGif").Device(DEVICE_CPU), DecodeImageOp);
+REGISTER_KERNEL_BUILDER(Name("DecodeJpeg").Device(DEVICE_CPU), DecodeImageV2Op);
+REGISTER_KERNEL_BUILDER(Name("DecodePng").Device(DEVICE_CPU), DecodeImageV2Op);
+REGISTER_KERNEL_BUILDER(Name("DecodeGif").Device(DEVICE_CPU), DecodeImageV2Op);
 REGISTER_KERNEL_BUILDER(Name("DecodeAndCropJpeg").Device(DEVICE_CPU),
-                        DecodeImageOp);
+                        DecodeImageV2Op);
 REGISTER_KERNEL_BUILDER(Name("DecodeImage").Device(DEVICE_CPU),
                         DecodeImageV2Op);
+REGISTER_KERNEL_BUILDER(Name("DecodeBmp").Device(DEVICE_CPU), DecodeImageV2Op);
 
 void DecodeImageV2Op::DecodeBMP(const uint8* input, const int row_size,
                                 uint8* const output, const int width,
-                                const int height, const int channels,
-                                bool top_down) {
+                                const int height, const int output_channels,
+                                const int input_channels, bool top_down) {
   for (int i = 0; i < height; i++) {
     int src_pos;
     int dst_pos;
 
     for (int j = 0; j < width; j++) {
       if (!top_down) {
-        src_pos = ((height - 1 - i) * row_size) + j * channels;
+        src_pos = ((height - 1 - i) * row_size) + j * input_channels;
       } else {
-        src_pos = i * row_size + j * channels;
+        src_pos = i * row_size + j * input_channels;
       }
 
-      dst_pos = (i * width + j) * channels;
+      dst_pos = (i * width + j) * output_channels;
 
-      switch (channels) {
+      switch (input_channels) {
         case 1:
           output[dst_pos] = input[src_pos];
+          // Set 2nd and 3rd channels if user requested for 3 or 4 channels.
+          // Repeat 1st channel's value.
+          if (output_channels == 3 || output_channels == 4) {
+            output[dst_pos + 1] = input[src_pos];
+            output[dst_pos + 2] = input[src_pos];
+          }
+          // Set 4th channel (alpha) to maximum value if user requested for
+          // 4 channels.
+          if (output_channels == 4) {
+            output[dst_pos + 3] = UINT8_MAX;
+          }
           break;
         case 3:
           // BGR -> RGB
           output[dst_pos] = input[src_pos + 2];
           output[dst_pos + 1] = input[src_pos + 1];
           output[dst_pos + 2] = input[src_pos];
+          // Set 4th channel (alpha) to maximum value if the user requested for
+          // 4 channels and the input image has 3 channels only.
+          if (output_channels == 4) {
+            output[dst_pos + 3] = UINT8_MAX;
+          }
           break;
         case 4:
           // BGRA -> RGBA
           output[dst_pos] = input[src_pos + 2];
           output[dst_pos + 1] = input[src_pos + 1];
           output[dst_pos + 2] = input[src_pos];
-          output[dst_pos + 3] = input[src_pos + 3];
+          // Set 4th channel only if the user requested for 4 channels. If not,
+          // then user requested 3 channels; skip this step.
+          if (output_channels == 4) {
+            output[dst_pos + 3] = input[src_pos + 3];
+          }
           break;
         default:
-          LOG(FATAL) << "Unexpected number of channels: " << channels;
+          LOG(FATAL) << "Unexpected number of channels: " << input_channels;
           break;
       }
     }

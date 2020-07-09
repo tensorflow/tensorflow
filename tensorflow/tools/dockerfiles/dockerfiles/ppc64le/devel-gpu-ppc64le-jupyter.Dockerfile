@@ -125,14 +125,14 @@ RUN python3 -m pip --no-cache-dir install \
     keras_preprocessing \
     matplotlib \
     mock \
-    numpy<1.19.0 \
+    'numpy<1.19.0' \
     scipy \
     sklearn \
     pandas \
     portpicker \
     enum34
 
- # Build and install bazel
+# Build and install bazel
 ENV BAZEL_VERSION 3.1.0
 WORKDIR /
 RUN mkdir /bazel && \

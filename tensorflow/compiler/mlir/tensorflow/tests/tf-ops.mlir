@@ -830,7 +830,7 @@ func @testInvalidIfOp(tensor<i1>, tensor<*xf32>) -> tensor<2xf32> {
 
 // Test invalid tf.Yield operation (parent should be IfRegion)
 func @testInvalidYieldOp(%arg0: f32) -> () {
-  // expected-error @+1 {{expects parent op 'tf.IfRegion'}}
+  // expected-error @+1 {{'tf.Yield' op expects parent op to be one of 'tf.IfRegion, tf.WhileRegion'}}
   "tf.Yield"(%arg0) : (f32) -> ()
 }
 
@@ -964,7 +964,7 @@ func @testIfRegionElseTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> ten
 
 // tf.Region yield number of results should match op number of results
 func @testIfRegionThenResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  // expected-error @+1 {{then region should have 1 result}}
+  // expected-error @+1 {{'tf.IfRegion' op then should have same number (1) of results as tf.IfRegion but has 2 results}}
   %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t, %t) : (tensor<2xf32>, tensor<2xf32>) -> ()
@@ -979,7 +979,7 @@ func @testIfRegionThenResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> te
 // -----
 
 func @testIfRegionElseResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  // expected-error @+1 {{else region should have 1 result}}
+  // expected-error @+1 {{tf.IfRegion' op else should have same number (1) of results as tf.IfRegion but has 2 results}}
   %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
@@ -1627,6 +1627,226 @@ func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.res
   } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>)
 
   return %1 : tensor<!tf.resource>
+}
+
+// -----
+// WhileRegion tests
+
+// Simple While region
+// CHECK-LABEL: testValidWhileRegion
+func @testValidWhileRegion(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
+      %zero = constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg1, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
+      %add = "tf.Add"(%barg0, %barg0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+      %one = constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%add, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+
+  return %0#0 : tensor<*xf32>
+}
+
+// -----
+
+// While region with no inputs (and hence no outputs) (infinite loop)
+// CHECK-LABEL: testValidWhileRegionNoInputs
+func @printer(tensor<i32>) -> ()
+func @testValidWhileRegionNoInputs() -> () {
+  "tf.WhileRegion"() (
+    {
+      %true = constant dense<1> : tensor<i1>
+      "tf.Yield"(%true) : (tensor<i1>) -> ()
+    },
+    {
+      %one = constant dense<1> : tensor<i32>
+      call @printer(%one) : (tensor<i32>) -> ()
+      // TODO(b/159753381): tf.IfRegion implicit terminator not working
+      "tf.Yield"() : () -> ()
+    }
+  ) { is_stateless = true } : () -> ()
+  return
+}
+
+// -----
+
+func @testInvalidWhileRegionMismatchCondInputCount(%arg : tensor<i32>) -> (tensor<i32>) {
+  // expected-error @+1 {{'tf.WhileRegion' op condition should have same number of inputs (1) as tf.WhileRegion but has 0 inputs}}
+  %0 = "tf.WhileRegion"(%arg) (
+     {
+       // ^bb0(%carg: tensor<i32>):
+        %true = constant dense<1> : tensor<i1>
+        "tf.Yield"(%true) : (tensor<i1>) -> ()
+     },
+     {
+       ^bb0(%barg: tensor<i32>):
+        "tf.Yield"(%arg) : (tensor<i32>) -> ()
+     }
+  ) : (tensor<i32>) -> (tensor<i32>)
+
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testInvalidWhileRegionMismatchCondInputType(%arg : tensor<i32>) -> (tensor<i32>) {
+  // expected-error @+1 {{'tf.WhileRegion' op condition input type tensor<f32> is incompatible with tf.WhileRegion input type tensor<i32> at index 0}}
+  %0 = "tf.WhileRegion"(%arg) (
+     {
+       ^bb0(%carg: tensor<f32>):
+        %true = constant dense<1> : tensor<i1>
+        "tf.Yield"(%true) : (tensor<i1>) -> ()
+     },
+     {
+       ^bb0(%barg: tensor<i32>):
+        "tf.Yield"(%barg) : (tensor<i32>) -> ()
+     }
+  ) : (tensor<i32>) -> (tensor<i32>)
+
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testInvalidWhileRegionMismatchBodyInputCount(%arg : tensor<i32>) -> (tensor<i32>) {
+  // expected-error @+1 {{'tf.WhileRegion' op body should have same number of inputs (1) as tf.WhileRegion but has 2 inputs}}
+  %0 = "tf.WhileRegion"(%arg) (
+     {
+       ^bb0(%carg: tensor<i32>):
+        %true = constant dense<1> : tensor<i1>
+        "tf.Yield"(%true) : (tensor<i1>) -> ()
+     },
+     {
+       ^bb0(%barg0: tensor<i32>, %barg1 : tensor<f32>):
+        "tf.Yield"(%barg0) : (tensor<i32>) -> ()
+     }
+  ) : (tensor<i32>) -> (tensor<i32>)
+
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testInvalidWhileRegionMismatchBodyInputType(%arg : tensor<i32>) -> (tensor<i32>) {
+  // expected-error @+1 {{body input type tensor<f32> is incompatible with tf.WhileRegion input type tensor<i32> at index 0}}
+  %0 = "tf.WhileRegion"(%arg) (
+     {
+       ^bb0(%carg: tensor<i32>):
+        %true = constant dense<1> : tensor<i1>
+        "tf.Yield"(%true) : (tensor<i1>) -> ()
+     },
+     {
+       ^bb0(%barg: tensor<f32>):
+        %c = "tf.Cast"(%barg) : (tensor<f32>) -> tensor<i32>
+        "tf.Yield"(%c) : (tensor<i32>) -> ()
+     }
+  ) : (tensor<i32>) -> (tensor<i32>)
+
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testInvalidWhileRegionConditionOutputCount2(%arg : tensor<i32>) -> (tensor<i32>) {
+  // expected-error @+1 {{'tf.WhileRegion' op condition should have a single tensor<i1> result}}
+  %0 = "tf.WhileRegion"(%arg) (
+     {
+       ^bb0(%carg: tensor<i32>):
+        %true = constant dense<1> : tensor<i1>
+        "tf.Yield"(%true, %true) : (tensor<i1>, tensor<i1>) -> ()
+     },
+     {
+       ^bb0(%barg: tensor<i32>):
+        "tf.Yield"(%barg) : (tensor<i32>) -> ()
+     }
+  ) : (tensor<i32>) -> (tensor<i32>)
+
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testInvalidWhileRegionConditionOutputCount0(%arg : tensor<i32>) -> (tensor<i32>) {
+  // expected-error @+1 {{'tf.WhileRegion' op condition should have a single tensor<i1> result}}
+  %0 = "tf.WhileRegion"(%arg) (
+     {
+       ^bb0(%carg: tensor<i32>):
+        "tf.Yield"() : () -> ()
+     },
+     {
+       ^bb0(%barg: tensor<i32>):
+        "tf.Yield"(%barg) : (tensor<i32>) -> ()
+     }
+  ) : (tensor<i32>) -> (tensor<i32>)
+
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testInvalidWhileRegionConditionOutputType(%arg : tensor<i32>) -> (tensor<i32>) {
+  // expected-error @+1 {{'tf.WhileRegion' op condition should have a single tensor<i1> result}}
+  %0 = "tf.WhileRegion"(%arg) (
+     {
+       ^bb0(%carg: tensor<i32>):
+        "tf.Yield"(%carg) : (tensor<i32>) -> ()
+     },
+     {
+       ^bb0(%barg: tensor<i32>):
+        "tf.Yield"(%barg) : (tensor<i32>) -> ()
+     }
+  ) : (tensor<i32>) -> (tensor<i32>)
+
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testInvalidWhileRegionMismatchBodyOutputCount(%arg : tensor<i32>) -> (tensor<i32>) {
+  // expected-error @+1 {{'tf.WhileRegion' op body should have same number (1) of results as tf.WhileRegion but has 2 results}}
+  %0 = "tf.WhileRegion"(%arg) (
+     {
+       ^bb0(%carg: tensor<i32>):
+        %true = constant dense<1> : tensor<i1>
+        "tf.Yield"(%true) : (tensor<i1>) -> ()
+     },
+     {
+       ^bb0(%barg: tensor<i32>):
+        %false = constant dense<1> : tensor<i1>
+        "tf.Yield"(%barg, %false) : (tensor<i32>, tensor<i1>) -> ()
+     }
+  ) : (tensor<i32>) -> (tensor<i32>)
+
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testInvalidWhileRegionMismatchBodyOutputType(%arg : tensor<i32>) -> (tensor<i32>) {
+  // expected-error @+1 {{body result type tensor<f32> is incompatible with tf.WhileRegion result type tensor<i32> at index 0}}
+  %0 = "tf.WhileRegion"(%arg) (
+     {
+       ^bb0(%carg: tensor<i32>):
+        %true = constant dense<1> : tensor<i1>
+        "tf.Yield"(%true) : (tensor<i1>) -> ()
+     },
+     {
+       ^bb0(%barg: tensor<i32>):
+        %c = "tf.Cast"(%barg) : (tensor<i32>) -> tensor<f32>
+        "tf.Yield"(%c) : (tensor<f32>) -> ()
+     }
+  ) : (tensor<i32>) -> (tensor<i32>)
+
+  return %0 : tensor<i32>
 }
 
 // -----

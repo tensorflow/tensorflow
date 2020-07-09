@@ -440,7 +440,7 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
   };
   for (FuncOp func : funcs) {
     for (auto& op : func.front().getOperations()) {
-      if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+      if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
         op.replaceAllUsesWith(op.getOperands());
         continue;
       }
@@ -809,7 +809,7 @@ LogicalResult DecomposeTensorArrayOps(
     llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
         decomposed_partitioned_call_callees) {
   for (auto& op : llvm::make_early_inc_range(block->getOperations())) {
-    if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+    if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
       op.replaceAllUsesWith(op.getOperands());
       op.erase();
     } else if (auto ta = llvm::dyn_cast<TF::TensorArrayV3Op>(&op)) {

@@ -4484,7 +4484,7 @@ def where_v2(condition, x=None, y=None, name=None):
     condition: A `tf.Tensor` of type `bool`
     x: If provided, a Tensor which is of the same type as `y`, and has a shape
       broadcastable with `condition` and `y`.
-    y: If provided, a Tensor which is of the same type as `y`, and has a shape
+    y: If provided, a Tensor which is of the same type as `x`, and has a shape
       broadcastable with `condition` and `x`.
     name: A name of the operation (optional).
 

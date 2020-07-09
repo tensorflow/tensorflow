@@ -471,8 +471,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Could not find matching function to call"):
+    with self.assertRaisesRegex(ValueError,
+                                "Could not find matching function to call"):
       imported.f(input2)
 
     self.assertEqual(31, imported.f(input1).numpy())
@@ -547,8 +547,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Could not find matching function to call.*"):
+    with self.assertRaisesRegex(ValueError,
+                                "Could not find matching function to call.*"):
       imported.f(x, learning_rate=0.5, epochs=4)
 
     self.assertEqual(7, imported.f(x, learning_rate=0.5, epochs=3).numpy())
@@ -840,7 +840,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles)
 
-    with self.assertRaisesRegexp(ValueError, "Python inputs incompatible"):
+    with self.assertRaisesRegex(ValueError, "Python inputs incompatible"):
       # We cannot call the function with a constant of shape ().
       imported.f(constant_op.constant(2)).numpy()
 
@@ -875,8 +875,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual([2, 4, 6, 8],
                         concrete(x=constant_op.constant([1, 2, 3, 4])).numpy())
-    with self.assertRaisesRegexp(ValueError,
-                                 "Could not find matching function to call"):
+    with self.assertRaisesRegex(ValueError,
+                                "Could not find matching function to call"):
       imported.f.get_concrete_function(
           tensor_spec.TensorSpec([None], dtypes.int32))
     imported.f.get_concrete_function(
@@ -1183,7 +1183,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         signatures={"key": exported.f.get_concrete_function()})
     self.assertEqual(1., imported.signatures["key"]()["output_0"].numpy())
     imported.signatures = {"key1": imported.signatures["key"]}
-    with self.assertRaisesRegexp(ValueError, "signatures"):
+    with self.assertRaisesRegex(ValueError, "signatures"):
       save.save(imported, tempfile.mkdtemp(prefix=self.get_temp_dir()))
 
   def test_signature_loading(self, cycles):
@@ -1346,8 +1346,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(root.f(), [1.0, 2.0, 3.0, True])
     self.assertAllEqual(root.f(-1.0, training=False), [3.0, 2.0, -1.0, False])
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Could not find matching function"):
+    with self.assertRaisesRegex(ValueError, "Could not find matching function"):
       root.f(["hello", 1.0])
 
   def test_prefer_specific_trace(self, cycles):
@@ -1568,8 +1567,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(4.0, imported({"a": 3.0}).numpy())
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Could not find matching function to call"):
+    with self.assertRaisesRegex(ValueError,
+                                "Could not find matching function to call"):
       imported({"a": 2.0, "b": 3.0})
 
   def test_shapes_available(self, cycles):
@@ -1741,8 +1740,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     del imported
 
     # Try to destroy the resource again, should fail.
-    with self.assertRaisesRegexp(errors.NotFoundError,
-                                 r"Resource .* does not exist."):
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                r"Resource .* does not exist."):
       resource_variable_ops.destroy_resource_op(
           handle, ignore_lookup_error=False)
 
@@ -1795,6 +1794,22 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     options = load_options.LoadOptions(experimental_io_device="/job:localhost")
     self.assertEqual("/job:localhost", options.experimental_io_device)
 
+  def test_load_custom_saveable_object(self, cycles):
+    root = tracking.AutoTrackable()
+    root.table = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
+    root.table.insert("foo", 15)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    root.lookup = lookup
+
+    imported = cycle(root, cycles)
+    self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
+    self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
+
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
@@ -1843,9 +1858,8 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     self.assertEqual(5, self.evaluate(imported.a))
 
     root.a = variables.Variable(3.)
-    with self.assertRaisesRegexp(
-        ValueError,
-        "object has an attribute named a, which is reserved."):
+    with self.assertRaisesRegex(
+        ValueError, "object has an attribute named a, which is reserved."):
       save.save(root, path)
 
   def test_save_cached_variable(self):

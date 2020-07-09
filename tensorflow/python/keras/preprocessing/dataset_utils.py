@@ -45,7 +45,7 @@ def index_directory(directory,
         valid files found in the directory. Labels should be sorted according
         to the alphanumeric order of the image file paths
         (obtained via `os.walk(directory)` in Python).
-    formats: Whitelist of file extensions to index (e.g. ".jpg", ".txt").
+    formats: Allowlist of file extensions to index (e.g. ".jpg", ".txt").
     class_names: Only valid if "labels" is "inferred". This is the explict
         list of class names (must match names of subdirectories). Used
         to control the order of the classes
@@ -136,7 +136,7 @@ def index_subdirectory(directory, class_indices, follow_links, formats):
     class_indices: dict mapping class names to their index.
     follow_links: boolean, whether to recursively follow subdirectories
       (if False, we only list top-level images in `directory`).
-    formats: Whitelist of file extensions to index (e.g. ".jpg", ".txt").
+    formats: Allowlist of file extensions to index (e.g. ".jpg", ".txt").
 
   Returns:
     tuple `(filenames, labels)`. `filenames` is a list of relative file

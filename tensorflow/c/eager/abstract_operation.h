@@ -122,7 +122,7 @@ struct AbstractOperationDeleter {
 };
 }  // namespace internal
 
-using AbstractOpPtr =
+using AbstractOperationPtr =
     std::unique_ptr<AbstractOperation, internal::AbstractOperationDeleter>;
 
 }  // namespace tensorflow

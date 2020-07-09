@@ -114,14 +114,12 @@ Optional<SmallVector<Type, 4>> InferShapeForFunctionReturnType(FuncOp func) {
 
 // Returns if the shape inference pass supports an op outside the TF dialect.
 bool IsSupportedNonTFOp(Operation* op) {
-  return isa<ReturnOp>(op) || isa<tf_device::ReturnOp>(op) ||
-         isa<tf_executor::EnterOp>(op) || isa<tf_executor::ExitOp>(op) ||
-         isa<tf_executor::FetchOp>(op) || isa<tf_executor::GraphOp>(op) ||
-         isa<tf_executor::IslandOp>(op) || isa<tf_executor::LoopCondOp>(op) ||
-         isa<tf_executor::MergeOp>(op) ||
-         isa<tf_executor::NextIterationSinkOp>(op) ||
-         isa<tf_executor::SwitchNOp>(op) || isa<tf_executor::SwitchOp>(op) ||
-         isa<tf_executor::YieldOp>(op);
+  return isa<ReturnOp, tf_device::ReturnOp, tf_executor::EnterOp,
+             tf_executor::ExitOp, tf_executor::FetchOp, tf_executor::GraphOp,
+             tf_executor::IslandOp, tf_executor::LoopCondOp,
+             tf_executor::MergeOp, tf_executor::NextIterationSinkOp,
+             tf_executor::SwitchNOp, tf_executor::SwitchOp,
+             tf_executor::YieldOp>(op);
 }
 
 // Returns whether a cast back would need to be inserted, e.g., whether the
@@ -207,9 +205,9 @@ GetSubtypes(Type type) {
 // Returns whether type can be further refined.
 bool CanBeRefined(Type type) {
   auto shape_type = type.dyn_cast<ShapedType>();
-  return shape_type && (!shape_type.hasStaticShape() ||
-                        shape_type.getElementType().isa<TF::ResourceType>() ||
-                        shape_type.getElementType().isa<TF::VariantType>());
+  return shape_type &&
+         (!shape_type.hasStaticShape() ||
+          shape_type.getElementType().isa<TF::ResourceType, TF::VariantType>());
 }
 
 // Infers the shape from a (Stateful)PartionedCall operation by looking up the
@@ -371,7 +369,8 @@ LogicalResult ComputeInputsRequiredForOutput(ValuePort value_port,
   // Note: this focusses only on the trivial pack op case and this could be
   // generalized.
   if (auto pack_op = dyn_cast<TF::PackOp>(op)) {
-    if (pack_op.getType().cast<TensorType>().getRank() != 1) return failure();
+    auto type = pack_op.getType().cast<TensorType>();
+    if (!type.hasRank() || type.getRank() != 1) return failure();
     if (port.size() != 2) return failure();
     assert(port[0] == 0);
     ValuePort req(pack_op.getOperand(port[1]));
@@ -407,7 +406,8 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
   // Note: this focusses only on the trivial pack op case and this could be
   // generalized.
   if (auto pack_op = dyn_cast<TF::PackOp>(op)) {
-    if (pack_op.getType().cast<TensorType>().getRank() != 1) return nullptr;
+    TensorType type = pack_op.getType().cast<TensorType>();
+    if (!type.hasRank() || type.getRank() != 1) return nullptr;
     if (port.size() != 2 || port[0] != 0) return nullptr;
     ValuePort op_port(op->getOperand(port[1]));
     return values(op_port);
@@ -712,8 +712,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   // The shape function of these ops sometimes does not propagate subtypes
   // (handle shapes) for resource and variant types. We use a simple passthrough
   // to make sure they are preserved in the output.
-  if (isa<TF::IdentityOp>(op) || isa<TF::IdentityNOp>(op) ||
-      isa<TF::ZerosLikeOp>(op) || isa<TF::WhileOp>(op)) {
+  if (isa<TF::IdentityOp, TF::IdentityNOp, TF::ZerosLikeOp, TF::WhileOp>(op)) {
     return RefineTypeForPassThroughOperands(op, op->getOperands(),
                                             op->getResults());
   }
@@ -729,7 +728,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
 
   // Handle call operations by looking up callee and infering return shape as
   // needed.
-  if (isa<PartitionedCallOp>(op) || isa<StatefulPartitionedCallOp>(op))
+  if (isa<PartitionedCallOp, StatefulPartitionedCallOp, TPUPartitionedCallOp>(
+          op))
     return InferShapeForCall(op);
 
   // tf.Cast are only inferred if they have at least one user in the TF dialect
@@ -889,8 +889,7 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
     };
     auto new_element_type = shaped_type.getElementType();
     // Populate the handle shapes for a resource/variant.
-    if (new_element_type.isa<TF::ResourceType>() ||
-        new_element_type.isa<TF::VariantType>()) {
+    if (new_element_type.isa<TF::ResourceType, TF::VariantType>()) {
       auto handle_shapes_types = c.output_handle_shapes_and_types(output);
       if (handle_shapes_types) {
         SmallVector<TensorType, 1> subtypes;
@@ -1038,6 +1037,13 @@ LogicalResult ShapeInference::PropagateShapeIntoAttachedFunctions(
     return PropagateShapeToFunctions(
         module, drop_begin(if_op.getOperandTypes(), 1),
         {if_op.then_branch(), if_op.else_branch()}, max_iteration);
+  } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
+    SmallVector<StringRef, 4> branches;
+    for (Attribute branch : case_op.branches())
+      branches.push_back(branch.cast<FlatSymbolRefAttr>().getValue());
+    return PropagateShapeToFunctions(module,
+                                     drop_begin(case_op.getOperandTypes(), 1),
+                                     branches, max_iteration);
   } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
     return PropagateShapeToFunctions(module, while_op.getOperandTypes(),
                                      {while_op.cond(), while_op.body()},

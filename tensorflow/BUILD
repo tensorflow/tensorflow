@@ -261,6 +261,36 @@ config_setting(
 )
 
 config_setting(
+    name = "armeabi",
+    values = {"cpu": "armeabi"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "armeabi-v7a",
+    values = {"cpu": "armeabi-v7a"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "arm64-v8a",
+    values = {"cpu": "arm64-v8a"},
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "arm_any",
+    match_any = [
+        ":arm",
+        ":armeabi",
+        ":armeabi-v7a",
+        ":arm64-v8a",
+        ":linux_aarch64",
+        ":linux_armhf",
+    ],
+)
+
+config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
@@ -464,6 +494,13 @@ config_setting(
 config_setting(
     name = "with_mlir_support",
     values = {"define": "with_mlir_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+# This flag enables experimental MLIR bridge support.
+config_setting(
+    name = "enable_mlir_bridge",
+    values = {"define": "enable_mlir_bridge=true"},
     visibility = ["//visibility:public"],
 )
 

@@ -84,10 +84,6 @@ from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
-# The default value of `experimental_new_converter`.
-_USE_EXPERIMENTAL_NEW_CONVERTER = True
-
-
 @_tf_export("lite.Optimize")
 class Optimize(enum.Enum):
   """Enum defining the optimizations to apply when generating tflite graphs.
@@ -380,7 +376,7 @@ class QuantizationMode(object):
     })
 
     for node_def in self._graph_def.node:
-      if any(op in node_def.name for op in training_quant_ops):
+      if node_def.op in training_quant_ops:
         return True
     return False
 
@@ -393,7 +389,7 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.optimizations = []
     self.representative_dataset = None
-    self.experimental_new_converter = _USE_EXPERIMENTAL_NEW_CONVERTER
+    self.experimental_new_converter = True
     self._experimental_new_quantizer = False
     self._experimental_calibrate_only = False
     # The 'GraphDebugInfo'  contains the stack traces of all the original nodes
@@ -487,8 +483,13 @@ class TFLiteConverterBase(object):
         return True
     return False
 
-  def _parse_saved_model_args(self):
-    """Parses SavedModel arguments from the given Keras/RNN SavedModel."""
+  def _parse_saved_model_args(self, always_enable_saved_model_import=False):
+    """Parses SavedModel arguments from the given Keras/RNN SavedModel.
+
+    Args:
+      always_enable_saved_model_import: Bool. When the value is true, it enables
+        MLIR saved model import path regardless of checking the conditions.
+    """
     if not self.experimental_new_converter:
       self.saved_model_dir = None
       return
@@ -501,16 +502,17 @@ class TFLiteConverterBase(object):
         # frozen graph def path.
         self.saved_model_dir = None
         return
-      if not self._contains_function_with_implements_attr(saved_model_proto):
+      if (not always_enable_saved_model_import and
+          not self._contains_function_with_implements_attr(saved_model_proto)):
         self.saved_model_dir = None
-      else:
-        if not self._saved_model_exported_names:
-          self._saved_model_exported_names = []
-        self._saved_model_version = saved_model_proto.saved_model_schema_version
-        if self._saved_model_version not in [1, 2]:
-          raise ValueError(
-              "SavedModel file format({0}) is not supported".format(
-                  self._saved_model_version))
+        return
+
+      if not self._saved_model_exported_names:
+        self._saved_model_exported_names = []
+      self._saved_model_version = saved_model_proto.saved_model_schema_version
+      if self._saved_model_version not in [1, 2]:
+        raise ValueError("SavedModel file format({0}) is not supported".format(
+            self._saved_model_version))
 
 
 class TFLiteConverterBaseV2(TFLiteConverterBase):
@@ -539,7 +541,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       training integer quantization. (default tf.float32, must be in
       {tf.float32, tf.int8, tf.uint8})
     experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion.
+      MLIR-based conversion instead of TOCO conversion. (default True)
   """
 
   def __init__(self):
@@ -621,7 +623,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
           "experimental_new_converter=True. "
           "The old converter (TOCO) is deprecated.")
     else:
-      logging.info("Using experimental converter: If you encountered a problem "
+      logging.info("Using new converter: If you encounter a problem "
                    "please file a bug. You can opt-out "
                    "by setting experimental_new_converter=False")
 
@@ -675,7 +677,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     self._saved_model_tags = saved_model_tags
     self._saved_model_exported_names = saved_model_exported_names
     self._trackable_obj = trackable_obj
-    self._parse_saved_model_args()
+    self._parse_saved_model_args(always_enable_saved_model_import=True)
 
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.

@@ -298,21 +298,6 @@ void HardSwishFree(TfLiteContext* context, void* buffer) {
   delete static_cast<HardSwishData*>(buffer);
 }
 
-void DownScaleInt32ToInt16Multiplier(int32_t multiplier_int32,
-                                     int16_t* multiplier_int16) {
-  TFLITE_DCHECK_GE(multiplier_int32, 0);
-  static constexpr int32_t kRoundingOffset = 1 << 15;
-  if (multiplier_int32 >=
-      std::numeric_limits<int32_t>::max() - kRoundingOffset) {
-    *multiplier_int16 = std::numeric_limits<int16_t>::max();
-    return;
-  }
-  const int32_t result = (multiplier_int32 + kRoundingOffset) >> 16;
-  TFLITE_DCHECK_LE(result << 16, multiplier_int32 + kRoundingOffset);
-  TFLITE_DCHECK_GT(result << 16, multiplier_int32 - kRoundingOffset);
-  *multiplier_int16 = result;
-  TFLITE_DCHECK_EQ(*multiplier_int16, result);
-}
 
 TfLiteStatus HardSwishPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_STATUS(GenericPrepare(context, node));

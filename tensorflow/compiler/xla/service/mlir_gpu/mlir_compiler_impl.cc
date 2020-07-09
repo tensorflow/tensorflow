@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
@@ -489,7 +489,8 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
                                   stream_exec->platform(), *mlir_module);
 
   TF_RETURN_IF_ERROR(lhlo_emitter.EmitComputation(
-      *emission_context.getHloModule()->entry_computation()));
+      *emission_context.getHloModule()->entry_computation(),
+      hlo_schedule->ThunkLaunchOrder()));
 
   TF_RETURN_IF_ERROR(
       module_hook_.invoke(IRHook::LoweringStage::LHLO, *mlir_module));
@@ -539,8 +540,7 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
                                     gpu::PtxOptsFromConfig(config)));
 
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
-      std::move(thunk_sequence), std::move(stream_assignment),
-      hlo_schedule->ThunkLaunchOrder());
+      std::move(thunk_sequence), std::move(stream_assignment));
 
   if (DumpingEnabledForHloModule(*emission_context.getHloModule())) {
     DumpToFileInDirOrStdout(*emission_context.getHloModule(), "",

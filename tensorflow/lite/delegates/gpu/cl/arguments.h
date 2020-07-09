@@ -46,6 +46,8 @@ class Arguments {
   void AddImage3D(const std::string& name, const GPUImage3DDescriptor& desc);
   void AddImageBuffer(const std::string& name,
                       const GPUImageBufferDescriptor& desc);
+  void AddCustomMemory(const std::string& name,
+                       const GPUCustomMemoryDescriptor& desc);
 
   void AddObjectRef(const std::string& name, AccessType access_type,
                     GPUObjectDescriptorPtr&& descriptor_ptr);
@@ -61,6 +63,7 @@ class Arguments {
   absl::Status SetImage2DArray(const std::string& name, cl_mem memory);
   absl::Status SetImage3D(const std::string& name, cl_mem memory);
   absl::Status SetImageBuffer(const std::string& name, cl_mem memory);
+  absl::Status SetCustomMemory(const std::string& name, cl_mem memory);
   absl::Status SetObjectRef(const std::string& name, const GPUObject* object);
 
   std::string GetListOfArgs();
@@ -153,15 +156,14 @@ class Arguments {
   std::map<std::string, GPUImage2DArrayDescriptor> image2d_arrays_;
   std::map<std::string, GPUImage3DDescriptor> images3d_;
   std::map<std::string, GPUImageBufferDescriptor> image_buffers_;
+  std::map<std::string, GPUCustomMemoryDescriptor> custom_memories_;
 
   struct ObjectRefArg {
-    AccessType access_type;
     GPUObjectDescriptorPtr descriptor;
   };
   std::map<std::string, ObjectRefArg> object_refs_;
 
   struct ObjectArg {
-    AccessType access_type;
     GPUObjectPtr obj_ptr;
     GPUObjectDescriptorPtr descriptor;
   };

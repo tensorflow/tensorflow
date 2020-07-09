@@ -66,7 +66,7 @@ xla::StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64 dim) {
 
   // Move the newly created dimension to the end with a transpose.
   std::vector<int64> permutation;
-  for (int64 i = 0; i != expanded_shape.size(); ++i) {
+  for (int64 i = 0, iter_limit = expanded_shape.size(); i != iter_limit; ++i) {
     permutation.push_back(i);
     if (i == dim) {
       ++i;

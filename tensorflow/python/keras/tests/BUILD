@@ -117,21 +117,6 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "eager_benchmarks_test",
-    srcs = ["eager_benchmarks_test.py"],
-    python_version = "PY3",
-    deps = [
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:training_lib",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:profiler",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
 tf_py_test(
     name = "graph_util_test",
     srcs = ["graph_util_test.py"],
@@ -289,6 +274,8 @@ cuda_py_test(
     name = "op_callbacks_test",
     srcs = ["op_callbacks_test.py"],
     python_version = "PY3",
+    tags = ["no_cuda11"],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",

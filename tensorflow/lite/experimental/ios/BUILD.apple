@@ -12,16 +12,28 @@ package(
 )
 
 sh_binary(
-    name = "hide_symbols_with_whitelist",
+    name = "hide_symbols_with_allowlist",
     srcs = [
-        "hide_symbols_with_whitelist.sh",
+        "hide_symbols_with_allowlist.sh",
     ],
 )
 
 # When the static framework is built with bazel, the all header files are moved
 # to the "Headers" directory with no header path prefixes. This auxiliary rule
 # is used for stripping the path prefix to the "common.h" file included by the
-# "xnnpack_delegate.h" header.
+# "c_api.h" header.
+genrule(
+    name = "strip_c_api_include_hdr",
+    srcs = ["//tensorflow/lite/c:c_api.h"],
+    outs = ["c_api.h"],
+    cmd = """
+    sed 's|#include ".*common.h"|#include "common.h"|'\
+    "$(location //tensorflow/lite/c:c_api.h)"\
+    > "$@"
+    """,
+)
+
+# Similar rule as above, but for the "xnnpack_delegate.h" header.
 genrule(
     name = "strip_xnnpack_include_hdr",
     srcs = ["//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h"],
@@ -37,13 +49,13 @@ genrule(
 tflite_ios_static_framework(
     name = "TensorFlowLiteC_framework",
     hdrs = [
+        ":c_api.h",
         ":xnnpack_delegate.h",
-        "//tensorflow/lite/c:c_api.h",
         "//tensorflow/lite/c:common.h",
     ],
+    allowlist_symbols_file = ":allowlist_TensorFlowLiteC.txt",
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    whitelist_symbols_file = ":whitelist_TensorFlowLiteC.txt",
     deps = [
         ":tensorflow_lite_c",
     ],
@@ -89,9 +101,9 @@ tflite_ios_static_framework(
     hdrs = [
         ":coreml_delegate.h",
     ],
+    allowlist_symbols_file = ":allowlist_TensorFlowLiteCCoreML.txt",
     bundle_name = "TensorFlowLiteCCoreML",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    whitelist_symbols_file = ":whitelist_TensorFlowLiteCCoreML.txt",
     deps = [
         "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
     ],
@@ -108,9 +120,9 @@ tflite_ios_static_framework(
     hdrs = [
         "//tensorflow/lite/delegates/gpu:metal_delegate.h",
     ],
+    allowlist_symbols_file = ":allowlist_TensorFlowLiteCMetal.txt",
     bundle_name = "TensorFlowLiteCMetal",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    whitelist_symbols_file = ":whitelist_TensorFlowLiteCMetal.txt",
     deps = [
         "//tensorflow/lite/delegates/gpu:metal_delegate",
     ],
@@ -136,12 +148,15 @@ cc_library(
 # Used for building TensorFlowLiteC framework.
 build_test(
     name = "framework_build_test",
+    # build_test targets are not meant to be run with sanitizers.
     tags = [
-        "noasan",  # b/147230742
-        "nomsan",  # b/145205324
-        "notsan",  # b/145205324
+        "noasan",
+        "nomsan",
+        "notsan",
     ],
     targets = [
+        ":TensorFlowLiteCCoreML_framework",
+        ":TensorFlowLiteCMetal_framework",
         ":TensorFlowLiteC_framework",
         ":TensorFlowLiteSelectTfOps_framework",
     ],

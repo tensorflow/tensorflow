@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-TempFile::TempFile(const char* temp_file_name, std::ios::openmode mode)
+TempFile::TempFile(const std::string& temp_file_name, std::ios::openmode mode)
     : std::fstream(temp_file_name, mode), name_(temp_file_name) {}
 
 TempFile::TempFile(TempFile&& rhs)
@@ -32,3 +32,9 @@ TempFile::~TempFile() {
 }
 
 const std::string TempFile::getName() const { return name_; }
+
+bool TempFile::truncate() {
+  std::fstream::close();
+  std::fstream::open(name_, std::ios::binary | std::ios::out);
+  return std::fstream::is_open();
+}

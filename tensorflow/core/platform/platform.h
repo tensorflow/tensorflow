@@ -41,18 +41,22 @@ limitations under the License.
 #elif defined(_WIN32)
 #define PLATFORM_WINDOWS
 
-#elif defined(__arm__)
-#define PLATFORM_POSIX
-
 #elif defined(__EMSCRIPTEN__)
 #define PLATFORM_PORTABLE_GOOGLE
+#define PLATFORM_POSIX
+// EMSCRIPTEN builds are considered "mobile" for the sake of portability.
+#define IS_MOBILE_PLATFORM
+
+#elif defined(__arm__) || defined(__aarch64__)
+// If no platform specified, use:
 #define PLATFORM_POSIX
 
 // Require an outside macro to tell us if we're building for Raspberry Pi or
 // another ARM device that's not a mobile platform.
-#if !defined(RASPBERRY_PI) && !defined(ARM_NON_MOBILE)
+#if !defined(RASPBERRY_PI) && !defined(ARM_NON_MOBILE) && \
+    !defined(PLATFORM_GOOGLE)
 #define IS_MOBILE_PLATFORM
-#endif  // !defined(RASPBERRY_PI) && !defined(ARM_NON_MOBILE)
+#endif
 
 #else
 // If no platform specified, use:

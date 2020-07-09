@@ -191,8 +191,8 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
-    with self.assertRaisesRegexp(NotImplementedError,
-                                 "does not support pure eager execution"):
+    with self.assertRaisesRegex(NotImplementedError,
+                                "does not support pure eager execution"):
       distribution.run(train_step, args=(next(input_iterator),))
 
   @combinations.generate(

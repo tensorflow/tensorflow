@@ -20,44 +20,46 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.ops.numpy_ops import np_export
+
+
 # We use numpy's dtypes instead of TF's, because the user expects to use them
 # with numpy facilities such as `np.dtype(np.int64)` and
 # `if x.dtype.type is np.int64`.
-# pylint: disable=unused-import
-# pylint: disable=g-bad-import-order
-from numpy import bool_
-from numpy import complex_
-from numpy import complex128
-from numpy import complex64
-from numpy import float_
-from numpy import float16
-from numpy import float32
-from numpy import float64
-from numpy import inexact
-from numpy import int_
-from numpy import int16
-from numpy import int32
-from numpy import int64
-from numpy import int8
-from numpy import object_
-from numpy import string_
-from numpy import uint16
-from numpy import uint32
-from numpy import uint64
-from numpy import uint8
-from numpy import unicode_
+bool_ = np_export.np_export_constant(__name__, 'bool_', np.bool_)
+complex_ = np_export.np_export_constant(__name__, 'complex_', np.complex_)
+complex128 = np_export.np_export_constant(__name__, 'complex128', np.complex128)
+complex64 = np_export.np_export_constant(__name__, 'complex64', np.complex64)
+float_ = np_export.np_export_constant(__name__, 'float_', np.float_)
+float16 = np_export.np_export_constant(__name__, 'float16', np.float16)
+float32 = np_export.np_export_constant(__name__, 'float32', np.float32)
+float64 = np_export.np_export_constant(__name__, 'float64', np.float64)
+inexact = np_export.np_export_constant(__name__, 'inexact', np.inexact)
+int_ = np_export.np_export_constant(__name__, 'int_', np.int_)
+int16 = np_export.np_export_constant(__name__, 'int16', np.int16)
+int32 = np_export.np_export_constant(__name__, 'int32', np.int32)
+int64 = np_export.np_export_constant(__name__, 'int64', np.int64)
+int8 = np_export.np_export_constant(__name__, 'int8', np.int8)
+object_ = np_export.np_export_constant(__name__, 'object_', np.object_)
+string_ = np_export.np_export_constant(__name__, 'string_', np.string_)
+uint16 = np_export.np_export_constant(__name__, 'uint16', np.uint16)
+uint32 = np_export.np_export_constant(__name__, 'uint32', np.uint32)
+uint64 = np_export.np_export_constant(__name__, 'uint64', np.uint64)
+uint8 = np_export.np_export_constant(__name__, 'uint8', np.uint8)
+unicode_ = np_export.np_export_constant(__name__, 'unicode_', np.unicode_)
 
-from numpy import iinfo
-from numpy import issubdtype
 
-from numpy import inf
+iinfo = np_export.np_export_constant(__name__, 'iinfo', np.iinfo)
 
-# pylint: enable=unused-import
+
+issubdtype = np_export.np_export('issubdtype')(np.issubdtype)
+
 
 _to_float32 = {
     np.dtype('float64'): np.dtype('float32'),
     np.dtype('complex128'): np.dtype('complex64'),
 }
+
 
 _allow_float64 = True
 

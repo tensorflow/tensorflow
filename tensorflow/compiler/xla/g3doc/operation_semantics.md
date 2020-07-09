@@ -1310,6 +1310,8 @@ using the comparison operator of the element type of `operand`.
 
 <b>`Sqrt(operand)`</b> Element-wise square root operation `x -> sqrt(x)`.
 
+<b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
+
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
 

@@ -78,6 +78,58 @@ def _multiple_ops_in_middle():
   return keras.Model(inputs, outputs)
 
 
+def _shape_op_inference():
+  inputs = keras.Input(shape=(10,))
+  x = array_ops.shape(inputs)
+  x = array_ops.ones(x)
+  assert x.shape.as_list() == [None, 10]
+  outputs = keras.layers.Dense(10)(x)
+  return keras.Model(inputs, outputs)
+
+
+def _shape_op_known_batch_size():
+  inputs = keras.Input(batch_size=2, shape=(10,))
+  x = array_ops.shape(inputs)
+  x = array_ops.ones(x)
+  assert x.shape.as_list() == [2, 10]
+  outputs = keras.layers.Dense(10)(x)
+  if context.executing_eagerly():
+    return keras.Model(inputs, outputs)
+  else:
+    # In V1 the op layer fails for some reason,
+    # but we don't have access to the test case to call
+    # self.skip_test in this util method
+    return keras.Model(inputs, inputs)
+
+
+def _shape_op_slice_and_range():
+  inputs = keras.Input(shape=(10,))
+  batch_size = array_ops.shape(inputs)[0]
+  x = math_ops.range(batch_size * 2)
+  assert x.shape.as_list() == [None]
+  x = array_ops.reshape(x, (batch_size, 2))
+  x = math_ops.cast(x, dtype='float32')
+  outputs = keras.layers.Dense(10)(x)
+  return keras.Model(inputs, outputs)
+
+
+def _shape_op_slice_and_range_known_dim():
+  inputs = keras.Input(batch_size=2, shape=(10,))
+  batch_size = array_ops.shape(inputs)[0]
+  x = math_ops.range(batch_size * 3)
+  assert x.shape.as_list() == [6]
+  x = array_ops.reshape(x, (batch_size, 3))
+  x = math_ops.cast(x, dtype='float32')
+  outputs = keras.layers.Dense(10)(x)
+  if context.executing_eagerly():
+    return keras.Model(inputs, outputs)
+  else:
+    # In V1 the op layer fails for some reason,
+    # but we don't have access to the test case to call
+    # self.skip_test in this util method
+    return keras.Model(inputs, inputs)
+
+
 def _single_standalone_branch():
   inputs = keras.Input(shape=(10,))
   x = keras.layers.Dense(10)(inputs)
@@ -194,6 +246,11 @@ class AutoLambdaTest(keras_parameterized.TestCase):
       ('multiple_ops_at_end', _multiple_ops_at_end),
       ('single_op_in_middle', _single_op_in_middle),
       ('multiple_ops_in_middle', _multiple_ops_in_middle),
+      ('shape_op_inference', _shape_op_inference),
+      ('shape_op_known_batch_size', _shape_op_known_batch_size),
+      ('shape_op_slice_and_range', _shape_op_slice_and_range),
+      ('shape_op_slice_and_range_known_dim',
+       _shape_op_slice_and_range_known_dim),
       ('single_standalone_branch', _single_standalone_branch),
       ('single_op_with_attrs', _single_op_with_attrs),
       ('multiple_uses', _multiple_uses),

@@ -62,6 +62,46 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_library(
+    name = "model_collection_base",
+    srcs = ["model_collection_base.py"],
+)
+
+py_library(
+    name = "model_combinations",
+    srcs = ["model_combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":simple_models",
+        "//tensorflow/python/distribute:combinations",
+    ],
+)
+
+py_library(
+    name = "simple_models",
+    srcs = ["simple_models.py"],
+    deps = [
+        ":model_collection_base",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python/keras",
+    ],
+)
+
+py_library(
+    name = "saved_model_test_base",
+    srcs = ["saved_model_test_base.py"],
+    deps = [
+        ":model_combinations",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/saved_model",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_test(
     name = "worker_training_state_test",
     srcs = ["worker_training_state_test.py"],
@@ -74,6 +114,22 @@ cuda_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/keras",
+    ],
+)
+
+distribute_py_test(
+    name = "checkpointing_test",
+    srcs = ["checkpointing_test.py"],
+    main = "checkpointing_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -115,11 +171,51 @@ cuda_py_test(
 )
 
 distribute_py_test(
+    name = "ctl_correctness_test",
+    srcs = ["ctl_correctness_test.py"],
+    main = "ctl_correctness_test.py",
+    shard_count = 5,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_metrics_test",
+    srcs = ["custom_training_loop_metrics_test.py"],
+    main = "custom_training_loop_metrics_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:metrics",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
     name = "custom_training_loop_models_test",
     srcs = ["custom_training_loop_models_test.py"],
     main = "custom_training_loop_models_test.py",
     tags = [
         "multi_and_single_gpu",
+        "no_cuda11",
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.
@@ -136,6 +232,26 @@ distribute_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
         "//tensorflow/python/module",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "custom_training_loop_optimizer_test",
+    srcs = ["custom_training_loop_optimizer_test.py"],
+    main = "custom_training_loop_optimizer_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -296,6 +412,25 @@ distribute_py_test(
 )
 
 distribute_py_test(
+    name = "keras_metrics_test",
+    srcs = ["keras_metrics_test.py"],
+    main = "keras_metrics_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:metrics",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
     name = "keras_rnn_model_correctness_test",
     size = "medium",
     srcs = ["keras_rnn_model_correctness_test.py"],
@@ -327,7 +462,7 @@ distribute_py_test(
         "multi_and_single_gpu",
     ],
     deps = [
-        "//tensorflow/python/distribute:saved_model_test_base",
+        ":saved_model_test_base",
         "//tensorflow/python/keras/saving",
     ],
 )
@@ -549,6 +684,23 @@ py_test(
 )
 
 distribute_py_test(
+    name = "saved_model_save_load_test",
+    size = "medium",
+    srcs = ["saved_model_save_load_test.py"],
+    full_precision = True,
+    main = "saved_model_save_load_test.py",
+    shard_count = 7,
+    tags = [
+        "multi_and_single_gpu",
+        "no_rocm",
+    ],
+    deps = [
+        ":saved_model_test_base",
+        "//tensorflow/python/saved_model",
+    ],
+)
+
+distribute_py_test(
     name = "saved_model_mixed_api_test",
     size = "medium",
     srcs = ["saved_model_mixed_api_test.py"],
@@ -560,8 +712,8 @@ distribute_py_test(
         "no_rocm",
     ],
     deps = [
+        ":saved_model_test_base",
         "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:saved_model_test_base",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras/saving",
     ],

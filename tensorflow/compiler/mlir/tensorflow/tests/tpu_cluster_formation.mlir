@@ -41,115 +41,6 @@ func @metadata_op_removed() {
 // CHECK-NOT:  "tf.TPUReplicateMetadata"
 
 
-// Test ops in an island with the same `_tpu_replicate` attribute are merged
-// under a `tf_device.cluster`.
-// CHECK-LABEL: func @simple_island
-// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
-func @simple_island(%arg0 : tensor<i1>) -> tensor<i1> {
-  %0 = tf_executor.graph {
-    %1:2 = tf_executor.island {
-      "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-      %3 = "tf.opA"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      %4 = "tf.opB"() : () -> tensor<i1>
-      %5 = "tf.opC"(%3) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      tf_executor.yield %5 : tensor<i1>
-    }
-    tf_executor.fetch %1#0 : tensor<i1>
-  }
-  return %0 : tensor<i1>
-}
-
-// CHECK:          "tf.opB"
-// CHECK:          %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ( {
-// CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
-// CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
-// CHECK-NEXT:       tf_device.return %[[OP_C]]
-// CHECK-NEXT:     _tpu_replicate = "replicate"
-// CHECK-SAME:     device = "device"
-// CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[CLUSTER]]
-
-
-// Test ops in an island with the same `_tpu_replicate` attribute are merged
-// under a `tf_device.cluster`, even when the associated TPUReplicateMetadata op
-// is in a different island.
-// CHECK-LABEL: func @simple_island_separate_metadata
-// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
-func @simple_island_separate_metadata(%arg0 : tensor<i1>) -> tensor<i1> {
-  %0 = tf_executor.graph {
-    %1 = tf_executor.island {
-      "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-    }
-    %2:2 = tf_executor.island {
-      %3 = "tf.opA"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      %4 = "tf.opB"() : () -> tensor<i1>
-      %5 = "tf.opC"(%3) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      tf_executor.yield %5 : tensor<i1>
-    }
-    tf_executor.fetch %2#0 : tensor<i1>
-  }
-  return %0 : tensor<i1>
-}
-
-// CHECK:          "tf.opB"
-// CHECK:          %[[CLUSTER:[0-9]*]] = "tf_device.cluster"() ( {
-// CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
-// CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
-// CHECK-NEXT:       tf_device.return %[[OP_C]]
-// CHECK-NEXT:     _tpu_replicate = "replicate"
-// CHECK-SAME:     device = "device"
-// CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[CLUSTER]]
-
-
-// Test ops in multiple islands with the same `_tpu_replicate` attribute are
-// merged under `tf_device.cluster` ops only within their respective island.
-// CHECK-LABEL: func @multiple_islands_separate_metadata
-// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
-func @multiple_islands_separate_metadata(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>) {
-  %0:2 = tf_executor.graph {
-    %1 = tf_executor.island {
-      "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
-    }
-    %2:2 = tf_executor.island {
-      %3 = "tf.opA"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      %4 = "tf.opB"() : () -> tensor<i1>
-      %5 = "tf.opC"(%3) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      tf_executor.yield %5 : tensor<i1>
-    }
-    %6:2 = tf_executor.island {
-      %7 = "tf.opD"(%2#0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      %8 = "tf.opE"() : () -> tensor<i1>
-      %9 = "tf.opF"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-      tf_executor.yield %9 : tensor<i1>
-    }
-    tf_executor.fetch %2#0, %6#0 : tensor<i1>, tensor<i1>
-  }
-  return %0#0, %0#1 : tensor<i1>, tensor<i1>
-}
-
-// CHECK:        %[[ISLAND_1:.*]], %[[ISLAND_1_control:.*]] = tf_executor.island {
-// CHECK:          "tf.opB"
-// CHECK:          %[[CLUSTER_0:[0-9]*]] = "tf_device.cluster"() ( {
-// CHECK-NEXT:       %[[OP_A:[0-9]*]] = "tf.opA"(%[[ARG_0]])
-// CHECK-NEXT:       %[[OP_C:[0-9]*]] = "tf.opC"(%[[OP_A]])
-// CHECK-NEXT:       tf_device.return %[[OP_C]]
-// CHECK-NEXT:     _tpu_replicate = "replicate"
-// CHECK-SAME:     device = "device"
-// CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[CLUSTER_0]]
-// CHECK:        tf_executor.island {
-// CHECK:          "tf.opE"
-// CHECK:          %[[CLUSTER_1:[0-9]*]] = "tf_device.cluster"() ( {
-// CHECK-NEXT:       %[[OP_D:[0-9]*]] = "tf.opD"(%[[ISLAND_1]])
-// CHECK-NEXT:       %[[OP_F:[0-9]*]] = "tf.opF"(%[[ARG_0]])
-// CHECK-NEXT:       tf_device.return %[[OP_F]]
-// CHECK-NEXT:     _tpu_replicate = "replicate"
-// CHECK-SAME:     device = "device"
-// CHECK-SAME:     topology = "topology"
-// CHECK:          tf_executor.yield %[[CLUSTER_1]]
-
-
 // Test ops in a function body with the same `_tpu_replicate` attribute are
 // merged under a `tf_device.cluster` op.
 // CHECK-LABEL: func @ops_in_func_body
@@ -185,9 +76,9 @@ func @ops_in_func_body(%arg0 : tensor<i1>) -> (tensor<i1>, tensor<i1>, tensor<i1
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
 func @nested_cluster_op_user(%arg0 : tensor<i1>) -> (tensor<i1>) {
   %0 = "tf.opA"(%arg0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
-  %1 = tf_executor.graph {
-    tf_executor.fetch %0 : tensor<i1>
-  }
+  %1 = "tf_device.launch"() ( {
+    tf_device.return %0 : tensor<i1>
+  }) {device = "device"} : () -> tensor<i1>
   %2 = "tf.opB"(%0) {_tpu_replicate = "replicate"} : (tensor<i1>) -> tensor<i1>
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 1, topology = "topology"} : () -> ()
   return %2 : tensor<i1>
@@ -200,8 +91,8 @@ func @nested_cluster_op_user(%arg0 : tensor<i1>) -> (tensor<i1>) {
 // CHECK-NEXT: _tpu_replicate = "replicate"
 // CHECK-SAME: device = "device"
 // CHECK-SAME: topology = "topology"
-// CHECK:      tf_executor.graph {
-// CHECK-NEXT:   tf_executor.fetch %[[CLUSTER]]#0
+// CHECK:      tf_device.launch
+// CHECK-NEXT:   tf_device.return %[[CLUSTER]]#0
 // CHECK:      return %[[CLUSTER]]#1
 
 
@@ -363,15 +254,17 @@ func @replication(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<f32>) -> 
 // Non-negative `index` should precede `index` of -1, and ordering of ops with
 // `index` of -1 does not matter.
 // CHECK-LABEL: func @sort_replicated_input
-// CHECK-SAME: (%[[ARG_0:.*]]: tensor<i1>, %[[ARG_1:.*]]: tensor<i1>, %[[ARG_2:.*]]: tensor<i1>, %[[ARG_3:.*]]: tensor<i1>, %[[ARG_4:.*]]: tensor<i1>, %[[ARG_5:.*]]: tensor<i1>)
-func @sort_replicated_input(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>, %arg3: tensor<i1>, %arg4: tensor<i1>, %arg5: tensor<i1>) {
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<i1>, %[[ARG_1:.*]]: tensor<i1>, %[[ARG_2:.*]]: tensor<i1>, %[[ARG_3:.*]]: tensor<i1>, %[[ARG_4:.*]]: tensor<i1>, %[[ARG_5:.*]]: tensor<i1>, %[[ARG_6:.*]]: tensor<i1>, %[[ARG_7:.*]]: tensor<i1>)
+func @sort_replicated_input(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>, %arg3: tensor<i1>, %arg4: tensor<i1>, %arg5: tensor<i1>, %arg6: tensor<i1>, %arg7: tensor<i1>) {
   %0 = "tf.TPUReplicatedInput"(%arg0, %arg0) {index = -1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
-  %1 = "tf.TPUReplicatedInput"(%arg1, %arg1) {index = 2 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  %1 = "tf.TPUReplicatedInput"(%arg1, %arg1) {index = 3 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
   %2 = "tf.TPUReplicatedInput"(%arg2, %arg2) {index = 0 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
   %3 = "tf.TPUReplicatedInput"(%arg3, %arg3) {index = -1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
   %4 = "tf.TPUReplicatedInput"(%arg4, %arg4) {index = 1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
-  %5 = "tf.TPUReplicatedInput"(%arg5, %arg5) {index = -1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
-  "tf.opA"(%0, %1, %2, %3, %4, %5) {_tpu_replicate = "replicate", device = "device"} : (tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>) -> ()
+  %5 = "tf.TPUReplicatedInput"(%arg5) {index = -1 : i64, is_packed = true} : (tensor<i1>) -> tensor<i1>
+  %6 = "tf.TPUReplicatedInput"(%arg6) {index = 2 : i64, is_packed = true} : (tensor<i1>) -> tensor<i1>
+  %7 = "tf.TPUReplicatedInput"(%arg7, %arg7) {index = -1 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  "tf.opA"(%0, %1, %2, %3, %4, %5, %6, %7) {_tpu_replicate = "replicate", device = "device"} : (tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>) -> ()
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
   return
 }
@@ -382,47 +275,60 @@ func @sort_replicated_input(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<
 // CHECK-SAME: [%[[ARG_1]], %[[ARG_1]]] as %{{[a-z0-9]*}}
 // CHECK-DAG:  [%[[ARG_0]], %[[ARG_0]]] as %{{[a-z0-9]*}}
 // CHECK-DAG:  [%[[ARG_3]], %[[ARG_3]]] as %{{[a-z0-9]*}}
-// CHECK-DAG:  [%[[ARG_5]], %[[ARG_5]]] as %{{[a-z0-9]*}}
-// CHECK-SAME: _replicated_input_indices = [0, 1, 2, -1, -1, -1]
+// CHECK-DAG:  [%[[ARG_7]], %[[ARG_7]]] as %{{[a-z0-9]*}}
+// CHECK-DAG:  %[[ARG_6]] as %{{[a-z0-9]*}}
+// CHECK-DAG:  %[[ARG_5]] as %{{[a-z0-9]*}}
+// CHECK-SAME: _replicated_input_indices = [0, 1, 3, -1, -1, -1, 2, -1]
 
 
 // Test TPUReplicatedInputs with non contiguous `index` attributes.
 // CHECK-LABEL: func @non_contigous_indices
-// CHECK-SAME: (%[[ARG_0:.*]]: tensor<i1>, %[[ARG_1:.*]]: tensor<i1>, %[[ARG_2:.*]]: tensor<i1>)
-func @non_contigous_indices(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>) {
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<i1>, %[[ARG_1:.*]]: tensor<i1>, %[[ARG_2:.*]]: tensor<i1>, %[[ARG_3:.*]]: tensor<i1>, %[[ARG_4:.*]]: tensor<i1>, %[[ARG_5:.*]]: tensor<i1>)
+func @non_contigous_indices(%arg0: tensor<i1>, %arg1: tensor<i1>, %arg2: tensor<i1>, %arg3: tensor<i1>, %arg4: tensor<i1>, %arg5: tensor<i1>) {
   %0 = "tf.TPUReplicatedInput"(%arg0, %arg0) {index = 8 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
   "tf.opA"(%0) {_tpu_replicate = "replicate", device = "device", name = "name"} : (tensor<i1>) -> ()
-  %1 = "tf.TPUReplicatedInput"(%arg1, %arg1) : (tensor<i1>, tensor<i1>) -> tensor<i1>
-  "tf.opB"(%1) {_tpu_replicate = "replicate", device = "device", name = "name"} : (tensor<i1>) -> ()
-  %2 = "tf.TPUReplicatedInput"(%arg2, %arg2) {index = 2 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
-  "tf.opC"(%2) {_tpu_replicate = "replicate", device = "device", name = "name"} : (tensor<i1>) -> ()
+  %1 = "tf.TPUReplicatedInput"(%arg1) {index = 6 : i64, is_packed = true} : (tensor<i1>) -> tensor<i1>
+  "tf.opA"(%1) {_tpu_replicate = "replicate", device = "device", name = "name"} : (tensor<i1>) -> ()
+  %2 = "tf.TPUReplicatedInput"(%arg2, %arg2) : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  "tf.opB"(%2) {_tpu_replicate = "replicate", device = "device", name = "name"} : (tensor<i1>) -> ()
+  %3 = "tf.TPUReplicatedInput"(%arg3) {is_packed = true} : (tensor<i1>) -> tensor<i1>
+  "tf.opB"(%3) {_tpu_replicate = "replicate", device = "device", name = "name"} : (tensor<i1>) -> ()
+  %4 = "tf.TPUReplicatedInput"(%arg4, %arg4) {index = 2 : i64} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  "tf.opC"(%4) {_tpu_replicate = "replicate", device = "device", name = "name"} : (tensor<i1>) -> ()
+  %5 = "tf.TPUReplicatedInput"(%arg5) {index = 4 : i64, is_packed = true} : (tensor<i1>) -> tensor<i1>
+  "tf.opC"(%5) {_tpu_replicate = "replicate", device = "device", name = "name"} : (tensor<i1>) -> ()
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
   return
 }
 
 // CHECK:      tf_device.replicate
-// CHECK-SAME: [%[[ARG_2]], %[[ARG_2]]] as %{{[a-z0-9]*}}
+// CHECK-SAME: [%[[ARG_4]], %[[ARG_4]]] as %{{[a-z0-9]*}}
 // CHECK-SAME: [%[[ARG_0]], %[[ARG_0]]] as %{{[a-z0-9]*}}
-// CHECK-SAME: [%[[ARG_1]], %[[ARG_1]]] as %{{[a-z0-9]*}}
-// CHECK-SAME: _replicated_input_indices = [2, 8, -1]
+// CHECK-SAME: [%[[ARG_2]], %[[ARG_2]]] as %{{[a-z0-9]*}}
+// CHECK-SAME: %[[ARG_5]] as %{{[a-z0-9]*}}
+// CHECK-SAME: %[[ARG_1]] as %{{[a-z0-9]*}}
+// CHECK-SAME: %[[ARG_3]] as %{{[a-z0-9]*}}
+// CHECK-SAME: _replicated_input_indices = [2, 8, -1, 4, 6, -1]
 
 
 // Test that the `is_mirrored_variable` attribute is preserved in the
 // tf_device.replicate op.
 // CHECK-LABEL: func @mirrored_variables
-// CHECK-SAME: (%[[ARG_0:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_1:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_2:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_3:.*]]: tensor<!tf.resource<tensor<32xf32>>>)
-func @mirrored_variables(%arg0: tensor<!tf.resource<tensor<32xf32>>>, %arg1: tensor<!tf.resource<tensor<32xf32>>>, %arg2: tensor<!tf.resource<tensor<32xf32>>>, %arg3: tensor<!tf.resource<tensor<32xf32>>>) {
+// CHECK-SAME: (%[[ARG_0:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_1:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_2:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_3:.*]]: tensor<!tf.resource<tensor<32xf32>>>, %[[ARG_4:.*]]: tensor<!tf.resource<tensor<32xf32>>>)
+func @mirrored_variables(%arg0: tensor<!tf.resource<tensor<32xf32>>>, %arg1: tensor<!tf.resource<tensor<32xf32>>>, %arg2: tensor<!tf.resource<tensor<32xf32>>>, %arg3: tensor<!tf.resource<tensor<32xf32>>>, %arg4: tensor<!tf.resource<tensor<32xf32>>>) {
   %0 = "tf.TPUReplicatedInput"(%arg0, %arg1) {index = 0 : i64} : (tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>) -> tensor<!tf.resource<tensor<32xf32>>>
   %1 = "tf.TPUReplicatedInput"(%arg2, %arg3) {index = 1 : i64, is_mirrored_variable = true} : (tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>) -> tensor<!tf.resource<tensor<32xf32>>>
-  "tf.opA"(%0, %1) {_tpu_replicate = "replicate", device = "device"} : (tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>) -> ()
+  %2 = "tf.TPUReplicatedInput"(%arg4) {index = 2 : i64, is_mirrored_variable = true, is_packed = true} : (tensor<!tf.resource<tensor<32xf32>>>) -> tensor<!tf.resource<tensor<32xf32>>>
+  "tf.opA"(%0, %1, %2) {_tpu_replicate = "replicate", device = "device"} : (tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>, tensor<!tf.resource<tensor<32xf32>>>) -> ()
   "tf.TPUReplicateMetadata"() {_tpu_replicate = "replicate", device = "device", num_replicas = 2, topology = "topology"} : () -> ()
   return
 }
 
 // CHECK:      tf_device.replicate
 // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %{{[a-z0-9]*}}
-// CHECK-SAME: _mirrored_variable_indices = [1]
-// CHECK-SAME: _replicated_input_indices = [0, 1]
+// CHECK-SAME: %[[ARG_4]] as %{{[a-z0-9]*}}
+// CHECK-SAME: _mirrored_variable_indices = [1, 2]
+// CHECK-SAME: _replicated_input_indices = [0, 1, 2]
 
 
 // -----

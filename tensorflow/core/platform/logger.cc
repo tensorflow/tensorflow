@@ -25,9 +25,7 @@ namespace {
 
 class DefaultLogger : public Logger {
  private:
-  void DoLogProto(google::protobuf::Any* proto) override {
-    VLOG(2) << proto->ShortDebugString();
-  }
+  void DoLogProto(google::protobuf::Any* proto) override {}
   void DoFlush() override {}
 };
 

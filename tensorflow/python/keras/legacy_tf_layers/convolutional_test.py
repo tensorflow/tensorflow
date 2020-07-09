@@ -39,25 +39,25 @@ class ConvTest(test.TestCase):
   def testInvalidDataFormat(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'data_format'):
+    with self.assertRaisesRegex(ValueError, 'data_format'):
       conv_layers.conv2d(images, 32, 3, data_format='invalid')
 
   def testInvalidStrides(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'strides'):
+    with self.assertRaisesRegex(ValueError, 'strides'):
       conv_layers.conv2d(images, 32, 3, strides=(1, 2, 3))
 
-    with self.assertRaisesRegexp(ValueError, 'strides'):
+    with self.assertRaisesRegex(ValueError, 'strides'):
       conv_layers.conv2d(images, 32, 3, strides=None)
 
   def testInvalidKernelSize(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+    with self.assertRaisesRegex(ValueError, 'kernel_size'):
       conv_layers.conv2d(images, 32, (1, 2, 3))
 
-    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+    with self.assertRaisesRegex(ValueError, 'kernel_size'):
       conv_layers.conv2d(images, 32, None)
 
   @test_util.run_deprecated_v1
@@ -104,16 +104,16 @@ class ConvTest(test.TestCase):
   def testUnknownInputChannels(self):
     images = array_ops.placeholder(dtypes.float32, (5, 7, 9, None))
     layer = conv_layers.Conv2D(32, [3, 3], activation=nn_ops.relu)
-    with self.assertRaisesRegexp(ValueError,
-                                 'The channel dimension of the inputs '
-                                 'should be defined. Found `None`.'):
+    with self.assertRaisesRegex(
+        ValueError, 'The channel dimension of the inputs '
+        'should be defined. Found `None`.'):
       _ = layer.apply(images)
 
     images = array_ops.placeholder(dtypes.float32, (5, None, 7, 9))
     layer = conv_layers.Conv2D(32, [3, 3], data_format='channels_first')
-    with self.assertRaisesRegexp(ValueError,
-                                 'The channel dimension of the inputs '
-                                 'should be defined. Found `None`.'):
+    with self.assertRaisesRegex(
+        ValueError, 'The channel dimension of the inputs '
+        'should be defined. Found `None`.'):
       _ = layer.apply(images)
 
   def testConv2DPaddingSame(self):
@@ -175,16 +175,16 @@ class ConvTest(test.TestCase):
   def testUnknownInputChannelsConv1D(self):
     data = array_ops.placeholder(dtypes.float32, (5, 4, None))
     layer = conv_layers.Conv1D(32, 3, activation=nn_ops.relu)
-    with self.assertRaisesRegexp(ValueError,
-                                 'The channel dimension of the inputs '
-                                 'should be defined. Found `None`.'):
+    with self.assertRaisesRegex(
+        ValueError, 'The channel dimension of the inputs '
+        'should be defined. Found `None`.'):
       _ = layer.apply(data)
 
     data = array_ops.placeholder(dtypes.float32, (5, None, 4))
     layer = conv_layers.Conv1D(32, 3, data_format='channels_first')
-    with self.assertRaisesRegexp(ValueError,
-                                 'The channel dimension of the inputs '
-                                 'should be defined. Found `None`.'):
+    with self.assertRaisesRegex(
+        ValueError, 'The channel dimension of the inputs '
+        'should be defined. Found `None`.'):
       _ = layer.apply(data)
 
   @test_util.run_deprecated_v1
@@ -203,9 +203,9 @@ class ConvTest(test.TestCase):
   def testUnknownInputChannelsConv3D(self):
     volumes = array_ops.placeholder(dtypes.float32, (5, 6, 7, 9, None))
     layer = conv_layers.Conv3D(32, [3, 3, 3], activation=nn_ops.relu)
-    with self.assertRaisesRegexp(ValueError,
-                                 'The channel dimension of the inputs '
-                                 'should be defined. Found `None`.'):
+    with self.assertRaisesRegex(
+        ValueError, 'The channel dimension of the inputs '
+        'should be defined. Found `None`.'):
       _ = layer.apply(volumes)
 
   @test_util.run_deprecated_v1
@@ -354,25 +354,25 @@ class SeparableConv1DTest(test.TestCase):
   def testInvalidDataFormat(self):
     length = 9
     data = random_ops.random_uniform((5, length, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'data_format'):
+    with self.assertRaisesRegex(ValueError, 'data_format'):
       conv_layers.separable_conv1d(data, 32, 3, data_format='invalid')
 
   def testInvalidStrides(self):
     length = 9
     data = random_ops.random_uniform((5, length, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'strides'):
+    with self.assertRaisesRegex(ValueError, 'strides'):
       conv_layers.separable_conv1d(data, 32, 3, strides=(1, 2))
 
-    with self.assertRaisesRegexp(ValueError, 'strides'):
+    with self.assertRaisesRegex(ValueError, 'strides'):
       conv_layers.separable_conv1d(data, 32, 3, strides=None)
 
   def testInvalidKernelSize(self):
     length = 9
     data = random_ops.random_uniform((5, length, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+    with self.assertRaisesRegex(ValueError, 'kernel_size'):
       conv_layers.separable_conv1d(data, 32, (1, 2))
 
-    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+    with self.assertRaisesRegex(ValueError, 'kernel_size'):
       conv_layers.separable_conv1d(data, 32, None)
 
   @test_util.run_deprecated_v1
@@ -528,25 +528,25 @@ class SeparableConv2DTest(test.TestCase):
   def testInvalidDataFormat(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'data_format'):
+    with self.assertRaisesRegex(ValueError, 'data_format'):
       conv_layers.separable_conv2d(images, 32, 3, data_format='invalid')
 
   def testInvalidStrides(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'strides'):
+    with self.assertRaisesRegex(ValueError, 'strides'):
       conv_layers.separable_conv2d(images, 32, 3, strides=(1, 2, 3))
 
-    with self.assertRaisesRegexp(ValueError, 'strides'):
+    with self.assertRaisesRegex(ValueError, 'strides'):
       conv_layers.separable_conv2d(images, 32, 3, strides=None)
 
   def testInvalidKernelSize(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+    with self.assertRaisesRegex(ValueError, 'kernel_size'):
       conv_layers.separable_conv2d(images, 32, (1, 2, 3))
 
-    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+    with self.assertRaisesRegex(ValueError, 'kernel_size'):
       conv_layers.separable_conv2d(images, 32, None)
 
   @test_util.run_deprecated_v1
@@ -786,25 +786,25 @@ class Conv2DTransposeTest(test.TestCase):
   def testInvalidDataFormat(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'data_format'):
+    with self.assertRaisesRegex(ValueError, 'data_format'):
       conv_layers.conv2d_transpose(images, 32, 3, data_format='invalid')
 
   def testInvalidStrides(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'strides'):
+    with self.assertRaisesRegex(ValueError, 'strides'):
       conv_layers.conv2d_transpose(images, 32, 3, strides=(1, 2, 3))
 
-    with self.assertRaisesRegexp(ValueError, 'strides'):
+    with self.assertRaisesRegex(ValueError, 'strides'):
       conv_layers.conv2d_transpose(images, 32, 3, strides=None)
 
   def testInvalidKernelSize(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 3), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+    with self.assertRaisesRegex(ValueError, 'kernel_size'):
       conv_layers.conv2d_transpose(images, 32, (1, 2, 3))
 
-    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+    with self.assertRaisesRegex(ValueError, 'kernel_size'):
       conv_layers.conv2d_transpose(images, 32, None)
 
   @test_util.run_deprecated_v1
@@ -981,25 +981,25 @@ class Conv3DTransposeTest(test.TestCase):
   def testInvalidDataFormat(self):
     depth, height, width = 5, 7, 9
     volumes = random_ops.random_uniform((5, depth, height, width, 32), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'data_format'):
+    with self.assertRaisesRegex(ValueError, 'data_format'):
       conv_layers.conv3d_transpose(volumes, 4, 3, data_format='invalid')
 
   def testInvalidStrides(self):
     depth, height, width = 5, 7, 9
     volumes = random_ops.random_uniform((5, depth, height, width, 32), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'strides'):
+    with self.assertRaisesRegex(ValueError, 'strides'):
       conv_layers.conv3d_transpose(volumes, 4, 3, strides=(1, 2))
 
-    with self.assertRaisesRegexp(ValueError, 'strides'):
+    with self.assertRaisesRegex(ValueError, 'strides'):
       conv_layers.conv3d_transpose(volumes, 4, 3, strides=None)
 
   def testInvalidKernelSize(self):
     depth, height, width = 5, 7, 9
     volumes = random_ops.random_uniform((5, depth, height, width, 32), seed=1)
-    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+    with self.assertRaisesRegex(ValueError, 'kernel_size'):
       conv_layers.conv3d_transpose(volumes, 4, (1, 2))
 
-    with self.assertRaisesRegexp(ValueError, 'kernel_size'):
+    with self.assertRaisesRegex(ValueError, 'kernel_size'):
       conv_layers.conv3d_transpose(volumes, 4, None)
 
   @test_util.run_deprecated_v1
