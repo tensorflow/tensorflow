@@ -102,7 +102,8 @@ void Shape::DeleteDimension(int64 dim_to_delete) {
   dynamic_dimensions_.erase(dynamic_dimensions_.begin() + dim_to_delete);
   if (LayoutUtil::HasLayout(*this)) {
     layout_.set_format(DENSE);
-    for (int64 i = 0; i < layout_.minor_to_major().size();) {
+    for (int64 i = 0, iter_limit = layout_.minor_to_major().size();
+         i < iter_limit;) {
       if (layout_.minor_to_major(i) == dim_to_delete) {
         layout_.mutable_minor_to_major()->erase(
             layout_.mutable_minor_to_major()->begin() + i);

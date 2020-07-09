@@ -126,7 +126,7 @@ class ShapeIndexView {
  public:
   ShapeIndexView(const ShapeIndex& shape_index, int64 offset = 0)
       : indices_(shape_index.data() + offset, shape_index.size() - offset) {
-    CHECK_LE(offset, shape_index.size());
+    CHECK_LE(offset, static_cast<int64>(shape_index.size()));
   }
   ShapeIndexView(std::initializer_list<int64> indices) : indices_(indices) {}
   ShapeIndexView(const ShapeIndexView& other) = default;

@@ -314,7 +314,8 @@ int InterpreterWrapper::NumTensors() const {
 }
 
 std::string InterpreterWrapper::TensorName(int i) const {
-  if (!interpreter_ || i >= interpreter_->tensors_size() || i < 0) {
+  const int64 interpreter_tensors_size = interpreter_->tensors_size();
+  if (!interpreter_ || i >= interpreter_tensors_size || i < 0) {
     return "";
   }
 
@@ -527,7 +528,8 @@ PyObject* InterpreterWrapper::NodeOutputs(int i) const {
 }
 
 std::string InterpreterWrapper::NodeName(int i) const {
-  if (!interpreter_ || i >= interpreter_->nodes_size() || i < 0) {
+  const int interpreter_nodes_size = interpreter_->nodes_size();
+  if (!interpreter_ || i >= interpreter_nodes_size || i < 0) {
     return "";
   }
   // Get op name from registration

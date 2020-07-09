@@ -32,7 +32,7 @@ static constexpr char kPendingReleaseVersion[] = "UNKNOWN";
 bool CompareRuntimeVersion(const std::string& v1, const std::string& v2) {
   const std::vector<std::string> vec1 = absl::StrSplit(v1, '.');
   const std::vector<std::string> vec2 = absl::StrSplit(v2, '.');
-  int i = 0;
+  size_T i = 0;
   while (i < vec1.size() && i < vec2.size()) {
     int v1_val, v2_val;
     if (absl::SimpleAtoi(vec1[i], &v1_val) &&
@@ -323,9 +323,9 @@ void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer) {
   auto model = GetMutableModel(model_buffer_pointer);
   std::string model_min_version;
   auto subgraphs = model->subgraphs();
-  for (int i = 0; i < subgraphs->Length(); ++i) {
+  for (int i = 0, iter_limit = subgraphs->Length(); i < iter_limit; ++i) {
     const SubGraph* subgraph = subgraphs->Get(i);
-    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
+    for (int j = 0, sub_iter_limit = subgraph->operators()->Length(); j < sub_iter_limit; ++j) {
       const Operator* op = subgraph->operators()->Get(j);
       const OperatorCode* op_code =
           model->operator_codes()->Get(op->opcode_index());
@@ -354,7 +354,7 @@ void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer) {
     return;
   }
   // Copy over the bytes from `model_min_version` into the buffer.
-  for (int i = 0; i < model->metadata()->size(); ++i) {
+  for (int i = 0, iter_limit = model->metadata()->size(); i < iter_limit; ++i) {
     if (model->metadata()->Get(i)->name()->str() == "min_runtime_version") {
       auto buffer = model->metadata()->Get(i)->buffer();
       auto buffer_data =

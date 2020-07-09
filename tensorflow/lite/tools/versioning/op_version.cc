@@ -577,7 +577,8 @@ TensorType GetTensorType(int32_t idx, const SubGraph* subgraph) {
 
   // Some tests have a graph with invalid tensor index.
   TFLITE_DCHECK_GE(idx, 0);
-  if (subgraph->tensors() && idx < subgraph->tensors()->Length()) {
+  const int64 subgraph_tensors_Length = subgraph->tensors()->Length();
+  if (subgraph->tensors() && idx < subgraph_tensors_Length) {
     return subgraph->tensors()->Get(idx)->type();
   }
   LOG(ERROR) << "Can't access tenor " << idx;
@@ -725,11 +726,11 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       break;
   }
 
-  for (int32_t i = 0; i < op->inputs()->Length(); ++i) {
+  for (int32_t i = 0, iter_limit = op->inputs()->Length(); i < iter_limit; ++i) {
     TensorType tensor_type = GetTensorType(op->inputs()->Get(i), subgraph);
     op_sig.input_types.push_back(tensor_type);
   }
-  for (int32_t i = 0; i < op->outputs()->Length(); ++i) {
+  for (int32_t i = 0, iter_limit = op->outputs()->Length(); i < iter_limit; ++i) {
     TensorType tensor_type = GetTensorType(op->outputs()->Get(i), subgraph);
     op_sig.output_types.push_back(tensor_type);
   }
@@ -740,9 +741,9 @@ void UpdateOpVersion(uint8_t* model_buffer_pointer) {
   auto model = GetMutableModel(model_buffer_pointer);
   auto subgraphs = model->subgraphs();
 
-  for (int i = 0; i < subgraphs->Length(); ++i) {
+  for (int i = 0, iter_limit = subgraphs->Length(); i < iter_limit; ++i) {
     const SubGraph* subgraph = subgraphs->Get(i);
-    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
+    for (int j = 0, iter_limit = subgraph->operators()->Length(); j < iter_limit; ++j) {
       const Operator* op = subgraph->operators()->Get(j);
       OperatorCode* op_code =
           model->mutable_operator_codes()->GetMutableObject(op->opcode_index());
