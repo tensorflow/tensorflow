@@ -703,7 +703,7 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   TF_RET_CHECK(operand_shape.rank() == broadcast_dimensions_size);
   for (int64 operand_dimension = 0; operand_dimension < operand_shape.rank();
        ++operand_dimension) {
-    int64 output_dimension = broadcast->dimensions()[operand_dimdension];
+    int64 output_dimension = broadcast->dimensions()[operand_dimension];
     TF_RET_CHECK((output_dimension < broadcast->shape().rank()) &&
                  output_dimension >= 0 &&
                  (broadcast->shape().dimensions(output_dimension) ==
@@ -1672,7 +1672,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
     if (!parameter_numbers[i]) {
       return InternalError("Did not see parameter number %d in %s.", i,
                            fusion->ToString());
-    }f
+    }
   }
 
   TF_RET_CHECK(fusion->called_computations() ==
