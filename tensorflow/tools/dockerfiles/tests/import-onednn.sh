@@ -15,12 +15,16 @@
 # limitations under the License.
 # ============================================================================
 
-{ # try
-  echo `python -c 'from tensorflow.python import _pywrap_util_port; print(_pywrap_util_port.IsMklEnabled())'`
-  echo "PASS: MKL is enabled"
-} || { # catch
-  echo `python -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled())'`
-  echo "PASS: Old MKL is detected"
-} || { # finally
-  die "FAIL: MKL is not enabled"
-}
+python -c 'from tensorflow.python import _pywrap_util_port; print(_pywrap_util_port.IsMklEnabled())'
+new_mkl_enabled=$?
+
+python -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled())'
+old_mkl_enabled=$?
+
+if [[ $new_mkl_enabled -eq 0 ]]; then
+   echo "PASS: MKL is enabled"
+elif [[ $old_mkl_enabled -eq 0]]; then
+   echo "PASS: Old MKL is detected"
+else
+   die "FAIL: MKL is not enabled"
+fi
