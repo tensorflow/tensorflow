@@ -1321,7 +1321,7 @@ class StrategyBase(object):
       reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
         be combined. Allows using string representation of the enum such as
         "SUM", "MEAN".
-      value: a `tf.distribute.DistributeValues` instance, e.g. returned by
+      value: a `tf.distribute.DistributedValues` instance, e.g. returned by
         `Strategy.run`, to be combined into a single tensor. It can also be a
         regular tensor when used with `OneDeviceStrategy` or default strategy.
       axis: specifies the dimension to reduce along within each
