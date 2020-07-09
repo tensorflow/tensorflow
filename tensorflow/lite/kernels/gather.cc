@@ -61,6 +61,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
     case kTfLiteUInt8:
     case kTfLiteInt8:
+    case kTfLiteInt16:
     case kTfLiteInt64:
     case kTfLiteInt32:
     case kTfLiteBool:
@@ -143,6 +144,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return Gather<uint8_t, int32_t>(*params, input, positions, output);
       case kTfLiteInt8:
         return Gather<int8_t, int32_t>(*params, input, positions, output);
+      case kTfLiteInt16:
+        return Gather<int16_t, int32_t>(*params, input, positions, output);
       case kTfLiteInt32:
         return Gather<int32_t, int32_t>(*params, input, positions, output);
       case kTfLiteInt64:
@@ -165,6 +168,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return Gather<uint8_t, int64_t>(*params, input, positions, output);
       case kTfLiteInt8:
         return Gather<int8_t, int64_t>(*params, input, positions, output);
+      case kTfLiteInt16:
+        return Gather<int16_t, int64_t>(*params, input, positions, output);
       case kTfLiteInt32:
         return Gather<int32_t, int64_t>(*params, input, positions, output);
       case kTfLiteInt64:
