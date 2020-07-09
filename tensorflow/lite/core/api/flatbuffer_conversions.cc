@@ -131,6 +131,7 @@ TfLitePadding ConvertPadding(Padding padding) {
   return kTfLitePaddingUnknown;
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
 TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
                                ErrorReporter* error_reporter,
                                BuiltinDataAllocator* allocator,
@@ -823,7 +824,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
   }
   return kTfLiteError;
 }  // NOLINT[readability/fn_size]
-
+#endif  // !defined(TF_LITE_STATIC_MEMORY)
 }  // namespace
 
 TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
