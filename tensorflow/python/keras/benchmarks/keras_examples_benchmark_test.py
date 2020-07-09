@@ -17,10 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import tensorflow as tf
 
-from tensorflow.python.keras.benchmarks.perfzero_benchmark import PerfZeroBenchmark
 from tensorflow.python.keras.benchmarks import benchmark_util
 
 
@@ -34,7 +32,7 @@ _IMDB_X = tf.keras.preprocessing.sequence.pad_sequences(
     _IMDB_X, maxlen=_MAX_LEN)
 
 
-class KerasExamplesBenchmark(PerfZeroBenchmark):
+class KerasExamplesBenchmark(tf.test.Benchmark):
   """Required Arguments for measure_performance:
 
       x: Input data, it could be Numpy or load from tfds.

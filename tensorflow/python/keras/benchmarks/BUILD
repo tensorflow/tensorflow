@@ -79,7 +79,6 @@ py_test(
     ],
     deps = [
         ":benchmark_util",
-        ":perfzero_benchmark_lib",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -90,18 +89,5 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "perfzero_benchmark_lib",
-    srcs = [
-        "perfzero_benchmark.py",
-    ],
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "@absl_py//absl/flags",
-        "@absl_py//absl/logging",
-        "@absl_py//absl/testing:flagsaver",
     ],
 )
