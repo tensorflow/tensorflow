@@ -19,8 +19,6 @@ limitations under the License.
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
-#include <fuzzer/FuzzedDataProvider.h>
-
 // This is a fuzzer for tensorflow::str_util::ConsumeLeadingDigits
 
 namespace {
@@ -36,7 +34,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   const char lead_char_consume_digits = *(sp.data());
   if(leading_digits) {
     assert(lead_char_consume_digits < '0' && lead_char_consume_digits > '9');
-    assert(val > 0);
+    assert(val >= 0);
   }
 
   return 0;
