@@ -29,6 +29,9 @@ from tensorflow.python.autograph.pyct.static_analysis.experimental import type_i
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
+x = qual_names.from_str("x")
+y = qual_names.from_str("y")
+tensor_type = qual_names.from_str("ops.Tensor")
 
 class TypeInferenceAnalyzerTestBase(test.TestCase):
 
@@ -70,52 +73,64 @@ class TypeInferenceAnalyzerTest(TypeInferenceAnalyzerTestBase):
     node = self._parse_and_analyze(test_fn)
     fn_body = node.body
 
-    x = qual_names.from_str("x")
-    y = qual_names.from_str("y")
-    tensor_type = qual_names.from_str("ops.Tensor")
-
     reads = {x: {tensor_type}}
     writes = {}
-
     # if x > 0:
     self.assertTypeInference(fn_body[0].test, reads, writes)
 
-    # y = x
     writes = {y: {tensor_type}}
+    # y = x
     self.assertTypeInference(fn_body[1], reads, writes)
 
-    # return x
     writes = {}
+    # return x
     self.assertTypeInference(fn_body[2], reads, writes)
+
+  def test_type_inference_if_else_multiple_possible_types(self):
+
+    def test_fn(x: ops.Tensor, y: float):
+      if y > 0:
+        y = x + x
+      return y
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    int_type = qual_names.from_str("float")
+
+    reads = {x: {tensor_type}}
+    writes = {y: {tensor_type}}
+    # y = x + x
+    self.assertTypeInference(fn_body[0].body[0], reads, writes)
+
+    reads = {y: {tensor_type, int_type}}
+    writes = {}
+    # return y
+    self.assertTypeInference(fn_body[1], reads, writes)
 
   def test_type_inference_stacked_if(self):
 
-    def test_fn(x: ops.Tensor, a: int):
-      if a > 0:
+    def test_fn(x: ops.Tensor, y: int):
+      if y > 0:
         x = 0
-      if a > 1:
+      if y > 1:
         x = 1
       return x
 
     node = self._parse_and_analyze(test_fn)
     fn_body = node.body
 
-    x = qual_names.from_str("x")
-    tensor_type = qual_names.from_str("ops.Tensor")
-
     reads = {x: {tensor_type}}
     writes = {}
-
     # return x
-    writes = {}
     self.assertTypeInference(fn_body[2], reads, writes)
 
   def test_type_inference_stacked_if_else(self):
 
-    def test_fn(x: ops.Tensor, a: int):
-      if a > 0:
+    def test_fn(x: ops.Tensor, y: int):
+      if y > 0:
         x = 0
-      if a > 1:
+      if y > 1:
         x = 1
       else:
         x = 2
@@ -128,22 +143,18 @@ class TypeInferenceAnalyzerTest(TypeInferenceAnalyzerTestBase):
     # variables assigned to python objects is not supported
     reads = {}
     writes = {}
-
     # return x
     self.assertTypeInference(fn_body[2], reads, writes)
 
   def test_type_inference_for(self):
 
-    def test_fn(x: ops.Tensor, a: int):
+    def test_fn(x: ops.Tensor, y: int):
       for i in range(a):
         x += i
       return x
 
     node = self._parse_and_analyze(test_fn)
     fn_body = node.body
-
-    x = qual_names.from_str("x")
-    tensor_type = qual_names.from_str("ops.Tensor")
 
     reads = {x: {tensor_type}}
     writes = {}
