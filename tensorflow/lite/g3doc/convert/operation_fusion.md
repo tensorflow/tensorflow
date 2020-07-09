@@ -127,13 +127,12 @@ composite operation implements. This is very useful as it provides:
     arguments of the `tf.function` correspond to the arguments of this
     interface.
 
-As an example, let’s consider a composite operation defined in
-[Lingvo/TensorFlow](https://github.com/tensorflow/lingvo) to implement embedding
-lookup. This maps to a fused operation in TensorFlow Lite.
+As an example, let’s consider a composite operation defined to implement
+embedding lookup. This maps to a fused operation in TensorFlow Lite.
 
 ```python
   @tf.function(
-        experimental_implements="lingvo.embedding_lookup")
+        experimental_implements="embedding_lookup")
     def EmbFprop(embs, ids_vec):
       """Embedding forward prop.
 
@@ -229,7 +228,7 @@ Here is code snippet from the pass showing the main workflow:
 ```
 void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
                                                         StringAttr attr) {
-  if (attr.getValue() == "lingvo.embedding_lookup") {
+  if (attr.getValue() == "embedding_lookup") {
     func.eraseBody();
     func.addEntryBlock();
     // Convert the composite embedding_lookup function body to a

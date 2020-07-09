@@ -1530,6 +1530,130 @@ struct NnApi {
    */
   int (*ANeuralNetworksMemory_copy)(const ANeuralNetworksMemory* src,
                                     const ANeuralNetworksMemory* dst);
+
+  /**
+   * Create a {@link ANeuralNetworksEvent} from a sync_fence file descriptor.
+   *
+   * The newly created ANeuralNetworksEvent does not take ownership of the
+   * provided sync_fence_fd, it will instead dup the provided sync_fence_fd and
+   * own the duplicate.
+   *
+   * @param sync_fence_fd The sync_fence file descriptor.
+   * @param event The newly created object or NULL if unsuccessful.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *
+   * Available since API level 30.
+   */
+  int (*ANeuralNetworksEvent_createFromSyncFenceFd)(
+      int sync_fence_fd, ANeuralNetworksEvent** event);
+
+  /**
+   * Get sync_fence file descriptor from the event.
+   *
+   * If the ANeuralNetworksEvent is not backed by a sync fence, the
+   * sync_fence_fd will be set to -1, and ANEURALNETWORKS_BAD_DATA will be
+   * returned.
+   *
+   * See {@link ANeuralNetworksEvent_createFromSyncFenceFd} and
+   * {@link ANeuralNetworksExecution_startComputeWithDependencies} to see how to
+   * create an event backed by a sync fence.
+   *
+   * The user takes ownership of the returned fd, and must close the returned
+   * file descriptor when it is no longer needed.
+   *
+   * @param event An event that is backed by a sync fence.
+   * @param sync_fence_fd The sync_fence file descriptor. The file descriptor
+   * will be set to -1 if there is an error.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *
+   * Available since API level 30.
+   */
+  int (*ANeuralNetworksEvent_getSyncFenceFd)(const ANeuralNetworksEvent* event,
+                                             int* sync_fence_fd);
+
+  /**
+   * Schedule asynchronous evaluation of the execution with dependencies.
+   *
+   * The execution will wait for all the depending events to be signaled before
+   * starting the evaluation. Once the execution has completed and the outputs
+   * are ready to be consumed, the returned event will be signaled. Depending on
+   * which devices are handling the execution, the event could be backed by a
+   * sync fence. Use {@link ANeuralNetworksEvent_wait} to wait for that event.
+   *
+   * ANeuralNetworksEvent_wait must be called to recurperate the resources used
+   * by the execution.
+   *
+   * If parts of the execution are scheduled on devices that do not support
+   * fenced execution, the function call may wait for such parts to finish
+   * before returning.
+   *
+   * The function will return an error if any of the events in dependencies is
+   * already in a bad state. After the execution is scheduled, if any of the
+   * events in dependencies does not complete normally, the execution will fail,
+   * and {@link ANeuralNetworksEvent_wait} on the returned event will return an
+   * error.
+   *
+   * The function will return an error if any of the execution outputs has a
+   * tensor operand type that is not fully specified.
+   *
+   * The function can be passed a timeout duration in nanoseconds. This timeout
+   * duration acts as a hint to drivers in the same way that the timeout
+   * durations in {@link ANeuralNetworksCompilation_setTimeout} and {@link
+   * ANeuralNetworksExecution_setTimeout} act as hints to drivers. The duration
+   * begins when all waitFor sync fences have been signaled, and can be used
+   * together with {@link ANeuralNetworksExecution_setTimeout} which specifies
+   * the maximum timeout duration beginning at the call to
+   * {@link ANeuralNetworksExecution_startComputeWithDependencies}.
+   * If the duration is non-zero, the {@link ANeuralNetworksExecution} must have
+   * been created from an {@link ANeuralNetworksCompilation} which in turn was
+   * created from
+   * {@link ANeuralNetworksCompilation_createForDevices} with numDevices = 1,
+   * otherwise this function will fail with ANEURALNETWORKS_BAD_DATA. If either
+   * the timeout duration from {@link ANeuralNetworksExecution_setTimeout} or
+   * the timeout duration passed to this call is exceeded, the execution may be
+   * aborted, in which case {@link ANEURALNETWORKS_MISSED_DEADLINE_*} will be
+   * returned through {@link
+   * ANeuralNetworksExecution_startComputeWithDependencies} or {@link
+   * ANeuralNetworksEvent_wait} on the event object. If the device has a feature
+   * level reported by {@link ANeuralNetworksDevice_getFeatureLevel} that is
+   * lower than 30, then the timeout duration hints will be ignored.
+   *
+   * If this execution contains a {@link ANEURALNETWORKS_WHILE} operation, and
+   * the condition model does not output false within the loop timeout duration,
+   * then execution will be aborted and {@link
+   * ANEURALNETWORKS_MISSED_DEADLINE_*} will be returned through {@link
+   * ANeuralNetworksEvent_wait} on the event object.
+   *
+   * See {@link ANeuralNetworksExecution} for information on multithreaded
+   * usage.
+   *
+   * See {@link ANeuralNetworksExecution_compute} for synchronous execution.
+   * See {@link ANeuralNetworksExecution_burstCompute} for burst synchronous
+   * execution. See {@link ANeuralNetworksExecution_startCompute} for regular
+   * asynchronous execution.
+   *
+   * @param execution The execution to be scheduled and executed.
+   * @param dependencies A set of depending events. The actual evaluation will
+   * not start until all the events are signaled.
+   * @param num_dependencies The number of events in the dependencies set.
+   * @param duration The maximum amount of time in nanoseconds that is expected
+   * to be spent executing the model after all dependencies are signaled. If set
+   * to 0, the timeout duration is considered infinite.
+   * @param event The event that will be signaled on completion. event is set to
+   *              NULL if there's an error.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if the evaluation is successfully
+   * scheduled.
+   *
+   * Available since API level 30.
+   */
+  int (*ANeuralNetworksExecution_startComputeWithDependencies)(
+      ANeuralNetworksExecution* execution,
+      const ANeuralNetworksEvent* const* dependencies,
+      uint32_t num_dependencies, uint64_t duration,
+      ANeuralNetworksEvent** event);
 };
 
 /**

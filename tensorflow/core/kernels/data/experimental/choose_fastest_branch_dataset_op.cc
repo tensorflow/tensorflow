@@ -495,9 +495,9 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
         DatasetContext::Params params;
         params.type_string = "ChooseFastestBranch_Wrapper";
         params.node_name = strings::StrCat(params.type_string, branch_index);
-        DatasetBase* temp_dataset =
-            new WrapperDataset(std::move(params), &dataset()->output_types_,
-                               &dataset()->output_shapes_, input_impl_.get());
+        DatasetBase* temp_dataset = new WrapperDataset(
+            std::move(params), &input_impl_->output_dtypes(),
+            &input_impl_->output_shapes(), input_impl_.get());
 
         if (is_experiment) {
           // When running experiment iterations, we add a TakeDataset in between

@@ -25,6 +25,7 @@ limitations under the License.
 typedef struct TpuSerializedProto TpuSerializedProto;
 
 namespace tensorflow {
+class TpuMeshCommonState;
 namespace tpu {
 class TpuMeshStateInterface;
 }  // namespace tpu
@@ -40,7 +41,7 @@ TFTPU_CAPI_EXPORT void ConfigureDistributedTpuOp_DoWork(
 TFTPU_CAPI_EXPORT void WaitForDistributedTpuOp_DoWork(
     const size_t num_hosts, const size_t num_cores_per_host,
     const int32_t** host_ordinal_to_global_core_id_map,
-    tensorflow::tpu::TpuMeshStateInterface* tpu_mesh_state_interface,
+    tensorflow::TpuMeshCommonState* tpu_mesh_common_state,
     size_t* tpu_topology_output_size, char** tpu_topology_output,
     TF_Status* status);
 
@@ -60,6 +61,13 @@ TFTPU_CAPI_EXPORT void DisconnectDistributedTpuChipsOp_DoWork(
 
 TFTPU_CAPI_EXPORT void TpuConfigurationApi_FreeCharArray(char* output);
 TFTPU_CAPI_EXPORT void TpuConfigurationApi_FreeInt32Array(int32_t* output);
+
+TFTPU_CAPI_EXPORT bool TpuConfigurationApi_HasTPUPodState();
+
+TFTPU_CAPI_EXPORT void TpuConfigurationApi_TpusPerHost(int32_t* tpus,
+                                                       TF_Status* status);
+TFTPU_CAPI_EXPORT void TpuConfigurationApi_TpuMemoryLimit(int64_t* memory_limit,
+                                                          TF_Status* status);
 }
 
 struct TfTpu_ConfigApiFn {
@@ -71,6 +79,9 @@ struct TfTpu_ConfigApiFn {
   TFTPU_ADD_FN_IN_STRUCT(DisconnectDistributedTpuChipsOp_DoWork);
   TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_FreeCharArray);
   TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_FreeInt32Array);
+  TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_HasTPUPodState);
+  TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_TpusPerHost);
+  TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_TpuMemoryLimit);
 };
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_CONFIG_C_API_H_

@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/compiled_subgraph.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_metrics.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
 #include "tensorflow/core/tpu/kernels/trace_util.h"
 
 namespace tensorflow {
@@ -298,7 +298,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // entries_by_last_use_ then the entry has been marked for eviction.
   std::map<int64, CompiledSubgraph*> entries_by_last_use_ ABSL_GUARDED_BY(mu_);
 
-  TpuCompilationCacheMetrics tpu_compilation_cache_metrics_;
+  TpuCompilationMetrics tpu_compilation_metrics_;
 
  private:
   TpuCompilationCacheInterface(const TpuCompilationCacheInterface&) = delete;

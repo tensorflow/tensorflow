@@ -45,10 +45,10 @@ class DeviceCompatibilityCheckTest(test.TestCase):
       device_compatibility_check._log_device_compatibility_check(
           policy_name, device_attr_list)
     if should_warn:
-      self.assertRegexpMatches(mock_warn.call_args[0][0], expected_regex)
+      self.assertRegex(mock_warn.call_args[0][0], expected_regex)
       mock_info.assert_not_called()
     else:
-      self.assertRegexpMatches(mock_info.call_args[0][0], expected_regex)
+      self.assertRegex(mock_info.call_args[0][0], expected_regex)
       mock_warn.assert_not_called()
 
   def test_supported(self):

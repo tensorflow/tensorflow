@@ -138,7 +138,7 @@ class MultiProcessRunner(object):
                     "worker2.example.com:2222"],
          "ps": ["ps0.example.com:2222",
                 "ps1.example.com:2222"]}
-      rpc_layer: RPC layer to use. Default value is 'grpc+loas'.
+      rpc_layer: RPC layer to use. Default value is 'grpc'.
       max_run_time: If set, child processes is forced to exit at approximately
         this many seconds after `start` is called. We achieve this through
         `signal.alarm()` api. Note that this is best effort at Python level
@@ -184,7 +184,7 @@ class MultiProcessRunner(object):
 
     self._proc_func = proc_func
     self._cluster_spec = cluster_spec
-    self._rpc_layer = rpc_layer
+    self._rpc_layer = rpc_layer or 'grpc'
     self._max_run_time = max_run_time
     self._grpc_fail_fast = grpc_fail_fast
     self._stream_stdout = stream_stdout
@@ -217,6 +217,10 @@ class MultiProcessRunner(object):
 
     # This flag will be set to True once terminate_all() is called.
     self._all_forced_terminated = False
+
+  def set_args(self, args=None, kwargs=None):
+    self._args = args or self._args
+    self._kwargs = kwargs or self._kwargs
 
   def _continuously_readline_from_sub(self, pipe_r, task_type, task_id):
     """Function to continuously read lines from subprocesses."""
@@ -412,6 +416,23 @@ class MultiProcessRunner(object):
     p = self._processes.get((task_type, task_id), None)
     return p.pid if p else None
 
+  def get_process_exit_code(self, task_type, task_id):
+    """Returns the subprocess exit code given the task type and task id.
+
+    Args:
+      task_type: The task type.
+      task_id: The task id.
+
+    Returns:
+      The subprocess exit code; `None` if the subprocess has not exited yet.
+
+    Raises:
+      KeyError: If the corresponding subprocess is not found with `task_type`
+        and `task_id`.
+    """
+    p = self._processes[(task_type, task_id)]
+    return p.exitcode if p else None
+
   def _join_or_terminate(self, task_type, task_id, process, timeout):
     """Joins a process. If it times out, terminate all procsses."""
     logging.info('joining %s-%d', task_type, task_id)
@@ -487,12 +508,6 @@ class MultiProcessRunner(object):
       logging.info('%s-%d exit code: %s', task_type, task_id, p.exitcode)
 
     process_statuses = self._queue_to_list(self._process_status_queue)
-    if not self._all_forced_terminated and len(
-        process_statuses) != self._outstanding_subprocess_count:
-      raise UnexpectedSubprocessExitError(
-          'Missing status(es) from %d subprocess(es). See logs for details.' %
-          (self._outstanding_subprocess_count - len(process_statuses)),
-          self._get_mpr_result(process_statuses))
     for process_status in process_statuses:
       assert isinstance(process_status, _ProcessStatusInfo)
       if not process_status.is_successful:
@@ -500,12 +515,12 @@ class MultiProcessRunner(object):
 
     # Checking all the processes that are expected to exit properly.
     for (task_type, task_id), p in self._processes.items():
-      if self._dependence_on_chief and task_type != 'chief':
+      if self._dependence_on_chief and chief and task_type != 'chief':
         # If _dependence_on_chief, other processes may have been
         # forced-terminated, which is expected.
         continue
       # Successfully exiting process has exit code 0.
-      if p.exitcode > 0:
+      if p.exitcode is None or p.exitcode > 0:
         raise UnexpectedSubprocessExitError(
             'Subprocess %s-%d exited with exit code %d. See logs for details.' %
             (task_type, task_id, p.exitcode),
@@ -552,6 +567,29 @@ class MultiProcessRunner(object):
         logging.info('Attempting to kill %s-%d but it does not exist.',
                      task_type, task_id)
     self._all_forced_terminated = True
+
+  def get_manager(self):
+    """Returns the multiprocessing manager object for concurrency tools.
+
+    The manager object is useful as it controls a server process that holds
+    the python objects that can be shared across processes. This can be used
+    for parent-subprocess communication:
+
+    ```python
+    mpr = multi_process_runner.MultiProcessRunner(...)
+    manager = mpr.get_manager()
+    some_event_happening_in_subprocess = manager.Event()
+    mpr.set_args(args=(some_event_happening_in_subprocess,))
+    mpr.start()
+    some_event_happening_in_subprocess.wait()
+    # Do something that only should after some event happens in subprocess.
+    ```
+
+    Note that the user of multi_process_runner should not create additional
+    `multiprocessing.Manager()` objects; doing so can result in segfault in
+    some cases.
+    """
+    return self._manager
 
 
 class _Process(multi_process_lib.Process):
@@ -844,17 +882,24 @@ def _run_contained(proc_func, args, kwargs):
 
   Returns:
     a _ProcessStatusInfo.
+
   """
+  is_successful = False
+  return_value = None
+  exc_info = None
   try:
     return_value = proc_func(*args, **kwargs)
     is_successful = True
-    exc_info = None
+    return _ProcessStatusInfo(
+        is_successful=is_successful,
+        exc_info=exc_info,
+        return_value=return_value)
+
+  # If `proc_func` ends up exiting with `sys.exit()`, the `SystemExit` is not
+  # handled here.
   except Exception:  # pylint: disable=broad-except
-    return_value = None
-    is_successful = False
     exc_info = sys.exc_info()
-  finally:
-    return _ProcessStatusInfo(  # pylint: disable=lost-exception
+    return _ProcessStatusInfo(
         is_successful=is_successful,
         exc_info=exc_info,
         return_value=return_value)

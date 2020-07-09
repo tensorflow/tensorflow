@@ -38,12 +38,8 @@ TEST_F(AliasPassthroughParamsTest, AliasPassThroughParams) {
   EXPECT_TRUE(AliasPassthroughParams().Run(module.get()).ValueOrDie());
   const auto& alias_config = module->input_output_alias_config();
   EXPECT_EQ(0, alias_config.GetAliasedParameter({0}).value().parameter_number);
-  EXPECT_EQ(xla::HloInputOutputAliasConfig::kUserAlias,
-            alias_config.GetAliasedParameter({0}).value().kind);
   EXPECT_FALSE(alias_config.OutputHasAlias({1}));
   EXPECT_EQ(1, alias_config.GetAliasedParameter({2}).value().parameter_number);
-  EXPECT_EQ(xla::HloInputOutputAliasConfig::kUserAlias,
-            alias_config.GetAliasedParameter({2}).value().kind);
 }
 
 TEST_F(AliasPassthroughParamsTest, DoNotAliasPassThroughParamsMoreThanOnce) {

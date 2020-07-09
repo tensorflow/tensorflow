@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
@@ -170,11 +171,13 @@ int main(int argc, char **argv) {
     module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
                                           tags, exported_names, &context);
   } else {
+    tensorflow::GraphImportConfig specs;
+    specs.upgrade_legacy = upgrade_legacy;
+    specs.prune_unused_nodes = true;
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
-        debug_info_file, input_arrays, input_dtypes, input_shapes,
-        output_arrays,
-        /*prune_unused_nodes=*/true, upgrade_legacy, &source_mgr, &context);
+        specs, debug_info_file, input_arrays, input_dtypes, input_shapes,
+        output_arrays, &source_mgr, &context);
   }
 
   // If errors occur, the library call in the above already logged the error

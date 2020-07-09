@@ -21,10 +21,11 @@ limitations under the License.
 class TempFile : public std::fstream {
  public:
   // We should specify openmode each time we call TempFile.
-  TempFile(const char* temp_file_name, std::ios::openmode mode);
+  TempFile(const std::string& temp_file_name, std::ios::openmode mode);
   TempFile(TempFile&& rhs);
   ~TempFile() override;
   const std::string getName() const;
+  bool truncate();
 
  private:
   const std::string name_;

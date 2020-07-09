@@ -97,7 +97,7 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Transfers the ownship of thunk_sequence_ out.
   std::unique_ptr<ThunkSequence> ConsumeThunkSequence() {
-    return std::move(thunk_sequence_);
+    return std::make_unique<ThunkSequence>(std::move(thunk_sequence_));
   }
 
   Status DefaultAction(HloInstruction* hlo) override;
@@ -145,10 +145,12 @@ class IrEmitterUnnested : public IrEmitter,
   // Emits LLVM global variables corresponding to constant instructions.
   Status EmitConstantGlobals();
 
+  Status Postprocess(HloInstruction* hlo) override;
+
  private:
   // Add a owning Thunk object to the thunk sequence.
   void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) override {
-    thunk_sequence_->emplace_back(std::move(thunk));
+    thunk_sequence_.emplace_back(std::move(thunk));
   }
 
   // Input = {static array, dynamic_dim0, dynamic_dim1}
@@ -543,13 +545,11 @@ class IrEmitterUnnested : public IrEmitter,
       absl::optional<int64> thread_id_filter = absl::nullopt,
       absl::optional<int64> block_id_filter = absl::nullopt);
 
-  Status Postprocess(HloInstruction* hlo) override;
-
   // Returns the last generated thunk.
-  Thunk* LastThunk() const { return thunk_sequence_->back().get(); }
+  Thunk* LastThunk() const { return thunk_sequence_.back().get(); }
 
   // The thunk sequence this IrEmitter generates for the input computation.
-  std::unique_ptr<ThunkSequence> thunk_sequence_;
+  ThunkSequence thunk_sequence_;
 
   // The HloComputation that this IrEmitter emits code for.
   const HloComputation* hlo_computation_;

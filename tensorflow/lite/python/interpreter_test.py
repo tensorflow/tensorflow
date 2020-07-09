@@ -52,7 +52,7 @@ class InterpreterCustomOpsTest(test_util.TensorFlowTestCase):
 
   def testRegistererFailure(self):
     bogus_name = 'CompletelyBogusRegistererName'
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Looking up symbol \'' + bogus_name + '\' failed'):
       interpreter_wrapper.InterpreterWithCustomOps(
           model_path=resource_loader.get_path_to_datafile(
@@ -69,15 +69,14 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertEqual(quantized_dimension, params['quantized_dimension'])
 
   def testThreads_NegativeValue(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'num_threads should >= 1'):
+    with self.assertRaisesRegex(ValueError, 'num_threads should >= 1'):
       interpreter_wrapper.Interpreter(
           model_path=resource_loader.get_path_to_datafile(
               'testdata/permute_float.tflite'), num_threads=-1)
 
   def testThreads_WrongType(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'type of num_threads should be int'):
+    with self.assertRaisesRegex(ValueError,
+                                'type of num_threads should be int'):
       interpreter_wrapper.Interpreter(
           model_path=resource_loader.get_path_to_datafile(
               'testdata/permute_float.tflite'), num_threads=4.2)
@@ -261,13 +260,13 @@ class InterpreterTest(test_util.TensorFlowTestCase):
 class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
 
   def testInvalidModelContent(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'Model provided has model identifier \''):
+    with self.assertRaisesRegex(ValueError,
+                                'Model provided has model identifier \''):
       interpreter_wrapper.Interpreter(model_content=six.b('garbage'))
 
   def testInvalidModelFile(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'Could not open \'totally_invalid_file_name\''):
+    with self.assertRaisesRegex(ValueError,
+                                'Could not open \'totally_invalid_file_name\''):
       interpreter_wrapper.Interpreter(
           model_path='totally_invalid_file_name')
 
@@ -275,12 +274,12 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile(
             'testdata/permute_float.tflite'))
-    with self.assertRaisesRegexp(RuntimeError,
-                                 'Invoke called on model that is not ready'):
+    with self.assertRaisesRegex(RuntimeError,
+                                'Invoke called on model that is not ready'):
       interpreter.invoke()
 
   def testInvalidModelFileContent(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, '`model_path` or `model_content` must be specified.'):
       interpreter_wrapper.Interpreter(model_path=None, model_content=None)
 
@@ -290,9 +289,9 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
             'testdata/permute_float.tflite'))
     interpreter.allocate_tensors()
     # Invalid tensor index passed.
-    with self.assertRaisesRegexp(ValueError, 'Tensor with no shape found.'):
+    with self.assertRaisesRegex(ValueError, 'Tensor with no shape found.'):
       interpreter._get_tensor_details(4)
-    with self.assertRaisesRegexp(ValueError, 'Invalid node index'):
+    with self.assertRaisesRegex(ValueError, 'Invalid node index'):
       interpreter._get_op_details(4)
 
 
@@ -339,12 +338,10 @@ class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
   def testBaseProtectsFunctions(self):
     in0 = self.interpreter.tensor(self.input0)()
     # Make sure we get an exception if we try to run an unsafe operation
-    with self.assertRaisesRegexp(
-        RuntimeError, 'There is at least 1 reference'):
+    with self.assertRaisesRegex(RuntimeError, 'There is at least 1 reference'):
       _ = self.interpreter.allocate_tensors()
     # Make sure we get an exception if we try to run an unsafe operation
-    with self.assertRaisesRegexp(
-        RuntimeError, 'There is at least 1 reference'):
+    with self.assertRaisesRegex(RuntimeError, 'There is at least 1 reference'):
       _ = self.interpreter.invoke()
     # Now test that we can run
     del in0  # this is our only buffer reference, so now it is safe to change
@@ -483,7 +480,7 @@ class InterpreterDelegateTest(test_util.TensorFlowTestCase):
     self.assertEqual(lib.get_options_counter(), 2)
 
   def testFail(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         # Due to exception chaining in PY3, we can't be more specific here and check that
         # the phrase 'Fail argument sent' is present.
         ValueError,

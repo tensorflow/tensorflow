@@ -45,7 +45,11 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
     return Status::OK();
   }
   CHECK(ShapeUtil::Compatible(hlo_instruction()->operand(0)->shape(),
-                              outfeed_buffers->shape()));
+                              outfeed_buffers->shape()))
+      << "XLA program outfeed request of shape "
+      << hlo_instruction()->operand(0)->shape().ToString()
+      << " did not match the runtime's outfeed buffer of shape "
+      << outfeed_buffers->shape().ToString();
 
   TF_RETURN_IF_ERROR(outfeed_buffers->ForEachMutableElementWithStatus(
       [&](const ShapeIndex& index, std::unique_ptr<OutfeedBuffer>* buffer) {

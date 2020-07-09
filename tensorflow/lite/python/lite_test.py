@@ -59,16 +59,6 @@ from tensorflow.python.training.training_util import write_graph
 class LiteTest(test_util.TensorFlowTestCase):
   """Base class of all the tests in this module."""
 
-  def setUp(self):
-    self._original_use_experimental_new_converter = (
-        lite._USE_EXPERIMENTAL_NEW_CONVERTER)
-    super(LiteTest, self).setUp()
-
-  def tearDown(self):
-    super(LiteTest, self).tearDown()
-    lite._USE_EXPERIMENTAL_NEW_CONVERTER = (
-        self._original_use_experimental_new_converter)
-
 
 class TestModels(LiteTest):
 

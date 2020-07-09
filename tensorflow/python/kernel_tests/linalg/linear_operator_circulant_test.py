@@ -381,7 +381,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
 
   def test_real_spectrum_and_not_self_adjoint_hint_raises(self):
     spectrum = [1., 2.]
-    with self.assertRaisesRegexp(ValueError, "real.*always.*self-adjoint"):
+    with self.assertRaisesRegex(ValueError, "real.*always.*self-adjoint"):
       linalg.LinearOperatorCirculant(spectrum, is_self_adjoint=False)
 
   def test_real_spectrum_auto_sets_is_self_adjoint_to_true(self):
@@ -635,7 +635,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
 
   def test_real_spectrum_and_not_self_adjoint_hint_raises(self):
     spectrum = [[1., 2.], [3., 4]]
-    with self.assertRaisesRegexp(ValueError, "real.*always.*self-adjoint"):
+    with self.assertRaisesRegex(ValueError, "real.*always.*self-adjoint"):
       linalg.LinearOperatorCirculant2D(spectrum, is_self_adjoint=False)
 
   def test_real_spectrum_auto_sets_is_self_adjoint_to_true(self):
@@ -645,7 +645,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
 
   def test_invalid_rank_raises(self):
     spectrum = array_ops.constant(np.float32(rng.rand(2)))
-    with self.assertRaisesRegexp(ValueError, "must have at least 2 dimensions"):
+    with self.assertRaisesRegex(ValueError, "must have at least 2 dimensions"):
       linalg.LinearOperatorCirculant2D(spectrum)
 
   def test_tape_safe(self):

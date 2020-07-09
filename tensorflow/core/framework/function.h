@@ -847,6 +847,12 @@ class FunctionLibraryRuntime {
                              AttrSlice attrs);
 };
 
+// Returns the device of the `arg_index`-th function input. Update
+// `composite_devices` if the input device is a composite device.
+string GetFunctionResourceInputDevice(
+    const Tensor& input, const int arg_index, const FunctionDef& function_def,
+    absl::flat_hash_map<string, std::vector<string>>* composite_devices);
+
 // Returns a canonicalized string for the instantiation of the
 // function of the given "name", attributes "attrs", and "options".
 //

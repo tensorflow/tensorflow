@@ -201,7 +201,7 @@ def _recurrent_lstm(c, h):
 def _make_node_with_color(color, input_tensor, name=None):
   """Returns a node representative of the specified list type."""
   color = color.lower()
-  if color == 'w':  # White node
+  if color == 'w':  # Allow node
     weights = _weight(input_tensor.get_shape().as_list())
     return math_ops.matmul(input_tensor, weights, name=name)
   if color == 'g':  # Gray node
@@ -371,7 +371,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
     The loop has different node colors in different sections of the graph. The
     arguments must be strings where each character represents the color of a
-    node in that section of the graph: w = white, g = gray, c = clear,
+    node in that section of the graph: w = allow, g = gray, c = clear,
     b = black. CAPITALIZED characters indicate that the node is expected to be
     changed to DT_HALF during graph optimization.
 

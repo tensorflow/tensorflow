@@ -67,6 +67,7 @@ from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lock_util
 from tensorflow.python.util import memory
@@ -1257,11 +1258,13 @@ EagerTensor = pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase)
 
 
 @tf_export(v1=["convert_to_tensor"])
-def convert_to_tensor_v1(value,
-                         dtype=None,
-                         name=None,
-                         preferred_dtype=None,
-                         dtype_hint=None):
+@dispatch.add_dispatch_support
+def convert_to_tensor_v1_with_dispatch(
+    value,
+    dtype=None,
+    name=None,
+    preferred_dtype=None,
+    dtype_hint=None):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -1311,13 +1314,26 @@ def convert_to_tensor_v1(value,
     RuntimeError: If a registered conversion function returns an invalid value.
     ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
   """
+  return convert_to_tensor_v1(value, dtype=dtype, name=name,
+                              preferred_dtype=preferred_dtype,
+                              dtype_hint=dtype_hint)
+
+
+def convert_to_tensor_v1(value,
+                         dtype=None,
+                         name=None,
+                         preferred_dtype=None,
+                         dtype_hint=None):
+  """Converts the given `value` to a `Tensor` (with the TF1 API)."""
   preferred_dtype = deprecation.deprecated_argument_lookup(
       "dtype_hint", dtype_hint, "preferred_dtype", preferred_dtype)
   return convert_to_tensor_v2(value, dtype, preferred_dtype, name)
 
 
 @tf_export("convert_to_tensor", v1=[])
-def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
+@dispatch.add_dispatch_support
+def convert_to_tensor_v2_with_dispatch(
+    value, dtype=None, dtype_hint=None, name=None):
   """Converts the given `value` to a `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -1378,6 +1394,12 @@ def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
     RuntimeError: If a registered conversion function returns an invalid value.
     ValueError: If the `value` is a tensor not of given `dtype` in graph mode.
   """
+  return convert_to_tensor_v2(
+      value, dtype=dtype, dtype_hint=dtype_hint, name=name)
+
+
+def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
+  """Converts the given `value` to a `Tensor`."""
   return convert_to_tensor(
       value=value,
       dtype=dtype,
@@ -2583,6 +2605,8 @@ class RegisterGradient(object):
   that defines the operation.
   """
 
+  __slots__ = ["_op_type"]
+
   def __init__(self, op_type):
     """Creates a new decorator with `op_type` as the Operation type.
 
@@ -2679,6 +2703,8 @@ class OpStats(object):
 
   """
 
+  __slots__ = ["_statistic_type", "_value"]
+
   def __init__(self, statistic_type, value=None):
     """Sets up the initial placeholders for the statistics."""
     self.statistic_type = statistic_type
@@ -2757,6 +2783,8 @@ class RegisterStatistics(object):
   back the calculated amount in doohickey.value, or None if it's not defined.
 
   """
+
+  __slots__ = ["_op_type", "_statistic_type"]
 
   def __init__(self, op_type, statistic_type):
     """Saves the `op_type` as the `Operation` type."""
@@ -5176,6 +5204,8 @@ class enable_auto_cast_variables(object):
   `dtype` is floating-point. Otherwise, `AutoCastVariable`s will not be cast.
   """
 
+  __slots__ = ["_dtype", "_graph", "_prev_read_dtype"]
+
   def __init__(self, dtype, graph=None):
     if dtype and not dtype.is_floating:
       self._dtype = None
@@ -6529,6 +6559,8 @@ class name_scope_v1(object):  # pylint: disable=invalid-name
   ```
   """
 
+  __slots__ = ["_name", "_name_scope"]
+
   @property
   def name(self):
     return self._name
@@ -6581,6 +6613,8 @@ class name_scope_v2(object):
   made unique by appending `_n`. For example, calling `my_op` the second time
   will generate `MyOp_1/a`, etc.
   """
+
+  __slots__ = ["_name", "_exit_fns"]
 
   def __init__(self, name):
     """Initialize the context manager.
@@ -6917,6 +6951,8 @@ def _reconstruct_sequence_inputs(op_def, inputs, attrs):
 
 class _TensorIterator(object):
   """Iterates over the leading dim of a Tensor. Performs no error checks."""
+
+  __slots__ = ["_tensor", "_index", "_limit"]
 
   def __init__(self, tensor, dim0):
     self._tensor = tensor

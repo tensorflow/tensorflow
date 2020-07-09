@@ -547,39 +547,36 @@ bool HloParserImpl::ParseAliasing(AliasingData* data) {
     }
     std::string errmsg =
         "Expected format: <output_shape_index>: (<input_param>, "
-        "<input_param_shape_index>)";
+        "<input_param_shape_index>) OR <output_shape_index>: <input_param>";
     if (!ParseToken(TokKind::kColon, errmsg)) {
       return false;
     }
-    if (!ParseToken(TokKind::kLparen, errmsg)) {
-      return false;
-    }
-    int64 param_num;
-    ParseInt64(&param_num);
-    if (!ParseToken(TokKind::kComma, errmsg)) {
-      return false;
-    }
-    ShapeIndex param_idx;
-    if (!ParseShapeIndex(&param_idx)) {
-      return false;
-    }
-    HloInputOutputAliasConfig::AliasKind alias_kind =
-        HloInputOutputAliasConfig::kUserAlias;
-    if (EatIfPresent(TokKind::kComma)) {
-      std::string type;
-      ParseName(&type);
-      if (type == "SYSTEM") {
-        alias_kind = HloInputOutputAliasConfig::kSystemAlias;
-      } else if (type == "USER") {
-        alias_kind = HloInputOutputAliasConfig::kUserAlias;
-      } else {
-        return TokenError("Unexpected aliasing kind; expected SYSTEM or USER");
+
+    if (lexer_.GetKind() != TokKind::kLparen) {
+      // Short form: "{0}: 0", output index "{}" is assumed.
+      int64 param_num;
+      ParseInt64(&param_num);
+      data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
+                    std::forward_as_tuple(param_num, ShapeIndex{}));
+    } else {
+      // Long form: "{0}: (0, {0})", output index is explicitly specified.
+      if (!ParseToken(TokKind::kLparen, errmsg)) {
+        return false;
       }
-    }
-    data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
-                  std::forward_as_tuple(alias_kind, param_num, param_idx));
-    if (!ParseToken(TokKind::kRparen, errmsg)) {
-      return false;
+      int64 param_num;
+      ParseInt64(&param_num);
+      if (!ParseToken(TokKind::kComma, errmsg)) {
+        return false;
+      }
+      ShapeIndex param_idx;
+      if (!ParseShapeIndex(&param_idx)) {
+        return false;
+      }
+      data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
+                    std::forward_as_tuple(param_num, param_idx));
+      if (!ParseToken(TokKind::kRparen, errmsg)) {
+        return false;
+      }
     }
 
     if (!EatIfPresent(TokKind::kComma)) {
@@ -627,9 +624,8 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   if (aliasing_data) {
     HloInputOutputAliasConfig alias_config(module->result_shape());
     for (auto& p : *aliasing_data) {
-      Status st =
-          alias_config.SetUpAlias(p.first, p.second.parameter_number,
-                                  p.second.parameter_index, p.second.kind);
+      Status st = alias_config.SetUpAlias(p.first, p.second.parameter_number,
+                                          p.second.parameter_index);
       if (!st.ok()) {
         return TokenError(st.error_message());
       }

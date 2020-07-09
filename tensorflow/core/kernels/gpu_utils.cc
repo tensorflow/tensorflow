@@ -163,6 +163,7 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
   for (const auto& result : results) {
     *log.add_results() = result;
   }
+  VLOG(2) << log.DebugString();
   Logger::GetSingleton()->LogProto(log);
 }
 
@@ -209,6 +210,7 @@ void LogFusedConvForwardAutotuneResults(
   for (const auto& result : results) {
     *log.add_results() = result;
   }
+  VLOG(2) << log.DebugString();
   Logger::GetSingleton()->LogProto(log);
 }
 

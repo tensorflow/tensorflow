@@ -146,5 +146,17 @@ LogicalResult ConvertTFTextAPI(mlir::FuncOp func, llvm::StringRef api) {
   return failure();
 }
 
+bool IsTfTextRegistered(const tensorflow::OpRegistry* op_registery) {
+  const std::vector<std::string> kTfTextOps = {
+      "WhitespaceTokenizeWithOffsets",
+  };
+  for (const auto& iter : kTfTextOps) {
+    if (op_registery->LookUp(iter)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace TFL
 }  // namespace mlir

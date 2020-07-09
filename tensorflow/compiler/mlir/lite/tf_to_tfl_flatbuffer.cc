@@ -75,11 +75,10 @@ mlir::LogicalResult IsValidGraph(mlir::ModuleOp module) {
 StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     const std::string& input_filename, bool input_mlir,
     bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
-    absl::string_view debug_info_file, absl::string_view input_arrays,
-    absl::string_view input_dtypes, absl::string_view input_shapes,
-    absl::string_view output_arrays, bool prune_unused_nodes,
-    bool enable_upgrade_legacy, llvm::SourceMgr* source_mgr,
-    MLIRContext* context) {
+    const GraphImportConfig& specs, absl::string_view debug_info_file,
+    absl::string_view input_arrays, absl::string_view input_dtypes,
+    absl::string_view input_shapes, absl::string_view output_arrays,
+    llvm::SourceMgr* source_mgr, MLIRContext* context) {
   // Set up the input file.
   std::string error_message;
   auto file = mlir::openInputFile(input_filename, &error_message);
@@ -113,15 +112,15 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
         file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, /*control_output_arrays=*/"",
-        prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-        /*graph_as_function=*/false, enable_upgrade_legacy,
+        specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+        /*graph_as_function=*/false, specs.upgrade_legacy,
         /*enable_shape_inference=*/false, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, /*control_output_arrays=*/"",
-      prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-      /*graph_as_function=*/false, enable_upgrade_legacy,
+      specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
+      /*graph_as_function=*/false, specs.upgrade_legacy,
       /*enable_shape_inference=*/false, context);
 }
 

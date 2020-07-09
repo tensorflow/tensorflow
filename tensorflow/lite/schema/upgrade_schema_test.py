@@ -255,17 +255,17 @@ class TestSchemaUpgrade(test_util.TensorFlowTestCase):
   def testNonExistentFile(self):
     converter = upgrade_schema_lib.Converter()
     non_existent = tempfile.mktemp(suffix=".json")
-    with self.assertRaisesRegexp(IOError, "No such file or directory"):
+    with self.assertRaisesRegex(IOError, "No such file or directory"):
       converter.Convert(non_existent, non_existent)
 
   def testInvalidExtension(self):
     converter = upgrade_schema_lib.Converter()
     invalid_extension = tempfile.mktemp(suffix=".foo")
-    with self.assertRaisesRegexp(ValueError, "Invalid extension on input"):
+    with self.assertRaisesRegex(ValueError, "Invalid extension on input"):
       converter.Convert(invalid_extension, invalid_extension)
     with tempfile.NamedTemporaryFile(suffix=".json", mode="w+") as in_json:
       JsonDumpAndFlush(EMPTY_TEST_SCHEMA_V1, in_json)
-      with self.assertRaisesRegexp(ValueError, "Invalid extension on output"):
+      with self.assertRaisesRegex(ValueError, "Invalid extension on output"):
         converter.Convert(in_json.name, invalid_extension)
 
   def CheckConversion(self, data_old, data_expected):

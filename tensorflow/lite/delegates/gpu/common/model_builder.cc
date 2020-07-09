@@ -525,8 +525,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
           absl::StrCat("Expected 1 or 2 input tensor(s), but node has ",
                        runtime_inputs, " runtime inputs."));
     }
-    const int runtime_outputs =
-        GetNumberOfRuntimeOutputsForNode(context, tflite_node);
+    const int runtime_outputs = NumOutputs(tflite_node);
     if (runtime_outputs != 1) {
       return absl::InternalError(
           absl::StrCat("Expected 1 output tensor(s), but node has ",

@@ -749,7 +749,7 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([-1.0, 1.0])
       t2 = constant_op.constant([0.0, 0.0])
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           r"pass through test.*had -Inf and \+Inf values"):
         self.evaluate(
@@ -760,7 +760,7 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([-1.0, 1.0, 0.0])
       t2 = constant_op.constant([0.0, 0.0, 0.0])
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           r"pass through test.*had -Inf, \+Inf, and NaN values"):
         self.evaluate(
@@ -771,7 +771,7 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([0.0, 1.0])
       t2 = constant_op.constant([0.0, 0.0])
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           r"pass through test.*had \+Inf and NaN values"):
         self.evaluate(

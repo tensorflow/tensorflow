@@ -669,8 +669,8 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
           if (!status.ok()) {
             LOG(ERROR) << "Failed to register function remotely due to "
                        << status.error_message()
-                       << "\nThis shouldn't happen, please file a bug to "
-                          "tensorflow team.";
+                       << "\nThis could happen if the remote target has been "
+                          "disconnected from the client.";
           }
           delete response;
         });
@@ -713,8 +713,8 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
             if (!s.ok()) {
               LOG(ERROR) << "Failed to register function remotely due to "
                          << s.error_message()
-                         << "\nThis shouldn't happen, please file a bug to "
-                            "tensorflow team.";
+                         << "\nThis could happen if the remote target has been "
+                            "disconnected from the client.";
             }
           });
     }

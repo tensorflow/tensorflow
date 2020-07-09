@@ -39,8 +39,6 @@ class ElementwiseOneInput : public ElementwiseOperation {
   ElementwiseOneInput(const ElementwiseOneInput&) = delete;
   ElementwiseOneInput& operator=(const ElementwiseOneInput&) = delete;
 
-  std::string GetCoreCode(const LinkingContext& context) const override;
-
  private:
   OperationType op_type_;
 };
@@ -67,15 +65,9 @@ class ElementwiseOneRuntimeOneScalar : public ElementwiseOperation {
   ElementwiseOneRuntimeOneScalar& operator=(
       const ElementwiseOneRuntimeOneScalar&) = delete;
 
-  void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const LinkingContext& context) const override;
-  std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
-
  private:
   int link_index_;
   OperationType op_type_;
-  FLT scalar_parameter_;
 };
 
 ElementwiseOneRuntimeOneScalar CreateElementwiseOneRuntimeOneScalar(
@@ -109,10 +101,6 @@ class ElementwiseTwoInput : public ElementwiseOperation {
   ElementwiseTwoInput(const ElementwiseTwoInput&) = delete;
   ElementwiseTwoInput& operator=(const ElementwiseTwoInput&) = delete;
 
-  void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const LinkingContext& context) const override;
-  std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
   absl::Status SetArgs(const std::string& unique_postfix,
                        Arguments* args) override;
 
@@ -120,8 +108,6 @@ class ElementwiseTwoInput : public ElementwiseOperation {
   int link_index_;
   OperationType op_type_;
   BroadcastSettings broadcast_;
-  bool use_constant_tensor_;
-  Tensor constant_tensor_;
 };
 
 absl::Status CreateElementwiseTwoInput(

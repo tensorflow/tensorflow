@@ -93,14 +93,14 @@ class DistributedValues(object):
 
   1. Created from a `tf.distribute.DistributedDataset`:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
 
   2. Returned by `run`:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> @tf.function
   ... def run():
   ...   ctx = tf.distribute.get_replica_context()
@@ -109,7 +109,7 @@ class DistributedValues(object):
 
   3. As input into `run`:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
@@ -120,7 +120,7 @@ class DistributedValues(object):
 
   4. Reduce value:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
@@ -128,16 +128,16 @@ class DistributedValues(object):
   ...                                 distributed_values,
   ...                                 axis = 0)
 
-  5. Inspect per replica values:
+  5. Inspect local replica values:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> per_replica_values = strategy.experimental_local_results(
   ...    distributed_values)
   >>> per_replica_values
-  (<tf.Tensor: shape=(2,), dtype=float32,
-   numpy=array([5., 6.], dtype=float32)>,)
+  (<tf.Tensor: shape=(1,), dtype=float32, numpy=array([5.], dtype=float32)>,
+   <tf.Tensor: shape=(1,), dtype=float32, numpy=array([6.], dtype=float32)>)
 
   """
 
@@ -1069,6 +1069,8 @@ class SyncOnReadVariable(DistributedVariable):
   def value(self):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if ds_context.in_cross_replica_context():
+        if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+          return self._get_replica(0).value()
         return self._get_cross_replica()
       else:
         # _get_on_device_or_primary() returns a Variable.
@@ -1076,6 +1078,8 @@ class SyncOnReadVariable(DistributedVariable):
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+      # Consider returning a tensor value here to make the return value of
+      # _get_cross_replica consistent.
       return self._get_replica(0)
 
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):

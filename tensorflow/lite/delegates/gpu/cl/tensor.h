@@ -176,14 +176,12 @@ absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
                           const BHWDC& shape,
                           const TensorDescriptor& descriptor, Tensor* result);
 
-absl::Status CreateSharedTensor(const CLContext& context,
-                                const CLDevice& device, cl_mem memory,
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result);
 
-absl::Status CreateSharedTensor(const CLContext& context,
-                                const CLDevice& device, cl_mem memory,
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWDC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result);

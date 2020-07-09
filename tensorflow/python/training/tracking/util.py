@@ -86,6 +86,8 @@ class _ObjectGraphProtoPrettyPrinter(object):
   repeated naming is cheap after the first.
   """
 
+  __slots__ = ["_object_graph_proto", "_node_name_cache"]
+
   def __init__(self, object_graph_proto):
     self._object_graph_proto = object_graph_proto
     self._node_name_cache = None
@@ -123,6 +125,11 @@ class _ObjectGraphProtoPrettyPrinter(object):
 
 class _CheckpointRestoreCoordinatorDeleter(object):
   """Deleter to avoid overriding _CheckpointRestoreCoordinator.__del__()."""
+
+  __slots__ = [
+      "expect_partial", "object_graph_proto", "matched_proto_ids",
+      "unused_attributes"
+  ]
 
   def __init__(self, expect_partial, object_graph_proto, matched_proto_ids,
                unused_attributes):
@@ -1994,7 +2001,7 @@ class Checkpoint(tracking.AutoTrackable):
     return file_path
 
   def read(self, save_path, options=None):
-    """Read a training checkpoint written with `write`.
+    """Reads a training checkpoint written with `write`.
 
     Reads this `Checkpoint` and any objects it depends on.
 
@@ -2017,7 +2024,7 @@ class Checkpoint(tracking.AutoTrackable):
     # With restore() assert_consumed() would have failed.
     checkpoint.read(path).assert_consumed()
 
-    # You can also pass options to restore(). For example this
+    # You can also pass options to read(). For example this
     # runs the IO ops on the localhost:
     options = tf.CheckpointOptions(experimental_io_device="/job:localhost")
     checkpoint.read(path, options=options)
@@ -2035,7 +2042,7 @@ class Checkpoint(tracking.AutoTrackable):
     return self._saver.restore(save_path=save_path, options=options)
 
   def restore(self, save_path, options=None):
-    """Restore a training checkpoint.
+    """Restores a training checkpoint.
 
     Restores this `Checkpoint` and any objects it depends on.
 

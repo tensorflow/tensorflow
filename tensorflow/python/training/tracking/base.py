@@ -190,6 +190,8 @@ class PythonStringStateSaveable(PythonStateSaveable):
 class CheckpointPosition(object):
   """Indicates a position within a `_CheckpointRestoreCoordinator`."""
 
+  __slots__ = ["_checkpoint", "_proto_id"]
+
   def __init__(self, checkpoint, proto_id):
     """Specify an object within a checkpoint.
 
@@ -293,9 +295,10 @@ class CheckpointPosition(object):
       checkpoint_key = serialized_tensor.checkpoint_key
       dtype = self._checkpoint.dtype_map[checkpoint_key]
       base_type = dtype.base_dtype
+      io_device = self._checkpoint.options.experimental_io_device or "cpu:0"
       with ops.init_scope():
-        with ops.device("/cpu:0"):
-          # Run the restore itself on the CPU.
+        with ops.device(io_device):
+          # Run the restore itself on the io_device(CPU or specified).
           value, = io_ops.restore_v2(
               prefix=self._checkpoint.save_path_tensor,
               tensor_names=[checkpoint_key],
@@ -610,6 +613,12 @@ class Trackable(object):
     # restore-on-create when executing eagerly, and so is unused when graph
     # building.
     self._self_name_based_restores = set()
+
+    # Dictionary of SaveableObjects factories. This dictionary is defined when
+    # the object is loaded from the SavedModel. When writing a custom class,
+    # prefer overriding "_gather_saveables_from_checkpoint" to using this
+    # attribute.
+    self._self_saveable_object_factories = {}
 
   @property
   def _object_identifier(self):
@@ -972,7 +981,7 @@ class Trackable(object):
        lambda name="global_name_for_this_object":
        SaveableObject(name=name, ...)}
     """
-    return {}
+    return self._self_saveable_object_factories
 
   def _list_extra_dependencies_for_serialization(self, serialization_cache):
     """Lists extra dependencies to serialize.

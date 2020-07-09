@@ -15,14 +15,14 @@ limitations under the License.
 
 // This file defines helpers useful when creating or manipulating lhlo/hlo.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_UTILS_H_
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
@@ -39,7 +39,7 @@ mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
 StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
                                                     mlir::Builder builder);
 
-mlir::xla_hlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
+mlir::mhlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
     const GatherDimensionNumbers& input, mlir::Builder builder);
 
 template <typename TypeT>
@@ -77,11 +77,11 @@ static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
     return builder.getTupleType(contents);
   }
   if (shape.IsToken()) {
-    return mlir::xla_hlo::TokenType::get(builder.getContext());
+    return mlir::mhlo::TokenType::get(builder.getContext());
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_UTILS_H_

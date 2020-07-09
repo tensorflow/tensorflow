@@ -353,6 +353,10 @@ tf_module {
     argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "silu"
+    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "softmax"
     argspec: "args=[\'logits\', \'axis\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }

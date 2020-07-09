@@ -263,7 +263,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
   def testMismatchRaggedRank(self):
     elems = ragged_factory_ops.constant([[[1, 2, 3]], [[4, 5], [6, 7]]])
     fn = lambda x: ragged_math_ops.reduce_sum(x, axis=0)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'(?s)Expected `fn` to return.*But it returned.*'):
       _ = ragged_map_ops.map_fn(
           fn,
@@ -274,7 +274,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase,
   def testMismatchRaggedRank2(self):
     elems = ragged_factory_ops.constant([[1, 2, 3], [4, 5], [6, 7]])
     fn = lambda x: ragged_tensor.RaggedTensor.from_row_starts(x, [0])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'(?s)Expected `fn` to return.*But it returned.*'):
       _ = ragged_map_ops.map_fn(
           fn,

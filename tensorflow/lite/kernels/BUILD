@@ -361,6 +361,7 @@ cc_library(
         "@ruy//ruy",
         "@ruy//ruy:matrix",
         "@ruy//ruy:path",
+        "@ruy//ruy:mul_params",
         "@ruy//ruy/profiler:instrumentation",
         # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to

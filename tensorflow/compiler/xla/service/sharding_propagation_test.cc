@@ -806,6 +806,126 @@ ENTRY %entry {
   }
 }
 
+TEST_F(ShardingPropagationTest, WhileConflictingShardingInBodyBeforeRecv) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%cond {
+  %vars.cond = (u32[], f32[]) parameter(0)
+  %count.cond = u32[] get-tuple-element(%vars.cond), index=0
+  %limit = u32[] constant(10)
+  ROOT %lt = pred[] compare(%count.cond, %limit), direction=LT
+}
+
+%body {
+  %param = (u32[], f32[]) parameter(0)
+  %count = u32[] get-tuple-element(%param), index=0,
+    sharding={maximal device=0}
+  %after-all = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1,
+    sharding={maximal device=1}
+  %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
+  %data = f32[] get-tuple-element(%recv-done), index=0
+  ROOT %tuple = (u32[], f32[]) tuple(%count, %data)
+}
+
+ENTRY %entry {
+  %p0 = f32[] parameter(0)
+  %zero = u32[] constant(0)
+  %init = (u32[], f32[]) tuple(%zero, %p0)
+  %while = (u32[], f32[]) while(%init), body=%body, condition=%cond
+  ROOT %result = f32[] get-tuple-element(%while), index=1
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto result = ShardingPropagation().Run(module.get());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr(
+                  "Instruction: count is on device: 0, which conflicts with "
+                  "device: 1 of channel instruction: recv"));
+}
+
+TEST_F(ShardingPropagationTest, WhileConflictingShardingInBodyAfterRecv) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%cond {
+  %vars.cond = (u32[], f32[]) parameter(0)
+  %count.cond = u32[] get-tuple-element(%vars.cond), index=0
+  %limit = u32[] constant(10)
+  ROOT %lt = pred[] compare(%count.cond, %limit), direction=LT
+}
+
+%body {
+  %param = (u32[], f32[]) parameter(0)
+  %count = u32[] get-tuple-element(%param), index=0
+  %after-all = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1,
+    sharding={maximal device=1}
+  %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
+  %data = f32[] get-tuple-element(%recv-done), index=0,
+    sharding={maximal device=0}
+  ROOT %tuple = (u32[], f32[]) tuple(%count, %data)
+}
+
+ENTRY %entry {
+  %p0 = f32[] parameter(0)
+  %zero = u32[] constant(0)
+  %init = (u32[], f32[]) tuple(%zero, %p0)
+  %while = (u32[], f32[]) while(%init), body=%body, condition=%cond
+  ROOT %result = f32[] get-tuple-element(%while), index=1
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto result = ShardingPropagation().Run(module.get());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr(
+                  "Instruction: data is on device: 0, which conflicts with "
+                  "device: 1 of channel instruction: recv"));
+}
+
+TEST_F(ShardingPropagationTest, WhileConflictingShardingOnWhileInstruction) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%cond {
+  %vars.cond = (u32[], f32[]) parameter(0)
+  %count.cond = u32[] get-tuple-element(%vars.cond), index=0
+  %limit = u32[] constant(10)
+  ROOT %lt = pred[] compare(%count.cond, %limit), direction=LT
+}
+
+%body {
+  %param = (u32[], f32[]) parameter(0)
+  %count = u32[] get-tuple-element(%param), index=0
+  %after-all = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(%after-all), channel_id=1,
+    sharding={maximal device=1}
+  %recv-done = (f32[], token[]) recv-done(%recv), channel_id=1
+  %data = f32[] get-tuple-element(%recv-done), index=0
+  ROOT %tuple = (u32[], f32[]) tuple(%count, %data)
+}
+
+ENTRY %entry {
+  %p0 = f32[] parameter(0)
+  %zero = u32[] constant(0)
+  %init = (u32[], f32[]) tuple(%zero, %p0)
+  %while = (u32[], f32[]) while(%init), body=%body, condition=%cond,
+    sharding={maximal device=0}
+  ROOT %result = f32[] get-tuple-element(%while), index=1
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto result = ShardingPropagation().Run(module.get());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr(
+                  "Instruction: while is on device: 0, which conflicts with "
+                  "device: 1 of channel instruction: recv"));
+}
+
 TEST_F(ShardingPropagationTest, Dot) {
   const char* const hlo_string = R"(
 HloModule module

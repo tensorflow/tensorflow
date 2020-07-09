@@ -148,14 +148,16 @@ TfLiteStatus EvalHybrid(
     const TfLiteTensor* cell_gate_bias, const TfLiteTensor* output_gate_bias,
     const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
-    int output_offset, TfLiteTensor* scratch_buffer,
-    TfLiteTensor* scaling_factors, TfLiteTensor* prod_scaling_factors,
-    TfLiteTensor* recovered_cell_weights, TfLiteTensor* input_quantized,
-    TfLiteTensor* aux_input_quantized, TfLiteTensor* output_state_quantized,
-    TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
-    TfLiteTensor* cell_state, TfLiteTensor* output_scratch_buffer,
-    TfLiteTensor* output, TfLiteTensor* zero_points, TfLiteTensor* row_sums,
-    int row_sums_size, bool* compute_row_sums, CpuBackendContext* context);
+    int output_offset, TfLiteTensor* scratch_buffer, TfLiteTensor* input_sf,
+    TfLiteTensor* aux_input_sf, TfLiteTensor* output_state_sf,
+    TfLiteTensor* prod_scaling_factors, TfLiteTensor* recovered_cell_weights,
+    TfLiteTensor* input_quantized, TfLiteTensor* aux_input_quantized,
+    TfLiteTensor* output_state_quantized, TfLiteTensor* cell_state_quantized,
+    TfLiteTensor* output_state, TfLiteTensor* cell_state,
+    TfLiteTensor* output_scratch_buffer, TfLiteTensor* output,
+    TfLiteTensor* input_zp, TfLiteTensor* aux_input_zp,
+    TfLiteTensor* output_state_zp, TfLiteTensor* row_sums, int row_sums_size,
+    bool* compute_row_sums, CpuBackendContext* context);
 
 TfLiteStatus EvalInteger8x8_16(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
