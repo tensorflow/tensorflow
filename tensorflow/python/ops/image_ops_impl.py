@@ -868,11 +868,12 @@ def central_crop(image, central_fraction):
 @dispatch.add_dispatch_support
 def pad_to_bounding_box(image, offset_height, offset_width, target_height,
                         target_width, mode="CONSTANT", name=None, constant_values=0):
-  """Pad `image` with zeros to the specified `height` and `width`.
+  """Pads an image according to the 'mode' which you specify. 
+  Pads with 'constant_values' to the specified `height` and `width`, default is 0.
 
-  Adds `offset_height` rows of zeros on top, `offset_width` columns of
-  zeros on the left, and then pads the image on the bottom and right
-  with zeros until it has dimensions `target_height`, `target_width`.
+  Adds `offset_height` rows of 'constant_values' on top, `offset_width` columns of
+  'constant_values' on the left, and then pads the image on the bottom and right
+  with 'constant_values' until it has dimensions `target_height`, `target_width`.
 
   This op does nothing if `offset_*` is zero and the image already has size
   `target_height` by `target_width`.
