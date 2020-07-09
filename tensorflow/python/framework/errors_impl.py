@@ -318,7 +318,7 @@ class AlreadyExistsError(OpError):
 
 
 @tf_export("errors.PermissionDeniedError")
-class PermissionDeniedError(OpError):
+class PermissionDeniedError(OpError, PermissionError):
   """Raised when the caller does not have permission to run an operation.
 
   For example, running the
@@ -421,7 +421,7 @@ class OutOfRangeError(OpError):
 
 
 @tf_export("errors.UnimplementedError")
-class UnimplementedError(OpError):
+class UnimplementedError(OpError, NotImplementedError):
   """Raised when an operation has not been implemented.
 
   Some operations may raise this error when passed otherwise-valid
