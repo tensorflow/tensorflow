@@ -72,6 +72,20 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "ram_file_block_cache_test",
+    size = "small",
+    srcs = ["ram_file_block_cache_test.cc"],
+    deps = [
+        ":ram_file_block_cache",
+        "//tensorflow/c:tf_status_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform/cloud:now_seconds_env",
+    ],
+)
+
+tf_cc_test(
     name = "gcs_filesystem_test",
     srcs = [
         "gcs_filesystem_test.cc",
