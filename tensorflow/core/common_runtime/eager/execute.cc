@@ -800,8 +800,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   DataTypeVector output_dtypes;
   TF_RETURN_IF_ERROR(GetOutputDTypes(op, &output_dtypes));
 
-  const size_t num_outputs = output_dtypes.size();
-  if (static_cast<int>(num_outputs) != *num_retvals) {
+  const int64 num_outputs = output_dtypes.size();
+  if (num_outputs != *num_retvals) {
     return errors::InvalidArgument(
         "num_retvals does not match expected output dtypes");
   }
