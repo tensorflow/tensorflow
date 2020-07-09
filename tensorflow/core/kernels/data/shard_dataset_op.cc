@@ -128,23 +128,33 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
 
-      std::vector<Tensor> result;
-      while ((next_index_++ % dataset()->num_shards_) != dataset()->index_) {
-        TF_RETURN_IF_ERROR(input_impl_->SkipNext(ctx, end_of_sequence));
-        if (*end_of_sequence) {
-          input_impl_.reset();
-          return Status::OK();
-        }
+      int num_to_skip = (dataset()->index_ - next_index_) %
+                        dataset()->num_shards_;
+      if (num_to_skip < 0) {
+        num_to_skip += dataset()->num_shards_;
       }
-      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &result, end_of_sequence));
+      int num_skipped;
+      TF_RETURN_IF_ERROR(input_impl_->Skip(ctx, num_to_skip, end_of_sequence,
+                                           &num_skipped));
+      next_index_ += num_skipped;
       if (*end_of_sequence) {
         input_impl_.reset();
         return Status::OK();
       }
 
-      while (dataset()->require_non_empty_ &&
-             next_index_ < dataset()->num_shards_) {
-        Status s = input_impl_->SkipNext(ctx, end_of_sequence);
+      std::vector<Tensor> result;
+      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &result, end_of_sequence));
+      if (*end_of_sequence) {
+        input_impl_.reset();
+        return Status::OK();
+      }
+      next_index_++;
+
+      if (dataset()->require_non_empty_ &&
+          next_index_ < dataset()->num_shards_) {
+        int num_skipped;
+        Status s = input_impl_->Skip(ctx, dataset()->num_shards_ - next_index_,
+                                     end_of_sequence, &num_skipped);
         if (*end_of_sequence || errors::IsOutOfRange(s)) {
           return errors::InvalidArgument(
               "There aren't enough elements in this dataset for each shard to "
@@ -158,7 +168,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
           return s;
         }
 
-        next_index_++;
+        next_index_ = dataset()->num_shards_;
       }
 
       *out_tensors = std::move(result);

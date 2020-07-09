@@ -496,13 +496,13 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   return s;
 }
 
-Status DatasetBaseIterator::SkipNext(IteratorContext* ctx,
-                                     bool* end_of_sequence) {
+Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
+                                 bool* end_of_sequence, int* num_skipped) {
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
-  DVLOG(3) << prefix() << " SkipNext enter";
+  DVLOG(3) << prefix() << " Skip enter";
   RecordStart(ctx, /*stop_output=*/true);
-  Status s = SkipNextInternal(ctx, end_of_sequence);
+  Status s = SkipInternal(ctx, num_to_skip, end_of_sequence, num_skipped);
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
   RecordStop(ctx, /*start_output=*/true);
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
@@ -513,15 +513,23 @@ Status DatasetBaseIterator::SkipNext(IteratorContext* ctx,
                          s.error_message());
     LOG(ERROR) << s;
   }
-  DVLOG(3) << prefix() << " SkipNext exit";
+  DVLOG(3) << prefix() << " Skip exit";
   return s;
 }
 
-Status DatasetBaseIterator::SkipNextInternal(IteratorContext* ctx,
-                                             bool* end_of_sequence) {
-  std::vector<Tensor> out_tensors;
-  Status s = GetNextInternal(ctx, &out_tensors, end_of_sequence);
-  return s;
+Status DatasetBaseIterator::SkipInternal(
+    IteratorContext* ctx, int num_to_skip, bool* end_of_sequence,
+    int* num_skipped) {
+  *num_skipped = 0;
+  for (int i = 0; i < num_to_skip; ++i) {
+    std::vector<Tensor> out_tensors;
+    TF_RETURN_IF_ERROR(GetNextInternal(ctx, &out_tensors, end_of_sequence));
+    if (*end_of_sequence) {
+      return Status::OK();
+    }
+    (*num_skipped)++;
+  }
+  return Status::OK();
 }
 
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {

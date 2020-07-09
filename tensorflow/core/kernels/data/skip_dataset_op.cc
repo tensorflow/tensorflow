@@ -140,15 +140,17 @@ class SkipDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
 
-      while (i_ < dataset()->count_) {
-        TF_RETURN_IF_ERROR(input_impl_->SkipNext(ctx, end_of_sequence));
+      if (i_ < dataset()->count_) {
+        int num_skipped;
+        TF_RETURN_IF_ERROR(
+            input_impl_->Skip(ctx, dataset()->count_ - i_, end_of_sequence,
+                              &num_skipped));
+        i_ += num_skipped;
         if (*end_of_sequence) {
           // We reached the end before the count was reached.
           input_impl_.reset();
           return Status::OK();
         }
-
-        ++i_;
       }
 
       // Return GetNext() on the underlying iterator.
