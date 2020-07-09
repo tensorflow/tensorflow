@@ -213,7 +213,7 @@ slice_sets:
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/cpu
-              - onednn/ubuntu/python37
+              - onednn/ubuntu/python3
               - tensorflow
               - shell
           tests:
@@ -260,7 +260,7 @@ slice_sets:
           partials:
               - onednn/ubuntu/version
               - onednn/ubuntu/devel
-              - onednn/ubuntu/python
+              - onednn/ubuntu/python3
               - onednn/ubuntu/bazel
               - shell
           tests:
