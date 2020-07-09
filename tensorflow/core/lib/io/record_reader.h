@@ -97,6 +97,12 @@ class RecordReader {
   // OUT_OF_RANGE for end of file, or something else for an error.
   Status ReadRecord(uint64* offset, tstring* record);
 
+  // Skip num_to_skip record starting at "*offset" and update *offset
+  // to point to the offset of the next num_to_skip + 1 record.
+  // Return OK on success, OUT_OF_RANGE for end of file, or something
+  // else for an error.
+  Status SkipRecords(uint64* offset, int num_to_skip);
+
   // Return the metadata of the Record file.
   //
   // The current implementation scans the file to completion,
@@ -110,6 +116,7 @@ class RecordReader {
 
  private:
   Status ReadChecksummed(uint64 offset, size_t n, tstring* result);
+  Status PositionInputStream(uint64 offset);
 
   RecordReaderOptions options_;
   std::unique_ptr<InputStreamInterface> input_stream_;
@@ -133,13 +140,19 @@ class SequentialRecordReader {
 
   virtual ~SequentialRecordReader() = default;
 
-  // Reads the next record in the file into *record. Returns OK on success,
+  // Read the next record in the file into *record. Returns OK on success,
   // OUT_OF_RANGE for end of file, or something else for an error.
   Status ReadRecord(tstring* record) {
     return underlying_.ReadRecord(&offset_, record);
   }
 
-  // Returns the current offset in the file.
+  // Skip the next num_to_skip record in the file. Return OK on success,
+  // OUT_OF_RANGE for end of file, or something else for an error.
+  Status SkipRecords(int num_to_skip) {
+    return underlying_.SkipRecords(&offset_, num_to_skip);
+  }
+
+  // Return the current offset in the file.
   uint64 TellOffset() { return offset_; }
 
   // Seek to this offset within the file and set this offset as the current

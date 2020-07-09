@@ -167,10 +167,9 @@ Status RecordReader::GetMetadata(Metadata* md) {
   return Status::OK();
 }
 
-Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
-  // Position the input stream.
+Status RecordReader::PositionInputStream(uint64 offset) {
   int64 curr_pos = input_stream_->Tell();
-  int64 desired_pos = static_cast<int64>(*offset);
+  int64 desired_pos = static_cast<int64>(offset);
   if (curr_pos > desired_pos || curr_pos < 0 /* EOF */ ||
       (curr_pos == desired_pos && last_read_failed_)) {
     last_read_failed_ = false;
@@ -180,6 +179,11 @@ Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
     TF_RETURN_IF_ERROR(input_stream_->SkipNBytes(desired_pos - curr_pos));
   }
   DCHECK_EQ(desired_pos, input_stream_->Tell());
+  return Status::OK();
+}
+
+Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
+  TF_RETURN_IF_ERROR(PositionInputStream(*offset));
 
   // Read header data.
   Status s = ReadChecksummed(*offset, sizeof(uint64), record);
@@ -202,6 +206,24 @@ Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
   *offset += kHeaderSize + length + kFooterSize;
   DCHECK_EQ(*offset, input_stream_->Tell());
   return Status::OK();
+}
+
+Status RecordReader::SkipRecords(uint64* offset, int num_to_skip) {
+  TF_RETURN_IF_ERROR(PositionInputStream(*offset));
+
+  Status s;
+  tstring record;
+  for (int i = 0; i < num_to_skip; ++i) {
+    s = ReadChecksummed(*offset, sizeof(uint64), &record);
+    if (!s.ok()) {
+      last_read_failed_ = true;
+      return s;
+    }
+    const uint64 length = core::DecodeFixed64(record.data());
+    input_stream_->SkipNBytes(length + kFooterSize);
+    *offset += kHeaderSize + length + kFooterSize;
+    DCHECK_EQ(*offset, input_stream_->Tell());
+  }
 }
 
 SequentialRecordReader::SequentialRecordReader(
