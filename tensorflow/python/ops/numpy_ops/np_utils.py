@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect
+import numbers
 import os
 import numpy as np
 
@@ -350,11 +351,14 @@ def result_type(*arrays_and_dtypes):  # pylint: disable=missing-function-docstri
   def maybe_get_dtype(x):
     # Don't put np.ndarray in this list, because np.result_type looks at the
     # value (not just dtype) of np.ndarray to decide the result type.
-    if isinstance(
-        x, (np_arrays.ndarray, core.Tensor, indexed_slices.IndexedSlices)):
+    if isinstance(x, np_arrays.ndarray):
+      return x.dtype
+    if isinstance(x, numbers.Real):
+      return x
+    if isinstance(x, (core.Tensor, indexed_slices.IndexedSlices)):
       return _to_numpy_type(x.dtype)
-    elif isinstance(x, dtypes.DType):
-      return _to_numpy_type(x)
+    if isinstance(x, dtypes.DType):
+      return x.as_numpy_dtype
     return x
 
   arrays_and_dtypes = [
