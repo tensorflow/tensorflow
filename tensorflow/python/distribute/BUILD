@@ -14,15 +14,15 @@ py_library(
     name = "distribute_test_lib_pip",
     deps = [
         ":combinations",
-        ":model_combinations",
         ":multi_worker_test_base",
-        ":saved_model_test_base",
         ":single_loss_example",
         ":strategy_combinations",
         ":strategy_test_lib",
         ":test_util",
         "//tensorflow/python/keras/distribute:keras_correctness_test_lib",
         "//tensorflow/python/keras/distribute:keras_test_lib",
+        "//tensorflow/python/keras/distribute:model_combinations",
+        "//tensorflow/python/keras/distribute:saved_model_test_base",
     ],
 )
 
@@ -889,16 +889,6 @@ distribute_py_test(
 )
 
 py_library(
-    name = "model_combinations",
-    srcs = ["model_combinations.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":combinations",
-        ":simple_models",
-    ],
-)
-
-py_library(
     name = "multi_worker_test_base",
     srcs = ["multi_worker_test_base.py"],
     srcs_version = "PY2AND3",
@@ -1520,53 +1510,6 @@ distribute_py_test(
         ":multi_worker_test_base",
         ":strategy_combinations",
         "//tensorflow/python:layers",
-    ],
-)
-
-py_library(
-    name = "model_collection_base",
-    srcs = ["model_collection/model_collection_base.py"],
-)
-
-py_library(
-    name = "simple_models",
-    srcs = ["model_collection/simple_models.py"],
-    deps = [
-        ":model_collection_base",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python/keras",
-    ],
-)
-
-py_library(
-    name = "saved_model_test_base",
-    srcs = ["saved_model_test_base.py"],
-    deps = [
-        ":combinations",
-        ":model_combinations",
-        ":strategy_combinations",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/saved_model",
-        "//third_party/py/numpy",
-    ],
-)
-
-distribute_py_test(
-    name = "saved_model_save_load_test",
-    size = "medium",
-    srcs = ["saved_model_save_load_test.py"],
-    full_precision = True,
-    main = "saved_model_save_load_test.py",
-    shard_count = 7,
-    tags = [
-        "multi_and_single_gpu",
-        "no_rocm",
-    ],
-    deps = [
-        ":saved_model_test_base",
-        "//tensorflow/python/saved_model",
     ],
 )
 
