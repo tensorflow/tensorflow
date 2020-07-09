@@ -17,7 +17,9 @@ package org.tensorflow;
 
 import java.util.ArrayList;
 import java.util.List;
-
+import java.lang.annotation.Retention; 
+import java.lang.annotation.RetentionPolicy; 
+import java.lang.reflect.Method; 
 /**
  * Driver for {@link Graph} execution.
  *
@@ -31,11 +33,11 @@ import java.util.List;
  * try (Session s = new Session(graph)) {
  *   try (Tensor x = Tensor.create(2.0f);
  *       Tensor y = s.runner().feed("x", x).fetch("y").run().get(0)) {
- *       System.out.println(y.floatValue());  // Will print 6.0f
+ *       System.out.println(y.floatValue()); // Will print 6.0f
  *   }
  *   try (Tensor x = Tensor.create(1.1f);
  *       Tensor y = s.runner().feed("x", x).fetch("y").run().get(0)) {
- *       System.out.println(y.floatValue());  // Will print 3.3f
+ *       System.out.println(y.floatValue()); // Will print 3.3f
  *   }
  * }
  * }</pre>

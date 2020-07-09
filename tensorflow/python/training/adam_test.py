@@ -82,7 +82,7 @@ class AdamOptimizerTest(test.TestCase):
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         self.evaluate(variables.global_variables_initializer())
 
-        # Fetch params to validate initial values
+        # Fetch params to validate the initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 

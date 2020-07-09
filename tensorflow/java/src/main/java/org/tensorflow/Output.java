@@ -16,7 +16,9 @@ limitations under the License.
 package org.tensorflow;
 
 import java.util.Objects;
-
+import java.lang.annotation.Retention; 
+import java.lang.annotation.RetentionPolicy; 
+import java.lang.reflect.Method; 
 /**
  * A symbolic handle to a tensor produced by an {@link Operation}.
  *

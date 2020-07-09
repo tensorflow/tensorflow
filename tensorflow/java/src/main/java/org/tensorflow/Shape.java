@@ -22,12 +22,12 @@ public final class Shape {
 
   /** Create a Shape representing an unknown number of dimensions. */
   public static Shape unknown() {
-    return new Shape(null);
+   return new Shape(null);
   }
 
   /** Create a Shape representing a scalar value. */
   public static Shape scalar() {
-    return new Shape(new long[0]);
+   return new Shape(new long[0]);
   }
 
   /**
@@ -74,22 +74,22 @@ public final class Shape {
    * @return The size of the requested dimension or -1 if it is unknown.
    */
   public long size(int i) {
-    return shape[i];
+   return shape[i];
   }
 
   @Override
   public int hashCode() {
-    return Arrays.hashCode(shape);
+   return Arrays.hashCode(shape);
   }
 
   @Override
   public boolean equals(Object obj) {
     if (this == obj) {
-      return true;
+     return true;
     }
 
     if (obj instanceof Shape && Arrays.equals(this.shape, ((Shape) obj).shape)) {
-      return !hasUnknownDimension();
+     return !hasUnknownDimension();
     }
 
     return super.equals(obj);
@@ -99,14 +99,14 @@ public final class Shape {
   @Override
   public String toString() {
     if (shape == null) {
-      return "<unknown>";
+     return "<unknown>";
     }
     return Arrays.toString(shape).replace("-1", "?");
   }
 
   // Package-private constructor.
   Shape(long[] shape) {
-    this.shape = shape;
+    this.shape  =  shape;
   }
 
   // Package-private accessor.

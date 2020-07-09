@@ -80,7 +80,7 @@ public interface OperationBuilder {
   public OperationBuilder addControlInput(Operation control);
 
   /**
-   * Set the device requested for computing the operation being built.
+   * Sets the device requested for computing the operation being built.
    *
    * @param device the requested device, as a string
    * @return the OperationBuilder instance for chaining.
@@ -88,7 +88,7 @@ public interface OperationBuilder {
   public OperationBuilder setDevice(String device);
 
   /**
-   * Set the string values of an attribute of the operation being built.
+   * Sets the string values of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute values
@@ -97,7 +97,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, String[] value);
 
   /**
-   * Set the string value of an attribute of the operation being built.
+   * Sets the string value of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute value
@@ -106,7 +106,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, String value);
 
   /**
-   * Set the byte values of an attribute of the operation being built.
+   * Sets the byte values of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute values
@@ -115,7 +115,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, byte[] value);
 
   /**
-   * Set the long value of an attribute of the operation being built.
+   * Sets the long value of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute value
@@ -124,7 +124,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, long value);
 
   /**
-   * Set the long values of an attribute of the operation being built.
+   * Sets the long values of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute values
@@ -133,7 +133,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, long[] value);
 
   /**
-   * Set the float value of an attribute of the operation being built.
+   * Sets the float value of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute value
@@ -142,7 +142,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, float value);
 
   /**
-   * Set the float values of an attribute of the operation being built.
+   * Sets the float values of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute values
@@ -151,7 +151,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, float[] value);
 
   /**
-   * Set the boolean value of an attribute of the operation being built.
+   * Sets the boolean value of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute value
@@ -160,7 +160,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, boolean value);
 
   /**
-   * Set the boolean values of an attribute of the operation being built.
+   * Sets the boolean values of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute values
@@ -169,7 +169,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, boolean[] value);
 
   /**
-   * Set the type value of an attribute of the operation being built.
+   * Sets the type value of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute value
@@ -178,7 +178,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, DataType value);
 
   /**
-   * Set the type values of an attribute of the operation being built.
+   * Sets the type values of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute values
@@ -187,7 +187,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, DataType[] value);
 
   /**
-   * Set the tensor value of an attribute of the operation being built.
+   * Sets the tensor value of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute value
@@ -196,7 +196,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, Tensor<?> value);
 
   /**
-   * Set the tensor values of an attribute of the operation being built.
+   * Sets the tensor values of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute values
@@ -205,7 +205,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, Tensor<?>[] value);
 
   /**
-   * Set the shape value of an attribute of the operation being built.
+   * Sets the shape value of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute value
@@ -214,7 +214,7 @@ public interface OperationBuilder {
   public OperationBuilder setAttr(String name, Shape value);
 
   /**
-   * Set the shape values of an attribute of the operation being built.
+   * Sets the shape values of an attribute of the operation being built.
    *
    * @param name attribute name
    * @param value attribute values

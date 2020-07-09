@@ -230,7 +230,7 @@ class SummaryTest(test.TestCase):
     with ops.Graph().as_default() as g:
       meta_graph.import_scoped_meta_graph(metagraph_def, graph=g,
                                           import_scope='new_outer')
-      # The summaries should exist, but with outer scope renamed.
+      # The summaries should exist, but with the outer scope renamed.
       new_summ = g.get_tensor_by_name('new_outer/inner:0')
       new_summ_f = g.get_tensor_by_name('new_outer/family/inner:0')
 

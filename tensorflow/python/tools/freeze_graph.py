@@ -14,13 +14,13 @@
 # ==============================================================================
 r"""Converts checkpoint variables into Const ops in a standalone GraphDef file.
 
-This script is designed to take a GraphDef proto, a SaverDef proto, and a set of
+This script is designed to take a GraphDef proto, a SaverDef proto, as well as a set of
 variable values stored in a checkpoint file, and output a GraphDef with all of
 the variable ops converted into const ops containing the values of the
 variables.
 
 It's useful to do this when we need to load a single file in C++, especially in
-environments like mobile or embedded where we may not have access to the
+mobile or embedded environments where we may not have access to the
 RestoreTensor ops and file loading calls that they rely on.
 
 An example of command-line usage is:
