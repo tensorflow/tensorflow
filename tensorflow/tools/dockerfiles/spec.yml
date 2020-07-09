@@ -40,18 +40,10 @@ releases:
             - "{_TAG_PREFIX}{ubuntu}{jupyter}"
     onednn:
         tag_specs:
-            - "{_TAG_PREFIX}{ubuntu-1604-onednn}"
-            - "{_TAG_PREFIX}{ubuntu-1804-onednn}"
-            - "{_TAG_PREFIX}{ubuntu-2004-onednn}"
-            - "{_TAG_PREFIX}{ubuntu-1604-onednn}{onednn-jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-1804-onednn}{onednn-jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-2004-onednn}{onednn-jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-1604-devel-onednn}"
-            - "{_TAG_PREFIX}{ubuntu-1804-devel-onednn}"
-            - "{_TAG_PREFIX}{ubuntu-2004-devel-onednn}"
-            - "{_TAG_PREFIX}{ubuntu-1604-devel-onednn}{onednn-jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-1804-devel-onednn}{onednn-jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-2004-devel-onednn}{onednn-jupyter}"
+            - "{_TAG_PREFIX}{ubuntu-onednn}"
+            - "{_TAG_PREFIX}{ubuntu-onednn}{onednn-jupyter}"
+            - "{_TAG_PREFIX}{ubuntu-devel-onednn}"
+            - "{_TAG_PREFIX}{ubuntu-devel-onednn}{onednn-jupyter}"
 
     # Dockerfiles stored in the TF repo; not pushed anywhere
     dockerfiles:
@@ -64,18 +56,10 @@ releases:
             - "{ubuntu-devel-ppc64le}{jupyter}"
             - "{ubuntu-horovod}{jupyter}"
             - "{ubuntu-devel-horovod}{jupyter}"
-            - "{ubuntu-1604-onednn}"
-            - "{ubuntu-1804-onednn}"
-            - "{ubuntu-2004-onednn}"
-            - "{ubuntu-1604-onednn}{onednn-jupyter}"
-            - "{ubuntu-1804-onednn}{onednn-jupyter}"
-            - "{ubuntu-2004-onednn}{onednn-jupyter}"
-            - "{ubuntu-1604-devel-onednn}"
-            - "{ubuntu-1804-devel-onednn}"
-            - "{ubuntu-2004-devel-onednn}"
-            - "{ubuntu-1604-devel-onednn}{onednn-jupyter}"
-            - "{ubuntu-1804-devel-onednn}{onednn-jupyter}"
-            - "{ubuntu-2004-devel-onednn}{onednn-jupyter}"
+            - "{ubuntu-onednn}"
+            - "{ubuntu-onednn}{onednn-jupyter}"
+            - "{ubuntu-devel-onednn}"
+            - "{ubuntu-devel-onednn}{onednn-jupyter}"
             - "{ubuntu-devel-arm64v8}{jupyter}"
 
 slice_sets:
@@ -194,7 +178,7 @@ slice_sets:
               - CHECKOUT_HOROVOD_SRC=1
 
 
-    ubuntu-1604-onednn:
+    ubuntu-onednn:
         - add_to_name: "-16.04-onednn"
           dockerfile_exclusive_name: "ubuntu-16.04-onednn"
           dockerfile_subdirectory: "onednn"
@@ -209,8 +193,6 @@ slice_sets:
           args:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=16.04
-
-    ubuntu-1804-onednn:
         - add_to_name: "-18.04-onednn"
           dockerfile_exclusive_name: "ubuntu-18.04-onednn"
           dockerfile_subdirectory: "onednn"
@@ -225,8 +207,6 @@ slice_sets:
           args:
               - TF_PACKAGE=intel-tensorflow
               - UBUNTU_VERSION=18.04
-
-    ubuntu-2004-onednn:
         - add_to_name: "-20.04-onednn"
           dockerfile_exclusive_name: "ubuntu-20.04-onednn"
           dockerfile_subdirectory: "onednn"
@@ -243,7 +223,7 @@ slice_sets:
               - UBUNTU_VERSION=20.04
               - PYTHON=python3.7
 
-    ubuntu-1604-devel-onednn:
+    ubuntu-devel-onednn:
         - add_to_name: "-16.04-devel-onednn"
           dockerfile_exclusive_name: "ubuntu-16.04-devel-onednn"
           dockerfile_subdirectory: "onednn"
@@ -259,8 +239,6 @@ slice_sets:
               - UBUNTU_VERSION=16.04
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
-
-    ubuntu-1804-devel-onednn:
         - add_to_name: "-18.04-devel-onednn"
           dockerfile_exclusive_name: "ubuntu-18.04-devel-onednn"
           dockerfile_subdirectory: "onednn"
@@ -276,8 +254,6 @@ slice_sets:
               - UBUNTU_VERSION=18.04
               - CHECKOUT_TF_SRC=1
               - TF_BRANCH=master
-
-    ubuntu-2004-devel-onednn:
         - add_to_name: "-20.04-devel-onednn"
           dockerfile_exclusive_name: "ubuntu-20.04-devel-onednn"
           dockerfile_subdirectory: "onednn"
