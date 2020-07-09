@@ -1079,12 +1079,12 @@ def resize_image_with_crop_or_pad(image, target_height, target_width, mode="CONS
   """Crops and/or pads an image to a target width and height.
 
   Resizes an image to a target width and height by either centrally
-  cropping the image or padding it evenly with zeros.
+  cropping the image or padding it evenly with 'constant_values'.
 
   If `width` or `height` is greater than the specified `target_width` or
   `target_height` respectively, this op centrally crops along that dimension.
   If `width` or `height` is smaller than the specified `target_width` or
-  `target_height` respectively, this op centrally pads with 0 along that
+  `target_height` respectively, this op centrally pads with 'constant_values' along that
   dimension.
 
   Args:
