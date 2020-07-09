@@ -370,8 +370,6 @@ def diagflat(v, k=0):
 def _promote_dtype(*arrays):
   dtype = np_utils.result_type(*arrays)
   def _fast_asarray(a):
-    if isinstance(a, numbers.Real):
-      return np_utils.tensor_to_ndarray(np_arrays.convert_to_tensor(a, dtype))
     if isinstance(a, np_arrays.ndarray) and dtype == a.dtype:
       return a
     return _array_internal(a, dtype=dtype, copy=False)

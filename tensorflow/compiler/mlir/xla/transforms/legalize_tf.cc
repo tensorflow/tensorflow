@@ -286,7 +286,7 @@ static ConstOp GetMaxValueForType(Type ty, Location loc,
 // element type and the value.
 static ConstOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
                                     OpBuilder *builder) {
-  return builder->create<ConstOp>(loc, xla::GetScalarOfType(ty, raw_value));
+  return builder->create<ConstOp>(loc, hlo::GetScalarOfType(ty, raw_value));
 }
 
 // Creates an mhlo::SliceOp where the major dimensions have full size, and
@@ -997,7 +997,7 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
     Builder *builder) {
   DenseIntElementsAttr constant_start_indices;
   if (!matchPattern(start_indices, m_Constant(&constant_start_indices))) {
-    return xla::ConvertElementsAttr(slice_sizes, builder->getIntegerType(64))
+    return hlo::ConvertElementsAttr(slice_sizes, builder->getIntegerType(64))
         .cast<DenseIntElementsAttr>();
   }
 
@@ -1920,7 +1920,7 @@ class ConvertAvgPoolGradOp : public OpRewritePattern<OpTy> {
       // are counted for the average of this window, not padded entries.
 
       // Build all-ones tensor of same shape as the original input.
-      ElementsAttr splat = xla::getSplat(&rewriter, orig_input_type, 1);
+      ElementsAttr splat = hlo::getSplat(&rewriter, orig_input_type, 1);
       auto all_ones_tensor = rewriter.create<ConstOp>(loc, splat);
 
       // Get the same padding as for the original input.
@@ -2195,7 +2195,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
     Value operand = op.getOperand();
     auto operand_ty = operand.getType().cast<TensorType>();
     auto scalar_ty = RankedTensorType::get({}, operand_ty.getElementType());
-    ElementsAttr attr = mlir::xla::getSplat(&rewriter, scalar_ty, 0.5);
+    ElementsAttr attr = mlir::hlo::getSplat(&rewriter, scalar_ty, 0.5);
     auto scalar_half = rewriter.create<ConstOp>(loc, attr);
     auto half = BroadcastToShapeOf(loc, scalar_half, operand, rewriter);
 
@@ -3021,10 +3021,10 @@ class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
                                         rewriter.getI64IntegerAttr(0));
     auto scaled = rewriter.create<chlo::BroadcastMulOp>(
         op.getLoc(), result_type, iota, op.delta(),
-        xla::getBroadcastDimensionsAttr(&rewriter, iota, op.delta()));
+        hlo::getBroadcastDimensionsAttr(&rewriter, iota, op.delta()));
     rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(
         op, result_type, scaled, op.start(),
-        xla::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
+        hlo::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
     return success();
   }
 };
@@ -3101,10 +3101,10 @@ class ConvertDynamicRangeOp : public OpRewritePattern<TF::RangeOp> {
         op.getLoc(), result_type, reshape, rewriter.getI64IntegerAttr(0));
     auto scaled = rewriter.create<chlo::BroadcastMulOp>(
         op.getLoc(), result_type, iota, delta_out_cast,
-        xla::getBroadcastDimensionsAttr(&rewriter, iota, delta_cast));
+        hlo::getBroadcastDimensionsAttr(&rewriter, iota, delta_cast));
     rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(
         op, result_type, scaled, start_out_cast,
-        xla::getBroadcastDimensionsAttr(&rewriter, scaled, start_out_cast));
+        hlo::getBroadcastDimensionsAttr(&rewriter, scaled, start_out_cast));
     return success();
   }
 };
@@ -3152,7 +3152,7 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
     // Calculate the scaling that needs to be applied to the iota.
     auto step_numerator = rewriter.create<chlo::BroadcastSubOp>(
         op.getLoc(), op.start().getType(), op.stop(), op.start(),
-        xla::getBroadcastDimensionsAttr(&rewriter, op.stop(), op.start()));
+        hlo::getBroadcastDimensionsAttr(&rewriter, op.stop(), op.start()));
     Value step_denominator = rewriter.create<ConvertOp>(
         op.getLoc(), op.num(), result_type.getElementType());
     if (num > 1) {
@@ -3160,11 +3160,11 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
                                        op.getLoc(), 1, &rewriter);
       step_denominator = rewriter.create<chlo::BroadcastSubOp>(
           op.getLoc(), step_denominator.getType(), step_denominator, one,
-          xla::getBroadcastDimensionsAttr(&rewriter, step_denominator, one));
+          hlo::getBroadcastDimensionsAttr(&rewriter, step_denominator, one));
     }
     auto step = rewriter.create<chlo::BroadcastDivOp>(
         op.getLoc(), step_numerator.getType(), step_numerator, step_denominator,
-        xla::getBroadcastDimensionsAttr(&rewriter, step_numerator,
+        hlo::getBroadcastDimensionsAttr(&rewriter, step_numerator,
                                         step_denominator));
 
     // Scale the iota and add the offset.
@@ -3172,10 +3172,10 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
                                         rewriter.getI64IntegerAttr(0));
     auto scaled = rewriter.create<chlo::BroadcastMulOp>(
         op.getLoc(), result_type, iota, step,
-        xla::getBroadcastDimensionsAttr(&rewriter, iota, step));
+        hlo::getBroadcastDimensionsAttr(&rewriter, iota, step));
     rewriter.replaceOpWithNewOp<chlo::BroadcastAddOp>(
         op, result_type, scaled, op.start(),
-        xla::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
+        hlo::getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
     return success();
   }
 };

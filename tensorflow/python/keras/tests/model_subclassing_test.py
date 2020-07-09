@@ -464,7 +464,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
         # Unconditional
         self.add_update(self.b.assign(self.b * 2))
         # Conditional
-        self.add_update(self.c.assign(inputs[1, :]), inputs)
+        self.add_update(self.c.assign(inputs[1, :]))
         return inputs + self.b + self.c
 
     x = ops.convert_to_tensor_v2(np.ones((10, 10), 'float32'))

@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import copy
 import functools
+import json
 import os
 import sys
 import threading
@@ -167,8 +168,8 @@ class MultiWorkerVerificationCallback(callbacks.Callback):
       def wrapped_method(method_to_wrap, name, *arg, **kwargs):
         # Use lock to ensure += operation is thread-safe.
         with self._lock:
-          self._task_dict[test_base.get_task_type()][
-              test_base.get_task_index()][name] += 1
+          task_config = json.loads(os.environ['TF_CONFIG'])['task']
+          self._task_dict[task_config['type']][task_config['index']][name] += 1
         method_to_wrap(*arg, **kwargs)
 
       setattr(self, method_name,

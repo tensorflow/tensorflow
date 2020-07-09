@@ -11,6 +11,10 @@
 * C-API functions `TF_StringDecode`, `TF_StringEncode`, and
   `TF_StringEncodedSize` are no longer relevant and have been removed; see
   core/platform/ctstring.h for string access/modification in C.
+* In batching library, rename parameter
+  SharedBatchScheduler::QueueOptions::max_batch_size to a more accurate name
+  (input_batch_size_limit) for a recent feature to enable split of large batch
+  sizes.
 
 ## Known Caveats
 

@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute.model_collection import simple_models
+from tensorflow.python.keras.distribute import simple_models
 
 simple_functional_model = combinations.NamedObject(
     "SimpleFunctionalModel", simple_models.SimpleFunctionalModel())

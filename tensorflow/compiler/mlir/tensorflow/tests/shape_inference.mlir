@@ -354,19 +354,25 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
   // Test propagation from called functions to the call site.
   // CHECK-LABEL: func @stateful_partitioned_call(
   // CHECK-SAME: -> tensor<20xi32>
-  func @stateful_partitioned_call(%arg0: tensor<20xi32>) -> tensor<*xi32> {
+  func @stateful_partitioned_call(%arg0: tensor<20xi32>, %arg1: tensor<?xi32>) -> tensor<*xi32> {
     // CHECK: tf.PartitionedCall
     // CHECK-SAME: (tensor<20xi32>) -> tensor<20xi32>
-    %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @a_called_func} : (tensor<20xi32>) -> (tensor<*xi32>)
+    %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @partitioned_called_func} : (tensor<20xi32>) -> tensor<*xi32>
     // CHECK: tf.StatefulPartitionedCall
     // CHECK-SAME: (tensor<20xi32>) -> tensor<20xi32>
-    %1 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @stateful_partitioned_call_func} : (tensor<20xi32>) -> (tensor<*xi32>)
+    %1 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @stateful_partitioned_call_func} : (tensor<20xi32>) -> tensor<*xi32>
+    // CHECK: tf.TPUPartitionedCall
+    // CHECK-SAME: (tensor<20xi32>, tensor<?xi32>) -> tensor<20xi32>
+    %2 = "tf.TPUPartitionedCall"(%arg0, %arg1) {autotuner_thresh = 0 : i64, f = @tpu_partitioned_call_func} : (tensor<20xi32>, tensor<?xi32>) -> tensor<*xi32>
     return %0 : tensor<*xi32>
   }
-  func @a_called_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+  func @partitioned_called_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
     return %arg0 : tensor<?xi32>
   }
   func @stateful_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+    return %arg0 : tensor<?xi32>
+  }
+  func @tpu_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
     return %arg0 : tensor<?xi32>
   }
 

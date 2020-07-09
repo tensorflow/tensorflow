@@ -53,5 +53,5 @@ struct TestChloLegalizeToHloPass
 }  // namespace mlir
 
 static mlir::PassRegistration<mlir::chlo::TestChloLegalizeToHloPass> pass(
-    "test-xla-chlo-legalize-to-hlo",
+    "mhlo-test-chlo-legalize-to-hlo",
     "Test pass for applying chlo -> hlo legalization patterns");

@@ -21,14 +21,30 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
-class TFSavedModelAPIImpl : public SavedModelAPI {
+// An implementation of the SavedModelAPI using the TF Eager runtime. See
+// https://github.com/tensorflow/community/blob/master/rfcs/20200218-tf-c-saved-model.md
+// Conceptually, there are many differences between a tf.function and
+// a FunctionDef is executed by the C API.
+// 1. A tf.function is polymorphic, meaning it can correspond to multiple
+// ConcreteFunctions (of differing shapes, python arguments, etc). A
+// FunctionDef corresponds to a single ConcreteFunction.
+// 2. A tf.function can take arbitrary python inputs, whereas the FunctionDef
+// only accepts tensors.
+// 3. A tf.function is a closure that can contain captured inputs, whereas
+// FunctionDefs loaded from SavedModels are "functional" (all inputs are
+// explicitly passed as arguments).
+// The SavedModelAPI only supports loading tf.functions annotated with input
+// signatures so that we ensure that there is a 1:1 mapping between tf.function
+// -> FunctionDef, and have a guarantee that all inputs are tensors.
+// (https://github.com/tensorflow/tensorflow/blob/2b96f3662bd776e277f86997659e61046b56c315/tensorflow/python/eager/def_function.py#L1167-L1171),
+class TFSavedModelAPI : public SavedModelAPI {
  public:
   Status GetFunction(const std::string& function_path,
                      ConcreteFunction** function) override;
@@ -39,14 +55,15 @@ class TFSavedModelAPIImpl : public SavedModelAPI {
   static Status Load(
       const std::string& directory,
       const absl::optional<std::unordered_set<std::string>>& tags,
-      EagerContext* context, std::unique_ptr<TFSavedModelAPIImpl>* out);
+      ImmediateExecutionContext* context,
+      std::unique_ptr<TFSavedModelAPI>* out);
 
   std::vector<ConcreteFunction*> ListFunctions() override;
 
-  ~TFSavedModelAPIImpl() override = default;
+  ~TFSavedModelAPI() override = default;
 
  private:
-  TFSavedModelAPIImpl() = default;
+  TFSavedModelAPI() = default;
   std::vector<ConcreteFunction> functions_;
 };
 

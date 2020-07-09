@@ -480,10 +480,27 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
   DVLOG(3) << prefix() << " GetNext enter";
-  RecordStart(ctx, /*stop_output=*/true);
+  auto model = ctx->model();
+  if (model && model->collect_resource_usage() && node_) {
+    int64 now_nanos = EnvTime::NowNanos();
+    auto output = node_->output();
+    if (output) {
+      output->record_stop(now_nanos);
+    }
+    node_->record_start(now_nanos);
+  }
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-  if (s.ok() && !*end_of_sequence) RecordElement(ctx, out_tensors);
-  RecordStop(ctx, /*start_output=*/true);
+  if (TF_PREDICT_TRUE(s.ok() && !*end_of_sequence)) {
+    RecordElement(ctx, out_tensors);
+  }
+  if (model && model->collect_resource_usage() && node_) {
+    int64 now_nanos = EnvTime::NowNanos();
+    node_->record_stop(now_nanos);
+    auto output = node_->output();
+    if (output) {
+      output->record_start(now_nanos);
+    }
+  }
   if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
     s = errors::Internal("Iterator \"", params_.prefix,
                          "\" returned `OutOfRange`. This indicates an "
