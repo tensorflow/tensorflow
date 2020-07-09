@@ -144,6 +144,7 @@ gentbl(
     td_srcs = [
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
+        "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
     ],
     test = True,
 )
@@ -623,6 +624,7 @@ cc_library(
         "transforms/tpu_rewrite_pass.cc",
         "transforms/tpu_sharding_identification_pass.cc",
         "transforms/tpu_space_to_depth_pass.cc",
+        "transforms/tpu_update_embedding_enqueue_op_inputs.cc",
         "transforms/tpu_variable_runtime_reformatting.cc",
         "translate/breakup-islands.cc",
         "translate/tf_executor_to_functional.cc",
@@ -786,7 +788,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/utils:transitive_fanin",
-        "//tensorflow/core/platform:protobuf_internal",
         "//tensorflow/core/platform:types",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
@@ -1261,27 +1262,23 @@ tf_native_cc_binary(
     ],
 )
 
-genrule(
+gentbl(
     name = "derived_attr_populator_inc",
-    srcs = [
+    tbl_outs = [
+        ("", "translate/derived_attr_populator.inc"),
+    ],
+    tblgen = ":derived_attr_populator_gen",
+    td_file = "ir/tf_ops.td",
+    td_srcs = [
+        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
-        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "ir/tf_generated_ops.td",
         "ir/tf_op_base.td",
         "ir/tf_op_interfaces.td",
-        "ir/tf_ops.td",
     ],
-    outs = [
-        "translate/derived_attr_populator.inc",
-    ],
-    cmd = ("$(location :derived_attr_populator_gen) " +
-           "-I external/llvm-project/mlir/include " +
-           "-I tensorflow/compiler/mlir " +
-           "$(location //tensorflow/compiler/mlir/tensorflow:ir/tf_ops.td) " + " -o $@"),
-    tools = [":derived_attr_populator_gen"],
 )
 
 filegroup(
@@ -1328,11 +1325,11 @@ COMPILE_MLIR_UTIL_DEPS = [
     "@llvm-project//mlir:TransformUtils",
     "@llvm-project//mlir:Transforms",
     "//tensorflow/compiler/mlir/hlo:hlo",
+    "//tensorflow/compiler/mlir/hlo:sink_constants_to_control_flow",
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:type_to_shape",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
-    "//tensorflow/compiler/mlir/xla:xla_sink_constants_to_control_flow",
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:xla_compiler",
     "//tensorflow/core:framework",

@@ -226,5 +226,11 @@ void TpuProgramGroup::RefreshHloMetadatasPtrs() {
   }
 }
 
+Status TpuProgramGroup::LogCompilationStats(const TpuCompilationCacheKey& key,
+                                            absl::Duration duration) {
+  // A placeholder for tracking compilation statistics for future work. The
+  // implementation can be pushing into some external storage for analytics.
+  return Status::OK();
+}
 }  // namespace tpu
 }  // namespace tensorflow

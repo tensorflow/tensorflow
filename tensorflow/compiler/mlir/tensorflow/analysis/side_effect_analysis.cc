@@ -168,8 +168,7 @@ void ResourceAliasAnalysis::AnalyzeFunction(FuncOp func_op) {
           var_handle.resource(),
           GetOrCreateIdForVarHandle(var_handle, &next_unique_id,
                                     &var_handle_name_id_map));
-    } else if (llvm::isa<TF::IdentityNOp>(op) ||
-               llvm::isa<TF::IdentityOp>(op)) {
+    } else if (llvm::isa<TF::IdentityNOp, TF::IdentityOp>(op)) {
       for (auto operand_and_result :
            llvm::zip(op->getOperands(), op->getResults())) {
         forward_input_to_output(std::get<0>(operand_and_result),
@@ -333,7 +332,7 @@ bool OpIsDeclaration(Operation* op,
                      const ResourceAliasAnalysis& alias_analysis) {
   // TODO(yuanzx): Add other types of resources.
   return llvm::isa<TF::VarHandleOp>(op) ||
-         ((llvm::isa<TF::IdentityNOp>(op) || llvm::isa<TF::IdentityOp>(op)) &&
+         (llvm::isa<TF::IdentityNOp, TF::IdentityOp>(op) &&
           !FindAccessedResources(op, alias_analysis).empty());
 }
 

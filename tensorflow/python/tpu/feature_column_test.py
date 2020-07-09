@@ -68,7 +68,7 @@ class EmbeddingColumnTest(test.TestCase):
       tpu_fc.embedding_column(categorical_column, dimension=embedding_dimension)
 
   def test_custom_column(self):
-    # This column is not in any whitelist but should succeed because
+    # This column is not in any allowlist but should succeed because
     # it inherits from V2 CategoricalColumn.
     categorical_column = fc_lib.categorical_column_with_identity(
         key='aaa', num_buckets=10)

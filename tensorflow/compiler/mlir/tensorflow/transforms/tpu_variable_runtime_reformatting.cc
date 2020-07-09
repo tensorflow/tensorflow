@@ -192,15 +192,25 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
     // The XLA backend does not yet support formatting 64-bit data types.
     if (data_type.getIntOrFloatBitWidth() == 64) continue;
 
+    const auto& block_arg = replicate.GetBody().getArgument(replicate_arg);
+
+    int64_t num_inputs = 0;
+    if (replicate.IsReplicatedBlockArgument(block_arg)) {
+      num_inputs = num_replicas;
+    } else {
+      num_inputs = 1;
+    }
+
     // We have found a mirrored variable which is an input to the replicated
     // `execute`. Now find if this mirrored variable is a pass-through of while
     // arguments.
     llvm::SmallVector<Value, 4> while_args;
-    for (int64_t i = 0; i < num_replicas; ++i) {
+    for (int64_t i = 0; i < num_inputs; ++i) {
       llvm::SmallPtrSet<Operation*, 4> skipped_identities;
-      auto replicate_operand =
-          SkipIdentity(replicate.getOperand(num_replicas * replicate_arg + i),
-                       /*allow_other_use=*/false, &skipped_identities);
+
+      auto replicate_operand = SkipIdentity(
+          replicate.GetReplicaOperandForBlockArgument(block_arg, i),
+          /*allow_other_use=*/false, &skipped_identities);
       auto block_arg = replicate_operand.dyn_cast<BlockArgument>();
       // To qualify for a valid pass-through mirrored variable, it must satisfy
       //   1) it is the body's argument;
@@ -267,26 +277,39 @@ tf_device::ReplicateOp AddInputsToReplicateOp(
 
   llvm::SmallVector<std::pair<llvm::ArrayRef<Value>, Type>, 8>
       new_replicated_inputs;
+  llvm::SmallVector<Value, 8> new_packed_inputs;
   llvm::SmallVector<llvm::SmallVector<Value, 8>, 8> replicated_inputs;
-  replicated_inputs.reserve(replicate.GetBody().getNumArguments());
-  for (auto arg : llvm::enumerate(replicate.GetBody().getArguments())) {
-    int64_t i = arg.index();
+  replicated_inputs.reserve(replicate.GetNumReplicatedBlockArguments());
+  new_packed_inputs.reserve(replicate.GetNumPackedBlockArguments());
+  for (const auto& arg : replicate.GetReplicatedBlockArguments()) {
     replicated_inputs.emplace_back();
-    for (int64_t j = i * num_replicas; j < (i + 1) * num_replicas; ++j) {
-      replicated_inputs.back().push_back(replicate.getOperand(j));
+    for (int64_t i = 0; i < num_replicas; ++i) {
+      replicated_inputs.back().push_back(
+          replicate.GetReplicaOperandForBlockArgument(arg, i));
     }
-    new_replicated_inputs.emplace_back(replicated_inputs.back(),
-                                       arg.value().getType());
+    new_replicated_inputs.emplace_back(replicated_inputs.back(), arg.getType());
+  }
+  for (const auto& arg : replicate.GetPackedBlockArguments()) {
+    new_packed_inputs.emplace_back(
+        replicate.GetReplicaOperandForBlockArgument(arg, /*replica=*/0));
   }
   new_replicated_inputs.emplace_back(new_inputs, new_inputs.front().getType());
   OpBuilder builder(replicate);
   auto new_replicate = builder.create<tf_device::ReplicateOp>(
       replicate.getLoc(), num_replicas, devices, new_replicated_inputs,
+      new_packed_inputs,
       llvm::to_vector<8>(
           replicate.GetBody().getTerminator()->getOperandTypes()));
   for (auto arg : replicate.GetBody().getArguments()) {
-    arg.replaceAllUsesWith(
-        new_replicate.GetBody().getArgument(arg.getArgNumber()));
+    if (replicate.IsReplicatedBlockArgument(arg)) {
+      arg.replaceAllUsesWith(
+          new_replicate.GetBody().getArgument(arg.getArgNumber()));
+    } else {
+      // There is a new added replicated state variable between replicated args
+      // and packed args.
+      arg.replaceAllUsesWith(
+          new_replicate.GetBody().getArgument(arg.getArgNumber() + 1));
+    }
   }
   for (auto& op : llvm::make_early_inc_range(replicate.GetBody())) {
     op.moveBefore(&new_replicate.GetBody(), new_replicate.GetBody().end());
@@ -495,7 +518,7 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   }
   reformat_operands.push_back(compile_launch.getResult(1));
   reformat_operands.push_back(replicate.GetBody().getArgument(
-      replicate.GetBody().getNumArguments() - 1));
+      replicate.GetNumReplicatedBlockArguments() - 1));
   builder.setInsertionPoint(execute_launch);
   auto reformat_op = builder.create<TF::TPUReshardVariablesOp>(
       execute_launch.getLoc(), llvm::ArrayRef<Type>{}, reformat_operands,
@@ -507,14 +530,20 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   // replicate op.
   llvm::SmallVector<std::pair<llvm::ArrayRef<Value>, Type>, 8>
       unformat_replicate_operands;
+  llvm::SmallVector<Value, 8> unformat_packed_operands;
   for (const auto& entry : execute_arg_to_outer_args) {
-    unformat_replicate_operands.emplace_back(entry.second,
-                                             entry.second.front().getType());
+    if (entry.second.size() > 1) {
+      unformat_replicate_operands.emplace_back(entry.second,
+                                               entry.second.front().getType());
+    } else {
+      unformat_packed_operands.emplace_back(entry.second.front());
+    }
   }
   llvm::SmallVector<Value, 4> state_var_vals(state_vars.size());
   for (const auto& entry : llvm::enumerate(state_vars)) {
     state_var_vals[entry.index()] = entry.value().resource();
   }
+  // Add the replicated state var to the end of the replicate operands.
   unformat_replicate_operands.emplace_back(state_var_vals,
                                            state_var_vals.front().getType());
   // Build a constant default key to specify that the unformatting should
@@ -529,13 +558,21 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   // With all replicated inputs, now build the replicate op.
   auto unformat_replicate = builder.create<tf_device::ReplicateOp>(
       while_op.getLoc(), num_replicas, devices, unformat_replicate_operands,
-      ArrayRef<Type>{});
+      unformat_packed_operands, ArrayRef<Type>{});
   // Then build the unformat op in the replicate op.
   builder.setInsertionPointToEnd(&unformat_replicate.GetBody());
   llvm::SmallVector<Value, 8> unformat_operands;
-  for (auto arg : unformat_replicate.GetBody().getArguments()) {
-    unformat_operands.push_back(arg);
-  }
+  // Add the replicated state var (the last replicated operand of the
+  // ReplicateOp) as the last operand of TPUReshardVariablesOp.
+  BlockArgument state = unformat_replicate.GetReplicatedBlockArguments().back();
+  auto replicated_block_args =
+      unformat_replicate.GetReplicatedBlockArguments().drop_back(1);
+  auto packed_block_args = unformat_replicate.GetPackedBlockArguments();
+  unformat_operands.append(replicated_block_args.begin(),
+                           replicated_block_args.end());
+  unformat_operands.append(packed_block_args.begin(), packed_block_args.end());
+  unformat_operands.push_back(state);
+
   // Insert the default key as the second last operand.
   unformat_operands.insert(
       unformat_operands.begin() + unformat_operands.size() - 1,

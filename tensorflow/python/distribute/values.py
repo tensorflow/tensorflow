@@ -93,14 +93,14 @@ class DistributedValues(object):
 
   1. Created from a `tf.distribute.DistributedDataset`:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
 
   2. Returned by `run`:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> @tf.function
   ... def run():
   ...   ctx = tf.distribute.get_replica_context()
@@ -109,7 +109,7 @@ class DistributedValues(object):
 
   3. As input into `run`:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
@@ -120,7 +120,7 @@ class DistributedValues(object):
 
   4. Reduce value:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
@@ -128,16 +128,16 @@ class DistributedValues(object):
   ...                                 distributed_values,
   ...                                 axis = 0)
 
-  5. Inspect per replica values:
+  5. Inspect local replica values:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> per_replica_values = strategy.experimental_local_results(
   ...    distributed_values)
   >>> per_replica_values
-  (<tf.Tensor: shape=(2,), dtype=float32,
-   numpy=array([5., 6.], dtype=float32)>,)
+  (<tf.Tensor: shape=(1,), dtype=float32, numpy=array([5.], dtype=float32)>,
+   <tf.Tensor: shape=(1,), dtype=float32, numpy=array([6.], dtype=float32)>)
 
   """
 

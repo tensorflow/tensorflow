@@ -38,12 +38,13 @@ from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_utils
 
 
-pi = np.pi
-e = np.e
-inf = np.inf
+pi = np_export.np_export_constant(__name__, 'pi', np.pi)
+e = np_export.np_export_constant(__name__, 'e', np.e)
+inf = np_export.np_export_constant(__name__, 'inf', np.inf)
 
 
 @np_utils.np_doc_only('dot')
@@ -126,7 +127,9 @@ def true_divide(x1, x2):  # pylint: disable=missing-function-docstring
   return _bin_op(f, x1, x2)
 
 
-divide = true_divide
+@np_utils.np_doc('divide')
+def divide(x1, x2):  # pylint: disable=missing-function-docstring
+  return true_divide(x1, x2)
 
 
 @np_utils.np_doc('floor_divide')
@@ -155,7 +158,9 @@ def mod(x1, x2):  # pylint: disable=missing-function-docstring
   return _bin_op(f, x1, x2)
 
 
-remainder = mod
+@np_utils.np_doc('remainder')
+def remainder(x1, x2):  # pylint: disable=missing-function-docstring
+  return mod(x1, x2)
 
 
 @np_utils.np_doc('divmod')
@@ -1343,7 +1348,9 @@ def meshgrid(*xi, **kwargs):
   return outputs
 
 
-@np_utils.np_doc('einsum')
+# Uses np_doc_only here because np.einsum (in 1.16) doesn't have argument
+# `subscripts`, even though the doc says it has.
+@np_utils.np_doc_only('einsum')
 def einsum(subscripts, *operands, **kwargs):  # pylint: disable=missing-docstring
   casting = kwargs.get('casting', 'safe')
   optimize = kwargs.get('optimize', False)

@@ -230,7 +230,10 @@ void HloModule::ReplaceComputations(
 
 string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  s << "HloModule " << PrintName(name(), options.print_ids());
+  // When print_ids() is false, exclude module's name because it includes and
+  // leads to non-deterministic fingerprint.
+  s << "HloModule "
+    << (options.print_ids() ? PrintName(name(), options.print_ids()) : "");
   if (has_schedule()) {
     TF_CHECK_OK(schedule().Verify());
     s << ", is_scheduled=true";
@@ -687,6 +690,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
   module->AddEntryComputation(std::move(cloned_computation));
+  module->input_output_alias_config() = input_output_alias_config();
 
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module.get());

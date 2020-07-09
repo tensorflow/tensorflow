@@ -143,6 +143,12 @@ class ToolParams {
   std::unordered_map<std::string, std::unique_ptr<ToolParam>> params_;
 };
 
+#define LOG_TOOL_PARAM(params, type, name, description, verbose)      \
+  do {                                                                \
+    TFLITE_MAY_LOG(INFO, (verbose) || params.HasValueSet<type>(name)) \
+        << description << ": [" << params.Get<type>(name) << "]";     \
+  } while (0)
+
 }  // namespace tools
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_TOOLS_TOOL_PARAMS_H_

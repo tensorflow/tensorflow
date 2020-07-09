@@ -26,10 +26,7 @@ bool HloInputOutputAliasConfig::OutputHasAlias(
 
 Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
                                              int64 param_number,
-                                             const ShapeIndex& param_index,
-                                             AliasKind kind) {
-  TF_RET_CHECK(kind == AliasKind::kUserAlias || kind == AliasKind::kSystemAlias)
-      << kind;
+                                             const ShapeIndex& param_index) {
   TF_RET_CHECK(ShapeUtil::IndexIsValid(alias_.shape(), output_index))
       << "Trying to set up alias at " << output_index.ToString()
       << " which is an invalid index for shape "
@@ -44,8 +41,7 @@ Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
       param_number, param_index.ToString(), output_index.ToString(),
       alias_.element(output_index)->parameter_number,
       alias_.element(output_index)->parameter_index.ToString());
-  (*alias_.mutable_element(output_index)) =
-      Alias(kind, param_number, param_index);
+  (*alias_.mutable_element(output_index)) = Alias(param_number, param_index);
   VLOG(4) << "Set up alias between output index " << output_index.ToString()
           << " and parameter " << param_index << " at index "
           << param_index.ToString();
@@ -58,16 +54,6 @@ HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
       [&](const ShapeIndex& index, const absl::optional<Alias>& data) {
         if (data) {
           HloInputOutputAliasProto::AliasEntryProto entry;
-          switch (data->kind) {
-            case AliasKind::kUserAlias:
-              entry.set_kind(HloInputOutputAliasProto::USER_ALIAS);
-              break;
-            case AliasKind::kSystemAlias:
-              entry.set_kind(HloInputOutputAliasProto::SYSTEM_ALIAS);
-              break;
-            default:
-              LOG(FATAL) << "Unknown alias kind " << data->kind;
-          }
           for (int64 i : index) {
             entry.add_output_shape_index(i);
           }
@@ -91,14 +77,8 @@ StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
     int64 param_number = entry.parameter_number();
     ShapeIndex param_index(entry.parameter_shape_index().begin(),
                            entry.parameter_shape_index().end());
-    // Handle backward compatibility with existing protos, which only knew of
-    // system aliases.
-    AliasKind kind = AliasKind::kSystemAlias;
-    if (entry.kind() == HloInputOutputAliasProto::USER_ALIAS) {
-      kind = AliasKind::kUserAlias;
-    }
     TF_RETURN_IF_ERROR(
-        result.SetUpAlias(output_index, param_number, param_index, kind));
+        result.SetUpAlias(output_index, param_number, param_index));
   }
   return result;
 }
@@ -113,9 +93,9 @@ string HloInputOutputAliasConfig::ToString() const {
 
   ForEachAlias([&](const ShapeIndex& output_index, const Alias& alias) {
     pieces.push_back(absl::StrFormat(
-        "  OutputIndex %s is aliased (kind=%s) with parameter %lld at %s:",
-        output_index.ToString(), AliasKindToString(alias.kind),
-        alias.parameter_number, alias.parameter_index.ToString()));
+        "  OutputIndex %s is aliased with parameter %lld at %s:",
+        output_index.ToString(), alias.parameter_number,
+        alias.parameter_index.ToString()));
   });
   return absl::StrJoin(pieces, "\n");
 }
@@ -132,20 +112,6 @@ string HloInputOutputAliasConfig::ToShortString() const {
         absl::StrFormat("%s: %s", index.ToString(), alias->ToString()));
   }
   return absl::StrJoin(pieces, ", ");
-}
-
-absl::optional<HloInputOutputAliasConfig::AliasKind>
-HloInputOutputAliasConfig::ParameterAliasKind(
-    int64 param_number, const ShapeIndex& param_index) const {
-  absl::optional<AliasKind> kind;
-  alias_.ForEachElement(
-      [&](const xla::ShapeIndex&, absl::optional<Alias> alias) {
-        if (alias && alias->parameter_number == param_number &&
-            alias->parameter_index == param_index) {
-          kind = alias->kind;
-        }
-      });
-  return kind;
 }
 
 absl::optional<ShapeIndex> HloInputOutputAliasConfig::GetAliasedOutput(

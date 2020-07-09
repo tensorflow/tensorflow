@@ -138,6 +138,8 @@ limitations under the License.
  * - Total:                     2
  */
 
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini_staging/xa_nnlib/include/xa_type_def.h"
+
 #if defined(__cplusplus)
 extern "C" {
 #endif

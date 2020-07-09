@@ -1676,6 +1676,7 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [
 }
 
 def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
+    FixedOutputRangeInterface,
     // central_value = min_value / 2 + (max_value - 1) / 2 + 1
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
@@ -1697,6 +1698,36 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
   let hasOptions = 1;
 
   let customOption = "L2NormOptions";
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = output().getType().cast<ShapedType>();
+    if (!result_type.getElementType().isa<FloatType>()) return {};
+    Builder builder(result_type.getContext());
+
+    // Only support 8-bits
+    if (bit_width != 8) return {};
+    IntegerType storage_type = builder.getIntegerType(bit_width);
+
+    double scale = 1.0 / 128;
+    int64_t zero_point, storage_min, storage_max;
+    if (is_signed) {
+      zero_point = 0;
+      storage_min = -128;
+      storage_max = 127;
+    } else {
+      zero_point = 128;
+      storage_min = 0;
+      storage_max = 255;
+    }
+
+    return quant::UniformQuantizedType::getChecked(
+        is_signed, storage_type, result_type.getElementType(), scale,
+        zero_point, storage_min, storage_max, builder.getUnknownLoc());
+  }
+  }];
 }
 
 def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [
