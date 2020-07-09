@@ -53,3 +53,12 @@ tf_fuzz_target(
         "//tensorflow/core/platform:stringpiece"
     ],
 )
+
+tf_fuzz_target(
+    name = "string_replace_fuzz",
+    srcs = ["string_replace_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringpiece"
+    ],
+)
