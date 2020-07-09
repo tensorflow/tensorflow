@@ -1,5 +1,5 @@
 # Description:
-#   Implementation of Keras benchmarks.
+#   Implementation of benchmarks for keras.io examples.
 
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -24,48 +24,38 @@ exports_files(["LICENSE"])
 # e.g. --benchmarks=".*lstm*." will run all lstm layer related benchmarks.
 
 py_test(
-    name = "keras_cpu_benchmark_test",
-    size = "large",
-    srcs = ["keras_cpu_benchmark_test.py"],
+    name = "bidirectional_lstm_benchmark_test",
+    size = "medium",
+    srcs = ["bidirectional_lstm_benchmark_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_windows",  # b/160628318
+    ],
+    deps = [
+        ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "text_classification_transformer_benchmark_test",
+    size = "medium",
+    srcs = ["text_classification_transformer_benchmark_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_windows",  # b/160628318
+    ],
+    deps = [
+        ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "benchmark_util",
+    srcs = ["benchmark_util.py"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
 )
-
-cuda_py_test(
-    name = "eager_microbenchmarks_test",
-    size = "medium",
-    srcs = ["eager_microbenchmarks_test.py"],
-    python_version = "PY3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-cuda_py_test(
-    name = "applications_saved_model_test",
-    size = "medium",
-    srcs = ["applications_saved_model_test.py"],
-    shard_count = 8,
-    tags = [
-        "no_oss_py38",  # b/160170347
-        "no_windows",  # b/160269052
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras/applications",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "model_components_benchmarks_test",
-    srcs = ["model_components_benchmarks_test.py"],
-    python_version = "PY3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
