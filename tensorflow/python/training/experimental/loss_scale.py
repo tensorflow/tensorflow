@@ -112,7 +112,7 @@ class LossScale(trackable.Trackable):
     Args:
       grads: A nested structure of unscaled gradients, each which is the
         gradient of the loss with respect to a weight. The gradients should have
-        already been divided by the loss scale being before passed to this
+        already been divided by the loss scale before being passed to this
         function. 'None' gradients are accepted, and are ignored.
 
     Returns:
