@@ -24,8 +24,7 @@ import six
 import tensorflow as tf
 
 from tensorflow.python.platform import benchmark
-from tensorflow.python.keras.benchmarks.keras_io_examples_benchmark \
-  import benchmark_util
+from tensorflow.python.keras.benchmarks import benchmark_util
 
 _MAX_FEATURE = 20000
 _MAX_LEN = 200
