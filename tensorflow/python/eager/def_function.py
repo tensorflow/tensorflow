@@ -1374,6 +1374,24 @@ def function(func=None,
   In general, it is recommended to create stateful objects like `tf.Variable`
   outside of `tf.function` and passing them as arguments.
 
+  _Using type annotations to improve performance_
+
+  'experimental_follow_type_hints` can be used along with type annotations to
+  improve performance by reducing the number of expensive graph retracings.
+  For example, an argument annotated with `tf.Tensor` is converted to Tensor
+  even when the input is a non-Tensor value.
+
+  >>> @tf.function(
+  ...     experimental_follow_type_hints=True)
+  ... def f(x: tf.Tensor):
+  ...   print('Tracing!')
+  ...   tf.print('Executing')
+  >>> f(1)
+  Tracing!
+  Executing
+  >>> f(2)
+  Executing
+
   Args:
     func: the function to be compiled. If `func` is None, `tf.function` returns
       a decorator that can be invoked with a single argument - `func`. In other

@@ -30,7 +30,8 @@
 *   `tf.keras`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.function`/AutoGraph:
-    * <ADD RELEASE NOTES HERE>
+    * Added `experimental_follow_type_hints` argument. When True, the function may use type
+      annotations to optimize the tracing performance.
 *   `tf.lite`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
