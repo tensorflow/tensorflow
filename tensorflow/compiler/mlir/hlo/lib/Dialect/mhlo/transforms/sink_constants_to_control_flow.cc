@@ -71,7 +71,7 @@ class SinkConstantsToControlFlow
 };
 
 static mlir::PassRegistration<SinkConstantsToControlFlow> pass(
-    "xla-hlo-sink-constants-to-control-flow",
+    "mhlo-sink-constants-to-control-flow",
     "Sink constants implicitly captured in control flow regions. This is "
     "necessary to export to XLA.");
 

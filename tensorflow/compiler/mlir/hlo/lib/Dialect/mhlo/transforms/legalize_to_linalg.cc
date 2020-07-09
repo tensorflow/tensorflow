@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/map_xla_to_scalar_op.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 
 namespace mlir {
@@ -49,12 +49,12 @@ Value getResultValue(Operation* op) {
 }
 
 template <bool isLHLO = true>
-ShapedType getXLAOpResultType(Operation* op) {
+ShapedType getHloOpResultType(Operation* op) {
   return getResultValue<isLHLO>(op).getType().template cast<ShapedType>();
 }
 
 template <bool isLHLO = true>
-bool verifyXLAOpBufferOrTensorSemantics(Operation* op) {
+bool verifyHloOpBufferOrTensorSemantics(Operation* op) {
   auto verifyType = [&](Value val) -> bool {
     return (isLHLO && val.getType().isa<MemRefType>()) ||
            (!isLHLO && val.getType().isa<RankedTensorType>());
@@ -133,7 +133,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
         [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
           // TODO(ravishankarm) : For now use the method in lmhlo namespace.
           // That method needs to be moved out of there.
-          Value opResult = lmhlo::XlaOpToStdScalarOp::map<OpTy>(
+          Value opResult = lmhlo::HloOpToStdScalarOp::map<OpTy>(
               op, bodyResultTypes,
               llvm::to_vector<2>(args.take_front(args_count)), &rewriter);
           nestedBuilder.create<linalg::YieldOp>(loc, opResult);
@@ -163,7 +163,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
     auto lhs = rewriter.create<LoadOp>(loc, lhlo_op.lhs());
     auto rhs = rewriter.create<LoadOp>(loc, lhlo_op.rhs());
     // TODO(ravishankarm) : Move this method out of lmhlo namespace.
-    Value opResult = lmhlo::XlaOpToStdScalarOp::map<LhloOp>(
+    Value opResult = lmhlo::HloOpToStdScalarOp::map<LhloOp>(
         lhlo_op, argType.getElementType(), llvm::ArrayRef<Value>{lhs, rhs},
         &rewriter);
     rewriter.create<StoreOp>(loc, opResult, lhlo_op.out());
@@ -274,7 +274,7 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
   }
 };
 
-/// Base class for lowering xla operations that have one operand and one result,
+/// Base class for lowering HLO operations that have one operand and one result,
 /// and are semantically equivalent to a copy of the input to the output (like
 /// transpose, some reshape, etc.). The derived classes need to provide a method
 /// `getIndexingMaps` that returns AffineMaps for the index maps of the input
@@ -287,8 +287,8 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
   LogicalResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op)) return failure();
-    auto resultType = getXLAOpResultType<isLHLO>(op);
+    if (!verifyHloOpBufferOrTensorSemantics<isLHLO>(op)) return failure();
+    auto resultType = getHloOpResultType<isLHLO>(op);
 
     SmallVector<AffineMap, 2> indexing_maps =
         Derived::getIndexingMaps(op, &rewriter);
@@ -322,7 +322,7 @@ class BroadcastConverter
     ShapedType inputType =
         broadcastOp.operand().getType().template cast<ShapedType>();
     unsigned inputRank = inputType.getRank();
-    unsigned nloops = getXLAOpResultType<isLHLO>(broadcastOp).getRank();
+    unsigned nloops = getHloOpResultType<isLHLO>(broadcastOp).getRank();
 
     // BroadcastOp prepends the dimensions in the `broadcast_sizes` attribute to
     // the input's dimensions.
@@ -356,7 +356,7 @@ class HloBroadcastInDimConverter
 
   static SmallVector<AffineMap, 2> getIndexingMaps(
       mhlo::BroadcastInDimOp broadcastOp, Builder* b) {
-    auto resultType = getXLAOpResultType<false>(broadcastOp);
+    auto resultType = getHloOpResultType<false>(broadcastOp);
     auto operandType =
         broadcastOp.operand().getType().template cast<ShapedType>();
     unsigned nloops = resultType.getRank();
@@ -555,7 +555,7 @@ class TransposeConverter
                                 isLHLO>::DataMovementOpConverter;
   static SmallVector<AffineMap, 2> getIndexingMaps(OpTy op, Builder* b) {
     auto resultType =
-        getXLAOpResultType<isLHLO>(op).template cast<ShapedType>();
+        getHloOpResultType<isLHLO>(op).template cast<ShapedType>();
     auto nloops = resultType.getRank();
     SmallVector<AffineExpr, 2> inputExprs;
     inputExprs.resize(resultType.getRank());
@@ -579,11 +579,11 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
   LogicalResult matchAndRewrite(
       OpTy reshapeOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(reshapeOp))
+    if (!verifyHloOpBufferOrTensorSemantics<isLHLO>(reshapeOp))
       return failure();
     ShapedType operandType =
         reshapeOp.operand().getType().template cast<ShapedType>();
-    ShapedType resultType = getXLAOpResultType<isLHLO>(reshapeOp);
+    ShapedType resultType = getHloOpResultType<isLHLO>(reshapeOp);
 
     if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
       return failure();
@@ -708,7 +708,7 @@ class ReverseConverter
                                 isLHLO>::DataMovementOpConverter;
   static SmallVector<AffineMap, 2> getIndexingMaps(OpTy op, Builder* b) {
     auto resultType =
-        getXLAOpResultType<isLHLO>(op).template cast<ShapedType>();
+        getHloOpResultType<isLHLO>(op).template cast<ShapedType>();
     auto nloops = resultType.getRank();
     SmallVector<AffineExpr, 2> inputExprs;
     inputExprs.reserve(nloops);

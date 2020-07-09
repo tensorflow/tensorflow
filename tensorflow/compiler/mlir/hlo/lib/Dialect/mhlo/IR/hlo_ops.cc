@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines the operations used in the XLA dialect.
+// This file defines the operations used in the MHLO dialect.
 
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
@@ -404,7 +404,7 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return xla::ConvertElementsAttr(elementsAttr,
+    return hlo::ConvertElementsAttr(elementsAttr,
                                     getElementTypeOrSelf(getResult()));
   }
 
@@ -2135,8 +2135,6 @@ MhloDialect::MhloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOInlinerInterface>();
   addTypes<TokenType>();
-  // Support unknown operations because not all XLA operations are registered.
-  // allowUnknownOperations();
 }
 
 Type MhloDialect::parseType(DialectAsmParser& parser) const {

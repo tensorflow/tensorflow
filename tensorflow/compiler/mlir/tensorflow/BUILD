@@ -1325,7 +1325,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "@llvm-project//mlir:TransformUtils",
     "@llvm-project//mlir:Transforms",
     "//tensorflow/compiler/mlir/hlo:hlo",
-    "//tensorflow/compiler/mlir/hlo:xla_sink_constants_to_control_flow",
+    "//tensorflow/compiler/mlir/hlo:sink_constants_to_control_flow",
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:type_to_shape",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf",

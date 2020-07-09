@@ -56,7 +56,7 @@ std::unique_ptr<OperationPass<FuncOp>> createTransformUnrankedHloPass();
 std::unique_ptr<OperationPass<FuncOp>> createSinkConstantsToControlFlowPass();
 
 // fuse mhlo ops to kLoop/kInput fusion patterns
-std::unique_ptr<OperationPass<FuncOp>> createXlaHloFusionPass();
+std::unique_ptr<OperationPass<FuncOp>> createMhloFusionPass();
 
 }  // namespace mhlo
 
@@ -94,12 +94,12 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
 }  // namespace lmhlo
 
-namespace xla {
+namespace hlo {
 
 /// Lowers the standard TanhOp to an approximation that does not use intrinsics.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTanhToApproximationPass();
 
-}  // namespace xla
+}  // namespace hlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_PASSES_H_

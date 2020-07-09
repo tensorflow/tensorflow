@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -xla-legalize-control-flow %s -o - | FileCheck %s
+// RUN: mlir-hlo-opt -mhlo-legalize-control-flow %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @while(%arg0: tensor<i64>) -> tensor<i64> {
 func @while(%arg0: tensor<i64>) -> tensor<i64> {

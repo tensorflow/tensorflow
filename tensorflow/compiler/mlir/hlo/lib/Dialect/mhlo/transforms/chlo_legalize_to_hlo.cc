@@ -96,7 +96,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     // Check for "numpy"-style rank broadcast.
     auto broadcast_dimensions = op.broadcast_dimensions();
     if (broadcast_dimensions &&
-        !xla::IsLegalNumpyRankedBroadcast(lhs, rhs, *broadcast_dimensions)) {
+        !hlo::IsLegalNumpyRankedBroadcast(lhs, rhs, *broadcast_dimensions)) {
       // Note: It is unclear whether the general specification of explicit
       // broadcast_dimensions on binary ops is a feature we want to carry
       // forward. While it can technically be implemented for ranked-dynamic,
@@ -126,7 +126,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
 
     int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
     Value result_extents =
-        xla::ComputeBinaryElementwiseBroadcastingResultExtents(loc, lhs, rhs,
+        hlo::ComputeBinaryElementwiseBroadcastingResultExtents(loc, lhs, rhs,
                                                                rewriter);
 
     // Note that we unconditionally emit DynamicBroadcastInDim ops and let
