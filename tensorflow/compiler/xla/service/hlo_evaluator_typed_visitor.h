@@ -1500,7 +1500,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             pad_config.dimensions(i).edge_padding_low() +
             input_index[i] * (pad_config.dimensions(i).interior_padding() + 1);
 
-        // Account for negative low and high paI2790dding: skip assignment if the
+        // Account for negative low and high padding: skip assignment if the
         // any target index is out of range.
         if (!(target_index[i] >= 0 &&
               target_index[i] < pad->shape().dimensions(i))) {
