@@ -105,16 +105,16 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_saved_model_impl",
+    name = "tf_saved_model_api",
     srcs = [
-        "tf_saved_model_impl.cc",
+        "tf_saved_model_api.cc",
     ],
-    hdrs = ["tf_saved_model_impl.h"],
+    hdrs = ["tf_saved_model_api.h"],
     deps = [
         ":concrete_function",
         ":saved_model_api",
+        "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime/eager:context",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -140,8 +140,8 @@ filegroup(
         "concrete_function.h",
         "function_metadata.h",
         "saved_model_api.h",
-        "tf_saved_model_impl.cc",
-        "tf_saved_model_impl.h",
+        "tf_saved_model_api.cc",
+        "tf_saved_model_api.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
