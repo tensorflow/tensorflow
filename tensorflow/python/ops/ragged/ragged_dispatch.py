@@ -389,8 +389,6 @@ _BINARY_ELEMENTWISE_OPS = [
     math_ops.realdiv,
     math_ops.squared_difference,
     math_ops.subtract,
-    math_ops.tensor_equals,
-    math_ops.tensor_not_equals,
     math_ops.truediv,
     math_ops.truncatediv,
     math_ops.truncatemod,
