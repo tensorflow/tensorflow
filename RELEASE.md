@@ -9,7 +9,7 @@
 
   * [`tf.distribute.TPUStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/TPUStrategy) is now a stable API and no longer considered experimental for TensorFlow. (earlier `tf.distribute.experimental.TPUStrategy`).
 
-  * TF Profiler introduces two new tools: a memory profiler to visualize your model’s memory usage over time and a python tracer which allows you to trace python function calls in your model. Usability improvements include better diagnostic messages and profile options to customize the host and device trace verbosity level.
+  * [TF Profiler](https://www.tensorflow.org/guide/profiler) introduces two new tools: a memory profiler to visualize your model’s memory usage over time and a python tracer which allows you to trace python function calls in your model. Usability improvements include better diagnostic messages and [profile options](https://tensorflow.org/guide/profiler#collect_performance_data) to customize the host and device trace verbosity level.
 
   * Introduces experimental support for Keras Preprocessing Layers API ([`tf.keras.layers.experimental.preprocessing.*`](https://www.tensorflow.org/api_docs/python/tf/keras/layers/experimental/preprocessing?version=nightly)) to handle data preprocessing operations, with support for composite tensor inputs. Please see below for additional details on these layers.
   
@@ -33,8 +33,8 @@
    breaking change only impacts `tf.image.extract_glimpse` and
    `tf.compat.v2.image.extract_glimpse` API endpoints. The behavior of
    `tf.compat.v1.image.extract_glimpse` does not change. The behavior of
-   exsiting C++ kernel `ExtractGlimpse` does not change as well, so saved
-   models will not be impacted.
+   exsiting C++ kernel `ExtractGlimpse` does not change either, so saved
+   models using `tf.raw_ops.ExtractGlimpse` will not be impacted.
 
 ## Bug Fixes and Other Changes
 
@@ -58,7 +58,7 @@
     * Add Bessel functions of order 0,1 to `tf.math.special`.
     * `tf.divide` now always returns a tensor to be consistent with documentation and other APIs.
   * `tf.image`:
-    * Replaces [`tf.image.non_max_suppression_padded`](https://www.tensorflow.org/api_docs/python/tf/image/non_max_suppression_padded?hl=en&version=nightly) with a new implementation that supports batched inputs, which is considerably faster on TPUs and GPUs. Boxes with area=0 will be neglected. Existing usage with single inputs should still work as before.
+    * Replaced [`tf.image.non_max_suppression_padded`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/image/non_max_suppression_padded?hl=en) with a new implementation that supports batched inputs, which is considerably faster on TPUs and GPUs. Boxes with area=0 will be ignored. Existing usage with single inputs should still work as before.
   * `tf.linalg`
     * Add `tf.linalg.banded_triangular_solve`.
   * `tf.random`:
@@ -71,8 +71,8 @@
   * `tf.saved_model`:
     * `@tf.function` from SavedModel no longer ignores args after a `RaggedTensor` when selecting the concrete function to run.
     * Fix save model issue for ops with a list of functions.
-    * Add `tf.saved_model.LoadOptions` with [`experimental_io_device`](https://www.tensorflow.org/api_docs/python/tf/saved_model/LoadOptions) as arg with default value `None` to choose the I/O device for loading models and weights.
-     * Update `tf.saved_model.SaveOptions` with [`experimental_io_device`](https://www.tensorflow.org/api_docs/python/tf/saved_model/SaveOptions?version=nightly) as arg with default value `None` to choose the I/O device for saving models and weights.
+    * Add `tf.saved_model.LoadOptions` with [`experimental_io_device`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/saved_model/LoadOptions?hl=en) as arg with default value `None` to choose the I/O device for loading models and weights.
+     * Update `tf.saved_model.SaveOptions` with [`experimental_io_device`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/saved_model/SaveOptions?hl=en) as arg with default value `None` to choose the I/O device for saving models and weights.
   * GPU
     * No longer includes PTX kernels for GPU except for sm_70 to reduce binary size.
   * Profiler
@@ -95,8 +95,8 @@
   * `tf.data.Dataset` now supports `len(Dataset)` when the cardinality is finite.
 
 ### `tf.distribute`: 
-  * Expose experimental [`tf.distribute.DistributedDataset`](https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedDataset) and [`tf.distribute.DistributedIterator`](https://www.tensorflow.org/api_docs/python/tf/distribute/DistributedIterator) to distribute input data when using `tf.distribute` to scale training on multiple devices. 
-    * Added a `get_next_as_optional` method for `tf.distribute.DistributedIterator` class to return a `tf.experimental.Optional` instance that contains the next value for all replicas or none instead of raising an out of range error. Also see *new* [guide on input distribution](https://www.tensorflow.org/tutorials/distribute/input).
+  * Expose experimental [`tf.distribute.DistributedDataset`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/distribute/DistributedDataset?hl=en) and [`tf.distribute.DistributedIterator`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/distribute/DistributedIterator) to distribute input data when using `tf.distribute` to scale training on multiple devices. 
+    * Added a [`get_next_as_optional`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/distribute/DistributedIterator?hl=en#get_next_as_optional) method for [`tf.distribute.DistributedIterator`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/distribute/DistributedIterator?hl=en) class to return a `tf.experimental.Optional` instance that contains the next value for all replicas or none instead of raising an out of range error. Also see *new* [guide on input distribution](https://www.tensorflow.org/tutorials/distribute/input).
   * Allow `var.assign` on `MirroredVariables` with `aggregation=NONE` in replica context. Previously this would raise an error since there was no way to confirm that the values being assigned to the `MirroredVariables` were in fact identical.
   * `tf.distribute.experimental.MultiWorkerMirroredStrategy` adds support for partial batches. Workers running out of data now continue to participate in the training with empty inputs, instead of raising an error.
   * Improve the performance of reading metrics eagerly under `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
@@ -121,7 +121,7 @@
     * **[`image_dataset_from_directory`](https://www.tensorflow.org/api_docs/python/tf/keras/preprocessing/image_dataset_from_directory)** is a utility based on `tf.data.Dataset`, meant to replace the legacy `ImageDataGenerator`. It takes you from a structured directory of images to a labeled dataset, in one function call. Note that it doesn't perform image data augmentation (which is meant to be done using preprocessing layers).
     * **[`text_dataset_from_directory`](https://www.tensorflow.org/api_docs/python/tf/keras/preprocessing/text_dataset_from_directory)** takes you from a structured directory of text files to a labeled dataset, in one function call.
     * **[`timeseries_dataset_from_array`](https://www.tensorflow.org/api_docs/python/tf/keras/preprocessing/timeseries_dataset_from_array)** is a `tf.data.Dataset`-based replacement of the legacy `TimeseriesGenerator`. It takes you from an array of timeseries data to a dataset of shifting windows with their targets.
-  * Added [`experimental_steps_per_execution`](https://www.tensorflow.org/api_docs/python/tf/keras/Model?version=nightly#compile)
+  * Added [`experimental_steps_per_execution`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/keras/Model?hl=en#compile)
  arg to `model.compile` to indicate the number of batches to run per `tf.function` call. This can speed up Keras Models on TPUs up to 3x.
   * Extends `tf.keras.layers.Lambda` layers to support multi-argument lambdas, and keyword arguments when calling the layer.
   * Functional models now get constructed if *any* tensor in a layer call's arguments/keyword arguments comes from a keras input. Previously the functional api would only work if all of the elements in the first argument to the layer came from a keras input.
