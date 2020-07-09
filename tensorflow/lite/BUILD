@@ -106,6 +106,7 @@ cc_library(
         ":graph_info",
         ":memory_planner",
         ":simple_memory_arena",
+        ":util",
         "//tensorflow/lite/c:common",
     ],
 )
