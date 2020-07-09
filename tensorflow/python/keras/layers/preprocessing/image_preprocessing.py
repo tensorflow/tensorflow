@@ -57,10 +57,10 @@ W_AXIS = 2
 
 
 def check_fill_mode_and_interpolation(fill_mode, interpolation):
-  if fill_mode not in {'reflect', 'wrap', 'constant'}:
+  if fill_mode not in {'reflect', 'wrap', 'constant', 'nearest'}:
     raise NotImplementedError(
-        'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
-        '`constant` are supported.'.format(fill_mode))
+        'Unknown `fill_mode` {}. Only `reflect`, `wrap`, '
+        '`constant` and `nearest` are supported.'.format(fill_mode))
   if interpolation not in {'nearest', 'bilinear'}:
     raise NotImplementedError('Unknown `interpolation` {}. Only `nearest` and '
                               '`bilinear` are supported.'.format(interpolation))
@@ -449,7 +449,7 @@ class RandomTranslation(Layer):
       `width_factor=0.2` results in an output height shifted left or right
       by 20%.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      to the given mode (one of `{'constant', 'reflect', 'wrap', 'nearest'}`).
       - *reflect*: `(d c b a | a b c d | d c b a)`
         The input is extended by reflecting about the edge of the last pixel.
       - *constant*: `(k k k k | a b c d | k k k k)`
@@ -457,6 +457,8 @@ class RandomTranslation(Layer):
         same constant value k = 0.
       - *wrap*: `(a b c d | a b c d | a b c d)`
         The input is extended by wrapping around to the opposite edge.
+      - *nearest*: `(a a a a | a b c d | d d d d)`
+        The input is extended by the nearest pixel.
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
@@ -625,7 +627,7 @@ def transform(images,
       transform mapping input points to output points. Note that gradients are
       not backpropagated into transformation parameters.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      to the given mode (one of `{'constant', 'reflect', 'wrap', 'nearest'}`).
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     output_shape: Output dimesion after the transform, [height, width]. If None,
       output is the same size as input image.
@@ -643,6 +645,9 @@ def transform(images,
 
   wrap (a b c d | a b c d | a b c d)
   The input is extended by wrapping around to the opposite edge.
+
+  nearest (a a a a | a b c d | d d d d)
+  The input is extended by the nearest pixel.
 
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
@@ -751,13 +756,16 @@ class RandomRotation(Layer):
       `factor=0.2` results in an output rotating by a random amount in the range
       `[-20% * 2pi, 20% * 2pi]`.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      to the given mode (one of `{'constant', 'reflect', 'wrap', 'nearest'}`).
       - *reflect*: `(d c b a | a b c d | d c b a)`
         The input is extended by reflecting about the edge of the last pixel.
       - *constant*: `(k k k k | a b c d | k k k k)`
         The input is extended by filling all values beyond the edge with the
         same constant value k = 0.
       - *wrap*: `(a b c d | a b c d | a b c d)`
+        The input is extended by wrapping around to the opposite edge.
+      - *nearest*: `(a a a a | a b c d | d d d d)`
+        The input is extended by the nearest pixel.
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
@@ -862,13 +870,16 @@ class RandomZoom(Layer):
       to 30%. Defaults to `None`, i.e., zooming vertical and horizontal
       directions by preserving the aspect ratio.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      to the given mode (one of `{'constant', 'reflect', 'wrap', 'nearest'}`).
       - *reflect*: `(d c b a | a b c d | d c b a)`
         The input is extended by reflecting about the edge of the last pixel.
       - *constant*: `(k k k k | a b c d | k k k k)`
         The input is extended by filling all values beyond the edge with the
         same constant value k = 0.
       - *wrap*: `(a b c d | a b c d | a b c d)`
+        The input is extended by wrapping around to the opposite edge.
+      - *nearest*: `(a a a a | a b c d | d d d d)`
+        The input is extended by the nearest pixel.
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
