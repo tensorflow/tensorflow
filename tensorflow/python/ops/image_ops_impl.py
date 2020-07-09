@@ -879,27 +879,38 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
   `target_height` by `target_width`.
 
   Usage Example:
-  t = tf.constant([[1, 2, 3], [4, 5, 6]])
-  offset_height = tf.constant(1), 
-  offset_width = tf.constant(1)
-  target_height = tf.constant(4)
-  target_width = tf.constant(7)
-  #constant_values = 0
-  tf.image.pad_to_bounding_box(t, offset_height=offset_height, offset_width=offset_width, target_height=target_height, target_width=target_width, mode="CONSTANT")  
-                                   # [[0, 0, 0, 0, 0, 0, 0],
-                                   #  [0, 0, 1, 2, 3, 0, 0],
-                                   #  [0, 0, 4, 5, 6, 0, 0],
-                                   #  [0, 0, 0, 0, 0, 0, 0]]
-  tf.image.pad_to_bounding_box(t, offset_height=offset_height, offset_width=offset_width, target_height=target_height, target_width=target_width, mode="REFLECT")  
-                                  # [[6, 5, 4, 5, 6, 5, 4],
-                                  #  [3, 2, 1, 2, 3, 2, 1],
-                                  #  [6, 5, 4, 5, 6, 5, 4],
-                                  #  [3, 2, 1, 2, 3, 2, 1]]
-  tf.image.pad_to_bounding_box(t, offset_height=offset_height, offset_width=offset_width, target_height=target_height, target_width=target_width, mode="SYMMETRIC")  
-                                    # [[2, 1, 1, 2, 3, 3, 2],
-                                    #  [2, 1, 1, 2, 3, 3, 2],
-                                    #  [5, 4, 4, 5, 6, 6, 5],
-                                    #  [5, 4, 4, 5, 6, 6, 5]]
+>>> x = [[[1., 2., 3.], [4., 5., 6.]],
+         [[7., 8., 9.], [10., 11., 12.]]]
+>>> padded_image_constant = tf.image.pad_to_bounding_box(x, 1, 1, 4, 4,
+                                                         mode="CONSTANT", constant_values=0)
+                                                         
+>>> padded_image_constant
+tf.Tensor(
+[[[ 0.  0.  0.], [ 0.  0.  0.], [ 0.  0.  0.], [ 0.  0.  0.]],
+ [[ 0.  0.  0.], [ 1.  2.  3.], [ 4.  5.  6.], [ 0.  0.  0.]],
+ [[ 0.  0.  0.], [ 7.  8.  9.], [10. 11. 12.], [ 0.  0.  0.]],
+ [[ 0.  0.  0.], [ 0.  0.  0.], [ 0.  0.  0.], [ 0.  0.  0.]]],
+ shape=(4, 4, 3), dtype=float32)
+ 
+>>> padded_image_reflect = tf.image.pad_to_bounding_box(x, 1, 1, 4, 4,
+                                                       mode="REFLECT")
+>>> padded_image_reflect
+tf.Tensor(
+[[[10. 11. 12.], [ 7.  8.  9.], [10. 11. 12.], [ 7.  8.  9.]],
+ [[ 4.  5.  6.], [ 1.  2.  3.], [ 4.  5.  6.], [ 1.  2.  3.]],
+ [[10. 11. 12.], [ 7.  8.  9.], [10. 11. 12.], [ 7.  8.  9.]],
+ [[ 4.  5.  6.], [ 1.  2.  3.], [ 4.  5.  6.], [ 1.  2.  3.]]],
+ shape=(4, 4, 3), dtype=float32)
+ 
+>>> padded_image_symmetric = tf.image.pad_to_bounding_box(x, 1, 1, 4, 4,
+                                                          mode="SYMMETRIC")
+>>> padded_image_symmetric
+tf.Tensor(
+[[[ 1.  2.  3.], [ 1.  2.  3.], [ 4.  5.  6.], [ 4.  5.  6.]],
+ [[ 1.  2.  3.], [ 1.  2.  3.], [ 4.  5.  6.], [ 4.  5.  6.]],
+ [[ 7.  8.  9.], [ 7.  8.  9.], [10. 11. 12.], [10. 11. 12.]],
+ [[ 7.  8.  9.], [ 7.  8.  9.], [10. 11. 12.], [10. 11. 12.]]],
+ shape=(4, 4, 3), dtype=float32)
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
