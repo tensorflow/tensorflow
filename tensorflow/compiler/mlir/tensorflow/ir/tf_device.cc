@@ -207,7 +207,7 @@ Operation::result_range ParallelExecuteOp::GetRegionOutputs(
       GetRegionBlockWithIndex(region_index).getTerminator()->getNumOperands();
 
   int return_value_offset = 0;
-  for (int region_id = 0; static_cast<int>(region_id) < region_index; ++region_id)
+  for (int region_id = 0; region_id < region_index; ++region_id)
     return_value_offset +=
         GetRegionBlockWithIndex(region_id).getTerminator()->getNumOperands();
 
