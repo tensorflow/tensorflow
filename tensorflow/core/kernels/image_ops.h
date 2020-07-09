@@ -30,7 +30,7 @@ namespace tensorflow {
 namespace generator {
 
 enum Interpolation { NEAREST, BILINEAR };
-enum Mode { REFLECT, WRAP, CONSTANT };
+enum Mode { REFLECT, WRAP, CONSTANT, NEAREST };
 
 using Eigen::array;
 using Eigen::DenseIndex;
@@ -85,6 +85,16 @@ template <typename Device>
 struct MapCoordinate<Device, Mode::CONSTANT> {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
                                                          const DenseIndex len) {
+    return out_coord;
+  }
+};
+
+template <typename Device>
+struct MapCoordinate<Device, Mode::NEAREST> {
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
+                                                         const DenseIndex len) {
+    if (out_coord < 0) return 0;
+    else if (out_coord >= len) return len - 1;
     return out_coord;
   }
 };
@@ -228,6 +238,11 @@ struct FillProjectiveTransform {
       case Mode::CONSTANT:
         output->device(device) =
             output->generate(ProjectiveGenerator<Device, T, Mode::CONSTANT>(
+                images, transform, interpolation));
+        break;
+      case Mode::NEAREST:
+        output->device(device) =
+            output->generate(ProjectiveGenerator<Device, T, Mode::NEAREST>(
                 images, transform, interpolation));
         break;
     }

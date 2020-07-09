@@ -75,9 +75,11 @@ class ImageProjectiveTransformV2 : public OpKernel {
       fill_mode_ = Mode::WRAP;
     } else if (mode_str == "CONSTANT") {
       fill_mode_ = Mode::CONSTANT;
+    } else if (mode_str == "NEAREST") {
+      fill_mode_ = Mode::NEAREST;
     } else {
       LOG(ERROR) << "Invalid mode " << mode_str
-                 << ". Supported types: REFLECT, WRAP, CONSTANT";
+                 << ". Supported types: REFLECT, WRAP, CONSTANT, NEAREST";
     }
   }
 
@@ -182,6 +184,7 @@ namespace generator {
 DECLARE_MAP_FUNCTOR(Mode::REFLECT);
 DECLARE_MAP_FUNCTOR(Mode::WRAP);
 DECLARE_MAP_FUNCTOR(Mode::CONSTANT);
+DECLARE_MAP_FUNCTOR(Mode::NEAREST);
 
 }  // end namespace generator
 
