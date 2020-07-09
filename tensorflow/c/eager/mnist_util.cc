@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/cluster.pb.h"
 
 #include <memory>
+#include <iostream>
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -105,17 +106,15 @@ TF_AbstractTensor* AbstractRelu(TF_AbstractTensor* A, const char* op_name, TF_Ex
     auto* relu_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(relu_op, "Relu", s);
 
-    //ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s); 
+
     TF_AbstractOpSetOpName(relu_op, "relu", s);
-   // ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_AbstractTensor* inputs[1] = {A};
     TF_OutputList* relu_outputs = TF_NewOutputList();
     TF_OutputListSetNumOutputs(relu_outputs, 1, s);
-  //  ASSERT_EQ(TF_OK, TF_GetCode(s) << TF_Message(s);
+
     
     // Trace the operation now (create a node in the graph).
     TF_ExecuteOperation(relu_op, 1, inputs, relu_outputs, s);
-  //  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_DeleteAbstractOp(relu_op);
     
     // Extract the resulting tensor.
@@ -125,27 +124,31 @@ TF_AbstractTensor* AbstractRelu(TF_AbstractTensor* A, const char* op_name, TF_Ex
     return relu_out; 
 }
 
-TF_AbstractTensor* AbstractSoftmaxCrossEntropyLoss(TF_AbstractTensor* scores, TF_AbstractTensor* y_labels, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s){
+TF_AbstractTensor* AbstractSparseSoftmaxCrossEntropyLoss(TF_AbstractTensor* scores, TF_AbstractTensor* y_labels, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s){
+    
     // Build an abstract operation, inputs and output.
     auto* sm = TF_NewAbstractOp(graph_ctx);
-    TF_AbstractOpSetOpType(sm, "SoftmaxCrossEntropyWithLogits", s);
-    //ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-    TF_AbstractOpSetOpName(sm, "softmax_loss", s);
-   // ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_AbstractOpSetOpType(sm, "SparseSoftmaxCrossEntropyWithLogits", s);
+   
+   
+    TF_AbstractOpSetOpName(sm, op_name, s);
     TF_AbstractTensor* inputs[2] = {scores,y_labels}; 
     TF_OutputList* softmax_outputs = TF_NewOutputList();
     TF_OutputListSetNumOutputs(softmax_outputs, 2, s);
-   // ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
     
     // Trace the operation now (create a node in the graph).
     TF_ExecuteOperation(sm, 2, inputs, softmax_outputs, s);
-   // ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  
     TF_DeleteAbstractOp(sm);
     
     // Extract the resulting tensor.
     TF_AbstractTensor* softmax_loss = TF_OutputListGet(softmax_outputs, 0);
     TF_AbstractTensor* backprop = TF_OutputListGet(softmax_outputs, 1); // Don't need this for forward pass
+    
+    //TF_DeleteAbstractTensor(backprop); // getting error when I try to delete this tensor?
     TF_DeleteOutputList(softmax_outputs);
+
     
     return softmax_loss;
 

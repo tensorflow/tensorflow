@@ -24,14 +24,15 @@ limitations under the License.
 // Graph Tracing for abstract operation MatMul
 TF_AbstractTensor* AbstractMatMul(TF_AbstractTensor* A, TF_AbstractTensor* B, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s);
 
-// 
+// Graph Tracing for abstract operation Add
 TF_AbstractTensor* AbstractAdd(TF_AbstractTensor* A, TF_AbstractTensor* B, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s);
 
 // Graph Tracing for abstract operation Relu
 TF_AbstractTensor* AbstractRelu(TF_AbstractTensor* A, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s);
 
 // Graph Tracing for abstract Softmax Cross Entropy Loss. Returns scalar loss
-TF_AbstractTensor* AbstractSoftmaxCrossEntropyLoss(TF_AbstractTensor* scores, TF_AbstractTensor* y_labels, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s);
+TF_AbstractTensor* AbstractSparseSoftmaxCrossEntropyLoss(TF_AbstractTensor* scores, TF_AbstractTensor* y_labels, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s);
 
+// Returns abstract function and frees memory associated with the graph context
 TF_AbstractFunction* AbstractFinalizeFunction(TF_OutputList* func_outputs, TF_ExecutionContext* graph_ctx, TF_Status* s);
 #endif  // TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_
