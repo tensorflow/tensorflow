@@ -728,7 +728,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
 
   // Handle call operations by looking up callee and infering return shape as
   // needed.
-  if (isa<PartitionedCallOp, StatefulPartitionedCallOp>(op))
+  if (isa<PartitionedCallOp, StatefulPartitionedCallOp, TPUPartitionedCallOp>(
+          op))
     return InferShapeForCall(op);
 
   // tf.Cast are only inferred if they have at least one user in the TF dialect
