@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,9 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
-#include <fuzzer/FuzzedDataProvider.h>
-
-// This is a fuzzer for tensorflow::str_util::ConsumeLeadingDigits
+// This is a fuzzer for tensorflow::str_util::ConsumeNonWhitespace
 
 namespace {
 
@@ -30,13 +28,17 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   char *char_data = reinterpret_cast<char*>(byte_data);
 
   tensorflow::StringPiece sp(char_data, size);
-  tensorflow::uint64 val;
+  tensorflow::StringPiece spe;
 
-  const bool leading_digits = tensorflow::str_util::ConsumeLeadingDigits(&sp, &val);
-  const char lead_char_consume_digits = *(sp.data());
-  if (leading_digits) {
-    assert(lead_char_consume_digits < '0' && lead_char_consume_digits > '9');
-    assert(val >= 0);
+  while (sp.size() > 0) {
+    const size_t initial_size = sp.size();
+    const bool leading_whitespace = tensorflow::str_util::ConsumeNonWhitespace(&sp, &spe);
+
+    if (leading_whitespace) assert(spe.size() > 0);
+    assert(initial_size == (sp.size() + spe.size()));
+
+    tensorflow::str_util::RemoveLeadingWhitespace(&sp);
+    assert(initial_size > sp.size());
   }
 
   return 0;
