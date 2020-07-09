@@ -140,6 +140,8 @@ def delete_tracking(obj, name):
 class ResourceTracker(object):
   """An object that tracks a list of resources."""
 
+  __slots__ = ["_resources"]
+
   def __init__(self):
     self._resources = []
 
@@ -182,6 +184,8 @@ def resource_tracker_scope(resource_tracker):
 
 class CapturableResourceDeleter(object):
   """Deleter to destroy CapturableResource without overriding its __del__()."""
+
+  __slots__ = ["_destruction_context", "_destroy_resource"]
 
   def __init__(self, destroy_resource_fn=None):
     if destroy_resource_fn:

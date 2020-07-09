@@ -40,6 +40,8 @@ class Executor(object):
   ```
   """
 
+  __slots__ = ["_handle"]
+
   def __init__(self, handle):
     self._handle = handle
 
