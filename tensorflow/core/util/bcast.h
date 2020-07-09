@@ -177,7 +177,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
 
   // 1-extend and align all vectors.
   for (int i = 0; i < N; ++i) {
-    int copy_i_size = copy[i].size();
+    const int copy_i_size = copy[i].size();
     if (copy_i_size < largest_rank) {
       copy[i].resize(largest_rank, 1);
     }
