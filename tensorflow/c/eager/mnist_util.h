@@ -35,4 +35,7 @@ TF_AbstractTensor* AbstractSparseSoftmaxCrossEntropyLoss(TF_AbstractTensor* scor
 
 // Returns abstract function and frees memory associated with the graph context
 TF_AbstractFunction* AbstractFinalizeFunction(TF_OutputList* func_outputs, TF_ExecutionContext* graph_ctx, TF_Status* s);
+
+// Returns a 2-layer AbstractFunction* that traces a 2-layer MNIST Model
+TF_AbstractFunction* getAbstractMNISTForward(TF_Status* s);
 #endif  // TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_

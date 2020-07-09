@@ -44,18 +44,14 @@ using namespace std;
 TF_AbstractTensor* AbstractMatMul(TF_AbstractTensor* A, TF_AbstractTensor* B, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s) {
     auto* mm_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(mm_op, "MatMul", s);
-    //ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_AbstractOpSetOpName(mm_op, op_name, s);
-    //ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     
     TF_AbstractTensor* inputs[2] = {A, B};
     TF_OutputList* mm_outputs = TF_NewOutputList();
     TF_OutputListSetNumOutputs(mm_outputs, 1, s);
-    //ASSERT_EQ(TF_OK, TF_GetCode(s) << TF_Message(s));
     
     // Trace the operation now (create a node in the graph).
     TF_ExecuteOperation(mm_op, 2, inputs, mm_outputs, s);
-    //ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_DeleteAbstractOp(mm_op);
     
     // Extract the resulting tensor.
@@ -105,14 +101,12 @@ TF_AbstractTensor* AbstractRelu(TF_AbstractTensor* A, const char* op_name, TF_Ex
     // Build an abstract operation, inputs and output.
     auto* relu_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(relu_op, "Relu", s);
+    TF_AbstractOpSetOpName(relu_op, op_name, s);
 
-
-    TF_AbstractOpSetOpName(relu_op, "relu", s);
     TF_AbstractTensor* inputs[1] = {A};
     TF_OutputList* relu_outputs = TF_NewOutputList();
     TF_OutputListSetNumOutputs(relu_outputs, 1, s);
 
-    
     // Trace the operation now (create a node in the graph).
     TF_ExecuteOperation(relu_op, 1, inputs, relu_outputs, s);
     TF_DeleteAbstractOp(relu_op);
@@ -129,17 +123,14 @@ TF_AbstractTensor* AbstractSparseSoftmaxCrossEntropyLoss(TF_AbstractTensor* scor
     // Build an abstract operation, inputs and output.
     auto* sm = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(sm, "SparseSoftmaxCrossEntropyWithLogits", s);
-   
-   
     TF_AbstractOpSetOpName(sm, op_name, s);
+
     TF_AbstractTensor* inputs[2] = {scores,y_labels}; 
     TF_OutputList* softmax_outputs = TF_NewOutputList();
     TF_OutputListSetNumOutputs(softmax_outputs, 2, s);
 
-    
     // Trace the operation now (create a node in the graph).
     TF_ExecuteOperation(sm, 2, inputs, softmax_outputs, s);
-  
     TF_DeleteAbstractOp(sm);
     
     // Extract the resulting tensor.
@@ -152,6 +143,53 @@ TF_AbstractTensor* AbstractSparseSoftmaxCrossEntropyLoss(TF_AbstractTensor* scor
     
     return softmax_loss;
 
+}
+
+TF_AbstractFunction* getAbstractMNISTForward(TF_Status* s){
+
+  /**
+    * We will trace a 2-layer fully connected network for an MNIST model:
+    *
+    *   def mnist_forward(X, W1, W2):
+    *     mm_out_1 = tf.matmul(X,W1)
+    *     hidden_layer = tf.ReLu(mm_out_1)
+    *     scores = tf.matmul(hidden_layer,W2)
+    *     softmax = tf.softmax(scores)
+    *     return scores, softmax 
+    *
+    */
+
+  // Start a new function / execution context.
+  string fn_name = "MNIST_forward";
+  TF_ExecutionContext* graph_ctx = TF_CreateFunction(fn_name.c_str(), s);
+ 
+  auto* X_abstract = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s); // X = data
+  auto* W1_abstract = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s); // W1 = first FC layer
+  auto* W2_abstract = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s); // W2  = second FC layer
+  auto* y_abstract = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s); // W2  = second FC layer
+
+  // Tracing
+  TF_AbstractTensor* mm_out_1 = AbstractMatMul(X_abstract, W1_abstract, "mm1", graph_ctx, s);
+  TF_AbstractTensor* hidden_layer = AbstractRelu(mm_out_1, "relu", graph_ctx, s);
+  TF_AbstractTensor* scores = AbstractMatMul(hidden_layer, W2_abstract, "mm2", graph_ctx, s);
+  TF_AbstractTensor* softmax_loss = AbstractSparseSoftmaxCrossEntropyLoss(scores, y_abstract, "softmax", graph_ctx, s);
+
+  // Free memory associated with abstract tensors
+  TF_DeleteAbstractTensor(X_abstract);
+  TF_DeleteAbstractTensor(W1_abstract);
+  TF_DeleteAbstractTensor(W2_abstract);
+  TF_DeleteAbstractTensor(y_abstract);
+  TF_DeleteAbstractTensor(mm_out_1);
+  TF_DeleteAbstractTensor(hidden_layer);
+
+  TF_OutputList* f_outputs = TF_NewOutputList();
+  TF_OutputListPushBack(f_outputs, scores, s);
+  TF_OutputListPushBack(f_outputs, softmax_loss, s);
+  
+  // Finalize the function by providing the returned values.
+  TF_AbstractFunction* mnist_func = AbstractFinalizeFunction(f_outputs, graph_ctx, s);
+
+  return mnist_func;
 }
 
 
