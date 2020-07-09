@@ -46,7 +46,6 @@ struct TfOp {
   absl::string_view name;
   absl::string_view type;
 };
-
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname);
 
 // Returns a vector of TF name scopes extracted from tf_op_full_name.
@@ -86,6 +85,15 @@ inline bool IsMemcpyDToHOp(absl::string_view tf_op_type) {
 // delimited by '(' and ')' and separated by ';', into the individual shapes.
 std::vector<absl::string_view> ParseTensorShapes(
     absl::string_view tensor_shapes);
+
+// Returns true if the given string matches OpDef.name pattern.
+bool IsTfOpName(absl::string_view op_name);
+
+// Returns true if the given string matches NodeDef.name pattern.
+bool IsTfOpType(absl::string_view op_type);
+
+// Returns true if the given string matches JAX pattern.
+bool IsJaxOpType(absl::string_view op_type);
 
 }  // namespace profiler
 }  // namespace tensorflow

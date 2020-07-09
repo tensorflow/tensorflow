@@ -3,6 +3,7 @@
 load(
     "//tensorflow/core/platform/default:build_config.bzl",
     _if_llvm_aarch64_available = "if_llvm_aarch64_available",
+    _if_llvm_system_z_available = "if_llvm_system_z_available",
     _pyx_library = "pyx_library",
     _tf_additional_all_protos = "tf_additional_all_protos",
     _tf_additional_binary_deps = "tf_additional_binary_deps",
@@ -44,6 +45,7 @@ load(
 )
 
 if_llvm_aarch64_available = _if_llvm_aarch64_available
+if_llvm_system_z_available = _if_llvm_system_z_available
 pyx_library = _pyx_library
 tf_additional_all_protos = _tf_additional_all_protos
 tf_additional_binary_deps = _tf_additional_binary_deps

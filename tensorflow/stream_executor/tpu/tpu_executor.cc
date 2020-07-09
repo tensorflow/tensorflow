@@ -18,11 +18,8 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/tpu/device_memory_base_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/stream_executor/tpu/tpu_timer.h"
 

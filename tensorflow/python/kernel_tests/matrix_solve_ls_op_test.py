@@ -335,7 +335,7 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
             ops.device("/cpu:0"):
           matrix, rhs = _GenerateTestData(matrix_shape, num_rhs)
           x = linalg_ops.matrix_solve_ls(matrix, rhs, regularizer)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(x),
@@ -350,7 +350,7 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
                 ops.device("/gpu:0"):
             matrix, rhs = _GenerateTestData(matrix_shape, num_rhs)
             x = linalg_ops.matrix_solve_ls(matrix, rhs, regularizer)
-            variables.global_variables_initializer().run()
+            self.evaluate(variables.global_variables_initializer())
             self.run_op_benchmark(
                 sess,
                 control_flow_ops.group(x),

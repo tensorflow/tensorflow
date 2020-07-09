@@ -108,9 +108,9 @@ _ALL_BLACKLISTED_OPS = (
     set(ASYNC_STATEFUL_OPS) | set(LEGACY_RANDOM_OPS)
     | set(_ORDER_INSENSITIVE_STATEFUL_OPS))
 
-# Op types that are marked as stateless, but should be whitelisted to add auto
+# Op types that are marked as stateless, but should be allowlisted to add auto
 # control dependencies.
-_WHITELIST_STATELESS_OPS = [
+_ALLOWLIST_STATELESS_OPS = [
     # As TPU collective ops are blocking, if there are more than one collective
     # op in the function, we need to make sure different collectives ops are
     # scheduled in certain orders. Otherwise if at the same time all the
@@ -125,7 +125,7 @@ _WHITELIST_STATELESS_OPS = [
 def op_is_stateful(op):
   # pylint: disable=protected-access
   return (op._is_stateful and op.type not in _ALL_BLACKLISTED_OPS) or (
-      op.type in _WHITELIST_STATELESS_OPS)
+      op.type in _ALLOWLIST_STATELESS_OPS)
 
 
 class ResourceType(enum.Enum):
@@ -174,6 +174,11 @@ class AutomaticControlDependencies(object):
 
   NOT THREAD SAFE
   """
+
+  __slots__ = [
+      "_returned_tensors", "ops_which_must_run", "_graph", "_n_operations",
+      "collective_manager_ids_used"
+  ]
 
   def __init__(self):
     self._returned_tensors = object_identity.ObjectIdentitySet()

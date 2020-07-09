@@ -188,8 +188,8 @@ class CenterCropTest(keras_parameterized.TestCase):
       ('center_crop_10_by_8', 10, 8),
       ('center_crop_10_by_12', 10, 12))
   def test_invalid_center_crop(self, expected_height, expected_width):
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r'assertion failed'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r'assertion failed'):
       self._run_test(expected_height, expected_width)
 
   def test_config_with_custom_name(self):

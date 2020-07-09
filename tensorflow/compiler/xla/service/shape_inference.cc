@@ -2127,8 +2127,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(VerifyReducerShape(to_apply, init_values, element_types,
                                         num_reduced_args));
 
-  std::set<int64> dimensions_to_reduce_set(dimensions_to_reduce.begin(),
-                                           dimensions_to_reduce.end());
+  absl::flat_hash_set<int64> dimensions_to_reduce_set;
+  for (int64 dim_to_reduce : dimensions_to_reduce) {
+    if (!dimensions_to_reduce_set.insert(dim_to_reduce).second) {
+      return InvalidArgument("Duplicate reduction dimension: %d",
+                             dim_to_reduce);
+    }
+  }
+
   std::vector<int64> new_dimensions;
   std::vector<bool> new_is_dynamic;
   for (int i = 0; i < arg.rank(); ++i) {

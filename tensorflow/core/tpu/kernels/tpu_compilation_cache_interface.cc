@@ -157,7 +157,7 @@ void TpuCompilationCacheInterface::UnloadAndDestroy(CompiledSubgraph* entry) {
 
 size_t TpuCompilationCacheInterface::RemoveEntry(const string& key) {
   auto erased = cache_.erase(key);
-  tpu::TpuCompilationCacheMetrics::SetCacheEntryCount(cache_.size());
+  TpuCompilationMetrics::SetCacheEntryCount(cache_.size());
 
   auto parsed_key_or_status = ParseCompilationCacheKey(key);
   CHECK(parsed_key_or_status.status().ok());
@@ -273,7 +273,7 @@ void TpuCompilationCacheInterface::InsertEntry(const string& key,
   auto cache_inserted =
       cache_.insert(std::pair<string, CompiledSubgraph*>(key, entry));
   CHECK(cache_inserted.second);
-  tpu::TpuCompilationCacheMetrics::SetCacheEntryCount(cache_.size());
+  TpuCompilationMetrics::SetCacheEntryCount(cache_.size());
 
   auto parsed_key_or_status = ParseCompilationCacheKey(key);
   CHECK(parsed_key_or_status.status().ok());
@@ -352,7 +352,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
 
   if (is_new_key) {
     cache_key = subgraph_key.ToString();
-    tpu::TpuCompilationCacheMetrics::IncrementCacheLookupCount(
+    TpuCompilationMetrics::IncrementCacheLookupCount(
         /*is_cache_hit=*/false, session_name);
     const string msg =
         strings::StrCat("TPU host compilation cache miss: cache_key(",
@@ -400,7 +400,7 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
       entry->tpu_program_group->LogProgramMemorySummary();
     }
   } else {
-    tpu::TpuCompilationCacheMetrics::IncrementCacheLookupCount(
+    TpuCompilationMetrics::IncrementCacheLookupCount(
         /*is_cache_hit=*/true, session_name);
     const string msg =
         strings::StrCat("TPU host compilation cache hit: cache_key(", cache_key,

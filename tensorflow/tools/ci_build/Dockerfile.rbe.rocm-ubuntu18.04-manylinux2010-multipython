@@ -1,0 +1,79 @@
+# Dockerfile for ROCm RBE builds.
+#
+# To push a new version, run:
+# $ docker build -f Dockerfile.local-toolchain-ubuntu18.04-manylinux2010 \
+#  --tag "local-toolchain-ubuntu18.04-manylinux2010" .
+# $ docker build -f Dockerfile.rbe.rocm-ubuntu18.04-manylinux2010-multipython \
+#  --tag "gcr.io/tensorflow-testing/nosla-rocm-ubuntu18.04-manylinux2010-multipython" .
+# $ docker push gcr.io/tensorflow-testing/nosla-rocm-ubuntu18.04-manylinux2010-multipython
+
+FROM ubuntu:18.04
+COPY --from=local-toolchain-ubuntu18.04-manylinux2010 /dt7 /dt7
+COPY --from=local-toolchain-ubuntu18.04-manylinux2010 /dt8 /dt8
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# Install ROCm packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl libnuma-dev gnupg sudo libelf1 build-essential \
+  && curl -sL http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key | apt-key add - \
+  && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/debian/ xenial main" | tee /etc/apt/sources.list.d/rocm.list \
+  && apt-get update && apt-get install -y --no-install-recommends \
+    rocm-dev rocm-libs hipcub rocm-utils rocm-cmake \
+    rocfft miopen-hip miopengemm rocblas hipblas rocrand rccl \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Set ROCm environment variables and paths.
+ARG ROCM_PATH=/opt/rocm
+ENV HCC_HOME=$ROCM_PATH/hcc
+ENV HIP_PATH=$ROCM_PATH/hip
+ENV OPENCL_ROOT=$ROCM_PATH/opencl
+ENV PATH="$ROCM_PATH/bin:${PATH}"
+ENV PATH="$HCC_HOME/bin:$HIP_PATH/bin:${PATH}"
+ENV PATH="$OPENCL_ROOT/bin:${PATH}"
+
+# Set target file to help determine which device(s) to build for
+RUN bash -c "ls -al /opt/roc*"
+RUN bash -c "echo -e 'gfx803\ngfx900\ngfx906' > $ROCM_PATH/bin/target.lst"
+
+# Copy and run the install scripts.
+COPY install/install_bootstrap_deb_packages.sh /install/
+RUN /install/install_bootstrap_deb_packages.sh
+
+COPY install/install_deb_packages.sh /install/
+RUN /install/install_deb_packages.sh
+
+# Install additional packages needed for this image:
+# - dependencies to build Python from source
+# - patchelf, as it is required by auditwheel
+RUN apt-get update && apt-get install -y \
+    libbz2-dev \
+    libffi-dev \
+    libgdbm-dev \
+    libncurses5-dev \
+    libnss3-dev \
+    libreadline-dev \
+    patchelf \
+      && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY install/install_bazel.sh /install/
+RUN /install/install_bazel.sh
+
+COPY install/build_and_install_python.sh /install/
+RUN /install/build_and_install_python.sh "2.7.17" "--enable-unicode=ucs4"
+RUN /install/build_and_install_python.sh "3.5.9"
+RUN /install/build_and_install_python.sh "3.6.9"
+RUN /install/build_and_install_python.sh "3.7.7"
+RUN /install/build_and_install_python.sh "3.8.2"
+
+COPY install/install_pip_packages_by_version.sh /install/
+RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip2.7"
+RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8"
+RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.5"
+RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.6"
+RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.7"
+
+ENV CLANG_VERSION="r42cab985fd95ba4f3f290e7bb26b93805edb447d"
+COPY install/install_latest_clang.sh /install/
+RUN /install/install_latest_clang.sh

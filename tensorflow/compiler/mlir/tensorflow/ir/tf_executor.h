@@ -53,7 +53,7 @@ enum Kind {
 
 // The Control type is a token-like value that models control dependencies from
 // TensorFlow graphs.
-class ControlType : public Type::TypeBase<ControlType, Type> {
+class ControlType : public Type::TypeBase<ControlType, Type, TypeStorage> {
  public:
   using Base::Base;
 
@@ -65,7 +65,7 @@ class ControlType : public Type::TypeBase<ControlType, Type> {
   static bool kindof(unsigned kind) { return kind == TFTypes::Control; }
 };
 
-class TokenType : public Type::TypeBase<TokenType, Type> {
+class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
  public:
   using Base::Base;
 

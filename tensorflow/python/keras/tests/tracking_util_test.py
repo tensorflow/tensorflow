@@ -515,7 +515,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     new_root.optimizer = adam.Adam(0.1)
     slot_status.assert_existing_objects_matched()
     if not context.executing_eagerly():
-      with self.assertRaisesRegexp(AssertionError, "Unresolved object"):
+      with self.assertRaisesRegex(AssertionError, "Unresolved object"):
         slot_status.assert_consumed()
     self.assertEqual(12., self.evaluate(new_root.var))
     if context.executing_eagerly():
@@ -847,11 +847,11 @@ class CheckpointCompatibilityTests(test.TestCase):
       else:
         # When graph building, we haven't read any keys, so we don't know
         # whether the restore will be complete.
-        with self.assertRaisesRegexp(AssertionError, "not restored"):
+        with self.assertRaisesRegex(AssertionError, "not restored"):
           status.assert_consumed()
-        with self.assertRaisesRegexp(AssertionError, "not restored"):
+        with self.assertRaisesRegex(AssertionError, "not restored"):
           status.assert_existing_objects_matched()
-        with self.assertRaisesRegexp(AssertionError, "not restored"):
+        with self.assertRaisesRegex(AssertionError, "not restored"):
           status.assert_nontrivial_match()
       status.run_restore_ops()
       self._check_sentinels(root)

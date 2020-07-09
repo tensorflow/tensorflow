@@ -228,4 +228,14 @@ Reads the selected metric values from the metrics collection registry.
 'result' is a serialized xrt::MetricsReport proto.
 )");
 
+REGISTER_OP("XRTMemoryInfo")
+    .Output("result: string")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(
+        R"(
+Returns the memory information of the device this op executes on/
+
+'result' is a serialized xrt::MemoryInfo proto.
+)");
+
 }  // namespace tensorflow

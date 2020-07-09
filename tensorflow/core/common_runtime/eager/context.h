@@ -377,8 +377,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // class/struct.
   //
   // Enables the eager context to communicate with remote devices. When
-  // initializing with this method, this context will be the master context,
-  // which will kill all its slaves in shutdown.
+  // initializing with this method, this context will be the primary context,
+  // which will kill all its remote contexts in shutdown.
   //
   // - server: A ServerInterface that exports the tensorflow.WorkerService.
   // Note that this class expects the server to already have been started.

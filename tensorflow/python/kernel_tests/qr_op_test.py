@@ -50,12 +50,12 @@ class QrOpTest(test.TestCase):
   def testWrongDimensions(self):
     # The input to svd should be a tensor of at least rank 2.
     scalar = constant_op.constant(1.)
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 "rank.* 2.*0"):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "rank.* 2.*0"):
       linalg_ops.qr(scalar)
     vector = constant_op.constant([1., 2.])
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 "rank.* 2.*1"):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "rank.* 2.*1"):
       linalg_ops.qr(vector)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
@@ -237,7 +237,7 @@ class QRBenchmark(test.Benchmark):
             low=-1.0, high=1.0, size=shape_).astype(np.float32)
         matrix = variables.Variable(matrix_value)
         q, r = linalg_ops.qr(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(q, r),
@@ -252,7 +252,7 @@ class QRBenchmark(test.Benchmark):
               low=-1.0, high=1.0, size=shape_).astype(np.float32)
           matrix = variables.Variable(matrix_value)
           q, r = linalg_ops.qr(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(q, r),

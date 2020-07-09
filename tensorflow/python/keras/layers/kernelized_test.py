@@ -87,18 +87,18 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(output_data, new_output_data, atol=1e-4)
 
   def test_invalid_output_dim(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'`output_dim` should be a positive integer. Given: -3.'):
       _ = kernel_layers.RandomFourierFeatures(output_dim=-3, scale=2.0)
 
   def test_unsupported_kernel_type(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'Unsupported kernel type: \'unsupported_kernel\'.'):
       _ = kernel_layers.RandomFourierFeatures(
           3, 'unsupported_kernel', stddev=2.0)
 
   def test_invalid_scale(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'When provided, `scale` should be a positive float. Given: 0.0.'):
       _ = kernel_layers.RandomFourierFeatures(output_dim=10, scale=0.0)
@@ -106,7 +106,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
   def test_invalid_input_shape(self):
     inputs = random_ops.random_uniform((3, 2, 4), seed=1)
     rff_layer = kernel_layers.RandomFourierFeatures(output_dim=10, scale=3.0)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r'The rank of the input tensor should be 2. Got 3 instead.'):
       _ = rff_layer(inputs)
@@ -166,7 +166,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
           output_dim=5,
           kernel_initializer=initializer,
           name='random_fourier_features')
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, r'The last dimension of the inputs to '
           '`RandomFourierFeatures` should be defined. Found `None`.'):
         rff_layer(inputs)
@@ -176,7 +176,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
           output_dim=5,
           kernel_initializer=initializer,
           name='random_fourier_features')
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, r'The last dimension of the inputs to '
           '`RandomFourierFeatures` should be defined. Found `None`.'):
         rff_layer(inputs)
@@ -201,7 +201,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       rff_layer.compute_output_shape(tensor_shape.TensorShape([3, 2, 3]))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'The innermost dimension of input shape must be defined.'):
       rff_layer.compute_output_shape(tensor_shape.TensorShape([3, None]))
 

@@ -112,6 +112,9 @@ struct TensorDescriptor : public GPUObjectDescriptor {
 
   bool IsBatchedWidth() const;
 
+  std::string GetWidth() const;
+  std::string GetSliceStride() const;
+
   TextureAddressMode ModeFromState() const;
 
   absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,

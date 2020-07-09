@@ -44,8 +44,8 @@ class StatsDatasetSerializationTest(
 
   @combinations.generate(test_base.default_test_combinations())
   def test_bytes_produced_stats_invalid_tag_shape(self):
-    with self.assertRaisesRegexp(
-        ValueError, "Shape must be rank 0 but is rank 1"):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 1"):
       # pylint: disable=g-long-lambda
       self.run_core_tests(
           lambda: dataset_ops.Dataset.range(100).apply(
@@ -71,8 +71,8 @@ class StatsDatasetSerializationTest(
 
   @combinations.generate(test_base.default_test_combinations())
   def test_latency_stats_invalid_tag_shape(self):
-    with self.assertRaisesRegexp(
-        ValueError, "Shape must be rank 0 but is rank 1"):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 1"):
       # pylint: disable=g-long-lambda
       self.run_core_tests(
           lambda: dataset_ops.Dataset.range(100).apply(

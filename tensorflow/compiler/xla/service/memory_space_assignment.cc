@@ -1642,7 +1642,8 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
 }
 
 bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
-    int64 start_time, int64 end_time, bool is_prefetch) const {
+    int64 start_time, int64 end_time, bool is_prefetch,
+    int64 extra_async_copy_limit) const {
   if (options_.max_outstanding_prefetches < 0 && is_prefetch) {
     return false;
   }
@@ -1655,12 +1656,14 @@ bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
     int64 num_prefetches =
         prefetch_interval_tree_.ChunksOverlappingInTime(start_time, end_time)
             .size();
-    return num_prefetches >= options_.max_outstanding_prefetches;
+    return num_prefetches >=
+           options_.max_outstanding_prefetches + extra_async_copy_limit;
   } else {
     int64 num_evictions =
         eviction_interval_tree_.ChunksOverlappingInTime(start_time, end_time)
             .size();
-    return num_evictions >= options_.max_outstanding_evictions;
+    return num_evictions >=
+           options_.max_outstanding_evictions + extra_async_copy_limit;
   }
 }
 
@@ -1911,6 +1914,11 @@ bool AlternateMemoryBestFitHeap::Prefetch(
   // outstanding async copy limit or async copy ordering, set
   // prefetch_failed_due_to_async_copy_.
   prefetch_failed_due_to_async_copy_ = false;
+  // While uses might be allowed to have additional outstanding prefetches.
+  int64 extra_async_copy_limit =
+      request.use->hlo_use.instruction->opcode() == HloOpcode::kWhile
+          ? options_.while_use_extra_outstanding_prefetch_limit
+          : 0;
   while (!options_.prefetch_interval_picker->Done()) {
     alternate_mem_interval.start = options_.prefetch_interval_picker->Next();
     CHECK_LT(alternate_mem_interval.start, request.latest_prefetch_time);
@@ -1924,9 +1932,9 @@ bool AlternateMemoryBestFitHeap::Prefetch(
       prefetch_failed_due_to_async_copy_ = true;
       continue;
     }
-    if (ViolatesMaximumOutstandingAsyncCopies(alternate_mem_interval.start,
-                                              request.latest_prefetch_time,
-                                              /*is_prefetch=*/true)) {
+    if (ViolatesMaximumOutstandingAsyncCopies(
+            alternate_mem_interval.start, request.latest_prefetch_time,
+            /*is_prefetch=*/true, extra_async_copy_limit)) {
       VLOG(4) << "This would violate the outstanding async copy limit.";
       prefetch_failed_due_to_async_copy_ = true;
       continue;

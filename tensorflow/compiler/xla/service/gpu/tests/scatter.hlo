@@ -2,6 +2,7 @@
 
 // CHECK-LABEL: define void @scatter_TensorFlowScatterV1(i8* align 64 dereferenceable(36) %alloc0, i8* align 16 dereferenceable(36) %alloc1, i8* align 16 dereferenceable(24) %alloc2, i8* align 16 dereferenceable(8) %alloc3) {
 // CHECK: entry:
+// CHECK:         %[[VAL_32:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_0:.*]] = getelementptr inbounds i8, i8* %[[VAL_1:.*]], i64 0
 // CHECK:         %[[VAL_2:.*]] = bitcast i8* %[[VAL_0]] to [3 x [3 x i32]]*
 // CHECK:         %[[VAL_3:.*]] = getelementptr inbounds i8, i8* %[[VAL_4:.*]], i64 0
@@ -34,7 +35,6 @@
 // CHECK:         br label %[[VAL_22]]
 // CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_21]]
 // CHECK:         %[[VAL_31:.*]] = getelementptr inbounds [3 x [3 x i32]], [3 x [3 x i32]]* %[[VAL_2]], i32 0, i32 %[[VAL_27]], i32 %[[VAL_18]]
-// CHECK:         %[[VAL_32:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_33:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_11]] to i32*
 // CHECK:         %[[VAL_34:.*]] = getelementptr inbounds i32, i32* %[[VAL_33]], i32 %[[VAL_15]]
 // CHECK:         %[[VAL_35:.*]] = load i32, i32* %[[VAL_34]], align 4, !invariant.load !4, !noalias !5
@@ -77,6 +77,7 @@ ENTRY main {
 
 // CHECK-LABEL: define void @scatter_ScatterIntoScalar(i8* align 64 dereferenceable(4) %alloc0, i8* align 16 dereferenceable(4) %alloc1, i8* align 16 dereferenceable(4) %alloc2, i8* align 16 %alloc3) {
 // CHECK:       entry:
+// CHECK:         %[[VAL_60:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_37:.*]] = getelementptr inbounds i8, i8* %[[VAL_38:.*]], i64 0
 // CHECK:         %[[VAL_39:.*]] = bitcast i8* %[[VAL_37]] to i32*
 // CHECK:         %[[VAL_40:.*]] = getelementptr inbounds i8, i8* %[[VAL_41:.*]], i64 0
@@ -100,7 +101,6 @@ ENTRY main {
 // CHECK:       scatter.in_bounds-after:                          ; preds = %[[VAL_59]], %[[VAL_55]]
 // CHECK:         br label %[[VAL_56]]
 // CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_55]]
-// CHECK:         %[[VAL_60:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_61:.*]] = load i32, i32* %[[VAL_48]], align 4, !invariant.load !3, !noalias !4
 // CHECK:         store i32 %[[VAL_61]], i32* %[[VAL_60]], align 4
 // CHECK:         %[[VAL_62:.*]] = load i32, i32* %[[VAL_60]], align 4
@@ -140,6 +140,7 @@ ENTRY main {
 // CHECK-LABEL: define void @scatter_TensorFlowScatter_Mul(i8* align 64 dereferenceable(36) %alloc0, i8* align 16 dereferenceable(36) %alloc1, i8* align 16 dereferenceable(24) %alloc2, i8* align 16 dereferenceable(8) %alloc3) {
 // CHECK:         %[[VAL_63:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_64:.*]] = alloca i32, align 4
+// CHECK:         %[[VAL_98:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_65:.*]] = getelementptr inbounds i8, i8* %[[VAL_66:.*]], i64 0
 // CHECK:         %[[VAL_67:.*]] = bitcast i8* %[[VAL_65]] to [3 x [3 x i32]]*
 // CHECK:         %[[VAL_68:.*]] = getelementptr inbounds i8, i8* %[[VAL_69:.*]], i64 0
@@ -172,7 +173,6 @@ ENTRY main {
 // CHECK:         br label %[[VAL_87]]
 // CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_86]]
 // CHECK:         %[[VAL_97:.*]] = getelementptr inbounds [3 x [3 x i32]], [3 x [3 x i32]]* %[[VAL_67]], i32 0, i32 %[[VAL_92]], i32 %[[VAL_83]]
-// CHECK:         %[[VAL_98:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_99:.*]] = bitcast [2 x [3 x i32]]* %[[VAL_76]] to i32*
 // CHECK:         %[[VAL_100:.*]] = getelementptr inbounds i32, i32* %[[VAL_99]], i32 %[[VAL_80]]
 // CHECK:         %[[VAL_101:.*]] = load i32, i32* %[[VAL_100]], align 4, !invariant.load !4, !noalias !5
@@ -233,6 +233,7 @@ ENTRY main {
 
 // CHECK-LABEL: define void @scatter_ScalarUpdate(i8* align 64 dereferenceable(16) %alloc0, i8* align 16 dereferenceable(16) %alloc1, i8* align 16 dereferenceable(4) %alloc2, i8* align 16 dereferenceable(4) %alloc3) {
 // CHECK:       entry:
+// CHECK:         %[[VAL_146:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_118:.*]] = getelementptr inbounds i8, i8* %[[VAL_119:.*]], i64 0
 // CHECK:         %[[VAL_120:.*]] = bitcast i8* %[[VAL_118]] to [4 x i32]*
 // CHECK:         %[[VAL_121:.*]] = getelementptr inbounds i8, i8* %[[VAL_122:.*]], i64 0
@@ -261,7 +262,6 @@ ENTRY main {
 // CHECK:         br label %[[VAL_137]]
 // CHECK:       scatter.in_bounds-true:                           ; preds = %[[VAL_136]]
 // CHECK:         %[[VAL_145:.*]] = getelementptr inbounds [4 x i32], [4 x i32]* %[[VAL_120]], i32 0, i32 %[[VAL_141]]
-// CHECK:         %[[VAL_146:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_147:.*]] = load i32, i32* %[[VAL_129]], align 4, !invariant.load !3, !noalias !4
 // CHECK:         store i32 %[[VAL_147]], i32* %[[VAL_146]], align 4
 // CHECK:         %[[VAL_148:.*]] = load i32, i32* %[[VAL_146]], align 4

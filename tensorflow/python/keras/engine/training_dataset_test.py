@@ -112,7 +112,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
     # Test with sample weight.
     sample_weight = np.random.random((10,))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'`sample_weight` argument is not supported .+dataset'):
       model.fit(
           dataset,
@@ -121,7 +121,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
           verbose=0,
           sample_weight=sample_weight)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, '(you should not specify a target)|'
         '(`y` argument is not supported when using dataset as input.)'):
       model.fit(dataset, dataset,
@@ -314,7 +314,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
       dataset = dataset.repeat(100)
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           r'expected (.*?) to have shape \(3,\) but got array with shape \(1,\)'
       ):
@@ -327,8 +327,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   r'expected (.*?) to have shape \(3,\)'):
+      with self.assertRaisesRegex(ValueError,
+                                  r'expected (.*?) to have shape \(3,\)'):
         model.train_on_batch(dataset)
 
   @keras_parameterized.run_with_all_model_types

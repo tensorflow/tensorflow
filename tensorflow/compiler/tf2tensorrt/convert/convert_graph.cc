@@ -130,7 +130,9 @@ Status GetEngineInfo(const Graph* g,
                      EngineInfo* info) {
   std::vector<const Node*> subgraph_nodes;  // Topologically sorted nodes.
   std::set<const Node*> added_const_nodes;  // Used to prevent double insertion.
-  std::set<string> segment_devices;
+  // The device assignment accumulated from the compatible device assignments
+  // for the nodes in the segment.
+  DeviceNameUtils::ParsedName segment_device;
 
   // Map from src_node_name+port to the unique port numbers of the TRT op, where
   // the src_node_name is the name of the source node of the input/output
@@ -144,36 +146,17 @@ Status GetEngineInfo(const Graph* g,
     const Node* node = *it;
     if (segment_nodes.count(node) == 0) continue;
 
-    std::string device_name;
-    if (!node->requested_device().empty()) {
-      device_name = node->requested_device();
-    } else if (node->has_assigned_device_name()) {
-      // It appears that nodes will not have assigned devices at this point in
-      // execution.
-      device_name = node->assigned_device_name();
-    } else {
-      VLOG(2) << "Node " << node->name()
-              << " neither have requested device nor assigned device";
+    absl::optional<DeviceNameUtils::ParsedName> new_segment_device =
+        MergeIfCompatible(segment_device, GetDeviceName(node));
+    if (!new_segment_device.has_value()) {
+      // The segmenter should guarantee that nodes in the same segment have
+      // compatible device assignments.
+      return errors::Internal(
+          "segment nodes have incompatible device assignments: ",
+          DeviceNameUtils::ParsedNameToString(segment_device), " vs ",
+          GetDeviceName(node), " to node ", node->name());
     }
-
-    if (!device_name.empty()) {
-      // If device is set, it means device placement may have been done before,
-      // so we need to assign a device for the TRTEngineOp if the assigned
-      // device is a GPU device.
-      DeviceNameUtils::ParsedName parsed_name;
-      const bool parse_succeeded =
-          DeviceNameUtils::ParseFullName(device_name, &parsed_name);
-      if (!parse_succeeded) {
-        VLOG(1) << "Failed to parse "
-                << (node->requested_device().empty() ? "assigned" : "requested")
-                << " device " << device_name << " of node " << node->name();
-      } else if (parsed_name.type != "GPU") {
-        VLOG(1) << "Node " << node->name()
-                << " was assigned to a non-GPU device " << device_name;
-      } else {
-        segment_devices.insert(device_name);
-      }
-    }
+    segment_device = *new_segment_device;
     subgraph_nodes.push_back(node);
 
     const int node_id = node->id();
@@ -273,13 +256,16 @@ Status GetEngineInfo(const Graph* g,
   info->engine_name = StrCat(scope_name, info->engine_name);
   VLOG(1) << "Converted TensorRT candidate segment '" << info->engine_name
           << "' to a GraphDef";
-  if (segment_devices.size() == 1) {
-    info->device = *segment_devices.begin();
-  } else if (segment_devices.size() > 1) {
-    LOG_WARNING_WITH_PREFIX
-        << "Detected multiple (" << segment_devices.size()
-        << ") devices for the segment. Picking first one to continue.";
-    info->device = *segment_devices.begin();
+  if (segment_device.has_type) {
+    // If the accumulated device assignment for the segment has a device type,
+    // the segmenter guarantees the device type is GPU. Use the device
+    // assignment in this case.
+    if (segment_device.type != "GPU") {
+      return errors::Internal(
+          "segment device is not GPU: ",
+          DeviceNameUtils::ParsedNameToString(segment_device));
+    }
+    info->device = DeviceNameUtils::ParsedNameToString(segment_device);
   } else {
     TfGpuId tf_gpu_id;
     PlatformGpuId platform_gpu_id;

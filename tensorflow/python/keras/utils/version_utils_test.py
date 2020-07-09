@@ -145,7 +145,7 @@ class SplitUtilsTest(keras_parameterized.TestCase):
       def call(self, inputs):
         return 2 * inputs
 
-    with self.assertRaisesRegexp(TypeError, 'instantiate abstract class'):
+    with self.assertRaisesRegex(TypeError, 'instantiate abstract class'):
       AbstractModel()
 
     model = MyModel()
@@ -181,7 +181,7 @@ class SplitUtilsTest(keras_parameterized.TestCase):
     model.compile('sgd', 'mse')
     x, y = np.ones((10, 10)), np.ones((10, 1))
     with ops.get_default_graph().as_default():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'instance was constructed with eager mode enabled'):
         model.fit(x, y, batch_size=2)
 
