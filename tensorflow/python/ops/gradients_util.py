@@ -608,8 +608,22 @@ def _GradientsHelper(ys,
           except LookupError:
             if is_func_call:
               if is_partitioned_call:
+                func_name = compat.as_bytes(op.get_attr("f").name)
                 func_call = src_graph._get_function(  # pylint: disable=protected-access
-                    compat.as_bytes(op.get_attr("f").name))
+                    func_name)
+                # When a graph is imported, the FunctionDefs are not copied over
+                # to each sub-graph so we recursively search the outer graphs
+                # for the FunctionDef.
+                if not func_call and hasattr(src_graph, "outer_graph"):
+                  graph = src_graph.outer_graph
+                  while graph is not None:
+                    func_call = graph._get_function(func_name)  # pylint: disable=protected-access
+                    if func_call  is not None:
+                      break
+                    if hasattr(graph, "outer_graph"):
+                      graph = graph.outer_graph
+                    else:
+                      break
               else:
                 func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
               # Note that __defun is not set if the graph is
