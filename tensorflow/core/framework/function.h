@@ -571,6 +571,10 @@ class FunctionLibraryRuntime {
     // Should the function be instantiated as a multi-device function?
     bool is_multi_device_function = false;
 
+    // If true, graph passes will be skipped when instantiating the function
+    // since they have already run on the main function side.
+    bool is_component_function = false;
+
     // For multi-device functions, a vector of canonical device names for
     // function's inputs. The device of resource inputs must be the device
     // backing the resource, not the CPU device backing the resource handle.
