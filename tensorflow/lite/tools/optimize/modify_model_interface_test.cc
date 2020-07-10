@@ -520,7 +520,7 @@ TEST(ModelInterface, Uint8MutipleInputOutput) {
 }
 
 TEST(ModelInterface, Int8MutipleInputOutput) {
-  auto model = CreateQuantizedModelMultipleInputOutput();
+  auto model = CreateQuantizedModelMultipleInputOutput(TensorType_INT8);
 
   // Change model type.
   flatbuffers::FlatBufferBuilder builder;
