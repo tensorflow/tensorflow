@@ -661,7 +661,7 @@ void ShapeTree<T>::CopySubtreeFrom(const ShapeTree<T>& other,
     }
     // Construct source element index to copy from.
     ShapeIndex source_index = source_base_index;
-    for (int i = target_base_index.size(), iter_limit = index.size(); i < iter_limit; ++i) {
+    for (int i = target_base_index.size(), end = index.size(); i < end; ++i) {
       source_index.push_back(index[i]);
     }
     *data = other.element(source_index);
