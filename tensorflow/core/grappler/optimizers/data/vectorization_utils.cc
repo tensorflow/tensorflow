@@ -521,7 +521,7 @@ Status Vectorization::AddArgTensorMappings() {
 
   // Captured inputs. These are applied (without slicing) to every iteration of
   // the map function, hence are mapped to unstacked nodes.
-  for (int i = num_args, iter_limit = map_defun_fn_->arg_nodes.size(); i < iter_limit; ++i) {
+  for (int i = num_args, end = map_defun_fn_->arg_nodes.size(); i < end; ++i) {
     TF_RETURN_IF_ERROR(add_conversion(map_defun_fn_->arg_nodes[i], false));
   }
 

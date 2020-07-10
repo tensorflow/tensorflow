@@ -836,7 +836,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
           << execution_count;
   // Maps the names of fed tensors to their index in `req`.
   std::unordered_map<StringPiece, size_t, StringPieceHasher> feeds(3);
-  for (size_t i = 0, iter_limit = callable_opts_.feed_size(); i < iter_limit; ++i) {
+  for (size_t i = 0, end = callable_opts_.feed_size(); i < end; ++i) {
     if (!feeds.insert({callable_opts_.feed(i), i}).second) {
       // MakeCallable will fail if there are two feeds with the same name.
       return errors::Internal("Duplicated feeds in callable: ",

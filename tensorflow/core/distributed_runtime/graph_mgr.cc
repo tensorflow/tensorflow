@@ -403,7 +403,7 @@ void GraphMgr::RecvOutputsAsync(const int64 step_id, NamedTensors* out,
       [done, rendezvous, received_keys, out, keys](const Status s) {
         rendezvous->Unref();
         size_t output_size = 0;
-        for (int i = 0, iter_limit = keys.size(); i < iter_limit; ++i) {
+        for (int i = 0, end = keys.size(); i < end; ++i) {
           (*out)[keys[i]] = (*received_keys)[i];
           output_size += (*out)[keys[i]].AllocatedBytes();
         }

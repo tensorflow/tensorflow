@@ -1074,7 +1074,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       if (operand_shapes.size() == 1) {
         return *operand_shapes[0];
       } else {
-        for (int64 operand = 1, iter_limit = operand_shapes.size(); operand < iter_limit; ++operand) {
+        for (int64 operand = 1, end = operand_shapes.size(); operand < end; ++operand) {
           if (!ShapeUtil::SameDimensions(*operand_shapes[0],
                                          *operand_shapes[operand])) {
             return InvalidArgument(
@@ -1144,7 +1144,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   // Check that requested map dimensions numbers are monotonically increasing.
-  for (int i = 0, iter_limit = dimensions.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = dimensions.size(); i < end; ++i) {
     if (dimensions[i] != i) {
       return InvalidArgument(
           "Map requires monotonically increasing dimension numbers; got: %s.",
@@ -2364,7 +2364,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   std::vector<int64> sizes;
-  for (int64 dimension = 0, iter_limit = starts.size(); dimension < iter_limit; ++dimension) {
+  for (int64 dimension = 0, end = starts.size(); dimension < end; ++dimension) {
     int64 start_index = starts[dimension];
     int64 limit_index = limits[dimension];
     int64 stride = strides[dimension];
@@ -2489,7 +2489,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         slice_sizes.size(), operand_shape.rank());
   }
 
-  for (int64 dim = 0, iter_limit = slice_sizes.size(); dim < iter_limit; ++dim) {
+  for (int64 dim = 0, end = slice_sizes.size(); dim < end; ++dim) {
     const int64 input_dim_size = operand_shape.dimensions(dim);
     const int64 slice_dim_size = slice_sizes[dim];
     if (slice_dim_size < 0) {
@@ -2724,7 +2724,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
   TF_RET_CHECK(branch_computations.size() == branch_operands.size());
 
-  for (int j = 0, iter_limit = branch_computations.size(); j < iter_limit; ++j) {
+  for (int j = 0, end = branch_computations.size(); j < end; ++j) {
     if (branch_computations[j].parameters_size() != 1) {
       return InvalidArgument(
           "branch computation %d must take 1 argument; got %d.", j,
@@ -2886,7 +2886,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     int64 output_dim_start = -1;
     int64 output_dim_end = -1;
     // Find common_factors that the input_dim belongs to.
-    for (int64 i = 0, iter_limit = common_factors.size() - 1; i < iter_limit; ++i) {
+    for (int64 i = 0, end = common_factors.size() - 1; i < end; ++i) {
       auto start = common_factors[i];
       auto end = common_factors[i + 1];
       if (input_dim >= start.first && input_dim < end.first) {
@@ -3092,7 +3092,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   // All arguments must be compatible with the program shape.
-  for (int i = 0, iter_limit = arg_shapes.size(); i < iter_limitwwwwwwwwwww; ++i) {
+  for (int i = 0, end = arg_shapes.size(); i < endwwwwwwwwwww; ++i) {
     const Shape& arg_shape = *arg_shapes[i];
     const Shape& param_shape = to_apply.parameters(i);
     if (!ShapeUtil::Compatible(arg_shape, param_shape)) {

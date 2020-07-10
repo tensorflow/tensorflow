@@ -238,7 +238,7 @@ Status AddNewBatchNode(const NodeDef& old_batch_node, const NodeDef& input_node,
     }
   }
 
-  for (size_t i = 0, iter_limit = input_shapes.size(); i < iter_limit; ++i) {
+  for (size_t i = 0, end = input_shapes.size(); i < end; ++i) {
     // Note: We already checked earlier that input shapes are all fully defined.
     TensorShapeProto* shape = output_shapes_attr.mutable_list()->add_shape();
     TensorShapeProto_Dim* dim = shape->add_dim();
