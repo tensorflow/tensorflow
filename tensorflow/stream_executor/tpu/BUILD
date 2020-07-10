@@ -114,7 +114,6 @@ cc_library(
         "tpu_stream.h",
         "tpu_timer.h",
     ],
-    visibility = ["//tensorflow/core/tpu:__pkg__"],
     deps = [
         ":device_memory_base_helper",
         ":status_helper",
@@ -143,7 +142,7 @@ cc_library(
         ":tpu_executor_c_api_hdrs",
         ":tpu_node_context_c_api_hdrs",
         ":tpu_platform_interface",
-        ":tpu_transfer_manager",
+        ":tpu_transfer_manager_base",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:platform_util",
@@ -165,6 +164,7 @@ cc_library(
         ":tpu_transfer_manager_base",
         "//tensorflow/compiler/xla/service:transfer_manager",
     ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -175,7 +175,7 @@ cc_library(
         ":c_api_conversions",
         ":proto_helper",
         ":status_helper",
-        ":tpu_executor",
+        ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",

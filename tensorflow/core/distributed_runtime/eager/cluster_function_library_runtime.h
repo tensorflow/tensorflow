@@ -42,17 +42,30 @@ class EagerClusterFunctionLibraryRuntime
 
   ~EagerClusterFunctionLibraryRuntime() override{};
 
+  // Register a partition (i.e., component function) of a multi-device function
+  // on the remote target specified in `options.target`. This should be
+  // triggered as part of instantiating a multi-device function in
+  // ProcessFunctionLibraryRuntime.
   void Instantiate(const string& function_name,
                    const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
                    const FunctionLibraryRuntime::InstantiateOptions& options,
                    FunctionLibraryRuntime::LocalHandle* handle,
                    FunctionLibraryRuntime::DoneCallback done) override;
 
+  // Execute the component function specified by `handle` on its instantiated
+  // remote target. This should be triggered as part of driving a multi-device
+  // function execution in ProcessFunctionLibraryRuntime. Running the component
+  // function remotely is purely asynchronous, and multiple component functions
+  // with the same remote target are not executed in any particular ordering.
+  // The main function side must wait for all component functions to finish
+  // (i.e., the done callbacks triggered) before finishing its execution.
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override;
 
+  // The component function inputs `args` can be RemoteTensorHandles, which will
+  // be lazily resolved remotely where the inputs are actually consumed.
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
            gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,

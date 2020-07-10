@@ -68,13 +68,21 @@ class Thunk {
     kWhile,
   };
 
+  struct ThunkInfo {
+    const HloInstruction* hlo_instruction = nullptr;
+    absl::optional<int64> profile_index;
+    // TODO(timshen): Remove hlo_instruction and add name(),
+    // profile_annotation() here.
+  };
+
   // The hlo_instruction argument is meant to be the instruction this thunk was
   // generated from, but Thunk never uses this argument other than to save it
   // to Thunk::hlo_instruction, so it can be null.
-  explicit Thunk(Kind kind, const HloInstruction* hlo_instruction)
+  explicit Thunk(Kind kind, ThunkInfo thunk_info)
       : kind_(kind),
-        hlo_instruction_(hlo_instruction),
-        name_(hlo_instruction_ ? hlo_instruction_->name() : "") {}
+        hlo_instruction_(thunk_info.hlo_instruction),
+        name_(hlo_instruction_ ? hlo_instruction_->name() : ""),
+        profile_index_(thunk_info.profile_index) {}
   virtual ~Thunk() {}
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
@@ -128,6 +136,8 @@ class Thunk {
  protected:
   const HloInstruction* hlo_instruction() const { return hlo_instruction_; }
 
+  absl::optional<int64> profile_index() const { return profile_index_; }
+
   const HloModuleConfig& GetModuleConfig() const {
     return hlo_instruction()->GetModule()->config();
   }
@@ -146,8 +156,12 @@ class Thunk {
 
  private:
   Kind kind_;
+
+  // Will be removed in the future, as Thunk is migrating away from the
+  // monolithic HloInstruction.
   const HloInstruction* hlo_instruction_;
   std::string name_;
+  absl::optional<int64> profile_index_;
   string profile_annotation_;
 };
 

@@ -70,7 +70,7 @@ def dot(a, b):  # pylint: disable=missing-docstring
 # TODO(wangpeng): Make element-wise ops `ufunc`s
 def _bin_op(tf_fun, a, b, promote=True):
   if promote:
-    a, b = np_array_ops._promote_dtype(a, b)  # pylint: disable=protected-access
+    a, b = np_array_ops._promote_dtype_binary(a, b)  # pylint: disable=protected-access
   else:
     a = np_array_ops.array(a)
     b = np_array_ops.array(b)

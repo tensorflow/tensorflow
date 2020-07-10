@@ -543,6 +543,7 @@ cc_library(
         "transforms/freeze_global_tensors.cc",
         "transforms/lift_variables_pass.cc",
         "transforms/optimize_global_tensors.cc",
+        "transforms/remove_vars_in_session_initializer.cc",
     ],
     hdrs = [
         "transforms/tf_saved_model_passes.h",
@@ -1193,6 +1194,7 @@ cc_library(
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/utils:transitive_fanin",
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

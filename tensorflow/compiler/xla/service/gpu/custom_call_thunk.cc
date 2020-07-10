@@ -22,15 +22,15 @@ namespace xla {
 namespace gpu {
 
 CustomCallThunk::CustomCallThunk(
-    void* call_target,
+    ThunkInfo thunk_info, void* call_target,
     std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices,
-    ShapeTree<BufferAllocation::Slice> result_slices, std::string opaque,
-    const HloInstruction* instr)
-    : Thunk(Thunk::kCustomCall, instr),
+    ShapeTree<BufferAllocation::Slice> result_slices, std::string opaque)
+    : Thunk(Thunk::kCustomCall, thunk_info),
       call_target_(call_target),
       operand_slices_(std::move(operand_slices)),
       result_slices_(std::move(result_slices)),
       opaque_(std::move(opaque)) {
+  const HloInstruction* instr = hlo_instruction();
   CHECK_EQ(instr->operand_count(), operand_slices_.size());
   for (int64 i = 0; i < instr->operand_count(); ++i) {
     const auto& s1 = operand_slices_[i].shape();

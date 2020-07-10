@@ -68,6 +68,10 @@ def measure_performance(model_fn,
       `batch_size` will default to 32.
     run_iters: Integer. Number of iterations to run the performance measurement.
       If unspecified, `run_iters` will default to 4.
+    optimizer: String (name of optimizer) or optimizer instance. See
+      `tf.keras.optimizers`.
+    loss: String (name of objective function), objective function or
+      `tf.keras.losses.Loss` instance. See `tf.keras.losses`.
     metrics: Lists of metrics to be evaluated by the model during training. See
       `metrics` in the `compile()` method of  `keras.Model`.
     verbose: 0, 1, 2. Verbosity mode. See `verbose` in the `fit()` method of
@@ -75,8 +79,8 @@ def measure_performance(model_fn,
     num_gpus: Number of GPUs to run the model.
     distribution_strategy: Distribution strategies. It could be
       `multi_worker_mirrored`, `one_device`, `mirrored`. If unspecified,
-      `distribution_strategy` will default to 'off'.
-        TODO: `TPU`, `parameter_server`.
+      `distribution_strategy` will default to 'off'. Note that, `TPU`
+      and `parameter_server` are not supported yet.
 
   Returns:
     Performance summary, which contains build_time, compile_time,
@@ -96,7 +100,7 @@ def measure_performance(model_fn,
   if num_gpus < 0:
     raise ValueError('`num_gpus` cannot be negative')
 
-  # TODO: (xingyulong@) We will add tfds support later and
+  # TODO(xingyulong): we will add tfds support later and
   #  get the `num_examples` from info.
   num_examples = x.shape[0]
 
