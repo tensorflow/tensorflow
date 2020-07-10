@@ -269,6 +269,8 @@ cc_library(
         "//tensorflow/core/platform:mem.h",
         "//tensorflow/core/platform:numa.h",
         "//tensorflow/core/platform:snappy.h",
+        "//tensorflow/core/platform:profile_utils/cpu_utils.h",
+        "//tensorflow/core/platform:profile_utils/i_cpu_utils_helper.h",
     ],
     copts = tf_copts(),
     defines = ["TF_USE_SNAPPY"] + select({
