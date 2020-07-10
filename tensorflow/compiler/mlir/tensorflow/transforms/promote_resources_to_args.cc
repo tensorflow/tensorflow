@@ -342,7 +342,7 @@ LogicalResult PromoteResourcesToArguments(
   }
 
   // Rewrite return if there are variable writes.
-  const int return_operands_size = eturn_operands.size();
+  const int return_operands_size = return_operands.size();
   if (return_operands_size > num_results_before) {
     builder.create<ReturnOp>(return_op.getLoc(), return_operands);
     return_op.erase();
