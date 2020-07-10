@@ -165,7 +165,7 @@ bool IsZero(T v);
 
 template <>
 ALWAYS_INLINE bool IsZero(bfloat16 v) {
-  return !static_cast<bool>(v);
+  return v.IsZero();
 }
 
 template <>

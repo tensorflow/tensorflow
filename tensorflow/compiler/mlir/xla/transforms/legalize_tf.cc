@@ -896,7 +896,7 @@ static DenseElementsAttr GetEpsilonValue(Type ty) {
     auto value = APFloat(APFloat::IEEEhalf(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isBF16()) {
-    uint16_t raw_epsilon = Eigen::NumTraits<Eigen::bfloat16>::epsilon().value;
+    uint16_t raw_epsilon = tensorflow::bfloat16::epsilon().value;
     auto value = APFloat(APFloat::BFloat(), APInt(16, raw_epsilon));
     return DenseElementsAttr::get(scalar_ty, value);
   } else if (element_ty.isF32()) {

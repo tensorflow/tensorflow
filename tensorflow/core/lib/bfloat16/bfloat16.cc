@@ -17,4 +17,12 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 
-namespace tensorflow {}  // end namespace tensorflow
+namespace tensorflow {
+
+const uint16_t bfloat16::NAN_VALUE;
+const uint16_t bfloat16::ZERO_VALUE;
+
+B16_DEVICE_FUNC bfloat16::operator Eigen::half() const {
+  return static_cast<Eigen::half>(float(*this));
+}
+}  // end namespace tensorflow
