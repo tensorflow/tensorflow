@@ -189,9 +189,11 @@ class ScatterTest(test.TestCase):
                          tf_scatter,
                          repeat_indices=False,
                          updates_are_scalar=False):
-    vtypes = [np.float16, np.float32, np.float64]
+    vtypes = [np.float32, np.float64]
     if tf_scatter != state_ops.scatter_div:
       vtypes.append(np.int32)
+      # float16 is numerically unstable for div
+      vtypes.append(np.float16)
 
     for vtype in vtypes:
       for itype in (np.int32, np.int64):
