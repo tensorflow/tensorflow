@@ -140,7 +140,7 @@ PyObject* CalibrationWrapper::Prepare(PyObject* input_shapes) {
       return nullptr;
     }
     std::vector<int> dims;
-    for (int64 dim_index = 0; dim_index < PyList_Size(shape); ++dim_index) {
+    for (size_t dim_index = 0; dim_index < PyList_Size(shape); ++dim_index) {
       PyObject* dim = PyList_GetItem(shape, dim_index);
       dims.push_back(PyLong_AsLong(dim));
     }

@@ -3299,7 +3299,7 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
     std::vector<uint8_t> nnapi_cache_token(32, 0);
     // Copy the token bits.
     uint8_t* p = reinterpret_cast<uint8_t*>(token_parts);
-    for (int i = 0, iter_limit = 4 * sizeof(uint64_t); i < iter_limit; i++) {
+    for (int i = 0; i < 4 * sizeof(uint64_t); i++) {
       nnapi_cache_token[i] = p[i];
     }
 
@@ -3420,7 +3420,7 @@ TfLiteStatus NNAPIDelegateKernel::GetOperationsSupportedByTargetNnApiDevices(
                 [&tflite_ops_support_status](int tflite_node_index) {
                   tflite_ops_support_status[tflite_node_index] = true;
                 });
-  for (int nnapi_op_index = 0; nnapi_op_index < static_cast<int64>(nnapi_model_size);
+  for (int nnapi_op_index = 0; nnapi_op_index < nnapi_model_size;
        nnapi_op_index++) {
     const auto tflite_op_index = nnapi_to_tflite_op_mapping_[nnapi_op_index];
     tflite_ops_support_status[tflite_op_index] &=
@@ -3483,9 +3483,8 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
     }
     TfLiteTensor* tensor = &context->tensors[absolute_input_index];
     if (tensor->allocation_type != kTfLiteMmapRo) {
-      const tensor_memory_map_size = tensor_memory_map_->size();
       if (tensor->buffer_handle != kTfLiteNullBufferHandle &&
-          tensor->buffer_handle < tensor_memory_map_size) {
+          tensor->buffer_handle < tensor_memory_map_->size()) {
         RETURN_TFLITE_ERROR_IF_NN_ERROR(
             context,
             nnapi_->ANeuralNetworksExecution_setInputFromMemory(
@@ -3578,9 +3577,8 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
       continue;
     }
     TfLiteTensor* tensor = &context->tensors[output_index];
-    const int64 tensor_memory_map_size = tensor_memory_map_->size();
     if (tensor->buffer_handle != kTfLiteNullBufferHandle &&
-        tensor->buffer_handle < tensor_memory_map_size) {
+        tensor->buffer_handle < tensor_memory_map_->size()) {
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
           context,
           nnapi_->ANeuralNetworksExecution_setOutputFromMemory(
@@ -4279,6 +4277,13 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
   delegate_data_.max_number_delegated_partitions =
       options.max_number_delegated_partitions;
   delegate_data_.allow_fp16 = options.allow_fp16;
+  delegate_data_.execution_priority = options.execution_priority;
+  delegate_data_.max_compilation_timeout_duration_ns =
+      options.max_compilation_timeout_duration_ns;
+  delegate_data_.max_execution_timeout_duration_ns =
+      options.max_execution_timeout_duration_ns;
+  delegate_data_.max_execution_loop_timeout_duration_ns =
+      options.max_execution_loop_timeout_duration_ns;
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
   Prepare = DoPrepare;
@@ -4309,6 +4314,13 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.max_number_delegated_partitions =
       delegate_data->max_number_delegated_partitions;
   options.allow_fp16 = delegate_data->allow_fp16;
+  options.execution_priority = delegate_data->execution_priority;
+  options.max_compilation_timeout_duration_ns =
+      delegate_data->max_compilation_timeout_duration_ns;
+  options.max_execution_timeout_duration_ns =
+      delegate_data->max_execution_timeout_duration_ns;
+  options.max_execution_loop_timeout_duration_ns =
+      delegate_data->max_execution_loop_timeout_duration_ns;
   return options;
 }
 
@@ -4338,9 +4350,8 @@ TfLiteStatus StatefulNnApiDelegate::DoCopyFromBufferHandle(
     TfLiteContext* context, TfLiteDelegate* delegate,
     TfLiteBufferHandle buffer_handle, TfLiteTensor* tensor) {
   auto delegate_data = reinterpret_cast<Data*>(delegate->data_);
-  const int64 delegate_data_tensor_memory_map_size = delegate_data->tensor_memory_map.size();
   if (buffer_handle < 0 ||
-      buffer_handle >= delegate_data_tensor_memory_map_size) {
+      buffer_handle >= delegate_data->tensor_memory_map.size()) {
     return kTfLiteError;
   }
   auto memory = delegate_data->tensor_memory_map[buffer_handle].memory;
@@ -4363,8 +4374,7 @@ void StatefulNnApiDelegate::DoFreeBufferHandle(TfLiteContext* context,
                                                TfLiteDelegate* delegate,
                                                TfLiteBufferHandle* handle) {
   auto delegate_data = reinterpret_cast<Data*>(delegate->data_);
-  const int64 delegate_data_tensor_memory_map_size = delegate_data->tensor_memory_map.size();
-  if (*handle >= 0 && *handle < delegate_data_tensor_memory_map_size) {
+  if (*handle >= 0 && *handle < delegate_data->tensor_memory_map.size()) {
     delegate_data->tensor_memory_map[*handle] = {nullptr, nullptr, nullptr};
     *handle = kTfLiteNullBufferHandle;
   }
@@ -4408,8 +4418,7 @@ TfLiteStatus StatefulNnApiDelegate::GetNodesSupportedByAccelerator(
                                    supported_partition_nodes.begin(),
                                    supported_partition_nodes.end());
 
-    const int64 supported_partition_nodes_size = supported_partition_nodes.size();
-    bool model_fully_supported = (supported_partition_nodes_size ==
+    bool model_fully_supported = (supported_partition_nodes.size() ==
                                   partition_params.nodes_to_replace->size);
     if (model_fully_supported) {
       delegate_data->CacheDelegateKernel(&partition_params,
@@ -4517,7 +4526,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
     } else {
       // If no accelerator is specified, only use NNAPI if an accelerator is
       // available. Any available accelerator will make the device_count larger
-      // than 1. More sophisticated check and whitelisting can be added later.
+      // than 1. More sophisticated check and allowlisting can be added later.
       uint32_t device_count = 0;
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
           context, nnapi->ANeuralNetworks_getDeviceCount(&device_count),

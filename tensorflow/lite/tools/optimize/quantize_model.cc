@@ -166,8 +166,7 @@ TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
       return kTfLiteError;
     }
 
-    const int64 weight_scales_size = weight_scales.size();
-    if (weight_scales_size != channel_dim_size) {
+    if (weight_scales.size() != channel_dim_size) {
       TF_LITE_REPORT_ERROR(error_reporter,
                            "Mismatch weight scale dimension: %d",
                            weight_scales.size());
@@ -345,11 +344,11 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
                                     const TensorType& output_type,
                                     const TensorType& activations_type,
                                     ErrorReporter* error_reporter) {
-  for (int subgraph_idx = 0, iter_limit = model->subgraphs.size(); subgraph_idx < iter_limit;
+  for (int subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
 
-    for (int i = 0, sub_iter_limit = subgraph->inputs.size(); i < sub_iter_limit; ++i) {
+    for (int i = 0; i < subgraph->inputs.size(); ++i) {
       TensorT* tensor = subgraph->tensors[subgraph->inputs[i]].get();
       // TODO(suharshs): Add support for this case if it ever comes up.
       if (tensor->type == TensorType_FLOAT32 && input_type != tensor->type) {
@@ -367,7 +366,7 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
       }
       subgraph->inputs[i] = input_idx;
     }
-    for (int i = 0, sub_iter_limit = subgraph->outputs.size(); i < sub_iter_limit; ++i) {
+    for (int i = 0; i < subgraph->outputs.size(); ++i) {
       TensorT* tensor = subgraph->tensors[subgraph->outputs[i]].get();
       // TODO(suharshs): Add support for this case if it ever comes up.
       if (tensor->type == TensorType_FLOAT32 && output_type != tensor->type) {
@@ -397,7 +396,7 @@ TfLiteStatus ApplyConstraints(
     ModelT* model, const std::unordered_set<string>& operator_names,
     const std::unordered_set<string>& real_value_op_set,
     TensorType activations_type, ErrorReporter* error_reporter) {
-  for (int subgraph_idx = 0, iter_limit = model->subgraphs.size(); subgraph_idx < iter_limit;
+  for (int subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     // Iterate backward to avoid messing with index.
@@ -523,8 +522,7 @@ TfLiteStatus QuantizeOpInput(
   OperatorT* op = subgraph->operators[*op_idx].get();
   const BuiltinOperator op_code =
       model->operator_codes[op->opcode_index]->builtin_code;
-  const int64 op_inputs_size = op->inputs.size();
-  if (input_idx >= op_inputs_size) {
+  if (input_idx >= op->inputs.size()) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
         "Required input index %d is larger than the input length of op "
@@ -719,13 +717,12 @@ TfLiteStatus QuantizeOpOutput(
   OperatorT* op = subgraph->operators[op_idx].get();
   const BuiltinOperator op_code =
       model->operator_codes[op->opcode_index]->builtin_code;
-  const int64 op_outputs_size = op->outputs.size();
-  if (output_idx >= op_outputs_size) {
+  if (output_idx >= op->outputs.size()) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
         "Required output index %d is larger than the output length of "
         "op %s at index %d in subgraph %d",
-        output_idx, op_outputs_size, EnumNameBuiltinOperator(op_code),
+        output_idx, op->outputs.size(), EnumNameBuiltinOperator(op_code),
         op_idx, subgraph_idx);
     return kTfLiteError;
   }
@@ -1005,8 +1002,7 @@ TfLiteStatus QuantizeBiases(ModelT* model,
         continue;
       }
       for (const int bias_idx : property.biases) {
-        const int64 op_inputs_size = op->inputs.size();
-        if (bias_idx >= op_inputs_size ||
+        if (bias_idx >= op->inputs.size() ||
             op->inputs[bias_idx] == kTfLiteOptionalTensor) {
           continue;
         }
@@ -1047,8 +1043,7 @@ std::unordered_set<string> GetAllOperatorOutputs(ModelT* model) {
   for (int32_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
-    const int64 subgraph_tensors_size = subgraph->tensors.size();
-    for (int32_t tensor_idx = 0; tensor_idx < subgraph_tensors_size;
+    for (int32_t tensor_idx = 0; tensor_idx < subgraph->tensors.size();
          tensor_idx++) {
       operator_names.insert(subgraph->tensors[tensor_idx]->name);
     }
@@ -1190,8 +1185,7 @@ TfLiteStatus EnsureBiasScaleCompatibility(
 
       // Loop over all bias tensors.
       for (const int bias_idx : property.biases) {
-        const int64 op->inputs.size() = op->inputs.size();
-        if (bias_idx >= op_inputs_size ||
+        if (bias_idx >= op->inputs.size() ||
             op->inputs[bias_idx] == kTfLiteOptionalTensor) {
           continue;
         }
@@ -1263,8 +1257,7 @@ TfLiteStatus EnsureBiasScaleCompatibility(
               return kTfLiteError;
             }
             // Ensure that the number of max/mins matches the channel_dim_size.
-            const int64 weight_tensor_quantization_max_size = weight_tensor->quantization->max.size();
-            if (weight_tensor_quantization_max_size != channel_dim_size) {
+            if (weight_tensor->quantization->max.size() != channel_dim_size) {
               TF_LITE_REPORT_ERROR(
                   error_reporter,
                   "Mismatch between number of weight maxs and channels: %d vs "
@@ -1272,8 +1265,7 @@ TfLiteStatus EnsureBiasScaleCompatibility(
                   weight_tensor->quantization->max.size(), channel_dim_size);
               return kTfLiteError;
             }
-            const int64 weight_tensor_quantization_min_size = weight_tensor->quantization->min.size();
-            if (weight_tensor_quantization_min_size != channel_dim_size) {
+            if (weight_tensor->quantization->min.size() != channel_dim_size) {
               TF_LITE_REPORT_ERROR(
                   error_reporter,
                   "Mismatch between number of weight mins and channels: %d",
