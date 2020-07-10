@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
-import pathlib
 
 from absl.testing import parameterized
 import numpy as np
@@ -31,9 +30,18 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 
 
+class PathLike(object):
+  """Backport of pathlib.Path for Python < 3.6"""
+  def __init__(self, name):
+    self.name = name
+
+  def __fspath__(self):
+    return self.name
+
+
 run_all_path_types = parameterized.named_parameters(
     ("str", os.path.join),
-    ("pathlib", lambda *paths: pathlib.Path(os.path.join(*paths))))
+    ("pathlike", lambda *paths: PathLike(os.path.join(*paths))))
 
 
 class FileIoTest(test.TestCase, parameterized.TestCase):
