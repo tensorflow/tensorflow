@@ -63,7 +63,7 @@ void AddInferredAttr(const string& indentation, const string& attr_name,
 string VectorToTuple(const std::vector<string>& l) {
   if (l.size() == 1) return strings::StrCat("(", l.front(), ",)");
   string ret = "(";
-  for (int i = 0, iter_limit = l.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = l.size(); i < end; ++i) {
     if (i > 0) {
       strings::StrAppend(&ret, ", ");
     }
@@ -75,11 +75,11 @@ string VectorToTuple(const std::vector<string>& l) {
 
 void Unflatten(const string& prefix, const std::vector<string>& output_sizes,
                const string& var, string* result) {
-  for (int i = 0, iter_limit = output_sizes.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = output_sizes.size(); i < end; ++i) {
     if (!output_sizes[i].empty()) {
       strings::StrAppend(result, prefix, var, " = ");
       if (i > 0) strings::StrAppend(result, var, "[:", i, "] + ");
-      if (i + 1 < iter_limit) {
+      if (i + 1 < end) {
         // Special case i == 0 to avoid "0 +" in the generated code.
         if (i == 0) {
           strings::StrAppend(result, "[", var, "[:", output_sizes[i], "]] + ",
@@ -295,7 +295,7 @@ string GenEagerPythonOp::Code() {
   // from the end of params_no_default_, and adding params_no_default_.
   attrs_.reserve(params_no_default_.size() - op_def_.input_arg_size() +
                  params_with_default_.size());
-  for (int i = op_def_.input_arg_size(), iter_limit = params_no_default_.size(); i < iter_limit; ++i) {
+  for (int i = op_def_.input_arg_size(), end = params_no_default_.size(); i < end; ++i) {
     attrs_.push_back(params_no_default_[i].GetName());
   }
   for (const auto& p : params_with_default_) {
@@ -331,7 +331,7 @@ string GenEagerPythonOp::Code() {
                      parameters_with_defaults.empty() ? "" : ", ", "name=None");
 
   // Add attr_expressions_ for attrs that are params.
-  for (int i = 0, iter_limit = attrs_.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = attrs_.size(); i < end; ++i) {
     const string& attr_name = attrs_[i];
     const string& attr_api_name =
         param_names_[i + op_def_.input_arg_size()].GetRenameTo();
@@ -522,7 +522,7 @@ bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
     }
   }
 
-  for (int i = 0, iter_limit = attrs_.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = attrs_.size(); i < end; ++i) {
     const string& attr_name = attrs_[i];
     const auto& param = param_names_[i + op_def_.input_arg_size()];
     const auto& attr = *FindAttr(attr_name, op_def_);

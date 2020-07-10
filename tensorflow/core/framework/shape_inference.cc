@@ -62,14 +62,14 @@ InferenceContext::InferenceContext(
   }
   std::vector<std::unique_ptr<std::vector<ShapeAndType>>> handle_data(
       input_shapes.size());
-  for (int i = 0, iter_limit = input_handle_shapes_and_types.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = input_handle_shapes_and_types.size(); i < end; ++i) {
     const auto& v = input_handle_shapes_and_types[i];
     if (v == nullptr) {
       continue;
     }
     handle_data[i].reset(new std::vector<ShapeAndType>(v->size()));
     auto& new_v = *handle_data[i];
-    for (int j = 0, iter_limit = v->size(); j < iter_limit; ++j) {
+    for (int j = 0, end = v->size(); j < end; ++j) {
       const auto& p = (*v)[j];
       construction_status_.Update(
           MakeShapeFromPartialTensorShape(p.first, &new_v[j].shape));
@@ -1103,7 +1103,7 @@ Status InferenceContext::AttachContext(const Status& status) {
   std::vector<string> input_from_tensors_str;
   std::vector<string> input_from_tensors_as_shape_str;
   input_from_tensors_as_shape_str.reserve(inputs_.size());
-  for (int i = 0, iter_limit = inputs_.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = inputs_.size(); i < end; ++i) {
     int input_tensors_size_ = input_tensors_.size();
     int input_tensors_as_shapes_size_ = input_tensors_as_shapes_.size();
     if (requested_input_tensor_as_partial_shape_[i] &&
@@ -1146,7 +1146,7 @@ bool InferenceContext::MergeHandleShapesAndTypes(
   }
   std::vector<ShapeAndType> new_values(shapes_and_types.size());
   bool refined = false;
-  for (int i = 0, iter_limit = shapes_and_types.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = shapes_and_types.size(); i < end; ++i) {
     const ShapeAndType& existing = (*to_update)[i];
     if (shapes_and_types[i].dtype == existing.dtype) {
       new_values[i].dtype = existing.dtype;
@@ -1170,7 +1170,7 @@ bool InferenceContext::MergeHandleShapesAndTypes(
   if (!refined) {
     return false;
   }
-  for (int i = 0, iter_limit = new_values.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = new_values.size(); i < end; ++i) {
     (*to_update)[i] = new_values[i];
   }
   return true;
@@ -1205,7 +1205,7 @@ bool InferenceContext::RelaxHandleShapesAndMergeTypes(
     return false;
   }
   std::vector<ShapeAndType> new_values(shapes_and_types.size());
-  for (int i = 0, iter_limit = shapes_and_types.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = shapes_and_types.size(); i < end; ++i) {
     const ShapeAndType& existing = (*to_update)[i];
     if (shapes_and_types[i].dtype == existing.dtype) {
       new_values[i].dtype = existing.dtype;

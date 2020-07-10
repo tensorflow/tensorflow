@@ -1514,7 +1514,7 @@ Costs OpLevelCostEstimator::PredictEinsum(const OpContext& op_context) const {
   n_dim.set_size(1);
   k_dim.set_size(1);
 
-  for (int i_idx = 0, iter_limit = a_input_str.size(); i_idx < iter_limit; ++i_idx) {
+  for (int i_idx = 0, end = a_input_str.size(); i_idx < end; ++i_idx) {
     if (b_input_str.find(a_input_str[i_idx]) == std::string::npos) {
       if (rhs_str.find(a_input_str[i_idx]) == std::string::npos) {
         VLOG(1) << "Missing accurate estimator for op: " << op_info.op();
@@ -1534,7 +1534,7 @@ Costs OpLevelCostEstimator::PredictEinsum(const OpContext& op_context) const {
     *(a_matrix_shape->add_dim()) = a_input_shape.dim(i_idx);
     *(b_matrix_shape->add_dim()) = a_input_shape.dim(i_idx);
   }
-  for (int i_idx = 0, iter_limit = b_input_str.size(); i_idx < iter_limit; ++i_idx) {
+  for (int i_idx = 0, end = b_input_str.size(); i_idx < end; ++i_idx) {
     if (a_input_str.find(b_input_str[i_idx]) == std::string::npos) {
       if (rhs_str.find(b_input_str[i_idx]) == std::string::npos) {
         VLOG(1) << "Missing accurate estimator for op: " << op_info.op();
