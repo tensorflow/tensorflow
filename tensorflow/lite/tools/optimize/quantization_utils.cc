@@ -703,19 +703,19 @@ float GetEffectiveScale(ModelT* model, SubGraphT* subgraph, int op_idx,
                         std::vector<float> factors) {
   float scale = 1.0f;
   OperatorT* op = subgraph->operators[op_idx].get();
-  for (int i = 0, iter_limit = input_index.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = input_index.size(); i < end; ++i) {
     const int index_local = input_index[i];
     const int index_global = op->inputs[index_local];
     const TensorT* tensor = subgraph->tensors[index_global].get();
     scale *= tensor->quantization->scale[0];
   }
-  for (int i = 0, iter_limit = intermediate_index.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = intermediate_index.size(); i < end; ++i) {
     const int index_local = intermediate_index[i];
     const int index_global = op->intermediates[index_local];
     const TensorT* tensor = subgraph->tensors[index_global].get();
     scale *= tensor->quantization->scale[0];
   }
-  for (int i = 0, iter_limit = factors.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = factors.size(); i < end; ++i) {
     scale *= factors[i];
   }
   return scale;

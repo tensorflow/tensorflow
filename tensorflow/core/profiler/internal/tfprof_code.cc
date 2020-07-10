@@ -421,7 +421,7 @@ void TFCode::AddNode(TFGraphNode* node) {
   // TODO(xpan): Consider to release CodeDef after TFCode is built. It
   // takes a lot of memory.
   std::set<string> traces;
-  for (int i = 0, iter_limit = node->call_stack()->traces().size(); i < iter_limit; ++i) {
+  for (int i = 0, end = node->call_stack()->traces().size(); i < end; ++i) {
     // Unlike op name, which is globally unique, trace name is only unique
     // w.r.t. it's parent.
     const string& trace = GetTraceString(node->call_stack()->traces().at(i));
@@ -447,7 +447,7 @@ void TFCode::Build() {
     TFGraphNode* fn = forward_it->second;
     CodeNode* leaf = nullptr;
     CodeNode* pre_code_node = root_.get();
-    for (int i = 0, iter_limit = fn->call_stack()->traces().size(); i < iter_limit; ++i) {
+    for (int i = 0, end = fn->call_stack()->traces().size(); i < end; ++i) {
       const string& trace =
           GetTraceString(fn->call_stack()->traces().at(i)) + kGradientSuffix;
       pre_code_node = pre_code_node->AddChildren(

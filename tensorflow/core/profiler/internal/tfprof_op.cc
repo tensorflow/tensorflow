@@ -146,7 +146,7 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
   int64 depth = 0;
   std::vector<OpNode*> show_nodes;
   int64 start = SearchRoot(account_nodes, opts.start_name_regexes);
-  for (int64 i = start, iter_limit = account_nodes.size(); i < iter_limit; ++i, ++depth) {
+  for (int64 i = start, end = account_nodes.size(); i < end; ++i, ++depth) {
     OpNode* n = account_nodes[i];
     if (ShouldTrim(n, opts.trim_name_regexes) || depth > opts.max_depth) {
       break;

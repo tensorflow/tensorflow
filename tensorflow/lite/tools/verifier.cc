@@ -444,7 +444,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
   absl::flat_hash_set<int> subgraph_input_tensors, constant_tensors,
       variable_tensors, output_tensors;
   if (subgraph.tensors()) {
-    for (int i = 0, iter_limit = subgraph.tensors()->size(); i < iter_limit; ++i) {
+    for (int i = 0, end = subgraph.tensors()->size(); i < end; ++i) {
       const auto* tensor = subgraph.tensors()->Get(i);
       if (IsConstantTensor(*tensor, model)) {
         constant_tensors.insert(i);
@@ -460,7 +460,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
   }
 
   if (subgraph.operators()) {
-    for (int op_idx = 0, iter_limit = subgraph.operators()->size(); op_idx < iter_limit; ++op_idx) {
+    for (int op_idx = 0, end = subgraph.operators()->size(); op_idx < end; ++op_idx) {
       const auto* op = subgraph.operators()->Get(op_idx);
       if (!model.operator_codes() ||
           (op->opcode_index() >= model.operator_codes()->size())) {

@@ -572,7 +572,7 @@ void BoostedTreesEnsembleResource::RecursivelyDoPostPrunePreparation(
     if (node_metadata.has_original_leaf()) {
       parent_values = node_value(tree_id, node_id);
     }
-    for (int32 i = 0, iter_limit = parent_values.size(); i < iter_limit; ++i) {
+    for (int32 i = 0, end = parent_values.size(); i < end; ++i) {
       nodes_meta->at(left_id).second.emplace_back(parent_values[i] -
                                                   left_child_values[i]);
       nodes_meta->at(right_id).second.emplace_back(parent_values[i] -

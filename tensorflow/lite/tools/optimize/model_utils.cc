@@ -125,7 +125,7 @@ bool HasMinMax(const TensorT* tensor) {
 }
 
 void SetOperatorCodeVersion(ModelT* model) {
-  for (int subgraph_idx = 0, iter_limit = model->subgraphs.size(); subgraph_idx < iter_limit;
+  for (int subgraph_idx = 0, end = model->subgraphs.size(); subgraph_idx < end;
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     // Iterate backward to avoid messing with index.

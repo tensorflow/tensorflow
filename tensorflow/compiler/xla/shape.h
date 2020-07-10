@@ -136,7 +136,7 @@ class Shape {
   // Recursively clear dynamic dimension of a shape.
   void clear_dynamic_dimensions() {
     if (!IsTuple()) {
-      for (int64 i = 0, iter_limit = dynamic_dimensions_.size(); i < iter_limit; ++i) {
+      for (int64 i = 0, end = dynamic_dimensions_.size(); i < end; ++i) {
         dynamic_dimensions_[i] = false;
       }
       return;
