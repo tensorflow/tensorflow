@@ -39,6 +39,15 @@ REGISTER_OP("TensorMapSize")
     .Output("size: int32")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("TensorMapZeros")
+    .Input("input_handle: variant")
+    .Output("output_handle: variant")
+    //.Attr("element_dtype: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("TensorMapInsert")
     .Input("input_handle: variant")
     .Input("key: element_dtype")

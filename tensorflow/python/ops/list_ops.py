@@ -248,6 +248,7 @@ def _TensorListFromTensorGrad(op, dlist):
 @ops.RegisterGradient("TensorListGetItem")
 def _TensorListGetItemGrad(op, ditem):
   """Gradient for TensorListGetItem."""
+  print("---GetItemGrad---")
   list_size = gen_list_ops.tensor_list_length(op.inputs[0])
   list_grad = gen_list_ops.tensor_list_set_item(
       gen_list_ops.tensor_list_reserve(
@@ -256,14 +257,21 @@ def _TensorListGetItemGrad(op, ditem):
           list_size, element_dtype=ditem.dtype),
       index=op.inputs[1],
       item=ditem)
+  print("op inputs", op.inputs)
+  print("ditem", ditem)
+  print("list_grad", list_grad)
   index_grad = None
   element_shape_grad = None
+  print("------")
   return list_grad, index_grad, element_shape_grad
 
 
 @ops.RegisterGradient("TensorListSetItem")
 def _TensorListSetItemGrad(op, dlist):
   """Gradient function for TensorListSetItem."""
+  print("---SetItemGrad---")
+  print("op inputs", op.inputs)
+  print("dlist", dlist)
   _, index, item = op.inputs
   list_grad = gen_list_ops.tensor_list_set_item(
       dlist, index=index, item=array_ops.zeros_like(item))
@@ -273,6 +281,9 @@ def _TensorListSetItemGrad(op, dlist):
       index,
       element_shape=array_ops.shape(item),
       element_dtype=item.dtype)
+  print("list_grad", list_grad)
+  print("value_grad", element_grad)
+  print("------")
   return list_grad, index_grad, element_grad
 
 

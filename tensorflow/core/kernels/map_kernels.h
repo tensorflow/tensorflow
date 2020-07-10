@@ -109,6 +109,46 @@ class TensorMapSize : public OpKernel {
   }
 };
 
+class TensorMapZeros : public OpKernel {
+ public:
+  explicit TensorMapZeros(OpKernelConstruction* c) : OpKernel(c) {
+    //OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+  }
+  ~TensorMapZeros() override {}
+
+  void Compute(OpKernelContext* c) override {
+    std::cout << "hello TensorMapInsert kernel" << std::endl;
+    const Tensor& temp_key = c->input(1);
+    const TensorKey key = TensorKey(temp_key);
+    std::cout << "got key" << std::endl;
+    const Tensor& value = c->input(2);
+    std::cout << "got value" << std::endl;
+
+    const TensorMap* m = nullptr;
+    OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
+    std::cout << "got map" << std::endl;
+    //TensorMap output_map;
+    //OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
+    //std::cout << "create output" << std::endl;
+    //output_map = m->Zeros();
+    //c->set_output(0, &&output_map);
+    //std::cout << "inserted" << std::endl;
+
+    Tensor* result;
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
+    TensorMap output_map = m->Zeros();
+    result->scalar<Variant>()() = std::move(output_map);
+  }
+
+ private:
+  DataType element_dtype_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("TensorMapZeros").Device(DEVICE_CPU),
+                        TensorMapZeros);
+
 class TensorMapInsert : public OpKernel {
  public:
   explicit TensorMapInsert(OpKernelConstruction* c) : OpKernel(c) {

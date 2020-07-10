@@ -25,6 +25,8 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_map_ops
 from tensorflow.python.ops.gen_map_ops import *
+from tensorflow.python.framework import constant_op
+
 
 #zero_out_ops = load_library.load_op_library(
 #    resource_loader.get_path_to_datafile('_zero_out_ops.so'))
@@ -53,20 +55,24 @@ def tensor_map_erase(input_handle, key):
 def tensor_map_replace(input_handle, key, value):
   return gen_map_ops.tensor_map_replace(input_handle, key, value)
 
+
 @ops.RegisterGradient("TensorMapLookup")
 def LookupGrad(op, dval):
-  map_grad = None
-  key_grad = None
+  # map grad should be a map that is 0 everywhere except 1 @key k
+  m, k = op.inputs
+  #m = gen_map_ops.tensor_map_zeros(m)
+  map_grad = tensor_map_replace(m, k, dval)
   key = op.inputs[1]
-  value_grad = tensor_map_lookup(dmap, key)
+  key_grad = None
   return map_grad, key_grad
 
 @ops.RegisterGradient("TensorMapInsert")
 def InsertGrad(op, dmap):
+  _, key, val = op.inputs
   map_grad, _ = gen_map_ops.tensor_map_erase(dmap, key)
   key_grad = None
-  key = op.inputs[1]
   value_grad = tensor_map_lookup(dmap, key)
+  #value_grad = constant_op.constant(1.0)
   return map_grad, key_grad, value_grad
 
 def zero_out(to_zero):
