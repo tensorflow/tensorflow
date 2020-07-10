@@ -1047,7 +1047,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
           }
           // Handle the non-innermost tensors of a 2D+ tensor.
           if (brace == "{") {
-            const in64 accum_indices_size = accum_indices->size();
+            const int64 accum_indices_size = accum_indices->size();
             if (rank > 3 && !accum_indices->empty() &&
                 accum_indices_size < rank) {
               int index = accum_indices->size() - 1;
@@ -1680,13 +1680,13 @@ bool LiteralBase::IsR1Iota() const {
   auto is_iota_at_idx = [&](const int64 idx) {
     switch (shape().element_type()) {
       case U8:
-        return Get<uint8>({idx}) == idx;
+        return Get<uint8>({idx}) == static_cast<uint8>(idx);
       case U16:
-        return Get<uint16>({idx}) == idx;
+        return Get<uint16>({idx}) == static_cast<uint8>(idx);;
       case U32:
-        return Get<uint32>({idx}) == idx;
+        return Get<uint32>({idx}) == static_cast<uint8>(idx);;
       case U64:
-        return static_cast<int64>(Get<uint64>({idx})) == idx;
+        return Get<uint64>({idx}) == static_cast<uint8>(idx);;
       case S8:
         return Get<int8>({idx}) == idx;
       case S16:
