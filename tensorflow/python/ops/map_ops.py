@@ -30,6 +30,8 @@ from tensorflow.python.ops.gen_map_ops import *
 #    resource_loader.get_path_to_datafile('_zero_out_ops.so'))
 #zero_out = zero_out_ops.zero_out 
 
+ops.NotDifferentiable("EmptyTensorMap")
+
 def empty_tensor_map():
   print("hello gen_map_ops.empty_tensor_map")
   return gen_map_ops.empty_tensor_map()
@@ -41,6 +43,31 @@ def tensor_map_size(input_handle):
 def tensor_map_insert(input_handle, key, value):
   print("hello gen_map_ops.tensor_map_insert")
   return gen_map_ops.tensor_map_insert(input_handle, key, value)
+
+def tensor_map_lookup(input_handle, key):
+  return gen_map_ops.tensor_map_lookup(input_handle, key)
+
+def tensor_map_erase(input_handle, key):
+  return gen_map_ops.tensor_map_erase(input_handle, key)
+
+def tensor_map_replace(input_handle, key, value):
+  return gen_map_ops.tensor_map_replace(input_handle, key, value)
+
+@ops.RegisterGradient("TensorMapLookup")
+def LookupGrad(op, dval):
+  map_grad = None
+  key_grad = None
+  key = op.inputs[1]
+  value_grad = tensor_map_lookup(dmap, key)
+  return map_grad, key_grad
+
+@ops.RegisterGradient("TensorMapInsert")
+def InsertGrad(op, dmap):
+  map_grad, _ = gen_map_ops.tensor_map_erase(dmap, key)
+  key_grad = None
+  key = op.inputs[1]
+  value_grad = tensor_map_lookup(dmap, key)
+  return map_grad, key_grad, value_grad
 
 def zero_out(to_zero):
     return gen_map_ops.zero_out(to_zero)

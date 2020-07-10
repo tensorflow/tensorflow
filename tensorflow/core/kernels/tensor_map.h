@@ -145,7 +145,7 @@ class TensorMap {
 
   // Insert key and value if the key does not already exist.
   // Returns true if the insertion happens.
-  bool insert(TensorKey key, Tensor value) {
+  bool insert(const TensorKey& key, const Tensor& value) {
     auto r = tensors_->values_.try_emplace(key, value);
     return r.second;
   }
@@ -155,9 +155,19 @@ class TensorMap {
     return tensors_->values_.find(key);
   }
 
+  Tensor& lookup(TensorKey key) {
+    return tensors_->values_.find(key)->second;
+  }
+
   Tensor& operator[](TensorKey& k) {
       return tensors_->values_[k];
   }
+
+  bool replace(const TensorKey& k, const Tensor& v) {
+      tensors_->values_[k] = v;
+      return true;
+  }
+
   // Removes element with given key. Return size of removed element.
   size_t erase(TensorKey key) {
     return tensors_->values_.erase(key);

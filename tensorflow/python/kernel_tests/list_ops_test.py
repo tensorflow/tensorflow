@@ -48,7 +48,7 @@ from tensorflow.python.platform import test
 
 @test_util.run_all_in_graph_and_eager_modes
 class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
-
+  '''
   def _testPushPop(self, max_num_elements):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32,
@@ -130,7 +130,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       _, e = gen_list_ops.tensor_list_pop_back(
           l, element_dtype=dtypes.float32, element_shape=[1, 3])
       self.evaluate(e)
-
+  '''
   def testPushGetGrad(self):
     with backprop.GradientTape() as tape:
       l = list_ops.empty_tensor_list(
@@ -150,7 +150,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       dt0, dt1 = tape.gradient(t1, [c0, c1])
       self.assertAllEqual(self.evaluate(dt1), [1.0, 1.0])
       self.assertEqual(self.evaluate(dt0), 0.0)
-
+  '''
   def _testStack(self, max_num_elements):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32,
@@ -888,7 +888,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           l_worker = array_ops.identity(l_ps)
           l_worker = list_ops.tensor_list_push_back(l_worker, 3.0)
           self.evaluate(l_worker)
-
+  '''
   def testPushPopGradients(self):
     with backprop.GradientTape() as tape:
       l = list_ops.empty_tensor_list(
@@ -925,7 +925,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     grad_c, grad_c2 = tape.gradient(y, [c, c2])
     self.assertAllEqual(self.evaluate(grad_c), [0.0, 4.0])
     self.assertAllEqual(self.evaluate(grad_c2), 6.0)
-
+  '''
   @test_util.run_deprecated_v1
   def testSetOutOfBounds(self):
     c = constant_op.constant([1.0, 2.0])
@@ -1664,7 +1664,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           upper, constant_op.constant([0, 1, 2]), dtype=dtypes.string)
 
     self.assertAllEqual(f(), [b"A", b"B", b"C"])
-
+  '''
   def testPopBackGrad(self):
     # https://github.com/tensorflow/tensorflow/issues/37230
 
