@@ -22,20 +22,22 @@ limitations under the License.
 namespace {
 
 void InitKernelTest(int* argc, char** argv) {
-  tflite::KernelTestDelegateProviders* const delegate_providers =
-      tflite::KernelTestDelegateProviders::Get();
-  delegate_providers->InitFromCmdlineArgs(argc, const_cast<const char**>(argv));
+  bool use_nnapi = false;
+  std::vector<tflite::Flag> flags = {
+      tflite::Flag::CreateFlag("use_nnapi", &use_nnapi, "Use NNAPI"),
+  };
+  tflite::Flags::Parse(argc, const_cast<const char**>(argv), flags);
 
-  // TODO(b/160764491): remove the special handling of NNAPI delegate test.
-  tflite::SingleOpModel::SetForceUseNnapi(
-      delegate_providers->ConstParams().Get<bool>("use_nnapi"));
+  if (use_nnapi) {
+    tflite::SingleOpModel::SetForceUseNnapi(true);
+  }
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
   ::tflite::LogToStderr();
-  InitKernelTest(&argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
+  InitKernelTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
