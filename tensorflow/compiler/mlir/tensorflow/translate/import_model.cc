@@ -3339,16 +3339,6 @@ class SavedModelSignatureDefImporter {
       const std::vector<std::pair<std::string, TensorInfo>>& outputs,
       const std::vector<std::string> control_outputs);
 
-  // Remove variables in the session initializer.
-  Status RemoveVariablesInSessionInitializer();
-
-  // Removes the variable and related ops in the init function if it is already
-  // imported as a global tensor.
-  void RemoveVariable(VarHandleOp op);
-
-  // Runs graph pruning and executor dialect to functional conversion.
-  Status ExecutorDialectToFunctional();
-
   // Lifts the variables in `module_`.
   Status LiftVariables();
 
@@ -3511,8 +3501,6 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
   module_->setAttr("tf_saved_model.semantics", builder.getUnitAttr());
 
   module_->setAttr("tf_saved_model.under_construction", builder.getUnitAttr());
-  TF_RETURN_IF_ERROR(ExecutorDialectToFunctional());
-  TF_RETURN_IF_ERROR(RemoveVariablesInSessionInitializer());
   TF_RETURN_IF_ERROR(LiftVariables());
   module_->removeAttr("tf_saved_model.under_construction");
 
@@ -3588,83 +3576,14 @@ Status SavedModelSignatureDefImporter::ConvertSignature(
   return Status::OK();
 }
 
-Status SavedModelSignatureDefImporter::RemoveVariablesInSessionInitializer() {
-  // TODO(b/153507667): Make a pass for the job.
-  SessionInitializerOp session_initializer =
-      mlir::tf_saved_model::GetSessionInitializerOp(*module_);
-
-  if (!session_initializer) return Status::OK();
-
-  mlir::FuncOp session_initializer_func = nullptr;
-
-  for (auto func : module_->getOps<mlir::FuncOp>()) {
-    if (session_initializer.initializer() == func.getName()) {
-      session_initializer_func = func;
-      break;
-    }
-  }
-
-  if (!session_initializer_func)
-    return errors::Internal("No session initializer function found.");
-
-  if (session_initializer_func.getBlocks().size() != 1)
-    return errors::Internal("Expects exactly one block in the MLIR function.");
-
-  llvm::SmallVector<VarHandleOp, 4> init_vars;
-  mlir::Block& block = session_initializer_func.getBlocks().front();
-  for (VarHandleOp op : block.getOps<VarHandleOp>()) {
-    init_vars.push_back(op);
-  }
-
-  for (auto op : init_vars) RemoveVariable(op);
-
-  return Status::OK();
-}
-
-void SavedModelSignatureDefImporter::RemoveVariable(VarHandleOp op) {
-  llvm::SmallVector<mlir::Operation*, 4> work_list;
-  work_list.push_back(op);
-  while (!work_list.empty()) {
-    auto* op = work_list.back();
-    work_list.pop_back();
-
-    for (mlir::Value res : op->getResults()) {
-      for (mlir::Operation* user : res.getUsers()) {
-        work_list.push_back(user);
-      }
-    }
-
-    for (auto& use : op->getOpOperands()) {
-      if (mlir::Value value = use.get()) {
-        mlir::Operation* def = value.getDefiningOp();
-        work_list.push_back(def);
-      }
-    }
-
-    op->dropAllReferences();
-    op->dropAllDefinedValueUses();
-
-    op->erase();
-  }
-}
-
-Status SavedModelSignatureDefImporter::ExecutorDialectToFunctional() {
+Status SavedModelSignatureDefImporter::LiftVariables() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
 
   mlir::PassManager pm(module_->getContext());
   pm.addPass(mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   pm.addPass(mlir::CreateExecutorDialectToFunctionalConversionPass());
-  if (mlir::failed(pm.run(*module_)))
-    return diag_handler.Combine(
-        errors::Internal("failed to coarsening islands."));
-
-  return Status::OK();
-}
-
-Status SavedModelSignatureDefImporter::LiftVariables() {
-  mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
-
-  mlir::PassManager pm(module_->getContext());
+  pm.addPass(
+      mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass());
   pm.addPass(
       mlir::TF::
           CreateConvertReadonlyReferenceVariablesToResourceVariablesPass());
