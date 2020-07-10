@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import sys
 
@@ -53,6 +52,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.types import distribute as distribute_types
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
@@ -143,7 +143,7 @@ def get_distributed_datasets_from_function(dataset_fn,
 
 
 @tf_export("distribute.DistributedIterator", v1=[])
-class DistributedIteratorInterface(collections.Iterator,
+class DistributedIteratorInterface(collections_abc.Iterator,
                                    distribute_types.Iterator):
   """An iterator over `tf.distribute.DistributedDataset`.
 
@@ -272,7 +272,7 @@ class DistributedIteratorInterface(collections.Iterator,
 
 
 @tf_export("distribute.DistributedDataset", v1=[])
-class DistributedDatasetInterface(collections.Iterable,
+class DistributedDatasetInterface(collections_abc.Iterable,
                                   distribute_types.Iterable):
   # pylint: disable=line-too-long
   """Represents a dataset distributed among devices and machines.

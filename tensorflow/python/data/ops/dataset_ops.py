@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import collections
 import functools
 import sys
 import threading
@@ -72,6 +71,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest as tf_nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 # Loaded lazily due to a circular dependency (roughly
@@ -103,7 +103,7 @@ tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class DatasetV2(collections.Iterable, tracking_base.Trackable,
+class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
                 composite_tensor.CompositeTensor):
   """Represents a potentially large set of elements.
 

@@ -99,7 +99,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import collections
 import re
 import threading
 
@@ -113,6 +112,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import monitored_session
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 
 # Helper function.
@@ -445,7 +445,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
       """Check whether a possibly nested structure is empty."""
       if not nest.is_nested(x):
         return False
-      if isinstance(x, collections.Mapping):
+      if isinstance(x, collections_abc.Mapping):
         return is_empty(list(x.values()))
       for item in x:
         if not is_empty(item):
