@@ -24,7 +24,7 @@ limitations under the License.
 
 // TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
-#include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
+#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/graph_transformations/lstm_utils.h"
 #include "tensorflow/lite/toco/model.h"
@@ -2116,7 +2116,7 @@ bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
     return false;
   }
   // Check if we can find the `OpDef` for the TensorFlow op. If we can find
-  // it and it has been whitelisted, export the op as an Flex op. Otherwise,
+  // it and it has been allowlisted, export the op as an Flex op. Otherwise,
   // export it as a regular custom op.
   const tensorflow::OpDef* op_def = nullptr;
   if (!tensorflow::OpRegistry::Global()
@@ -2125,9 +2125,9 @@ bool ShouldExportAsFlexOp(bool enable_select_tf_ops,
     return false;
   }
 
-  if (!::tflite::flex::IsWhitelistedFlexOp(tensorflow_op_name)) {
+  if (!::tflite::flex::IsAllowlistedFlexOp(tensorflow_op_name)) {
     LOG(WARNING) << "Op " << tensorflow_op_name
-                 << " is a valid TensorFlow op but has not been whitelisted for"
+                 << " is a valid TensorFlow op but has not been allowlisted for"
                     " the TensorFlow Lite flex op set.";
     return false;
   }

@@ -209,6 +209,7 @@ class MlirFunction : public AbstractFunction {
   std::unique_ptr<MLIRContext> context_;
   OwningModuleRef module_;
   FuncOp func_;
+  std::unique_ptr<tensorflow::FunctionDef> fdef_;
 };
 
 class MlirFunctionContext : public TracingContext {
@@ -547,6 +548,10 @@ Status MlirAbstractOp::SetAttrFunctionList(
 }
 
 Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
+  if (fdef_) {
+    *f = fdef_.get();
+    return Status::OK();
+  }
   PassManager pm(func_.getContext());
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
@@ -559,8 +564,11 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
   tensorflow::GraphExportConfig configs;
-  *f = new tensorflow::FunctionDef();
-  return ConvertMlirFunctionToFunctionLibraryDef(func_, configs, *f);
+  fdef_.reset(new tensorflow::FunctionDef());
+  TF_RETURN_IF_ERROR(
+      ConvertMlirFunctionToFunctionLibraryDef(func_, configs, fdef_.get()));
+  *f = fdef_.get();
+  return Status::OK();
 }
 
 Status MlirAbstractOp::Execute(absl::Span<AbstractTensorHandle*> retvals,

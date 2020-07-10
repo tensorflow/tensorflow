@@ -26,7 +26,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import ftrl
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adagrad
@@ -40,8 +39,8 @@ class FtrlOptimizerTest(test.TestCase):
     for dtype in [dtypes.float32]:
       with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         if use_resource:
-          var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
-          var1 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
+          var0 = variables.Variable([0.0, 0.0], dtype=dtype)
+          var1 = variables.Variable([0.0, 0.0], dtype=dtype)
         else:
           var0 = variables.Variable([0.0, 0.0], dtype=dtype)
           var1 = variables.Variable([0.0, 0.0], dtype=dtype)
@@ -53,7 +52,7 @@ class FtrlOptimizerTest(test.TestCase):
             l1_regularization_strength=0.0,
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllClose([0.0, 0.0], v0_val)
@@ -90,7 +89,7 @@ class FtrlOptimizerTest(test.TestCase):
             l1_regularization_strength=0.0,
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -109,7 +108,7 @@ class FtrlOptimizerTest(test.TestCase):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with ops.Graph().as_default(), self.cached_session(use_gpu=True):
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
         def loss():
@@ -117,7 +116,7 @@ class FtrlOptimizerTest(test.TestCase):
           return pred * pred
 
         sgd_op = ftrl.Ftrl(1.0).minimize(loss, var_list=[var0])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
@@ -142,7 +141,7 @@ class FtrlOptimizerTest(test.TestCase):
             l1_regularization_strength=0.001,
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -172,7 +171,7 @@ class FtrlOptimizerTest(test.TestCase):
             l1_regularization_strength=0.001,
             l2_regularization_strength=2.0)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -210,7 +209,7 @@ class FtrlOptimizerTest(test.TestCase):
             l2_regularization_strength=2.0,
             l2_shrinkage_regularization_strength=0.1)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -247,7 +246,7 @@ class FtrlOptimizerTest(test.TestCase):
             l2_regularization_strength=2.0,
             l2_shrinkage_regularization_strength=0.1)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([[1.0], [2.0]], v0_val)
@@ -284,7 +283,7 @@ class FtrlOptimizerTest(test.TestCase):
             l2_regularization_strength=2.0)
         update0 = opt0.apply_gradients([(grads0, var0)])
         update1 = opt1.apply_gradients([(grads1, var1)])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -321,7 +320,7 @@ class FtrlOptimizerTest(test.TestCase):
       grads1 = constant_op.constant([0.01, 0.02], dtype=dtype)
 
     update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
 
     v0_val, v1_val = self.evaluate([var0, var1])
     if is_sparse:

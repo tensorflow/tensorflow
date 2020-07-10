@@ -1298,6 +1298,9 @@ class TFOpLambda(Layer):
       return self._call_wrapper(*args, **kwargs)
     self.call = tf_decorator.make_decorator(function, _call_wrapper)
 
+    # Do not individually trace op layers in the SavedModel.
+    self._must_restore_from_config = True
+
     super(TFOpLambda, self).__init__(**kwargs)
 
     # Warning on every invocation will be quite irksome in Eager mode.

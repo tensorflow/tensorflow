@@ -22,9 +22,9 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -179,7 +179,7 @@ Shape TypeToShape(mlir::Type type) {
       }
       return ShapeUtil::MakeTupleShape(shapes);
     }
-    case mlir::xla_hlo::HLOTypes::Token:
+    case mlir::mhlo::HLOTypes::Token:
       return ShapeUtil::MakeTokenShape();
     default:
       break;

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/first_10_cifar_images.h"
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/image_recognition_model.h"
 #include "tensorflow/lite/micro/examples/image_recognition_experimental/util.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"

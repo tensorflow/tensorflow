@@ -438,7 +438,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       return control_flow_ops.while_loop_v2(lambda i: i < 2, body_fn, [0])
 
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           RuntimeError, "`merge_call` called while defining a new graph."):
         distribution.extended.call_for_each_replica(model_fn)
 
@@ -457,7 +457,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       return model_fn_nested()
 
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           RuntimeError, "`merge_call` called while defining a new graph."):
         distribution.extended.call_for_each_replica(model_fn)
 
@@ -706,7 +706,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign(5.0)
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
           "with the given reduce op ReduceOp.SUM."):
         self.evaluate(distribution.experimental_local_results(

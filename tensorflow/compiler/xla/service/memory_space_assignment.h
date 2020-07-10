@@ -379,6 +379,10 @@ class MemorySpaceAssignment {
     int64 max_outstanding_prefetches = -1;
     int64 max_outstanding_evictions = -1;
 
+    // Extra outstanding prefetch limit for while uses (in addition to
+    // max_outstanding_prefetches).
+    int64 while_use_extra_outstanding_prefetch_limit = 0;
+
     // Specifies the maximum number of retries that will be performed for each
     // value in case prefetching failed due to running out of asynchronous
     // copies or asynchronous copy ordering.
@@ -1019,9 +1023,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   void AddToChunkMap(const HloValue* buffer, Chunk chunk) override {}
 
   // Returns true if the addition of an asynchronous copy in the given time
-  // interval would violate the maximum number of asynchronous copies.
-  bool ViolatesMaximumOutstandingAsyncCopies(int64 start_time, int64 end_time,
-                                             bool is_prefetch) const;
+  // interval would violate the maximum number of asynchronous copies. An extra
+  // async copy limit can be provided to increase the limit of asynchronous
+  // copies for this instance.
+  bool ViolatesMaximumOutstandingAsyncCopies(
+      int64 start_time, int64 end_time, bool is_prefetch,
+      int64 extra_async_copy_limit = 0) const;
 
   // Return true if the asynchronous copy would violate the pipelining order.
   bool ViolatesAsyncCopyOrdering(int64 start_time, int64 end_time) const;

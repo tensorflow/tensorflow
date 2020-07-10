@@ -39,7 +39,7 @@ class ModeKeyMapTest(test.TestCase):
       _ = mode_map[mode_keys.KerasModeKeys.TRAIN]
     with self.assertRaises(KeyError):
       _ = mode_map[mode_keys.EstimatorModeKeys.TRAIN]
-    with self.assertRaisesRegexp(ValueError, 'Invalid mode'):
+    with self.assertRaisesRegex(ValueError, 'Invalid mode'):
       _ = mode_map['serve']
 
     # Test common dictionary methods
@@ -54,7 +54,7 @@ class ModeKeyMapTest(test.TestCase):
       mode_map[mode_keys.KerasModeKeys.TEST] = 1
 
   def test_invalid_init(self):
-    with self.assertRaisesRegexp(ValueError, 'Multiple keys/values found'):
+    with self.assertRaisesRegex(ValueError, 'Multiple keys/values found'):
       _ = mode_keys.ModeKeyMap(**{
           mode_keys.KerasModeKeys.PREDICT: 3,
           mode_keys.EstimatorModeKeys.PREDICT: 1

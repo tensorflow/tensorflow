@@ -83,8 +83,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(config.get_device_policy(), 'silent_for_int32')
     self.assertEqual(context.DEVICE_PLACEMENT_SILENT_FOR_INT32,
                      context.context().device_policy)
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'Tensors on conflicting devices'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Tensors on conflicting devices'):
       copy_tensor(dtypes.float32)
     copy_tensor()
 
@@ -98,8 +98,8 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(config.get_device_policy(), 'explicit')
     self.assertEqual(context.DEVICE_PLACEMENT_EXPLICIT,
                      context.context().device_policy)
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'Tensors on conflicting devices'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Tensors on conflicting devices'):
       copy_tensor()
 
     config.set_device_policy(None)
@@ -409,7 +409,7 @@ class DeviceTest(test.TestCase):
         self.evaluate(d)
 
     # Modifying the CPU configuration is not supported
-    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+    with self.assertRaisesRegex(RuntimeError, 'cannot be modified'):
       config.set_logical_device_configuration(cpus[0], [
           context.LogicalDeviceConfiguration(),
           context.LogicalDeviceConfiguration(),
@@ -445,20 +445,20 @@ class DeviceTest(test.TestCase):
     self.assertEqual(len(config.get_visible_devices('GPU')), 0)
     self.assertEqual(len(config.list_logical_devices('XLA_GPU')), 0)
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'Could not satisfy'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy'):
       with ops.device('/device:GPU:0'):
         a = array_ops.identity(1.0)
         self.evaluate(a)
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'Could not satisfy'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy'):
       with ops.device('/device:XLA_GPU:0'):
         a = array_ops.identity(1.0)
         self.evaluate(a)
 
     # Modifying the visible devices is not supported
-    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+    with self.assertRaisesRegex(RuntimeError, 'cannot be modified'):
       config.set_visible_devices(gpus)
 
     # Setting the same visible devices is fine
@@ -477,7 +477,7 @@ class DeviceTest(test.TestCase):
         a = constant_op.constant(1.0)
         self.evaluate(a)
 
-    with self.assertRaisesRegexp(RuntimeError, 'unknown device'):
+    with self.assertRaisesRegex(RuntimeError, 'unknown device'):
       with ops.device('/device:GPU:' + str(len(gpus))):
         a = constant_op.constant(1.0)
         self.evaluate(a)
@@ -515,12 +515,12 @@ class DeviceTest(test.TestCase):
   @reset_eager
   def testDeviceDetailsErrors(self):
     logical_devices = config.list_logical_devices()
-    with self.assertRaisesRegexp(ValueError,
-                                 'must be a tf.config.PhysicalDevice'):
+    with self.assertRaisesRegex(ValueError,
+                                'must be a tf.config.PhysicalDevice'):
       config.get_device_details(logical_devices[0])
 
     phys_dev = context.PhysicalDevice('/physical_device:CPU:100', 'CPU')
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'The PhysicalDevice must be one obtained from '
         'calling `tf.config.list_physical_devices`'):
       config.get_device_details(phys_dev)
@@ -546,20 +546,20 @@ class DeviceTest(test.TestCase):
         a = array_ops.identity(1.0)
         self.evaluate(a)
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 'Could not satisfy'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Could not satisfy'):
       with ops.device('/device:GPU:' + str(len(logical_gpus))):
         a = array_ops.identity(1.0)
         self.evaluate(a)
 
     # Modifying the GPU configuration is not supported
-    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+    with self.assertRaisesRegex(RuntimeError, 'cannot be modified'):
       config.set_logical_device_configuration(gpus[-1], [
           context.LogicalDeviceConfiguration(memory_limit=20),
           context.LogicalDeviceConfiguration(memory_limit=20)
       ])
 
-    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+    with self.assertRaisesRegex(RuntimeError, 'cannot be modified'):
       config.set_logical_device_configuration(gpus[-1], [
           context.LogicalDeviceConfiguration(memory_limit=10),
           context.LogicalDeviceConfiguration(memory_limit=10),
@@ -589,7 +589,7 @@ class DeviceTest(test.TestCase):
     self.assertTrue(len(logical_gpus), len(gpus))
 
     # Modifying the GPU configuration is not supported
-    with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
+    with self.assertRaisesRegex(RuntimeError, 'cannot be modified'):
       for gpu in gpus:
         config.set_memory_growth(gpu, False)
 
@@ -606,7 +606,7 @@ class DeviceTest(test.TestCase):
     if len(gpus) > 1:
       # Assert if other GPUs were not configured
       config.set_memory_growth(gpus[0], True)
-      with self.assertRaisesRegexp(ValueError, 'cannot differ'):
+      with self.assertRaisesRegex(ValueError, 'cannot differ'):
         c = context.context().config
 
       # If we limit visibility to GPU 0, growth is fine
@@ -621,7 +621,7 @@ class DeviceTest(test.TestCase):
 
       # Growth now fails because all the GPUs are visible and not the same
       config.set_visible_devices(gpus, 'GPU')
-      with self.assertRaisesRegexp(ValueError, 'cannot differ'):
+      with self.assertRaisesRegex(ValueError, 'cannot differ'):
         c = context.context().config
 
     for gpu in gpus:
@@ -630,7 +630,7 @@ class DeviceTest(test.TestCase):
     c = context.context().config
     self.assertTrue(c.gpu_options.allow_growth)
 
-    with self.assertRaisesRegexp(ValueError, 'memory limit'):
+    with self.assertRaisesRegex(ValueError, 'memory limit'):
       config.set_logical_device_configuration(gpus[-1], [
           context.LogicalDeviceConfiguration(),
           context.LogicalDeviceConfiguration()
@@ -645,7 +645,7 @@ class DeviceTest(test.TestCase):
     c = context.context().config
     self.assertFalse(c.gpu_options.allow_growth)
 
-    with self.assertRaisesRegexp(ValueError, 'virtual devices'):
+    with self.assertRaisesRegex(ValueError, 'virtual devices'):
       config.set_memory_growth(gpus[-1], False)
 
   @test_util.run_gpu_only
@@ -719,7 +719,7 @@ class DeviceTest(test.TestCase):
     # Handle invalid visible device list
     context.context()._config = config_pb2.ConfigProto(
         gpu_options=config_pb2.GPUOptions(visible_device_list=str(gpu_count)))
-    with self.assertRaisesRegexp(ValueError, 'Invalid visible device index'):
+    with self.assertRaisesRegex(ValueError, 'Invalid visible device index'):
       gpus = config.list_physical_devices('GPU')
       new_config = context.context().config
     context.context()._physical_devices = None

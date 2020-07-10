@@ -41,7 +41,7 @@ class CustomDeviceTest(test.TestCase):
     # There was no copy onto the device. Actually I'm not sure how to trigger
     # that from Python.
     self.assertFalse(custom_device_testutil.FlagValue(arrived_flag))
-    with self.assertRaisesRegexp(errors.InternalError, 'Trying to copy'):
+    with self.assertRaisesRegex(errors.InternalError, 'Trying to copy'):
       y.numpy()
 
 

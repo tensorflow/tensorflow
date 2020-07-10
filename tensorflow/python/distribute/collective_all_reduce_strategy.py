@@ -21,13 +21,13 @@ from __future__ import print_function
 import copy
 import weakref
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_util
@@ -250,6 +250,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cluster_spec = None
     self._task_type = None
     self._task_id = None
+    self._id_in_cluster = 0
 
     # This is a mark to tell whether we are running with standalone client or
     # independent worker. Right now with standalone client, strategy object is
@@ -277,6 +278,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cluster_spec = cluster_spec
     self._task_type = task_type
     self._task_id = task_id
+    self._id_in_cluster = multi_worker_util.id_in_cluster(
+        self._cluster_spec, self._task_type, self._task_id)
 
     self._num_workers = multi_worker_util.worker_count(cluster_spec, task_type)
     if not self._num_workers:
@@ -304,7 +307,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         not getattr(self, "_local_or_standalone_client_mode", False)):
       # Checking _local_or_standalone_client_mode as well because we should not
       # create the std server in standalone client mode.
-      config_proto = config_pb2.ConfigProto()
+      config_proto = copy.deepcopy(context.context().config)
       config_proto = self._update_config_proto(config_proto)
 
       if hasattr(cluster_resolver, "port"):
@@ -437,14 +440,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
                        **kwargs)
 
   def _make_input_context(self):
-    if self._cluster_spec is None:
-      input_pipeline_id = 0
-    else:
-      input_pipeline_id = multi_worker_util.id_in_cluster(
-          self._cluster_spec, self._task_type, self._task_id)
     input_context = distribute_lib.InputContext(
         num_input_pipelines=self._num_workers,
-        input_pipeline_id=input_pipeline_id,
+        input_pipeline_id=self._id_in_cluster,
         num_replicas_in_sync=self._num_replicas_in_sync)
     return input_context
 
@@ -465,6 +463,17 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         input_workers=self._input_workers_with_options(options),
         input_contexts=[input_context],
         strategy=self._container_strategy())
+
+  def _experimental_distribute_values_from_function(self, value_fn):
+    per_replica_values = []
+    num_local_replicas = len(self.worker_devices)
+    for local_replica_id in range(num_local_replicas):
+      replica_id = (self._id_in_cluster * num_local_replicas +
+                    local_replica_id)
+      value_context = distribute_lib.ValueContext(
+          replica_id, self._num_replicas_in_sync)
+      per_replica_values.append(value_fn(value_context))
+    return distribute_utils.regroup(per_replica_values, always_wrap=True)
 
   def _make_dataset_iterator(self, dataset):
     """Distributes the dataset to each local GPU."""

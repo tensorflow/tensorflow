@@ -265,6 +265,8 @@ class EagerResourceDeleter(object):
   the cycle will be collectable.
   """
 
+  __slots__ = ["_handle", "_handle_device", "_context"]
+
   def __init__(self, handle, handle_device):
     if not isinstance(handle, ops.Tensor):
       raise ValueError(

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -49,15 +50,34 @@ class ResourceAliasAnalysis {
   const llvm::SmallSet<int64_t, 8>& GetResourceUniqueIds(
       const Value resource) const;
 
+  // Returns the set of values that are potentially aliases of `value`. Requires
+  // that IsUnknownResource(resource) == true.
+  llvm::SmallSetVector<Value, 8> GetResourceAliases(const Value resource) const;
+
  private:
   ResourceAliasAnalysis() = default;
 
-  // Runs the analysis on `func_op` and populates resource_value_to_ids_.
+  // Runs the analysis on `func_op` and populates two way resource values to
+  // unique ID mapping.
   void AnalyzeFunction(FuncOp func_op);
+
+  // Maps resource value to unique ID and vice-versa.
+  void AddValueUniqueIDMapping(Value value, int64_t id) {
+    resource_value_to_ids_[value].insert(id);
+    id_to_resource_values_[id].insert(value);
+  }
+
+  // Returns the set unique Values which map to `id`.
+  const llvm::SmallSetVector<Value, 8>& GetUniqueIdResources(int64_t id) const;
 
   // Maps each resource-type value to a set of unique IDs that it could alias.
   llvm::SmallDenseMap<Value, llvm::SmallSet<int64_t, 8>, 8>
       resource_value_to_ids_;
+
+  // Maps each unique ID to a set of resource-type values that could alias to
+  // it. This is inverse of `resource_value_to_ids_` map.
+  llvm::SmallDenseMap<int64_t, llvm::SmallSetVector<Value, 8>, 8>
+      id_to_resource_values_;
 };
 
 // An analysis that runs on a function and infers the control predecessors and

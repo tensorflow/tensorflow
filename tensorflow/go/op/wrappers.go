@@ -42249,6 +42249,14 @@ func TPUReplicateMetadataAllowSoftPlacement(value bool) TPUReplicateMetadataAttr
 	}
 }
 
+// TPUReplicateMetadataUseSpmdForXlaPartitioning sets the optional use_spmd_for_xla_partitioning attribute to value.
+// If not specified, defaults to false
+func TPUReplicateMetadataUseSpmdForXlaPartitioning(value bool) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["use_spmd_for_xla_partitioning"] = value
+	}
+}
+
 // Metadata indicating how the TPU computation should be replicated.
 //
 // This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.

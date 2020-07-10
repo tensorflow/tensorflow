@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -43,6 +45,10 @@ class TpuProgramGroupInterface {
 
   // Logs program memory summary.
   virtual bool LogProgramMemorySummary() = 0;
+
+  // Logs TPU Compilation statistics.
+  virtual Status LogCompilationStats(const TpuCompilationCacheKey& key,
+                                     absl::Duration duration) = 0;
 
   // Hlo metadatas. The pointers can only be used as long as the cache entry is
   // referenced.

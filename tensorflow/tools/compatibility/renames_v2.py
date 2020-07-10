@@ -1372,6 +1372,8 @@ renames = {
         'tf.compat.v1.tpu.shard',
     'tf.tpu.shutdown_system':
         'tf.compat.v1.tpu.shutdown_system',
+    'tf.tpu.XLAOptions':
+        'tf.compat.v1.tpu.XLAOptions',
     'tf.trace':
         'tf.linalg.trace',
     'tf.train.AdadeltaOptimizer':

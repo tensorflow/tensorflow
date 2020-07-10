@@ -156,7 +156,7 @@ To do so, we utilize the `preprocess_coco_minival` Python binary as follows:
 bazel run //tensorflow/lite/tools/evaluation/tasks/coco_object_detection:preprocess_coco_minival -- \
   --images_folder=/path/to/val2014 \
   --instances_file=/path/to/instances_val2014.json \
-  --whitelist_file=/path/to/minival_whitelist.txt \
+  --allowlist_file=/path/to/minival_allowlist.txt \
   --output_folder=/path/to/output/folder
 
 ```

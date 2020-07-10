@@ -28,7 +28,7 @@ from tensorflow.python.ops import io_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-WHITELIST_FORMATS = ('.bmp', '.gif', '.jpeg', '.jpg', '.png')
+ALLOWLIST_FORMATS = ('.bmp', '.gif', '.jpeg', '.jpg', '.png')
 
 
 @keras_export('keras.preprocessing.image_dataset_from_directory', v1=[])
@@ -175,7 +175,7 @@ def image_dataset_from_directory(directory,
   image_paths, labels, class_names = dataset_utils.index_directory(
       directory,
       labels,
-      formats=WHITELIST_FORMATS,
+      formats=ALLOWLIST_FORMATS,
       class_names=class_names,
       shuffle=shuffle,
       seed=seed,

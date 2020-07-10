@@ -47,7 +47,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
           l1_regularization_strength=0.0,
           l2_regularization_strength=0.0)
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose([0.0, 0.0], v0_val)
@@ -87,7 +87,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
           l1_regularization_strength=0.0,
           l2_regularization_strength=0.0)
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose([1.0, 2.0], v0_val)
@@ -109,7 +109,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
         loss = pred * pred
         sgd_op = proximal_adagrad.ProximalAdagradOptimizer(1.0).minimize(loss)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
@@ -133,7 +133,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
           l1_regularization_strength=0.001,
           l2_regularization_strength=0.0)
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose([1.0, 2.0], v0_val)
@@ -160,7 +160,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
           l1_regularization_strength=0.001,
           l2_regularization_strength=2.0)
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose([1.0, 2.0], v0_val)
@@ -195,7 +195,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       grads1 = constant_op.constant([0.01, 0.02])
 
     update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
 
     sess = ops.get_default_session()
     v0_val, v1_val = self.evaluate([var0, var1])

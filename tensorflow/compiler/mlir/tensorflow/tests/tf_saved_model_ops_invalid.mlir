@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -allow-unregistered-dialect
 
 module attributes {tf_saved_model.semantics} {
 
@@ -124,6 +124,19 @@ module attributes {tf_saved_model.semantics} {
   func @f(
     %arg0: tensor<f32>
   ) attributes { tf_saved_model.exported_names = ["f"] } {
+    return
+  }
+
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{'tf.resource_name' attribute is not allowed unless it is being under construction}}
+  func @f(
+    %arg0: tensor<f32> {tf.resource_name = "resource"}
+  ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
     return
   }
 
@@ -294,7 +307,7 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-module attributes {tf_saved_model.semantics} {
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
   // expected-error@+1 {{exported function @f should be public}}
   func @f(
@@ -373,4 +386,17 @@ module attributes {tf_saved_model.semantics} {
   func @init() attributes { tf_saved_model.exported_names = ["a", "b"] } {
     return
   }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{unknown symbol operation}}
+  "some_dialect.some_op"() {sym_name = "v"} : () -> ()
+  func @f(%arg0: tensor<!tf.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
+    attributes { tf_saved_model.exported_names = ["a"] } {
+    return
+  }
+
 }

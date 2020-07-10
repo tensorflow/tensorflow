@@ -719,6 +719,8 @@ class ConversionNotImplementedError(Exception):
 class _PforInput(object):
   """Input object passed to registered pfor converters."""
 
+  __slots__ = ["pfor", "_op", "_inputs"]
+
   def __init__(self, pfor, op, inputs):
     """Creates a _PforInput object.
 

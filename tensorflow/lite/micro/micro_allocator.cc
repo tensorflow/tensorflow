@@ -818,8 +818,7 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
 
         return kTfLiteError;
       }
-      TF_LITE_ENSURE_STATUS(parser(op, op_type, error_reporter_,
-                                   &builtin_data_allocator,
+      TF_LITE_ENSURE_STATUS(parser(op, error_reporter_, &builtin_data_allocator,
                                    (void**)(&builtin_data)));
     }
 

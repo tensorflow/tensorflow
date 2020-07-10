@@ -173,7 +173,7 @@ void TestHardSwishQuantizedBias(const int size, const T* output_data,
       std::numeric_limits<T>::min() + (3.0f - input_min) / input_scale);
 
   for (int i = quantized_input_negative_three;
-       i <= quantized_input_positive_three; i++) {
+       i < size && i <= quantized_input_positive_three; i++) {
     float_input_values[i] =
         input_min + (i - std::numeric_limits<T>::min()) * input_scale;
   }
