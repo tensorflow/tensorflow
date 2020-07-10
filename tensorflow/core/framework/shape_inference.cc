@@ -128,7 +128,7 @@ Status InferenceContext::set_output(StringPiece output_name,
       return errors::InvalidArgument("Must have exactly ", shapes.size(),
                                      " shapes.");
     }
-    for (int i = 0; i < size; ++i) {
+    for (int i = 0; i < shapes_size; ++i) {
       outputs_[i + start] = shapes[i];
     }
   }
@@ -182,8 +182,8 @@ void InferenceContext::PreInputInit(
 }
 
 Status InferenceContext::ExpandOutputs(int new_output_size) {
-  int outputs_size_ = outputs_.size();
-  if (new_output_size < outputs_size_) {
+  const int outputs_size = outputs_.size();
+  if (new_output_size < outputs_size) {
     return errors::InvalidArgument("Trying to reduce number of outputs of op.");
   }
   outputs_.resize(new_output_size, nullptr);
@@ -211,8 +211,8 @@ void InferenceContext::PostInputInit(
     }
     input_handle_shapes_and_types_ = std::move(input_handle_data);
   }
-  int inputs_size_ = inputs_.size();
-  if (inputs_size_ != num_inputs_from_node_def) {
+  const int inputs_size = inputs_.size();
+  if (inputs_size != num_inputs_from_node_def) {
     construction_status_ = errors::InvalidArgument(
         "Wrong number of inputs passed: ", inputs_.size(), " while ",
         num_inputs_from_node_def, " expected based on NodeDef");
@@ -720,8 +720,8 @@ Status InferenceContext::MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
   TF_RETURN_IF_ERROR(WithRankAtMost(input(input_idx), 1, &input_shape));
 
   requested_input_tensor_as_partial_shape_[input_idx] = true;
-  int input_tensors_as_shapes_size_ = input_tensors_as_shapes_.size();
-  if (input_idx < input_tensors_as_shapes_size_ &&
+  const int input_tensors_as_shapes_size = input_tensors_as_shapes_.size();
+  if (input_idx < input_tensors_as_shapes_size &&
       input_tensors_as_shapes_[input_idx].IsSet() &&
       RankKnown(input_tensors_as_shapes_[input_idx])) {
     *out = input_tensors_as_shapes_[input_idx];
@@ -739,8 +739,8 @@ Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
   TF_RETURN_IF_ERROR(WithRank(input(input_idx), 1, &input_shape));
 
   requested_input_tensor_as_partial_shape_[input_idx] = true;
-  int input_tensors_as_shapes_size_ = input_tensors_as_shapes_.size();
-  if (input_idx < input_tensors_as_shapes_size_ &&
+  const int input_tensors_as_shapes_size = input_tensors_as_shapes_.size();
+  if (input_idx < input_tensors_as_shapes_size &&
       input_tensors_as_shapes_[input_idx].IsSet() &&
       RankKnown(input_tensors_as_shapes_[input_idx])) {
     *out = input_tensors_as_shapes_[input_idx];
@@ -1104,15 +1104,15 @@ Status InferenceContext::AttachContext(const Status& status) {
   std::vector<string> input_from_tensors_as_shape_str;
   input_from_tensors_as_shape_str.reserve(inputs_.size());
   for (int i = 0, end = inputs_.size(); i < end; ++i) {
-    int input_tensors_size_ = input_tensors_.size();
-    int input_tensors_as_shapes_size_ = input_tensors_as_shapes_.size();
+    const int input_tensors_as_shapes_size = input_tensors_as_shapes_.size();
+    const int input_tensors_size = input_tensors_.size();
     if (requested_input_tensor_as_partial_shape_[i] &&
-        i < input_tensors_as_shapes_size_ &&
+        i < input_tensors_as_shapes_size &&
         input_tensors_as_shapes_[i].IsSet() &&
         RankKnown(input_tensors_as_shapes_[i])) {
       input_from_tensors_as_shape_str.push_back(strings::StrCat(
           "input[", i, "] = ", DebugString(input_tensors_as_shapes_[i])));
-    } else if (requested_input_tensor_[i] && i < input_tensors_size_ &&
+    } else if (requested_input_tensor_[i] && i < input_tensors_size &&
                input_tensors_[i] != nullptr) {
       input_from_tensors_str.push_back(strings::StrCat(
           "input[", i, "] = <",
