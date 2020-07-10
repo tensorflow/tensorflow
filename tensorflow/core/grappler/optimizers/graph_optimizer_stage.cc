@@ -58,7 +58,7 @@ Status GetTensorProperties(const GraphOptimizerContext& ctx,
 
   const auto& output_properties =
       ctx.graph_properties->GetOutputProperties(tensor_id.node());
-  auto num_outputs = output_properties.size();
+  int num_outputs = output_properties.size();
 
   if (num_outputs == 0 || tensor_id.index() > num_outputs - 1) {
     return errors::InvalidArgument(

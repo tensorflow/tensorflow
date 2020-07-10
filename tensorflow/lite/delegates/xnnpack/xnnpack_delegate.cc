@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
 namespace tflite {
@@ -52,6 +53,8 @@ class Delegate {
           pthreadpool_create(static_cast<size_t>(options->num_threads)));
     }
 #endif
+    TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
+                         "Created TensorFlow Lite XNNPACK delegate for CPU.");
   }
 
   TfLiteIntArray* PrepareOpsToDelegate(TfLiteContext* context);
@@ -327,7 +330,7 @@ class Subgraph {
         *output_min = 0.0f;
         *output_max = +std::numeric_limits<float>::infinity();
         return kTfLiteOk;
-      case kTfLiteActRelu1:
+      case kTfLiteActReluN1To1:
         *output_min = -1.0f;
         *output_max = +1.0f;
         return kTfLiteOk;
@@ -494,7 +497,7 @@ class Subgraph {
             context, "unsupported fused activation (Relu) in node #%d",
             node_index);
         return kTfLiteOk;
-      case kTfLiteActRelu1:
+      case kTfLiteActReluN1To1:
         TF_LITE_MAYBE_KERNEL_LOG(
             context, "unsupported fused activation (ReluMinus1To1) in node #%d",
             node_index);
@@ -2263,7 +2266,8 @@ class Subgraph {
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
         logging_context, input_tensor, node->inputs->data[0], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 4,
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor, 1,
+                                           XNN_MAX_TENSOR_DIMS,
                                            node->inputs->data[0]));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, input_tensor, node->inputs->data[0], node_index));
@@ -2281,7 +2285,8 @@ class Subgraph {
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloatType(
         logging_context, output_tensor, node->outputs->data[0], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 4,
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor, 1,
+                                           XNN_MAX_TENSOR_DIMS,
                                            node->outputs->data[0]));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         logging_context, output_tensor, node->outputs->data[0], node_index));

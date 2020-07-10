@@ -220,12 +220,12 @@ ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
   Region &body = *result.addRegion();
   if (parser.parseRegion(body, llvm::None, llvm::None)) return failure();
 
-  if (body.getBlocks().size() > 1)
-    return parser.emitError(loc) << "expects a single block region";
-
   // Ensure that the region is well formed: it contains at least a block with
   // a FetchOp terminator.
   GraphOp::ensureTerminator(body, parser.getBuilder(), result.location);
+
+  if (!llvm::hasSingleElement(body))
+    return parser.emitError(loc) << "expects a single block region";
 
   // Get the results type from the terminator type inside the graph.
   Operation &fetch = body.back().back();

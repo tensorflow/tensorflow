@@ -43,12 +43,20 @@ TF_LITE_MICRO_TEST(TestRecordsTfLiteTensorArrayData) {
   tflite::RecordingMicroAllocator* micro_allocator =
       tflite::RecordingMicroAllocator::Create(arena, kTestConvArenaSize,
                                               micro_test::reporter);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, micro_allocator);
-  TF_LITE_MICRO_EXPECT_GE(kTfLiteOk, micro_allocator->StartModelAllocation(
-                                         model, &context, all_ops_resolver,
-                                         &node_and_registration));
-  TF_LITE_MICRO_EXPECT_GE(
-      kTfLiteOk, micro_allocator->FinishModelAllocation(model, &context));
+  // TODO(b/158102673): ugly workaround for not having fatal assertions. Same
+  // throughout this file.
+  TF_LITE_MICRO_EXPECT_NE(micro_allocator, nullptr);
+  if (micro_allocator == nullptr) return 1;
+
+  TfLiteStatus status;
+  status = micro_allocator->StartModelAllocation(
+      model, &context, all_ops_resolver, &node_and_registration);
+  TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
+  if (status != kTfLiteOk) return 1;
+
+  status = micro_allocator->FinishModelAllocation(model, &context);
+  TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
+  if (status != kTfLiteOk) return 1;
 
   tflite::RecordedAllocation recorded_allocation =
       micro_allocator->GetRecordedAllocation(
@@ -70,12 +78,18 @@ TF_LITE_MICRO_TEST(TestRecordsTensorArrayQuantizationData) {
   tflite::RecordingMicroAllocator* micro_allocator =
       tflite::RecordingMicroAllocator::Create(arena, kTestConvArenaSize,
                                               micro_test::reporter);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, micro_allocator);
-  TF_LITE_MICRO_EXPECT_GE(kTfLiteOk, micro_allocator->StartModelAllocation(
-                                         model, &context, all_ops_resolver,
-                                         &node_and_registration));
-  TF_LITE_MICRO_EXPECT_GE(
-      kTfLiteOk, micro_allocator->FinishModelAllocation(model, &context));
+  TF_LITE_MICRO_EXPECT_NE(micro_allocator, nullptr);
+  if (micro_allocator == nullptr) return 1;
+
+  TfLiteStatus status;
+  status = micro_allocator->StartModelAllocation(
+      model, &context, all_ops_resolver, &node_and_registration);
+  TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
+  if (status != kTfLiteOk) return 1;
+
+  status = micro_allocator->FinishModelAllocation(model, &context);
+  TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
+  if (status != kTfLiteOk) return 1;
 
   // Walk the model subgraph to find all tensors with quantization params and
   // keep a tally.
@@ -124,12 +138,18 @@ TF_LITE_MICRO_TEST(TestRecordsNodeAndRegistrationArrayData) {
   tflite::RecordingMicroAllocator* micro_allocator =
       tflite::RecordingMicroAllocator::Create(arena, kTestConvArenaSize,
                                               micro_test::reporter);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, micro_allocator);
-  TF_LITE_MICRO_EXPECT_GE(kTfLiteOk, micro_allocator->StartModelAllocation(
-                                         model, &context, all_ops_resolver,
-                                         &node_and_registration));
-  TF_LITE_MICRO_EXPECT_GE(
-      kTfLiteOk, micro_allocator->FinishModelAllocation(model, &context));
+  TF_LITE_MICRO_EXPECT_NE(micro_allocator, nullptr);
+  if (micro_allocator == nullptr) return 1;
+
+  TfLiteStatus status;
+  status = micro_allocator->StartModelAllocation(
+      model, &context, all_ops_resolver, &node_and_registration);
+  TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
+  if (status != kTfLiteOk) return 1;
+
+  status = micro_allocator->FinishModelAllocation(model, &context);
+  TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
+  if (status != kTfLiteOk) return 1;
 
   size_t num_ops = model->subgraphs()->Get(0)->operators()->size();
   tflite::RecordedAllocation recorded_allocation =
@@ -140,6 +160,55 @@ TF_LITE_MICRO_TEST(TestRecordsNodeAndRegistrationArrayData) {
                           num_ops * NODE_AND_REGISTRATION_STRUCT_SIZE);
   TF_LITE_MICRO_EXPECT_GE(recorded_allocation.used_bytes,
                           num_ops * NODE_AND_REGISTRATION_STRUCT_SIZE);
+}
+
+TF_LITE_MICRO_TEST(TestRecordsMultiTenantAllocations) {
+  TfLiteContext context;
+  tflite::AllOpsResolver all_ops_resolver;
+  tflite::NodeAndRegistration* node_and_registration;
+  const tflite::Model* model = tflite::GetModel(kTestConvModelData);
+
+  // Double the arena size to allocate two models inside of it:
+  uint8_t arena[kTestConvArenaSize * 2];
+
+  TfLiteStatus status;
+
+  tflite::RecordingMicroAllocator* micro_allocator =
+      tflite::RecordingMicroAllocator::Create(arena, kTestConvArenaSize * 2,
+                                              micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_NE(micro_allocator, nullptr);
+  if (micro_allocator == nullptr) return 1;
+
+  // First allocation with the model in the arena:
+  status = micro_allocator->StartModelAllocation(
+      model, &context, all_ops_resolver, &node_and_registration);
+  TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
+  if (status != kTfLiteOk) return 1;
+
+  status = micro_allocator->FinishModelAllocation(model, &context);
+  TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
+  if (status != kTfLiteOk) return 1;
+
+  // Second allocation with the same model in the arena:
+  status = micro_allocator->StartModelAllocation(
+      model, &context, all_ops_resolver, &node_and_registration);
+  TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
+  if (status != kTfLiteOk) return 1;
+
+  status = kTfLiteOk, micro_allocator->FinishModelAllocation(model, &context);
+  TF_LITE_MICRO_EXPECT_EQ(status, kTfLiteOk);
+  if (status != kTfLiteOk) return 1;
+
+  tflite::RecordedAllocation recorded_allocation =
+      micro_allocator->GetRecordedAllocation(
+          tflite::RecordedAllocationType::kTfLiteTensorArray);
+  TF_LITE_MICRO_EXPECT_EQ(recorded_allocation.count, context.tensors_size * 2);
+  TF_LITE_MICRO_EXPECT_EQ(
+      recorded_allocation.requested_bytes,
+      context.tensors_size * TF_LITE_TENSOR_STRUCT_SIZE * 2);
+  TF_LITE_MICRO_EXPECT_GE(
+      recorded_allocation.used_bytes,
+      context.tensors_size * TF_LITE_TENSOR_STRUCT_SIZE * 2);
 }
 
 // TODO(b/158124094): Find a way to audit OpData allocations on

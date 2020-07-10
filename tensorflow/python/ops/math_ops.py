@@ -1823,13 +1823,8 @@ if not six.PY2:
                                           _range_tensor_conversion_function)
 
 # Reduction operations
-def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-name
-  """Returns range(0, rank(x)) if reduction_indices is None."""
-  # TODO(aselle): Remove this after deprecation
-  if reduction_indices is not None:
-    if axis is not None:
-      raise ValueError("Can't specify both axis' and 'reduction_indices'.")
-    axis = reduction_indices
+def _ReductionDims(x, axis):  # pylint: disable=invalid-name
+  """Returns range(0, rank(x)) if axis is None."""
   if axis is not None:
     return axis
   else:

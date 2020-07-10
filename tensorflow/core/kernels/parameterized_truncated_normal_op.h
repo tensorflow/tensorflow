@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
 
@@ -36,6 +37,21 @@ template <typename Device, typename T>
 struct TruncatedNormalFunctor {
   void operator()(OpKernelContext* ctx, const Device& d, int64 num_batches,
                   int64 samples_per_batch, int64 num_elements,
+                  typename TTypes<T>::ConstFlat means,
+                  typename TTypes<T>::ConstFlat stddevs,
+                  typename TTypes<T>::ConstFlat minvals,
+                  typename TTypes<T>::ConstFlat maxvals,
+                  const random::PhiloxRandom& gen,
+                  typename TTypes<T>::Flat output);
+};
+
+// This version supports broadcasting of the arguments, as well as puts
+// the sample dimension on the left.
+template <typename Device, typename T>
+struct TruncatedNormalFunctorV2 {
+  void operator()(OpKernelContext* ctx, const Device& d, int64 num_batches,
+                  int64 samples_per_batch, int64 num_elements,
+                  const BCastList<4>& bcast,
                   typename TTypes<T>::ConstFlat means,
                   typename TTypes<T>::ConstFlat stddevs,
                   typename TTypes<T>::ConstFlat minvals,

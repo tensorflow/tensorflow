@@ -1795,6 +1795,22 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     options = load_options.LoadOptions(experimental_io_device="/job:localhost")
     self.assertEqual("/job:localhost", options.experimental_io_device)
 
+  def test_load_custom_saveable_object(self, cycles):
+    root = tracking.AutoTrackable()
+    root.table = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
+    root.table.insert("foo", 15)
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
+    def lookup(key):
+      return root.table.lookup(key)
+
+    root.lookup = lookup
+
+    imported = cycle(root, cycles)
+    self.assertEqual(self.evaluate(imported.lookup("foo")), 15)
+    self.assertEqual(self.evaluate(imported.lookup("idk")), -1)
+
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 

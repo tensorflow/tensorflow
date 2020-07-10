@@ -303,7 +303,7 @@ tf_class {
   }
   member_method {
     name: "save_weights"
-    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'save_format\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'save_format\', \'options\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "set_weights"

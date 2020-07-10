@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -94,13 +95,17 @@ class GpuCompiler : public LLVMCompiler {
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
     // Capture just the pointer size, not the entire GpuCompiler object.
     return [pointer_size = pointer_size_](const Shape& shape) {
-      if (shape.is_static() || shape.IsTuple()) {
-        return ShapeUtil::ByteSizeOf(shape, pointer_size);
-      }
-      // Each dynamic dimension size is represented as a S32.
-      int64 metadata_size = sizeof(int32) * shape.dimensions_size();
-      return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
+      return GetSizeOfShape(shape, pointer_size);
     };
+  }
+
+  static int64 GetSizeOfShape(const Shape& shape, int pointer_size) {
+    if (shape.is_static() || shape.IsTuple()) {
+      return ShapeUtil::ByteSizeOf(shape, pointer_size);
+    }
+    // Each dynamic dimension size is represented as a S32.
+    int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+    return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
   }
 
  private:
@@ -117,6 +122,15 @@ class GpuCompiler : public LLVMCompiler {
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
 };
+
+// Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
+// The GpuExecutable (and the Thunks that are part of it) are not returned.
+StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
+    HloModule* hlo_module, llvm::LLVMContext* llvm_context,
+    const std::string& target_triple, const std::string& data_layout,
+    const std::string& platform_name, GpuDeviceInfo gpu_device_info,
+    absl::optional<CudaComputeCapability> cuda_compute_capability,
+    int pointer_size);
 
 }  // namespace gpu
 }  // namespace xla

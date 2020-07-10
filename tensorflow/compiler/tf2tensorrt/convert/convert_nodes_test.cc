@@ -21,8 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -1811,7 +1810,9 @@ class ParameterizedOpConverterTestBase
     const int batch_size = input_data_[0].tensor.shape().dim_size(0);
     Status stat =
         OpConverterTest::BuildAndRun(input_data_, &output_data, batch_size);
-    ASSERT_EQ(expected_runtime_status, stat);
+    ASSERT_EQ(expected_runtime_status.ok(), stat.ok())
+        << "expected status: " << expected_runtime_status
+        << ", actual status: " << stat;
     if (expected_runtime_status.ok() && stat.ok()) {
       for (int i = 0; i < n_output; i++) {
         // Check the shape of the actual output tensors
@@ -2754,58 +2755,40 @@ TEST_F(OpConverterTest, ConvertQuantize) {
   }
 }
 
-template <DataType dtype>
-void TestConvertSquare(OpConverterTest* test) {
-  test->Reset();
-  typedef typename EnumToDataType<dtype>::Type CType;
-
-  Scope s = Scope::NewRootScope();
-  auto input = ops::Placeholder(s.WithOpName("input"), dtype);
-  auto square = ops::Square(s.WithOpName("my_square"), input);
-  NodeDef node_def = square.operation.node()->def();
-
-  test->AddTestTensor("input", {1, 20}, /*batch_size=*/1,
-                      TfDataTypeToTrt(dtype));
-  test->RunValidationAndConversion(node_def);
-  TRT_TensorOrWeights output;
-  TF_EXPECT_OK(test->GetTensorOrWeights("my_square", &output));
-  ASSERT_TRUE(output.is_tensor());
-  ExpectTrtDimsEqualsArray({1, 20}, output.tensor()->getDimensions());
-
-  const int num_inputs = 20;
-  std::vector<CType> inputs(num_inputs);
-  std::vector<CType> expected_outputs(num_inputs);
-  for (int i = 0; i < num_inputs; ++i) {
-    const CType value = CType(i - 9);
-    inputs[i] = value;
-    expected_outputs[i] = value * value;
-  }
-  const DataVec input_data{{"input", test->AsTensor<CType>(inputs)}};
-  // Engine outputs are converted to FP16 automatically if we set FP16 mode in
-  // the builder.
-  DataVec output_data{{"my_square", test->ConstructTensor<CType>(num_inputs)}};
-  TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data));
-  ExpectArrayNear(expected_outputs, GetSpanForData<CType>(output_data[0]));
-}
-
-TEST_F(OpConverterTest, ConvertSquare) {
+TEST_P(OpConverterTest2, ConvertSquare) {
   {
     // Input is weights, should fail.
     Reset();
     Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto input = ops::Placeholder(s.WithOpName("input"), tf_type);
     auto square = ops::Square(s.WithOpName("my_square"), input);
     NodeDef node_def = square.operation.node()->def();
-    AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, -5, 6});
+    AddTestWeights("input", {1, 2, 3}, {1, 2, 3, 4, -5, 6}, tf_type);
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
         "The input \"x\" for Square must be a tensor, at my_square");
   }
 
-  // OK. Note that kINT32 is not supported by IElementWiseLayer, so we don't
-  // test DT_INT32 type here.
-  TestConvertSquare<DT_FLOAT>(this);
-  TestConvertSquare<DT_HALF>(this);
+  Reset();
+
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), tf_type);
+  auto square = ops::Square(s.WithOpName("my_square"), input);
+  NodeDef node_def = square.operation.node()->def();
+
+  const int num_inputs = 20;
+  std::vector<float> inputs(num_inputs);
+  std::vector<float> expected_outputs(num_inputs);
+
+  for (int i = 0; i < num_inputs; ++i) {
+    const float value = (i - 9);
+    inputs[i] = value;
+    expected_outputs[i] = value * value;
+  }
+  AddTestTensor("input", {1, 1, 20}, tf_type, inputs);
+
+  TestOpConverter("my_square", node_def, {1, 1, 20}, Status::OK(), Status::OK(),
+                  ArrayFloatNear(expected_outputs, 0));
 }
 
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
@@ -6359,87 +6342,70 @@ NodeDef GetSquaredDifferenceNodeDef(DataType dtype) {
   return squared_diff.operation.node()->def();
 }
 
-template <DataType dtype>
-void TestConvertSquaredDifference(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
-
-  struct TestParams {
-    std::vector<int> dims_x;
-    std::vector<int> dims_y;
-    std::vector<CType> value_x;
-    std::vector<CType> value_y;
-    std::vector<int> expected_output_dims;
-    std::vector<CType> expected_output;
-  };
-
-  const std::vector<CType> common_input = InitTestVector<CType>(6);
-  std::vector<TestParams> params = {
-      {
-          /*dims_x=*/{1, 2, 3},
-          /*dims_y=*/{1, 2, 3},
-          /*value_x=*/common_input,
-          /*value_y=*/CastTestVector<int, CType>({0, -1, 3, 0, 10, -7}),
-          /*expected_output_dims=*/{1, 2, 3},
-          /*expected_output=*/CastTestVector<int, CType>({0, 4, 1, 9, 36, 144}),
-      },
-      {
-          /*dims_x=*/{1, 2, 3},
-          /*dims_y=*/{1, 1, 3},
-          /*value_x=*/common_input,
-          /*value_y=*/CastTestVector<int, CType>({0, 1, 2}),
-          /*expected_output_dims=*/{1, 2, 3},
-          /*expected_output=*/CastTestVector<int, CType>({0, 0, 0, 9, 9, 9}),
-      },
-  };
-
-  for (int i = 0; i < params.size(); ++i) {
-    test->Reset();
-
-    NodeDef node_def = GetSquaredDifferenceNodeDef(dtype);
-    test->AddTestTensor("x", params[i].dims_x, 1, TfDataTypeToTrt(dtype));
-    test->AddTestTensor("y", params[i].dims_y, 1, TfDataTypeToTrt(dtype));
-    test->RunValidationAndConversion(node_def);
-
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(test->GetTensorOrWeights("my_squared_diff", &output));
-    EXPECT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray(params[i].expected_output_dims,
-                             output.tensor()->getDimensions());
-
-    DataVec input_data{{"x", test->AsTensor<CType>(params[i].value_x)},
-                       {"y", test->AsTensor<CType>(params[i].value_y)}};
-    DataVec output_data{
-        {"my_squared_diff",
-         test->ConstructTensor<CType>(params[i].expected_output.size())}};
-    TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data));
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAreArray(params[i].expected_output));
-  }
-}
-
-TEST_F(OpConverterTest, ConvertSquaredDifference) {
+TEST_P(OpConverterTest2, ConvertSquaredDifference) {
   {
     // Input is a weight, should fail.
     Reset();
-    NodeDef node_def = GetSquaredDifferenceNodeDef(DT_FLOAT);
+    NodeDef node_def = GetSquaredDifferenceNodeDef(tf_type);
     AddTestWeights<float>("x", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
-    AddTestTensor("y", {1, 2, 3});
+    AddTestTensor("y", {1, 1, 2, 3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"x\" for SquaredDifference must be "
                                "a tensor, at my_squared_diff");
   }
-  {
-    // Shapes are not broadcastable, should fail.
-    Reset();
-    NodeDef node_def = GetSquaredDifferenceNodeDef(DT_FLOAT);
-    AddTestTensor("x", {2, 3});
-    AddTestTensor("y", {7, 5});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Infeasible broadcast scheme");
-  }
 
-  TestConvertSquaredDifference<DT_FLOAT>(this);
-  TestConvertSquaredDifference<DT_HALF>(this);
+  struct TestParams {
+    std::vector<int> dims_x;
+    std::vector<int> dims_y;
+    std::vector<float> value_x;
+    std::vector<float> value_y;
+    std::vector<int> expected_output_dims;
+    std::vector<float> expected_output;
+    Status status;
+    Status runtime_status;
+  };
+
+  const std::vector<float> common_input = InitTestVector<float>(6);
+  std::vector<TestParams> params = {
+      {/*dims_x=*/{1, 2, 3},
+       /*dims_y=*/{1, 7, 5},
+       /*value_x=*/common_input,
+       /*value_y=*/std::vector<float>(7 * 5, 0),
+       /*expected_output_dims=*/{1, 1, 2, 3},
+       /*expected_output=*/common_input,
+       trt_mode == TrtTestMode::kDynamicShape
+           ? Status::OK()
+           : errors::InvalidArgument("Infeasible broadcast scheme"),
+       errors::Internal(
+           "Binding index out of range. This can happen if profile is not set, "
+           "or the network is invalid for the current profile.")},
+      {
+          /*dims_x=*/{1, 1, 2, 3},
+          /*dims_y=*/{1, 1, 2, 3},
+          /*value_x=*/common_input,
+          /*value_y=*/{0, -1, 3, 0, 10, -7},
+          /*expected_output_dims=*/{1, 1, 2, 3},
+          /*expected_output=*/{0, 4, 1, 9, 36, 144},
+      },
+      {
+          /*dims_x=*/{1, 1, 2, 3},
+          /*dims_y=*/{1, 1, 1, 3},
+          /*value_x=*/common_input,
+          /*value_y=*/{0, 1, 2},
+          /*expected_output_dims=*/{1, 1, 2, 3},
+          /*expected_output=*/{0, 0, 0, 9, 9, 9},
+      },
+  };
+
+  for (auto p : params) {
+    Reset();
+    NodeDef node_def = GetSquaredDifferenceNodeDef(tf_type);
+    AddTestTensor("x", p.dims_x, p.value_x);
+    AddTestTensor("y", p.dims_y, p.value_y);
+    TestOpConverter("my_squared_diff", node_def, p.expected_output_dims,
+                    p.status, p.runtime_status,
+                    ElementsAreArray(p.expected_output));
+  }
 }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
@@ -6669,5 +6635,4 @@ TEST_F(OpConverterTest, ConvertPad) {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

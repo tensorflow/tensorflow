@@ -443,7 +443,7 @@ void IteratorHandleOp::Compute(OpKernelContext* context)
   }
   OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
                               context, 0, cinfo_.container(), cinfo_.name(),
-                              MakeTypeIndex<IteratorResource>()));
+                              TypeIndex::Make<IteratorResource>()));
 }
 
 Status IteratorHandleOp::VerifyResource(IteratorResource* resource) {

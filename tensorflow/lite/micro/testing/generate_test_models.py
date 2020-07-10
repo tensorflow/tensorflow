@@ -63,7 +63,6 @@ def generate_conv_model():
   converter = tf.lite.TFLiteConverter.from_keras_model(model)
   converter.optimizations = [tf.lite.Optimize.DEFAULT]
   converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
-  converter.experimental_new_converter = True
   converter.inference_input_type = tf.int8
   converter.inference_output_type = tf.int8
   converter.representative_dataset = representative_dataset_gen
