@@ -81,9 +81,6 @@ enum HostEventType {
   kWhileOpStartBody,
   kForOp,
   kPartitionedCallOp,
-  // XLA related.
-  kLocalExecutableExecuteOnLocalDevice,
-  kLocalExecutableExecute,
   // tf.data related.
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
@@ -153,6 +150,8 @@ enum StatType {
   kIsEager,
   kTfFunctionCall,
   kTfFunctionTracingCount,
+  kFlops,
+  kBytesAccessed,
   // Performance counter related.
   kRawValue,
   kScaledValue,

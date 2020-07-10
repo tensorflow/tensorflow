@@ -44,6 +44,15 @@ inline void InfiniteLoop() {
     fprintf(stderr, "%s", (x)); \
   } while (0)
 
+// Report Error for unsupported type by op 'op_name' and returns kTfLiteError.
+#define TF_LITE_UNSUPPORTED_TYPE(context, type, op_name)                    \
+  do {                                                                      \
+    TF_LITE_KERNEL_LOG((context), "%s:%d Type %s is unsupported by op %s.", \
+                       __FILE__, __LINE__, TfLiteTypeGetName(type),         \
+                       (op_name));                                          \
+    return kTfLiteError;                                                    \
+  } while (0)
+
 #define TFLITE_ABORT abort()
 
 #endif  // TF_LITE_MCU_DEBUG_LOG

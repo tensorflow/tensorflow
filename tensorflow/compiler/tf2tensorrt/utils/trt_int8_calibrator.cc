@@ -20,8 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
@@ -147,5 +146,4 @@ TRTInt8Calibrator::~TRTInt8Calibrator() {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif
-#endif
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import functools
 import itertools
 import multiprocessing.pool
@@ -222,6 +223,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
             packed_var_1, dtype=dtypes.float32)
 
       return read0, read1, read2, read3
+
+    arg_attrs = read_var.get_concrete_function().function_def.arg_attr
+    self.assertLen(arg_attrs, 2)
+    self.assertEqual(arg_attrs[0].attr['_composite_device'].s,
+                     compat.as_bytes(packed_var_0.device))
+    self.assertEqual(arg_attrs[1].attr['_composite_device'].s,
+                     compat.as_bytes(packed_var_1.device))
 
     self.assertAllEqual(read_var(), (1 + 5, 2 + 5, 3 + 6, 4 + 6))
 
@@ -2930,30 +2938,57 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # should only get a miss if the aliasing changed.
     defined(x, y, z)
     self.assertLen(total_function_cache(defined), 1)
-
-    # Calling again is a cache hit
     defined(x, y, z)
     self.assertLen(total_function_cache(defined), 1)
 
-    # Re-arranging arguments doesn't change signature
+    # Re-arranging arguments causes cache miss
     defined(z, y, x)
-    self.assertLen(total_function_cache(defined),
-                   1 if ops.Tensor._USE_EQUALITY else 2)
+    self.assertLen(total_function_cache(defined), 2)
+    defined(z, y, x)
+    self.assertLen(total_function_cache(defined), 2)
 
     # Aliasing causes cache miss
     defined(x, x, z)
-    self.assertLen(total_function_cache(defined),
-                   2 if ops.Tensor._USE_EQUALITY else 3)
+    self.assertLen(total_function_cache(defined), 3)
+    defined(x, x, z)
+    self.assertLen(total_function_cache(defined), 3)
 
-    # Re-arranging arguments doesn't change signature
+    # Re-arranging arguments causes cache miss
     defined(y, y, z)
-    self.assertLen(total_function_cache(defined),
-                   2 if ops.Tensor._USE_EQUALITY else 4)
+    self.assertLen(total_function_cache(defined), 4)
+    defined(y, y, z)
+    self.assertLen(total_function_cache(defined), 4)
 
     # Different alias positions causes cache miss
     defined(z, y, y)
-    self.assertLen(total_function_cache(defined),
-                   3 if ops.Tensor._USE_EQUALITY else 5)
+    self.assertLen(total_function_cache(defined), 5)
+    defined(z, y, y)
+    self.assertLen(total_function_cache(defined), 5)
+
+    x_copy = copy.deepcopy(x)
+
+    # Deep copy causes cache miss
+    defined(x_copy, y, z)
+    self.assertLen(total_function_cache(defined), 6)
+    defined(x_copy, y, z)
+    self.assertLen(total_function_cache(defined), 6)
+
+  def testVariableRetracing(self):
+    v1 = variables.Variable(1.)
+    v2 = variables.Variable(1.)
+    v3 = copy.deepcopy(variables.Variable(1.))
+
+    var_dict = {id(v1): constant_op.constant(1),
+                id(v2): constant_op.constant(2),
+                id(v3): constant_op.constant(3)}
+
+    @function.defun
+    def lookup_tensor(v):
+      return var_dict[id(v)]
+
+    self.assertEqual(1, lookup_tensor(v1).numpy())
+    self.assertEqual(2, lookup_tensor(v2).numpy())
+    self.assertEqual(3, lookup_tensor(v3).numpy())
 
   def testDecoratedMethodInspect(self):
 
@@ -3862,6 +3897,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c5 = func2.get_concrete_function(8, vector)
     c5_summary = 'func2(x=8, y)'
     self.assertEqual(c5.pretty_printed_signature(verbose=False), c5_summary)
+
+  def testPrettyPrintedExplicitSignatureWithKeywordArg(self):  # b/159639913
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec(None)])
+    def fn(a, b=1):
+      return a + b
+
+    concrete_fn = fn.get_concrete_function()
+    self.assertEqual(concrete_fn.pretty_printed_signature(False), 'fn(a)')
+    self.assertEqual(
+        concrete_fn.pretty_printed_signature(True), 'fn(a)\n'
+        '  Args:\n'
+        '    a: float32 Tensor, shape=<unknown>\n'
+        '  Returns:\n'
+        '    float32 Tensor, shape=<unknown>')
 
   @test_util.run_in_graph_and_eager_modes
   def testIndexedSlicesAsGradientsForConcreteFunctions(self):

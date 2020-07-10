@@ -760,15 +760,6 @@ def LHLO_SortOp: LHLO_Op<"sort", []>, BASE_HLO_SortOp {
   let regions = (region SizedRegion<1>:$comparator);
 }
 
-def LHLO_TupleSelectOp: LHLO_Op<"tuple_select", [SameOperandsShape]> {
-  let arguments = (ins
-    Arg<LHLO_PredBuffer, "", [MemRead]>:$pred,
-    Arg<LHLO_Buffer, "", [MemRead]>:$on_true,
-    Arg<LHLO_Buffer, "", [MemRead]>:$on_false,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output
-  );
-}
-
 //===----------------------------------------------------------------------===//
 // Late operations
 //===----------------------------------------------------------------------===//

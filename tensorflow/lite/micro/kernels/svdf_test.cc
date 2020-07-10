@@ -201,7 +201,6 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
   node.builtin_data = reinterpret_cast<void*>(&params);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
   if (registration->prepare) {
     TfLiteStatus prepare_status = registration->prepare(&context, &node);
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, prepare_status);
@@ -275,7 +274,6 @@ void ValidateIntegerSVDFGoldens(const int batch_size, const int num_units,
   node.builtin_data = reinterpret_cast<void*>(&params);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
 
   if (registration->prepare) {
     TfLiteStatus prepare_status = registration->prepare(&context, &node);

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 
@@ -28,7 +29,7 @@ class TpuMeshCommonState;
 
 namespace tpu {
 
-const char kTpuMeshCommonStateResourceName[] = "tpu_mesh_common_state";
+const char kTpuMeshStateInterfaceResourceName[] = "tpu_mesh_common_state";
 
 class TpuMeshStateInterface : public tensorflow::ResourceBase {
  public:
@@ -38,19 +39,19 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
 
   ~TpuMeshStateInterface() override {
     if (mesh_state_ != nullptr) {
-      TpuMeshState_Free(mesh_state_);
+      MeshStateApiFn()->TpuMeshState_FreeFn(mesh_state_);
     }
   }
 
   static TpuMeshStateInterface* Create() {
-    return new TpuMeshStateInterface(TpuMeshState_Create());
+    return new TpuMeshStateInterface(MeshStateApiFn()->TpuMeshState_CreateFn());
   }
 
   const XLA_TpuMeshState* data() const { return mesh_state_; }
 
   tensorflow::TpuMeshCommonState* mesh_common_state() const {
     return static_cast<tensorflow::TpuMeshCommonState*>(
-        TpuMeshState_MeshCommonState(mesh_state_));
+        MeshStateApiFn()->TpuMeshState_MeshCommonStateFn(mesh_state_));
   }
 
   // Returns whether we should include the device assignment as a static field
@@ -62,8 +63,8 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
     // Static device assignment enables XLA to perform certain optimization when
     // all cores are used in the replicated computation.
     return metadata.num_cores_per_replica() * metadata.num_replicas() ==
-           TpuTopology_AvailableCoreCount(mesh_state_,
-                                          tpu_core_type);
+           CompileApiFn()->TpuTopology_AvailableCoreCountFn(mesh_state_,
+                                                            tpu_core_type);
   }
 
   string DebugString() const override { return "TpuMeshStateInterface"; }

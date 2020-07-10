@@ -18,27 +18,27 @@ limitations under the License.
 
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
-
 // IrEmitterContext encapsulates common (mutable and immutable) data structures
 // used by both IrEmitterNested and IrEmitterUnnested, such as the buffer
 // assignment and the name uniquer.
 class IrEmitterContext {
  public:
-  IrEmitterContext(const HloModule* hlo_module,
-                   const BufferAssignment* buffer_assignment,
-                   const se::Platform* platform,
-                   const se::DeviceDescription* device_desc,
-                   llvm::Module* llvm_module)
+  // cuda_compute_capability is nullopt if we're not compiling for NVIDIA GPUs.
+  IrEmitterContext(
+      const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
+      std::string platform_name, GpuDeviceInfo gpu_device_info,
+      absl::optional<CudaComputeCapability> cuda_compute_capability,
+      llvm::Module* llvm_module)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
-        platform_(platform),
-        device_desc_(device_desc),
+        platform_name_(std::move(platform_name)),
+        gpu_device_info_(gpu_device_info),
+        cuda_compute_capability_(cuda_compute_capability),
         llvm_module_(llvm_module) {}
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
@@ -49,9 +49,10 @@ class IrEmitterContext {
   const BufferAssignment& buffer_assignment() const {
     return *buffer_assignment_;
   }
-  const se::Platform* platform() const { return platform_; }
-  const se::DeviceDescription& device_description() const {
-    return *device_desc_;
+  absl::string_view platform_name() const { return platform_name_; }
+  GpuDeviceInfo gpu_device_info() const { return gpu_device_info_; }
+  absl::optional<CudaComputeCapability> cuda_compute_capability() const {
+    return cuda_compute_capability_;
   }
   llvm::Module* llvm_module() { return llvm_module_; }
   NameUniquer* name_uniquer() { return &name_uniquer_; }
@@ -59,8 +60,9 @@ class IrEmitterContext {
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
-  const se::Platform* platform_;
-  const se::DeviceDescription* device_desc_;
+  std::string platform_name_;
+  GpuDeviceInfo gpu_device_info_;
+  absl::optional<CudaComputeCapability> cuda_compute_capability_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;
 };

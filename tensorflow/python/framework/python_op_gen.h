@@ -23,8 +23,20 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Returns a string containing the generated Python code for the given Ops.
+// ops is a protobuff, typically generated using OpRegistry::Global()->Export.
+// api_defs is typically constructed directly from ops.
 // hidden_ops should be a list of Op names that should get a leading _
-// in the output. Prints the output to stdout.
+// in the output.
+// source_file_name is optional and contains the name of the original C++ source
+// file where the ops' REGISTER_OP() calls reside.
+string GetPythonOps(const OpList& ops, const ApiDefMap& api_defs,
+                    const std::vector<string>& hidden_ops,
+                    const string& source_file_name);
+
+// Prints the output of GetPrintOps to stdout.
+// hidden_ops should be a list of Op names that should get a leading _
+// in the output.
 // Optional fourth argument is the name of the original C++ source file
 // where the ops' REGISTER_OP() calls reside.
 void PrintPythonOps(const OpList& ops, const ApiDefMap& api_defs,

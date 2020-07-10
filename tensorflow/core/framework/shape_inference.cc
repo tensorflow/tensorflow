@@ -211,9 +211,8 @@ void InferenceContext::PostInputInit(
     }
     input_handle_shapes_and_types_ = std::move(input_handle_data);
   }
-  const int inputs_size_ = inputs_.size();
-  
-  if (inputs_size_ != num_inputs_from_node_def) {
+  const int inputs_size = inputs_.size();
+  if (inputs_size != num_inputs_from_node_def) {
     construction_status_ = errors::InvalidArgument(
         "Wrong number of inputs passed: ", inputs_.size(), " while ",
         num_inputs_from_node_def, " expected based on NodeDef");
@@ -1108,12 +1107,12 @@ Status InferenceContext::AttachContext(const Status& status) {
     const int input_tensors_as_shapes_size_ = input_tensors_as_shapes_.size();
     const int input_tensors_size_ = input_tensors_.size();
     if (requested_input_tensor_as_partial_shape_[i] &&
-        i < input_tensors_as_shapes_size_ &&
+        i < input_tensors_as_shapes_size &&
         input_tensors_as_shapes_[i].IsSet() &&
         RankKnown(input_tensors_as_shapes_[i])) {
       input_from_tensors_as_shape_str.push_back(strings::StrCat(
           "input[", i, "] = ", DebugString(input_tensors_as_shapes_[i])));
-    } else if (requested_input_tensor_[i] && i < input_tensors_size_ &&
+    } else if (requested_input_tensor_[i] && i < input_tensors_size &&
                input_tensors_[i] != nullptr) {
       input_from_tensors_str.push_back(strings::StrCat(
           "input[", i, "] = <",

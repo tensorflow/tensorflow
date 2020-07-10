@@ -40,7 +40,7 @@ TpuCompilationCacheEntry::get_host_transfer_info() const {
 }
 
 const xla::HloProto* TpuCompilationCacheEntry::get_hlo_metadata() const {
-  return tpu_program_group_->hlo_metadatas()[core_index_].get();
+  return tpu_program_group_->hlo_metadatas()[core_index_];
 }
 
 // TODO(henrytan,jiawenhao): When should we expect more than one

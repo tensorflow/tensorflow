@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
-#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/image_classification_stage.h"
@@ -50,11 +49,14 @@ std::vector<T> GetFirstN(const std::vector<T>& v, int n) {
 
 class ImagenetClassification : public TaskExecutor {
  public:
-  ImagenetClassification(int* argc, char* argv[]);
+  ImagenetClassification() : num_images_(0), num_interpreter_threads_(1) {}
   ~ImagenetClassification() override {}
 
+ protected:
+  std::vector<Flag> GetFlags() final;
+
   // If the run is successful, the latest metrics will be returned.
-  absl::optional<EvaluationStageMetrics> Run() final;
+  absl::optional<EvaluationStageMetrics> RunImpl() final;
 
  private:
   void OutputResult(const EvaluationStageMetrics& latest_metrics) const;
@@ -67,11 +69,9 @@ class ImagenetClassification : public TaskExecutor {
   std::string delegate_;
   int num_images_;
   int num_interpreter_threads_;
-  DelegateProviders delegate_providers_;
 };
 
-ImagenetClassification::ImagenetClassification(int* argc, char* argv[])
-    : num_images_(0), num_interpreter_threads_(1) {
+std::vector<Flag> ImagenetClassification::GetFlags() {
   std::vector<tflite::Flag> flag_list = {
       tflite::Flag::CreateFlag(kModelFileFlag, &model_file_path_,
                                "Path to test tflite model file."),
@@ -107,11 +107,10 @@ ImagenetClassification::ImagenetClassification(int* argc, char* argv[])
           "Delegate to use for inference, if available. "
           "Must be one of {'nnapi', 'gpu', 'hexagon', 'xnnpack'}"),
   };
-  tflite::Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
-  delegate_providers_.InitFromCmdlineArgs(argc, const_cast<const char**>(argv));
+  return flag_list;
 }
 
-absl::optional<EvaluationStageMetrics> ImagenetClassification::Run() {
+absl::optional<EvaluationStageMetrics> ImagenetClassification::RunImpl() {
   // Process images in filename-sorted order.
   std::vector<std::string> image_files, ground_truth_image_labels;
   if (GetSortedFileNames(StripTrailingSlashes(ground_truth_images_path_),
@@ -203,8 +202,8 @@ void ImagenetClassification::OutputResult(
   }
 }
 
-std::unique_ptr<TaskExecutor> CreateTaskExecutor(int* argc, char* argv[]) {
-  return std::unique_ptr<TaskExecutor>(new ImagenetClassification(argc, argv));
+std::unique_ptr<TaskExecutor> CreateTaskExecutor() {
+  return std::unique_ptr<TaskExecutor>(new ImagenetClassification());
 }
 
 }  // namespace evaluation

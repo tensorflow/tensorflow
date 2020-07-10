@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/type_index.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -763,8 +764,8 @@ Tensor GetResourceHandle(const string& var_name, const string& container,
   handle.set_device(device_name);
   handle.set_container(container);
   handle.set_name(var_name);
-  handle.set_hash_code(MakeTypeIndex<Var>().hash_code());
-  handle.set_maybe_type_name(MakeTypeIndex<Var>().name());
+  handle.set_hash_code(TypeIndex::Make<Var>().hash_code());
+  handle.set_maybe_type_name(TypeIndex::Make<Var>().name());
   Tensor tensor(DT_RESOURCE, TensorShape({}));
   tensor.scalar<ResourceHandle>()() = handle;
   return tensor;
@@ -867,14 +868,29 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_CompositeDevice) {
   inst_opts.input_resource_dtypes_and_shapes[0] = {
       initial_resource_value0.dtype(), initial_resource_value0.shape()};
 
-  gtl::InlinedVector<TensorValue, 4> handles;
-  handles.push_back(TensorValue(&resource_handle0));
-  handles.push_back(TensorValue(&resource_handle1));
-  TestFunctionPackedArgs args(0, std::move(handles));
-  Tensor ret;
-  TF_CHECK_OK(RunWithPackedArgs("AddVarAcrossDevices", opts, {{"T", DT_FLOAT}},
-                                inst_opts, args, {&ret}));
-  test::ExpectTensorEqual<float>(ret, test::AsTensor<float>({40, 60}));
+  // Packed TensorHandle
+  {
+    gtl::InlinedVector<TensorValue, 4> handles;
+    handles.push_back(TensorValue(&resource_handle0));
+    handles.push_back(TensorValue(&resource_handle1));
+    TestFunctionPackedArgs args(0, std::move(handles));
+    Tensor ret;
+    TF_CHECK_OK(RunWithPackedArgs("AddVarAcrossDevices", opts,
+                                  {{"T", DT_FLOAT}}, inst_opts, args, {&ret}));
+    test::ExpectTensorEqual<float>(ret, test::AsTensor<float>({40, 60}));
+  }
+
+  // Packed Tensor
+  {
+    Tensor arg(DT_RESOURCE, TensorShape({2}));
+    arg.flat<ResourceHandle>()(0) = resource_handle0.scalar<ResourceHandle>()();
+    arg.flat<ResourceHandle>()(1) = resource_handle1.scalar<ResourceHandle>()();
+
+    Tensor ret;
+    TF_CHECK_OK(Run("AddVarAcrossDevices", opts, {{"T", DT_FLOAT}}, inst_opts,
+                    {arg}, {&ret}));
+    test::ExpectTensorEqual<float>(ret, test::AsTensor<float>({40, 60}));
+  }
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ResourceOutput_GPU) {

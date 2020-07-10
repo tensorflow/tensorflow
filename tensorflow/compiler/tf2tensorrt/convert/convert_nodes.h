@@ -33,8 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -694,7 +693,6 @@ BinaryOperationMap();
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_CONVERT_NODES_H_

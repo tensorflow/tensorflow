@@ -1647,6 +1647,19 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
     ):
       training_module.Model([inputs], output)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_predict_error_with_empty_x(self):
+    inputs = layers_module.Input(shape=(2,))
+    outputs = layers_module.Dense(4)(inputs)
+    model = training_module.Model(inputs=inputs, outputs=outputs)
+    model.compile(loss='mse')
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Expect x to be a non-empty array or dataset.'
+    ):
+      model.predict(np.array([]))
+
 
 class LossWeightingTest(keras_parameterized.TestCase):
 

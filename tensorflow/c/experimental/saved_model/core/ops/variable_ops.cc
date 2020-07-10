@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/ops/variable_ops.h"
 
 #include "absl/types/span.h"
-#include "tensorflow/c/eager/context_interface.h"
-#include "tensorflow/c/experimental/saved_model/core/ops/owned_eager_op.h"
-#include "tensorflow/c/experimental/saved_model/core/ops/owned_tensor_handle.h"
+#include "tensorflow/c/eager/abstract_operation.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
+#include "tensorflow/c/eager/immediate_execution_operation.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -32,10 +35,10 @@ namespace internal {
 static const char kNoSharingResourceID[] =
     "cd2c89b7-88b7-44c8-ad83-06c2a9158347";
 
-Status CreateUninitializedResourceVariable(AbstractContextInterface* ctx,
+Status CreateUninitializedResourceVariable(ImmediateExecutionContext* ctx,
                                            DataType dtype, TensorShape shape,
-                                           AbstractTensorHandlePtr* handle) {
-  AbstractOpPtr varhandle_op = AbstractOpPtr(ctx->CreateOperation());
+                                           ImmediateTensorHandlePtr* handle) {
+  ImmediateOpPtr varhandle_op(ctx->CreateOperation());
 
   TF_RETURN_IF_ERROR(varhandle_op->Reset("VarHandleOp", nullptr));
   TF_RETURN_IF_ERROR(varhandle_op->SetAttrType("dtype", dtype));
@@ -50,17 +53,58 @@ Status CreateUninitializedResourceVariable(AbstractContextInterface* ctx,
   TF_RETURN_IF_ERROR(varhandle_op->SetAttrString(
       "shared_name", kNoSharingResourceID, strlen(kNoSharingResourceID)));
 
-  AbstractTensorHandleInterface* var_handle = nullptr;
+  AbstractTensorHandle* var_handle = nullptr;
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(varhandle_op->Execute(
       absl::MakeSpan(&var_handle, num_retvals), &num_retvals));
-  handle->reset(var_handle);
+  AbstractTensorHandlePtr owned_var_handle(var_handle);
+  if (!tensorflow::isa<ImmediateExecutionTensorHandle>(
+          owned_var_handle.get())) {
+    return errors::Internal("Unexpected tensor handle kind.");
+  }
+  handle->reset(reinterpret_cast<ImmediateExecutionTensorHandle*>(
+      owned_var_handle.release()));
   return Status();
 }
 
-Status DestroyResource(AbstractContextInterface* ctx,
-                       AbstractTensorHandleInterface* handle) {
-  AbstractOpPtr destroy_op = AbstractOpPtr(ctx->CreateOperation());
+Status AssignVariable(ImmediateExecutionContext* ctx,
+                      ImmediateExecutionTensorHandle* variable_handle,
+                      DataType dtype, ImmediateExecutionTensorHandle* value) {
+  ImmediateOpPtr assign_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(assign_op->Reset("AssignVariableOp", nullptr));
+  TF_RETURN_IF_ERROR(assign_op->SetAttrType("dtype", dtype));
+  TF_RETURN_IF_ERROR(assign_op->AddInput(variable_handle));
+  TF_RETURN_IF_ERROR(assign_op->AddInput(value));
+
+  int num_retvals = 0;
+  TF_RETURN_IF_ERROR(assign_op->Execute({}, &num_retvals));
+  return Status();
+}
+
+Status ReadVariable(ImmediateExecutionContext* ctx,
+                    ImmediateExecutionTensorHandle* variable_handle,
+                    DataType dtype, ImmediateTensorHandlePtr* output) {
+  ImmediateOpPtr read_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(read_op->Reset("ReadVariableOp", nullptr));
+  TF_RETURN_IF_ERROR(read_op->SetAttrType("dtype", dtype));
+  TF_RETURN_IF_ERROR(read_op->AddInput(variable_handle));
+
+  AbstractTensorHandle* value = nullptr;
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(
+      read_op->Execute(absl::MakeSpan(&value, num_retvals), &num_retvals));
+  AbstractTensorHandlePtr owned_value(value);
+  if (!tensorflow::isa<ImmediateExecutionTensorHandle>(owned_value.get())) {
+    return errors::Internal("Unexpected tensor handle kind.");
+  }
+  output->reset(
+      reinterpret_cast<ImmediateExecutionTensorHandle*>(owned_value.release()));
+  return Status();
+}
+
+Status DestroyResource(ImmediateExecutionContext* ctx,
+                       ImmediateExecutionTensorHandle* handle) {
+  ImmediateOpPtr destroy_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(destroy_op->Reset("DestroyResourceOp", nullptr));
   TF_RETURN_IF_ERROR(destroy_op->SetAttrBool("ignore_lookup_error", true));
   TF_RETURN_IF_ERROR(destroy_op->AddInput(handle));

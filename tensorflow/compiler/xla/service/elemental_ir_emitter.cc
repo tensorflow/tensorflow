@@ -1313,12 +1313,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
 
 llvm::Value* ElementalIrEmitter::EmitFloatMax(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) {
-  return llvm_ir::EmitFloatMax(lhs_value, rhs_value, b_);
+  return llvm_ir::EmitFloatMax(lhs_value, rhs_value, b_, fast_min_max());
 }
 
 llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
                                               llvm::Value* rhs_value) {
-  return llvm_ir::EmitFloatMin(lhs_value, rhs_value, b_);
+  return llvm_ir::EmitFloatMin(lhs_value, rhs_value, b_, fast_min_max());
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog(PrimitiveType prim_type,

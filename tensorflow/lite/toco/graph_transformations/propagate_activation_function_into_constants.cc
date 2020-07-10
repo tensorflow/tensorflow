@@ -52,7 +52,7 @@ namespace toco {
   }
 
   // Filter to the list of supported ops.
-  string src_op_input;
+  std::string src_op_input;
   switch (src_op->type) {
     case OperatorType::kGather:
       src_op_input = src_op->inputs[0];

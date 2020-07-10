@@ -179,11 +179,6 @@ class MicroAllocator {
   ErrorReporter* error_reporter() const;
 
  private:
-  // Initializes the graph and allocates TfLiteContext tensor data.
-  TfLiteStatus InitGraphAndContextTensorData(const Model* model,
-                                             TfLiteContext* context,
-                                             const SubGraph* subgraph);
-
   // Returns the first subgraph from the model.
   const SubGraph* GetSubGraphFromModel(const Model* model);
 

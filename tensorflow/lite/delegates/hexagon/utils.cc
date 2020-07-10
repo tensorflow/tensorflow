@@ -26,7 +26,7 @@ namespace {
 
 bool IsActivationReluOrNone(TfLiteFusedActivation activation) {
   return (activation == kTfLiteActRelu || activation == kTfLiteActRelu6 ||
-          activation == kTfLiteActRelu1 || activation == kTfLiteActNone);
+          activation == kTfLiteActReluN1To1 || activation == kTfLiteActNone);
 }
 
 bool TensorTypeMatch(int tensor_id, TfLiteContext* context,

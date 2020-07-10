@@ -339,7 +339,7 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
       }
       if (ir->known_count < cp->group.group_size) {
         ir->known_count = cp->group.group_size;
-        int ir_known_size = ir->known.size();
+        const int ir_known_size = ir->known.size();
         if (ir_known_size != cp->group.group_size) {
           ir->status = errors::Internal(
               "UpdateInstanceCache:: CompleteInstanceResponse for instance ",

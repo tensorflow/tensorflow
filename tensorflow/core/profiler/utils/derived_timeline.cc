@@ -130,7 +130,8 @@ void DerivedXLineBuilder::ExpandOrAddLevelEvent(const XEvent& event,
 }
 
 void DerivedXLineBuilder::ResetLastEvents(int level) {
-  for (int i = level; i < last_event_by_level_.size(); ++i) {
+  for (int i = level, iter_limit = last_event_by_level_.size(); i < iter_limit;
+       ++i) {
     last_event_by_level_[i] = absl::nullopt;
   }
   if (level == 0) ResetDependentLines();
@@ -249,7 +250,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
     uint64 max_launch_time_ps = 0ULL;
     uint64 total_launch_time_ps = 0ULL;
   };
-  typedef absl::flat_hash_map<uint64 /*group_id*/, GroupLaunchInfo>
+  typedef absl::flat_hash_map<int64 /*group_id*/, GroupLaunchInfo>
       DeviceLaunchInfo;
 
   int num_devices = device_traces.size();
@@ -307,9 +308,9 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
         device_plane.GetOrCreateLine(kThreadIdKernelLaunch);
     launch_line.SetName(kKernelLaunchLineName);
     launch_line.SetTimestampNs(std::min(device_plane_start, host_plane_start));
-    for (const auto& it : per_device_launch_info[i]) {
-      uint64 group_id = it.first;
-      const GroupLaunchInfo& group_info = it.second;
+    for (const auto& kv : per_device_launch_info[i]) {
+      int64 group_id = kv.first;
+      const GroupLaunchInfo& group_info = kv.second;
       if (auto group_name = gtl::FindOrNull(event_group_name_map, group_id)) {
         XEventBuilder device_event =
             launch_line.AddEvent(*device_plane.GetOrCreateEventMetadata(

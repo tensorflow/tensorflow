@@ -41,6 +41,7 @@ filegroup(
         "ir/lhlo_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/ViewLikeInterface.td",
     ],
@@ -175,6 +176,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/client:sharding_builder",
+        "//tensorflow/compiler/xla/client/lib:conv_grad_size_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/lib/bfloat16",
@@ -511,6 +513,24 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_legalize_tanh_to_approximation",
+    srcs = ["transforms/legalize_tanh_to_approximation.cc"],
+    hdrs = [
+        "transforms/passes.h",
+        "transforms/rewriters.h",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -946,6 +966,7 @@ cc_library(
         ":xla_hlo_fusion",
         ":xla_hlo_to_lhlo_with_xla",
         ":xla_legalize_control_flow",
+        ":xla_legalize_tanh_to_approximation",
         ":xla_legalize_tf",
         ":xla_legalize_tf_with_tf2xla",
         ":xla_legalize_to_linalg",

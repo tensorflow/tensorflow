@@ -44,7 +44,7 @@ TEST(MetadataVersionTest,
                                             builder.GetSize(), &min_version),
             kTfLiteOk);
   // Validates that the version is well-formed (x.y.z).
-  EXPECT_THAT(min_version, MatchesRegex("[0-9]*\\.[0-9]*\\.[0-9]"));
+  EXPECT_THAT(min_version, MatchesRegex("[0-9]+\\.[0-9]+\\.[0-9]+"));
 }
 
 TEST(MetadataVersionTest,

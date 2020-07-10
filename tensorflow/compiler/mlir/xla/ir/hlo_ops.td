@@ -212,6 +212,10 @@ def HLO_Log1pOp: HLO_UnaryElementwiseOp<"log_plus_one",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_Log1pOp;
 
+def HLO_LogisticOp: HLO_UnaryElementwiseOp<"logistic",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_LogisticOp;
+
 def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
     BASE_HLO_NotOp;
@@ -929,8 +933,6 @@ def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]>, BASE_HLO_ConvOp {
   );
 
   let results = (outs HLO_Tensor);
-
-  let hasCanonicalizer = 1;
 }
 
 def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CopyOp {

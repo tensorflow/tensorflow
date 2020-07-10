@@ -80,10 +80,10 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
 
   int64 pos = 0;
   const string report = MakeReport(expected_metric_sum);
-  int report_size = report.size();
+  const int report_size = report.size();
   while (pos < report_size) {
     int64 end_of_line = report.find('\n', pos);
-    int64 _npos = string::npos;
+    const int64 _npos = string::npos;
     if (end_of_line == _npos) {
       end_of_line = report.size();
     }
@@ -163,7 +163,7 @@ void MetricTableReport::AppendCategoryTable() {
     const char* const kIndentPrefix = "                              * ";
     int64 entries_to_show = std::min<int64>(max_entries_per_category_to_show_,
                                             category.entries.size());
-    int64 category_entries_size = category.entries.size(); 
+    const int64 category_entries_size = category.entries.size(); 
     if (category_entries_size == entries_to_show + 1) {
       // May as well show the last entry on the line that would otherwise say
       // that there is a single entry not shown.
