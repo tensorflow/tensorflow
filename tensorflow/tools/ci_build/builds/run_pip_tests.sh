@@ -45,6 +45,7 @@ source "${SCRIPT_DIR}/builds_common.sh"
 # Process input arguments
 IS_VIRTUALENV=0
 IS_GPU=0
+IS_ROCM=0
 IS_MAC=0
 IS_OSS_SERIAL=0
 while true; do
@@ -52,6 +53,8 @@ while true; do
     IS_VIRTUALENV=1
   elif [[ "$1" == "--gpu" ]]; then
     IS_GPU=1
+  elif [[ "$1" == "--rocm" ]]; then
+      IS_ROCM=1
   elif [[ "$1" == "--mac" ]]; then
     IS_MAC=1
   elif [[ "$1" == "--oss_serial" ]]; then
@@ -86,6 +89,9 @@ fi
 
 if [[ ${IS_GPU} == "1" ]]; then
   PIP_TEST_FILTER_TAG="-no_gpu,-no_pip_gpu,${PIP_TEST_FILTER_TAG}"
+fi
+if [[ ${IS_ROCM} == "1" ]]; then
+  PIP_TEST_FILTER_TAG="-no_rocm,-no_pip_rocm,${PIP_TEST_FILTER_TAG}"
 fi
 if [[ ${IS_MAC} == "1" ]]; then
   # TODO(b/122370901): Fix nomac, no_mac inconsistency.
@@ -122,11 +128,12 @@ else
 fi
 
 export TF_NEED_CUDA=$IS_GPU
+export TF_NEED_ROCM=$IS_ROCM
 ${PYTHON_BIN_PATH} configure.py
 
 # Figure out how many concurrent tests we can run and do run the tests.
 BAZEL_PARALLEL_TEST_FLAGS=""
-if [[ $IS_GPU == 1 ]]; then
+if [[ $IS_GPU == 1 ]] || [[ $IS_ROCM == 1 ]]; then
   # Number of test threads is the number of GPU cards available.
   if [[ $IS_MAC == 1 ]]; then
     BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
