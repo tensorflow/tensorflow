@@ -425,7 +425,7 @@ Status SymbolicGradientBuilder::ProcessWhileLoop(Node* exit_node,
   // Backprop along the in edges to the while loop (i.e. the inputs to the enter
   // nodes)
   DCHECK_EQ(dx.size(), while_ctx->enter_nodes().size());
-  for (int i = 0, iter_limit = dx.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = dx.size(); i < end; ++i) {
     Node* enter_node = while_ctx->enter_nodes()[i];
     for (const Edge* e : enter_node->in_edges()) {
       if (e->IsControlEdge()) continue;

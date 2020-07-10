@@ -39,7 +39,7 @@ void DeviceSet::UnionWith(const DeviceSet& other) {
     storage_.resize(other.storage_.size(), 0);
   }
 
-  for (int i = 0, iter_limit = other.storage_.size(); i < iter_limit; i++) {
+  for (int i = 0, end = other.storage_.size(); i < end; i++) {
     storage_[i] |= other.storage_[i];
   }
 }

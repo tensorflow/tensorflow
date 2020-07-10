@@ -95,7 +95,7 @@ Status GetArgDataTypes(const std::vector<Node*>& arg_nodes,
     TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "T", &dtype));
     (*recv_at_host_dtypes)[index] = dtype;
   }
-  for (int i = 0, iter_limit = recv_at_host_dtypes->size(); i < iter_limit; i++) {
+  for (int i = 0, end = recv_at_host_dtypes->size(); i < end; i++) {
     if ((*recv_at_host_dtypes)[i] == DT_INVALID) {
       return errors::Internal("Cannot get datatype for input ", i);
     }
@@ -160,7 +160,7 @@ xla::StatusOr<Node*> ReplaceArgNodesWithRecvAtHostNode(
     }
 
     // Rewrite dst nodes because their input changed.
-    for (int i = 0, iter_limit = out_edge_info.size(); i < iter_limit; i++) {
+    for (int i = 0, end = out_edge_info.size(); i < end; i++) {
       const OutEdgeInfo edge = out_edge_info[i];
       if (edge.dst_input == Graph::kControlSlot) {
         continue;
@@ -174,7 +174,7 @@ xla::StatusOr<Node*> ReplaceArgNodesWithRecvAtHostNode(
 
       // Other edges might have `dst` as dst node as well. Update those edges
       // with `dst_replace`.
-      for (int j = i + 1, iter_limit = out_edge_info.size(); j < iter_limit; j++) {
+      for (int j = i + 1, end = out_edge_info.size(); j < end; j++) {
         if (out_edge_info[j].dst == dst) {
           out_edge_info[j].dst = dst_replace;
         }
@@ -196,7 +196,7 @@ Status GetRetDataTypes(const std::vector<Node*>& ret_nodes,
     TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "T", &dtype));
     (*send_from_host_dtypes)[index] = dtype;
   }
-  for (int i = 0, iter_limit = send_from_host_dtypes->size(); i < iter_limit; i++) {
+  for (int i = 0, end = send_from_host_dtypes->size(); i < end; i++) {
     if ((*send_from_host_dtypes)[i] == DT_INVALID) {
       return errors::Internal("Cannot get datatype for output ", i);
     }
@@ -502,7 +502,7 @@ void AddEdgesFromOutsideCompilationNodes(
     const std::vector<DataType>& data_types,
     const std::vector<Node*>& outside_compilation_nodes, Graph* g, Node* n) {
   // Add edges from outside compilation nodes to While node.
-  for (int i = original_arg_count, iter_limit = data_types.size(); i < iter_limit; i++) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; i++) {
     Node* outside_compilation_node =
         outside_compilation_nodes[i - original_arg_count];
     g->AddEdge(outside_compilation_node, 0, n, i + arg_to_input_edge_offset);
@@ -621,7 +621,7 @@ Status PostprocessLiftedArgsForWhile(
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
       std::back_inserter(lifted_arg_nodes),
       [](const std::pair<Node*, Node*>& pair) { return pair.first; });
-  for (int i = original_arg_count, iter_limit = data_types.size(); i < iter_limit; i++) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; i++) {
     TF_ASSIGN_OR_RETURN(Node * arg_node,
                         AddOutsideCompilationInputArgToFunctionBody(
                             *body_function_body, i, data_types[i]));
@@ -650,7 +650,7 @@ Status PostprocessLiftedArgsForWhile(
                                              AttrSlice(&cond_func.attr()), fld,
                                              &cond_function_body));
 
-  for (int i = original_arg_count, iter_limit = data_types.size(); i < iter_limit; i++) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; i++) {
     xla::StatusOr<Node*> arg_node_or =
         AddOutsideCompilationInputArgToFunctionBody(*cond_function_body, i,
                                                     data_types[i]);
@@ -761,7 +761,7 @@ Status PostprocessLiftedArgsForIf(
                                       data_types, outside_compilation_nodes, g,
                                       n);
 
-  for (int i = original_arg_count, iter_limit = data_types.size(); i < iter_limit; ++i) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; ++i) {
     TF_ASSIGN_OR_RETURN(Node * then_branch_arg_node,
                         AddOutsideCompilationInputArgToFunctionBody(
                             *then_branch_function_body, i, data_types[i]));
@@ -839,7 +839,7 @@ Status PostprocessLiftedArgsForCall(
       lifted_arg_nodes_and_outside_compilation_nodes.end(),
       std::back_inserter(lifted_arg_nodes),
       [](const std::pair<Node*, Node*>& pair) { return pair.first; });
-  for (int i = original_arg_count, iter_limit = data_types.size(); i < iter_limit; ++i) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; ++i) {
     TF_ASSIGN_OR_RETURN(
         Node * arg_node,
         AddOutsideCompilationInputArgToFunctionBody(*fbody, i, data_types[i]));
@@ -857,7 +857,7 @@ Status PostprocessLiftedArgsForCall(
   // We need to recreate the node. Otherwise TF will not know n->num_inputs()
   // has increased.
   NodeDef node_def = n->def();
-  for (int i = original_arg_count, iter_limit = data_types.size(); i < iter_limit; i++) {
+  for (int i = original_arg_count, end = data_types.size(); i < end; i++) {
     Node* outside_compilation_node =
         lifted_arg_nodes_and_outside_compilation_nodes[i - original_arg_count]
             .second;

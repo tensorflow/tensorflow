@@ -428,7 +428,7 @@ class Array {
     if (sizes_.size() != other.sizes_.size()) {
       return false;
     }
-    for (int64 i = 0, iter_limit = sizes_.size(); i < iter_limit; ++i) {
+    for (int64 i = 0, end = sizes_.size(); i < end; ++i) {
       if (sizes_[i] != other.sizes_[i]) {
         return false;
       }

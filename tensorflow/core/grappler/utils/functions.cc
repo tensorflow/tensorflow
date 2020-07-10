@@ -368,7 +368,7 @@ Status RemoveFunctionOutputs(const absl::flat_hash_set<int>& remove_outputs,
     return remove_output_args.find(&output) != remove_output_args.end();
   };
 
-  for (int i = 0, iter_limit = item->output_size(); i < iter_limit; ++i) {
+  for (int i = 0, end = item->output_size(); i < end; ++i) {
     const OutputArgInstantiation& output = item->output(i);
     if (remove_outputs.contains(i)) {
       VLOG(3) << "Remove functions output: name=" << output.node_name
@@ -582,7 +582,7 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
   }
 
   // Copy function arg attributes.
-  for (int i = 0, iter_limit = item.arg_attr().size(); i < iter_limit; ++i) {
+  for (int i = 0, end = item.arg_attr().size(); i < end; ++i) {
     const auto* attr = item.arg_attr().at(i);
     if (attr != nullptr) {
       (*func->mutable_arg_attr())[i] = *attr;

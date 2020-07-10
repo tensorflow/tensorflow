@@ -276,7 +276,7 @@ Status GenResultMethods(const tf2xla::Config& config,
 Status GenVariableMethods(const tf2xla::Config& config,
                           const xla::ProgramShapeProto& ps, string* methods) {
   size_t num_args = ps.parameters_size();
-  for (int i = config.feed_size(), iter_limit = num_args; i < iter_limit; ++i) {
+  for (int i = config.feed_size(), end = num_args; i < end; ++i) {
     std::vector<std::pair<string, string>> rewrites;
     TF_RETURN_IF_ERROR(
         AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
@@ -800,8 +800,8 @@ Status ParseCppClass(const string& cpp_class, string* class_name,
     // Allow a fully qualified name that starts with "::".
     parts.erase(parts.begin());
   }
-  for (int i = 0, iter_limit = parts.size(); i < iter_limit; ++i) {
-    if (i < iter_limit - 1) {
+  for (int i = 0, end = parts.size(); i < end; ++i) {
+    if (i < end - 1) {
       TF_RETURN_IF_ERROR(ValidateCppIdent(
           parts[i], "in namespace component of cpp_class: " + cpp_class));
       namespaces->push_back(parts[i]);
