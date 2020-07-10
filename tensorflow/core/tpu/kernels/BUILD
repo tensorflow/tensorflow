@@ -410,6 +410,7 @@ cc_library(
     name = "tpu_util_c_api_hdrs",
     hdrs = ["tpu_util_c_api.h"],
     deps = [
+        ":tpu_mesh_state_c_api_hdrs",
         "//tensorflow/core/tpu:libtftpu_header",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
