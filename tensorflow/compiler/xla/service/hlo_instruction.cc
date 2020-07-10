@@ -1889,7 +1889,7 @@ Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
 
 void HloInstruction::AppendOperand(HloInstruction* operand) {
   if (operand->parent() != nullptr) {
-    CHECK(!operand->parent()->IsMarkedAsDead(operand))
+    DCHECK(!operand->parent()->IsMarkedAsDead(operand))
         << "Operand " << operand->name() << " is already marked dead";
   }
   operands_.push_back(operand);
@@ -2839,7 +2839,8 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
     : unique_id_(-1),
       opcode_(opcode),
       shape_(shape),
-      name_(HloOpcodeString(opcode)) {
+      name_(HloOpcodeString(opcode)),
+      marked_as_dead_(false) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
 }
 
