@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Bidirectional LSTM on IMDB.
-    https://keras.io/examples/nlp/bidirectional_lstm_imdb/
-"""
+"""Benchmarks on Bidirectional LSTM on IMDB."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,29 +24,18 @@ import tensorflow as tf
 from tensorflow.python.platform import benchmark
 from tensorflow.python.keras.benchmarks import benchmark_util
 
-_MAX_FEATURE = 20000
-_MAX_LEN = 200
-
 
 class BidirectionalLSTMBenchmark(
     six.with_metaclass(benchmark.ParameterizedBenchmark, tf.test.Benchmark)):
-  """Required Arguments for measure_performance:
-
-      x: Input data, it could be Numpy or load from tfds.
-      y: Target data. If `x` is a dataset, generator instance,
-         `y` should not be specified.
-      loss: Loss function for model.
-      optimizer: Optimizer for model.
-      Other details can see in `measure_performance()` method of
-      benchmark_util.
-  """
-  
+  """Benchmarks for Bidirectional LSTM using `ParameterizedBenchmark`."""
   def __init__(self):
     super(BidirectionalLSTMBenchmark, self).__init__()
+    self.max_feature = 20000
+    self.max_len = 200
     (self.imdb_x, self.imdb_y), _ = tf.keras.datasets.imdb.load_data(
-        num_words=_MAX_FEATURE)
+        num_words=self.max_feature)
     self.imdb_x = tf.keras.preprocessing.sequence.pad_sequences(
-        self.imdb_x, maxlen=_MAX_LEN)
+        self.imdb_x, maxlen=self.max_len)
 
   """The parameters of each benchmark is a tuple:
 
@@ -65,8 +52,9 @@ class BidirectionalLSTMBenchmark(
       ('bs_512', 512, 3)]
 
   def _build_model(self):
+    """model from https://keras.io/examples/nlp/bidirectional_lstm_imdb/"""
     inputs = tf.keras.Input(shape=(None,), dtype='int32')
-    x = tf.keras.layers.Embedding(_MAX_FEATURE, 128)(inputs)
+    x = tf.keras.layers.Embedding(self.max_feature, 128)(inputs)
     x = tf.keras.layers.Bidirectional(
         tf.keras.layers.LSTM(
             64, return_sequences=True))(x)
@@ -76,7 +64,16 @@ class BidirectionalLSTMBenchmark(
     return model
 
   def benchmark_bidirect_lstm_imdb(self, batch_size, run_iters):
-    """Benchmark for Bidirectional LSTM on IMDB."""
+    """ Required Arguments for measure_performance:
+
+      x: Input data, it could be Numpy or load from tfds.
+      y: Target data. If `x` is a dataset, generator instance,
+         `y` should not be specified.
+      loss: Loss function for model.
+      optimizer: Optimizer for model.
+      Other details can see in `measure_performance()` method of
+      benchmark_util.
+    """
     results = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,

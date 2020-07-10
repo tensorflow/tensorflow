@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Text classification with Transformer. 
-  https://keras.io/examples/nlp/text_classification_with_transformer/
-"""
+"""Benchmarks on Text classification with Transformer."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -29,25 +27,16 @@ from tensorflow.python.keras.benchmarks import benchmark_util
 
 class TextWithTransformerBenchmark(
     six.with_metaclass(benchmark.ParameterizedBenchmark, tf.test.Benchmark)):
-  """Required Arguments for measure_performance:
-
-      x: Input data, it could be Numpy or load from tfds.
-      y: Target data. If `x` is a dataset, generator instance,
-         `y` should not be specified.
-      loss: Loss function for model.
-      optimizer: Optimizer for model.
-      Other details can see in `measure_performance()` method of
-      benchmark_util.
-  """
-
+  """Benchmarks for Text classification with Transformer
+  using `ParameterizedBenchmark`."""
   def __init__(self):
     super(TextWithTransformerBenchmark, self).__init__()
-    max_feature = 20000
-    max_len = 200
+    self.max_feature = 20000
+    self.max_len = 200
     (self.imdb_x, self.imdb_y), _ = tf.keras.datasets.imdb.load_data(
-        num_words=max_feature)
+        num_words=self.max_feature)
     self.imdb_x = tf.keras.preprocessing.sequence.pad_sequences(
-        self.imdb_x, maxlen=max_len)
+        self.imdb_x, maxlen=self.max_len)
 
   """The parameters of each benchmark is a tuple:
 
@@ -63,15 +52,14 @@ class TextWithTransformerBenchmark(
       ('bs_256', 256, 1), ('bs_512', 512, 3)]
 
   def _build_model(self):
-    vocab_size = 20000
-    max_len = 200
+    """model from https://keras.io/examples/nlp/text_classification_with_transformer/"""
     embed_dim = 32
     num_heads = 2
     ff_dim = 32
-    inputs = tf.keras.layers.Input(shape=(max_len,))
+    inputs = tf.keras.layers.Input(shape=(self.max_len,))
     embedding_layer = TokenAndPositionEmbedding(
-        max_len,
-        vocab_size,
+        self.max_len,
+        self.max_feature,
         embed_dim)
     x = embedding_layer(inputs)
     transformer_block = TransformerBlock(
@@ -89,7 +77,16 @@ class TextWithTransformerBenchmark(
     return model
   
   def benchmark_text_classification(self, batch_size, run_iters):
-    """Benchmark for Text classification with Transformer."""
+    """ Required Arguments for measure_performance:
+
+      x: Input data, it could be Numpy or load from tfds.
+      y: Target data. If `x` is a dataset, generator instance,
+         `y` should not be specified.
+      loss: Loss function for model.
+      optimizer: Optimizer for model.
+      Other details can see in `measure_performance()` method of
+      benchmark_util.
+    """
     results = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
