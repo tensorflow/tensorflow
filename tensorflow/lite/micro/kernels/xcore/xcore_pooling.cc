@@ -50,12 +50,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   auto* op = reinterpret_cast<::xcore::pooling::MaxPool*>(node->user_data);
 
-  op->Init(input->dims->data[1],   // X_h
-           input->dims->data[2],   // X_w
-           input->dims->data[3],   // C_in
-           output->dims->data[1],  // Y_h
-           output->dims->data[2],  // Y_w
-           output->dims->data[3]   // C_out
+  op->Prepare(input->dims->data[1],   // X_h
+              input->dims->data[2],   // X_w
+              input->dims->data[3],   // C_in
+              output->dims->data[1],  // Y_h
+              output->dims->data[2],  // Y_w
+              output->dims->data[3]   // C_out
   );
 
   return kTfLiteOk;
@@ -107,12 +107,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   auto* op = reinterpret_cast<::xcore::pooling::AvgPool*>(node->user_data);
 
-  op->Init(input->dims->data[1],   // X_h
-           input->dims->data[2],   // X_w
-           input->dims->data[3],   // C_in
-           output->dims->data[1],  // Y_h
-           output->dims->data[2],  // Y_w
-           output->dims->data[3]   // C_out
+  op->Prepare(input->dims->data[1],   // X_h
+              input->dims->data[2],   // X_w
+              input->dims->data[3],   // C_in
+              output->dims->data[1],  // Y_h
+              output->dims->data[2],  // Y_w
+              output->dims->data[3]   // C_out
   );
 
   return kTfLiteOk;
@@ -164,12 +164,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* op =
       reinterpret_cast<::xcore::pooling::AvgPool_Global*>(node->user_data);
 
-  op->Init(input->dims->data[1],                      // X_h
-           input->dims->data[2],                      // X_w
-           input->dims->data[3],                      // C_in
-           unpack<4, int32_t>(&bss->data.uint8[0]),   // bias
-           unpack<2, uint32_t>(&bss->data.uint8[5]),  // shift
-           unpack<1, uint32_t>(&bss->data.uint8[4])   // scal
+  op->Prepare(input->dims->data[1],                      // X_h
+              input->dims->data[2],                      // X_w
+              input->dims->data[3],                      // C_in
+              unpack<4, int32_t>(&bss->data.uint8[0]),   // bias
+              unpack<2, uint32_t>(&bss->data.uint8[5]),  // shift
+              unpack<1, uint32_t>(&bss->data.uint8[4])   // scal
   );
 
   return kTfLiteOk;

@@ -123,8 +123,8 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
       if (plan) {
         const auto &vec = values[i].AsVector();  // values represent [weights
                                                  // scratch, bias scratch]
-        plan->SetWeightsScratch(vec[0].AsInt32());
-        plan->SetBiasScratch(vec[1].AsInt32());
+        plan->SetWeightsScratchSize(vec[0].AsInt32());
+        plan->SetBiasScratchSize(vec[1].AsInt32());
       }
     }
   }

@@ -41,6 +41,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 
   const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
+  const TfLiteTensor *bso = GetInput(context, node, 2);
   const TfLiteTensor *output = GetOutput(context, node, 0);
 
   auto *op = reinterpret_cast<::xcore::conv::Conv2D_Shallow *>(node->user_data);
@@ -48,13 +49,15 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   // set param values not parsed from custom options
   op->params.K_h = weights->dims->data[1];
 
-  op->Init(input->dims->data[1],    // X_h
-           input->dims->data[2],    // X_w
-           input->dims->data[3],    // C_in
-           output->dims->data[1],   // Y_h
-           output->dims->data[2],   // Y_w
-           weights->dims->data[0],  // C_out
-           weights->dims->data[2]   // K_w padded
+  op->Prepare(input->dims->data[1],    // X_h
+              input->dims->data[2],    // X_w
+              input->dims->data[3],    // C_in
+              output->dims->data[1],   // Y_h
+              output->dims->data[2],   // Y_w
+              weights->dims->data[0],  // C_out
+              weights->dims->data[2],  // K_w padded
+              weights->data.int8,      // K
+              bso->data.i16            // BSO
   );
 
   return kTfLiteOk;
@@ -62,16 +65,12 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
   TfLiteTensor *output = GetOutput(context, node, 0);
 
   auto *op = reinterpret_cast<::xcore::conv::Conv2D_Shallow *>(node->user_data);
 
-  op->Eval(output->data.int8,   // Y
-           input->data.int8,    // X,
-           weights->data.int8,  // K
-           bso->data.i16        // BSO
+  op->Eval(output->data.int8,  // Y
+           input->data.int8    // X
   );
 
   return kTfLiteOk;
@@ -109,6 +108,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 
   const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
+  const TfLiteTensor *bso = GetInput(context, node, 2);
   const TfLiteTensor *output = GetOutput(context, node, 0);
 
   auto *op = reinterpret_cast<::xcore::conv::Conv2D_Deep *>(node->user_data);
@@ -117,12 +117,14 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   op->params.K_h = weights->dims->data[1];
   op->params.K_w = weights->dims->data[2];
 
-  op->Init(input->dims->data[1],   // X_h
-           input->dims->data[2],   // X_w
-           input->dims->data[3],   // C_in
-           output->dims->data[1],  // Y_w
-           output->dims->data[2],  // Y_h
-           output->dims->data[3]   // C_out
+  op->Prepare(input->dims->data[1],   // X_h
+              input->dims->data[2],   // X_w
+              input->dims->data[3],   // C_in
+              output->dims->data[1],  // Y_w
+              output->dims->data[2],  // Y_h
+              output->dims->data[3],  // C_out
+              weights->data.int8,     // K
+              bso->data.i16           // BSO
   );
 
   return kTfLiteOk;
@@ -130,13 +132,10 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
   TfLiteTensor *output = GetOutput(context, node, 0);
 
   auto *op = reinterpret_cast<::xcore::conv::Conv2D_Deep *>(node->user_data);
-  op->Eval(output->data.int8, input->data.int8, weights->data.int8,
-           bso->data.i16);
+  op->Eval(output->data.int8, input->data.int8);
 
   return kTfLiteOk;
 }
@@ -173,32 +172,32 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor *input = GetInput(context, node, 0);
+  const TfLiteTensor *weights = GetInput(context, node, 1);
+  const TfLiteTensor *bso = GetInput(context, node, 2);
   const TfLiteTensor *output = GetOutput(context, node, 0);
 
   auto *op = reinterpret_cast<::xcore::conv::Conv2D_1x1 *>(node->user_data);
 
-  op->Init(input->dims->data[1],   // X_h
-           input->dims->data[2],   // X_w
-           input->dims->data[3],   // C_in
-           output->dims->data[1],  // Y_h
-           output->dims->data[2],  // Y_w
-           output->dims->data[3]);
-
+  op->Prepare(input->dims->data[1],   // X_h
+              input->dims->data[2],   // X_w
+              input->dims->data[3],   // C_in
+              output->dims->data[1],  // Y_h
+              output->dims->data[2],  // Y_w
+              output->dims->data[3],  // C_out
+              weights->data.int8,     // K
+              bso->data.i16           // BSO
+  );
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
   TfLiteTensor *output = GetOutput(context, node, 0);
 
   auto *op = reinterpret_cast<::xcore::conv::Conv2D_1x1 *>(node->user_data);
 
-  op->Eval(output->data.int8,   // Y
-           input->data.int8,    // X,
-           weights->data.int8,  // K
-           bso->data.i16        // BSO
+  op->Eval(output->data.int8,  // Y
+           input->data.int8    // X
   );
 
   return kTfLiteOk;
@@ -238,6 +237,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 
   const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
+  const TfLiteTensor *bso = GetInput(context, node, 2);
   const TfLiteTensor *output = GetOutput(context, node, 0);
 
   auto *op =
@@ -247,12 +247,14 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   op->params.K_h = weights->dims->data[0];
   op->params.K_w = weights->dims->data[1];
 
-  op->Init(input->dims->data[1],   // X_h
-           input->dims->data[2],   // X_w
-           input->dims->data[3],   // C_in
-           output->dims->data[1],  // Y_h
-           output->dims->data[2],  // Y_w
-           output->dims->data[3]   // C_out
+  op->Prepare(input->dims->data[1],   // X_h
+              input->dims->data[2],   // X_w
+              input->dims->data[3],   // C_in
+              output->dims->data[1],  // Y_h
+              output->dims->data[2],  // Y_w
+              output->dims->data[3],  // C_out
+              weights->data.int8,     // K
+              bso->data.i16           // B
   );
 
   return kTfLiteOk;
@@ -260,17 +262,13 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
-  const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bso = GetInput(context, node, 2);
   TfLiteTensor *output = GetOutput(context, node, 0);
 
   auto *op =
       reinterpret_cast<::xcore::conv::Conv2D_Depthwise *>(node->user_data);
 
-  op->Eval(output->data.int8,   // Y
-           input->data.int8,    // X,
-           weights->data.int8,  // K
-           bso->data.i16        // B
+  op->Eval(output->data.int8,  // Y
+           input->data.int8    // X
   );
 
   return kTfLiteOk;
