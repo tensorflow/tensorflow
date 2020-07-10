@@ -1104,8 +1104,8 @@ Status InferenceContext::AttachContext(const Status& status) {
   std::vector<string> input_from_tensors_as_shape_str;
   input_from_tensors_as_shape_str.reserve(inputs_.size());
   for (int i = 0, end = inputs_.size(); i < end; ++i) {
-    const int input_tensors_as_shapes_size_ = input_tensors_as_shapes_.size();
-    const int input_tensors_size_ = input_tensors_.size();
+    const int input_tensors_as_shapes_size = input_tensors_as_shapes_.size();
+    const int input_tensors_size = input_tensors_.size();
     if (requested_input_tensor_as_partial_shape_[i] &&
         i < input_tensors_as_shapes_size &&
         input_tensors_as_shapes_[i].IsSet() &&
