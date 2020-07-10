@@ -134,18 +134,6 @@ cc_library(
     ],
 )
 
-filegroup(
-    name = "mobile_srcs_only_runtime",
-    srcs = [
-        "concrete_function.h",
-        "function_metadata.h",
-        "saved_model_api.h",
-        "tf_saved_model_api.cc",
-        "tf_saved_model_api.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
 tf_cc_test(
     name = "constant_loading_test",
     srcs = [
