@@ -22,6 +22,7 @@ from __future__ import print_function
 import inspect
 import numbers
 import os
+import re
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -220,12 +221,79 @@ def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None):
     doc = _add_blank_line(doc)
   # TODO(wangpeng): Re-enable the following and choose inlined vs. link to numpy
   #   doc according to some global switch.
-  # if _has_docstring(np_f):
-  #   doc += 'Documentation for `numpy.%s`:\n\n' % np_f.__name__
-  #   # TODO(wangpeng): It looks like code snippets in numpy doc don't work
-  #   # correctly with doctest. Fix that and remove the reformatting of the np_f
-  #   # comment.
-  #   doc += np_f.__doc__.replace('>>>', '>')
+  doc = _add_np_doc(doc, np_fun_name, np_f)
+  return doc
+
+
+_np_doc_form = os.getenv('TF_NP_DOC_FORM', '1.16')
+
+
+def get_np_doc_form():
+  """Gets the form of the original numpy docstrings.
+
+  Returns:
+    See `set_np_doc_form` for the list of valid values.
+  """
+  return _np_doc_form
+
+
+def set_np_doc_form(value):
+  r"""Selects the form of the original numpy docstrings.
+
+  This function sets a global variable that controls how a tf-numpy symbol's
+  docstring should refer to the original numpy docstring. If `value` is
+  `'inlined'`, the numpy docstring will be verbatim copied into the tf-numpy
+  docstring. Otherwise, a link to the original numpy docstring will be
+  added. Which numpy version the link points to depends on `value`:
+  * `'stable'`: the current stable version;
+  * `'dev'`: the current development version;
+  * pattern `\d+(\.\d+(\.\d+)?)?`: `value` will be treated as a version number,
+    e.g. '1.16'.
+
+  Args:
+    value: the value to set the global variable to.
+  """
+  global _np_doc_form
+  _np_doc_form = value
+
+
+def _add_np_doc(doc, np_fun_name, np_f):
+  """Appends the numpy docstring to `doc`, according to `set_np_doc_form`.
+
+  See `set_np_doc_form` for how it controls the form of the numpy docstring.
+
+  Args:
+    doc: the docstring to be appended to.
+    np_fun_name: the name of the numpy function.
+    np_f: (optional) the numpy function.
+
+  Returns:
+    `doc` with numpy docstring appended.
+  """
+  flag = get_np_doc_form()
+  if flag == 'inlined':
+    if _has_docstring(np_f):
+      doc += 'Documentation for `numpy.%s`:\n\n' % np_fun_name
+      # TODO(wangpeng): It looks like code snippets in numpy doc don't work
+      # correctly with doctest. Fix that and remove the reformatting of the np_f
+      # comment.
+      doc += np_f.__doc__.replace('>>>', '>')
+  elif isinstance(flag, str):
+    # Only adds link in this case
+    if flag == 'dev':
+      template = 'https://numpy.org/devdocs/reference/generated/numpy.%s.html'
+    elif flag == 'stable':
+      template = (
+          'https://numpy.org/doc/stable/reference/generated/numpy.%s.html')
+    elif re.match(r'\d+(\.\d+(\.\d+)?)?$', flag):
+      # `flag` is the version number
+      template = ('https://numpy.org/doc/' + flag +
+                  '/reference/generated/numpy.%s.html')
+    else:
+      template = None
+    if template is not None:
+      link = template % np_fun_name
+      doc += 'See the documentation for `numpy.%s`: [%s]' % (np_fun_name, link)
   return doc
 
 
