@@ -48,6 +48,31 @@ tf_cc_test(
     ],
 )
 
+tf_kernel_library(
+    name = "histogram_summary_op",
+    prefix = "histogram_summary_op",
+    deps = [
+        "//tensorflow/c:kernels",
+        "//tensorflow/c:ops",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["histogram"],
+    deps = [
+        "//tensorflow/c:ops",
+        "//tensorflow/c:tf_datatype",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/core:lib",
+    ],
+)
+
 # Changes to the Android srcs here should be replicated in
 # tensorflow/contrib/makefile/tf_op_files.txt.
 #
