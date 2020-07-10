@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
@@ -133,7 +134,7 @@ void TpuProgramGroup::UnloadAndDestroyPrograms() {
     const std::vector<ShardingAndIndex>& arg_core_mapping,
     const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
     const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
-    TpuProgramGroup* tpu_program_group) {
+    TpuProgramGroupInterface* tpu_program_group_interface) {
   std::vector<std::vector<xla::Shape>> per_core_output_shapes(
       metadata.num_cores_per_replica());
   TF_RETURN_IF_ERROR(ComputeOutputShapesForEachCore(
@@ -149,7 +150,12 @@ void TpuProgramGroup::UnloadAndDestroyPrograms() {
   TF_RET_CHECK(per_core_output_shapes.size() == per_core_arg_shapes.size());
   TF_RET_CHECK(per_core_output_shapes.size() ==
                per_core_variable_indices.size());
-  tpu_program_group->set_may_modify_variables(may_modify_variables);
+
+  // TODO(henrytan): add an interface to TpuProgramGroupInterface to set
+  // may_modify_variables.
+  TpuProgramGroup* tpu_program_group =
+      tensorflow::down_cast<TpuProgramGroup*>(tpu_program_group_interface);
+  tpu_program_group->may_modify_variables_ = may_modify_variables;
 
   // With shardable input/output pairs, XLA could generate separate
   // sharding/unsharding programs along with the main program. The

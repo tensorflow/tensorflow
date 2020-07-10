@@ -1274,6 +1274,7 @@ cuda_py_test(
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
+        "notap",  # TODO(b/160925973): Test flaky due to port collisions.
         "notsan",
         "oss_serial",
     ],

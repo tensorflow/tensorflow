@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_ABSTRACT_TENSOR_HANDLE_H_
 
 #include <memory>
+
+#include "tensorflow/core/framework/types.pb.h"
 namespace tensorflow {
 
 // Abstract interface to a Tensor handle in either tracing or immediate
@@ -27,6 +29,9 @@ class AbstractTensorHandle {
   virtual ~AbstractTensorHandle() {}
 
  public:
+  // Returns tensor dtype.
+  virtual tensorflow::DataType DataType() const = 0;
+
   AbstractTensorHandleKind getKind() const { return kind_; }
 
   // Release any underlying resources, including the interface object.
