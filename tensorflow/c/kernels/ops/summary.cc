@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/c/ops.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 
 static void scalar_summary_shape_inference_fn(TF_ShapeInferenceContext* ctx,
                                               TF_Status* status) {

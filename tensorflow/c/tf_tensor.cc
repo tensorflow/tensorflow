@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <vector>
+#include <string>
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/platform/casts.h"
-#include <string>
 
 using tensorflow::Status;
 using tensorflow::Tensor;

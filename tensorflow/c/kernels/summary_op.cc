@@ -1,5 +1,5 @@
 
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,16 +17,9 @@ limitations under the License.
 #include <sstream>
 
 #include "tensorflow/c/kernels.h"
-#include "tensorflow/c/ops.h"
 #include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/selective_registration.h"
-#include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 
 // Struct that stores the status and TF_Tensor inputs to the opkernel. 
@@ -41,7 +34,7 @@ typedef struct Params{
     if (TF_GetCode(status) == TF_OK){ 
       TF_GetInput(ctx, 1, &values, status);
     }
-    else{
+    else {
       values = nullptr; 
     }
   }; 
@@ -57,8 +50,7 @@ typedef struct Params{
 
 // dummy functions used for kernel registration 
 static void* SummaryScalarOp_Create(TF_OpKernelConstruction* ctx) {
-  void* ptr; 
-  return ptr; 
+  return nullptr; 
 }
 
 static void SummaryScalarOp_Delete(void* kernel) {
@@ -162,10 +154,13 @@ void RegisterSummaryScalarOpKernel() {
 // register the bitcast kernel.                                                          
 TF_ATTRIBUTE_UNUSED static bool  IsSummaryScalarOpKernelRegistered = []() {                  
   if (SHOULD_REGISTER_OP_KERNEL("SummaryScalar")) {                                                                           
-    RegisterSummaryScalarOpKernel<tensorflow::int64>();          
+    RegisterSummaryScalarOpKernel<tensorflow::int64>();    
+    RegisterSummaryScalarOpKernel<tensorflow::uint64>();       
     RegisterSummaryScalarOpKernel<tensorflow::int32>();   
+    RegisterSummaryScalarOpKernel<tensorflow::uint32>(); 
     RegisterSummaryScalarOpKernel<tensorflow::uint16>();   
     RegisterSummaryScalarOpKernel<tensorflow::int16>();   
+    RegisterSummaryScalarOpKernel<tensorflow::int8>();  
     RegisterSummaryScalarOpKernel<tensorflow::uint8>();   
     RegisterSummaryScalarOpKernel<Eigen::half>();   
     RegisterSummaryScalarOpKernel<tensorflow::bfloat16>();   

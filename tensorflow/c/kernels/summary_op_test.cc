@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,16 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/framework/summary.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/c/tf_tensor_internal.h"
 
 namespace tensorflow {
 namespace {
