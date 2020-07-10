@@ -128,7 +128,7 @@ LocalExecutable::RunHelper(const absl::Span<const Shape* const> argument_shapes,
         "invalid number of arguments for computation: expected %d, got %u",
         computation_layout.parameter_count(), argument_shapes.size());
   }
-  for (int i = 0, iter_limit = argument_shapes.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = argument_shapes.size(); i < end; ++i) {
     if (!computation_layout.parameter_layout(i).MatchesLayoutInShape(
             *argument_shapes[i])) {
       return InvalidParameterArgument(

@@ -54,7 +54,7 @@ constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 // Precondition: size % 2 == 0 (elements in the array are 16 bits long)
 void ConvertEndianShort(string* bytes) {
   CHECK_EQ(bytes->size() / 2, 0);
-  for (int64 i = 0, iter_limit = bytes->size(); i < iter_limit; i += 2) {
+  for (int64 i = 0, end = bytes->size(); i < end; i += 2) {
     std::swap((*bytes)[i], (*bytes)[i + 1]);
   }
 }
@@ -485,7 +485,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
         }
         // Construct the index of the corresponding piece in the source literal.
         ShapeIndex src_piece_index = src_shape_index;
-        for (int64 i = dest_shape_index.size(), iter_limit = index.size(); i < iter_limit; ++i) {
+        for (int64 i = dest_shape_index.size(), end = index.size(); i < end; ++i) {
           src_piece_index.push_back(index[i]);
         }
         TF_RETURN_IF_ERROR(piece->CopyFrom(src_literal.piece(src_piece_index)));
@@ -637,7 +637,7 @@ StatusOr<Literal> LiteralBase::Broadcast(
     return InvalidArgument("Broadcast only supports arrays.");
   }
 
-  for (int64 i = 0, iter_limit = dimensions.size(); i < iter_limit; i++) {
+  for (int64 i = 0, end = dimensions.size(); i < end; i++) {
     TF_RET_CHECK(shape().dimensions(i) ==
                  result_shape.dimensions(dimensions[i]));
   }
@@ -656,7 +656,7 @@ StatusOr<Literal> LiteralBase::Broadcast(
 
   ShapeUtil::ForEachIndex(
       result_shape, [&](absl::Span<const int64> output_index) {
-        for (int64 i = 0, iter_limit = dimensions.size(); i < iter_limit; ++i) {
+        for (int64 i = 0, end = dimensions.size(); i < end; ++i) {
           scratch_source_index[i] = output_index[dimensions[i]];
         }
         int64 dest_index = IndexUtil::MultidimensionalIndexToLinearIndex(
@@ -1370,7 +1370,7 @@ StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
   }
   Literal literal(ShapeUtil::MakeTupleShape(element_shapes),
                   /*allocate_arrays=*/false);
-  for (int i = 0, iter_limit = elements.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = elements.size(); i < end; ++i) {
     TF_CHECK_OK(
         literal.MoveFrom(std::move(elements[i]), /*dest_shape_index=*/{i}));
   }
@@ -1965,7 +1965,7 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       auto complex_data = data<complex128>();
       const int64 complex_data_size_doubled = complex_data.size() * 2;
       TF_RET_CHECK(proto.c128s_size() == complex_data_size_doubled);
-      for (int64 i = 0, iter_limit = complex_data.size(); i < iter_limit; ++i) {
+      for (int64 i = 0, end = complex_data.size(); i < end; ++i) {
         complex_data[i] =
             complex128{proto.c128s(i * 2), proto.c128s(i * 2 + 1)};
       }
@@ -2183,7 +2183,7 @@ BorrowingLiteral::BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
   root_piece_.set_subshape(shape_.get());
   BuildPieceSubtree(*shape_, &root_piece_);
 
-  for (int i = 0, iter_limit = src_buf_ptrs.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = src_buf_ptrs.size(); i < end; ++i) {
     const auto& src_shape = shape_->tuple_shapes(i);
     CHECK(src_shape.IsArray());
     root_piece_.child(i).set_buffer(const_cast<char*>(src_buf_ptrs[i]));

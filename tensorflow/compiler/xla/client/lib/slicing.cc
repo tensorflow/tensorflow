@@ -80,7 +80,7 @@ XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64> start) {
     // TODO(phawkins): make int64 work on all backends, remove the int32 cast.
     std::vector<int32> start_as_int32(start.begin(), start.end());
     std::vector<XlaOp> start_ops(start.size());
-    for (int i = 0, iter_limit = start.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = start.size(); i < end; ++i) {
       start_ops[i] = ConstantR0(builder, start_as_int32[i]);
     }
     return DynamicUpdateSlice(x, update, start_ops);

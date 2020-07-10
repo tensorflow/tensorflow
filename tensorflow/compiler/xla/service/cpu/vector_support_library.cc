@@ -372,7 +372,7 @@ VectorSupportLibrary::ComputeAvxOptimizedHorizontalSums(
 
   while (vectors.size() != 2) {
     std::vector<llvm::Value*> new_vectors;
-    for (int i = 0, iter_limit = vectors.size(); i < iter_limit; i += 2) {
+    for (int i = 0, end = vectors.size(); i < end; i += 2) {
       new_vectors.push_back(AvxStyleHorizontalAdd(vectors[i], vectors[i + 1]));
     }
 

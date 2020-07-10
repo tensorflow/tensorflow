@@ -1228,7 +1228,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
 
   const std::vector<int64>& fft_length = fft->fft_length();
   int64 input_batch = 1;
-  for (int i = 0, iter_limit = fft->shape().dimensions_size() - fft_length.size(); i < iter_limit; i++) {
+  for (int i = 0, end = fft->shape().dimensions_size() - fft_length.size(); i < end; i++) {
     input_batch *= fft->shape().dimensions(i);
   }
 
@@ -1780,7 +1780,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
   llvm::Value* input_address = BitCast(
       arg_array.EmitArrayElementAddress(input_index, &b_), b_.getInt8PtrTy());
 
-  for (int i = 0, iter_limit = accumulator.size(); i < iter_limit; i++) {
+  for (int i = 0, end = accumulator.size(); i < end; i++) {
     auto input_address_typed =
         BitCast(input_address, accumulator[i]->getType());
     auto current_accumulator_value =
@@ -1812,7 +1812,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
 void IrEmitter::EmitShardedVectorStore(
     llvm::Value* store_address, const std::vector<llvm::Value*>& value_to_store,
     const int alignment, const llvm_ir::IrArray& containing_array) {
-  for (int i = 0, iter_limit = value_to_store.size(); i < iter_limit; i++) {
+  for (int i = 0, end = value_to_store.size(); i < end; i++) {
     auto store_address_typed =
         BitCast(store_address,
                 llvm::PointerType::getUnqual(value_to_store[i]->getType()));
@@ -2114,7 +2114,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
   // Determine the dimensions that get lowered as loops.
   std::vector<int64> outer_dims;
-  for (int64 i = 0, iter_limit = num_dims - inner_dims.size() - 1; i < iter_limit; ++i) {
+  for (int64 i = 0, end = num_dims - inner_dims.size() - 1; i < end; ++i) {
     outer_dims.push_back(LayoutUtil::Major(layout, i));
   }
 
@@ -3283,7 +3283,7 @@ Status IrEmitter::EmitTargetElementLoop(
             .EmitLoop(IrName(target_op)));
 
     std::vector<llvm::Value*> tuple_operand_ptrs;
-    for (int64 i = 0, iter_limit = output_arrays.size(); i < iter_limit; ++i) {
+    for (int64 i = 0, end = output_arrays.size(); i < end; ++i) {
       tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
     }
     llvm_ir::EmitTuple(target_array, tuple_operand_ptrs, &b_);
