@@ -1402,7 +1402,7 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
     } else {
       auto segments = dim_metadata.segments();
       std::vector<int> vector_segments(segments.size(), 0);
-      for (int j = 0, iter_limit = segments.size(); j < iter_limit; j++) {
+      for (int j = 0, end = segments.size(); j < end; j++) {
         vector_segments[j] = segments[j].dyn_cast<mlir::IntegerAttr>().getInt();
       }
       tflite::SparseIndexVector segments_type;
@@ -1434,7 +1434,7 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
       auto indices = dim_metadata.indices();
       std::vector<int> vector_indices(indices.size(), 0);
       int max_of_indices = 0;
-      for (int j = 0, iter_limit = indices.size(); j < iter_limit; j++) {
+      for (int j = 0, end = indices.size(); j < end; j++) {
         vector_indices[j] = indices[j].dyn_cast<mlir::IntegerAttr>().getInt();
         if (vector_indices[j] > max_of_indices) {
           max_of_indices = vector_indices[j];

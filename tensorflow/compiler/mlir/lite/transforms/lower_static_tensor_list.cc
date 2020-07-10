@@ -790,7 +790,7 @@ static LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
 
     // Change the argument type for the first block.
     Block &body_first_bb = func.front();
-    for (int i = 0, iter_limit = body_first_bb.getNumArguments(); i < iter_limit; ++i) {
+    for (int i = 0, end = body_first_bb.getNumArguments(); i < end; ++i) {
       body_first_bb.getArgument(i).setType(updated_argument_types[i]);
     }
   }

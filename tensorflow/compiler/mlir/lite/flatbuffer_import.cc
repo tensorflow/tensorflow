@@ -220,7 +220,7 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
 
   llvm::SmallVector<llvm::APFloat, 4> min_maxs;
   min_maxs.reserve(mins.size() * 2);
-  for (int i = 0, iter_limit = mins.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = mins.size(); i < end; ++i) {
     llvm::APFloat min(mins[i]);
     llvm::APFloat max(maxs[i]);
     min_maxs.push_back(min);
@@ -276,7 +276,7 @@ std::vector<T> ReadAsLittleEndian(ArrayRef<uint8_t> bytes) {
   ret.reserve(elem_count);
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
-  for (int i = 0, iter_limit = elem_count; i < iter_limit; i++) {
+  for (int i = 0, end = elem_count; i < end; i++) {
     ret.push_back(
         llvm::support::endian::readNext<T, llvm::support::little,
                                         llvm::support::unaligned>(data_ptr));
@@ -316,7 +316,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       const char* data = reinterpret_cast<const char*>(buffer.data());
       auto& semantics = elem_type.getFloatSemantics();
 
-      for (int i = 0, iter_limit = elem_count; i < iter_limit; i++) {
+      for (int i = 0, end = elem_count; i < end; i++) {
         uint16_t bit_repr =
             llvm::support::endian::readNext<uint16_t, llvm::support::little,
                                             llvm::support::unaligned>(data);
@@ -334,7 +334,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
 
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
-      for (int i = 0, iter_limit = elem_count; i < iter_limita; i++) {
+      for (int i = 0, end = elem_count; i < enda; i++) {
         uint32_t bit_repr =
             llvm::support::endian::readNext<uint32_t, llvm::support::little,
                                             llvm::support::unaligned>(data);
@@ -350,7 +350,7 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
 
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
-      for (int i = 0, iter_limit = elem_count; i < iter_limit; i++) {
+      for (int i = 0, end = elem_count; i < end; i++) {
         uint64_t bit_repr =
             llvm::support::endian::readNext<uint64_t, llvm::support::little,
                                             llvm::support::unaligned>(data);
@@ -763,7 +763,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   // Add state variables to inputs.
   absl::flat_hash_set<int32_t> input_index_set(func_inputs.begin(),
                                                func_inputs.end());
-  for (int i = 0, iter_limit = subgraph.tensors.size(); i < iter_limit; i++) {
+  for (int i = 0, end = subgraph.tensors.size(); i < end; i++) {
     auto& tensor = *subgraph.tensors.at(i);
     if (tensor.is_variable && !input_index_set.contains(i)) {
       func_inputs.emplace_back(i);

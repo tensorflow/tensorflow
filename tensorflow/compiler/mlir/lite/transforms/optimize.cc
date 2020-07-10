@@ -198,7 +198,7 @@ DenseElementsAttr GetShape(Value output_val) {
   auto output_type = output_val.getType().cast<RankedTensorType>();
   auto shape_vector = output_type.getShape();
   std::vector<int32_t> shape(shape_vector.size());
-  for (int i = 0, iter_limit = shape_vector.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = shape_vector.size(); i < end; ++i) {
     shape[i] = shape_vector[i];
   }
   return mlir::DenseElementsAttr::get(
@@ -676,7 +676,7 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
     SmallVector<int, 8> old_major_index_ordering;
     SmallVector<int, 8> new_major_index_ordering;
-    for (int i = 0, iter_limit = input_shape.size(); i < iter_limit; i++) {
+    for (int i = 0, end = input_shape.size(); i < end; i++) {
       if (input_shape[i] != 1) {
         old_major_index_ordering.push_back(i);
       }

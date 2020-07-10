@@ -523,8 +523,8 @@ Status SchedulerState::Init(const GrapplerItem* item,
     if (IsPersistent(*curr_node)) {
       auto& device_state = device_[curr_node_device];
       for (int port_num = 0,
-               port_num_iter_limit = curr_node_state.output_properties.size();
-           port_num < port_num_iter_limit; ++port_num) {
+               port_num_end = curr_node_state.output_properties.size();
+           port_num < port_num_end; ++port_num) {
         device_state.persistent_nodes.insert(
             std::make_pair(curr_node, port_num));
       }
@@ -1121,8 +1121,8 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
       const NodeState& nodestate = node_map_.at(node_def);
       NodeExecStats* node_stats = device_stepstats->add_node_stats();
       uint64 total_output_size = 0;
-      for (int slot = 0, slot_iter_limit = nodestate.output_properties.size();
-           slot < slot_iter_limit; slot++) {
+      for (int slot = 0, slot_end = nodestate.output_properties.size();
+           slot < slot_end; slot++) {
         const auto& properties = nodestate.output_properties[slot];
         NodeOutput* no = node_stats->add_output();
         no->set_slot(slot);

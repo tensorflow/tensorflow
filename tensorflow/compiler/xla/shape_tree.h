@@ -654,7 +654,7 @@ void ShapeTree<T>::CopySubtreeFrom(const ShapeTree<T>& other,
     // Copy the data element only if index is in the
     // subtree rooted at target_base_index.
     const int index_size = index.size();
-    for (int i = 0, iter_limit = target_base_index.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = target_base_index.size(); i < end; ++i) {
       if (i >= index_size || index[i] != target_base_index[i]) {
         return;
       }

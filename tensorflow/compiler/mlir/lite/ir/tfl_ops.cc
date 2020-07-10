@@ -1264,7 +1264,7 @@ static LogicalResult Verify(SliceOp op) {
 
   if (begin && size && input_type.hasStaticShape()) {
     const int input_rank = begin.getNumElements();
-    for (uint64_t i = 0, iter_limit = input_rank; i < iter_limit; i++) {
+    for (uint64_t i = 0, end = input_rank; i < end; i++) {
       int begin_i =
           begin.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();
       int size_i =
