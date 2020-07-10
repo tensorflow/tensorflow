@@ -258,7 +258,7 @@ string MetricTableReport::MetricString(double metric) {
     sp1.remove_prefix(1);
   }
   // Copy rest of input characters.
-  for (int64 i = 0, iter_limit = sp1.size(); i < iter_limit; ++i) {
+  for (int64 i = 0, end = sp1.size(); i < end; ++i) {
     if (i > 0 && (sp1.size() - i) % 3 == 0) {
       output.push_back(',');
     }
