@@ -184,11 +184,11 @@ class ShardedVariable(trackable.Trackable):
 
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
-  def _map_resources(self):
+  def _map_resources(self, save_options):
     """For implementing `Trackable`."""
     obj_map, resource_map = {}, {}
     for v in self._variables + [self._saving_variable]:
-      v_obj_map, v_resource_map = v._map_resources()  # pylint:disable=protected-access
+      v_obj_map, v_resource_map = v._map_resources(save_options)  # pylint:disable=protected-access
       obj_map.update(v_obj_map)
       resource_map.update(v_resource_map)
     obj_map[self] = ShardedVariable([obj_map[self._saving_variable]],

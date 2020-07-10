@@ -28,7 +28,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.engine import base_layer as keras_base_layer
 from tensorflow.python.keras.engine import input_spec
@@ -162,21 +161,22 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           trainable=True)
 
-  @test_util.run_v1_only('Legacy TF Base layer is supported only in V1.')
   def testReusePartitionedVariablesAndRegularizers(self):
-    regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
-    partitioner = partitioned_variables.fixed_size_partitioner(3)
-    for reuse in [False, True]:
-      with variable_scope.variable_scope(variable_scope.get_variable_scope(),
-                                         partitioner=partitioner,
-                                         reuse=reuse):
-        layer = base_layers.Layer(name='my_layer')
-        _ = layer.add_variable(
-            'reg_part_var', [4, 4],
-            initializer=init_ops.zeros_initializer(),
-            regularizer=regularizer)
-    self.assertEqual(
-        len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 3)
+    with ops.Graph().as_default():
+      regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
+      partitioner = partitioned_variables.fixed_size_partitioner(3)
+      for reuse in [False, True]:
+        with variable_scope.variable_scope(
+            variable_scope.get_variable_scope(),
+            partitioner=partitioner,
+            reuse=reuse):
+          layer = base_layers.Layer(name='my_layer')
+          _ = layer.add_variable(
+              'reg_part_var', [4, 4],
+              initializer=init_ops.zeros_initializer(),
+              regularizer=regularizer)
+      self.assertEqual(
+          len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 3)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testCall(self):
@@ -464,13 +464,13 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
       self.assertTrue(isinstance(result, dict))
       self.assertEqual(set(['label', 'logits']), set(result.keys()))
 
-  @test_util.run_v1_only('Legacy TF Base layer is supported only in V1.')
   def testActivityRegularizer(self):
-    regularizer = math_ops.reduce_sum
-    layer = base_layers.Layer(activity_regularizer=regularizer)
-    x = array_ops.placeholder('int32')
-    layer.apply(x)
-    self.assertEqual(len(layer.get_losses_for(x)), 1)
+    with ops.Graph().as_default():
+      regularizer = math_ops.reduce_sum
+      layer = base_layers.Layer(activity_regularizer=regularizer)
+      x = array_ops.placeholder('int32')
+      layer.apply(x)
+      self.assertEqual(len(layer.get_losses_for(x)), 1)
 
   def testNameScopeIsConsistentWithVariableScope(self):
     # Github issue 13429.
@@ -553,7 +553,6 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(len(layer.trainable_variables), 1)
         self.assertEqual(layer.variables[0].graph, outer_graph)
 
-  @test_util.run_v1_only('Legacy TF Base layer is supported only in V1.')
   def testGetUpdateFor(self):
 
     class MyLayer(base_layers.Layer):
@@ -575,30 +574,30 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
                         inputs=True)
         return inputs + 1
 
-    layer = MyLayer()
-    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
-    intermediate_inputs = inputs + 1
-    outputs = layer.apply(intermediate_inputs)
+    with ops.Graph().as_default():
+      layer = MyLayer()
+      inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+      intermediate_inputs = inputs + 1
+      outputs = layer.apply(intermediate_inputs)
 
-    self.assertEqual(len(layer.updates), 2)
-    self.assertEqual(len(layer.get_updates_for(None)), 1)
-    self.assertEqual(len(layer.get_updates_for([inputs])), 1)
-    self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
-    self.assertEqual(len(layer.get_updates_for([outputs])), 0)
+      self.assertEqual(len(layer.updates), 2)
+      self.assertEqual(len(layer.get_updates_for(None)), 1)
+      self.assertEqual(len(layer.get_updates_for([inputs])), 1)
+      self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
+      self.assertEqual(len(layer.get_updates_for([outputs])), 0)
 
-    # Call same layer on new input, creating one more conditional update
-    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
-    intermediate_inputs = inputs + 1
-    outputs = layer.apply(intermediate_inputs)
+      # Call same layer on new input, creating one more conditional update
+      inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+      intermediate_inputs = inputs + 1
+      outputs = layer.apply(intermediate_inputs)
 
-    self.assertEqual(len(layer.updates), 3)
-    self.assertEqual(len(layer.get_updates_for(None)), 1)
-    # Check that we are successfully filtering out irrelevant updates
-    self.assertEqual(len(layer.get_updates_for([inputs])), 1)
-    self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
-    self.assertEqual(len(layer.get_updates_for([outputs])), 0)
+      self.assertEqual(len(layer.updates), 3)
+      self.assertEqual(len(layer.get_updates_for(None)), 1)
+      # Check that we are successfully filtering out irrelevant updates
+      self.assertEqual(len(layer.get_updates_for([inputs])), 1)
+      self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
+      self.assertEqual(len(layer.get_updates_for([outputs])), 0)
 
-  @test_util.run_v1_only('Legacy TF Base layer is supported only in V1.')
   def testGetLossesFor(self):
 
     class MyLayer(base_layers.Layer):
@@ -619,28 +618,29 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
         self.add_loss(inputs, inputs=True)
         return inputs + 1
 
-    layer = MyLayer()
-    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
-    intermediate_inputs = inputs + 1
-    outputs = layer.apply(intermediate_inputs)
+    with ops.Graph().as_default():
+      layer = MyLayer()
+      inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+      intermediate_inputs = inputs + 1
+      outputs = layer.apply(intermediate_inputs)
 
-    self.assertEqual(len(layer.losses), 2)
-    self.assertEqual(len(layer.get_losses_for(None)), 1)
-    self.assertEqual(len(layer.get_losses_for([inputs])), 1)
-    self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
-    self.assertEqual(len(layer.get_losses_for([outputs])), 0)
+      self.assertEqual(len(layer.losses), 2)
+      self.assertEqual(len(layer.get_losses_for(None)), 1)
+      self.assertEqual(len(layer.get_losses_for([inputs])), 1)
+      self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
+      self.assertEqual(len(layer.get_losses_for([outputs])), 0)
 
-    # Call same layer on new input, creating one more conditional loss
-    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
-    intermediate_inputs = inputs + 1
-    outputs = layer.apply(intermediate_inputs)
+      # Call same layer on new input, creating one more conditional loss
+      inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+      intermediate_inputs = inputs + 1
+      outputs = layer.apply(intermediate_inputs)
 
-    self.assertEqual(len(layer.losses), 3)
-    self.assertEqual(len(layer.get_losses_for(None)), 1)
-    # Check that we are successfully filtering out irrelevant losses
-    self.assertEqual(len(layer.get_losses_for([inputs])), 1)
-    self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
-    self.assertEqual(len(layer.get_losses_for([outputs])), 0)
+      self.assertEqual(len(layer.losses), 3)
+      self.assertEqual(len(layer.get_losses_for(None)), 1)
+      # Check that we are successfully filtering out irrelevant losses
+      self.assertEqual(len(layer.get_losses_for([inputs])), 1)
+      self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
+      self.assertEqual(len(layer.get_losses_for([outputs])), 0)
 
 
 class IdentityLayer(base_layers.Layer):

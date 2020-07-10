@@ -61,6 +61,7 @@ TENSORFLOW_API_INIT_FILES = [
     "random/experimental/__init__.py",
     "raw_ops/__init__.py",
     "saved_model/__init__.py",
+    "saved_model/experimental/__init__.py",
     "sets/__init__.py",
     "signal/__init__.py",
     "sparse/__init__.py",

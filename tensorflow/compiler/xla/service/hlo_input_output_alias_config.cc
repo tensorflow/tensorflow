@@ -104,12 +104,10 @@ string HloInputOutputAliasConfig::ToShortString() const {
   std::vector<string> pieces;
   for (const auto& p : alias_) {
     const ShapeIndex& index = p.first;
-    absl::optional<Alias> alias = p.second;
-    if (!alias) {
-      continue;
+    if (absl::optional<Alias> alias = p.second) {
+      pieces.push_back(
+          absl::StrFormat("%s: %s", index.ToString(), alias->ToString()));
     }
-    pieces.push_back(
-        absl::StrFormat("%s: %s", index.ToString(), alias->ToString()));
   }
   return absl::StrJoin(pieces, ", ");
 }

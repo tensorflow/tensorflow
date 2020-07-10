@@ -250,6 +250,8 @@ def get_update_replica_id():
 class UpdateContext(object):
   """Context manager when you are in `update()` or `update_non_slot()`."""
 
+  __slots__ = ["_replica_id", "_old_replica_id"]
+
   def __init__(self, replica_id):
     self._replica_id = replica_id
     self._old_replica_id = None
@@ -454,6 +456,10 @@ class InputContext(object):
   source etc).
   """
 
+  __slots__ = [
+      "_num_input_pipelines", "_input_pipeline_id", "_num_replicas_in_sync"
+  ]
+
   def __init__(self,
                num_input_pipelines=1,
                input_pipeline_id=0,
@@ -544,6 +550,8 @@ class ValueContext(object):
   (2, 2)
 
   """
+
+  __slots__ = ["_replica_id_in_sync_group", "_num_replicas_in_sync"]
 
   def __init__(self,
                replica_id_in_sync_group=0,
@@ -1313,7 +1321,7 @@ class StrategyBase(object):
       reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
         be combined. Allows using string representation of the enum such as
         "SUM", "MEAN".
-      value: a `tf.distribute.DistributeValues` instance, e.g. returned by
+      value: a `tf.distribute.DistributedValues` instance, e.g. returned by
         `Strategy.run`, to be combined into a single tensor. It can also be a
         regular tensor when used with `OneDeviceStrategy` or default strategy.
       axis: specifies the dimension to reduce along within each
@@ -3026,6 +3034,8 @@ class _DefaultDistributionStrategy(StrategyV1):
 
 class _DefaultDistributionContext(object):
   """Context manager setting the default `tf.distribute.Strategy`."""
+
+  __slots__ = ["_var_creator_scope", "_strategy", "_nested_count"]
 
   def __init__(self, strategy):
 

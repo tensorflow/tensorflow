@@ -147,6 +147,7 @@ tf_cc_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_gpu",
+        "nomsan",  # TODO(b/160921160): broken by NOAUTOROLLBACK CL
     ],
     deps = [
         ":single_machine",

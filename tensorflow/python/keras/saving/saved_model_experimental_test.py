@@ -31,7 +31,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training as model_lib
 from tensorflow.python.keras.optimizer_v2 import adadelta
 from tensorflow.python.keras.optimizer_v2 import rmsprop
@@ -45,8 +44,6 @@ from tensorflow.python.saved_model import model_utils
 from tensorflow.python.training import training as training_module
 
 
-@test_util.run_v1_only(
-    'keras.experimental.load_from_saved_model is supported only in V1.')
 class TestModelSavingandLoading(parameterized.TestCase, test.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
@@ -280,8 +277,6 @@ def load_model(sess, path, mode):
   return inputs, outputs, meta_graph_def
 
 
-@test_util.run_v1_only(
-    'keras.experimental.export_saved_model is supported only in V1.')
 class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):

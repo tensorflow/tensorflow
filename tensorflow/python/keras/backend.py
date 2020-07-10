@@ -853,6 +853,9 @@ def is_sparse(tensor):
   True
 
   """
+  spec = getattr(tensor, '_type_spec', None)
+  if spec is not None:
+    return isinstance(spec, sparse_tensor.SparseTensorSpec)
   return isinstance(tensor, sparse_tensor.SparseTensor)
 
 
@@ -1128,13 +1131,14 @@ def is_keras_tensor(x):
   True
 
   """
-  if keras_tensor.keras_tensors_enabled():
-    return isinstance(x, keras_tensor.KerasTensor)
   if not isinstance(x,
                     (ops.Tensor, variables_module.Variable,
-                     sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
+                     sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor,
+                     keras_tensor.KerasTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
+  if keras_tensor.keras_tensors_enabled():
+    return isinstance(x, keras_tensor.KerasTensor)
   return hasattr(x, '_keras_history')
 
 
@@ -4670,15 +4674,15 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
     [[1. 0. 0.]
      [0. 1. 0.]
      [0. 0. 1.]], shape=(3, 3), dtype=float32)
-  >>> b = tf.constant([.9, .05, .05, .5, .89, .6, .05, .01, .94], shape=[3,3])
+  >>> b = tf.constant([.9, .05, .05, .05, .89, .06, .05, .01, .94], shape=[3,3])
   >>> print(b)
   tf.Tensor(
     [[0.9  0.05 0.05]
-     [0.5  0.89 0.6 ]
+     [0.05 0.89 0.06]
      [0.05 0.01 0.94]], shape=(3, 3), dtype=float32)
   >>> loss = tf.keras.backend.categorical_crossentropy(a, b)
   >>> print(np.around(loss, 5))
-  [0.10536 0.80467 0.06188]
+  [0.10536 0.11653 0.06188]
   >>> loss = tf.keras.backend.categorical_crossentropy(a, a)
   >>> print(np.around(loss, 5))
   [0. 0. 0.]

@@ -543,6 +543,7 @@ cc_library(
         "transforms/freeze_global_tensors.cc",
         "transforms/lift_variables_pass.cc",
         "transforms/optimize_global_tensors.cc",
+        "transforms/remove_vars_in_session_initializer.cc",
     ],
     hdrs = [
         "transforms/tf_saved_model_passes.h",

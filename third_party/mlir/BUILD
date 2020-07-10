@@ -157,6 +157,7 @@ filegroup(
     name = "OpBaseTdFiles",
     srcs = [
         "include/mlir/Dialect/Affine/IR/AffineOpsBase.td",
+        "include/mlir/Dialect/StandardOps/IR/StandardOpsBase.td",
         "include/mlir/IR/OpBase.td",
     ],
 )
@@ -178,6 +179,7 @@ filegroup(
         "include/mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.td",
         "include/mlir/Dialect/Affine/IR/AffineOps.td",
         "include/mlir/Dialect/Affine/IR/AffineOpsBase.td",
+        "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
@@ -3360,6 +3362,19 @@ gentbl(
             "-gen-op-defs",
             "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.cpp.inc",
         ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
+    td_srcs = [
+        ":LinalgStructuredOpsTdFiles",
+        "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.td",
+    ],
+)
+
+gentbl(
+    name = "LinalgStructuredInterfacesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
         (
             "-gen-op-interface-decls",
             "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterfaces.h.inc",
@@ -3370,10 +3385,9 @@ gentbl(
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/Linalg/IR/LinalgStructuredOps.td",
+    td_file = "include/mlir/Dialect/Linalg/IR/LinalgStructuredOpsInterface.td",
     td_srcs = [
         ":LinalgStructuredOpsTdFiles",
-        "include/mlir/Dialect/Linalg/IR/LinalgNamedStructuredOps.td",
     ],
 )
 
@@ -3503,6 +3517,7 @@ cc_library(
         ":IR",
         ":LinalgNamedStructuredOpsIncGen",
         ":LinalgOpsIncGen",
+        ":LinalgStructuredInterfacesIncGen",
         ":LinalgStructuredOpsIncGen",
         ":Parser",
         ":SideEffectInterfaces",

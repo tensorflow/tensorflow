@@ -16,6 +16,7 @@ limitations under the License.
 // This file implements logic for lowering HLO/LHLO dialect to Linalg dialect.
 
 #include "absl/memory/memory.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -692,7 +693,8 @@ class ConstConverter : public OpConversionPattern<lmhlo::ConstOp> {
     if (valueAttr.getType().getRank() != 0) return failure();
     auto stdConstOp =
         rewriter.create<mlir::ConstantOp>(loc, valueAttr.getValue({}));
-    rewriter.create<mlir::StoreOp>(loc, stdConstOp, constOp.getOperand());
+    rewriter.create<mlir::AffineStoreOp>(loc, stdConstOp, constOp.getOperand(),
+                                         ValueRange());
     rewriter.eraseOp(constOp);
     return success();
   }
@@ -827,7 +829,8 @@ struct LhloLegalizeToLinalg
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect>();
+    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
+                           AffineDialect>();
 
     auto func = getFunction();
     populateLHLOToLinalgConversionPattern(func.getContext(), &patterns);

@@ -3770,6 +3770,8 @@ class BatchDataset(UnaryDataset):
 class _NumpyIterator(object):
   """Iterator over a dataset with elements converted to numpy."""
 
+  __slots__ = ["_iterator"]
+
   def __init__(self, dataset):
     self._iterator = iter(dataset)
 

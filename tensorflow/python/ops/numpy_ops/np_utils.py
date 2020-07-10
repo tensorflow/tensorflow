@@ -20,7 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect
+import numbers
 import os
+import re
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -219,12 +221,79 @@ def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None):
     doc = _add_blank_line(doc)
   # TODO(wangpeng): Re-enable the following and choose inlined vs. link to numpy
   #   doc according to some global switch.
-  # if _has_docstring(np_f):
-  #   doc += 'Documentation for `numpy.%s`:\n\n' % np_f.__name__
-  #   # TODO(wangpeng): It looks like code snippets in numpy doc don't work
-  #   # correctly with doctest. Fix that and remove the reformatting of the np_f
-  #   # comment.
-  #   doc += np_f.__doc__.replace('>>>', '>')
+  doc = _add_np_doc(doc, np_fun_name, np_f)
+  return doc
+
+
+_np_doc_form = os.getenv('TF_NP_DOC_FORM', '1.16')
+
+
+def get_np_doc_form():
+  """Gets the form of the original numpy docstrings.
+
+  Returns:
+    See `set_np_doc_form` for the list of valid values.
+  """
+  return _np_doc_form
+
+
+def set_np_doc_form(value):
+  r"""Selects the form of the original numpy docstrings.
+
+  This function sets a global variable that controls how a tf-numpy symbol's
+  docstring should refer to the original numpy docstring. If `value` is
+  `'inlined'`, the numpy docstring will be verbatim copied into the tf-numpy
+  docstring. Otherwise, a link to the original numpy docstring will be
+  added. Which numpy version the link points to depends on `value`:
+  * `'stable'`: the current stable version;
+  * `'dev'`: the current development version;
+  * pattern `\d+(\.\d+(\.\d+)?)?`: `value` will be treated as a version number,
+    e.g. '1.16'.
+
+  Args:
+    value: the value to set the global variable to.
+  """
+  global _np_doc_form
+  _np_doc_form = value
+
+
+def _add_np_doc(doc, np_fun_name, np_f):
+  """Appends the numpy docstring to `doc`, according to `set_np_doc_form`.
+
+  See `set_np_doc_form` for how it controls the form of the numpy docstring.
+
+  Args:
+    doc: the docstring to be appended to.
+    np_fun_name: the name of the numpy function.
+    np_f: (optional) the numpy function.
+
+  Returns:
+    `doc` with numpy docstring appended.
+  """
+  flag = get_np_doc_form()
+  if flag == 'inlined':
+    if _has_docstring(np_f):
+      doc += 'Documentation for `numpy.%s`:\n\n' % np_fun_name
+      # TODO(wangpeng): It looks like code snippets in numpy doc don't work
+      # correctly with doctest. Fix that and remove the reformatting of the np_f
+      # comment.
+      doc += np_f.__doc__.replace('>>>', '>')
+  elif isinstance(flag, str):
+    # Only adds link in this case
+    if flag == 'dev':
+      template = 'https://numpy.org/devdocs/reference/generated/numpy.%s.html'
+    elif flag == 'stable':
+      template = (
+          'https://numpy.org/doc/stable/reference/generated/numpy.%s.html')
+    elif re.match(r'\d+(\.\d+(\.\d+)?)?$', flag):
+      # `flag` is the version number
+      template = ('https://numpy.org/doc/' + flag +
+                  '/reference/generated/numpy.%s.html')
+    else:
+      template = None
+    if template is not None:
+      link = template % np_fun_name
+      doc += 'See the documentation for `numpy.%s`: [%s]' % (np_fun_name, link)
   return doc
 
 
@@ -344,26 +413,42 @@ def finfo(dtype):
 # pylint: enable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-docstring-missing-newline,g-doc-return-or-yield,g-doc-args
 
 
+def _maybe_get_dtype(x):
+  """Returns a numpy type if available from x. Skips if x is numpy.ndarray."""
+  # Don't put np.ndarray in this list, because np.result_type looks at the
+  # value (not just dtype) of np.ndarray to decide the result type.
+  if isinstance(x, np_arrays.ndarray):
+    return x.dtype
+  if isinstance(x, numbers.Real):
+    return x
+  if isinstance(x, (core.Tensor, indexed_slices.IndexedSlices)):
+    return _to_numpy_type(x.dtype)
+  if isinstance(x, dtypes.DType):
+    return x.as_numpy_dtype
+  if isinstance(x, (list, tuple)):
+    raise ValueError('Got sequence')
+  return x
+
+
 # Can't use np_doc because np.result_type is a builtin function.
 @np_doc_only('result_type')
 def result_type(*arrays_and_dtypes):  # pylint: disable=missing-function-docstring
-  def maybe_get_dtype(x):
-    # Don't put np.ndarray in this list, because np.result_type looks at the
-    # value (not just dtype) of np.ndarray to decide the result type.
-    if isinstance(
-        x, (np_arrays.ndarray, core.Tensor, indexed_slices.IndexedSlices)):
-      return _to_numpy_type(x.dtype)
-    elif isinstance(x, dtypes.DType):
-      return _to_numpy_type(x)
-    return x
-
   arrays_and_dtypes = [
-      maybe_get_dtype(x) for x in nest.flatten(arrays_and_dtypes)
+      _maybe_get_dtype(x) for x in nest.flatten(arrays_and_dtypes)
   ]
   if not arrays_and_dtypes:
     # If arrays_and_dtypes is an empty list, let numpy decide what the dtype is.
     arrays_and_dtypes = [np.asarray([])]
   return np_dtypes._result_type(*arrays_and_dtypes)  # pylint: disable=protected-access
+
+
+def _result_type_binary(t1, t2):  # pylint: disable=missing-function-docstring
+  """A specialization of result_type for 2 arguments for performance reasons."""
+  try:
+    return np_dtypes._result_type(_maybe_get_dtype(t1),  # pylint: disable=protected-access
+                                  _maybe_get_dtype(t2))  # pylint: disable=protected-access
+  except ValueError:
+    return result_type(t1, t2)
 
 
 @np_doc('promote_types')

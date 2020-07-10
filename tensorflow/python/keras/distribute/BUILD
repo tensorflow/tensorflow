@@ -55,6 +55,18 @@ py_library(
 )
 
 py_library(
+    name = "distribute_test_lib_pip",
+    deps = [
+        ":distribute_strategy_test_lib",
+        ":keras_correctness_test_lib",
+        ":keras_test_lib",
+        ":model_combinations",
+        ":multi_worker_testing_utils",
+        ":saved_model_test_base",
+    ],
+)
+
+py_library(
     name = "optimizer_combinations",
     srcs = ["optimizer_combinations.py"],
     srcs_version = "PY2AND3",
