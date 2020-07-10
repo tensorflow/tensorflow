@@ -345,29 +345,42 @@ def finfo(dtype):
 # pylint: enable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-docstring-missing-newline,g-doc-return-or-yield,g-doc-args
 
 
+def _maybe_get_dtype(x):
+  """Returns a numpy type if available from x. Skips if x is numpy.ndarray."""
+  # Don't put np.ndarray in this list, because np.result_type looks at the
+  # value (not just dtype) of np.ndarray to decide the result type.
+  if isinstance(x, np_arrays.ndarray):
+    return x.dtype
+  if isinstance(x, numbers.Real):
+    return x
+  if isinstance(x, (core.Tensor, indexed_slices.IndexedSlices)):
+    return _to_numpy_type(x.dtype)
+  if isinstance(x, dtypes.DType):
+    return x.as_numpy_dtype
+  if isinstance(x, (list, tuple)):
+    raise ValueError('Got sequence')
+  return x
+
+
 # Can't use np_doc because np.result_type is a builtin function.
 @np_doc_only('result_type')
 def result_type(*arrays_and_dtypes):  # pylint: disable=missing-function-docstring
-  def maybe_get_dtype(x):
-    # Don't put np.ndarray in this list, because np.result_type looks at the
-    # value (not just dtype) of np.ndarray to decide the result type.
-    if isinstance(x, np_arrays.ndarray):
-      return x.dtype
-    if isinstance(x, numbers.Real):
-      return x
-    if isinstance(x, (core.Tensor, indexed_slices.IndexedSlices)):
-      return _to_numpy_type(x.dtype)
-    if isinstance(x, dtypes.DType):
-      return x.as_numpy_dtype
-    return x
-
   arrays_and_dtypes = [
-      maybe_get_dtype(x) for x in nest.flatten(arrays_and_dtypes)
+      _maybe_get_dtype(x) for x in nest.flatten(arrays_and_dtypes)
   ]
   if not arrays_and_dtypes:
     # If arrays_and_dtypes is an empty list, let numpy decide what the dtype is.
     arrays_and_dtypes = [np.asarray([])]
   return np_dtypes._result_type(*arrays_and_dtypes)  # pylint: disable=protected-access
+
+
+def _result_type_binary(t1, t2):  # pylint: disable=missing-function-docstring
+  """A specialization of result_type for 2 arguments for performance reasons."""
+  try:
+    return np_dtypes._result_type(_maybe_get_dtype(t1),  # pylint: disable=protected-access
+                                  _maybe_get_dtype(t2))  # pylint: disable=protected-access
+  except ValueError:
+    return result_type(t1, t2)
 
 
 @np_doc('promote_types')
