@@ -589,10 +589,10 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
   def __iter__(self):
     return self
 
-  def __next__(self):
-    return self.next()
-
   def next(self):
+    return self.__next__()
+
+  def __next__(self):
     try:
       return self.get_next()
     except errors.OutOfRangeError:
