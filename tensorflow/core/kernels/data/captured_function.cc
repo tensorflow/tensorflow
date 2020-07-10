@@ -115,7 +115,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info,
                        const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
-  size_t num_args = args.size();
+  const int num_args = args.size();
   rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
@@ -131,7 +131,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
                        const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
-  size_t num_args = args.size();
+  const int num_args = args.size();
   rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
@@ -198,7 +198,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
       last_use[indices[i]] = i;
     }
     can_move.resize(indices.size());
-    for (size_t i = 0; i < indices.size(); ++i) {
+    for (int i = 0, iter_limit = indices.size(); i < iter_limit; ++i) {
       can_move[i] = last_use[indices[i]] == i;
     }
   }
@@ -232,16 +232,16 @@ Status IsFunctionStateful(const FunctionLibraryDefinition& library,
   return Status::OK();
 }
 
-// Returns whether an op has been whitelisted as stateless. Uses a heuristic to
-// whitelist source dataset ops which have been marked stateful due to
+// Returns whether an op has been allowlisted as stateless. Uses a heuristic to
+// allowlist source dataset ops which have been marked stateful due to
 // b/65524810. Also looks up the `op_def->name` in the global
-// `WhitelistedStatefulOpRegistry`.
-bool IsOpWhitelisted(const OpDef* op_def) {
+// `AllowlistedStatefulOpRegistry`.
+bool IsOpAllowlisted(const OpDef* op_def) {
   return (op_def->output_arg_size() == 1 &&
           op_def->output_arg(0).type() == DT_VARIANT &&
           (absl::EndsWith(op_def->name(), "Dataset") ||
            absl::EndsWith(op_def->name(), "DatasetV2"))) ||
-         WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
+         AllowlistedStatefulOpRegistry::Global()->Contains(op_def->name());
 }
 
 Status LookupFunction(const FunctionLibraryDefinition& lib_def,
@@ -278,11 +278,12 @@ class CallFrameBase : public CallFrameInterface {
 
   // Callee methods.
   Status SetRetval(int index, const Tensor& val) override {
-    if (index < retvals_.size() && val.dtype() == ret_types_[index] &&
+    const int retvals_size = retvals_.size();
+    if (index < retvals_size && val.dtype() == ret_types_[index] &&
         !retvals_[index]) {
       retvals_[index] = val;
       return Status::OK();
-    } else if (index >= retvals_.size()) {
+    } else if (index >= retvals_size) {
       return errors::InvalidArgument("Return value ", index,
                                      " is out of range.");
     } else if (val.dtype() != ret_types_[index]) {
@@ -317,10 +318,12 @@ class OwnedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, const Tensor** val) override {
-    if (index < args_.size()) {
+    const int args_size = args_.size();
+    const int captured_inputs_size = captured_inputs_->size();
+    if (index < args_size) {
       *val = &args_[index];
       return Status::OK();
-    } else if (index < args_.size() + captured_inputs_->size()) {
+    } else if (index < args_size + captured_inputs_size) {
       *val = &(*captured_inputs_)[index - args_.size()];
       return Status::OK();
     } else {
@@ -336,7 +339,7 @@ class OwnedArgsCallFrame : public CallFrameBase {
     *val = std::move(args_[index]);
   }
   bool CanConsumeArg(int index) const override {
-    return index >= 0 && index < args_.size();
+    return index >= 0 && index < static_cast<int>(args_.size());
   }
 
  private:
@@ -359,11 +362,13 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, const Tensor** val) override {
-    if (index < args_.size()) {
+    const int args_size = args_.size();
+    const int captured_inputs_size = captured_inputs_->size();
+    if (index < args_size) {
       *val = &args_[index];
       return Status::OK();
-    } else if (index < args_.size() + captured_inputs_->size()) {
-      *val = &(*captured_inputs_)[index - args_.size()];
+    } else if (index < args_size + captured_inputs_size) {
+      *val = &(*captured_inputs_)[index - args_size];
       return Status::OK();
     } else {
       return errors::InvalidArgument("Argument ", index, " is out of range.");
@@ -384,7 +389,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
   // TODO(jsimsa): Fix C++ unit tests so that we do not have to ignore
   // `LookUpOpDef` errors here.
   if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
-      IsOpWhitelisted(op_def) || !op_def->is_stateful() ||
+      IsOpAllowlisted(op_def) || !op_def->is_stateful() ||
       op_def->name() == "Assert") {
     return Status::OK();
   }
@@ -640,7 +645,8 @@ Status CapturedFunction::Instantiate(
       inst_opts.composite_devices[it.first] = &it.second;
     }
 
-    for (size_t i = 0; i < fdef->signature().output_arg_size(); ++i) {
+    for (int i = 0, iter_limit = fdef->signature().output_arg_size();
+         i < iter_limit; ++i) {
       inst_opts.output_devices.push_back(inst_opts.target);
     }
 

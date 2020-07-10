@@ -103,8 +103,8 @@ class ExperimentalCompileTest(test.TestCase):
       x = xla_func(inputs)
       # XLA support is not yet enabled for TF ROCm
       if not test.is_built_with_rocm():
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     "not compilable"):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "not compilable"):
           with session.Session(graph=g) as sess:
             sess.run(x, feed_dict={inputs: [1, 2, 2, 3, 3]})
 

@@ -68,7 +68,6 @@ Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape);
 
 // A callback called on exit.
 void LogAndExit(int code);
-
 }  // namespace tpu
 }  // namespace tensorflow
 

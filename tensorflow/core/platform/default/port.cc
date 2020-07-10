@@ -348,15 +348,17 @@ double NominalCPUFrequency() {
   return absl::base_internal::NominalCPUFrequency();
 }
 
-int64 AvailableRam() {
+MemoryInfo GetMemoryInfo() {
+  MemoryInfo mem_info = {INT64_MAX, INT64_MAX};
 #if defined(__linux__) && !defined(__ANDROID__)
   struct sysinfo info;
   int err = sysinfo(&info);
   if (err == 0) {
-    return info.freeram;
+    mem_info.free = info.freeram;
+    mem_info.total = info.totalram;
   }
 #endif
-  return INT64_MAX;
+  return mem_info;
 }
 
 }  // namespace port

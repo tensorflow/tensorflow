@@ -88,6 +88,9 @@ tf_cc_test(
     srcs = ["graph_properties_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
     data = [":graph_properties_testdata"],
+    tags = [
+        "nomsan",  # TODO(b/160921160): broken by NOAUTOROLLBACK CL
+    ],
     deps = [
         ":graph_properties",
         "//tensorflow/cc:cc_ops",
@@ -323,6 +326,7 @@ cc_library(
         ":cost_estimator",
         ":op_context",
         ":utils",
+        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

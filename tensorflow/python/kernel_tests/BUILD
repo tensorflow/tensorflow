@@ -1468,13 +1468,6 @@ cuda_py_test(
     name = "cast_op_test",
     size = "small",
     srcs = ["cast_op_test.py"],
-    tags = [
-        "no_windows",
-        "noasan",
-        "noguitar",
-        "notap",
-        "optonly",
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -2989,7 +2982,6 @@ cuda_py_test(
     name = "pooling_ops_3d_test",
     size = "medium",
     srcs = ["pooling_ops_3d_test.py"],
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",

@@ -265,8 +265,7 @@ class SyncReplicasOptimizerHookTest(test.TestCase):
         replicas_to_aggregate=1,
         total_num_replicas=1)
     hook = opt.make_session_run_hook(True)
-    with self.assertRaisesRegexp(ValueError,
-                                 "apply_gradient should be called"):
+    with self.assertRaisesRegex(ValueError, "apply_gradient should be called"):
       hook.begin()
 
   @test_util.run_v1_only("b/120545219")

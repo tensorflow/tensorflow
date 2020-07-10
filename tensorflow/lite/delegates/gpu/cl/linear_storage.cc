@@ -23,20 +23,20 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-GPUResources TensorLinearDescriptor::GetGPUResources(
-    AccessType access_type) const {
+GPUResources TensorLinearDescriptor::GetGPUResources() const {
   GPUResources resources;
   resources.ints.push_back("length");
   if (storage_type == LinearStorageType::BUFFER) {
     GPUBufferDescriptor desc;
     desc.data_type = element_type;
-    desc.access_type = access_type;
+    desc.access_type = access_type_;
     desc.element_size = 4;
+    desc.memory_type = memory_type;
     resources.buffers.push_back({"buffer", desc});
   } else {
     GPUImage2DDescriptor desc;
     desc.data_type = element_type;
-    desc.access_type = access_type;
+    desc.access_type = access_type_;
     resources.images2d.push_back({"tex2d", desc});
   }
   return resources;
@@ -50,6 +50,13 @@ absl::Status TensorLinearDescriptor::PerformSelector(
     return absl::OkStatus();
   } else if (selector == "Read") {
     return PerformReadSelector(args, result);
+  } else if (selector == "GetPtr") {
+    if (storage_type != LinearStorageType::BUFFER) {
+      return absl::InvalidArgumentError(
+          "GetPtr selector supported for LinearStorageType::BUFFER only.");
+    }
+    *result = "buffer";
+    return absl::OkStatus();
   } else {
     return absl::NotFoundError(absl::StrCat(
         "TensorLinearDescriptor don't have selector with name - ", selector));
@@ -121,18 +128,25 @@ std::string LinearStorage::GetDeclaration() const {
   }
 }
 
-GPUResourcesWithValue LinearStorage::GetGPUResources(
-    AccessType access_type) const {
-  GPUResourcesWithValue resources;
-  resources.ints.push_back({"length", depth_});
-
-  if (storage_type_ == LinearStorageType::BUFFER) {
-    resources.buffers.push_back({"buffer", memory_});
-  } else {
-    resources.images2d.push_back({"tex2d", memory_});
+absl::Status LinearStorage::GetGPUResources(
+    const GPUObjectDescriptor* obj_ptr,
+    GPUResourcesWithValue* resources) const {
+  const auto* linear_desc =
+      dynamic_cast<const TensorLinearDescriptor*>(obj_ptr);
+  if (!linear_desc) {
+    return absl::InvalidArgumentError(
+        "Expected TensorLinearDescriptor on input.");
   }
 
-  return resources;
+  resources->ints.push_back({"length", depth_});
+
+  if (storage_type_ == LinearStorageType::BUFFER) {
+    resources->buffers.push_back({"buffer", memory_});
+  } else {
+    resources->images2d.push_back({"tex2d", memory_});
+  }
+
+  return absl::OkStatus();
 }
 
 LinearStorageType DeduceLinearStorageType(

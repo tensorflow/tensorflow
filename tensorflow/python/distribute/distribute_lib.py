@@ -250,6 +250,8 @@ def get_update_replica_id():
 class UpdateContext(object):
   """Context manager when you are in `update()` or `update_non_slot()`."""
 
+  __slots__ = ["_replica_id", "_old_replica_id"]
+
   def __init__(self, replica_id):
     self._replica_id = replica_id
     self._old_replica_id = None
@@ -454,6 +456,10 @@ class InputContext(object):
   source etc).
   """
 
+  __slots__ = [
+      "_num_input_pipelines", "_input_pipeline_id", "_num_replicas_in_sync"
+  ]
+
   def __init__(self,
                num_input_pipelines=1,
                input_pipeline_id=0,
@@ -533,7 +539,7 @@ class ValueContext(object):
 
   2. Passed in by `experimental_distribute_values_from_function`.
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> def value_fn(value_context):
   ...   return value_context.num_replicas_in_sync
   >>> distributed_values = (
@@ -541,9 +547,11 @@ class ValueContext(object):
   ...        value_fn))
   >>> local_result = strategy.experimental_local_results(distributed_values)
   >>> local_result
-  (1,)
+  (2, 2)
 
   """
+
+  __slots__ = ["_replica_id_in_sync_group", "_num_replicas_in_sync"]
 
   def __init__(self,
                replica_id_in_sync_group=0,
@@ -629,11 +637,10 @@ class InputOptions(
   ```
 
   Attributes:
-    experimental_prefetch_to_device: Boolean. Currently only applies to
-      TPUStrategy. Defaults to True. If True, dataset elements will be
-      prefetched to accelerator device memory. When False, dataset elements are
-      prefetched to host device memory. Must be False when using TPUEmbedding
-      API.
+    experimental_prefetch_to_device: Boolean. Defaults to True. If True, dataset
+      elements will be prefetched to accelerator device memory. When False,
+      dataset elements are prefetched to host device memory. Must be False when
+      using TPUEmbedding API.
   """
 
   def __new__(cls, experimental_prefetch_to_device=True):
@@ -793,13 +800,14 @@ class StrategyBase(object):
 
     This method returns a context manager, and is used as follows:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> # Variable created inside scope:
     >>> with strategy.scope():
     ...   mirrored_variable = tf.Variable(1.)
     >>> mirrored_variable
     MirroredVariable:{
-      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>,
+      1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=1.0>
     }
     >>> # Variable created outside scope:
     >>> regular_variable = tf.Variable(1.)
@@ -1158,18 +1166,21 @@ class StrategyBase(object):
 
     1. Constant tensor input.
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> tensor_input = tf.constant(3.0)
     >>> @tf.function
     ... def replica_fn(input):
     ...   return input*2.0
     >>> result = strategy.run(replica_fn, args=(tensor_input,))
     >>> result
-    <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
+    PerReplica:{
+      0: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>,
+      1: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
+    }
 
     2. DistributedValues input.
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> @tf.function
     ... def run():
     ...   def value_fn(value_context):
@@ -1182,7 +1193,7 @@ class StrategyBase(object):
     ...   return strategy.run(replica_fn2, args=(distributed_values,))
     >>> result = run()
     >>> result
-    <tf.Tensor: shape=(), dtype=int32, numpy=2>
+    <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
     Args:
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
@@ -1217,20 +1228,85 @@ class StrategyBase(object):
     return self.run(fn, args=args, kwargs=kwargs, options=options)
 
   def reduce(self, reduce_op, value, axis):
-    """Reduce `value` across replicas.
+    """Reduce `value` across replicas and return result on current device.
+
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+    >>> def step_fn():
+    ...   i = tf.distribute.get_replica_context().replica_id_in_sync_group
+    ...   return tf.identity(i)
+    >>>
+    >>> per_replica_result = strategy.run(step_fn)
+    >>> total = strategy.reduce("SUM", per_replica_result, axis=None)
+    >>> total
+    <tf.Tensor: shape=(), dtype=int32, numpy=1>
+
+    To see how this would look with multiple replicas, consider the same
+    example with MirroredStrategy with 2 GPUs:
+
+    ```python
+    strategy = tf.distribute.MirroredStrategy(devices=["gpu:0", "gpu:1"])
+    def step_fn():
+      i = tf.distribute.get_replica_context().replica_id_in_sync_group
+      return tf.identity(i)
+
+    per_replica_result = strategy.run(step_fn)
+    # Check devices on which per replica result is:
+    strategy.experimental_local_results(per_replica_result)[0].device
+    # /job:localhost/replica:0/task:0/device:GPU:0
+    strategy.experimental_local_results(per_replica_result)[1].device
+    # /job:localhost/replica:0/task:0/device:GPU:1
+
+    total = strategy.reduce("SUM", per_replica_result, axis=None)
+    # Check device on which reduced result is:
+    total.device
+    # /job:localhost/replica:0/task:0/device:CPU:0
+
+    ```
+
+    This API is typically used for aggregating the results returned from
+    different replicas, for reporting etc. For example, loss computed from
+    different replicas can be averaged using this API before printing.
+
+    Note: The result is copied to the "current" device - which would typically
+    be the CPU of the worker on which the program is running. For `TPUStrategy`,
+    it is the first TPU host. For multi client `MultiWorkerMirroredStrategy`,
+    this is CPU of each worker.
+
+    There are a number of different tf.distribute APIs for reducing values
+    across replicas:
+    * `tf.distribute.ReplicaContext.all_reduce`: This differs from
+    `Strategy.reduce` in that it is for replica context and does
+    not copy the results to the host device. `all_reduce` should be typically
+    used for reductions inside the training step such as gradients.
+    * `tf.distribute.StrategyExtended.reduce_to` and
+    `tf.distribute.StrategyExtended.batch_reduce_to`: These APIs are more
+    advanced versions of `Strategy.reduce` as they allow customizing the
+    destination of the result. They are also called in cross replica context.
+
+    _What should axis be?_
 
     Given a per-replica value returned by `run`, say a
     per-example loss, the batch will be divided across all the replicas.  This
     function allows you to aggregate across replicas and optionally also across
-    batch elements.  For example, if you have a global batch size of 8 and 2
+    batch elements by specifying the axis parameter accordingly.
+
+    For example, if you have a global batch size of 8 and 2
     replicas, values for examples `[0, 1, 2, 3]` will be on replica 0 and
-    `[4, 5, 6, 7]` will be on replica 1. By default, `reduce` will just
-    aggregate across replicas, returning `[0+4, 1+5, 2+6, 3+7]`. This is useful
-    when each replica is computing a scalar or some other value that doesn't
-    have a "batch" dimension (like a gradient). More often you will want to
-    aggregate across the global batch, which you can get by specifying the batch
+    `[4, 5, 6, 7]` will be on replica 1. With `axis=None`, `reduce` will
+    aggregate only across replicas, returning `[0+4, 1+5, 2+6, 3+7]`.
+    This is useful when each replica is computing a scalar or some other value
+    that doesn't have a "batch" dimension (like a gradient or loss).
+    ```
+    strategy.reduce("sum", per_replica_result, axis=None)
+    ```
+
+    Sometimes, you will want to aggregate across both the global batch _and_
+    all replicas. You can get this behavior by specifying the batch
     dimension as the `axis`, typically `axis=0`. In this case it would return a
     scalar `0+1+2+3+4+5+6+7`.
+    ```
+    strategy.reduce("sum", per_replica_result, axis=0)
+    ```
 
     If there is a last partial batch, you will need to specify an axis so
     that the resulting shape is consistent across replicas. So if the last
@@ -1242,11 +1318,13 @@ class StrategyBase(object):
     which will weigh some values `1/8` and others `1/4`.
 
     Args:
-      reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
-        be combined.
-      value: A "per replica" value, e.g. returned by `run` to
-        be combined into a single tensor.
-      axis: Specifies the dimension to reduce along within each
+      reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
+        be combined. Allows using string representation of the enum such as
+        "SUM", "MEAN".
+      value: a `tf.distribute.DistributedValues` instance, e.g. returned by
+        `Strategy.run`, to be combined into a single tensor. It can also be a
+        regular tensor when used with `OneDeviceStrategy` or default strategy.
+      axis: specifies the dimension to reduce along within each
         replica's tensor. Should typically be set to the batch dimension, or
         `None` to only reduce across replicas (e.g. if the tensor has no batch
         dimension).
@@ -1683,7 +1761,7 @@ class Strategy(StrategyBase):
 
     1. Return constant value per replica:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> def value_fn(ctx):
     ...   return tf.constant(1.)
     >>> distributed_values = (
@@ -1691,11 +1769,12 @@ class Strategy(StrategyBase):
     ...        value_fn))
     >>> local_result = strategy.experimental_local_results(distributed_values)
     >>> local_result
-    (<tf.Tensor: shape=(), dtype=float32, numpy=1.0>,)
+    (<tf.Tensor: shape=(), dtype=float32, numpy=1.0>,
+     <tf.Tensor: shape=(), dtype=float32, numpy=1.0>)
 
     2. Distribute values in array based on replica_id:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> array_value = np.array([3., 2., 1.])
     >>> def value_fn(ctx):
     ...   return array_value[ctx.replica_id_in_sync_group]
@@ -1704,11 +1783,11 @@ class Strategy(StrategyBase):
     ...        value_fn))
     >>> local_result = strategy.experimental_local_results(distributed_values)
     >>> local_result
-    (3.0,)
+    (3.0, 2.0)
 
     3. Specify values using num_replicas_in_sync:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> def value_fn(ctx):
     ...   return ctx.num_replicas_in_sync
     >>> distributed_values = (
@@ -1716,7 +1795,7 @@ class Strategy(StrategyBase):
     ...        value_fn))
     >>> local_result = strategy.experimental_local_results(distributed_values)
     >>> local_result
-    (1,)
+    (2, 2)
 
     4. Place values on devices and distribute:
 
@@ -2168,20 +2247,72 @@ class StrategyExtendedV2(object):
   def reduce_to(self, reduce_op, value, destinations, experimental_hints=None):
     """Combine (via e.g. sum or mean) values across replicas.
 
+    `reduce_to` aggregates `tf.distribute.DistributedValues` and distributed
+    variables. It supports both dense values and `tf.IndexedSlices`.
+
+    This API currently can only be called in cross-replica context. Other
+    variants to reduce values across replicas are:
+    * `tf.distribute.StrategyExtended.batch_reduce_to`: the batch version of
+      this API.
+    * `tf.distribute.ReplicaContext.all_reduce`: the counterpart of this API
+      in replica context. It supports both batched and non-batched all-reduce.
+    * `tf.distribute.Strategy.reduce`: a more convenient method to reduce
+      to the host in cross-replica context.
+
+    `destinations` specifies where to reduce the value to, e.g. "GPU:0". You can
+    also pass in a `Tensor`, and the destinations will be the device of that
+    tensor. For all-reduce, pass the same to `value` and `destinations`.
+
+    It can be used in `tf.distribute.ReplicaContext.merge_call` to write code
+    that works for all `tf.distribute.Strategy`.
+
+    >>> @tf.function
+    ... def step_fn(var):
+    ...
+    ...   def merge_fn(strategy, value, var):
+    ...     # All-reduce the value. Note that `value` here is a
+    ...     # `tf.distribute.DistributedValues`.
+    ...     reduced = strategy.extended.reduce_to(tf.distribute.ReduceOp.SUM,
+    ...         value, destinations=var)
+    ...     strategy.extended.update(var, lambda var, value: var.assign(value),
+    ...         args=(reduced,))
+    ...
+    ...   value = tf.identity(1.)
+    ...   tf.distribute.get_replica_context().merge_call(merge_fn,
+    ...     args=(value, var))
+    >>>
+    >>> def run(strategy):
+    ...   with strategy.scope():
+    ...     v = tf.Variable(0.)
+    ...     strategy.run(step_fn, args=(v,))
+    ...     return v
+    >>>
+    >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
+    MirroredVariable:{
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
+      1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
+    }
+    >>> run(tf.distribute.experimental.CentralStorageStrategy(
+    ...     compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
+    <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>
+    >>> run(tf.distribute.OneDeviceStrategy("GPU:0"))
+    <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
+
     Args:
-      reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
-      value: A per-replica value with one value per replica.
-      destinations: A mirrored variable, a per-replica tensor, or a device
-        string. The return value will be copied to all destination devices (or
-        all the devices where the `destinations` value resides). To perform an
-        all-reduction, pass `value` to `destinations`.
-      experimental_hints: A `tf.distrbute.experimental.CollectiveHints`. Hints
-        to perform collective operations.
+      reduce_op: a `tf.distribute.ReduceOp` or string. How to reduce the value.
+      value: a `tf.distribute.DistributedValue`, or a `tf.Tensor` like object.
+      destinations: a `tf.distribute.DistributedValue`, a `tf.Variable`, a
+        `tf.Tensor` alike object, or a device string. It specifies the devices
+        to reduce to. To perform an all-reduce, pass the same to `value` and
+        `destinations`. Note that if it's a `tf.Variable`, the value is reduced
+        to the devices of that variable, this method doesn't update the variable.
+      experimental_hints: a `tf.distrbute.experimental.CollectiveHints`. Hints
+        to perform collective operations. See
+        `tf.distrbute.experimental.CollectiveHints` for details.
 
     Returns:
-      A tensor or value mirrored to `destinations`.
+      A tensor or value reduced to `destinations`.
     """
-    # TODO(josh11b): More docstring
     _require_cross_replica_or_default_context_extended(self)
     assert not isinstance(destinations, (list, tuple))
     assert not isinstance(reduce_op, variable_scope.VariableAggregation)
@@ -2202,17 +2333,62 @@ class StrategyExtendedV2(object):
                       experimental_hints=None):
     """Combine multiple `reduce_to` calls into one for faster execution.
 
+    Similar to `reduce_to`, but accepts a list of (value, destinations) pairs.
+    It's more efficient than reduce each value separately.
+
+    This API currently can only be called in cross-replica context. Other
+    variants to reduce values across replicas are:
+    * `tf.distribute.StrategyExtended.reduce_to`: the non-batch version of
+      this API.
+    * `tf.distribute.ReplicaContext.all_reduce`: the counterpart of this API
+      in replica context. It supports both batched and non-batched all-reduce.
+    * `tf.distribute.Strategy.reduce`: a more convenient method to reduce
+      to the host in cross-replica context.
+
+    See `reduce_to` for more information.
+
+    >>> @tf.function
+    ... def step_fn(var):
+    ...
+    ...   def merge_fn(strategy, value, var):
+    ...     # All-reduce the value. Note that `value` here is a
+    ...     # `tf.distribute.DistributedValues`.
+    ...     reduced = strategy.extended.batch_reduce_to(
+    ...         tf.distribute.ReduceOp.SUM, [(value, var)])[0]
+    ...     strategy.extended.update(var, lambda var, value: var.assign(value),
+    ...         args=(reduced,))
+    ...
+    ...   value = tf.identity(1.)
+    ...   tf.distribute.get_replica_context().merge_call(merge_fn,
+    ...     args=(value, var))
+    >>>
+    >>> def run(strategy):
+    ...   with strategy.scope():
+    ...     v = tf.Variable(0.)
+    ...     strategy.run(step_fn, args=(v,))
+    ...     return v
+    >>>
+    >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
+    MirroredVariable:{
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
+      1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
+    }
+    >>> run(tf.distribute.experimental.CentralStorageStrategy(
+    ...     compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
+    <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>
+    >>> run(tf.distribute.OneDeviceStrategy("GPU:0"))
+    <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
+
     Args:
-      reduce_op: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
-      value_destination_pairs: A sequence of (value, destinations) pairs. See
-        `reduce_to()` for a description.
-      experimental_hints: A `tf.distrbute.experimental.CollectiveHints`. Hints
+      reduce_op: a `tf.distribute.ReduceOp`. How to reduce the value.
+      value_destination_pairs: a sequence of (value, destinations) pairs. See
+        `reduce_to()` for descriptions.
+      experimental_hints: a `tf.distrbute.experimental.CollectiveHints`. Hints
         to perform collective operations.
 
     Returns:
-      A list of mirrored values, one per pair in `value_destination_pairs`.
+      A list of reduced values, one per pair in `value_destination_pairs`.
     """
-    # TODO(josh11b): More docstring
     _require_cross_replica_or_default_context_extended(self)
     assert not isinstance(reduce_op, variable_scope.VariableAggregation)
     if isinstance(reduce_op, six.string_types):
@@ -2662,6 +2838,7 @@ class ReplicaContext(object):
     self._replica_id_in_sync_group = replica_id_in_sync_group
     self._summary_recording_distribution_strategy = None
 
+  @doc_controls.do_not_generate_docs
   def __enter__(self):
     _push_per_thread_mode(self._thread_context)
 
@@ -2674,6 +2851,7 @@ class ReplicaContext(object):
         summary_state.is_recording_distribution_strategy)
     summary_state.is_recording_distribution_strategy = replica_id_is_zero
 
+  @doc_controls.do_not_generate_docs
   def __exit__(self, exception_type, exception_value, traceback):
     summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
     summary_state.is_recording_distribution_strategy = (
@@ -2748,8 +2926,15 @@ class ReplicaContext(object):
     return self._strategy
 
   @property
+  @deprecation.deprecated(None, "Please avoid relying on devices property.")
   def devices(self):
-    """The devices this replica is to be executed on, as a tuple of strings."""
+    """Returns the devices this replica is to be executed on, as a tuple of strings.
+
+    NOTE: For `tf.distribute.MirroredStrategy` and
+    `tf.distribute.experimental.MultiWorkerMirroredStrategy`, this returns a
+    nested
+    list of device strings, e.g, [["gpu:0"]].
+    """
     require_replica_context(self)
     return (device_util.current(),)
 
@@ -2849,6 +3034,8 @@ class _DefaultDistributionStrategy(StrategyV1):
 
 class _DefaultDistributionContext(object):
   """Context manager setting the default `tf.distribute.Strategy`."""
+
+  __slots__ = ["_var_creator_scope", "_strategy", "_nested_count"]
 
   def __init__(self, strategy):
 

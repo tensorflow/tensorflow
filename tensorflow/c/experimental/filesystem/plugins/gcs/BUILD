@@ -19,6 +19,7 @@ tf_cc_shared_object(
 cc_library(
     name = "gcs_filesystem_impl",
     srcs = ["gcs_filesystem.cc"],
+    hdrs = ["gcs_filesystem.h"],
     copts = select({
         "//conditions:default": [],
         "//tensorflow:windows": get_win_copts(),
@@ -43,26 +44,73 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "file_block_cache",
+    hdrs = ["file_block_cache.h"],
+    deps = [
+        "//tensorflow/c:tf_status",
+    ],
+)
+
+cc_library(
+    name = "cleanup",
+    hdrs = ["cleanup.h"],
+)
+
+cc_library(
+    name = "ram_file_block_cache",
+    srcs = ["ram_file_block_cache.cc"],
+    hdrs = ["ram_file_block_cache.h"],
+    deps = [
+        ":cleanup",
+        ":file_block_cache",
+        "//tensorflow/c:env",
+        "//tensorflow/c:tf_status",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
 tf_cc_test(
     name = "gcs_filesystem_test",
     srcs = [
-        "gcs_filesystem.cc",
         "gcs_filesystem_test.cc",
     ],
-    local_defines = ["TF_GCS_FILESYSTEM_TEST"],
     tags = [
         "manual",
         "notap",
     ],
     deps = [
-        ":gcs_helper",
-        "//tensorflow/c:env",
-        "//tensorflow/c:tf_status",
+        ":gcs_filesystem_impl",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/platform:test",
-        "@com_github_googlecloudplatform_google_cloud_cpp//:storage_client",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "expiring_lru_cache",
+    hdrs = ["expiring_lru_cache.h"],
+    deps = [
+        "//tensorflow/c:env",
+        "//tensorflow/c:tf_status",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "expiring_lru_cache_test",
+    size = "small",
+    srcs = ["expiring_lru_cache_test.cc"],
+    deps = [
+        ":expiring_lru_cache",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_status_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform/cloud:now_seconds_env",
     ],
 )

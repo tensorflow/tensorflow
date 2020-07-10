@@ -525,7 +525,8 @@ class XlaBuilder {
   XlaOp CustomCall(
       const string& call_target_name, absl::Span<const XlaOp> operands,
       const Shape& shape_with_layout, const string& opaque,
-      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
+      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+      bool has_side_effect);
 
   // Internal version of CustomCall without computation that doesn't do op
   // specific error handling and expects arguments to be legal. CustomCall
@@ -533,13 +534,15 @@ class XlaBuilder {
   virtual StatusOr<XlaOp> CustomCallInternal(
       const string& call_target_name, absl::Span<const XlaOp> operands,
       const Shape& shape_with_layout, const string& opaque,
-      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
+      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+      bool has_side_effect);
 
   XlaOp CustomCall(
       const string& call_target_name, absl::Span<const XlaOp> operands,
       const XlaComputation& computation, const Shape& shape_with_layout,
       const string& opaque,
-      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
+      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+      bool has_side_effect);
 
   XlaOp Reduce(XlaOp operand, XlaOp init_value,
                const XlaComputation& computation,
@@ -733,13 +736,14 @@ class XlaBuilder {
   // broadcast_dimensions specifies which dimensions to use for broadcasting
   // when the operation is between tensors of different ranks. The direction is
   // only used if opcode is kCompare.
-  XlaOp BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
-                 absl::Span<const int64> broadcast_dimensions,
-                 absl::optional<ComparisonDirection> direction = absl::nullopt);
+  XlaOp BinaryOp(
+      HloOpcode binop, XlaOp lhs, XlaOp rhs,
+      absl::Span<const int64> broadcast_dimensions,
+      absl::optional<Comparison::Direction> direction = absl::nullopt);
 
   // Internal helper method for binary op compare without broadcast dimensions.
   virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
-                                  ComparisonDirection direction);
+                                  Comparison::Direction direction);
 
   // Internal helper method that does the building for an arbitrary binary op
   // with same ranked operands that doesn't broadcast.
@@ -969,17 +973,16 @@ class XlaBuilder {
                     absl::Span<const XlaOp> operands);
   friend XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                           absl::Span<const XlaOp> operands, const Shape& shape,
-                          const string& opaque);
-  friend XlaOp CustomCallWithComputation(XlaBuilder* builder,
-                                         const string& call_target_name,
-                                         absl::Span<const XlaOp> operands,
-                                         const XlaComputation& computation,
-                                         const Shape& shape,
-                                         const string& opaque);
+                          const string& opaque, bool has_side_effect);
+  friend XlaOp CustomCallWithComputation(
+      XlaBuilder* builder, const string& call_target_name,
+      absl::Span<const XlaOp> operands, const XlaComputation& computation,
+      const Shape& shape, const string& opaque, bool has_side_effect);
   friend XlaOp CustomCallWithLayout(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
-      absl::Span<const Shape> operand_shapes_with_layout, const string& opaque);
+      absl::Span<const Shape> operand_shapes_with_layout, const string& opaque,
+      bool has_side_effect);
   friend XlaOp Complex(XlaOp real, XlaOp imag,
                        absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Conj(XlaOp operand);
@@ -1072,6 +1075,7 @@ class XlaBuilder {
   friend XlaOp Round(XlaOp operand);
   friend XlaOp Log(XlaOp operand);
   friend XlaOp Log1p(XlaOp operand);
+  friend XlaOp Logistic(XlaOp operand);
   friend XlaOp Sign(XlaOp operand);
   friend XlaOp Clz(XlaOp operand);
   friend XlaOp Cos(XlaOp operand);
@@ -1672,14 +1676,15 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
 // can encode arbitrarily large amounts of information.
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                  absl::Span<const XlaOp> operands, const Shape& shape,
-                 const string& opaque = "");
+                 const string& opaque = "", bool has_side_effect = false);
 
 // Overload which constructs a custom call that applies an Xla computation.
 XlaOp CustomCallWithComputation(XlaBuilder* builder,
                                 const string& call_target_name,
                                 absl::Span<const XlaOp> operands,
                                 const XlaComputation& computation,
-                                const Shape& shape, const string& opaque = "");
+                                const Shape& shape, const string& opaque = "",
+                                bool has_side_effect = false);
 
 // Overload which constructs a custom call with fixed layouts. The operands will
 // have the layouts specified by |operand_shapes_with_layout| when provided to
@@ -1690,7 +1695,8 @@ XlaOp CustomCallWithLayout(XlaBuilder* builder, const string& call_target_name,
                            absl::Span<const XlaOp> operands,
                            const Shape& shape_with_layout,
                            absl::Span<const Shape> operand_shapes_with_layout,
-                           const string& opaque = "");
+                           const string& opaque = "",
+                           bool has_side_effect = false);
 
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one
@@ -1912,6 +1918,9 @@ XlaOp Log(XlaOp operand);
 
 // Enqueues an log1p instruction (log(x+1)) onto the computation.
 XlaOp Log1p(XlaOp operand);
+
+// Enqueues a logistic instruction onto the computation.
+XlaOp Logistic(XlaOp operand);
 
 // Enqueues a sign instruction onto the computation.
 XlaOp Sign(XlaOp operand);

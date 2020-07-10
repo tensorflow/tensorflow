@@ -29,7 +29,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
@@ -184,23 +183,10 @@ class PackBySizeTest(test.TestCase):
     self.assertShape(packs[0][1], [2])
 
   def testUnknownShape(self):
-    per_replica_values = [
-        value_lib.PerReplica([
-            array_ops.ones([10, 10], dtype=dtypes.float32),
-            array_ops.ones([10, 10], dtype=dtypes.float32),
-        ]),
-        value_lib.PerReplica([
-            array_ops.ones([10, 10], dtype=dtypes.float32),
-            input_layer.Input(
-                shape=(10), batch_size=None, dtype=dtypes.float32),
-        ]),
-    ]
-    packs = cross_device_utils.pack_by_size(
-        per_replica_values, bytes_per_pack=1)
-    self.assertLen(packs, 1)
-    self.assertEqual(packs[0], per_replica_values)
+    def create_placeholder(shape, dtype):
+      with ops.Graph().as_default():
+        return array_ops.placeholder(dtype=dtype, shape=shape)
 
-  def testInconsistentShape(self):
     per_replica_values = [
         value_lib.PerReplica([
             array_ops.ones([10, 10], dtype=dtypes.float32),
@@ -208,8 +194,7 @@ class PackBySizeTest(test.TestCase):
         ]),
         value_lib.PerReplica([
             array_ops.ones([10, 10], dtype=dtypes.float32),
-            input_layer.Input(
-                shape=(10), batch_size=None, dtype=dtypes.float32),
+            create_placeholder([None, 10], dtype=dtypes.float32),
         ]),
     ]
     packs = cross_device_utils.pack_by_size(

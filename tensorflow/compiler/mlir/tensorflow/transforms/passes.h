@@ -31,6 +31,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateBreakUpIslandsPass();
 std::unique_ptr<OperationPass<FuncOp>>
 CreateFunctionalToExecutorDialectConversionPass();
 
+// Creates a pass that lifts inner ops of tf_executor.island ops in
+// tf_executor.graph into the same block as the tf_executor.graph.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateExecutorDialectToFunctionalConversionPass();
+
 namespace TF {
 // Transforms functional control flow operations in the TensorFlow dialect to
 // MLIR Control Flow Graph (CFG) form.
@@ -282,6 +287,11 @@ CreateTPUExtractHeadTailOutsideCompilationPass();
 // that are only used for host computation.
 std::unique_ptr<OperationPass<FuncOp>> CreateTPUHostComputationExpansionPass();
 
+// Creates a pass that updates inputs to TPU embedding layer enqueue ops so that
+// correct ops are invoked during training and evaluation.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
+
 // Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
 // ops to a separate parallel_execute region to run on CPU.
 std::unique_ptr<OperationPass<ModuleOp>>
@@ -295,16 +305,6 @@ void CreateTPUBridgePipeline(OpPassManager& pm);
 void CreateTPUBridgePipelineV1(OpPassManager& pm);
 
 }  // namespace TFTPU
-
-namespace tf_saved_model {
-
-// Creates a pass that optimizes tf_saved_model.global_tensor ops.
-std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeGlobalTensorsPass();
-
-// Creates a pass that freezes tf_saved_model.global_tensor ops.
-std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass();
-
-}  // namespace tf_saved_model
 
 }  // namespace mlir
 

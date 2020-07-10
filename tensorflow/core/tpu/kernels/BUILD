@@ -1,4 +1,5 @@
 # TPU Kernel Implementations
+
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
@@ -27,10 +28,17 @@ cc_library(
     srcs = ["tpu_compile_op_common.cc"],
     hdrs = ["tpu_compile_op_common.h"],
     deps = [
+        ":tpu_compilation_cache_entry_unloader",
+        ":tpu_compilation_cache_interface",
+        ":tpu_compilation_metrics_hdrs",
+        ":tpu_compile_op_options",
         ":tpu_compile_op_support",
         ":tpu_mesh_state_interface",
+        ":tpu_op_consts",
+        ":tpu_op_util",
         ":tpu_program_group_interface",
         ":tpu_util",
+        ":tpu_util_c_api_hdrs",
         ":tpu_util_hdrs",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
@@ -42,13 +50,17 @@ cc_library(
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:compilation_result_proto_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
+        "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
@@ -86,8 +98,8 @@ cc_library(
     hdrs = ["tpu_compile_c_api.h"],
     deps = [
         ":tpu_mesh_state_c_api_hdrs",
-        ":tpu_ops_common_c_api_hdrs",
         ":tpu_program_c_api_hdrs",
+        ":tpu_util_c_api_hdrs",
         "//tensorflow/core/tpu:libtftpu_header",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
@@ -192,18 +204,29 @@ cc_library(
 
 cc_library(
     name = "tpu_compilation_cache_lookup",
-    srcs = ["tpu_compilation_cache_lookup.cc"],
     hdrs = [
         "tpu_compilation_cache_lookup.h",
     ],
     deps = [
-        ":tpu_compilation_cache_entry",
-        ":tpu_compilation_cache_external",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_proto_cc",
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
+    name = "tpu_compilation_cache_local_lookup",
+    srcs = ["tpu_compilation_cache_local_lookup.cc"],
+    hdrs = ["tpu_compilation_cache_local_lookup.h"],
+    deps = [
+        ":tpu_compilation_cache_entry",
+        ":tpu_compilation_cache_external",
+        ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_lookup",
+        ":tpu_compilation_cache_proto_cc",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -242,8 +265,10 @@ cc_library(
     name = "tpu_program_group_interface",
     hdrs = ["tpu_program_group_interface.h"],
     deps = [
+        ":tpu_compilation_cache_key",
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core/lib/core:status",
     ],
 )
 
@@ -281,8 +306,8 @@ cc_library(
     deps = [
         ":compiled_subgraph",
         ":tpu_compilation_cache_key",
-        ":tpu_compilation_cache_metrics_hdrs",
         ":tpu_compilation_cache_proto_cc",
+        ":tpu_compilation_metrics_hdrs",
         ":tpu_util",
         ":tpu_util_hdrs",
         ":trace_util_hdrs",
@@ -315,9 +340,9 @@ cc_library(
         ":tpu_compilation_cache_entry_impl",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_key",
-        ":tpu_compilation_cache_metrics",  # buildcleaner: keep
-        ":tpu_compilation_cache_metrics_hdrs",
         ":tpu_compilation_cache_proto_cc",
+        ":tpu_compilation_metrics",  # buildcleaner: keep
+        ":tpu_compilation_metrics_hdrs",
         ":tpu_compile_c_api_hdrs",
         ":tpu_compile_op_support",
         ":tpu_mesh_state_interface",
@@ -340,8 +365,8 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_compilation_cache_metrics_hdrs",
-    hdrs = ["tpu_compilation_cache_metrics.h"],
+    name = "tpu_compilation_metrics_hdrs",
+    hdrs = ["tpu_compilation_metrics.h"],
     deps = [
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/strings",
@@ -349,10 +374,10 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_compilation_cache_metrics",
-    srcs = ["tpu_compilation_cache_metrics.cc"],
+    name = "tpu_compilation_metrics",
+    srcs = ["tpu_compilation_metrics.cc"],
     deps = [
-        ":tpu_compilation_cache_metrics_hdrs",
+        ":tpu_compilation_metrics_hdrs",
     ],
 )
 
@@ -367,16 +392,17 @@ cc_library(
 
 cc_library(
     name = "tpu_util_hdrs",
-    srcs = [],
     hdrs = ["tpu_util.h"],
     deps = [
         ":tpu_compilation_cache_key",
+        ":tpu_program_group_interface",
         "//tensorflow/cc:ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -391,16 +417,10 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_ops_common_c_api_hdrs",
-    hdrs = ["tpu_ops_common_c_api.h"],
-    alwayslink = True,
-)
-
-cc_library(
     name = "tpu_program_c_api_hdrs",
     hdrs = ["tpu_program_c_api.h"],
     deps = [
-        ":tpu_ops_common_c_api_hdrs",
+        ":tpu_util_c_api_hdrs",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],
     alwayslink = True,
@@ -428,6 +448,7 @@ cc_library(
     hdrs = ["tpu_util.h"],
     deps = [
         ":tpu_compilation_cache_key",
+        ":tpu_program_group_interface",
         "//tensorflow/cc:ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
@@ -435,6 +456,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )
@@ -468,5 +490,15 @@ cc_library(
     hdrs = ["tpu_op_consts.h"],
     deps = [
         "@com_google_absl//absl/base:core_headers",
+    ],
+)
+
+cc_library(
+    name = "tpu_execute_c_api_hdrs",
+    hdrs = ["tpu_execute_c_api.h"],
+    deps = [
+        ":tpu_program_c_api_hdrs",
+        ":tpu_util_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )

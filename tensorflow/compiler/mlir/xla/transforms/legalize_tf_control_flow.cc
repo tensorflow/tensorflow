@@ -41,15 +41,14 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 using mlir::PassRegistration;
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 namespace {
 class LegalizeTFControlFlow
     : public PassWrapper<LegalizeTFControlFlow, OperationPass<ModuleOp>> {
@@ -68,7 +67,7 @@ namespace {
 void Detuple(Value tuple, Operation::result_range replace, OpBuilder* builder) {
   // De-tuple the results of the xla hlo if result.
   for (auto result_it : llvm::enumerate(replace)) {
-    auto get_tuple_value = builder->create<xla_hlo::GetTupleElementOp>(
+    auto get_tuple_value = builder->create<mhlo::GetTupleElementOp>(
         result_it.value().getLoc(), tuple, result_it.index());
     result_it.value().replaceAllUsesWith(get_tuple_value);
   }
@@ -96,10 +95,10 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
 
   auto result = builder.create<CallOp>(loc, func, detupled_args).getResults();
   if (!tuple_return) {
-    builder.create<xla_hlo::ReturnOp>(loc, result);
+    builder.create<mhlo::ReturnOp>(loc, result);
   } else {
     auto tuple_op = builder.create<TupleOp>(loc, result);
-    builder.create<xla_hlo::ReturnOp>(loc, tuple_op.getResult());
+    builder.create<mhlo::ReturnOp>(loc, tuple_op.getResult());
   }
 }
 
@@ -110,12 +109,12 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   // XLA prefers tuple arguments for control flow due to XLA not supporting
   // multiple return values.
   SmallVector<Value, 3> inputs(op.input());
-  auto tuple_input = builder.create<xla_hlo::TupleOp>(loc, inputs);
+  auto tuple_input = builder.create<mhlo::TupleOp>(loc, inputs);
 
   // Create the new if op with tuple inputs.
   auto result_type = builder.getTupleType(op.getResultTypes());
-  auto if_op = builder.create<xla_hlo::IfOp>(loc, result_type, op.cond(),
-                                             tuple_input, tuple_input);
+  auto if_op = builder.create<mhlo::IfOp>(loc, result_type, op.cond(),
+                                          tuple_input, tuple_input);
 
   // Import the regions for both the true and false cases. These regions
   // must be updated to tuple the return results together and use the xla hlo
@@ -137,15 +136,15 @@ void LowerCase(TF::CaseOp op, ModuleOp module) {
   // XLA requires one argument per branch so we create a tuple of inputs to pass
   // to each branch.
   SmallVector<Value, 4> inputs(op.input());
-  auto tuple_input = builder.create<xla_hlo::TupleOp>(loc, inputs);
+  auto tuple_input = builder.create<mhlo::TupleOp>(loc, inputs);
 
   // Create replica of input tuple for each branch
   SmallVector<Value, 4> n_tuple_inputs(op.branches().size(), tuple_input);
 
   // Create the new case op with tuple inputs.
-  auto case_op = builder.create<xla_hlo::CaseOp>(
-      loc, op.getResultTypes(), op.branch_index(), n_tuple_inputs,
-      op.branches().size());
+  auto case_op =
+      builder.create<mhlo::CaseOp>(loc, op.getResultTypes(), op.branch_index(),
+                                   n_tuple_inputs, op.branches().size());
 
   // Import the regions for all branches.
   for (unsigned i = 0; i < op.branches().size(); ++i) {
@@ -167,10 +166,10 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
   // multiple return values.
   SmallVector<Value, 3> inputs(op.input());
   builder.setInsertionPoint(op);
-  Value tuple_input = builder.create<xla_hlo::TupleOp>(loc, inputs);
+  Value tuple_input = builder.create<mhlo::TupleOp>(loc, inputs);
 
   // Create the new while op with tuple inputs.
-  auto while_op = builder.create<xla_hlo::WhileOp>(
+  auto while_op = builder.create<mhlo::WhileOp>(
       loc, builder.getTupleType(op.getResultTypes()), tuple_input);
 
   // Import the regions for both the cond and body. These regions must be
@@ -205,9 +204,9 @@ void LegalizeTFControlFlow::runOnOperation() {
     }
   });
 }
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir
 
-static PassRegistration<mlir::xla_hlo::LegalizeTFControlFlow> cfpass(
+static PassRegistration<mlir::mhlo::LegalizeTFControlFlow> cfpass(
     "xla-legalize-tf-control-flow",
     "Legalize TensorFlow control flow to the XLA dialect");

@@ -84,7 +84,7 @@ JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_nnapi_NnApiDelegate_deleteDelegate(JNIEnv* env,
                                                             jclass clazz,
                                                             jlong delegate) {
-  delete reinterpret_cast<TfLiteDelegate*>(delegate);
+  delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
 }
 
 #ifdef __cplusplus

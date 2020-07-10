@@ -181,6 +181,23 @@ cc_library(
 )
 
 cc_library(
+    name = "prelu_tester",
+    testonly = 1,
+    srcs = ["prelu_tester.cc"],
+    hdrs = ["prelu_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@FP16",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "reduce_tester",
     testonly = 1,
     srcs = ["reduce_tester.cc"],
@@ -528,6 +545,21 @@ cc_test(
 )
 
 cc_test(
+    name = "prelu_test",
+    srcs = ["prelu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":prelu_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "relu_test",
     srcs = ["relu_test.cc"],
     linkopts = select({
@@ -597,6 +629,21 @@ cc_test(
     deps = [
         ":softmax_tester",
         ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "sqrt_test",
+    srcs = ["sqrt_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],

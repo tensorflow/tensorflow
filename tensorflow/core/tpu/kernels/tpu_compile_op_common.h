@@ -25,8 +25,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
@@ -37,23 +39,32 @@ class TpuCompileOpKernelCommon {
  public:
   TpuCompileOpKernelCommon(const std::string& mlir_module,
                            const tpu::TPUCompileMetadataProto metadata,
-                           int num_computations)
+                           int num_computations, bool return_hlo_protos,
+                           bool unload_cache_on_session_close)
       : metadata_(metadata),
         use_mlir_(true),
         mlir_module_(mlir_module),
-        num_computations_(num_computations) {}
+        num_computations_(num_computations),
+        return_hlo_protos_(return_hlo_protos),
+        unload_cache_entry_on_session_close_(unload_cache_on_session_close),
+        persistent_cache_(nullptr) {}
 
-  TpuCompileOpKernelCommon(const NameAttrList& function,
-                           const tpu::TPUCompileMetadataProto metadata,
-                           int num_computations)
+  TpuCompileOpKernelCommon(
+      const NameAttrList& function, const tpu::TPUCompileMetadataProto metadata,
+      int num_computations, bool return_hlo_protos,
+      bool unload_cache_on_session_close,
+      std::unique_ptr<TpuPersistentCompilationCacheInterface> persistent_cache)
       : metadata_(metadata),
         use_mlir_(false),
         function_(function),
-        num_computations_(num_computations) {}
+        num_computations_(num_computations),
+        return_hlo_protos_(return_hlo_protos),
+        unload_cache_entry_on_session_close_(unload_cache_on_session_close),
+        persistent_cache_(std::move(persistent_cache)) {}
 
   virtual ~TpuCompileOpKernelCommon() = default;
 
-  virtual void Compute(OpKernelContext* ctx) = 0;
+  void Compute(OpKernelContext* ctx);
 
   // Computes shapes for each argument. Uses both the static shape from the
   // metadata, and the dynamic shapes where the static shape is not
@@ -72,6 +83,41 @@ class TpuCompileOpKernelCommon {
       FunctionLibraryRuntime* flr, GraphShapeInfo* shape_info);
 
  protected:
+  Status ComputeInternal(OpKernelContext* ctx);
+
+  // Compile function that invokes the different helper functions to compile
+  // the given function.
+  virtual Status Compile(const FunctionLibraryDefinition& flib_def,
+                         int graph_def_version,
+                         const TpuMeshStateInterface* mesh_state,
+                         const std::vector<TensorShape>& dynamic_shapes,
+                         const OpInputList& guaranteed_constants,
+                         TpuProgramGroupInterface* tpu_program_group) = 0;
+
+  // Compile TPU program locally and populate the host compilation cache.
+  Status CompileLocallyAndFillHostCache(
+      FunctionLibraryRuntime* flib_runtime,
+      const SessionMetadata* session_metadata,
+      const TpuMeshStateInterface* mesh_state,
+      const std::vector<TensorShape>& dynamic_shapes,
+      const OpInputList& guaranteed_constants,
+      const tpu::TpuCompilationCacheKey& key,
+      TpuProgramGroupInterface* tpu_program_group);
+
+  // Lookup from persistent compilation cache and populate both host cache and
+  // persistent cache.
+  virtual Status LookupPersistentCompilationCacheAndFillCaches(
+      FunctionLibraryRuntime* flib_runtime,
+      const SessionMetadata* session_metadata,
+      const TpuMeshStateInterface* mesh_state,
+      const std::vector<TensorShape>& dynamic_shapes,
+      const OpInputList& guaranteed_constants,
+      TpuPersistentCompilationCacheInterface* persistent_cache,
+      const tpu::TpuCompilationCacheKey& key,
+      TpuProgramGroupInterface* tpu_program_group) {
+    LOG(FATAL) << "Lookup from a persistent cache is NOT supported.";
+  }
+
   // Sleeps for `kSleepSeconds` seconds to give time for TPUCompileOp to finish
   // before terminating peacefully.
   static void ExitCountdown(OpKernelContext* ctx,
@@ -151,6 +197,18 @@ class TpuCompileOpKernelCommon {
   // Number of different programs to compile. This maps to number of cores in
   // each replica.
   int num_computations_;
+
+  // A flag to populate HLO protos field in CompilationResultProto. The HLO
+  // metadata could be large so default to not populating it unless explicitly
+  // requested.
+  bool return_hlo_protos_;
+
+  // If enabled, DirectSession::Close will unload cache entries created during
+  // the lifetime of the session.
+  bool unload_cache_entry_on_session_close_;
+
+  // Persistent cache for compiled TPU program for inference.
+  std::unique_ptr<TpuPersistentCompilationCacheInterface> persistent_cache_;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileOpKernelCommon);

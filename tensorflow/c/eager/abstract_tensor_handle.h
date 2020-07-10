@@ -17,17 +17,21 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/framework/types.pb.h"
 namespace tensorflow {
 
 // Abstract interface to a Tensor handle in either tracing or immediate
 // execution mode.
 class AbstractTensorHandle {
  protected:
-  enum AbstractTensorHandleKind { kTracing, kImmediateExecution };
+  enum AbstractTensorHandleKind { kGraph, kMlir, kEager, kTfrt };
   explicit AbstractTensorHandle(AbstractTensorHandleKind kind) : kind_(kind) {}
   virtual ~AbstractTensorHandle() {}
 
  public:
+  // Returns tensor dtype.
+  virtual tensorflow::DataType DataType() const = 0;
+
   AbstractTensorHandleKind getKind() const { return kind_; }
 
   // Release any underlying resources, including the interface object.

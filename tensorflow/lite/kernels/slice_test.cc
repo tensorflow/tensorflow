@@ -243,6 +243,25 @@ TEST_P(SliceOpTest, SliceString) {
                                 "2,0,0,0", "2,0,1,0", "2,0,2,0"}));
 }
 
+TEST_P(SliceOpTest, SliceInt64) {
+  SliceOpModel<int64_t, int32_t> m({3, 2, 3, 1}, {4}, {1, 0, 0, 0}, {4},
+                                   {2, 1, -1, 1}, TensorType_INT32,
+                                   TensorType_INT64, GetParam());
+  m.SetInput({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 3, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
+}
+
+TEST_P(SliceOpTest, SliceBool) {
+  SliceOpModel<bool, int32_t> m({2, 3}, {2}, {1, 0}, {2}, {-1, 2},
+                                TensorType_INT32, TensorType_BOOL, GetParam());
+  m.SetInput({true, false, true, false, true, true});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({false, true}));
+}
+
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));

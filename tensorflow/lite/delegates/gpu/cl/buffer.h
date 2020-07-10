@@ -30,17 +30,22 @@ namespace gpu {
 namespace cl {
 
 struct BufferDescriptor : public GPUObjectDescriptor {
-  DataType element_type;  // FLOAT32 or FLOAT16
+  DataType element_type;
   int element_size;
+  MemoryType memory_type = MemoryType::GLOBAL;
+  std::vector<std::string> attributes;
 
   absl::Status PerformSelector(const std::string& selector,
                                const std::vector<std::string>& args,
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
 
-  GPUResources GetGPUResources(AccessType access_type) const override;
+  GPUResources GetGPUResources() const override;
   absl::Status PerformReadSelector(const std::vector<std::string>& args,
                                    std::string* result) const;
+  absl::Status PerformGetPtrSelector(
+      const std::vector<std::string>& args,
+      const std::vector<std::string>& template_args, std::string* result) const;
 };
 
 // Buffer represent linear GPU data storage with arbitrary data format.
@@ -72,7 +77,8 @@ class Buffer : public GPUObject {
   template <typename T>
   absl::Status ReadData(CLCommandQueue* queue, std::vector<T>* result) const;
 
-  GPUResourcesWithValue GetGPUResources(AccessType access_type) const override;
+  absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                               GPUResourcesWithValue* resources) const override;
 
  private:
   void Release();

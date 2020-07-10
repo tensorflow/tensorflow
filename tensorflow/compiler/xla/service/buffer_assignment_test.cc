@@ -492,8 +492,7 @@ TEST_F(BufferAssignmentTest, AliasedParamCanBeReused) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias(
-      {}, 0, {}, HloInputOutputAliasConfig::kUserAlias));
+  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({}, 0, {}));
 
   auto buffers = RunBufferAssignment(module.get());
 

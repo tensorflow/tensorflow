@@ -549,7 +549,11 @@ string HloComputation::ToString(
     if (options.print_percent()) {
       s << "%";
     }
-    s << PrintName(name(), options.print_ids()) << " ";
+    if (options.print_ids() || !IsEntryComputation()) {
+      // Exclude entry computation's name because it includes and leads to
+      // non-deterministic fingerprint.
+      s << PrintName(name(), options.print_ids()) << " ";
+    }
   }
 
   if (options.print_program_shape()) {

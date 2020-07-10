@@ -665,8 +665,9 @@ class Callback(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.train_step`. Typically,
+          the values of the `Model`'s metrics are returned.  Example:
+          `{'loss': 0.2, 'accuracy': 0.7}`.
     """
     # For backwards compatibility.
     self.on_batch_begin(batch, logs=logs)
@@ -697,8 +698,9 @@ class Callback(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.test_step`. Typically,
+          the values of the `Model`'s metrics are returned.  Example:
+          `{'loss': 0.2, 'accuracy': 0.7}`.
     """
 
   @doc_controls.for_subclass_implementers
@@ -725,8 +727,9 @@ class Callback(object):
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
-        logs: Dict. Has keys `batch` and `size` representing the current batch
-          number and the size of the batch.
+        logs: Dict, contains the return value of `model.predict_step`,
+          it typically returns a dict with a key 'outputs' containing
+          the model's outputs.
     """
 
   @doc_controls.for_subclass_implementers
@@ -1218,6 +1221,16 @@ class ModelCheckpoint(Callback):
       self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
+    # pylint: disable=protected-access
+    if self.model._in_multi_worker_mode:
+      logging.warning(
+          'Automatic model reloading for interrupted job was removed from '
+          'the `ModelCheckpoint` callback in multi-worker mode, please use the '
+          '`keras.callbacks.experimental.BackupAndRestore` callback instead. '
+          'See this tutorial for details: '
+          'https://www.tensorflow.org/tutorials/distribute/'
+          'multi_worker_with_keras#backupandrestore_callback.'
+      )
     if self.load_weights_on_restart:
       filepath_to_load = (
           self._get_most_recently_modified_file_matching_pattern(self.filepath))

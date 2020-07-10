@@ -171,9 +171,9 @@ cc_library(
     deps = [
         ":acceleration_test_util",
         ":builtin_ops",
+        ":test_util_delegate_providers",
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
@@ -186,12 +186,38 @@ cc_library(
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools:tool_params",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "//tensorflow/lite/tools/versioning",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
+)
+
+# A convenient library for tflite delegate execution providers.
+cc_library(
+    name = "test_util_delegate_providers",
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/tools/delegates:coreml_delegate_provider",
+        "//tensorflow/lite/tools/delegates:default_execution_provider",
+        "//tensorflow/lite/tools/delegates:external_delegate_provider",
+        "//tensorflow/lite/tools/delegates:hexagon_delegate_provider",
+        "//tensorflow/lite/tools/delegates:nnapi_delegate_provider",
+        "//tensorflow/lite/tools/delegates:xnnpack_delegate_provider",
+    ] + select({
+        # Metal GPU delegate for iOS has its own setups for kernel tests, so
+        # skipping linking w/ the gpu_delegate_provider.
+        "//tensorflow:ios": [],
+        "//conditions:default": [
+            "//tensorflow/lite/tools/delegates:gpu_delegate_provider",
+        ],
+    }),
+    alwayslink = 1,
 )
 
 # TODO(b/132204084): Create tflite_cc_test rule to automate test_main inclusion.
@@ -361,6 +387,7 @@ cc_library(
         "@ruy//ruy",
         "@ruy//ruy:matrix",
         "@ruy//ruy:path",
+        "@ruy//ruy:mul_params",
         "@ruy//ruy/profiler:instrumentation",
         # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
@@ -429,6 +456,12 @@ cc_test(
     name = "test_util_test",
     size = "small",
     srcs = ["test_util_test.cc"],
+    # See details in https://github.com/bazelbuild/bazel/issues/11552 to avoid
+    # lazy symbol binding failure on macOS.
+    linkstatic = select({
+        "//tensorflow:macos": True,
+        "//conditions:default": False,
+    }),
     deps = [
         ":test_util",
         "//tensorflow/lite/testing:util",

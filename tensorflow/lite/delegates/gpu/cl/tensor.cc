@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_image_format.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -63,6 +64,23 @@ absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
         AllocateTensorMemory(context, device, shape, descriptor, &mem));
     memory = mem.Release();
   }
+  if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
+    cl_mem image_memory;
+    RETURN_IF_ERROR(CreateImageBufferFromBuffer(
+        context, memory, descriptor.data_type,
+        shape.b * shape.w * shape.h * shape.d * DivideRoundUp(shape.c, 4),
+        &image_memory));
+    *result = Tensor(memory, memory_owner, image_memory, shape, descriptor);
+  } else {
+    *result = Tensor(memory, memory_owner, shape, descriptor);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CreateTensorShared(const CLContext& context, const BHWDC& shape,
+                                const TensorDescriptor& descriptor,
+                                cl_mem memory, Tensor* result) {
+  const bool memory_owner = false;
   if (descriptor.storage_type == TensorStorageType::IMAGE_BUFFER) {
     cl_mem image_memory;
     RETURN_IF_ERROR(CreateImageBufferFromBuffer(
@@ -144,44 +162,63 @@ void Tensor::Release() {
   }
 }
 
-GPUResourcesWithValue Tensor::GetGPUResources(AccessType access_type) const {
-  GPUResourcesWithValue resources;
+absl::Status Tensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                                     GPUResourcesWithValue* resources) const {
+  const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(obj_ptr);
+  if (buffer_desc) {
+    if (descriptor_.storage_type != TensorStorageType::BUFFER) {
+      return absl::InvalidArgumentError(
+          "Tensor can be used with BufferDescriptor only wtih "
+          "TensorStorageType::BUFFER.");
+    }
+    resources->buffers.push_back({"buffer", memory_});
+    return absl::OkStatus();
+  }
+  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(obj_ptr);
+  if (!tensor_desc) {
+    return absl::InvalidArgumentError("Expected TensorDescriptor on input.");
+  }
   if (descriptor_.HasAxis(Axis::WIDTH)) {
-    resources.ints.push_back({"width", Width()});
-    resources.ints.push_back({"width_batched", Width() * Batch()});
+    resources->ints.push_back({"width", Width()});
+    resources->ints.push_back({"width_div2", Width() / 2});
+    resources->ints.push_back({"width_div4", Width() / 4});
+    resources->ints.push_back({"width_batched", Width() * Batch()});
+    resources->ints.push_back({"width_batched_div2", Width() * Batch() / 2});
+    resources->ints.push_back({"width_batched_div4", Width() * Batch() / 4});
   }
   if (descriptor_.HasAxis(Axis::HEIGHT)) {
-    resources.ints.push_back({"height", Height()});
+    resources->ints.push_back({"height", Height()});
   }
   if (descriptor_.HasAxis(Axis::CHANNELS)) {
-    resources.ints.push_back({"slices", Slices()});
-    resources.ints.push_back({"channels", Channels()});
+    resources->ints.push_back({"slices", Slices()});
+    resources->ints.push_back({"channels", Channels()});
   }
   if (descriptor_.HasAxis(Axis::BATCH)) {
-    resources.ints.push_back({"batch", Batch()});
+    resources->ints.push_back({"batch", Batch()});
   }
   if (descriptor_.HasAxis(Axis::DEPTH)) {
-    resources.ints.push_back({"depth", Depth()});
+    resources->ints.push_back({"depth", Depth()});
   }
 
   if (descriptor_.storage_type == TensorStorageType::BUFFER) {
-    resources.buffers.push_back({"buffer", memory_});
+    resources->buffers.push_back({"buffer", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_2D ||
              descriptor_.storage_type == TensorStorageType::SINGLE_TEXTURE_2D) {
-    resources.images2d.push_back({"image2d", memory_});
+    resources->images2d.push_back({"image2d", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_ARRAY) {
-    resources.image2d_arrays.push_back({"image2d_array", memory_});
+    resources->image2d_arrays.push_back({"image2d_array", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::TEXTURE_3D) {
-    resources.images3d.push_back({"image3d", memory_});
+    resources->images3d.push_back({"image3d", memory_});
   } else if (descriptor_.storage_type == TensorStorageType::IMAGE_BUFFER) {
-    if (access_type == AccessType::READ) {
-      resources.image_buffers.push_back({"image_buffer", image_buffer_memory_});
+    if (obj_ptr->GetAccess() == AccessType::READ) {
+      resources->image_buffers.push_back(
+          {"image_buffer", image_buffer_memory_});
     } else {
-      resources.buffers.push_back({"buffer", memory_});
+      resources->buffers.push_back({"buffer", memory_});
     }
   }
 
-  return resources;
+  return absl::OkStatus();
 }
 
 int3 Tensor::GetFullTensorRegion() const {
@@ -410,21 +447,19 @@ absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
   return CreateTensor(context, device, shape, descriptor, nullptr, result);
 }
 
-absl::Status CreateSharedTensor(const CLContext& context,
-                                const CLDevice& device, cl_mem memory,
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result) {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
-  return CreateTensor(context, device, shape5D, descriptor, memory, result);
+  return CreateTensorShared(context, shape5D, descriptor, memory, result);
 }
 
-absl::Status CreateSharedTensor(const CLContext& context,
-                                const CLDevice& device, cl_mem memory,
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWDC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result) {
-  return CreateTensor(context, device, shape, descriptor, memory, result);
+  return CreateTensorShared(context, shape, descriptor, memory, result);
 }
 
 absl::Status AllocateTensorMemory(const CLContext& context,

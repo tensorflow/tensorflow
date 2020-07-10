@@ -506,28 +506,52 @@ LogicalResult FoldOperandsPermutation(
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Folder that returns LHS of an Arithmetic Op if the RHS is a constant
-// known to be Identity (e.g X+0)
+// Fold Arithmetic Op if one of the operands is a constant known to be an
+// Identity (e.g. X+0, X*1, etc...). For commutative operations fold if
+// known identity value is either lhs or rhs.
 template <
     typename OpT,
     typename std::enable_if<llvm::is_one_of<
         OpT, AddV2Op, SubOp, MulOp, DivOp, RealDivOp>::value>::type * = nullptr>
 OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
                                         ArrayRef<Attribute> operands) {
-  auto result_op_type = arithmetic_op.getResult().getType();
   auto lhs_type = arithmetic_op.x().getType().template cast<ShapedType>();
-  if (!result_op_type.template cast<ShapedType>().hasStaticShape()) return {};
+  auto rhs_type = arithmetic_op.y().getType().template cast<ShapedType>();
+  auto result_type =
+      arithmetic_op.getResult().getType().template cast<ShapedType>();
 
-  // We only handle non-broadcastable case.
-  if (result_op_type != lhs_type) {
-    return {};
-  }
+  // We can fold arithmetic operation only of we can prove that we will not
+  // accidentally hide a broadcasting error.
+  auto is_valid_broadcasting = [](ShapedType operand_ty, ShapedType identity_ty,
+                                  ShapedType result_ty) -> bool {
+    // Scalar identity is broadcastable to any operand shape, we only need to
+    // check that operand has the same shape as a result.
+    bool scalar_identity = identity_ty.hasRank() && identity_ty.getRank() == 0;
+    if (scalar_identity) return operand_ty == result_ty;
+
+    // If identity is not a scalar, we must verify that all shapes are equal
+    // and statically known.
+    //
+    // TODO(ezhulenev): Fold if identity shape is statically know to be
+    // broadcastable to the operand shape.
+    return operand_ty == result_ty && identity_ty == result_ty &&
+           result_ty.hasStaticShape();
+  };
+
+  // Check that we have a constant operand on one side (candidate for identity).
+  const bool is_commutative =
+      (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
+  auto lhs_attr = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhs_attr = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+  if (!rhs_attr && !(is_commutative && lhs_attr)) return {};
 
   // Mul and Div ops have identity value one while AddV2 and SubOp have identity
   // value zero.
-  int identity =
+  const int identity =
       (std::is_same<OpT, MulOp>::value || std::is_same<OpT, DivOp>::value ||
-       std::is_same<OpT, RealDivOp>::value);
+       std::is_same<OpT, RealDivOp>::value)
+          ? 1
+          : 0;
 
   Type element_ty = lhs_type.getElementType();
   Attribute identity_attr;
@@ -539,23 +563,19 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
     return {};
   }
 
-  if (auto attr = operands[1].dyn_cast_or_null<DenseElementsAttr>()) {
-    if (attr.isSplat() && attr.getSplatValue() == identity_attr)
+  // Fold: Op(Operand, Identity) -> Operand.
+  if (rhs_attr && is_valid_broadcasting(lhs_type, rhs_type, result_type)) {
+    if (rhs_attr.isSplat() && rhs_attr.getSplatValue() == identity_attr)
       return arithmetic_op.x();
   }
 
-  auto rhs_type = arithmetic_op.y().getType().template cast<ShapedType>();
-  // TODO(chhe): we could fold and add an identity to force the broadcast.
-  if (result_op_type != rhs_type) {
-    return {};
-  }
-
-  bool is_symmetric =
-      (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
-  if (auto attr = operands[0].dyn_cast_or_null<DenseElementsAttr>()) {
-    if (is_symmetric && attr.isSplat() && attr.getSplatValue() == identity_attr)
+  // Fold: Op(Identity, Operand) -> Operand for commutative operations.
+  if (lhs_attr && is_commutative &&
+      is_valid_broadcasting(rhs_type, lhs_type, result_type)) {
+    if (lhs_attr.isSplat() && lhs_attr.getSplatValue() == identity_attr)
       return arithmetic_op.y();
   }
+
   return {};
 }
 }  // namespace
@@ -1168,8 +1188,7 @@ void ConstOp::build(OpBuilder &builder, OperationState &result,
   ShapedType type;
   if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
     return ConstOp::build(builder, result, elem_attr);
-  } else if (value.isa<BoolAttr>() || value.isa<FloatAttr>() ||
-             value.isa<IntegerAttr>()) {
+  } else if (value.isa<BoolAttr, FloatAttr, IntegerAttr>()) {
     // All TensorFlow types must be tensor types. In the build() method,
     // we want to provide more flexibility by allowing attributes of scalar
     // types. But we need to wrap it up with ElementsAttr to construct
@@ -2104,21 +2123,6 @@ static LogicalResult Verify(IfOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// YieldOp
-//===----------------------------------------------------------------------===//
-
-static LogicalResult Verify(YieldOp op) {
-  auto parent = op.getParentOp();
-  // A YieldOp should be contained within an IfRegion op
-  // (and WhileRegion in future)
-  if (!isa<IfRegionOp>(parent))
-    op.emitError() << " expects parent op "
-                   << "'" << IfRegionOp::getOperationName() << "' but got '"
-                   << parent->getName().getStringRef() << "'";
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // IfRegionOp
 //===----------------------------------------------------------------------===//
 
@@ -2129,8 +2133,10 @@ LogicalResult VerifyRegionResults(Operation *op, Region &region,
   YieldOp yield = cast<YieldOp>(region.front().getTerminator());
   unsigned expected_num_results = op->getNumResults();
   if (yield.getNumOperands() != expected_num_results)
-    return op->emitError(region_name + " region should have " +
-                         Twine(expected_num_results) + " results");
+    return op->emitOpError()
+           << region_name + " should have same number (" << expected_num_results
+           << ") of results as " << op_name << " but has "
+           << yield.getNumOperands() << " results";
 
   for (int idx : llvm::seq<int>(0, expected_num_results)) {
     auto op_result_type = op->getResult(idx).getType().cast<TensorType>();
@@ -2211,7 +2217,7 @@ OpFoldResult LeakyReluOp::fold(ArrayRef<Attribute> operands) {
 
 void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                         MLIRContext *context) {
-  results.insert<LogOfSoftmax>(context);
+  results.insert<LogOfSoftmax, LogToLog1p>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2221,6 +2227,32 @@ void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 void ReadVariableOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<ReadVariableOfCast>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// VarIsInitializedOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// Erase VarIsInitializedOp operations with no uses. This op has side effect on
+/// resources (read-only), but can still be deleted if it has zero uses.
+struct EraseDeadVarIsInitializedOp
+    : public OpRewritePattern<VarIsInitializedOp> {
+  using OpRewritePattern<VarIsInitializedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(VarIsInitializedOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!op.use_empty()) return failure();
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+}  // end anonymous namespace.
+
+void VarIsInitializedOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &patterns, MLIRContext *context) {
+  patterns.insert<EraseDeadVarIsInitializedOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2855,6 +2887,11 @@ void ReshapeOp::build(OpBuilder &builder, OperationState &result, Value tensor,
                             shape);
   }
   return unranked();
+}
+
+void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                            MLIRContext *context) {
+  results.insert<RedundantReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4187,6 +4224,192 @@ static LogicalResult Verify(WhileOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// WhileRegionOp
+//===----------------------------------------------------------------------===//
+static LogicalResult Verify(WhileRegionOp op) {
+  // Verify that the condition generates a single tensor<i1> result.
+  YieldOp yield = cast<YieldOp>(op.cond().front().getTerminator());
+  if (yield.getNumOperands() != 1)
+    return op.emitOpError()
+           << "condition should have a single tensor<i1> result";
+
+  auto cond_type = yield.getOperand(0).getType().dyn_cast<RankedTensorType>();
+  if (!cond_type || !cond_type.getShape().equals({}) ||
+      !cond_type.getElementType().isInteger(/*width=*/1))
+    return op.emitOpError()
+           << "condition should have a single tensor<i1> result";
+
+  // The body result types should match while op result types.
+  if (failed(VerifyRegionResults(op, op.body(), "body"))) return failure();
+
+  // Both condition and body should have same number and type of operands as
+  // the WhileRegion inputs.
+  const int num_inputs = op.getNumOperands();
+  auto block_inputs_match_op_inputs = [&](Region &region,
+                                          StringRef name) -> LogicalResult {
+    Block &block = region.front();
+    if (block.getNumArguments() != num_inputs)
+      return op.emitOpError()
+             << name << " should have same number of inputs (" << num_inputs
+             << ") as " << WhileRegionOp::getOperationName() << " but has "
+             << block.getNumArguments() << " inputs";
+
+    for (auto types_idx : llvm::enumerate(
+             llvm::zip(op.getOperandTypes(), block.getArgumentTypes()))) {
+      auto op_input_type = std::get<0>(types_idx.value());
+      auto block_input_type = std::get<1>(types_idx.value());
+      if (!AreCastCompatible({block_input_type, op_input_type}))
+        return op.emitOpError(llvm::formatv(
+            "{0} input type {1} is incompatible with {2} "
+            "input type {3} at index {4}",
+            name, block_input_type, WhileRegionOp::getOperationName(),
+            op_input_type, types_idx.index()));
+    }
+    return success();
+  };
+
+  if (failed(block_inputs_match_op_inputs(op.cond(), "condition")) ||
+      failed(block_inputs_match_op_inputs(op.body(), "body")))
+    return failure();
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// WhileRegionOp LoopLikeOpInterface
+//===----------------------------------------------------------------------===//
+
+Region &WhileRegionOp::getLoopBody() { return body(); }
+
+bool WhileRegionOp::isDefinedOutsideOfLoop(Value value) {
+  // If the Op defining the value exists and the defining op is outside the
+  // scope of this WhileRegion, then we can infer that its defined outside.
+  // The defining Op is outside the scope of this WhileRegion if this
+  // WhileRegionOp is not an ancestor of the defining op in the parent chain.
+  Operation *def_op = value.getDefiningOp();
+  return def_op && !getOperation()->isAncestor(def_op);
+}
+
+LogicalResult WhileRegionOp::moveOutOfLoop(
+    llvm::ArrayRef<mlir::Operation *> ops) {
+  // Move the hoisted value to just before the while.
+  Operation *while_op = this->getOperation();
+  for (auto op : ops) op->moveBefore(while_op);
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// WhileRegionOp canonicalization
+//===----------------------------------------------------------------------===//
+namespace {
+// Eliminate values that pass through the WhileRegionOp body.
+struct WhileRegionEliminatePassThrough
+    : public OpRewritePattern<WhileRegionOp> {
+  using OpRewritePattern<WhileRegionOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(WhileRegionOp while_op,
+                                PatternRewriter &rewriter) const override {
+    // Replace values that simply passthrough the body with extern values. The
+    // block arguments of body and while match and so the corresponding cond
+    // argument can be easily found.
+    int old_num_operands = while_op.getNumOperands();
+    int new_num_operands = old_num_operands;
+    auto &body_block = while_op.body().front();
+    auto &cond_block = while_op.cond().front();
+    auto &yield = *body_block.getTerminator();
+
+    // Bit mask indicating which operands will be removed.
+    SmallVector<bool, 16> removed_operand(old_num_operands, false);
+
+    for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
+      auto body_arg = body_block.getArgument(op_idx);
+      if (body_arg == yield.getOperand(op_idx)) {
+        // Replace the use of the passthrough value with the while operand
+        // in the body and condition regions, as well as the while output (if
+        // type match)
+        // TODO(jurahul): Use PatternRewriter API for IR modification.
+        auto value = while_op.getOperand(op_idx);
+        if (body_arg.getType() == value.getType())
+          body_arg.replaceAllUsesWith(value);
+
+        auto cond_arg = cond_block.getArgument(op_idx);
+        if (cond_arg.getType() == value.getType())
+          cond_arg.replaceAllUsesWith(value);
+
+        auto result = while_op.getResult(op_idx);
+        if (result.getType() == value.getType())
+          result.replaceAllUsesWith(value);
+      }
+
+      // Now check if the operand is unused in both regions as well as the
+      // result. If so, mark it for removal.
+      if (body_block.getArgument(op_idx).use_empty() &&
+          cond_block.getArgument(op_idx).use_empty() &&
+          while_op.getResult(op_idx).use_empty()) {
+        removed_operand[op_idx] = true;
+        new_num_operands--;
+      }
+    }
+
+    if (new_num_operands == old_num_operands) return failure();
+
+    // Compress the operands, region arguments, and outputs.
+    SmallVector<Value, 4> new_while_operands;
+    SmallVector<Type, 4> new_result_types;
+    new_while_operands.reserve(new_num_operands);
+    new_result_types.reserve(new_num_operands);
+
+    // Build new operands and result type.
+    int next_idx = 0;
+    for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
+      if (removed_operand[op_idx]) continue;
+      new_while_operands.push_back(while_op.getOperand(op_idx));
+      new_result_types.push_back(while_op.getResult(op_idx).getType());
+      next_idx++;
+    }
+
+    // Create the new while operation.
+    auto new_while_op =
+        rewriter.create<WhileRegionOp>(while_op.getLoc(), new_result_types,
+                                       new_while_operands, while_op.getAttrs());
+
+    // Move region bodies to the new while.
+    rewriter.inlineRegionBefore(while_op.cond(), new_while_op.cond(),
+                                new_while_op.cond().end());
+    rewriter.inlineRegionBefore(while_op.body(), new_while_op.body(),
+                                new_while_op.body().end());
+
+    auto &new_cond_block = new_while_op.cond().front();
+    auto &new_body_block = new_while_op.body().front();
+    auto &new_yield = *new_body_block.getTerminator();
+
+    // Build a vector of new results. Also patch up the region bodies and yield.
+    SmallVector<Value, 4> new_results;
+    next_idx = 0;
+    for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
+      if (removed_operand[op_idx]) {
+        new_cond_block.eraseArgument(next_idx);
+        new_body_block.eraseArgument(next_idx);
+        new_yield.eraseOperand(next_idx);
+        new_results.push_back(nullptr);
+      } else {
+        new_results.push_back(new_while_op.getResult(next_idx++));
+      }
+    }
+
+    rewriter.replaceOp(while_op, new_results);
+    return success();
+  }
+};
+
+}  // anonymous namespace
+
+void WhileRegionOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<WhileRegionEliminatePassThrough>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // XdivyOp
 //===----------------------------------------------------------------------===//
 
@@ -4220,7 +4443,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
                        BlockAndValueMapping &valueMapping) const final {
     // Allow inlining in regions attached to region based control flow
     // operations only if the src region is a single block region
-    return isa<IfRegionOp>(dest->getParentOp()) && llvm::hasSingleElement(*src);
+    return isa<IfRegionOp, WhileRegionOp>(dest->getParentOp()) &&
+           llvm::hasSingleElement(*src);
   }
 
   // Defines the legality of inlining TF operations.
@@ -4258,6 +4482,10 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.cc.inc"
 
+std::vector<TensorFlowDialect::AdditionalOpFunction>
+    *TensorFlowDialect::additional_operation_hooks_ =
+        new std::vector<TensorFlowDialect::AdditionalOpFunction>();
+
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context) {
   addOperations<
@@ -4275,6 +4503,10 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   // Support unknown operations because not all TensorFlow operations are
   // registered.
   allowUnknownOperations();
+
+  for (const auto &hook : *TensorFlowDialect::additional_operation_hooks_) {
+    hook(*this);
+  }
 }
 
 namespace {

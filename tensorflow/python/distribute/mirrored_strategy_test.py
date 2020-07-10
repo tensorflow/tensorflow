@@ -30,8 +30,10 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
@@ -44,6 +46,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -230,6 +233,47 @@ class MirroredTwoDeviceDistributionTest(
   def testTrainableVariables(self, distribution):
     self._test_trainable_variable(distribution)
 
+  def test_prefetch_to_device_dataset(self, distribution):
+    input_options = distribute_lib.InputOptions(
+        experimental_prefetch_to_device=True)
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.batch(distribution.num_replicas_in_sync)
+    dataset = distribution.experimental_distribute_dataset(
+        dataset, options=input_options)
+    if context.executing_eagerly():
+      item = next(iter(dataset))
+    else:
+      if isinstance(dataset, input_lib.DistributedDatasetV1):
+        item = dataset.make_initializable_iterator().get_next()
+      else:
+        self.skipTest("unsupported test combination")
+    device_types = [
+        tf_device.DeviceSpec.from_string(tensor.device).device_type for
+        tensor in item.values]
+    expected_device_types = [
+        tf_device.DeviceSpec.from_string(device).device_type for
+        device in distribution.extended.worker_devices]
+    self.assertAllEqual(device_types, expected_device_types)
+
+  def test_prefetch_to_host_dataset(self, distribution):
+    input_options = distribute_lib.InputOptions(
+        experimental_prefetch_to_device=False)
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.batch(distribution.num_replicas_in_sync)
+    dataset = distribution.experimental_distribute_dataset(
+        dataset, options=input_options)
+    if context.executing_eagerly():
+      item = next(iter(dataset))
+    else:
+      if isinstance(dataset, input_lib.DistributedDatasetV1):
+        item = dataset.make_initializable_iterator().get_next()
+      else:
+        self.skipTest("unsupported test combination")
+    device_types = {
+        tf_device.DeviceSpec.from_string(tensor.device).device_type for
+        tensor in item.values}
+    self.assertAllEqual(list(device_types), ["CPU"])
+
 
 def one_device_combinations():
   return combinations.combine(
@@ -394,7 +438,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       return control_flow_ops.while_loop_v2(lambda i: i < 2, body_fn, [0])
 
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           RuntimeError, "`merge_call` called while defining a new graph."):
         distribution.extended.call_for_each_replica(model_fn)
 
@@ -413,7 +457,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       return model_fn_nested()
 
     with distribution.scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           RuntimeError, "`merge_call` called while defining a new graph."):
         distribution.extended.call_for_each_replica(model_fn)
 
@@ -662,7 +706,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign(5.0)
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
           "with the given reduce op ReduceOp.SUM."):
         self.evaluate(distribution.experimental_local_results(

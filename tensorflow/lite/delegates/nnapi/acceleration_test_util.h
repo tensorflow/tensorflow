@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tflite {
 
-// NNAPI specific configuration for the validation whitelist.
+// NNAPI specific configuration for the validation allowlist.
 class NnapiAccelerationTestParams {
  public:
   // Content in nnapi_acceleration_test_list.cc.

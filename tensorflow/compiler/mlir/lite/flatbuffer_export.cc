@@ -71,7 +71,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
+#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
@@ -101,7 +101,7 @@ using mlir::Value;
 using tensorflow::OpOrArgLocNameMapper;
 using tensorflow::OpOrArgNameMapper;
 using tensorflow::Status;
-using tflite::flex::IsWhitelistedFlexOp;
+using tflite::flex::IsAllowlistedFlexOp;
 using xla::StatusOr;
 
 template <typename T>
@@ -190,9 +190,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
 }
 
 static bool IsConst(Operation* op) {
-  return isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
-         isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op) ||
-         isa<tfl::SparseConstOp>(op) || isa<tfl::SparseQConstOp>(op);
+  return isa<mlir::ConstantOp, mlir::TF::ConstOp, tfl::ConstOp, tfl::QConstOp,
+             tfl::SparseConstOp, tfl::SparseQConstOp>(op);
 }
 
 template <typename T>
@@ -973,7 +972,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     // model is of an open op system.
     //
     //  The following algorithm is followed:
-    //   if flex is enabled and the op is whitelisted as flex
+    //   if flex is enabled and the op is allowlisted as flex
     //     we emit op as flex.
     //   if custom is enabled
     //    we emit the op as custom.
@@ -983,11 +982,11 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     }
 
     // Flex op case
-    // Eventually, the whitelist will go away and we will rely on some TF op
+    // Eventually, the allowlist will go away and we will rely on some TF op
     // trait (e.g. No side effect) to determine if it is a supported "Flex"
     // op or not.
     if (enabled_op_types_.contains(OpType::kSelectTf) &&
-        IsWhitelistedFlexOp(node_def->op())) {
+        IsAllowlistedFlexOp(node_def->op())) {
       // Construct ops as flex op encoding TensorFlow node definition
       // as custom options.
       // Flex ops are named with the kFlexOpNamePrefix prefix to the actual
@@ -1038,7 +1037,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       }
 
       // Insert failed op to `flex_ops` or `custom_ops`.
-      if (IsWhitelistedFlexOp(node_def->op())) {
+      if (IsAllowlistedFlexOp(node_def->op())) {
         failed_flex_ops_.insert(os.str());
       } else {
         failed_custom_ops_.insert(os.str());

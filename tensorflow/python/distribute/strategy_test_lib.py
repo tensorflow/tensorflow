@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import os
 import tempfile
 
@@ -38,11 +39,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.layers import core
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -50,6 +52,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_util
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 
 
 class _TestException(Exception):
@@ -111,15 +114,31 @@ def _events_from_logdir(test_case, logdir):
   return result
 
 
+def create_variable_like_keras_layer(name, shape, dtype):
+  """Utitlity for create variables that works like variable in keras layer."""
+  initializer = functools.partial(
+      init_ops_v2.GlorotUniform(), shape, dtype=dtype)
+  return variables.Variable(
+      initial_value=initializer, name=name, trainable=True)
+
+
+def is_optimizer_v2_instance(optimizer_obj):
+  # For a optimizer instance, the v2 implementation has var_list as a required
+  # argument.
+  arg_spec = tf_inspect.getfullargspec(optimizer_obj.minimize)
+  return "var_list" in arg_spec.args[:-len(arg_spec.defaults)]
+
+
 class DistributionTestBase(test.TestCase):
   """Some tests that should work with any DistributionStrategy."""
 
   def _test_minimize_loss_eager(self, d):
     with d.scope():
-      l = core.Dense(1, use_bias=False)
-
+      kernel = create_variable_like_keras_layer(
+          name="kernel", shape=(1, 1), dtype=dtypes.float32)
       def loss(x):
-        y = array_ops.reshape(l(x), []) - array_ops.identity(1.)
+        y = array_ops.reshape(
+            gen_math_ops.mat_mul(x, kernel), []) - array_ops.identity(1.)
         return y * y
       # TODO(isaprykin): Extract implicit_grad+get_filtered_grad_fn into a
       # common `implicit_grad` function and put it in DistributionStrategy.
@@ -173,10 +192,12 @@ class DistributionTestBase(test.TestCase):
          ops.Graph().as_default(), \
          self.cached_session(config=config) as sess, \
          d.scope():
-      l = core.Dense(1, use_bias=False)
+      kernel = create_variable_like_keras_layer(
+          name="kernel", shape=(1, 1), dtype=dtypes.float32)
 
       def loss(x):
-        y = array_ops.reshape(l(x), []) - array_ops.identity(1.)
+        y = array_ops.reshape(
+            gen_math_ops.mat_mul(x, kernel), []) - array_ops.identity(1.)
         return y * y
 
       grad_fn = backprop.implicit_grad(loss)

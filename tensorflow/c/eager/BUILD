@@ -158,9 +158,13 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
+        ":abstract_context",
+        ":abstract_operation",
+        ":abstract_tensor_handle",
         ":c_api",
         ":c_api_experimental",
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:types",
@@ -173,7 +177,9 @@ cc_library(
     visibility = [
         "//tensorflow:internal",
     ],
-    deps = [],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 cc_library(
@@ -244,7 +250,6 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/c:c_api",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
     ],
@@ -477,6 +482,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:function_optimization_registry",
+        "//tensorflow/core/common_runtime:optimization_registry",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "@com_google_absl//absl/strings",
@@ -542,6 +548,9 @@ tf_cuda_library(
             ":abstract_operation",
             ":abstract_context",
             ":abstract_tensor_handle",
+            ":immediate_execution_tensor_handle",
+            ":immediate_execution_context",
+            "//tensorflow/core/lib/llvm_rtti",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
             "//tensorflow/core:core_cpu",
@@ -560,6 +569,7 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "@com_google_absl//absl/types:variant",
+            "//tensorflow/c:conversion_macros",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -733,6 +743,10 @@ filegroup(
         ],
         exclude = [
             "c_api_experimental.cc",
+            "c_api_unified_experimental.cc",
+            "c_api_unified_experimental_eager.cc",
+            "c_api_unified_experimental_graph.cc",
+            "c_api_unified_experimental_internal.h",
             "*test*",
             "*dlpack*",
         ],

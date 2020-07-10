@@ -72,14 +72,17 @@ class Thunk {
   // generated from, but Thunk never uses this argument other than to save it
   // to Thunk::hlo_instruction, so it can be null.
   explicit Thunk(Kind kind, const HloInstruction* hlo_instruction)
-      : kind_(kind), hlo_instruction_(hlo_instruction) {}
+      : kind_(kind),
+        hlo_instruction_(hlo_instruction),
+        name_(hlo_instruction_ ? hlo_instruction_->name() : "") {}
   virtual ~Thunk() {}
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
 
   Kind kind() const { return kind_; }
-  const HloInstruction* hlo_instruction() const { return hlo_instruction_; }
   string profile_annotation() const { return profile_annotation_; }
+
+  absl::string_view name() const { return name_; }
 
   // Constructs and caches the profile annotation string for this thunk and
   // any child thunks.
@@ -123,6 +126,8 @@ class Thunk {
   virtual Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
  protected:
+  const HloInstruction* hlo_instruction() const { return hlo_instruction_; }
+
   const HloModuleConfig& GetModuleConfig() const {
     return hlo_instruction()->GetModule()->config();
   }
@@ -142,6 +147,7 @@ class Thunk {
  private:
   Kind kind_;
   const HloInstruction* hlo_instruction_;
+  std::string name_;
   string profile_annotation_;
 };
 

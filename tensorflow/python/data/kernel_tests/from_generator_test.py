@@ -453,7 +453,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       for _ in range(10):
         yield [20]
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, r"Cannot convert value \[tf.int64\] to a TensorFlow DType"):
       dataset_ops.Dataset.from_generator(
           generator, output_types=[dtypes.int64])

@@ -58,7 +58,8 @@ class Tensor : public GPUObject {
 
   virtual ~Tensor() { Release(); }
 
-  GPUResourcesWithValue GetGPUResources(AccessType access_type) const override;
+  absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                               GPUResourcesWithValue* resources) const override;
 
   int Width() const { return shape_.w; }
   int Height() const { return shape_.h; }
@@ -175,14 +176,12 @@ absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
                           const BHWDC& shape,
                           const TensorDescriptor& descriptor, Tensor* result);
 
-absl::Status CreateSharedTensor(const CLContext& context,
-                                const CLDevice& device, cl_mem memory,
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result);
 
-absl::Status CreateSharedTensor(const CLContext& context,
-                                const CLDevice& device, cl_mem memory,
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWDC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result);

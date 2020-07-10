@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -556,6 +557,10 @@ const Model* BuildComplexMockModel() {
 }  // namespace
 
 const TfLiteRegistration* SimpleStatefulOp::getRegistration() {
+  return GetMutableRegistration();
+}
+
+TfLiteRegistration* SimpleStatefulOp::GetMutableRegistration() {
   static TfLiteRegistration r;
   r.init = Init;
   r.prepare = Prepare;
@@ -628,6 +633,10 @@ TfLiteStatus SimpleStatefulOp::Invoke(TfLiteContext* context,
 }
 
 const TfLiteRegistration* MockCustom::getRegistration() {
+  return GetMutableRegistration();
+}
+
+TfLiteRegistration* MockCustom::GetMutableRegistration() {
   static TfLiteRegistration r;
   r.init = Init;
   r.prepare = Prepare;
@@ -667,27 +676,13 @@ TfLiteStatus MockCustom::Invoke(TfLiteContext* context, TfLiteNode* node) {
 
 bool MockCustom::freed_ = false;
 
-const TfLiteRegistration* MockOpResolver::FindOp(BuiltinOperator op) const {
-  return nullptr;
-}
+AllOpsResolver GetOpResolver() {
+  AllOpsResolver op_resolver;
+  op_resolver.AddCustom("mock_custom", MockCustom::GetMutableRegistration());
+  op_resolver.AddCustom("simple_stateful_op",
+                        SimpleStatefulOp::GetMutableRegistration());
 
-const TfLiteRegistration* MockOpResolver::FindOp(const char* op) const {
-  if (strcmp(op, "mock_custom") == 0) {
-    return MockCustom::getRegistration();
-  } else if (strcmp(op, "simple_stateful_op") == 0) {
-    return SimpleStatefulOp::getRegistration();
-  } else {
-    return nullptr;
-  }
-}
-
-MicroOpResolver::BuiltinParseFunction MockOpResolver::GetOpDataParser(
-    tflite::BuiltinOperator) const {
-  // TODO(b/149408647): Figure out an alternative so that we do not have any
-  // references to ParseOpData in the micro code and the signature for
-  // MicroOpResolver::BuiltinParseFunction can be changed to be different from
-  // ParseOpData.
-  return ParseOpData;
+  return op_resolver;
 }
 
 const Model* GetSimpleMockModel() {

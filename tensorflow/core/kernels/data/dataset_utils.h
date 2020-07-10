@@ -35,7 +35,7 @@ Status CreateHandle(OpKernelContext* ctx, T* resource,
   TF_RETURN_IF_ERROR(mgr->Create<T>(container_name, unique_name, resource));
 
   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
-                               MakeTypeIndex<T>());
+                               TypeIndex::Make<T>());
   return Status::OK();
 }
 

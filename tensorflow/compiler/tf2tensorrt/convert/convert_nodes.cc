@@ -635,6 +635,8 @@ Status VerifyShapesMatch(absl::Span<const TRT_TensorOrWeights> inputs,
           "Received inputs with inconsistent rank, at ", node_name);
     }
     for (size_t j = 0; j < dims_0.nbDims; ++j) {
+      // Dynamic dimensions will be verified at runtime.
+      if (dim_i.d[j] == -1 || dims_0.d[j] == -1) continue;
       if (dim_i.d[j] != dims_0.d[j] && j != masked_dim) {
         return errors::InvalidArgument(
             "Received inputs with inconsistent shape, at ", node_name);
@@ -1427,6 +1429,18 @@ Status Converter::BuildCudaEngine(
     TF_RETURN_IF_ERROR(profiles->ConfigureBuilder(
         trt_builder_.get(), builder_config.get(), network()));
   }
+
+  string precision_mode_str;
+  TF_RETURN_IF_ERROR(
+      TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
+  string trt_network_name = StrCat(
+      "TF:", TF_VERSION_STRING, ", ", "TRT:", GetLoadedTensorRTVersion(), "-",
+      "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
+      ", ", "Max-Batch-Size:", max_batch_size, ", ",
+      "Max-Workspace-Size:", max_workspace_size_bytes);
+  VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
+  network()->setName(trt_network_name.c_str());
+
   VLOG(1) << "Building TensorRT engine";
   engine->reset(
       trt_builder_->buildEngineWithConfig(*network(), *builder_config));
@@ -1446,19 +1460,6 @@ Status Converter::BuildCudaEngine(
       trt_builder_->setInt8Calibrator(nullptr);
     }
   }
-
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  string precision_mode_str;
-  TF_RETURN_IF_ERROR(
-      TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
-  string trt_network_name = StrCat(
-      "TF:", TF_VERSION_STRING, ", ", "TRT:", GetLoadedTensorRTVersion(), "-",
-      "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
-      ", ", "Max-Batch-Size:", max_batch_size, ", ",
-      "Max-Workspace-Size:", max_workspace_size_bytes);
-  VLOG(1) << "Setting TensorRT network name to " << trt_network_name;
-  network()->setName(trt_network_name.c_str());
-#endif  // #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 
   VLOG(1) << "Building TensorRT engine";
   engine->reset(trt_builder_->buildCudaEngine(*network()));
@@ -4524,29 +4525,52 @@ Status ConvertPack(OpConverterParams* params) {
         node_def.name());
   }
 
-  // Validate inputs. Values must be tensors for now.
-  std::vector<std::pair<string, bool>> inputs_is_weight;
+  // In implicit batch mode we do not allow weight input. An input tensor with
+  // dims NCHW is represented with dims CHW during conversion time, and N is
+  // defined only during runtime. A weight is represented with dims NCHW. We
+  // cannot be sure that the runtime N will agree with the conversion time N,
+  // therefore we do not convert the pack op if it has both tensor and weight
+  // inputs. This restriction does not apply in explicit batch mode, in that
+  // case the input tensors are also represented with full dims that include the
+  // batch size.
+  TrtInputArg expected_arg =
+      params->use_implicit_batch ? TrtInputArg::kTensor : TrtInputArg::kBoth;
+
+  std::vector<std::pair<string, TrtInputArg>> inputs_is_weight;
   for (int i = 0; i < num_inputs; ++i) {
-    inputs_is_weight.push_back({StrCat("values_", i), false});
+    inputs_is_weight.push_back({StrCat("values_", i), expected_arg});
   }
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, inputs_is_weight));
 
-  // TODO(hinsu): Enable INT32 with TensorRT version 5.1.3 after testing.
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF,
+                                   DataType::DT_INT32};
+#else
+  std::set<DataType> allowed_types{DataType::DT_FLOAT, DataType::DT_HALF};
+#endif
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, allowed_types));
   if (num_inputs > 1) {
     // Verify that inputs are compatible for concatenation after the expansion.
     TF_RETURN_IF_ERROR(
         VerifyShapesMatch(inputs, /*masked_dim=*/-1, node_def.name()));
   }
 
+  // Find the dimension of the inputs. In general inputs can have dynamic shape,
+  // in that case we have to use DynamicExpandDims to calculate the expanded
+  // dimensions. To avoid that, we try to find a weight input which is
+  // guaranteed to have known static shape.
+  int idx = 0;
+  for (int i = 1; i < inputs.size(); i++) {
+    if (HasStaticShape(inputs.at(i).GetTrtDims())) {
+      idx = i;
+    }
+  }
+  const nvinfer1::Dims dims = inputs.at(idx).GetTrtDims();
   // Convert axis from the TensorFlow format to TensorRT format.
-  const nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
   const int64 tf_axis = attrs.get<int64>("axis");
   int trt_axis;
   TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims + 1, node_def.name(),
-                                 /*use_implicit_batch=*/true, &trt_axis));
+                                 params->use_implicit_batch, &trt_axis));
 
   // Compute expanded dimensions and then reshape input tensors.
   std::vector<int> tensor_dims(dims.d, dims.d + dims.nbDims);
@@ -4554,10 +4578,18 @@ Status ConvertPack(OpConverterParams* params) {
   nvinfer1::Dims expanded_dims;
   TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(tensor_dims, &expanded_dims));
   std::vector<nvinfer1::ITensor*> expanded_tensors;
-  for (const TRT_TensorOrWeights& tensor : inputs) {
+  for (const TRT_TensorOrWeights& input : inputs) {
     nvinfer1::ITensor* expanded_tensor = nullptr;
-    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        tensor, expanded_dims, params->validation_only, &expanded_tensor));
+    if (input.is_tensor() && !params->use_implicit_batch &&
+        !HasStaticShape(dims)) {
+      if (!params->validation_only) {
+        TF_RETURN_IF_ERROR(params->converter->DynamicExpandDims(
+            input.tensor(), dims, trt_axis, params, &expanded_tensor));
+      }
+    } else {
+      TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+          input, expanded_dims, params->validation_only, &expanded_tensor));
+    }
     if (!params->validation_only) {
       expanded_tensors.push_back(expanded_tensor);
     }

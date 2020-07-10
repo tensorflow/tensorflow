@@ -38,7 +38,6 @@ namespace tensorflow {
 // TensorHandles & Operations.
 class ImmediateExecutionContext : public AbstractContext {
  public:
-  static constexpr AbstractContextKind kKind = kImmediateExecution;
   // Optimized scalar creation functions
   virtual AbstractTensorInterface* CreateInt64Scalar(int64 value) = 0;
   virtual AbstractTensorInterface* CreateUint64Scalar(uint64 value) = 0;
@@ -103,8 +102,14 @@ class ImmediateExecutionContext : public AbstractContext {
   // already exists.
   virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
 
+  // For LLVM style RTTI.
+  static bool classof(const AbstractContext* ptr) {
+    return ptr->getKind() == kEager || ptr->getKind() == kTfrt;
+  }
+
  protected:
-  ImmediateExecutionContext() : AbstractContext(kKind) {}
+  explicit ImmediateExecutionContext(AbstractContextKind kind)
+      : AbstractContext(kind) {}
   ~ImmediateExecutionContext() override {}
 };
 

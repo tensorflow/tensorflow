@@ -114,6 +114,7 @@ void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
                    bool always_collect_stats) {
   opts->rendezvous = ctx->rendezvous();
   opts->cancellation_manager = ctx->cancellation_manager();
+  opts->collective_executor = ctx->collective_executor();
   if (always_collect_stats) {
     opts->stats_collector = ctx->stats_collector();
   }

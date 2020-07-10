@@ -840,8 +840,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         self._handle_activity_regularization(inputs, outputs)
       self._set_mask_metadata(inputs, outputs, input_masks,
                               build_graph=False)
+      outputs = nest.map_structure(
+          keras_tensor.keras_tensor_from_tensor, outputs)
 
-    outputs = nest.map_structure(keras_tensor.keras_tensor_from_tensor, outputs)
     if hasattr(self, '_set_inputs') and not self.inputs:
       # TODO(kaftan): figure out if we ned to do this at all
       # Subclassed network: explicitly set metadata normally set by
@@ -1399,9 +1400,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     >>> outputs = tf.keras.layers.Dense(1)(x)
     >>> model = tf.keras.Model(inputs, outputs)
     >>> # Activity regularization.
+    >>> len(model.losses)
+    0
     >>> model.add_loss(tf.abs(tf.reduce_mean(x)))
-    >>> model.losses
-    [<tf.Tensor 'Abs:0' shape=() dtype=float32>]
+    >>> len(model.losses)
+    1
 
     >>> inputs = tf.keras.Input(shape=(10,))
     >>> d = tf.keras.layers.Dense(10, kernel_initializer='ones')
@@ -1714,8 +1717,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       aggregation = None if from_metric_obj else 'mean'
       self._graph_network_add_metric(value, aggregation, name)
 
-  @deprecation.deprecated_args(None, '`inputs` is now automatically inferred',
-                               'inputs')
   @doc_controls.do_not_doc_inheritable
   def add_update(self, updates, inputs=None):
     """Add update op(s), potentially dependent on layer inputs.
@@ -1738,6 +1739,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         on this Layer, when executing in Eager mode.
       inputs: Deprecated, will be automatically inferred.
     """
+    if inputs is not None:
+      tf_logging.warning(
+          '`add_update` `inputs` kwarg has been deprecated. You no longer need '
+          'to pass a value to `inputs` as it is being automatically inferred.')
     call_context = base_layer_utils.call_context()
     # No need to run updates during Functional API construction.
     if call_context.in_keras_graph:
@@ -2891,9 +2896,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._expects_training_arg = ('training' in call_fn_args or
                                   self._call_accepts_kwargs)
     # The default training arg will be any (non-None) default specified in the
-    # method signature, or `False` if no non-None default is specified.
+    # method signature, or None if no value is specified.
     self._default_training_arg = self._call_fn_arg_defaults.get(
-        'training') or False
+        'training')
     self._expects_mask_arg = ('mask' in call_fn_args or
                               self._call_accepts_kwargs)
 
@@ -3092,6 +3097,9 @@ class TensorFlowOpLayer(Layer):
     # Layer uses original op unless it is called on new inputs.
     # This means `built` is not set in `__call__`.
     self.built = True
+
+    # Do not individually trace TensorflowOpLayers in the SavedModel.
+    self._must_restore_from_config = True
 
   def call(self, inputs):
     if context.executing_eagerly():
