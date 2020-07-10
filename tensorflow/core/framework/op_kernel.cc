@@ -1416,7 +1416,7 @@ Status FindKernelDef(
     std::string device_str = DeviceTypeString(device_type);
     Status s = errors::NotFound(
         "No registered '", node_op, "' OpKernel for ",
-        DeviceTypeString(device_type), " devices compatible with node ",
+        device_str, " devices compatible with node ",
         FormatNodeDefForError(node_name, has_experimental_debug_info,
                               experimental_debug_info));
     if (was_attr_mismatch) {
