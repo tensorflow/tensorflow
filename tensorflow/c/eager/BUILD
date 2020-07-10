@@ -177,7 +177,9 @@ cc_library(
     visibility = [
         "//tensorflow:internal",
     ],
-    deps = [],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 cc_library(
