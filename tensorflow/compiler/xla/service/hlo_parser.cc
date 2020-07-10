@@ -649,7 +649,7 @@ bool HloParserImpl::ParseComputations(HloModule* module) {
     }
   } while (lexer_.GetKind() != TokKind::kEof);
 
-  for (int i = 0, iter_limit = computations_.size(); i < iter_limit; i++) {
+  for (int i = 0, end = computations_.size(); i < end; i++) {
     // If entry_computation is not nullptr, it means the computation it pointed
     // to is marked with "ENTRY"; otherwise, no computation is marked with
     // "ENTRY", and we use the last computation as the entry computation. We
@@ -1063,7 +1063,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         return false;
       }
       std::vector<std::pair<int64, int64>> pairs(source_targets->size());
-      for (int i = 0, iter_limit = pairs.size(); i < iter_limit; i++) {
+      for (int i = 0, end = pairs.size(); i < end; i++) {
         if ((*source_targets)[i].size() != 2) {
           return TokenError(
               "expects 'source_target_pairs=' to be a list of pairs");
@@ -1778,7 +1778,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                               " operand layout constraints, ",
                               operand_layout_constraints->size(), " given"));
         }
-        for (int64 i = 0, iter_limit = operands.size(); i < iter_limit; ++i) {
+        for (int64 i = 0, end = operands.size(); i < end; ++i) {
           const Shape& operand_shape_with_layout =
               (*operand_layout_constraints)[i];
           if (!LayoutUtil::HasLayout(operand_shape_with_layout)) {
@@ -2460,7 +2460,7 @@ bool HloParserImpl::ParseTupleLiteral(Literal* literal, const Shape& shape) {
     // empty
   } else {
     // literal, (',' literal)*
-    for (int i = 0, iter_limit = elements.size(); i < iter_limit; i++) {
+    for (int i = 0, end = elements.size(); i < end; i++) {
       if (i > 0) {
         ParseToken(TokKind::kComma, "expects ',' to separate tuple elements");
       }
@@ -3386,7 +3386,7 @@ bool HloParserImpl::ParseWindow(Window* window, bool expect_outer_curlies) {
     return Error(loc, "expects 'pad=' has the same size as 'size='");
   }
 
-  for (int i = 0, iter_limit = size.size(); i < iter_limit; i++) {
+  for (int i = 0, end = size.size(); i < end; i++) {
     window->add_dimensions()->set_size(size[i]);
     if (!pad.empty()) {
       window->mutable_dimensions(i)->set_padding_low(pad[i][0]);
@@ -3872,7 +3872,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   }
 
   std::vector<Tile> vec_tiles(tiles.size());
-  for (int i = 0, iter_limit = tiles.size(); i < iter_limit; i++) {
+  for (int i = 0, end = tiles.size(); i < end; i++) {
     vec_tiles[i] = Tile(tiles[i]);
   }
   *layout = LayoutUtil::MakeLayout(minor_to_major, vec_tiles,
@@ -3918,7 +3918,7 @@ bool HloParserImpl::ParseShape(Shape* result) {
     return false;
   }
   result->set_element_type(primitive_type);
-  for (int i = 0, iter_limit = dimension_sizes.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = dimension_sizes.size(); i < end; ++i) {
     result->add_dimensions(dimension_sizes[i]);
     result->set_dynamic_dimension(i, dynamic_dimensions[i]);
   }

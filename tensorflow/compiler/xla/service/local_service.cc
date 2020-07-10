@@ -142,7 +142,7 @@ LocalService::CompileExecutables(
         program_shape.parameters_size(), argument_layouts.size());
   }
 
-  for (int i = 0, iter_limit =  argument_layouts.size(); i < iter_limit; ++i) {
+  for (int i = 0, end =  argument_layouts.size(); i < end; ++i) {
     const Shape& argument_shape = *argument_layouts[i];
     TF_RETURN_IF_ERROR(
         ShapeUtil::ValidateShapeWithOptionalLayout(argument_shape));

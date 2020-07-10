@@ -2086,7 +2086,7 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
         })) {
       continue;
     }
-    for (int64 i = 0, iter_limit = node.caller_callsites().size() - 1; i < iter_limit; ++i) {
+    for (int64 i = 0, end = node.caller_callsites().size() - 1; i < end; ++i) {
       HloInstruction* caller = node.caller_callsites()[i].instruction();
       if (caller->opcode() == HloOpcode::kConditional) {
         for (int64 k = 0; k < caller->branch_count(); ++k) {

@@ -184,7 +184,7 @@ Status FusedIrEmitter::HandleTuple(const HloInstruction* tuple) {
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
     llvm::Value* ret = llvm::UndefValue::get(
         llvm::StructType::get(b_->getContext(), operand_elemental_ir_types));
-    for (size_t i = 0, iter_limit = ShapeUtil::TupleElementCount(tuple->shape()); i < iter_limit; ++i) {
+    for (size_t i = 0, end = ShapeUtil::TupleElementCount(tuple->shape()); i < end; ++i) {
       TF_ASSIGN_OR_RETURN(llvm::Value * val_i,
                           indexed_generators_[operands[i]](index));
       ret = b_->CreateInsertValue(ret, val_i, i);

@@ -202,7 +202,7 @@ static Status CheckReplicaGroups(HloInstruction* hlo) {
       }
     }
   }
-  for (int64 i = 0, iter_limit = replicas_seen.size(); i < iter_limit; ++i) {
+  for (int64 i = 0, end = replicas_seen.size(); i < end; ++i) {
     if (!replicas_seen.count(i)) {
       return InternalError(
           "Replica %d is not named in instruction's replica-groups: %s", i,
@@ -1598,7 +1598,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
       }
       root_owned = true;
     }
-    for (int i = 0, iter_limit = fused_parameters.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = fused_parameters.size(); i < end; ++i) {
       if (fused_parameters[i] == instruction) {
         if (parameter_owned[i]) {
           return InternalError("Parameter appears more than once in %s.",
@@ -1613,7 +1613,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
                          fusion->ToString());
   }
   // Make sure all the parameter_owned entries are set
-  for (int i = 0, iter_limit = parameter_owned.size(); i < iter_limit; i++) {
+  for (int i = 0, end = parameter_owned.size(); i < end; i++) {
     if (!parameter_owned[i]) {
       return InternalError("Parameter %d not found in computation of %s.", i,
                            fusion->ToString());
@@ -1668,7 +1668,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
     parameter_numbers[param_no] = true;
   }
   // Make sure all the parameter_numbers entries were seen.
-  for (int i = 0, iter_limit = parameter_numbers.size(); i < ; i++) {
+  for (int i = 0, end = parameter_numbers.size(); i < ; i++) {
     if (!parameter_numbers[i]) {
       return InternalError("Did not see parameter number %d in %s.", i,
                            fusion->ToString());
