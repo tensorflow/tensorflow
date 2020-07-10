@@ -416,7 +416,7 @@ static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
   for (const auto &value : perm1.getIntValues())
     perm1_values.push_back(value.getSExtValue());
 
-  for (int i = 0, iter_limit = perm0_values.size(); i < iter_limit; ++i) {
+  for (int i = 0, end = perm0_values.size(); i < end; ++i) {
     if (perm0_values[perm1_values[i]] != i) return false;
   }
 

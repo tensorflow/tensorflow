@@ -2640,7 +2640,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     SmallVector<Value, 4> slices;
     slices.reserve(op.getNumResults());
 
-    for (int i = 0, iter_limit = op.getNumResults(); i < iter_limit; ++i) {
+    for (int i = 0, end = op.getNumResults(); i < end; ++i) {
       end_indices[dim_index] = begin_indices[dim_index] + split_sizes[i];
       slices.push_back(rewriter.create<mhlo::SliceOp>(
           op.getLoc(), op.value(), GetI64ElementsAttr(begin_indices, &rewriter),
@@ -2856,7 +2856,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     }
 
     // For non-slice dims, get the full slice of that dimension.
-    for (int d = slicing_dim_size, iter_limit = input_shape.size(); d < iter_limit; ++d) {
+    for (int d = slicing_dim_size, end = input_shape.size(); d < end; ++d) {
       slice_sizes.push_back(input_shape[d]);
       slice_begin_indices.push_back(zero);
     }
@@ -4340,7 +4340,7 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
     SmallVector<Value, 4> results;
     results.reserve(op.getNumResults());
 
-    for (int i = 0, iter_limit = op.getNumResults(); i < iter_limit; ++i) {
+    for (int i = 0, end = op.getNumResults(); i < end; ++i) {
       begin_indices[axis] = i;
       end_indices[axis] = i + 1;
 

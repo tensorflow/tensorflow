@@ -377,7 +377,7 @@ mlir::LogicalResult HandleTileShardedOutputs(
 
     llvm::SmallVector<mlir::Value, 4> new_outputs;
     new_outputs.reserve(num_splits);
-    for (int i = 0, iter_limit = outputs_to_merge.size(); i < iter_limit; i = i + num_splits) {
+    for (int i = 0, end = outputs_to_merge.size(); i < end; i = i + num_splits) {
       mlir::TF::ConcatOp concat_op;
       auto result =
           CreateConcatOp(concat_dimension, location,

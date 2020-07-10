@@ -56,7 +56,7 @@ Status ParseInputArrayInfo(absl::string_view array_names,
 
   std::vector<string> node_shapes_str = absl::StrSplit(shapes, ':');
   std::vector<std::vector<int>> node_shapes;
-  for (int i = 0, iter_limit = node_shapes_str.size(); i < iter_limit; i++) {
+  for (int i = 0, end = node_shapes_str.size(); i < end; i++) {
     std::vector<int> dims;
     for (auto& dim_str : absl::StrSplit(node_shapes_str[i], ',')) {
       // Treats empty input shape as scalar
@@ -104,7 +104,7 @@ Status ParseInputArrayInfo(const std::vector<string>& node_names,
   }
 
   // StringMap doesn't support reserve else reserve input map size here.
-  for (int i = 0, iter_limit = node_names.size(); i < iter_limit; i++) {
+  for (int i = 0, end = node_names.size(); i < end; i++) {
     auto& name = node_names[i];
     if (name.empty()) continue;
 

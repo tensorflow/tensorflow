@@ -82,7 +82,7 @@ Status ConvertLocation(mlir::Location inst_loc,
     if (locations.size() <= 1)
       return errors::InvalidArgument("expected experimental debuf info.");
     // skip the first one, which is the name of the node_def.
-    for (int i = 0, iter_limit = locations.size() - 1; i < iter_limit; ++i) {
+    for (int i = 0, end = locations.size() - 1; i < end; ++i) {
       TF_RETURN_IF_ERROR(ConvertLocation(locations[i], debug_info));
     }
   }
