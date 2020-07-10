@@ -319,6 +319,8 @@ tf_kernel_library(
         "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/kernels/data:stats_utils",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
 )
 

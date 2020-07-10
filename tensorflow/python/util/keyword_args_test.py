@@ -38,12 +38,12 @@ class KeywordArgsTest(test.TestCase):
     self.assertEqual(3, func_with_decorator(a=1, b=2))
 
     # Providing non-keyword args should fail.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Must use keyword args to call func_with_decorator."):
       self.assertEqual(3, func_with_decorator(1, 2))
 
     # Partially providing keyword args should fail.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Must use keyword args to call func_with_decorator."):
       self.assertEqual(3, func_with_decorator(1, b=2))
 

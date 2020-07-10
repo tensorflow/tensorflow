@@ -278,14 +278,14 @@ def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
    let verifier = ?;
 }
 
-def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
+def TfExecutor_SwitchNOp : TfExecutor_Op<"_SwitchN",
     [ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
   let summary = [{
-    The "tf_executor.SwitchN" operation takes two inputs, `data` and `index` and
-    an integer attribute `num_outs` indicating the number of outputs. The `data`
-    input is copied to output indicated by the `index` input. The other outputs
-    are marked as dead. If one of the inputs or a control token is dead, then
-    all of the outputs are marked as dead as well.
+    The "tf_executor._SwitchN" operation takes two inputs, `data` and `index`
+    and an integer attribute `num_outs` indicating the number of outputs. The
+    `data` input is copied to output indicated by the `index` input. The other
+    outputs are marked as dead. If one of the inputs or a control token is
+    dead, then all of the outputs are marked as dead as well.
   }];
 
   let description = [{

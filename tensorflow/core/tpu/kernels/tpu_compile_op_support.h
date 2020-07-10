@@ -41,6 +41,19 @@ namespace tpu {
 
 namespace se = ::stream_executor;
 
+// Persistent cache for compiled TPU program and the related compiler metadata
+// intended for TPU inference.
+// TODO(henrytan): there is an opportunity to consolidate the interface with the
+// `TpuCompilationCacheInterface` once `TpuPersistentCompilationCache` is
+// converted into a ref count based class.
+class TpuPersistentCompilationCacheInterface {
+ public:
+  virtual ~TpuPersistentCompilationCacheInterface() = default;
+
+  // Returns the location where cache entries are stored.
+  virtual std::string cache_location() const = 0;
+};
+
 // Describes the position of an argument or return value after the computation
 // has been partitioned into cores.
 struct ShardingAndIndex {

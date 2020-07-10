@@ -687,7 +687,18 @@ cc_library(
 
 gentbl(
     name = "omp_gen",
-    tbl_outs = [("--gen-directive-decls", "include/llvm/Frontend/OpenMP/OMP.h.inc")],
+    tbl_outs = [("--gen-directive-decl", "include/llvm/Frontend/OpenMP/OMP.h.inc")],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/Frontend/OpenMP/OMP.td",
+    td_srcs = glob([
+        "include/llvm/Frontend/OpenMP/*.td",
+        "include/llvm/Frontend/Directive/*.td",
+    ]),
+)
+
+gentbl(
+    name = "omp_gen_impl",
+    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/Frontend/OpenMP/OMP.td",
     td_srcs = glob([
@@ -2092,6 +2103,7 @@ cc_library(
         ":TransformUtils",
         ":config",
         ":omp_gen",
+        ":omp_gen_impl",
     ],
 )
 

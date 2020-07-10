@@ -434,6 +434,12 @@ void SampleSnapshots(
                b.aggregation_stats().free_memory_bytes();
       });
   snapshots->erase(snapshots->begin() + max_num_snapshots, snapshots->end());
+  // Sort the memory_profile_snapshots by time_offset_ps (ascending) after
+  // sampling.
+  absl::c_sort(*snapshots, [](const MemoryProfileSnapshot& a,
+                              const MemoryProfileSnapshot& b) {
+    return a.time_offset_ps() < b.time_offset_ps();
+  });
 }
 
 // Post-process the memory profile to correctly update proto fields, and break

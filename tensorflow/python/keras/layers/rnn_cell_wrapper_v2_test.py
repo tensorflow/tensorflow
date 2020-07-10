@@ -222,11 +222,11 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
     wrapper_cls = rnn_cell_wrapper_v2.DropoutWrapper
     cell = layers.LSTMCell(10)
 
-    with self.assertRaisesRegexp(ValueError, "does not work with "):
+    with self.assertRaisesRegex(ValueError, "does not work with "):
       wrapper_cls(cell)
 
     cell = layers.LSTMCellV2(10)
-    with self.assertRaisesRegexp(ValueError, "does not work with "):
+    with self.assertRaisesRegex(ValueError, "does not work with "):
       wrapper_cls(cell)
 
 

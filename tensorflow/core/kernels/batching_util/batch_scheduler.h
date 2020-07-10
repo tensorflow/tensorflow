@@ -27,6 +27,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_SCHEDULER_H_
 
 #include <stddef.h>
+
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace serving {
@@ -241,6 +243,11 @@ int Batch<TaskType>::num_tasks() const {
 template <typename TaskType>
 bool Batch<TaskType>::empty() const {
   {
+    // tracer is added to zoom in about this method.
+    // TODO(b/160249203): Remove tracer after evaluating a change to reduce
+    // lock contention and cpu usage (which is observed in profiler and
+    // very data-driven).
+    tensorflow::profiler::TraceMe tracer("BatchTask::empty");
     mutex_lock l(mu_);
     return tasks_.empty();
   }

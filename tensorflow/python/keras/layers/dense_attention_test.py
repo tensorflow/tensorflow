@@ -401,39 +401,37 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
   def test_inputs_not_list(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Attention layer must be called on a list of inputs'):
       attention_layer(q)
 
   def test_inputs_too_short(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Attention layer accepts inputs list of length 2 or 3'):
+    with self.assertRaisesRegex(
+        ValueError, 'Attention layer accepts inputs list of length 2 or 3'):
       attention_layer([q])
 
   def test_inputs_too_long(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Attention layer accepts inputs list of length 2 or 3'):
+    with self.assertRaisesRegex(
+        ValueError, 'Attention layer accepts inputs list of length 2 or 3'):
       attention_layer([q, q, q, q])
 
   def test_mask_not_list(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
     mask = np.array([[True]], dtype=np.bool_)
-    with self.assertRaisesRegexp(
-        ValueError, 'Attention layer mask must be a list'):
+    with self.assertRaisesRegex(ValueError,
+                                'Attention layer mask must be a list'):
       attention_layer([q, q], mask=mask)
 
   def test_mask_too_short(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
     mask = np.array([[True]], dtype=np.bool_)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Attention layer mask must be a list of length 2'):
       attention_layer([q, q], mask=[mask])
 
@@ -441,7 +439,7 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
     mask = np.array([[True]], dtype=np.bool_)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Attention layer mask must be a list of length 2'):
       attention_layer([q, q], mask=[mask, mask, mask])
 

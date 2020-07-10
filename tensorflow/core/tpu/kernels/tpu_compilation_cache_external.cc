@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_metrics.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
@@ -39,7 +39,7 @@ int64 get_uid() {
 }
 
 void PopulateEntry(const std::string& key, CompiledSubgraph* entry,
-                   TpuProgramGroup& tpu_program_group) {
+                   TpuProgramGroup tpu_program_group) {
   // Make the unique keys for each cached proto.
   for (int i = 0; i < tpu_program_group.program_count(); ++i) {
     entry->proto_key.push_back(ProtoKeyForComputation(key, i));
@@ -118,7 +118,7 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
   }
 
   // TODO(henrytan): handle sharding/unsharding.
-  PopulateEntry(key, main_entry, tpu_program_group);
+  PopulateEntry(key, main_entry, std::move(tpu_program_group));
 
   for (int64 i = 0; i < main_entry->proto_key.size(); ++i) {
     auto entry_inserted = entries_by_proto_key_.insert(

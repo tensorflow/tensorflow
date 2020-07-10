@@ -161,18 +161,8 @@ def full_like(a, fill_value, dtype=None, order='K', subok=True, shape=None):  # 
       array_ops.broadcast_to(fill_value.data, array_ops.shape(a)))
 
 
-# TODO(wangpeng): investigate whether we can make `copy` default to False.
-# pylint: disable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
-@np_utils.np_doc_only('array')
-def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
-  """Since Tensors are immutable, a copy is made only if val is placed on a
-
-  different device than the current one. Even if `copy` is False, a new Tensor
-  may need to be built to satisfy `dtype` and `ndim`. This is used only if `val`
-  is an ndarray or a Tensor.
-  """  # pylint:disable=g-docstring-missing-newline
-  if dtype:
-    dtype = np_utils.result_type(dtype)
+def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
+  """Main implementation of np.array()."""
   if isinstance(val, np_arrays.ndarray):
     result_t = val.data
   else:
@@ -208,6 +198,10 @@ def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-out
     result_t = math_ops.cast(result_t, dtype=dtype)
   elif dtype:
     result_t = math_ops.cast(result_t, dtype)
+
+  if ndmin == 0:
+    return np_arrays.tensor_to_ndarray(result_t)
+
   ndims = array_ops.rank(result_t)
 
   def true_fn():
@@ -219,6 +213,21 @@ def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-out
   result_t = np_utils.cond(
       np_utils.greater(ndmin, ndims), true_fn, lambda: result_t)
   return np_arrays.tensor_to_ndarray(result_t)
+
+
+# TODO(wangpeng): investigate whether we can make `copy` default to False.
+# pylint: disable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
+@np_utils.np_doc_only('array')
+def array(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=redefined-outer-name
+  """Since Tensors are immutable, a copy is made only if val is placed on a
+
+  different device than the current one. Even if `copy` is False, a new Tensor
+  may need to be built to satisfy `dtype` and `ndim`. This is used only if `val`
+  is an ndarray or a Tensor.
+  """  # pylint:disable=g-docstring-missing-newline
+  if dtype:
+    dtype = np_utils.result_type(dtype)
+  return _array_internal(val, dtype, copy, ndmin)
 
 
 # pylint: enable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-doc-return-or-yield,g-doc-args
@@ -360,7 +369,20 @@ def diagflat(v, k=0):
 
 def _promote_dtype(*arrays):
   dtype = np_utils.result_type(*arrays)
-  return [asarray(a, dtype=dtype) for a in arrays]
+  def _fast_asarray(a):
+    if isinstance(a, np_arrays.ndarray) and dtype == a.dtype:
+      return a
+    return _array_internal(a, dtype=dtype, copy=False)
+  return [_fast_asarray(a) for a in arrays]
+
+
+def _promote_dtype_binary(t1, t2):
+  dtype = np_utils._result_type_binary(t1, t2)  # pylint: disable=protected-access
+  def _fast_asarray(a):
+    if isinstance(a, np_arrays.ndarray) and dtype == a.dtype:
+      return a
+    return _array_internal(a, dtype=dtype, copy=False)
+  return _fast_asarray(t1), _fast_asarray(t2)
 
 
 @np_utils.np_doc('all')
@@ -457,11 +479,11 @@ def cumsum(a, axis=None, dtype=None):  # pylint: disable=missing-docstring
 
 
 @np_utils.np_doc('imag')
-def imag(a):
-  a = asarray(a)
-  # TODO(srbs): np.imag returns a scalar if a is a scalar, whereas we always
+def imag(val):
+  val = asarray(val)
+  # TODO(srbs): np.imag returns a scalar if `val` is a scalar, whereas we always
   # return an ndarray.
-  return np_utils.tensor_to_ndarray(math_ops.imag(a.data))
+  return np_utils.tensor_to_ndarray(math_ops.imag(val.data))
 
 
 _TO_INT_ = 0
@@ -859,16 +881,17 @@ setattr(np_arrays.ndarray, 'reshape', _reshape_method_wrapper)
 
 
 @np_utils.np_doc('pad')
-def pad(ary, pad_width, mode, constant_values=0):
+def pad(array, pad_width, mode, **kwargs):  # pylint: disable=redefined-outer-name
   """Only supports modes 'constant', 'reflect' and 'symmetric' currently."""
+  constant_values = kwargs.get('constant_values', 0)
   if not (mode == 'constant' or mode == 'reflect' or mode == 'symmetric'):
     raise ValueError('Unsupported padding mode: ' + mode)
   mode = mode.upper()
-  ary = asarray(ary)
+  array = asarray(array)
   pad_width = asarray(pad_width, dtype=dtypes.int32)
   return np_utils.tensor_to_ndarray(
       array_ops.pad(
-          tensor=ary.data,
+          tensor=array.data,
           paddings=pad_width.data,
           mode=mode,
           constant_values=constant_values))
@@ -944,8 +967,8 @@ def ndim(a):
 
 
 @np_utils.np_doc('isscalar')
-def isscalar(a):
-  return ndim(a) == 0
+def isscalar(num):
+  return ndim(num) == 0
 
 
 def _boundaries_to_sizes(a, boundaries, axis):

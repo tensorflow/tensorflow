@@ -375,7 +375,7 @@ LogicalResult FindResourceArgUseInfo(
         info.data_type = assign.value().getType();
         continue;
       }
-      if (isa<TF::StackPushV2Op>(user) || isa<TF::StackPopV2Op>(user)) {
+      if (isa<TF::StackPushV2Op, TF::StackPopV2Op>(user)) {
         // Stacks will be handled by a separate pass.
         do_not_touch = true;
         break;
@@ -880,23 +880,34 @@ LogicalResult HandlePartitionedCallOpCallee(
     result->arg_data_type_and_updated_output_index[entry.getFirst()] = {
         entry.getSecond(), -1};
   }
-  llvm::SmallVector<Value, 4> new_retvals;
-  for (auto val : callee.front().getTerminator()->getOperands()) {
-    // Remove resource type outputs.
-    if (getElementTypeOrSelf(val.getType()).isa<TF::ResourceType>()) continue;
-    new_retvals.push_back(val);
+  llvm::SmallVector<int64_t, 4> retval_indices_to_preserve;
+  for (auto& val : callee.front().getTerminator()->getOpOperands()) {
+    // Store indices of results that are not resources.
+    if (!getElementTypeOrSelf(val.get().getType()).isa<TF::ResourceType>())
+      retval_indices_to_preserve.push_back(val.getOperandNumber());
   }
+  int64_t num_retvals = retval_indices_to_preserve.size();
+  llvm::SmallVector<Value, 4> new_retvals;
   // Lift resources.
   LiftArgRetResourcesForFunction(
       callee, remaining_resource_data_types, [&](int64_t index, Value value) {
         result->arg_data_type_and_updated_output_index[index].second =
-            new_retvals.size();
+            num_retvals++;
         new_retvals.push_back(value);
       });
+
   auto old_return = callee.front().getTerminator();
+  llvm::SmallVector<Value, 4> old_and_new_retvals;
+  old_and_new_retvals.reserve(retval_indices_to_preserve.size() +
+                              new_retvals.size());
+  for (int64_t retval_index : retval_indices_to_preserve)
+    old_and_new_retvals.push_back(old_return->getOperand(retval_index));
+
+  old_and_new_retvals.append(new_retvals.begin(), new_retvals.end());
   // Replace old return with the new ones with update values.
   OpBuilder builder(old_return);
-  auto new_return = builder.create<ReturnOp>(old_return->getLoc(), new_retvals);
+  auto new_return =
+      builder.create<ReturnOp>(old_return->getLoc(), old_and_new_retvals);
   old_return->erase();
   callee.setType(FunctionType::get(
       callee.getType().getInputs(),

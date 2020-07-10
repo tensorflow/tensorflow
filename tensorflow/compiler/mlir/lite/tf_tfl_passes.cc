@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
@@ -63,6 +64,9 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   standard_pipeline_options.form_clusters = pass_config.form_clusters;
   mlir::TF::CreateTFStandardPipeline(*pass_manager, standard_pipeline_options);
   pass_manager->addPass(mlir::TF::CreateDeviceIndexSelectorPass());
+
+  // Add canonicalize pass to remove no-op session initializer pass.
+  pass_manager->addPass(mlir::createCanonicalizerPass());
 
   if (pass_config.shape_inference) {
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
@@ -255,6 +259,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   // Canonicalize, CSE etc.
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::tf_saved_model::SessionInitializerOp>(
+      mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
 
   // Pass for stateful operands like LSTM.

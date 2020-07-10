@@ -364,6 +364,14 @@ void EraseNodesFromGraph(std::vector<int>&& nodes_to_delete, GraphDef* graph);
 void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
                          GraphDef* graph);
 
+// Erase all attributes without leading underscore. Returns the number of
+// attributes erased.
+int EraseRegularNodeAttributes(NodeDef* node);
+
+// Erase attribute "_xla_inferred_shapes" as well as all attributes starting in
+// "_output_".
+int EraseNodeOutputAttributes(NodeDef* node);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 

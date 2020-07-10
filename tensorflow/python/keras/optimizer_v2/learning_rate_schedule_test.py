@@ -30,8 +30,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
-# Import resource_variable_ops for the variables-to-tensor implicit conversion.
-from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -61,7 +59,7 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testStaircase(self, serialize):
     if context.executing_eagerly():
-      step = resource_variable_ops.ResourceVariable(0)
+      step = variables.Variable(0)
       self.evaluate(variables.global_variables_initializer())
       decayed_lr = learning_rate_schedule.ExponentialDecay(
           .1, 3, 0.96, staircase=True)
@@ -104,7 +102,7 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
   def testPiecewiseConstant(self, serialize):
-    x = resource_variable_ops.ResourceVariable(-999)
+    x = variables.Variable(-999)
     decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
         [100, 110, 120], [1.0, 0.1, 0.01, 0.001])
     decayed_lr = _maybe_serialized(decayed_lr, serialize)
@@ -145,8 +143,7 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testPiecewiseConstantEdgeCases(self, serialize):
     # Test casting boundaries from int32 to int64.
-    x_int64 = resource_variable_ops.ResourceVariable(
-        0, dtype=variables.dtypes.int64)
+    x_int64 = variables.Variable(0, dtype=variables.dtypes.int64)
     boundaries, values = [1, 2, 3], [0.4, 0.5, 0.6, 0.7]
     decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
         boundaries, values)
@@ -312,7 +309,7 @@ class InverseDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     initial_lr = 0.1
     k = 10
     decay_rate = 0.96
-    step = resource_variable_ops.ResourceVariable(0)
+    step = variables.Variable(0)
     decayed_lr = learning_rate_schedule.InverseTimeDecay(initial_lr, k,
                                                          decay_rate)
     decayed_lr = _maybe_serialized(decayed_lr, serialize)
@@ -327,7 +324,7 @@ class InverseDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     initial_lr = 0.1
     k = 10
     decay_rate = 0.96
-    step = resource_variable_ops.ResourceVariable(0)
+    step = variables.Variable(0)
     decayed_lr = learning_rate_schedule.InverseTimeDecay(
         initial_lr, k, decay_rate, staircase=True)
     decayed_lr = _maybe_serialized(decayed_lr, serialize)

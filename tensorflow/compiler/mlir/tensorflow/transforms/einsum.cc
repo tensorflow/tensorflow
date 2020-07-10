@@ -52,6 +52,8 @@ enum EinsumEquation {
   BroadcastMatMul,
   ReduceSum,
   TransposeMatMul,
+  BatchMatMulReducedDim,
+  TransposeReducedDim,
   UnsupportedEquation
 };
 
@@ -135,6 +137,14 @@ EinsumEquation parseEquation(const std::vector<EquationToken>& eqn) {
   // LBH,BKL->BKH
   if (is_equal(eqn, {A, B, C, COMMA, B, D, A, ARROW, B, D, C})) {
     return EinsumEquation::TransposeMatMul;
+  }
+  // BIN,BINJ->BIJ
+  if (is_equal(eqn, {A, B, C, COMMA, A, B, C, D, ARROW, A, B, D})) {
+    return EinsumEquation::BatchMatMulReducedDim;
+  }
+  // BIJ,BINJ->BIN
+  if (is_equal(eqn, {A, B, C, COMMA, A, B, D, C, ARROW, A, B, D})) {
+    return EinsumEquation::TransposeReducedDim;
   }
   return EinsumEquation::UnsupportedEquation;
 }
@@ -349,6 +359,53 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
     rewriter.replaceOp(op, {bmm_op.getResult()});
     return success();
   }
+  if (einsum_eqn == EinsumEquation::BatchMatMulReducedDim) {
+    // Case "BIN,BINJ->BIJ"
+    // Reshape LHS
+    auto lhs_element_type = lhs_type.getElementType();
+    const int lhs_dim0 = lhs_shape[0];
+    const int lhs_dim1 = lhs_shape[1];
+    const int lhs_dim2 = lhs_shape[2];
+    const int rhs_dim3 = rhs_shape[3];
+
+    auto reshaped_lhs = createReshapeOp(lhs, {lhs_dim0, lhs_dim1, 1, lhs_dim2},
+                                        lhs_element_type, loc, &rewriter);
+    std::vector<int64_t> bmm_shape = {lhs_dim0, lhs_dim1, 1, rhs_dim3};
+    auto bmm_type = RankedTensorType::get(bmm_shape, rhs_type.getElementType());
+    auto bmm_op = rewriter.create<TF::BatchMatMulV2Op>(
+        loc, ArrayRef<Type>{bmm_type}, reshaped_lhs, rhs,
+        rewriter.getBoolAttr(false), rewriter.getBoolAttr(false));
+
+    auto bmm_element_type = bmm_type.getElementType();
+    auto final_reshape = createReshapeOp(bmm_op, {lhs_dim0, lhs_dim1, rhs_dim3},
+                                         bmm_element_type, loc, &rewriter);
+    rewriter.replaceOp(op, {final_reshape.getResult()});
+  }
+  if (einsum_eqn == EinsumEquation::TransposeReducedDim) {
+    // Case "BIJ,BINJ->BIN"
+    // Reshape LHS
+    auto lhs_element_type = lhs_type.getElementType();
+    const int lhs_dim0 = lhs_shape[0];
+    const int lhs_dim1 = lhs_shape[1];
+    const int lhs_dim2 = lhs_shape[2];
+    const int rhs_dim2 = rhs_shape[2];
+
+    auto reshaped_lhs = createReshapeOp(lhs, {lhs_dim0, lhs_dim1, 1, lhs_dim2},
+                                        lhs_element_type, loc, &rewriter);
+    // Transpose RHS
+    rhs = createTransposeOp(rhs, loc, {0, 1, 3, 2}, &rewriter);
+    std::vector<int64_t> bmm_shape = {lhs_dim0, lhs_dim1, 1, rhs_dim2};
+    auto bmm_type = RankedTensorType::get(bmm_shape, rhs_type.getElementType());
+    auto bmm_op = rewriter.create<TF::BatchMatMulV2Op>(
+        loc, ArrayRef<Type>{bmm_type}, reshaped_lhs, rhs,
+        rewriter.getBoolAttr(false), rewriter.getBoolAttr(false));
+
+    auto bmm_element_type = bmm_type.getElementType();
+    auto final_reshape = createReshapeOp(bmm_op, {lhs_dim0, lhs_dim1, rhs_dim2},
+                                         bmm_element_type, loc, &rewriter);
+    rewriter.replaceOp(op, {final_reshape.getResult()});
+  }
+
   return failure();
 }
 

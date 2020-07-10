@@ -73,7 +73,8 @@ pkg_tar(
     srcs = [
         "//tensorflow/c:headers",
     ],
-    package_dir = "include/tensorflow/c",
+    package_dir = "include/",
+    strip_prefix = "/",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580

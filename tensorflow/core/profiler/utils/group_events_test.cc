@@ -30,7 +30,7 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-TEST(GroupEventsTest, GroupGpuTraceTest) {
+TEST(GroupEventsTest, GroupGpuTraceLegacyRootTest) {
   constexpr int64 kStepNum = 123;
   constexpr int64 kStepId = 0;
   constexpr int64 kCorrelationId = 100;
@@ -43,6 +43,47 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   CreateXEvent(
       &host_plane_builder, &main_thread, HostEventType::kTraceContext, 0, 100,
       {{StatType::kGraphType, "train"}, {StatType::kStepNum, kStepNum}});
+  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
+               10, 90, {{StatType::kStepId, kStepId}});
+
+  auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
+  CreateXEvent(&host_plane_builder, &tf_executor_thread,
+               HostEventType::kExecutorStateProcess, 20, 80,
+               {{StatType::kStepId, kStepId}});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70,
+               {{StatType::kCorrelationId, kCorrelationId}});
+
+  XPlane* device_plane = space.add_planes();
+  XPlaneBuilder device_plane_builder(device_plane);
+  device_plane_builder.ReserveLines(1);
+
+  auto stream = device_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
+               {{StatType::kCorrelationId, kCorrelationId}});
+
+  EventGroupNameMap event_group_name_map;
+  GroupTfEvents(&space, &event_group_name_map);
+  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
+  EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 3);
+  EXPECT_EQ(device_plane_visitor.GetStatType(
+                device_plane->lines(0).events(0).stats(1)),
+            StatType::kGroupId);
+  EXPECT_EQ(event_group_name_map.size(), 1);
+  EXPECT_EQ(event_group_name_map[0], "train 123");
+}
+
+TEST(GroupEventsTest, GroupGpuTraceTest) {
+  constexpr int64 kStepNum = 123;
+  constexpr int64 kStepId = 0;
+  constexpr int64 kCorrelationId = 100;
+
+  XSpace space;
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  host_plane_builder.ReserveLines(2);
+
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &main_thread, "train", 0, 100,
+               {{StatType::kStepNum, kStepNum}, {StatType::kIsRoot, 1LL}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
                10, 90, {{StatType::kStepId, kStepId}});
 

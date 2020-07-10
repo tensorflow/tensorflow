@@ -138,7 +138,6 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
 
 void GPUOperation::AddOperation(ElementwiseOperation* operation) {
   linked_operations_.push_back(operation);
-  operation->SetLinkIndex(linked_operations_.size());
 }
 
 ElementwiseOperation::ElementwiseOperation(ElementwiseOperation&& operation)
@@ -201,34 +200,6 @@ absl::Status ElementwiseOperation::AddToQueue(CLCommandQueue* queue) {
 absl::Status ElementwiseOperation::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-std::string GetArgsDeclaration(
-    const std::vector<ElementwiseOperation*>& linked_ops) {
-  std::string code;
-  for (auto linked_op : linked_ops) {
-    code += linked_op->GetArgsDeclaration();
-  }
-  code += ",\n";
-
-  return code;
-}
-
-std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
-                        const LinkingContext& context) {
-  std::string code;
-  for (auto linked_op : linked_ops) {
-    code += "{" + linked_op->GetCoreCode(context) + "}";
-  }
-  return code;
-}
-
-absl::Status BindArgs(CLKernel* kernel,
-                      const std::vector<ElementwiseOperation*>& linked_ops) {
-  for (auto linked_op : linked_ops) {
-    RETURN_IF_ERROR(linked_op->BindArguments(kernel));
-  }
-  return absl::OkStatus();
 }
 
 absl::Status MergeOperations(

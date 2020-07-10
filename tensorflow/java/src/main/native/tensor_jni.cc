@@ -220,16 +220,13 @@ size_t readNDArray(JNIEnv* env, TF_DataType dtype, const char* src,
   }
 }
 
-jbyteArray TF_StringDecodeTojbyteArray(JNIEnv* env, const char* src,
-                                       size_t src_len, TF_Status* status) {
-  const char* dst = nullptr;
-  size_t dst_len = 0;
-  TF_StringDecode(src, src_len, &dst, &dst_len, status);
-  if (TF_GetCode(status) != TF_OK) {
-    return nullptr;
-  }
+jbyteArray TF_StringDecodeTojbyteArray(JNIEnv* env, const TF_TString* src) {
+  const char* dst = TF_TString_GetDataPointer(src);
+  size_t dst_len = TF_TString_GetSize(src);
+
   jbyteArray ret = env->NewByteArray(dst_len);
   jbyte* cpy = env->GetByteArrayElements(ret, nullptr);
+
   memcpy(cpy, dst, dst_len);
   env->ReleaseByteArrayElements(ret, cpy, 0);
   return ret;
@@ -238,69 +235,32 @@ jbyteArray TF_StringDecodeTojbyteArray(JNIEnv* env, const char* src,
 class StringTensorWriter {
  public:
   StringTensorWriter(TF_Tensor* t, int num_elements)
-      : offset_(0),
-        poffsets_(static_cast<char*>(TF_TensorData(t))),
-        pdata_(poffsets_ + 8 * num_elements),
-        plimit_(poffsets_ + TF_TensorByteSize(t)) {}
+      : index_(0), data_(static_cast<TF_TString*>(TF_TensorData(t))) {}
 
   void Add(const char* src, size_t len, TF_Status* status) {
     if (TF_GetCode(status) != TF_OK) return;
-    if (plimit_ - poffsets_ < sizeof(offset_)) {
-      TF_SetStatus(status, TF_OUT_OF_RANGE,
-                   "TF_STRING tensor encoding ran out of space for offsets, "
-                   "this is likely a bug, please file an issue at "
-                   "https://github.com/tensorflow/tensorflow/issues/new");
-      return;
-    }
-    memcpy(poffsets_, &offset_, sizeof(offset_));
-    size_t written =
-        TF_StringEncode(src, len, pdata_, (plimit_ - pdata_), status);
-    offset_ += written;
-    poffsets_ += 8;
-    pdata_ += written;
+    TF_TString_Init(&data_[index_]);
+    TF_TString_Copy(&data_[index_++], src, len);
   }
 
  private:
-  uint64_t offset_;
-  char* poffsets_;
-  char* pdata_;
-  const char* plimit_;
+  int index_;
+  TF_TString* data_;
 };
 
 class StringTensorReader {
  public:
   StringTensorReader(const TF_Tensor* t, int num_elements)
-      : index_(0),
-        offsets_(static_cast<const char*>(TF_TensorData(t))),
-        data_(offsets_ + 8 * num_elements),
-        limit_(offsets_ + TF_TensorByteSize(t)) {}
+      : index_(0), data_(static_cast<const TF_TString*>(TF_TensorData(t))) {}
 
   jbyteArray Next(JNIEnv* env, TF_Status* status) {
     if (TF_GetCode(status) != TF_OK) return nullptr;
-    uint64_t offset = 0;
-    const char* poffset = offsets_ + sizeof(offset) * index_;
-    if (poffset >= limit_) {
-      TF_SetStatus(
-          status, TF_INTERNAL,
-          "Invalid TF_STRING tensor, offsets table seems to be too small");
-      return nullptr;
-    }
-    memcpy(&offset, poffset, sizeof(offset));
-    const char* pdata = data_ + offset;
-    if (pdata >= limit_) {
-      TF_SetStatus(status, TF_INTERNAL,
-                   "Invalid TF_STRING tensor, invalid entry in offset table");
-      return nullptr;
-    }
-    ++index_;
-    return TF_StringDecodeTojbyteArray(env, pdata, (limit_ - pdata), status);
+    return TF_StringDecodeTojbyteArray(env, &data_[index_++]);
   }
 
  private:
   int index_;
-  const char* offsets_;
-  const char* data_;
-  const char* limit_;
+  const TF_TString* data_;
 };
 
 void readNDStringArray(JNIEnv* env, StringTensorReader* reader, int dims_left,
@@ -367,17 +327,16 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateScalarBytes(
   // TF_STRING tensors are encoded with a table of 8-byte offsets followed by
   // TF_StringEncode-encoded bytes.
   size_t src_len = static_cast<int>(env->GetArrayLength(value));
-  size_t dst_len = TF_StringEncodedSize(src_len);
-  TF_Tensor* t = TF_AllocateTensor(TF_STRING, nullptr, 0, 8 + dst_len);
-  char* dst = static_cast<char*>(TF_TensorData(t));
-  memset(dst, 0, 8);  // The offset table
+  TF_Tensor* t = TF_AllocateTensor(TF_STRING, nullptr, 0, sizeof(TF_TString));
+  TF_TString* dst = static_cast<TF_TString*>(TF_TensorData(t));
 
   TF_Status* status = TF_NewStatus();
   jbyte* jsrc = env->GetByteArrayElements(value, nullptr);
   // jsrc is an unsigned byte*, TF_StringEncode requires a char*.
   // reinterpret_cast<> for this conversion should be safe.
-  TF_StringEncode(reinterpret_cast<const char*>(jsrc), src_len, dst + 8,
-                  dst_len, status);
+  TF_TString_Init(&dst[0]);
+  TF_TString_Copy(&dst[0], reinterpret_cast<const char*>(jsrc), src_len);
+
   env->ReleaseByteArrayElements(value, jsrc, JNI_ABORT);
   if (!throwExceptionIfNotOK(env, status)) {
     TF_DeleteStatus(status);
@@ -388,27 +347,18 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateScalarBytes(
 }
 
 namespace {
-size_t nonScalarTF_STRINGTensorSize(JNIEnv* env, jarray value, int num_dims) {
-  if (num_dims == 0) {
-    // This is the last dimension, i.e., value should correspond to a jbyteArray
-    // encoding the string.
-    return TF_StringEncodedSize(
-        static_cast<size_t>(env->GetArrayLength(value)));
-  }
+void checkForNullEntries(JNIEnv* env, jarray value, int num_dims) {
   jsize len = env->GetArrayLength(value);
-  size_t ret = 0;
   for (jsize i = 0; i < len; ++i) {
     jarray elem = static_cast<jarray>(
         env->GetObjectArrayElement(static_cast<jobjectArray>(value), i));
     if (elem == nullptr) {
       throwException(env, kNullPointerException,
                      "null entries in provided array");
-      return ret;
+      return;
     }
-    ret += nonScalarTF_STRINGTensorSize(env, elem, num_dims - 1);
-    if (env->ExceptionCheck()) return ret;
+    if (env->ExceptionCheck()) return;
   }
-  return ret;
 }
 
 void fillNonScalarTF_STRINGTensorData(JNIEnv* env, jarray value, int num_dims,
@@ -448,11 +398,10 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateNonScalarBytes(
     }
     env->ReleaseLongArrayElements(shape, jdims, JNI_ABORT);
   }
-  const size_t encoded_size =
-      nonScalarTF_STRINGTensorSize(env, value, num_dims);
+  checkForNullEntries(env, value, num_dims);
   if (env->ExceptionCheck()) return 0;
   TF_Tensor* t = TF_AllocateTensor(TF_STRING, dims, num_dims,
-                                   8 * num_elements + encoded_size);
+                                   sizeof(TF_TString) * num_elements);
   if (t == nullptr) {
     delete[] dims;
     throwException(env, kNullPointerException,
@@ -572,20 +521,8 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Tensor_scalarBytes(
                    "Tensor is not a string/bytes scalar");
     return nullptr;
   }
-  const char* data = static_cast<const char*>(TF_TensorData(t));
-  const char* src = data + 8;
-  size_t src_len = TF_TensorByteSize(t) - 8;
-  uint64_t offset = 0;
-  memcpy(&offset, data, sizeof(offset));
-  if (offset >= src_len) {
-    throwException(env, kIllegalArgumentException,
-                   "invalid tensor encoding: bad offsets");
-    return nullptr;
-  }
-  TF_Status* status = TF_NewStatus();
-  jbyteArray ret = TF_StringDecodeTojbyteArray(env, src, src_len, status);
-  throwExceptionIfNotOK(env, status);
-  TF_DeleteStatus(status);
+  const TF_TString* data = static_cast<const TF_TString*>(TF_TensorData(t));
+  jbyteArray ret = TF_StringDecodeTojbyteArray(env, &data[0]);
   return ret;
 }
 

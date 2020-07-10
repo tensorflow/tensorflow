@@ -435,7 +435,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
       inputs = Input(shape=(1,))
       outputs = testing_utils.Bias()(inputs)
       model = Model(inputs, outputs)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'Expected a symbolic Tensors or a callable for the loss value'):
         model.add_loss(1.)
@@ -446,7 +446,7 @@ class TestAddLossCorrectness(keras_parameterized.TestCase):
       inputs = Input(shape=(1,))
       outputs = testing_utils.Bias()(inputs)
       model = Model(inputs, outputs)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'Expected a symbolic Tensors or a callable for the loss value'):
         model.add_loss(model.weights[0])

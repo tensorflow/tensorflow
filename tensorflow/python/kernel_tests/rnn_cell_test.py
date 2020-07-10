@@ -200,7 +200,7 @@ class RNNTest(test.TestCase):
   def testInvalidSequenceLengthShape(self):
     cell = Plus1RNNCell()
     inputs = [array_ops.placeholder(dtypes.float32, shape=(3, 4))]
-    with self.assertRaisesRegexp(ValueError, "must be a vector"):
+    with self.assertRaisesRegex(ValueError, "must be a vector"):
       rnn.static_rnn(cell, inputs, dtype=dtypes.float32, sequence_length=4)
 
   @test_util.run_v1_only("b/124229375")
@@ -2241,7 +2241,7 @@ class RawRNNTest(test.TestCase):
       r = rnn.raw_rnn(cell, loop_fn)
       loop_state = r[-1]
       loop_state = loop_state.stack()
-      self.assertAllEqual([1, 2, 2 + 2, 4 + 3, 7 + 4], loop_state.eval())
+      self.assertAllEqual([1, 2, 2 + 2, 4 + 3, 7 + 4], loop_state)
 
   @test_util.run_v1_only("b/124229375")
   def testEmitDifferentStructureThanCellOutput(self):
@@ -2796,10 +2796,9 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
             state_is_tuple=False)
         cell(x, m)  # Execute to create variables
       variables = variables_lib.global_variables()
-      self.assertEquals(variables[0].op.name, "root/lstm_cell/kernel")
-      self.assertEquals(variables[1].op.name, "root/lstm_cell/bias")
-      self.assertEquals(variables[2].op.name,
-                        "root/lstm_cell/projection/kernel")
+      self.assertEqual(variables[0].op.name, "root/lstm_cell/kernel")
+      self.assertEqual(variables[1].op.name, "root/lstm_cell/bias")
+      self.assertEqual(variables[2].op.name, "root/lstm_cell/projection/kernel")
 
   @test_util.run_in_graph_and_eager_modes
   def testWrapperCheckpointing(self):
@@ -2950,7 +2949,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
         m_good = (array_ops.zeros([1, 2]), array_ops.zeros([1, 2]))
 
         # Test incorrectness of state
-        with self.assertRaisesRegexp(ValueError, "Expected state .* a tuple"):
+        with self.assertRaisesRegex(ValueError, "Expected state .* a tuple"):
           rnn_cell_impl.MultiRNNCell(
               [rnn_cell_impl.GRUCell(2) for _ in range(2)],
               state_is_tuple=True)(x, m_bad)
