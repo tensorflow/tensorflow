@@ -492,3 +492,13 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
     ],
 )
+
+cc_library(
+    name = "tpu_execute_c_api_hdrs",
+    hdrs = ["tpu_execute_c_api.h"],
+    deps = [
+        ":tpu_program_c_api_hdrs",
+        ":tpu_util_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+    ],
+)
