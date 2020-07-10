@@ -8266,6 +8266,39 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect, ResultsBroadcastableShape]>
   ];
 }
 
+def TF_SelfAdjointEigV2Op : TF_Op<"SelfAdjointEigV2", [NoSideEffect]> {
+  let summary = [{
+Computes the eigen decomposition of one or more square self-adjoint matrices.
+  }];
+
+  let description = [{
+Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
+`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`. The eigenvalues
+are sorted in non-decreasing order.
+
+```python
+# a is a tensor.
+# e is a tensor of eigenvalues.
+# v is a tensor of eigenvectors.
+e, v = self_adjoint_eig(a)
+e = self_adjoint_eig(a, compute_v=False)
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$input,
+
+    DefaultValuedAttr<BoolAttr, "true">:$compute_v
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$e,
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$v
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_SeluOp : TF_Op<"Selu", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
