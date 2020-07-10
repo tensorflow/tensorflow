@@ -51,7 +51,7 @@ NameUniquer::NameUniquer(const string& separator) {
   if (!absl::ascii_isalpha(c) && c != '_') {
     result[0] = '_';
   }
-  for (int i = 1, iter_limit = result.length(); i < iter_limit; i++) {
+  for (int i = 1, end = result.length(); i < end; i++) {
     if (!IsAllowed(result[i])) {
       result[i] = '_';
     }

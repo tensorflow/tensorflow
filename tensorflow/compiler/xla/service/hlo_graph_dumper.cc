@@ -1261,7 +1261,7 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
   }
 
   std::vector<string> lines;
-  for (int64 i = 0, iter_limit = instr->called_computations().size(); i < iter_limit; ++i) {
+  for (int64 i = 0, end = instr->called_computations().size(); i < end; ++i) {
     optional<string> computation_type =
         MatchTrivialComputation(instr->called_computations()[i]);
     if (!computation_type) {

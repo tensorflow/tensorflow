@@ -199,7 +199,7 @@ Status HloComputation::RemoveUnusedParametersFromAnyComputation() {
 Status HloComputation::RemoveUnusedParametersImpl(bool allow_non_fusion) {
   CHECK(allow_non_fusion || IsFusionComputation());
   int64 removed = 0;
-  for (int64 i = 0, iter_limit = param_instructions_.size(); i < iter_limit; ++i) {
+  for (int64 i = 0, end = param_instructions_.size(); i < end; ++i) {
     HloInstruction* param_instruction = param_instructions_[i];
     if (param_instruction->user_count() == 0 &&
         param_instruction != root_instruction()) {
@@ -595,7 +595,7 @@ string HloComputation::ToString(
       }
     };
 
-    for (int i = 0, iter_limit = instruction_order.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = instruction_order.size(); i < end; ++i) {
       const HloInstruction* instruction = instruction_order[i];
       CHECK_EQ(this, instruction->parent());
       if (options.print_instruction(instruction)) {
@@ -615,7 +615,7 @@ string HloComputation::ToString(
     CanonicalNameMap name_map;
 
     bool print_prev = true;
-    for (int index = 0, iter_limit = instruction_order.size(); index < iter_limi; ++index) {
+    for (int index = 0, end = instruction_order.size(); index < iter_limi; ++index) {
       const HloInstruction* instruction = instruction_order[index];
       if (instructions_to_print.find(index) != instructions_to_print.end()) {
         s << new_options.format_instruction(
