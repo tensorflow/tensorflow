@@ -71,11 +71,6 @@ struct OpData {
   int32 input1_offset;
   int32 input2_offset;
   int32 output_offset;
-
-  // This parameter is used to indicate whether
-  // parameter scale is power of two.
-  // It is used in 16-bit -> 16-bit quantization.
-  bool pot_scale_int16;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -88,14 +83,13 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
-TfLiteStatus PrepareGeneralSubOp(TfLiteContext* context,
-                                 const TfLiteTensor* input_1,
-                                 const TfLiteTensor* input_2,
-                                 TfLiteTensor* output, TfLiteSubParams* params,
-                                 OpData* op_params, int op_sign) {
-  TF_LITE_ENSURE(context, output->type == kTfLiteUInt8 ||
-                              output->type == kTfLiteInt8 ||
-                              output->type == kTfLiteInt16);
+TfLiteStatus Prepare8BitSubOp(TfLiteContext* context,
+                              const TfLiteTensor* input_1,
+                              const TfLiteTensor* input_2, TfLiteTensor* output,
+                              TfLiteSubParams* params, OpData* op_params,
+                              int op_sign) {
+  TF_LITE_ENSURE(context,
+                 output->type == kTfLiteUInt8 || output->type == kTfLiteInt8);
   const auto& input1_quantization_params = input_1->params;
   const auto& input2_quantization_params = input_2->params;
   const auto& output_quantization_params = output->params;
@@ -104,9 +98,6 @@ TfLiteStatus PrepareGeneralSubOp(TfLiteContext* context,
   if (output->type == kTfLiteUInt8) {
     integer_type_min = std::numeric_limits<uint8_t>::min();
     integer_type_max = std::numeric_limits<uint8_t>::max();
-  } else if (output->type == kTfLiteInt16) {
-    integer_type_min = std::numeric_limits<int16_t>::min();
-    integer_type_max = std::numeric_limits<int16_t>::max();
   } else {
     // output->type == kTfLiteInt8
     integer_type_min = std::numeric_limits<int8_t>::min();
@@ -129,11 +120,7 @@ TfLiteStatus PrepareGeneralSubOp(TfLiteContext* context,
   op_params->input1_offset = -input1_quantization_params.zero_point;
   op_params->input2_offset = -input2_quantization_params.zero_point;
   op_params->output_offset = output_quantization_params.zero_point;
-
-  // The shift is set to 15 in case of 16-bit and 20 in case of 8-bit,
-  // accordingly. In case of 16-bit we have 65535 << 15 which is less than 1 <<
-  // 31, therefore the addition will still fit in a 32 bit accumulator.
-  op_params->left_shift = output->type == kTfLiteInt16 ? 15 : 20;
+  op_params->left_shift = 20;
   const double twice_max_input_scale =
       2 * std::max(input1_quantization_params.scale,
                    input2_quantization_params.scale);
@@ -159,15 +146,13 @@ TfLiteStatus PrepareGeneralSubOp(TfLiteContext* context,
   TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
       context, params->activation, output, &op_params->output_activation_min,
       &op_params->output_activation_max));
-
   return kTfLiteOk;
 }
 
-TfLiteStatus PrepareInt16SubOpPOT(TfLiteContext* context,
-                                  const TfLiteTensor* input1,
-                                  const TfLiteTensor* input2,
-                                  TfLiteTensor* output, TfLiteSubParams* params,
-                                  OpData* data) {
+TfLiteStatus PrepareInt16SubOp(TfLiteContext* context,
+                               const TfLiteTensor* input1,
+                               const TfLiteTensor* input2, TfLiteTensor* output,
+                               TfLiteSubParams* params, OpData* data) {
   // 16bit -> 16bit special quantized path, supporting only a rather
   // narrow case of quantization parameters: zero_points must all be 0
   // ("symmetric quantization") and scales must be power-of-two (which
@@ -234,51 +219,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     output_size = TfLiteIntArrayCopy(input1->dims);
   }
 
-  // 8bit -> 8bit general quantized path, with general rescalings
-  // as well as, 16bit -> 16bit with general rescalings
-  bool pot_scale_int16 = true;
-
-  bool input1_scale_is_pot = false;
-  bool input2_scale_is_pot = false;
-  bool output_scale_is_pot = false;
-
-  int input1_scale_log2_rounded{0};
-  int input2_scale_log2_rounded{0};
-  int output_scale_log2_rounded{0};
-
-  if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&
-      output->type == kTfLiteInt16) {
-    // In case of 16-bit, there are two implementation:
-    // the scale parameter is a general number
-    // the scale parameter is POT and
-    // zero_point is zero for inputs/output.
-    pot_scale_int16 = (input1->params.zero_point == 0) &&
-                      (input2->params.zero_point == 0) &&
-                      (output->params.zero_point == 0);
-
-    input1_scale_is_pot =
-        CheckedLog2(input1->params.scale, &input1_scale_log2_rounded);
-
-    input2_scale_is_pot =
-        CheckedLog2(input2->params.scale, &input2_scale_log2_rounded);
-
-    output_scale_is_pot =
-        CheckedLog2(output->params.scale, &output_scale_log2_rounded);
-
-    pot_scale_int16 &=
-        input1_scale_is_pot && input2_scale_is_pot && output_scale_is_pot;
-  }
-
-  data->pot_scale_int16 = pot_scale_int16;
-
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      !pot_scale_int16) {
-    TF_LITE_ENSURE_OK(context, PrepareGeneralSubOp(context, input1, input2,
-                                                   output, params, data, -1));
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+    TF_LITE_ENSURE_OK(context, Prepare8BitSubOp(context, input1, input2, output,
+                                                params, data, -1));
   } else if (output->type == kTfLiteInt16) {
-    // LSTM-special case with scale parameter of POT
-    TF_LITE_ENSURE_OK(context, PrepareInt16SubOpPOT(context, input1, input2,
-                                                    output, params, data));
+    TF_LITE_ENSURE_OK(context, PrepareInt16SubOp(context, input1, input2,
+                                                 output, params, data));
   }
 
   return context->ResizeTensor(context, output, output_size);
@@ -385,15 +331,6 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_SUB(reference_integer_ops, BroadcastAdd4DSlow, int8_t);
     } else {
       TF_LITE_SUB(reference_integer_ops, Add, int8_t);
-    }
-  } else if (!data->pot_scale_int16) {
-    if (need_broadcast) {
-      TF_LITE_SUB(reference_ops, BroadcastAdd4DSlow, int16_t);
-    } else {
-      reference_ops::Add(op_params, GetTensorShape(input1),
-                         GetTensorData<int16_t>(input1), GetTensorShape(input2),
-                         GetTensorData<int16_t>(input2), GetTensorShape(output),
-                         GetTensorData<int16_t>(output), false);
     }
   } else if (output->type == kTfLiteUInt8) {
     if (kernel_type == kReference) {
