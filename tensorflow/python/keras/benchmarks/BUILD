@@ -108,5 +108,5 @@ py_test(
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
-    ]
+    ],
 )

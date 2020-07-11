@@ -61,12 +61,12 @@ class TextWithTransformerBenchmark(
         self.max_len,
         self.max_feature,
         embed_dim)
-    x = embedding_layer(inputs)
+    x = embedding_layer(inputs) #pylint: disable=not-callable
     transformer_block = TransformerBlock(
         embed_dim,
         num_heads,
         ff_dim)
-    x = transformer_block(x)
+    x = transformer_block(x) #pylint: disable=not-callable
     x = tf.keras.layers.GlobalAvgPool1D()(x)
     x = tf.keras.layers.Dropout(0.1)(x)
     x = tf.keras.layers.Dense(20, activation="relu")(x)
@@ -173,7 +173,7 @@ class TransformerBlock(tf.keras.layers.Layer):
     self.dropout2 = tf.keras.layers.Dropout(rate)
 
   def call(self, inputs, training): #pylint: disable=arguments-differ
-    attn_output = self.att(inputs)
+    attn_output = self.att(inputs) #pylint: disable=not-callable
     attn_output = self.dropout1(attn_output, training=training)
     out1 = self.layernorm1(inputs + attn_output)
     ffn_output = self.ffn(out1)
