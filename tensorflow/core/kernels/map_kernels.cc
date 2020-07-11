@@ -29,9 +29,12 @@ REGISTER_KERNEL_BUILDER(Name("TensorMapSize").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("TensorMapLookup").Device(DEVICE_CPU),
                         TensorMapLookup);
 
+REGISTER_KERNEL_BUILDER(Name("TensorMapInsert").Device(DEVICE_CPU),
+                        TensorMapInsert);
+
 REGISTER_KERNEL_BUILDER(Name("TensorMapErase").Device(DEVICE_CPU),
                         TensorMapErase);
 
-REGISTER_KERNEL_BUILDER(Name("ZeroOut").Device(DEVICE_CPU),
-                        ZeroOutOp);
+REGISTER_KERNEL_BUILDER(Name("TensorMapReplace").Device(DEVICE_CPU),
+                        TensorMapReplace);
 }

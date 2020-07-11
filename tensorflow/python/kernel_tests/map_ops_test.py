@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 #import numpy as np
-
 from tensorflow.python.platform import test
 from absl.testing import parameterized
 from tensorflow.python.framework import test_util
@@ -30,34 +29,26 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-
-#try:
-#  from tensorflow_zero_out.python.ops.zero_out_ops import zero_out
-#except ImportError:
-#  from zero_out_ops import zero_out
 from tensorflow.python.ops import map_ops
 
 @test_util.run_all_in_graph_and_eager_modes
 class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
-  '''def testEmptyTensorMap(self):
+  
+  def testEmptyTensorMap(self):
     m = map_ops.empty_tensor_map()
-    print("test EmptyTensorMap")
   
   def testTensorMapSize(self):
     m = map_ops.empty_tensor_map()
     s = map_ops.tensor_map_size(m)
-    print("size: ", s)
     self.assertAllClose(s, 0)
 
   def testTensorMapInsert(self):
-    #with self.test_session():
-      m = map_ops.empty_tensor_map()
-      k = constant_op.constant(1.0)
-      v = constant_op.constant(2.0)
-      m = map_ops.tensor_map_insert(m, k, v)
-      s = map_ops.tensor_map_size(m)
-      self.assertAllClose(s, 1)
-      print("test TensorMapInsert")
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    v = constant_op.constant(2.0)
+    m = map_ops.tensor_map_insert(m, k, v)
+    s = map_ops.tensor_map_size(m)
+    self.assertAllClose(s, 1)
 
   def testTensorMapLookup(self):
     m = map_ops.empty_tensor_map()
@@ -65,35 +56,31 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v = constant_op.constant(2.0)
     m = map_ops.tensor_map_insert(m, k, v)
     l = map_ops.tensor_map_lookup(m, k)
-    print("lookup: ", l)
-    self.assertAllClose(l, v)'''
+    self.assertAllClose(l, v)
   
   def testTensorMapReplace(self):
-    #with self.test_session():
-      m = map_ops.empty_tensor_map()
-      k = constant_op.constant(1.0)
-      v = constant_op.constant(2.0)
-      m = map_ops.tensor_map_insert(m, k, v)
-      s = map_ops.tensor_map_size(m)
-      self.assertAllClose(s, 1)
-
-      v2 = constant_op.constant(3.0)
-      m = map_ops.tensor_map_replace(m, k, v2)
-      l = map_ops.tensor_map_lookup(m, k)
-      self.assertAllClose(l, v2)
-      print("test TensorMapReplace")
-
-  def testTensorMapErase(self):
-    print("python erase")
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
     v = constant_op.constant(2.0)
     m = map_ops.tensor_map_insert(m, k, v)
     s = map_ops.tensor_map_size(m)
     self.assertAllClose(s, 1)
+
+    v2 = constant_op.constant(3.0)
+    m = map_ops.tensor_map_replace(m, k, v2)
+    l = map_ops.tensor_map_lookup(m, k)
+    self.assertAllClose(l, v2)
+
+  def testTensorMapErase(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    v = constant_op.constant(2.0)
+    m = map_ops.tensor_map_insert(m, k, v)
+    s = map_ops.tensor_map_size(m)
+    self.assertAllClose(s, 1)
+
     m, e = map_ops.tensor_map_erase(m, k)
     s = map_ops.tensor_map_size(m)
-    print("erase: ", e)
     self.assertAllClose(s, 0)
     self.assertAllClose(e, v)
 
@@ -106,32 +93,9 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       m = map_ops.tensor_map_insert(m, k, v)
       l = map_ops.tensor_map_lookup(m, k)
       l *= 5
-      g= tape.gradient(l,v)
-      print("gradient",g)
+      g = tape.gradient(l,v)
       self.assertAllClose(g, 5.0)
-
-    
-
-  '''
-  @parameterized.named_parameters(("NoMaxNumElements", None),
-                                  ("WithMaxNumElements", 2))
-  @test_util.run_deprecated_v1
-  def testEraseFromEmptyTensorMapFails(self, max_num_elements):
-    print("hello world testErase")
-    m = map_ops.empty_tensor_map()
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Trying to erase from an empty map"):
-      m = map_ops.tensor_map_erase(l, element_dtype=dtypes.float32)
-      self.evaluate(l)
-  '''
-
-  '''def testZeroOut(self):
-    print("hello world testZeroOut")
-    with self.test_session():
-      self.assertAllClose(
-          map_ops.zero_out([[1, 2], [3, 4]]), np.array([[1, 0], [0, 0]]))'''
 
 
 if __name__ == '__main__':
-  print("hihihi")
   test.main() 

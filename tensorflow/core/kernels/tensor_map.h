@@ -143,29 +143,6 @@ class TensorMap {
     return out;
   }
 
-  TensorMap Zeros() const {
-    TensorMap out;
-    out.element_shape = element_shape;
-    out.element_dtype = element_dtype;
-    out.max_num_elements = max_num_elements;
-    // This performs a copy of the absl::hashmap.
-    absl::flat_hash_map<TensorKey,Tensor>::iterator it = tensors_->values_.begin();
-    while(it != tensors_->values_.end()) {
-      out.tensors_->values_.try_emplace(it->first, Tensor(0));
-      it++;
-    }
-    return out;
-  }
-  std::vector<Tensor> keys() {
-    std::vector<Tensor> keys(tensors_->values_.size());
-    absl::flat_hash_map<TensorKey,Tensor>::iterator it = tensors_->values_.begin();
-    while(it != tensors_->values_.end()) {
-      keys.push_back((Tensor)it->first);
-      it++;
-    }
-    return keys;
-  }
-
   // Insert key and value if the key does not already exist.
   // Returns true if the insertion happens.
   bool insert(const TensorKey& key, const Tensor& value) {

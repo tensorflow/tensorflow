@@ -39,15 +39,6 @@ REGISTER_OP("TensorMapSize")
     .Output("size: int32")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("TensorMapZeros")
-    .Input("input_handle: variant")
-    .Output("output_handle: variant")
-    //.Attr("element_dtype: type")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->Scalar());
-      return Status::OK();
-    });
-
 REGISTER_OP("TensorMapInsert")
     .Input("input_handle: variant")
     .Input("key: element_dtype")
@@ -56,32 +47,6 @@ REGISTER_OP("TensorMapInsert")
     .Attr("element_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      /*DataType element_dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
-      shape_inference::ShapeHandle element_shape = c->UnknownShape();*/
-
-      /*auto* handle_data = c->input_handle_shapes_and_types(0);
-      if (handle_data != nullptr && handle_data->size() > 1) {
-        return errors::InvalidArgument(
-            "Trying to push to list with wrong variant data.");
-      }
-      if (IsValidTensorMapHandleData(handle_data)) {
-        const shape_inference::ShapeAndType& map_shape_type = (*handle_data)[0];
-        if (list_shape_type.dtype != element_dtype) {
-          return errors::InvalidArgument(
-              "Trying to push to list with wrong element dtype. List has type ",
-              DataTypeString(list_shape_type.dtype),
-              " but trying to push element with type ",
-              DataTypeString(element_dtype));
-        }
-        shape_inference::ShapeHandle ignored;
-        TF_RETURN_IF_ERROR(
-            c->Merge(element_shape, map_shape_type.shape, &ignored));
-        element_shape = map_shape_type.shape;
-      }
-      c->set_output_handle_shapes_and_types(
-          0, std::vector<shape_inference::ShapeAndType>{
-                 {element_shape, element_dtype}});*/
       return Status::OK();
     });
 
@@ -92,32 +57,6 @@ REGISTER_OP("TensorMapLookup")
     .Attr("element_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      /*DataType element_dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
-      shape_inference::ShapeHandle element_shape = c->UnknownShape();*/
-
-      /*auto* handle_data = c->input_handle_shapes_and_types(0);
-      if (handle_data != nullptr && handle_data->size() > 1) {
-        return errors::InvalidArgument(
-            "Trying to push to list with wrong variant data.");
-      }
-      if (IsValidTensorMapHandleData(handle_data)) {
-        const shape_inference::ShapeAndType& map_shape_type = (*handle_data)[0];
-        if (list_shape_type.dtype != element_dtype) {
-          return errors::InvalidArgument(
-              "Trying to push to list with wrong element dtype. List has type ",
-              DataTypeString(list_shape_type.dtype),
-              " but trying to push element with type ",
-              DataTypeString(element_dtype));
-        }
-        shape_inference::ShapeHandle ignored;
-        TF_RETURN_IF_ERROR(
-            c->Merge(element_shape, map_shape_type.shape, &ignored));
-        element_shape = map_shape_type.shape;
-      }
-      c->set_output_handle_shapes_and_types(
-          0, std::vector<shape_inference::ShapeAndType>{
-                 {element_shape, element_dtype}});*/
       return Status::OK();
     });
 
@@ -128,9 +67,9 @@ REGISTER_OP("TensorMapErase")
     .Output("tensor: element_dtype")
     .Attr("element_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      /*DataType element_dtype;
+      DataType element_dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
-      shape_inference::ShapeHandle tensor_shape = c->UnknownShape();
+      /*shape_inference::ShapeHandle tensor_shape = c->UnknownShape();
       auto* handle_data = c->input_handle_shapes_and_types(0);
       if (handle_data != nullptr && handle_data->size() > 1) {
         return errors::InvalidArgument(
@@ -192,17 +131,6 @@ REGISTER_OP("TensorMapReplace")
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{
                  {element_shape, element_dtype}});*/
-      return Status::OK();
-    });
-
-
-
-REGISTER_OP("ZeroOut")
-    .Input("to_zero: int32")
-    .Output("zeroed: int32")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      //c->set_output(0, c->Scalar());
-      c->set_output(0, c->input(0));
       return Status::OK();
     });
 
