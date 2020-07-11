@@ -62,7 +62,7 @@ Status InitializeTpuLibrary(void* library_handle) {
     RegisterTpuPlatform();
     RegisterTpuSystemDevice();
     RegisterTpuNodeDevice(
-        /*tpu_autoclustering_flag=*/false,
+        /*tpu_autoclustering=*/false,
         /*tpu_xla_device_failure_closes_chips=*/true,
         /*tpu_use_substreams_for_cross_tpu_device_transfers=*/true);
   }
