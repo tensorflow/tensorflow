@@ -221,7 +221,7 @@ def clip(a, a_min, a_max):  # pylint: disable=missing-docstring
 def matmul(x1, x2):  # pylint: disable=missing-docstring
   def f(x1, x2):
     try:
-      if x1.shape.rank == 2 and x2.shape.rank == 2:
+      if x1._rank() == 2 and x2._rank() == 2:  # pylint: disable=protected-access
         # Fast path for known ranks.
         return gen_math_ops.mat_mul(x1, x2)
       return np_utils.cond(
