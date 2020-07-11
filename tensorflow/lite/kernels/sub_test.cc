@@ -304,6 +304,10 @@ TEST(QuantizedSubOpModel, QuantizedTestsNoActivationInt8) {
   QuantizedTestsNoActivation<TensorType_INT8, int8_t>();
 }
 
+TEST(QuantizedSubOpModel, QuantizedTestsNoActivationGenericInt16) {
+  QuantizedTestsNoActivation<TensorType_INT16, int16_t>();
+}
+
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedTestsActivationRELU_N1_TO_1() {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
@@ -365,6 +369,10 @@ TEST(QuantizedSubOpModel, QuantizedVariousInputShapesInt8) {
   QuantizedVariousInputShapes<TensorType_INT8, int8_t>();
 }
 
+TEST(QuantizedSubOpModel, QuantizedVariousInputShapesInt16) {
+  QuantizedVariousInputShapes<TensorType_INT16, int16_t>();
+}
+
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedWithBroadcast() {
   float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
@@ -391,6 +399,10 @@ TEST(QuantizedSubOpModel, QuantizedWithBroadcastUInt8) {
 
 TEST(QuantizedSubOpModel, QuantizedWithBroadcastInt8) {
   QuantizedWithBroadcast<TensorType_INT8, int8_t>();
+}
+
+TEST(QuantizedSubOpModel, QuantizedWithBroadcastInt16) {
+  QuantizedWithBroadcast<TensorType_INT16, int16_t>();
 }
 
 TEST(QuantizedSubOpModel, QuantizedTestsNoActivationInt16) {

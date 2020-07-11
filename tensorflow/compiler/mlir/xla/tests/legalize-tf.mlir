@@ -956,6 +956,41 @@ func @test_sparse_mat_mul(%arg0: tensor<3x4xf32>, %arg1: tensor<4x5xf32>) -> ten
   return %0: tensor<3x5xf32>
 }
 
+// SparseMatMul where one operand needs to be transposed and the other one not.
+//
+// CHECK-LABEL:   func @test_sparse_mat_mul_with_transpose
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<3x4xf32>
+// CHECK-SAME:      %[[ARG1:.*]]: tensor<5x4xf32>
+// CHECK-SAME:      -> tensor<3x5xf32>
+// CHECK:           %[[TRANSPOSE:.*]] = "mhlo.transpose"(%[[ARG1]])
+// CHECK-SAME:        permutation = dense<[1, 0]>
+// CHECK-SAME:        -> tensor<4x5xf32>
+// CHECK:           %[[RESULT:.*]] = "mhlo.dot"(%[[ARG0]], %[[TRANSPOSE]])
+// CHECK-SAME:        -> tensor<3x5xf32>
+// CHECK:           return %[[RESULT]]
+// CHECK:         }
+func @test_sparse_mat_mul_with_transpose(%arg0: tensor<3x4xf32>, %arg1: tensor<5x4xf32>) -> tensor<3x5xf32> {
+  %0 = "tf.SparseMatMul"(%arg0, %arg1) {a_is_sparse = true, b_is_sparse = false, transpose_a = false, transpose_b = true} : (tensor<3x4xf32>, tensor<5x4xf32>) -> tensor<3x5xf32>
+  return %0: tensor<3x5xf32>
+}
+
+// SparseMatMul where one operand needs to be casted and the other one not.
+//
+// CHECK-LABEL:   func @test_sparse_mat_mul_with_cast
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<3x4xf32>
+// CHECK-SAME:      %[[ARG1:.*]]: tensor<4x5xbf16>
+// CHECK-SAME:      -> tensor<3x5xf32>
+// CHECK:           %[[CAST:.*]] = "mhlo.convert"(%[[ARG1]])
+// CHECK-SAME:        -> tensor<4x5xf32>
+// CHECK:           %[[RESULT:.*]] = "mhlo.dot"(%[[ARG0]], %[[CAST]])
+// CHECK-SAME:        -> tensor<3x5xf32>
+// CHECK:           return %[[RESULT]]
+// CHECK:         }
+func @test_sparse_mat_mul_with_cast(%arg0: tensor<3x4xf32>, %arg1: tensor<4x5xbf16>) -> tensor<3x5xf32> {
+  %0 = "tf.SparseMatMul"(%arg0, %arg1) {a_is_sparse = true, b_is_sparse = false, transpose_a = false, transpose_b = false} : (tensor<3x4xf32>, tensor<4x5xbf16>) -> tensor<3x5xf32>
+  return %0: tensor<3x5xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // MatrixBandPart op legalizations.
 //===----------------------------------------------------------------------===//

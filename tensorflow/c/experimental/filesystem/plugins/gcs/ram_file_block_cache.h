@@ -51,7 +51,7 @@ class RamFileBlockCache : public FileBlockCache {
 
   RamFileBlockCache(size_t block_size, size_t max_bytes, uint64_t max_staleness,
                     BlockFetcher block_fetcher,
-                    std::function<uint64_t()> timer_seconds)
+                    std::function<uint64_t()> timer_seconds = TF_NowSeconds)
       : block_size_(block_size),
         max_bytes_(max_bytes),
         max_staleness_(max_staleness),

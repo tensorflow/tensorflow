@@ -258,7 +258,7 @@ tf_module {
   }
   member {
     name: "Tensor"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'typing.GenericMeta\'>"
   }
   member {
     name: "TensorArray"

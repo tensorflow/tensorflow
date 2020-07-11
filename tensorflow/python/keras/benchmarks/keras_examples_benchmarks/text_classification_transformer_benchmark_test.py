@@ -38,17 +38,17 @@ class TextWithTransformerBenchmark(
     self.imdb_x = tf.keras.preprocessing.sequence.pad_sequences(
         self.imdb_x, maxlen=self.max_len)
 
-  """The parameters of each benchmark is a tuple:
+  # The parameters of each benchmark is a tuple:
 
-     (benchmark_name_suffix, batch_size, run_iters).
-     benchmark_name_suffix: The suffix of the benchmark test name with
-     convention `{bs}_{batch_size}`.
-     batch_size: Integer. Number of samples per gradient update.
-     run_iters: Integer. Number of iterations to run the
-         performance measurement.
-  """
+  # (benchmark_name_suffix, batch_size, run_iters).
+  # benchmark_name_suffix: The suffix of the benchmark test name with
+  # convention `{bs}_{batch_size}`.
+  # batch_size: Integer. Number of samples per gradient update.
+  # run_iters: Integer. Number of iterations to run the
+  # performance measurement.
+
   _benchmark_parameters = [
-      ('bs_64', 64, 2), ('bs_128', 128, 1), 
+      ('bs_64', 64, 2), ('bs_128', 128, 1),
       ('bs_256', 256, 1), ('bs_512', 512, 3)]
 
   def _build_model(self):
@@ -75,9 +75,9 @@ class TextWithTransformerBenchmark(
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
-  
+
   def benchmark_text_classification(self, batch_size, run_iters):
-    """ Required Arguments for measure_performance:
+    """ Required Arguments for measure_performance.
 
       x: Input data, it could be Numpy or load from tfds.
       y: Target data. If `x` is a dataset, generator instance,
@@ -130,7 +130,7 @@ class MultiHeadSelfAttention(tf.keras.layers.Layer):
     x = tf.reshape(x, (batch_size, -1, self.num_heads, self.projection_dim))
     return tf.transpose(x, perm=[0, 2, 1, 3])
 
-  def call(self, inputs):
+  def call(self, inputs): #pylint: disable=arguments-differ
     # x.shape = [batch_size, seq_len, embedding_dim]
     batch_size = tf.shape(inputs)[0]
     query = self.query_dense(inputs)  # (batch_size, seq_len, embed_dim)
@@ -145,7 +145,7 @@ class MultiHeadSelfAttention(tf.keras.layers.Layer):
     value = self.separate_heads(
         value, batch_size
     )  # (batch_size, num_heads, seq_len, projection_dim)
-    attention, weights = self.attention(query, key, value)
+    attention, _ = self.attention(query, key, value)
     attention = tf.transpose(
         attention, perm=[0, 2, 1, 3]
     )  # (batch_size, seq_len, num_heads, projection_dim)
@@ -172,7 +172,7 @@ class TransformerBlock(tf.keras.layers.Layer):
     self.dropout1 = tf.keras.layers.Dropout(rate)
     self.dropout2 = tf.keras.layers.Dropout(rate)
 
-  def call(self, inputs, training):
+  def call(self, inputs, training): #pylint: disable=arguments-differ
     attn_output = self.att(inputs)
     attn_output = self.dropout1(attn_output, training=training)
     out1 = self.layernorm1(inputs + attn_output)
@@ -190,7 +190,7 @@ class TokenAndPositionEmbedding(tf.keras.layers.Layer):
     self.pos_emb = tf.keras.layers.Embedding(input_dim=maxlen,
                                              output_dim=embed_dim)
 
-  def call(self, x):
+  def call(self, x): #pylint: disable=arguments-differ
     maxlen = tf.shape(x)[-1]
     positions = tf.range(start=0, limit=maxlen, delta=1)
     positions = self.pos_emb(positions)

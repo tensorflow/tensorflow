@@ -24,6 +24,7 @@ tf_proto_library_cc(
     has_services = 1,
     cc_api_version = 2,
     cc_grpc_version = 1,
+    create_service = True,
     protodeps = [
         "//tensorflow/compiler/xla:xla_proto",
     ],

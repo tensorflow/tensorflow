@@ -22,9 +22,9 @@ import six
 
 import tensorflow as tf
 
-from tensorflow.python.platform import benchmark
 from tensorflow.python.keras.benchmarks import benchmark_util
-  
+from tensorflow.python.platform import benchmark
+
 # Loss function and optimizer.
 _LOSS = 'binary_crossentropy'
 _OPTIMIZER = 'rmsprop'
@@ -32,7 +32,7 @@ _OPTIMIZER = 'rmsprop'
 
 class KerasModelCPUBenchmark(
     six.with_metaclass(benchmark.ParameterizedBenchmark, tf.test.Benchmark)):
-  """Required Arguments for measure_performance:
+  """Required Arguments for measure_performance.
 
       x: Input data, it could be Numpy or load from tfds.
       y: Target data. If `x` is a dataset, generator instance,
@@ -42,15 +42,15 @@ class KerasModelCPUBenchmark(
       Other details can see in `measure_performance()` method of
       benchmark_util.
   """
-  """The parameters of each benchmark is a tuple:
+  # The parameters of each benchmark is a tuple:
 
-     (benchmark_name_suffix, batch_size, run_iters).
-     benchmark_name_suffix: The suffix of the benchmark test name with
-     convention `{bs}_{batch_size}`.
-     batch_size: Integer. Number of samples per gradient update.
-     run_iters: Integer. Number of iterations to run the
-         performance measurement.
-  """
+  # (benchmark_name_suffix, batch_size, run_iters).
+  # benchmark_name_suffix: The suffix of the benchmark test name with
+  # convention `{bs}_{batch_size}`.
+  # batch_size: Integer. Number of samples per gradient update.
+  # run_iters: Integer. Number of iterations to run the
+  # performance measurement.
+
   _benchmark_parameters = [
       ('bs_32', 32, 3), ('bs_64', 64, 2), ('bs_128', 128, 2),
       ('bs_256', 256, 1), ('bs_512', 512, 1)]

@@ -37,15 +37,15 @@ class BidirectionalLSTMBenchmark(
     self.imdb_x = tf.keras.preprocessing.sequence.pad_sequences(
         self.imdb_x, maxlen=self.max_len)
 
-  """The parameters of each benchmark is a tuple:
+  # The parameters of each benchmark is a tuple:
 
-     (benchmark_name_suffix, batch_size, run_iters).
-     benchmark_name_suffix: The suffix of the benchmark test name with
-     convention `{bs}_{batch_size}`.
-     batch_size: Integer. Number of samples per gradient update.
-     run_iters: Integer. Number of iterations to run the
-         performance measurement.
-  """
+  # (benchmark_name_suffix, batch_size, run_iters).
+  # benchmark_name_suffix: The suffix of the benchmark test name with
+  # convention `{bs}_{batch_size}`.
+  # batch_size: Integer. Number of samples per gradient update.
+  # run_iters: Integer. Number of iterations to run the
+  # performance measurement.
+
   _benchmark_parameters = [
       ('bs_32', 32, 2), ('bs_64', 64, 2),
       ('bs_128', 128, 1), ('bs_256', 256, 1),
@@ -64,7 +64,7 @@ class BidirectionalLSTMBenchmark(
     return model
 
   def benchmark_bidirect_lstm_imdb(self, batch_size, run_iters):
-    """ Required Arguments for measure_performance:
+    """ Required Arguments for measure_performance.
 
       x: Input data, it could be Numpy or load from tfds.
       y: Target data. If `x` is a dataset, generator instance,
