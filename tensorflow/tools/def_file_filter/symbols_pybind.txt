@@ -370,6 +370,6 @@ tensorflow::grappler::CostAnalyzer::GenerateReport
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
 
-[tf32_util] # tf32
+[tf32_utils] # tf32
 tensorflow::allow_tf32_execution
 tensorflow::tf32_execution_allowed
