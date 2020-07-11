@@ -1531,23 +1531,23 @@ using ConvertFusedBatchNormGradV3Op =
 // Converts TensorFlow FusedBatchNormV3Op to either HLO BatchNormTrainingOp or
 // HLO BatchNormInferenceOp, depending on the value of the 'is_training'
 // parameter.
-class ConvertFusedBatchNormV3Op
-    : public OpRewritePattern<TF::FusedBatchNormV3Op> {
+template <typename FusedBatchNormOpT>
+class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpRewritePattern<FusedBatchNormOpT>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::FusedBatchNormV3Op op,
+  LogicalResult matchAndRewrite(FusedBatchNormOpT op,
                                 PatternRewriter &rewriter) const override {
     auto feature_dim =
         getFeatureDimensionAttr(rewriter, op.data_formatAttr(), op.x());
 
-    auto input_type_tensor = op.x().getType().cast<TensorType>();
+    auto input_type_tensor = op.x().getType().template cast<TensorType>();
     auto input_element_type = input_type_tensor.getElementType();
 
-    auto scale_type_tensor = op.scale().getType().cast<TensorType>();
+    auto scale_type_tensor = op.scale().getType().template cast<TensorType>();
     auto scale_element_type = scale_type_tensor.getElementType();
 
-    auto mean_type_tensor = op.mean().getType().cast<TensorType>();
+    auto mean_type_tensor = op.mean().getType().template cast<TensorType>();
     auto mean_element_type = mean_type_tensor.getElementType();
     // In the training case, dimensions of input tensors must be static.
     if (op.is_training() && (!input_type_tensor.hasStaticShape() ||
@@ -1561,7 +1561,7 @@ class ConvertFusedBatchNormV3Op
     Value bn_train_input = rewriter.create<mhlo::ConvertOp>(op.getLoc(), op.x(),
                                                             scale_element_type);
     TensorType bn_train_input_type_tensor =
-        bn_train_input.getType().cast<TensorType>();
+        bn_train_input.getType().template cast<TensorType>();
 
     if (op.is_training()) {
       // Training case.
@@ -1643,17 +1643,25 @@ class ConvertFusedBatchNormV3Op
             /*broadcast_dimensions=*/DenseIntElementsAttr());
       }
 
-      // TF FusedBatchNormV3 op expects 5 outputs. Outputs 3 and 4 are
-      // currently marked as "reserved spaces 1 and 2". They are used to
-      // pass the per-batch mean and variance to the gradiant. Here we
-      // maintain the same behavior by setting them to the mean and variance
-      // calculated by BatchNormTraining. Output 5 is unused; it doesn't
-      // matter what we pass there.
-      rewriter.replaceOp(op, {y_out, /*batch_mean=*/batch_mean,
-                              /*batch_variance=*/corrected_variance,
-                              /*reserve_space_1=*/reserve_space_1,
-                              /*reserve_space_2=*/batch_variance,
-                              /*reserve_space_3=*/op.x()});
+      if (std::is_same<FusedBatchNormOpT, TF::FusedBatchNormV2Op>::value) {
+        // FusedBatchNormV2 expects 4 outputs.
+        // Outputs 3 and 4 are currently marked as "reserved spaces 1 and 2".
+        // They are used to pass the per-batch mean and variance to the
+        // gradiant. Here we maintain the same behavior by setting them to the
+        // mean and variance calculated by BatchNormTraining.
+        rewriter.replaceOp(op, {y_out, /*batch_mean=*/batch_mean,
+                                /*batch_variance=*/corrected_variance,
+                                /*reserve_space_1=*/reserve_space_1,
+                                /*reserve_space_2=*/batch_variance});
+      } else {  // TF::FusedBatchNormV3Op
+        // FusedBatchNormV3 expects a 5th output, but the output is unused; it
+        // doesn't matter what we pass there.
+        rewriter.replaceOp(op, {y_out, /*batch_mean=*/batch_mean,
+                                /*batch_variance=*/corrected_variance,
+                                /*reserve_space_1=*/reserve_space_1,
+                                /*reserve_space_2=*/batch_variance,
+                                /*reserve_space_3=*/op.x()});
+      }
     } else {  // Inference case.
       auto bn_train_op = rewriter.create<BatchNormInferenceOp>(
           op.getLoc(),
@@ -1670,30 +1678,44 @@ class ConvertFusedBatchNormV3Op
       // not used for inference. It doesn't matter what values we provide for
       // the last 5 results as long as they are of the same type. Forward
       // input mean and variance to output mean, variance, reserved_space_1 and
-      // reserver_space_2. Create a constant tensor to forward to last
-      // reserve_space_3 output.
-      auto reserve_space_3_type = op.getResult(5).getType().cast<TensorType>();
-      int num_elements = reserve_space_3_type.hasStaticShape()
-                             ? reserve_space_3_type.getNumElements()
-                             : 0;
-      auto const_attr_type = RankedTensorType::get(
-          {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
-
-      Value dummy_const = rewriter.create<ConstOp>(
-          op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
-      if (const_attr_type != reserve_space_3_type)
-        dummy_const = rewriter.create<TensorCastOp>(
-            op.getLoc(), reserve_space_3_type, dummy_const);
-      rewriter.replaceOp(op, {/*y=*/y_out,
-                              /*batch_mean=*/op.mean(),
-                              /*batch_variance=*/op.variance(),
-                              /*reserve_space_1=*/op.mean(),
-                              /*reserve_space_2=*/op.variance(),
-                              /*reserve_space_3=*/dummy_const});
+      // reserved_space_2.
+      if (std::is_same<FusedBatchNormOpT, TF::FusedBatchNormV2Op>::value) {
+        rewriter.replaceOp(op, {/*y=*/y_out,
+                                /*batch_mean=*/op.mean(),
+                                /*batch_variance=*/op.variance(),
+                                /*reserve_space_1=*/op.mean(),
+                                /*reserve_space_2=*/op.variance()});
+      } else {
+        // For FusedBatchNormV3Op, also create a constant tensor to forward to
+        // last reserve_space_3 output.
+        auto reserve_space_3_type =
+            op.getResult(5).getType().template cast<TensorType>();
+        int num_elements = reserve_space_3_type.hasStaticShape()
+                               ? reserve_space_3_type.getNumElements()
+                               : 0;
+        auto const_attr_type = RankedTensorType::get(
+            {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
+        Value dummy_const = rewriter.create<ConstOp>(
+            op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
+        if (const_attr_type != reserve_space_3_type)
+          dummy_const = rewriter.create<TensorCastOp>(
+              op.getLoc(), reserve_space_3_type, dummy_const);
+        rewriter.replaceOp(op, {/*y=*/y_out,
+                                /*batch_mean=*/op.mean(),
+                                /*batch_variance=*/op.variance(),
+                                /*reserve_space_1=*/op.mean(),
+                                /*reserve_space_2=*/op.variance(),
+                                /*reserve_space_3=*/dummy_const});
+      }
     }
     return success();
   }
 };
+
+using ConvertFusedBatchNormV2Op =
+    ConvertFusedBatchNormBase<TF::FusedBatchNormV2Op>;
+using ConvertFusedBatchNormV3Op =
+    ConvertFusedBatchNormBase<TF::FusedBatchNormV3Op>;
 
 using PaddingArray =
     std::vector<std::pair<tensorflow::int64, tensorflow::int64>>;
@@ -5481,12 +5503,13 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
       ConvertConv2DBackpropInputOp, ConvertConv3DBackpropInputOp,
       ConvertCumsumOp, ConvertDiagPartOp, ConvertEinsumOp,
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
-      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
-      ConvertInfeedDequeueTupleOp, ConvertInplaceUpdateOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertAvgPool2DGradOp,
-      ConvertAvgPool3DGradOp, ConvertMaxPool2DOp, ConvertMaxPool3DOp,
-      ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp, ConvertMeanOp,
-      ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
+      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV2Op,
+      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp,
+      ConvertInplaceUpdateOp, ConvertLinSpaceOp, ConvertMaxOp, ConvertMinOp,
+      ConvertAvgPoolOp, ConvertAvgPool2DGradOp, ConvertAvgPool3DGradOp,
+      ConvertMaxPool2DOp, ConvertMaxPool3DOp, ConvertMaxPool2DGradOp,
+      ConvertMaxPool3DGradOp, ConvertMeanOp, ConvertOneHotOp,
+      ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertQrOp,
       ConvertDynamicRangeOp, ConvertRangeOp, ConvertSelectV2Op,
       ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
