@@ -437,10 +437,10 @@ class FunctionTest(test.TestCase):
     self.assertEqual([("Assert", "Assert")], Foo.stateful_ops)
     g = ops.Graph()
     with g.as_default(), self.cached_session():
-      self.assertAllEqual(Foo(constant_op.constant(3.0)).eval(), 6.0)
+      self.assertAllEqual(Foo(constant_op.constant(3.0)), 6.0)
       with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                   "assertion failed.*-3"):
-        self.assertAllEqual(Foo(constant_op.constant(-3.0)).eval(), 6.0)
+        self.assertAllEqual(Foo(constant_op.constant(-3.0)), 6.0)
 
   @test_util.run_deprecated_v1
   def testAssertWrapper(self):
