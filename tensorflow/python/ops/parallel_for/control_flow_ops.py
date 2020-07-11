@@ -339,9 +339,9 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
 
   This method works similar to `tf.map_fn` but is optimized to run much faster,
   possibly with a much larger memory footprint. The speedups are obtained by
-  vectorization (see [Auto-Vectorizing TensorFlow Graphs: Jacobians, Auto-Batching 
-  and Beyond](https://arxiv.org/pdf/1903.04243.pdf)). The idea behind
-  vectorization is to semantically launch all the invocations of `fn` in
+  vectorization (see [Auto-Vectorizing TensorFlow Graphs: Jacobians, 
+  Auto-Batching and Beyond](https://arxiv.org/pdf/1903.04243.pdf)). The idea 
+  behind vectorization is to semantically launch all the invocations of `fn` in
   parallel and fuse corresponding operations across all these invocations. This
   fusion is done statically at graph generation time and the generated code is
   often similar in performance to a manually fused version.
