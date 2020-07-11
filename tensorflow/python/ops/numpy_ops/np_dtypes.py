@@ -61,6 +61,8 @@ _to_float32 = {
 }
 
 
+_cached_np_dtypes = {}
+
 _allow_float64 = True
 
 
@@ -74,7 +76,7 @@ def set_allow_float64(b):
 
 
 def canonicalize_dtype(dtype):
-  if not is_allow_float64():
+  if not _allow_float64:
     return _to_float32.get(dtype, dtype)
   else:
     return dtype
@@ -83,6 +85,16 @@ def canonicalize_dtype(dtype):
 def _result_type(*arrays_and_dtypes):
   dtype = np.result_type(*arrays_and_dtypes)
   return canonicalize_dtype(dtype)
+
+
+def _get_cached_dtype(dtype):
+  """Returns an np.dtype for the TensorFlow DType."""
+  global _cached_np_dtypes
+  cached_dtype = _cached_np_dtypes.get(dtype, None)
+  if cached_dtype is None:
+    cached_dtype = np.dtype(dtype.as_numpy_dtype)
+    _cached_np_dtypes[dtype] = cached_dtype
+  return cached_dtype
 
 
 def default_float_type():

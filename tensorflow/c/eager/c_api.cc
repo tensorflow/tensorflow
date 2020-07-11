@@ -337,10 +337,13 @@ tensorflow::Status CreateRemoteContexts(
         });
   }
   counter.Wait();
+  tensorflow::StatusGroup sg;
   for (int i = 0; i < num_remote_workers; i++) {
-    TF_RETURN_IF_ERROR(statuses[i]);
+    if (TF_PREDICT_FALSE(!statuses[i].ok())) {
+      sg.Update(statuses[i]);
+    }
   }
-  return tensorflow::Status::OK();
+  return sg.as_summary_status();
 }
 
 tensorflow::Status UpdateRemoteContexts(
@@ -611,10 +614,21 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   // Initialize remote eager workers.
   if (reset_context) {
-    LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
+    const tensorflow::Status s = CreateRemoteContexts(
         ctx, remote_workers, context_id, context_view_id, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
-        context->LazyCopyFunctionRemoteInputs(), base_request));
+        context->LazyCopyFunctionRemoteInputs(), base_request);
+    // NOTE: the remote tasks could fail after `GetAllRemoteDevices` and cause
+    // the CreateRemoteContexts to fail. We currently only log instead of
+    // directly returning the error, since returning here will cause the server
+    // object to be destroyed (which currently CHECK-fails). The client will
+    // see additional errors if ops are subsequently sent to the failed workers.
+    if (TF_PREDICT_FALSE(!s.ok())) {
+      LOG(ERROR) << "Error when creating contexts on remote targets: "
+                 << s.error_message()
+                 << "\nExecuting remote ops or functions on these remote "
+                    "targets will fail.";
+    }
   } else {
     // The master's context_view_id will be incremented by one
     // the UpdateRemoteMaster call later. We want all new workers and
@@ -644,15 +658,16 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
     auto* device_mgr = grpc_server->worker_env()->device_mgr;
     std::shared_ptr<tensorflow::WorkerSession> worker_session;
-    TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
-        session_name, server_def, base_request.cluster_device_attributes(),
-        true));
-    TF_RETURN_IF_ERROR(
+    LOG_AND_RETURN_IF_ERROR(
+        grpc_server->worker_env()->session_mgr->CreateSession(
+            session_name, server_def, base_request.cluster_device_attributes(),
+            true));
+    LOG_AND_RETURN_IF_ERROR(
         grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
             session_name, &worker_session));
 
     // Initialize remote tensor communication based on worker session.
-    TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+    LOG_AND_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
 
     tensorflow::DistributedFunctionLibraryRuntime* cluster_flr =
         tensorflow::eager::CreateClusterFLR(context_id, context,

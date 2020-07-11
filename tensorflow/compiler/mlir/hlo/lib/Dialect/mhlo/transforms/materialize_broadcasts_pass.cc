@@ -34,7 +34,7 @@ struct TestMaterializeBroadcastsPass
     OwningRewritePatternList conversionPatterns;
 
     // Consider the mhlo dialect legal for tests.
-    conversionTarget.addLegalDialect<XlaHloDialect>();
+    conversionTarget.addLegalDialect<MhloDialect>();
     // The conversion uses helpers from the Standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
 
@@ -54,5 +54,5 @@ struct TestMaterializeBroadcastsPass
 }  // namespace mlir
 
 static mlir::PassRegistration<mlir::mhlo::TestMaterializeBroadcastsPass> pass(
-    "test-xla-materialize-broadcasts",
+    "mhlo-test-materialize-broadcasts",
     "Test pass for materializing 'broadcast_dimensions' attributes");

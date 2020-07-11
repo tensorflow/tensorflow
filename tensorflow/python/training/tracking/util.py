@@ -86,6 +86,8 @@ class _ObjectGraphProtoPrettyPrinter(object):
   repeated naming is cheap after the first.
   """
 
+  __slots__ = ["_object_graph_proto", "_node_name_cache"]
+
   def __init__(self, object_graph_proto):
     self._object_graph_proto = object_graph_proto
     self._node_name_cache = None
@@ -123,6 +125,11 @@ class _ObjectGraphProtoPrettyPrinter(object):
 
 class _CheckpointRestoreCoordinatorDeleter(object):
   """Deleter to avoid overriding _CheckpointRestoreCoordinator.__del__()."""
+
+  __slots__ = [
+      "expect_partial", "object_graph_proto", "matched_proto_ids",
+      "unused_attributes"
+  ]
 
   def __init__(self, expect_partial, object_graph_proto, matched_proto_ids,
                unused_attributes):

@@ -177,7 +177,9 @@ cc_library(
     visibility = [
         "//tensorflow:internal",
     ],
-    deps = [],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 cc_library(
@@ -480,6 +482,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:function_optimization_registry",
+        "//tensorflow/core/common_runtime:optimization_registry",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "@com_google_absl//absl/strings",

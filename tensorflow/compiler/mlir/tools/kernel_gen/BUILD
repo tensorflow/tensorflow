@@ -25,8 +25,8 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/hlo:xla_materialize_broadcasts",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/hlo:xla_unfuse_batch_norm",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",

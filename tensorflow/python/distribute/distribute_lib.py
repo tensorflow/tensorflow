@@ -250,6 +250,8 @@ def get_update_replica_id():
 class UpdateContext(object):
   """Context manager when you are in `update()` or `update_non_slot()`."""
 
+  __slots__ = ["_replica_id", "_old_replica_id"]
+
   def __init__(self, replica_id):
     self._replica_id = replica_id
     self._old_replica_id = None
@@ -454,6 +456,10 @@ class InputContext(object):
   source etc).
   """
 
+  __slots__ = [
+      "_num_input_pipelines", "_input_pipeline_id", "_num_replicas_in_sync"
+  ]
+
   def __init__(self,
                num_input_pipelines=1,
                input_pipeline_id=0,
@@ -544,6 +550,8 @@ class ValueContext(object):
   (2, 2)
 
   """
+
+  __slots__ = ["_replica_id_in_sync_group", "_num_replicas_in_sync"]
 
   def __init__(self,
                replica_id_in_sync_group=0,
@@ -798,7 +806,7 @@ class StrategyBase(object):
     ...   mirrored_variable = tf.Variable(1.)
     >>> mirrored_variable
     MirroredVariable:{
-      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>,
       1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=1.0>
     }
     >>> # Variable created outside scope:
@@ -1313,7 +1321,7 @@ class StrategyBase(object):
       reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
         be combined. Allows using string representation of the enum such as
         "SUM", "MEAN".
-      value: a `tf.distribute.DistributeValues` instance, e.g. returned by
+      value: a `tf.distribute.DistributedValues` instance, e.g. returned by
         `Strategy.run`, to be combined into a single tensor. It can also be a
         regular tensor when used with `OneDeviceStrategy` or default strategy.
       axis: specifies the dimension to reduce along within each
@@ -2267,7 +2275,7 @@ class StrategyExtendedV2(object):
     ...     reduced = strategy.extended.reduce_to(tf.distribute.ReduceOp.SUM,
     ...         value, destinations=var)
     ...     strategy.extended.update(var, lambda var, value: var.assign(value),
-                args=(reduced,))
+    ...         args=(reduced,))
     ...
     ...   value = tf.identity(1.)
     ...   tf.distribute.get_replica_context().merge_call(merge_fn,
@@ -2276,19 +2284,19 @@ class StrategyExtendedV2(object):
     >>> def run(strategy):
     ...   with strategy.scope():
     ...     v = tf.Variable(0.)
-    ...     strategy.run(step_fn(v))
+    ...     strategy.run(step_fn, args=(v,))
     ...     return v
     >>>
     >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
     MirroredVariable:{
-      0 /.../device:GPU:0: <tf.Variable ... numpy=2.0>
-      1 /.../device:GPU:1: <tf.Variable ... numpy=2.0>
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
+      1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
     }
     >>> run(tf.distribute.experimental.CentralStorageStrategy(
-            compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
-    <tf.Variable ... numpy=2.0>
-    >>> run(tf.distribute.experimental.OneDeviceStrategy("GPU:0")
-    <tf.Variable ... numpy=1.0>
+    ...     compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
+    <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>
+    >>> run(tf.distribute.OneDeviceStrategy("GPU:0"))
+    <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
 
     Args:
       reduce_op: a `tf.distribute.ReduceOp` or string. How to reduce the value.
@@ -2348,7 +2356,7 @@ class StrategyExtendedV2(object):
     ...     reduced = strategy.extended.batch_reduce_to(
     ...         tf.distribute.ReduceOp.SUM, [(value, var)])[0]
     ...     strategy.extended.update(var, lambda var, value: var.assign(value),
-                args=(reduced,))
+    ...         args=(reduced,))
     ...
     ...   value = tf.identity(1.)
     ...   tf.distribute.get_replica_context().merge_call(merge_fn,
@@ -2357,19 +2365,19 @@ class StrategyExtendedV2(object):
     >>> def run(strategy):
     ...   with strategy.scope():
     ...     v = tf.Variable(0.)
-    ...     strategy.run(step_fn(v))
+    ...     strategy.run(step_fn, args=(v,))
     ...     return v
     >>>
     >>> run(tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"]))
     MirroredVariable:{
-      0 /.../device:GPU:0: <tf.Variable ... numpy=2.0>
-      1 /.../device:GPU:1: <tf.Variable ... numpy=2.0>
+      0: <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>,
+      1: <tf.Variable 'Variable/replica_1:0' shape=() dtype=float32, numpy=2.0>
     }
     >>> run(tf.distribute.experimental.CentralStorageStrategy(
-            compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
-    <tf.Variable ... numpy=2.0>
-    >>> run(tf.distribute.experimental.OneDeviceStrategy("GPU:0")
-    <tf.Variable ... numpy=1.0>
+    ...     compute_devices=["GPU:0", "GPU:1"], parameter_device="CPU:0"))
+    <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=2.0>
+    >>> run(tf.distribute.OneDeviceStrategy("GPU:0"))
+    <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
 
     Args:
       reduce_op: a `tf.distribute.ReduceOp`. How to reduce the value.
@@ -2830,6 +2838,7 @@ class ReplicaContext(object):
     self._replica_id_in_sync_group = replica_id_in_sync_group
     self._summary_recording_distribution_strategy = None
 
+  @doc_controls.do_not_generate_docs
   def __enter__(self):
     _push_per_thread_mode(self._thread_context)
 
@@ -2842,6 +2851,7 @@ class ReplicaContext(object):
         summary_state.is_recording_distribution_strategy)
     summary_state.is_recording_distribution_strategy = replica_id_is_zero
 
+  @doc_controls.do_not_generate_docs
   def __exit__(self, exception_type, exception_value, traceback):
     summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
     summary_state.is_recording_distribution_strategy = (
@@ -3024,6 +3034,8 @@ class _DefaultDistributionStrategy(StrategyV1):
 
 class _DefaultDistributionContext(object):
   """Context manager setting the default `tf.distribute.Strategy`."""
+
+  __slots__ = ["_var_creator_scope", "_strategy", "_nested_count"]
 
   def __init__(self, strategy):
 

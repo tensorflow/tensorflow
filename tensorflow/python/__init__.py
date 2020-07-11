@@ -50,6 +50,7 @@ from tensorflow.python.layers import layers
 from tensorflow.python.module import module
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import bitwise_ops as bitwise
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
@@ -58,6 +59,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import ragged
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import stateful_random_ops
+from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.linalg.sparse import sparse
@@ -158,6 +160,6 @@ _exported_dunders = set([
     '__monolithic_build__',
 ])
 
-# Expose symbols minus dunders, unless they are whitelisted above.
+# Expose symbols minus dunders, unless they are allowlisted above.
 # This is necessary to export our dunders.
 __all__ = [s for s in dir() if s in _exported_dunders or not s.startswith('_')]

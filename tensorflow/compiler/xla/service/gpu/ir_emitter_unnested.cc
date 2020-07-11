@@ -149,10 +149,7 @@ IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                                      const HloComputation* hlo_computation,
                                      IrEmitterContext* ir_emitter_context)
     : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false),
-      hlo_computation_(hlo_computation) {
-  // Initialize thunk_sequence_ to an empty list of thunks.
-  thunk_sequence_.reset(new ThunkSequence());
-}
+      hlo_computation_(hlo_computation) {}
 
 Status IrEmitterUnnested::Postprocess(HloInstruction* hlo) {
   bindings_.UnbindAllLocalIrValues();
@@ -475,7 +472,7 @@ Status IrEmitterUnnested::HandlePadToStatic(HloInstruction* pad_to_static) {
           .EmitLoop(ir_name,
                     GetIndexTypeForKernel(
                         pad_to_static, launch_dimensions.launch_bound(), &b_)));
-  thunk_sequence_->emplace_back(std::move(kernel_thunk));
+  thunk_sequence_.emplace_back(std::move(kernel_thunk));
   return Status::OK();
 }
 
@@ -584,7 +581,7 @@ Status IrEmitterUnnested::HandleSliceToDynamic(
           .EmitLoop(ir_name, GetIndexTypeForKernel(
                                  slice_to_dynamic,
                                  launch_dimensions.launch_bound(), &b_)));
-  thunk_sequence_->emplace_back(std::move(kernel_thunk));
+  thunk_sequence_.emplace_back(std::move(kernel_thunk));
 
   return Status::OK();
 }
@@ -2163,7 +2160,7 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
       BuildKernelThunk(&hlo, /*implements_whole_instruction=*/true);
   Status emit_status = EmitTargetElementLoopInThunk(
       hlo, body_emitter, kernel_thunk.get(), unroll_factor);
-  thunk_sequence_->emplace_back(std::move(kernel_thunk));
+  thunk_sequence_.emplace_back(std::move(kernel_thunk));
 
   return emit_status;
 }
@@ -3755,7 +3752,7 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
                     GetIndexTypeForKernel(
                         unnested_hlo, launch_dimensions.launch_bound(), &b_));
 
-  thunk_sequence_->emplace_back(std::move(kernel_thunk));
+  thunk_sequence_.emplace_back(std::move(kernel_thunk));
 
   return emit_status;
 }

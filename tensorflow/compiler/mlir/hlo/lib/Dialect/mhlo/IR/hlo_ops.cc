@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines the operations used in the XLA dialect.
+// This file defines the operations used in the MHLO dialect.
 
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
@@ -62,9 +62,8 @@ namespace mlir {
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_structs.cc.inc"
 namespace mhlo {
 
-Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
-                                              Attribute value, Type type,
-                                              Location loc) {
+Operation* MhloDialect::materializeConstant(OpBuilder& builder, Attribute value,
+                                            Type type, Location loc) {
   // HLO dialect constants only support ElementsAttr unlike standard dialect
   // constant which supports all attributes.
   if (value.isa<ElementsAttr>())
@@ -249,6 +248,17 @@ void IotaOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
   results.insert<IotaBroadcast>(context);
 }
 
+OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
+  auto dimension = iota_dimension().getLimitedValue();
+  auto result_ty = getResult().getType().cast<ShapedType>();
+  if (result_ty.hasRank() && result_ty.getDimSize(dimension) == 1) {
+    Builder builder(getContext());
+    return builder.getZeroAttr(result_ty);
+  }
+
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicIotaOp
 //===----------------------------------------------------------------------===//
@@ -405,7 +415,7 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return xla::ConvertElementsAttr(elementsAttr,
+    return hlo::ConvertElementsAttr(elementsAttr,
                                     getElementTypeOrSelf(getResult()));
   }
 
@@ -621,17 +631,25 @@ static LogicalResult Verify(BroadcastInDimOp op) {
   return success();
 }
 
-OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute>) {
+OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute> attrs) {
   auto type = getType().cast<RankedTensorType>();
-  if (type != getOperand().getType()) {
-    return nullptr;
+  if (type == getOperand().getType()) {
+    auto broadcast_values = broadcast_dimensions().getValues<int64_t>();
+    if (!std::equal(broadcast_values.begin(), broadcast_values.end(),
+                    llvm::seq<int64_t>(0, type.getRank()).begin())) {
+      return {};
+    }
+    return getOperand();
   }
-  auto broadcast_values = broadcast_dimensions().getValues<int64_t>();
-  if (!std::equal(broadcast_values.begin(), broadcast_values.end(),
-                  llvm::seq<int64_t>(0, type.getRank()).begin())) {
-    return nullptr;
-  }
-  return getOperand();
+
+  // Constant fold when an operand is a splat tensor attribute.
+  if (!attrs[0] || !type.hasStaticShape()) return {};
+  auto splatOperandAttr = attrs[0].dyn_cast<SplatElementsAttr>();
+  if (!splatOperandAttr) return {};
+  // MLIR core bug (https://bugs.llvm.org/show_bug.cgi?id=46588): dense element
+  // attribute iterator not implemented for complex element types.
+  if (type.getElementType().isa<ComplexType>()) return {};
+  return SplatElementsAttr::get(type, splatOperandAttr.getSplatValue());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2128,7 +2146,7 @@ struct HLOInlinerInterface : public DialectInlinerInterface {
 // mhlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-XlaHloDialect::XlaHloDialect(MLIRContext* context)
+MhloDialect::MhloDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
@@ -2136,11 +2154,9 @@ XlaHloDialect::XlaHloDialect(MLIRContext* context)
       >();
   addInterfaces<HLOInlinerInterface>();
   addTypes<TokenType>();
-  // Support unknown operations because not all XLA operations are registered.
-  // allowUnknownOperations();
 }
 
-Type XlaHloDialect::parseType(DialectAsmParser& parser) const {
+Type MhloDialect::parseType(DialectAsmParser& parser) const {
   StringRef data_type;
   if (parser.parseKeyword(&data_type)) return Type();
 
@@ -2149,7 +2165,7 @@ Type XlaHloDialect::parseType(DialectAsmParser& parser) const {
   return nullptr;
 }
 
-void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
+void MhloDialect::printType(Type type, DialectAsmPrinter& os) const {
   if (type.isa<TokenType>()) {
     os << "token";
     return;

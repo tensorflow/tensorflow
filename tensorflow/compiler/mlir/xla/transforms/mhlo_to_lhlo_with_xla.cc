@@ -190,51 +190,51 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   using ::xla::HloOpcode;
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-      return CreateOpWithoutAttrs<xla_lhlo::AbsOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr).status();
     case HloOpcode::kAdd:
-      return CreateOpWithoutAttrs<xla_lhlo::AddOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AddOp>(instr).status();
     case HloOpcode::kAnd:
-      return CreateOpWithoutAttrs<xla_lhlo::AndOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AndOp>(instr).status();
     case HloOpcode::kCeil:
-      return CreateOpWithoutAttrs<xla_lhlo::CeilOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CeilOp>(instr).status();
     case HloOpcode::kComplex:
-      return CreateOpWithoutAttrs<xla_lhlo::ComplexOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ComplexOp>(instr).status();
     case HloOpcode::kCopy:
-      return CreateOpWithoutAttrs<xla_lhlo::CopyOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CopyOp>(instr).status();
     case HloOpcode::kCos:
-      return CreateOpWithoutAttrs<xla_lhlo::CosOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CosOp>(instr).status();
     case HloOpcode::kDivide:
-      return CreateOpWithoutAttrs<xla_lhlo::DivOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::DivOp>(instr).status();
     case HloOpcode::kExp:
-      return CreateOpWithoutAttrs<xla_lhlo::ExpOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ExpOp>(instr).status();
     case HloOpcode::kImag:
-      return CreateOpWithoutAttrs<xla_lhlo::ImagOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ImagOp>(instr).status();
     case HloOpcode::kLog:
-      return CreateOpWithoutAttrs<xla_lhlo::LogOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::LogOp>(instr).status();
     case HloOpcode::kMaximum:
-      return CreateOpWithoutAttrs<xla_lhlo::MaxOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MaxOp>(instr).status();
     case HloOpcode::kMinimum:
-      return CreateOpWithoutAttrs<xla_lhlo::MinOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MinOp>(instr).status();
     case HloOpcode::kMultiply:
-      return CreateOpWithoutAttrs<xla_lhlo::MulOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MulOp>(instr).status();
     case HloOpcode::kNegate:
-      return CreateOpWithoutAttrs<xla_lhlo::NegOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::NegOp>(instr).status();
     case HloOpcode::kReal:
-      return CreateOpWithoutAttrs<xla_lhlo::RealOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RealOp>(instr).status();
     case HloOpcode::kRemainder:
-      return CreateOpWithoutAttrs<xla_lhlo::RemOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RemOp>(instr).status();
     case HloOpcode::kRsqrt:
-      return CreateOpWithoutAttrs<xla_lhlo::RsqrtOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RsqrtOp>(instr).status();
     case HloOpcode::kSelect:
-      return CreateOpWithoutAttrs<xla_lhlo::SelectOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SelectOp>(instr).status();
     case HloOpcode::kSign:
-      return CreateOpWithoutAttrs<xla_lhlo::SignOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SignOp>(instr).status();
     case HloOpcode::kSqrt:
-      return CreateOpWithoutAttrs<xla_lhlo::SqrtOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SqrtOp>(instr).status();
     case HloOpcode::kSubtract:
-      return CreateOpWithoutAttrs<xla_lhlo::SubOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SubOp>(instr).status();
     case HloOpcode::kTanh:
-      return CreateOpWithoutAttrs<xla_lhlo::TanhOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::TanhOp>(instr).status();
     default:
       llvm::errs() << instr->ToString();
       return tensorflow::errors::Internal(
@@ -246,7 +246,7 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
 
 StatusOr<mlir::Operation*> LhloDialectEmitter::EmitSortOp(
     HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto sort, CreateOpWithoutAttrs<xla_lhlo::SortOp>(instr));
+  TF_ASSIGN_OR_RETURN(auto sort, CreateOpWithoutAttrs<lmhlo::SortOp>(instr));
   auto* sort_instr = ::xla::Cast<::xla::HloSortInstruction>(instr);
   sort.dimensionAttr(builder_.getI64IntegerAttr(sort_instr->sort_dimension()));
   sort.is_stableAttr(builder_.getBoolAttr(sort_instr->is_stable()));
@@ -379,16 +379,16 @@ Status LhloDialectEmitter::Initialize() {
       block->addArgument(arg_type);
       allocations_[alloc] = block->getArguments().back();
       args_attrs.emplace_back();
-      args_attrs.back().set(builder_.getIdentifier("xla_lhlo.params"),
+      args_attrs.back().set(builder_.getIdentifier("lmhlo.params"),
                             builder_.getIndexAttr(alloc->parameter_number()));
     } else {
       block->addArgument(MemRefType::get({alloc->size()}, i8_type_));
       allocations_[alloc] = block->getArguments().back();
       args_attrs.emplace_back();
-      args_attrs.back().set(builder_.getIdentifier("xla_lhlo.alloc"),
+      args_attrs.back().set(builder_.getIdentifier("lmhlo.alloc"),
                             builder_.getIndexAttr(alloc->index()));
       if (alloc->maybe_live_out())
-        args_attrs.back().set(builder_.getIdentifier("xla_lhlo.liveout"),
+        args_attrs.back().set(builder_.getIdentifier("lmhlo.liveout"),
                               builder_.getBoolAttr(true));
     }
   }

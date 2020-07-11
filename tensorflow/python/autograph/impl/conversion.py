@@ -31,7 +31,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.util import tf_inspect
 
 
-_WHITELIST_CACHE = cache.UnboundInstanceCache()
+_ALLOWLIST_CACHE = cache.UnboundInstanceCache()
 
 
 def _is_of_known_loaded_module(f, module_name):
@@ -80,53 +80,53 @@ def is_unsupported(o):
         '{} appears to be decorated by wrapt, which is not yet supported'
         ' by AutoGraph. The function will run as-is.'
         ' You may still apply AutoGraph before the wrapt decorator.'.format(o))
-    logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', o)
+    logging.log(2, 'Permanently allowed: %s: wrapt decorated', o)
     return True
 
   if _is_known_loaded_type(o, 'functools', '_lru_cache_wrapper'):
-    logging.log(2, 'Permanently whitelisted: %s: lru_cache', o)
+    logging.log(2, 'Permanently allowed: %s: lru_cache', o)
     return True
 
-  # Constructors are permanently whitelisted.
+  # Constructors are permanently allowed.
   # TODO(mdan): Toggle as experimental feature instead.
   # TODO(b/124016764): Remove this limitation.
   if inspect_utils.isconstructor(o):
-    logging.log(2, 'Permanently whitelisted: %s: constructor', o)
+    logging.log(2, 'Permanently allowed: %s: constructor', o)
     return True
 
-  # Other built-in modules are permanently whitelisted.
+  # Other built-in modules are permanently allowed.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
   if any(
       _is_of_known_loaded_module(o, m)
       for m in ('collections', 'pdb', 'copy', 'inspect', 're')):
-    logging.log(2, 'Permanently whitelisted: %s: part of builtin module', o)
+    logging.log(2, 'Permanently allowed: %s: part of builtin module', o)
     return True
 
-  # Custom ops and kernels are also permanently whitelisted.
+  # Custom ops and kernels are also permanently allowed.
   # See tensorflow.framework.load_library.
   if (hasattr(o, '__module__') and
       hasattr(o.__module__, '_IS_TENSORFLOW_PLUGIN')):
-    logging.log(2, 'Permanently whitelisted: %s: TensorFlow plugin', o)
+    logging.log(2, 'Permanently allowed: %s: TensorFlow plugin', o)
     return True
 
   return False
 
 
 # TODO(mdan): allow_namedtuple_subclass should be hardcoded to True.
-def is_whitelisted(
+def is_allowlisted(
     o, check_call_override=True, allow_namedtuple_subclass=False):
-  """Checks whether an entity is whitelisted for use in graph mode.
+  """Checks whether an entity is allowed for use in graph mode.
 
-  Examples of whitelisted entities include all members of the tensorflow
+  Examples of allowed entities include all members of the tensorflow
   package.
 
   Args:
     o: A Python entity.
     check_call_override: Reserved for internal use. When set to `False`, it
-      disables the rule according to which classes are whitelisted if their
-      __call__ method is whitelisted.
+      disables the rule according to which classes are allowed if their
+      __call__ method is allowed.
     allow_namedtuple_subclass: Reserved for internal use. When `True`,
-      namedtuple subclasses are not whitelisted.
+      namedtuple subclasses are not allowed.
 
   Returns:
     Boolean
@@ -144,10 +144,10 @@ def is_whitelisted(
     for rule in config.CONVERSION_RULES:
       action = rule.get_action(m)
       if action == config.Action.CONVERT:
-        logging.log(2, 'Not whitelisted: %s: %s', o, rule)
+        logging.log(2, 'Not allowed: %s: %s', o, rule)
         return False
       elif action == config.Action.DO_NOT_CONVERT:
-        logging.log(2, 'Whitelisted: %s: %s', o, rule)
+        logging.log(2, 'Allowlisted: %s: %s', o, rule)
         return True
 
   # The check for __code__ below is because isgeneratorfunction crashes
@@ -156,26 +156,26 @@ def is_whitelisted(
     logging.warn(
         'Entity %s appears to be a generator function. It will not be converted'
         ' by AutoGraph.', o)
-    logging.log(2, 'Whitelisted: %s: generator functions are not converted', o)
+    logging.log(2, 'Allowlisted: %s: generator functions are not converted', o)
     return True
 
   if (check_call_override and not tf_inspect.isclass(o) and
       hasattr(o, '__call__')):
-    # Callable objects: whitelisted if their __call__ method is.
+    # Callable objects: allowed if their __call__ method is.
     # The type check avoids infinite recursion around the __call__ method
     # of function objects.
-    if (type(o) != type(o.__call__)) and is_whitelisted(o.__call__):  # pylint: disable=unidiomatic-typecheck
-      logging.log(2, 'Whitelisted: %s: object __call__ whitelisted', o)
+    if (type(o) != type(o.__call__)) and is_allowlisted(o.__call__):  # pylint: disable=unidiomatic-typecheck
+      logging.log(2, 'Allowlisted: %s: object __call__ allowed', o)
       return True
 
   owner_class = None
   if tf_inspect.ismethod(o):
-    # Methods of whitelisted classes are also whitelisted, even if they are
+    # Methods of allowed classes are also allowed, even if they are
     # bound via user subclasses.
     #
     # For example, suppose `tf.Foo` has a method called `bar`, and `baz` is
-    # defined as below. `tf.Foo` is whitelisted. Then `baz.bar` is also
-    # whitelisted.
+    # defined as below. `tf.Foo` is allowed. Then `baz.bar` is also
+    # allowed.
     #
     #   class Custom(tf.Foo):
     #     pass
@@ -183,22 +183,22 @@ def is_whitelisted(
     #   baz = Custom()
     #
     # For the example above, if `Custom` did overload `bar`, then it would no
-    # longer be whitelisted.
+    # longer be allowed.
 
     owner_class = inspect_utils.getmethodclass(o)
     if owner_class is function.TfMethodTarget:
       owner_class = o.__self__.target_class
     if owner_class is not None:
       if issubclass(owner_class, unittest.TestCase):
-        logging.log(2, 'Whitelisted: %s: method of TestCase subclass', o)
+        logging.log(2, 'Allowlisted: %s: method of TestCase subclass', o)
         return True
 
       owner_class = inspect_utils.getdefiningclass(o, owner_class)
-      if is_whitelisted(
+      if is_allowlisted(
           owner_class,
           check_call_override=False,
           allow_namedtuple_subclass=True):
-        logging.log(2, 'Whitelisted: %s: owner is whitelisted %s', o,
+        logging.log(2, 'Allowlisted: %s: owner is allowed %s', o,
                     owner_class)
         return True
 
@@ -208,27 +208,27 @@ def is_whitelisted(
     # graph mode since they are just containers.
     if allow_namedtuple_subclass:
       if not any(inspect_utils.isnamedtuple(base) for base in o.__bases__):
-        logging.log(2, 'Whitelisted: %s: named tuple', o)
+        logging.log(2, 'Allowlisted: %s: named tuple', o)
         return True
     else:
-      logging.log(2, 'Whitelisted: %s: named tuple or subclass', o)
+      logging.log(2, 'Allowlisted: %s: named tuple or subclass', o)
       return True
 
-  logging.log(2, 'Not whitelisted: %s: default rule', o)
+  logging.log(2, 'Not allowed: %s: default rule', o)
   return False
 
 
-def is_in_whitelist_cache(entity, options):
+def is_in_allowlist_cache(entity, options):
   try:
-    return _WHITELIST_CACHE.has(entity, options)
+    return _ALLOWLIST_CACHE.has(entity, options)
   except TypeError:
     # Catch-all for entities that are unhashable or don't allow weakrefs.
     return False
 
 
-def cache_whitelisted(entity, options):
+def cache_allowlisted(entity, options):
   try:
-    _WHITELIST_CACHE[entity][options] = True
+    _ALLOWLIST_CACHE[entity][options] = True
   except TypeError:
     # Catch-all for entities that are unhashable or don't allow weakrefs.
     pass

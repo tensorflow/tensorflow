@@ -872,6 +872,15 @@ class SymbolicSupportTest(keras_parameterized.TestCase):
         tags.add(val.tag)
     self.assertEqual(set(['my_layer/mean']), tags)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_error_when_passing_non_tensor(self):
+    # layers that have an `input_spec` will raise an error when called on
+    # non-tensors. This covers all built-in layers.
+    layer = layers.Dense(3)
+    x = object()
+    with self.assertRaisesRegex(TypeError, r'should be tensors'):
+      layer(x)
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class NestedTrackingTest(test.TestCase):

@@ -898,7 +898,7 @@ class OptimizerWithFunctionTest(test.TestCase):
 
 _NUM_LEARNERS = 50
 APPLY_SCOPE = 'debug_apply'
-WHITELIST = [
+ALLOWLIST = [
     # optimizer_v2._deduplicate_indexed_slices contains an indexed slice:
     #   array_ops.shape(unique_indices)[0]
     # which winds up expanding to [0:1:1] thereby creating three constants
@@ -1025,8 +1025,8 @@ def identify_redundant_ops(graph):
     # Certain ops are simply not worth eliminating, and are instead simply
     # ignored.
     name, op_type = op_defs[0].name, op_defs[0].type
-    if any(whitelisted_scope in name and op_type == whitelisted_type
-           for whitelisted_scope, whitelisted_type in WHITELIST):
+    if any(allowlisted_scope in name and op_type == allowlisted_type
+           for allowlisted_scope, allowlisted_type in ALLOWLIST):
       continue
 
     num_duplicates += len(op_defs)

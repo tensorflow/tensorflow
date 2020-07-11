@@ -320,16 +320,7 @@ def _graph_mode_decorator(f, args, kwargs):
         "The custom_gradient decorator currently supports keywords "
         "arguments only when eager execution is enabled.")
   name = "CustomGradient-%s" % ops.uid()
-
-  default_graph = ops.get_default_graph()
-  def convert_arg(x):
-    x = ops.convert_to_tensor(x)
-    # If graph building, be sure to capture all inputs
-    if default_graph.building_function and x.graph != default_graph:
-      x = default_graph.capture(x)
-    return x
-
-  args = nest.map_structure(convert_arg, args)
+  args = nest.map_structure(ops.convert_to_tensor, args)
 
   # Checking global and local variables attempts to ensure that no non-resource
   # Variables are added to the graph.

@@ -21,7 +21,7 @@ ENTRY %FusedReduce (x: f32[100,10]) -> f32[10] {
 }
 
 //  CHECK: func @fusion(%[[ARG0:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[RTYPE:.*]])
-//  CHECK: "xla_lhlo.fusion"() ( {
+//  CHECK: "lmhlo.fusion"() ( {
 //  CHECK:   %[[REF0:.*]] = tensor_load %arg0 : [[TYPE]]
 //  CHECK:   %[[CT0:.*]] = mhlo.constant dense<0.000000e+00>
 //  CHECK:   %[[RED:.*]] = "mhlo.reduce"(%0, %1) ( {
@@ -30,6 +30,6 @@ ENTRY %FusedReduce (x: f32[100,10]) -> f32[10] {
 //  CHECK:       "mhlo.return"(%[[ADD]])
 //  CHECK:     })
 //  CHECK:   tensor_store %[[RED]], %[[RESULT]] : [[RTYPE]]
-//  CHECK:   "xla_lhlo.terminator"()
+//  CHECK:   "lmhlo.terminator"()
 //  CHECK-NEXT: })
 

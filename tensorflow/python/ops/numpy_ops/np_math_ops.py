@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numbers
 import sys
 
 import numpy as np
@@ -32,7 +33,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
@@ -67,7 +70,7 @@ def dot(a, b):  # pylint: disable=missing-docstring
 # TODO(wangpeng): Make element-wise ops `ufunc`s
 def _bin_op(tf_fun, a, b, promote=True):
   if promote:
-    a, b = np_array_ops._promote_dtype(a, b)  # pylint: disable=protected-access
+    a, b = np_array_ops._promote_dtype_binary(a, b)  # pylint: disable=protected-access
   else:
     a = np_array_ops.array(a)
     b = np_array_ops.array(b)
@@ -169,7 +172,14 @@ def divmod(x1, x2):  # pylint: disable=redefined-builtin
 
 
 @np_utils.np_doc('maximum')
-def maximum(x1, x2):
+def maximum(x1, x2):  # pylint: disable=missing-function-docstring
+
+  # Fast path for when maximum is used as relu.
+  if isinstance(
+      x2, numbers.Real) and not isinstance(x2, bool) and x2 == 0 and isinstance(
+          x1, np_arrays.ndarray) and not x1._is_boolean():  # pylint: disable=protected-access
+    return np_utils.tensor_to_ndarray(
+        nn_ops.relu(np_array_ops.asarray(x1).data))
 
   def max_or_or(x1, x2):
     if x1.dtype == dtypes.bool:
@@ -213,7 +223,7 @@ def matmul(x1, x2):  # pylint: disable=missing-docstring
     try:
       if x1.shape.rank == 2 and x2.shape.rank == 2:
         # Fast path for known ranks.
-        return math_ops.matmul(x1, x2)
+        return gen_math_ops.mat_mul(x1, x2)
       return np_utils.cond(
           math_ops.equal(np_utils.tf_rank(x2), 1),
           lambda: math_ops.tensordot(x1, x2, axes=1),
@@ -1348,7 +1358,9 @@ def meshgrid(*xi, **kwargs):
   return outputs
 
 
-@np_utils.np_doc('einsum')
+# Uses np_doc_only here because np.einsum (in 1.16) doesn't have argument
+# `subscripts`, even though the doc says it has.
+@np_utils.np_doc_only('einsum')
 def einsum(subscripts, *operands, **kwargs):  # pylint: disable=missing-docstring
   casting = kwargs.get('casting', 'safe')
   optimize = kwargs.get('optimize', False)

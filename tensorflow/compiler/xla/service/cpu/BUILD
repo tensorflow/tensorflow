@@ -8,6 +8,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
 load(":build_defs.bzl", "runtime_copts")
+load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available")
 
 package(
     default_visibility = [":friends"],
@@ -203,7 +204,9 @@ cc_library(
         ],
         "//conditions:default": [
         ],
-    }),
+    }) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]),
     alwayslink = True,  # Contains compiler registration
 )
 

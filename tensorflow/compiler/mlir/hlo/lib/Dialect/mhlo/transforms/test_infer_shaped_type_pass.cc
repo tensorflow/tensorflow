@@ -22,12 +22,12 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
-namespace xla {
+namespace hlo {
 namespace {
 
 struct InferReturnTypeComponentsPattern : public RewritePattern {
   InferReturnTypeComponentsPattern(MLIRContext *context)
-      : RewritePattern("xla_test.get_return_type_components", 1, context) {}
+      : RewritePattern("mhlo_test.get_return_type_components", 1, context) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (op->getNumOperands() != 1) return failure();
@@ -44,7 +44,7 @@ struct InferReturnTypeComponentsPattern : public RewritePattern {
     }
 
     // Replace the op with another pass-through op with attributes added.
-    OperationState state(op->getLoc(), "xla_test.return_type_components",
+    OperationState state(op->getLoc(), "mhlo_test.return_type_components",
                          op->getOperands(), op->getResultTypes(),
                          op->getAttrs());
     auto new_op = rewriter.createOperation(state);
@@ -65,7 +65,7 @@ struct InferReturnTypeComponentsPattern : public RewritePattern {
 
 struct ReifyReturnTypeShapesPattern : public RewritePattern {
   ReifyReturnTypeShapesPattern(MLIRContext *context)
-      : RewritePattern("xla_test.reify_return_type_shapes", 1, context) {}
+      : RewritePattern("mhlo_test.reify_return_type_shapes", 1, context) {}
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (op->getNumOperands() != 1) return failure();
@@ -92,9 +92,9 @@ struct TestInferShapedTypeMethodsPass
 };
 
 }  // namespace
-}  // namespace xla
+}  // namespace hlo
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::xla::TestInferShapedTypeMethodsPass> pass(
-    "test-xla-infer-shaped-type-methods",
+static mlir::PassRegistration<mlir::hlo::TestInferShapedTypeMethodsPass> pass(
+    "mhlo-test-infer-shaped-type-methods",
     "Uses test ops to invoke InferShapedTypeOpInterface methods");

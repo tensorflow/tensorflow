@@ -90,7 +90,7 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
       const std::vector<ShardingAndIndex>& arg_core_mapping,
       const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
       const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
-      TpuProgramGroup* tpu_program);
+      TpuProgramGroupInterface* tpu_program_group_interface);
 
   TpuProgramGroup() = default;
   TpuProgramGroup(TpuProgramGroup&& other);

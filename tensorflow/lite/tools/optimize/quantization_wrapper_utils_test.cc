@@ -59,7 +59,7 @@ TEST(LstmPreprocess, Add2Tensors) {
 
   // Add 2 tensors.
   flatbuffers::FlatBufferBuilder builder;
-  tflite::optimize::AddIntemediateTensorsToFusedOp(&builder, model.get());
+  tflite::optimize::AddIntermediateTensorsToFusedOp(&builder, model.get());
 
   // Verify results.
   EXPECT_EQ(model->operator_codes.size(), 1);
@@ -84,8 +84,8 @@ TEST(LstmPreprocess, Add2Tensors) {
   EXPECT_THAT(model->subgraphs[0]->operators[0]->intermediates,
               ElementsAreArray({21, 22, 23, 24, 25}));
 
-  // Call AddIntemediateTensorsToFusedOp again and expect no change in model.
-  tflite::optimize::AddIntemediateTensorsToFusedOp(&builder, model.get());
+  // Call AddIntermediateTensorsToFusedOp again and expect no change in model.
+  tflite::optimize::AddIntermediateTensorsToFusedOp(&builder, model.get());
 
   // Verify results.
   EXPECT_EQ(model->operator_codes.size(), 1);

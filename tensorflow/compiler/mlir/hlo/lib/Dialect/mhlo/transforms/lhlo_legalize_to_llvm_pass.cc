@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -23,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 
 namespace mlir {
-namespace xla_lhlo {
+namespace lmhlo {
 namespace {
 
 class TestLhloToLLVMPass
@@ -38,11 +40,14 @@ class TestLhloToLLVMPass
     populateStdToLLVMConversionPatterns(converter, patterns);
     PopulateLhloToLLVMConversionPatterns(
         LowerToLLVMOptions::getDefaultOptions(), &converter, &patterns);
+    mlir::populateLoopToStdConversionPatterns(patterns, &getContext());
+
+    mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
 
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
-    target.addIllegalDialect<XlaLhloDialect>();
+    target.addIllegalDialect<LmhloDialect>();
 
     if (failed(applyFullConversion(m, target, patterns))) {
       signalPassFailure();
@@ -55,5 +60,5 @@ class TestLhloToLLVMPass
 static PassRegistration<TestLhloToLLVMPass> legalize_lhlo_pass(
     "test-lhlo-legalize-to-llvm", "Legalize from LHLO dialect to LLVM.");
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir

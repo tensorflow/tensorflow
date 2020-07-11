@@ -553,6 +553,8 @@ def _ready(op, sess, msg):
 
 class _CountDownTimer(object):
 
+  __slots__ = ["_start_time_secs", "_duration_secs"]
+
   def __init__(self, duration_secs):
     self._start_time_secs = time.time()
     self._duration_secs = duration_secs
