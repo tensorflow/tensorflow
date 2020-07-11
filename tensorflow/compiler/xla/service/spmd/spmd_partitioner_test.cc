@@ -3766,32 +3766,6 @@ ENTRY entry {
                                        op::Parameter(0))));
 }
 
-TEST_F(SpmdPartitioningTest, SubgroupAllToAllReshard) {
-  const char* const hlo_string = R"(
-HloModule module
-
-ENTRY entry {
-  %param0 = f32[8,8,8,8] parameter(0),
-    sharding={devices=[2,2,1,2]0,1,2,3,4,5,6,7}
-  ROOT %copy = f32[8,8,8,8] copy(%param0),
-    sharding={devices=[1,2,2,2]0,1,4,5,2,3,6,7}
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/2));
-  VLOG(1) << module->ToString();
-
-  auto root = module->entry_computation()->root_instruction();
-  auto reshape =
-      AllOf(op::Shape("f32[4,4,2,4,4]"), op::Reshape(op::Parameter(0)));
-  auto all_to_all = AllOf(op::Shape("f32[4,4,2,4,4]"), op::AllToAll(reshape));
-  auto xpose = AllOf(op::Shape("f32[2,4,4,4,4]"), op::Transpose(all_to_all));
-  EXPECT_THAT(root,
-              op::Copy(AllOf(op::Reshape(xpose), op::Shape("f32[8,4,4,4]"))));
-  EXPECT_EQ(root->operand(0)->operand(0)->operand(0)->replica_groups().size(),
-            4);
-}
-
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

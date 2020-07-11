@@ -176,45 +176,16 @@ std::vector<ReplicaGroup> CreateReplicaGroups(int64 num_replicas) {
   return groups;
 }
 
-absl::optional<std::pair<int64, int64>> GetReshardAllToAllSourceTargetDims(
-    const HloSharding& source, const HloSharding& target) {
-  if (source.IsTileMaximal() || target.IsTileMaximal() ||
-      source.tile_assignment().num_dimensions() !=
-          target.tile_assignment().num_dimensions()) {
-    return absl::nullopt;
-  }
-  int64 source_dim = -1;
-  int64 target_dim = -1;
-  for (int64 i = 0; i < source.tile_assignment().num_dimensions(); ++i) {
-    if (source.tile_assignment().dim(i) > 1 &&
-        target.tile_assignment().dim(i) == 1) {
-      if (source_dim != -1) {
-        return absl::nullopt;
-      }
-      source_dim = i;
-    } else if (source.tile_assignment().dim(i) == 1 &&
-               target.tile_assignment().dim(i) > 1) {
-      if (target_dim != -1) {
-        return absl::nullopt;
-      }
-      target_dim = i;
-    } else if (source.tile_assignment().dim(i) !=
-               target.tile_assignment().dim(i)) {
-      return absl::nullopt;
-    }
-  }
-  if (source_dim == -1 || target_dim == -1 || source_dim == target_dim) {
-    return absl::nullopt;
-  }
-  return std::pair(source_dim, target_dim);
+bool CanReshardWithAllToAll(const HloSharding& source,
+                            const HloSharding& target) {
+  return UniqueTiledDim(source) && UniqueTiledDim(target) &&
+         UniqueTiledDim(source) != UniqueTiledDim(target);
 }
 
 bool CanReshardWithCollectivePermute(const HloSharding& source,
                                      const HloSharding& target) {
-  return !source.IsTileMaximal() && !target.IsTileMaximal() &&
-         source.tile_assignment().dimensions() ==
-             target.tile_assignment().dimensions() &&
-         source.tile_assignment() != target.tile_assignment();
+  return UniqueTiledDim(source) && UniqueTiledDim(target) &&
+         UniqueTiledDim(source) == UniqueTiledDim(target) && source != target;
 }
 
 // Clears all sharding attributes from instructions in the module. This must be
@@ -307,10 +278,8 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
     return ReshardWithCollectivePermute(target);
   }
 
-  if (auto src_tgt_dims =
-          GetReshardAllToAllSourceTargetDims(sharding(), target)) {
-    return ReshardWithAllToAll(target, src_tgt_dims->first,
-                               src_tgt_dims->second);
+  if (CanReshardWithAllToAll(sharding(), target)) {
+    return ReshardWithAllToAll(target);
   }
 
   // If not replicated yet, first replicate and then reshard to use one of the
@@ -776,53 +745,45 @@ PartitionedHlo PartitionedHlo::Broadcast() const {
   return PartitionedHlo(result, base_shape_, state_);
 }
 
-PartitionedHlo PartitionedHlo::ReshardWithAllToAll(const HloSharding& target,
-                                                   int64 source_dim,
-                                                   int64 target_dim) const {
-  const int64 group_size = sharding().tile_assignment().dim(source_dim);
+PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
+    const HloSharding& target) const {
+  int64 partition_count = sharding().tile_assignment().num_elements();
+  absl::optional<int64> input_partition_dim = UniqueTiledDim(sharding());
+  absl::optional<int64> output_partition_dim = UniqueTiledDim(target);
+  CHECK(input_partition_dim.has_value());
+  CHECK(output_partition_dim.has_value());
 
   // If the device order is different in the target, fix the order with
   // ReshardWithCollectivePermute.
-  std::vector<int64> xpose_dims(target.tile_assignment().num_dimensions());
-  std::iota(xpose_dims.begin(), xpose_dims.end(), 0);
-  xpose_dims[source_dim] = target_dim;
-  xpose_dims[target_dim] = source_dim;
+  auto input_tile_fixed_device_order = target.tile_assignment();
+  input_tile_fixed_device_order.Reshape(
+      sharding().tile_assignment().dimensions());
   auto input_sharding_fixed_device_order =
-      hlo_sharding_util::TransposeSharding(target, xpose_dims);
+      HloSharding::Tile(input_tile_fixed_device_order);
   if (input_sharding_fixed_device_order != sharding()) {
     auto fixed_order =
         ReshardWithCollectivePermute(input_sharding_fixed_device_order);
-    return fixed_order.ReshardWithAllToAll(target, source_dim, target_dim);
+    return fixed_order.ReshardWithAllToAll(target);
   }
 
   auto padded_hlo =
       PadBaseShapeBeforeUnevenTiledSharding(hlo_, target, state_.b);
 
   // The order of ids in the group must follow the target sharding.
-  std::vector<ReplicaGroup> groups(target.tile_assignment().num_elements() /
-                                   group_size);
-  target.tile_assignment().Each(
-      [&](absl::Span<const int64> indices, int64 device) {
-        int64 group_id = 0;
-        for (int64 dim = 0; dim < indices.size(); ++dim) {
-          if (dim == target_dim) {
-            continue;
-          }
-          group_id *= target.tile_assignment().dim(dim);
-          group_id += indices[dim];
-        }
-        groups[group_id].add_replica_ids(device);
-      });
+  std::vector<ReplicaGroup> groups(1);
+  for (int64 device : target.tile_assignment()) {
+    groups[0].add_replica_ids(device);
+  }
 
   HloInstruction* result = nullptr;
 
-  // Split along the split dimension (target_dim) of the all-to-all
+  // Split along the split dimension (output_partition_dim) of the all-to-all
   // output.
   std::vector<int64> dimensions;
   for (int64 i = 0; i < base_shape_.rank(); ++i) {
-    if (i == target_dim) {
-      dimensions.push_back(group_size);
-      dimensions.push_back(padded_hlo->shape().dimensions(i) / group_size);
+    if (i == *output_partition_dim) {
+      dimensions.push_back(partition_count);
+      dimensions.push_back(padded_hlo->shape().dimensions(i) / partition_count);
     } else {
       dimensions.push_back(padded_hlo->shape().dimensions(i));
     }
@@ -833,19 +794,21 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(const HloSharding& target,
   // After the reshape, it is guaranteed to have at least 3 dimensions.
   auto all_to_all =
       state_.collective_ops_creator.create_cross_partition_all_to_all(
-          state_.b, {reshape}, groups, (*state_.next_channel_id)++, target_dim);
+          state_.b, {reshape}, groups, (*state_.next_channel_id)++,
+          output_partition_dim);
 
   // Reorder the split dimension of the reshape to be located in front of the
   // input partition dimension, so the two dimensions can be combined.
-  int64 new_source_dim =
-      (target_dim < source_dim) ? source_dim + 1 : source_dim;
+  int64 new_input_partition_dim = (*output_partition_dim < *input_partition_dim)
+                                      ? *input_partition_dim + 1
+                                      : *input_partition_dim;
   std::vector<int64> permutation;
   for (int64 i = 0; i < all_to_all->shape().rank(); ++i) {
-    if (i == target_dim) {
+    if (i == *output_partition_dim) {
       continue;
     }
-    if (i == new_source_dim) {
-      permutation.push_back(target_dim);
+    if (i == new_input_partition_dim) {
+      permutation.push_back(*output_partition_dim);
     }
     permutation.push_back(i);
   }
@@ -856,7 +819,8 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(const HloSharding& target,
 
   // Combine the split dimension and the input partition dimension.
   auto new_shape = ShapeInference::InferAllToAllShape(
-                       padded_hlo->shape(), target_dim, source_dim, group_size)
+                       padded_hlo->shape(), *output_partition_dim,
+                       *input_partition_dim, partition_count)
                        .ValueOrDie();
   result = state_.b->AddInstruction(
       HloInstruction::CreateReshape(new_shape, transpose));
@@ -873,8 +837,7 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(const HloSharding& target,
 
 PartitionedHlo PartitionedHlo::ReshardWithCollectivePermute(
     const HloSharding& target) const {
-  CHECK(CanReshardWithCollectivePermute(sharding(), target))
-      << sharding().ToString() << " to " << target.ToString();
+  CHECK(CanReshardWithCollectivePermute(sharding(), target));
   std::vector<std::pair<int64, int64>> src_dst_pairs;
   sharding().tile_assignment().Each(
       [&](absl::Span<const int64> indices, int64 src_device) {
@@ -3690,8 +3653,8 @@ Status SpmdPartitioningVisitor::HandleDotHelper(
         output_batch_partitions == num_partitions_ &&
         lhs_sharding_transposed_to_match_output == hlo->sharding()) {
       if (!may_reshard_with_allreduce &&
-          !GetReshardAllToAllSourceTargetDims(
-              rhs.sharding(), *lhs_sharding_transposed_to_match_rhs)) {
+          !CanReshardWithAllToAll(rhs.sharding(),
+                                  *lhs_sharding_transposed_to_match_rhs)) {
         return false;
       }
       auto resharded_rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs);
@@ -3705,8 +3668,8 @@ Status SpmdPartitioningVisitor::HandleDotHelper(
         output_batch_partitions == num_partitions_ &&
         rhs_sharding_transposed_to_match_output == hlo->sharding()) {
       if (!may_reshard_with_allreduce &&
-          !GetReshardAllToAllSourceTargetDims(
-              lhs.sharding(), *rhs_sharding_transposed_to_match_lhs)) {
+          !CanReshardWithAllToAll(lhs.sharding(),
+                                  *rhs_sharding_transposed_to_match_lhs)) {
         return false;
       }
       auto resharded_lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs);
