@@ -31,11 +31,7 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 * TF Core:
-  * <ADD RELEASE NOTES HERE>
-  * `tf.Tensor` is now a subclass of `typing.Generic`, allowing type annotations
-    to be parameterized by dtype: `tf.Tensor[tf.Int32]`. This requires Python 3,
-    and will become fully compatible with static type checkers in the future.
-
+    * <ADD RELEASE NOTES HERE>
 * `tf.data`:
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
   the complement of `select_cols`; at most one of these should be specified.
