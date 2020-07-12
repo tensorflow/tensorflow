@@ -39,8 +39,8 @@ class OperandMapping {
   // Given a TFLite index return the ANN index. If it doesn't exist
   // return -1.
   int lite_index_to_ann(int index) const {
-    const int64 lite_tensor_to_ann_tensor_size = lite_tensor_to_ann_tensor_.size();
-    if (index >= 0 && index < lite_tensor_to_ann_tensor_size)
+    const int64 max_size = lite_tensor_to_ann_tensor_.size();
+    if (index >= 0 && index < max_size)
       return lite_tensor_to_ann_tensor_[index];
     else
       return -1;

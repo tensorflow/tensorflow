@@ -106,7 +106,7 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     return false;
   }
   offset += sizeof(int32_t);
-  for (int i = 1; i <= static_cast<int>(num_strings); i++, offset += sizeof(int32_t)) {
+  for (int i = 1, end = num_strings; i <= end; i++, offset += sizeof(int32_t)) {
     int string_offset = *GetIntPtr(buffer_ptr + offset);
     if (string_offset < static_cast<int>(prev_ptr) || string_offset > static_cast<int>(buffer_size)) {
       ReportError(error_reporter,

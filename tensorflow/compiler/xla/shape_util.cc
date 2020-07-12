@@ -524,8 +524,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   }
   string result = StrCat(
       primitive_util::LowercasePrimitiveTypeName(shape.element_type()), "[");
-  for (int i = 0, end = shape.dimensions().size();
-       i < end; i++) {
+  for (int i = 0, end = shape.dimensions().size(); i < end; i++) {
     StrAppend(&result, (i > 0) ? "," : "",
               shape.is_dynamic_dimension(i) ? "<=" : "", shape.dimensions(i));
   }
