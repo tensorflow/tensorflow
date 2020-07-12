@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
-namespace conditional_opt {
+namespace {
 
 using ConditionalCodeMotionTest = HloTestBase;
 namespace op = xla::testing::opcode_matchers;
@@ -117,47 +117,6 @@ ENTRY main {
   EXPECT_THAT(root, AllOf(op::Tuple(op::Convert())));
 }
 
-TEST_F(ConditionalCodeMotionTest, MoveConvertOutConditional) {
-  absl::string_view hlo_string =
-      R"(
-HloModule RemoveDotOpOut
-
-on_true {
-  %arg_tuple.1 = (f32[93184,4]{1,0}) parameter(0)
-  %get-tuple-element.1 = f32[93184,4]{1,0} get-tuple-element(%arg_tuple.1), index=0
-  %reshape.8493 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.1)
-  %add.8493 = f32[2,512,364]{2,1,0} add(f32[2,512,364]{2,1,0} %reshape.8493, f32[2,512,364]{2,1,0} %reshape.8493)
-  %convert.2894 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %add.8493)
-  ROOT %tuple.1 = ( bf16[2,512,364]{2,1,0}) tuple(%convert.2894)
-}
-
-on_false {
-  %arg_tuple.2 = (f32[93184,4]{1,0}) parameter(0)
-  %get-tuple-element.3 = f32[93184,4]{1,0} get-tuple-element(%arg_tuple.2), index=0
-  %reshape.9717 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.3)
-  %add.8493 = f32[2,512,364]{2,1,0} add(f32[2,512,364]{2,1,0} %reshape.9717, f32[2,512,364]{2,1,0} %reshape.9717)
-  %sub.8493 = f32[2,512,364]{2,1,0} subtract(f32[2,512,364]{2,1,0} %add.8493, f32[2,512,364]{2,1,0} %reshape.9717)
-  %convert.3604 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %reshape.9717), metadata={op_type="Cast" op_name="gradients/Cast_125_grad/Cast"}
-  ROOT %tuple.2 = (bf16[2,512,364]{2,1,0}) tuple(%convert.3604)
-}
-
-ENTRY main {
-  pred.1 = pred[] parameter(0)
-  arg_tuple.11 = (f32[93184,4]{1,0}) parameter(1)
-  arg_tuple.22 = (f32[93184,4]{1,0}) parameter(2)
-  conditional = (bf16[2,512,364]{2,1,0}) conditional(pred.1, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
-  get-first-index = bf16[2,512,364]{2,1,0} get-tuple-element(conditional), index=0
-  ROOT result = (bf16[2,512,364]{2,1,0}) tuple(get-first-index)
-}
-)";
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
-  ConditionalCodeMotion pass(true, true);
-  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
-
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, AllOf(op::Tuple(op::Convert())));
-}
-
 TEST_F(ConditionalCodeMotionTest, MoveConvertOut) {
   absl::string_view hlo_string =
       R"(
@@ -193,20 +152,8 @@ ENTRY main {
   ConditionalCodeMotion pass(true, true);
   ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
 
-  const HloInstruction* conditional =
-      FindInstruction(module.get(), "conditional");
-  const HloComputation* on_true = conditional->branch_computation(0);
-  ASSERT_EQ(on_true->instruction_count(), 2);
-  const HloComputation* on_false = conditional->branch_computation(1);
-  ASSERT_EQ(on_false->instruction_count(), 2);
-
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
-      root,
-      AllOf(op::Tuple(op::Add(op::Convert(op::Reshape(op::GetTupleElement(
-                                  op::GetTupleElement(op::Conditional())))),
-                              op::Convert(op::Reshape(op::GetTupleElement(
-                                  op::GetTupleElement(op::Conditional()))))))));
+  EXPECT_THAT(root, AllOf(op::Tuple(op::Add(op::Convert(), op::Convert()))));
 }
 
 TEST_F(ConditionalCodeMotionTest, UserShareOperandCannotBeMoved) {
@@ -226,7 +173,7 @@ on_true {
   add.2 = f32[] add(add.1, constant.2)
   add.3 = f32[] add(add.1, constant.3)
   add.4 = f32[] add(add.3, constant.5)
-  multiply.1 = f32[] multiply(add.4, constant.4)
+  multiply.1 = f32[] multiply(add.2, constant.4)
   ROOT tuple.6 = (f32[], f32[]) tuple(multiply.1, add.4)
 }
 
@@ -269,11 +216,13 @@ ENTRY main {
   const HloComputation* on_false = conditional->branch_computation(1);
   ASSERT_EQ(on_false->instruction_count(), 9);
 
+  // Check only one add and multiply is moved out.
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
-      root, AllOf(op::Tuple(op::Multiply(op::GetTupleElement(op::Conditional()),
-                                         op::Constant()),
-                            op::GetTupleElement(op::Conditional()))));
+      root,
+      AllOf(op::Tuple(
+          op::Multiply(op::GetTupleElement(op::Conditional()), op::Constant()),
+          op::Add(op::GetTupleElement(op::Conditional()), op::Constant()))));
 }
 
 TEST_F(ConditionalCodeMotionTest, ConditionalRootElementChanged) {
@@ -320,16 +269,16 @@ ENTRY main {
   const HloInstruction* conditional =
       FindInstruction(module.get(), "conditional");
   const HloComputation* on_true = conditional->branch_computation(0);
-  ASSERT_EQ(on_true->instruction_count(), 1);
+  ASSERT_EQ(on_true->instruction_count(), 7);
   const HloComputation* on_false = conditional->branch_computation(1);
-  ASSERT_EQ(on_false->instruction_count(), 1);
+  ASSERT_EQ(on_false->instruction_count(), 7);
 
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
-      root,
-      AllOf(op::Tuple(op::Add(
-          op::Add(op::GetTupleElement(op::Conditional()), op::Constant()),
-          op::Add(op::GetTupleElement(op::Conditional()), op::Constant())))));
+  // add.3 in on_true will be moved out, add.1 and add.2 will be in condtional
+  // root.
+  ASSERT_TRUE(ShapeUtil::Compatible(
+      conditional->shape(),
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(F32, {})})));
 }
 
 TEST_F(ConditionalCodeMotionTest, ConditionalIsRootInstruction) {
@@ -380,9 +329,24 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
   ConditionalCodeMotion pass(true, true);
-  // If there is no instruction after the conditional, there is no benefit to
-  // move
-  ASSERT_FALSE(pass.Run(&*module).ValueOrDie());
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional");
+  const HloComputation* on_true = conditional->branch_computation(0);
+  ASSERT_EQ(on_true->instruction_count(), 9);
+  const HloComputation* on_false = conditional->branch_computation(1);
+  ASSERT_EQ(on_false->instruction_count(), 9);
+
+  // Check only one add and multiply is moved out.
+  // add.3 and add.5 can't be moved out because they share operands with
+  // other instructions.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(op::Tuple(
+          op::Multiply(op::GetTupleElement(op::Conditional()), op::Constant()),
+          op::Add(op::GetTupleElement(op::Conditional()), op::Constant()))));
 }
 
 TEST_F(ConditionalCodeMotionTest, LayoutMisMatchCannotMovedOut) {
@@ -505,8 +469,7 @@ ENTRY main {
     false_computation=on_false
   get-first-index = f32[3,3,128,128]
     get-tuple-element(conditional), index=0
-  add.1 = f32[3,3,128,128] add(f32[3,3,128,128] get-first-index, f32[3,3,128,128] get-first-index)
-  ROOT result = (f32[3,3,128,128]) tuple(add.1)
+  ROOT result = (f32[3,3,128,128]) tuple(get-first-index)
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
@@ -524,14 +487,10 @@ ENTRY main {
       conditional->shape(), ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(
                                 BF16, {3, 3, 128, 128})})));
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(
-      root,
-      AllOf(op::Tuple(op::Add(
-          op::Convert(op::AllReduce(op::GetTupleElement(op::Conditional()))),
-          op::Convert(
-              op::AllReduce(op::GetTupleElement(op::Conditional())))))));
+  EXPECT_THAT(root, AllOf(op::Tuple(op::Convert(op::AllReduce(
+                        op::GetTupleElement(op::Conditional()))))));
 }
 
-}  // namespace conditional_opt
+}  // namespace
 
 }  // namespace xla
