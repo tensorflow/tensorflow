@@ -130,8 +130,7 @@ void DerivedXLineBuilder::ExpandOrAddLevelEvent(const XEvent& event,
 }
 
 void DerivedXLineBuilder::ResetLastEvents(int level) {
-  for (int i = level, end = last_event_by_level_.size(); i < end;
-       ++i) {
+  for (int i = level, end = last_event_by_level_.size(); i < end; ++i) {
     last_event_by_level_[i] = absl::nullopt;
   }
   if (level == 0) ResetDependentLines();
