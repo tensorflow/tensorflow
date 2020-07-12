@@ -573,12 +573,15 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
             indices=[1], values=constant_op.constant([2.5], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 4.0], self.evaluate(v))
 
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
   @test_util.run_in_graph_and_eager_modes
-  def testScatterSubVariableMethod(self):
-    v = resource_variable_ops.ResourceVariable([0.0, 2.5], name="sub")
+  def testScatterSubVariableMethod(self, dtype):
+    v = resource_variable_ops.ResourceVariable(
+        [0.0, 2.5], name="sub", dtype=dtype)
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
-        v.scatter_sub(ops.IndexedSlices(indices=[1], values=[1.5])))
+        v.scatter_sub(ops.IndexedSlices(
+            indices=[1], values=constant_op.constant([2.5, dtype=dtype]))))
     self.assertAllEqual([0.0, 1.0], self.evaluate(v))
 
   @test_util.run_in_graph_and_eager_modes
