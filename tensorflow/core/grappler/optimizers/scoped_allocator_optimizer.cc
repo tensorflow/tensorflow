@@ -548,8 +548,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       std::vector<InputDesc> inputs_to_first;
       LOG_WARNING_AND_RETURN_IF_ERROR(GetDataInputs(
           graph, sa_opti->node_map(), nd.from_node_def, &inputs_to_first));
-      for (int i = 0, end = inputs_to_first.size(); i < end;
-           ++i) {
+      for (int i = 0, end = inputs_to_first.size(); i < end; ++i) {
         if (fanout.find(inputs_to_first[i].from_node_def) != fanout.end()) {
           VLOG(2) << "Found node " << inputs_to_first[i].from_node_def->name()
                   << " in the fanout of " << sa_name;

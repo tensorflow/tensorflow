@@ -251,7 +251,7 @@ Status Vectorization::AddConversionMapping(Node* op_node) {
 
   // The inputs for the node to be converted may already have been converted
   // themselves. For those that are not, we promote them to MapDefun outputs.
-  for (size_t i = 0; i < static_cast<size_t>(op_node->num_inputs()); ++i) {
+  for (int i = 0; i < op_node->num_inputs(); ++i) {
     auto edge = input_edges[i];
     if (auto found = gtl::FindOrNull(conversion_map_,
                                      {edge->src(), edge->src_output()})) {
@@ -287,7 +287,7 @@ Status Vectorization::AddConversionMapping(Node* op_node) {
   }
 
   // Add output mappings.
-  for (size_t i = 0; i < static_cast<size_t>(op_node->num_outputs()); ++i) {
+  for (int i = 0; i < op_node->num_outputs(); ++i) {
     conversion_map_.insert({{op_node, i}, outputs[i]});
   }
 

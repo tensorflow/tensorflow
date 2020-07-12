@@ -3092,7 +3092,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   // All arguments must be compatible with the program shape.
-  for (int i = 0, end = arg_shapes.size(); i < endwwwwwwwwwww; ++i) {
+  for (int i = 0, end = arg_shapes.size(); i < end; ++i) {
     const Shape& arg_shape = *arg_shapes[i];
     const Shape& param_shape = to_apply.parameters(i);
     if (!ShapeUtil::Compatible(arg_shape, param_shape)) {
