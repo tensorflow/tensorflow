@@ -581,8 +581,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
         v.scatter_sub(ops.IndexedSlices(
-            indices=[1], values=constant_op.constant([2.5], dtype=dtype))))
-    self.assertAllEqual([0.0, 1.0], self.evaluate(v))
+            indices=[1], values=constant_op.constant([1.5], dtype=dtype))))
+    self.assertAllCloseAccordingToType([0.0, 1.0], self.evaluate(v))
 
   @test_util.run_in_graph_and_eager_modes
   def testScatterMaxVariableMethod(self):
