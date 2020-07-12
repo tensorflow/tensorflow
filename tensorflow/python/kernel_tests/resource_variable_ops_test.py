@@ -584,18 +584,23 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
             indices=[1], values=constant_op.constant([1.5], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 1.0], self.evaluate(v))
 
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
   @test_util.run_in_graph_and_eager_modes
-  def testScatterMaxVariableMethod(self):
-    v = resource_variable_ops.ResourceVariable([0.0, 4.0], name="max1")
+  def testScatterMaxVariableMethod(self, dtype):
+    v = resource_variable_ops.ResourceVariable(
+        [0.0, 4.0], name="max1", dtype=dtype)
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
-        v.scatter_max(ops.IndexedSlices(indices=[1], values=[5.0])))
+        v.scatter_max(ops.IndexedSlices(
+            indices=[1], values=constant_op.constant([5.0], dtype=dtype))))
     self.assertAllEqual([0.0, 5.0], self.evaluate(v))
 
-    v = resource_variable_ops.ResourceVariable([0.0, 3.5], name="max2")
+    v = resource_variable_ops.ResourceVariable(
+        [0.0, 3.5], name="max2", dtype=dtype)
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
-        v.scatter_max(ops.IndexedSlices(indices=[1], values=[2.0])))
+        v.scatter_max(ops.IndexedSlices(
+            indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllEqual([0.0, 3.5], self.evaluate(v))
 
   @test_util.run_in_graph_and_eager_modes
