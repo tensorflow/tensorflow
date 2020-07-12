@@ -785,8 +785,7 @@ class SymbolicShapeRefiner {
     MutableGraphView gv(&grappler_function_item.graph);
 
     // Forward shapes from function input nodes to argument nodes.
-    for (int i = 0, end = grappler_function_item.inputs().size();
-         i < end; ++i) {
+    for (int i = 0, end = grappler_function_item.inputs().size(); i < end; ++i) {
       auto& fun_input = grappler_function_item.input(i);
       NodeDef* fun_node = gv.GetNode(fun_input.node_name);
       const TensorId input_tensor = ParseTensorName(function_node->input(i));

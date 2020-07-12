@@ -2406,9 +2406,9 @@ static LogicalResult Verify(OneHotOp op) {
   int64_t axis = op.axis().getSExtValue();
 
   auto indices_ty = op.indices().getType().dyn_cast<RankedTensorType>();
-  const int64 indices_ty_getShape_size = indices_ty.getShape().size();
+  const int64 indices_ty_get_shape_size = indices_ty.getShape().size();
   if (indices_ty &&
-      !(axis == -1 || (axis >= 0 && axis <= indices_ty_getShape_size))) {
+      !(axis == -1 || (axis >= 0 && axis <= indices_ty_get_shape_size))) {
     return op.emitOpError()
            << "expected axis (" << axis << ") to be -1 or between [0, "
            << indices_ty.getShape().size() << "]";
@@ -2584,7 +2584,7 @@ static LogicalResult Verify(ParseExampleV2Op op) {
     return op.emitError() << "attribute 'num_sparse' should be the same as "
                           << "the length of attribute 'sparse_types'";
   }
-  const int64 op_sparse_indices_size = op.sparse_indices().size(); 
+  const int64 op_sparse_indices_size = op.sparse_indices().size();
   if (op_sparse_indices_size != sparse_types_count) {
     return op.emitError() << "output 'sparse_indices' should have same length "
                           << "as attribute 'sparse_types'";
@@ -3029,8 +3029,7 @@ LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
     const int64 op_rts_size = operand_ranked_type.getShape().size();
     if (result_ranked_type.hasStaticShape() &&
         !operand_ranked_type.getShape().empty() &&
-        result_ranked_type.getDimSize(0) !=
-            op_rts_size)
+        result_ranked_type.getDimSize(0) != op_rts_size)
       return op->emitOpError("requires dimension size of result")
              << variadic_idx_str << " to match rank of operand"
              << variadic_idx_str;

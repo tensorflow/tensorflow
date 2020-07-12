@@ -313,8 +313,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
     }
   }
 
-  for (int64 i = 0, end = result.resource_updates.size(); i < end;
-       i++) {
+  for (int64 i = 0, end = result.resource_updates.size(); i < end; i++) {
     if (result.resource_updates[i].modified) {
       XlaResource* resource =
           expressions[result.resource_updates[i].input_index]->resource();

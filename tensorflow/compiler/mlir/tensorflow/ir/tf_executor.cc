@@ -190,9 +190,9 @@ LogicalResult Verify(GraphOp graph) {
   for (int i : llvm::seq<int>(0, fetch.getNumOperands())) {
     Value operand = fetch.getOperand(i);
     // Break out of the loop at the first control operand encountered.
-    const int64 graph_getNumResults = graph.getNumResults();
+    const int64 num_results = graph.getNumResults();
     if (operand.getType().isa<ControlType>()) {
-      if (i != graph_getNumResults)
+      if (i != num_results)
         return fetch.emitOpError()
                << "operand #" << i
                << " is a control type, can't be bound to a graph result";
@@ -312,8 +312,8 @@ LogicalResult Verify(IslandOp island) {
 
   // Ensure that the yield terminator operands matches the island results type.
   int result_count = island.getNumResults() - 1;  // -1 for the control token
-  const int yield_NumOperands = yield.getNumOperands();
-  if (yield_NumOperands != result_count)
+  const int num_operands = yield.getNumOperands();
+  if (num_operands != result_count)
     return yield.emitOpError()
            << "has " << yield.getNumOperands()
            << " operand, but island returns " << result_count;
