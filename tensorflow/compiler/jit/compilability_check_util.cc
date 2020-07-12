@@ -249,8 +249,7 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
     NameAttrList* encapsulating_function,
     RecursiveCompilabilityChecker::UncompilableNodesMap* uncompilable_nodes)
     const {
-    const int stack_trace_size = stack_trace->size();
-  if (stack_trace_size > kMaxRecursionDepth) {
+  if (stack_trace->size() > kMaxRecursionDepth) {
     std::string uncompilable_reason = "function depth limit exceeded";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               encapsulating_function, uncompilable_nodes);

@@ -404,7 +404,7 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
       ::xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
   std::vector<string> buffer_infos_as_strings =
       BufferInfosToCppExpression(buffer_infos);
-  const long long int buffer_infos_size = buffer_infos.size();
+  const int64 buffer_infos_size = buffer_infos.size();
   if (result_index < 0 || result_index >= buffer_infos_size) {
     return errors::InvalidArgument("result index: ", result_index,
                                    " is outside the range of temp sizes: [0,",
