@@ -198,15 +198,14 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     // 'source_multidim_index' which does not belong to 'deleted_dims_indices',
     // we retrieve the corresponding value from 'multidim_' (skipping any
     // indices that appear in 'inserted_dims_indices').
-    for (int64 i = 0, j = 0, k = 0, l = 0, 
-         end = source_multidim_index.size(); i < end; ++i) {
+    for (int64 i = 0, j = 0, k = 0, l = 0, end = source_multidim_index.size();
+         i < end; ++i) {
       const int64 deleted_dims_indices_size = deleted_dims_indices.size();
       if (j == deleted_dims_indices_size || deleted_dims_indices[j] > i) {
         // This is a dimension that was preserved. Take the matching value from
         // multidim_.
         const int64 inserted_dims_indices_size = inserted_dims_indices.size();
-        while (l < inserted_dims_indices_size &&
-               inserted_dims_indices[l] == k) {
+        while (l < inserted_dims_indices_size && inserted_dims_indices[l] == k) {
           // Skip 1-sized dimensions.
           ++k;
           ++l;
