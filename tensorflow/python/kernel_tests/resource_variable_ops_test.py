@@ -593,7 +593,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(
         v.scatter_max(ops.IndexedSlices(
             indices=[1], values=constant_op.constant([5.0], dtype=dtype))))
-    self.assertAllEqual([0.0, 5.0], self.evaluate(v))
+    self.assertAllCloseAccordingToType([0.0, 5.0], self.evaluate(v))
 
     v = resource_variable_ops.ResourceVariable(
         [0.0, 3.5], name="max2", dtype=dtype)
@@ -601,21 +601,26 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.evaluate(
         v.scatter_max(ops.IndexedSlices(
             indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
-    self.assertAllEqual([0.0, 3.5], self.evaluate(v))
+    self.assertAllCloseAccordingToType([0.0, 3.5], self.evaluate(v))
 
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
   @test_util.run_in_graph_and_eager_modes
-  def testScatterMinVariableMethod(self):
-    v = resource_variable_ops.ResourceVariable([0.0, 4.0], name="min1")
+  def testScatterMinVariableMethod(self, dtype):
+    v = resource_variable_ops.ResourceVariable(
+        [0.0, 4.0], name="min1", dtype=dtype)
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
-        v.scatter_min(ops.IndexedSlices(indices=[1], values=[5.0])))
-    self.assertAllEqual([0.0, 4.0], self.evaluate(v))
+        v.scatter_min(ops.IndexedSlices(
+            indices=[1], values=constant_op.constant([5.0], dtype=dtype))))
+    self.assertAllCloseAccordingToType([0.0, 4.0], self.evaluate(v))
 
-    v = resource_variable_ops.ResourceVariable([0.0, 3.5], name="min2")
+    v = resource_variable_ops.ResourceVariable(
+        [0.0, 3.5], name="min2", dtype=dtype)
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
-        v.scatter_min(ops.IndexedSlices(indices=[1], values=[2.0])))
-    self.assertAllEqual([0.0, 2.0], self.evaluate(v))
+        v.scatter_min(ops.IndexedSlices(
+            indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
+    self.assertAllCloseAccordingToType([0.0, 2.0], self.evaluate(v))
 
   @test_util.run_in_graph_and_eager_modes
   def testScatterMulVariableMethod(self):
