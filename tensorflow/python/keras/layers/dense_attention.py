@@ -192,10 +192,10 @@ class BaseDenseAttention(Layer):
         raise ValueError(
             '{} layer mask must be a list, '
             'namely [query_mask, value_mask].'.format(class_name))
-      if len(mask) != 2:
+      if len(mask) < 2 or len(mask) > 3:
         raise ValueError(
-            '{} layer mask must be a list of length 2, namely [query_mask, '
-            'value_mask]. Given length: {}'.format(class_name, len(mask)))
+            '{} layer mask must be a list of length 2 or 3, namely [query_mask, '
+            'value_mask] or [query_mask, value_mask, key_mask]. Given length: {}'.format(class_name, len(mask)))
 
   def get_config(self):
     config = {
