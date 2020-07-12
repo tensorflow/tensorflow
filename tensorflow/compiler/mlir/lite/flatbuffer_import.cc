@@ -309,14 +309,14 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
   switch (elem_type.getWidth()) {
     case 16: {
       assert(bytes_len % 2 == 0);
-      size_t elem_count = bytes_len / 2;
+      int elem_count = bytes_len / 2;
       std::vector<llvm::APFloat> values;
       values.reserve(elem_count);
 
       const char* data = reinterpret_cast<const char*>(buffer.data());
       auto& semantics = elem_type.getFloatSemantics();
 
-      for (int i = 0, end = elem_count; i < end; i++) {
+      for (int i = 0; i < elem_count; i++) {
         uint16_t bit_repr =
             llvm::support::endian::readNext<uint16_t, llvm::support::little,
                                             llvm::support::unaligned>(data);

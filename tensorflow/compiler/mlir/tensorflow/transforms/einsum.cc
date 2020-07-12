@@ -73,7 +73,7 @@ bool tokenizeEquation(const llvm::StringRef& equation,
   int index = 0;
   int variable_count = 0;
   llvm::Regex r("[[:alpha:]]");
-  while (index < static_cast<int>(equation.size())) {
+  while (static_cast<size_t>(index) < equation.size()) {
     if (r.match(equation.substr(index, 1))) {
       const char ltr = equation[index];
       auto itr = label_axis_mapping.find(ltr);
