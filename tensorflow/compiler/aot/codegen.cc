@@ -231,8 +231,9 @@ Status GenResultMethods(const tf2xla::Config& config,
       config.variable(),
       [](const tf2xla::Variable& var) { return var.readonly(); });
   const int num_results_int = num_results;
-  if (config.fetch_size() + config.variable_size() - readonly_variables !=
-      num_results_int) {
+  const int num_results_comparision_sum = config.fetch_size()
+                                          + config.variable_size() - readonly_variables;
+  if (num_results_comparision_sum != num_results_int) {
     return errors::InvalidArgument("mismatch between fetch_size(",
                                    config.fetch_size(), ")+variable_size(",
                                    config.variable_size(), ") and tuple_size(",
