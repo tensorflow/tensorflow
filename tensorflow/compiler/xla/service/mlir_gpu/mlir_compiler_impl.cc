@@ -436,8 +436,10 @@ StatusOr<std::unique_ptr<gpu::KernelThunk>> TransformKernelToXlaThunk(
       kernel, operand_to_value_map, ordered_operands, assignment, buffers));
 
   // Finally, create the thunk and set the launch dimensions.
-  auto thunk = absl::make_unique<gpu::KernelThunk>(
-      buffers, kernel.getName().str(), instr);
+  gpu::Thunk::ThunkInfo info;
+  info.hlo_instruction = instr;
+  auto thunk = absl::make_unique<gpu::KernelThunk>(info, buffers,
+                                                   kernel.getName().str());
 
   // Set launch bounds.
   mlir::gpu::KernelDim3 block = launchOp.getBlockSizeOperandValues();

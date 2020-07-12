@@ -132,6 +132,7 @@ static StatusOr<absl::optional<se::blas::AlgorithmType>> DoUncachedGemmAutotune(
     CHECK(RunGemm(gemm, backend_config, lhs_buffer, rhs_buffer, output_buffer,
                   stream,
                   /*implements_whole_instruction=*/true,
+                  /*profile_index=*/-1,
                   /*profiler=*/nullptr,
                   /*profile_result=*/&profile_result, algorithm)
               .ok());

@@ -477,7 +477,7 @@ typedef struct TfLiteNode {
   // WARNING: This is an experimental interface that is subject to change.
   struct TfLiteDelegate* delegate;
 } TfLiteNode;
-#else
+#else  // defined(TF_LITE_STATIC_MEMORY)?
 // NOTE: This flag is opt-in only at compile time.
 //
 // Specific reduced TfLiteTensor struct for TF Micro runtime. This struct
@@ -558,6 +558,24 @@ typedef struct TfLiteNode {
   int custom_initial_data_size;
 } TfLiteNode;
 #endif  // TF_LITE_STATIC_MEMORY
+
+// Light-weight tensor struct for TF Micro runtime. Provides the minimal amount
+// of information required for a kernel to run during TfLiteRegistration::Eval.
+// TODO(b/160955687): Move this field into TF_LITE_STATIC_MEMORY when TFLM
+// builds with this flag by default internally.
+typedef struct TfLiteEvalTensor {
+  // A union of data pointers. The appropriate type should be used for a typed
+  // tensor based on `type`.
+  TfLitePtrUnion data;
+
+  // A pointer to a structure representing the dimensionality interpretation
+  // that the buffer should have.
+  TfLiteIntArray* dims;
+
+  // The data type specification for data stored in `data`. This affects
+  // what member of `data` union should be used.
+  TfLiteType type;
+} TfLiteEvalTensor;
 
 #ifndef TF_LITE_STATIC_MEMORY
 // Free data memory of tensor `t`.
@@ -734,6 +752,17 @@ typedef struct TfLiteContext {
   TfLiteStatus (*PreviewDelegatePartitioning)(
       struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
       TfLiteDelegateParams** partition_params_array, int* num_partitions);
+
+  // Returns a TfLiteTensor struct for a given index in the subgraph.
+  // WARNING: This is an experimental interface that is subject to change.
+  // WARNING: This method may not be available on all platforms.
+  TfLiteTensor* (*GetTensor)(struct TfLiteContext* context, int subgraph_idx);
+
+  // Returns a TfLiteEvalTensor struct for a given index in the subgraph.
+  // WARNING: This is an experimental interface that is subject to change.
+  // WARNING: This method may not be available on all platforms.
+  TfLiteEvalTensor* (*GetEvalTensor)(struct TfLiteContext* context,
+                                     int subgraph_idx);
 } TfLiteContext;
 
 typedef struct TfLiteRegistration {

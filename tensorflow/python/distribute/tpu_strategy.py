@@ -1142,7 +1142,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         flattened_list = nest.flatten(replicate_inputs[0])
         for input_tensor in flattened_list:
           if tensor_util.is_tensor(input_tensor):
-            rank = input_tensor.get_shape().rank
+            rank = input_tensor.shape.rank
           else:
             rank = np.ndim(input_tensor)
           maximum_shape = tensor_shape.TensorShape([None] * rank)

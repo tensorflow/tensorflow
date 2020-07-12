@@ -40,11 +40,11 @@ namespace gpu {
 std::unique_ptr<Thunk> ThunkEmitter::BuildFftThunk(const HloInstruction* inst) {
   const HloInstruction* operand = inst->operand(0);
   return absl::make_unique<FftThunk>(
-      inst->fft_type(), inst->fft_length(),
+      context_->GetThunkInfo(inst), inst->fft_type(), inst->fft_length(),
       /*input_buffer=*/GetAllocationSlice(*operand),
       /*output_buffer=*/GetAllocationSlice(*inst),
       /*input_shape=*/operand->shape(),
-      /*output_shape=*/inst->shape(), inst);
+      /*output_shape=*/inst->shape());
 }
 
 std::unique_ptr<Thunk> ThunkEmitter::BuildTriangularSolveThunk(
@@ -63,11 +63,11 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildTriangularSolveThunk(
                              : n * n * elem_size;
   int64 b_batch_stride = m * n * elem_size;
   return absl::make_unique<TriangularSolveThunk>(
-      inst->triangular_solve_options(),
+      context_->GetThunkInfo(inst), inst->triangular_solve_options(),
       /*a_input_buffer=*/GetAllocationSlice(*a),
       /*b_input_buffer=*/GetAllocationSlice(*inst),
       inst->shape().element_type(), batch_size, m, n, a_batch_stride,
-      b_batch_stride, inst);
+      b_batch_stride);
 }
 
 std::unique_ptr<Thunk> ThunkEmitter::BuildGemmThunk(
@@ -86,24 +86,27 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildGemmThunk(
     if (GetAllocationSlice(*bias) != GetAllocationSlice(*inst)) {
       std::vector<std::unique_ptr<Thunk>> thunks;
       thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+          Thunk::ThunkInfo(),
           /*source_buffer=*/GetAllocationSlice(*bias),
           /*destination_buffer=*/GetAllocationSlice(*inst),
-          /*mem_size=*/ShapeUtil::ByteSizeOf(inst->shape()), nullptr));
+          /*mem_size=*/ShapeUtil::ByteSizeOf(inst->shape())));
       thunks.push_back(absl::make_unique<GemmThunk>(
+          context_->GetThunkInfo(inst),
           GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
           GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
           GetAllocationSlice(*inst),  // The output buffer.
-          /*implements_whole_instruction=*/false, inst,
-          std::move(gemm_config)));
-      return absl::make_unique<SequentialThunk>(std::move(thunks), inst);
+          /*implements_whole_instruction=*/false, std::move(gemm_config)));
+      return absl::make_unique<SequentialThunk>(context_->GetThunkInfo(inst),
+                                                std::move(thunks));
     }
   }
 
   return absl::make_unique<GemmThunk>(
+      context_->GetThunkInfo(inst),
       GetAllocationSlice(*lhs),   // The buffer assigned to LHS.
       GetAllocationSlice(*rhs),   // The buffer assigned to RHS.
       GetAllocationSlice(*inst),  // The output buffer.
-      /*implements_whole_instruction=*/true, inst, std::move(gemm_config));
+      /*implements_whole_instruction=*/true, std::move(gemm_config));
 }
 
 std::unique_ptr<Thunk> ThunkEmitter::BuildInfeedThunk(
@@ -115,7 +118,7 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildInfeedThunk(
       [&](const ShapeIndex& index, BufferAllocation::Slice* slice) {
         *slice = GetAllocationSlice(*inst, index);
       });
-  return absl::make_unique<InfeedThunk>(slices, inst);
+  return absl::make_unique<InfeedThunk>(context_->GetThunkInfo(inst), slices);
 }
 
 std::unique_ptr<Thunk> ThunkEmitter::BuildOutfeedThunk(
@@ -130,7 +133,8 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildOutfeedThunk(
       *slice = status_or_slice.ValueOrDie();
     }
   });
-  return absl::make_unique<OutfeedThunk>(std::move(slices), inst);
+  return absl::make_unique<OutfeedThunk>(context_->GetThunkInfo(inst),
+                                         std::move(slices));
 }
 
 Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
@@ -152,6 +156,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
 
     AddThunkToThunkSequence(
         absl::make_unique<CudnnBatchNormForwardInferenceThunk>(
+            context_->GetThunkInfo(custom_call),
             /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
             /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
             /*offset=*/GetAllocationSlice(*custom_call->operand(2)),
@@ -159,8 +164,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
             /*variance=*/GetAllocationSlice(*custom_call->operand(4)),
             /*epsilon=*/epsilon_value,
             /*feature_index=*/feature_index_value,
-            /*output=*/GetAllocationSlice(*custom_call),
-            /*hlo=*/custom_call));
+            /*output=*/GetAllocationSlice(*custom_call)));
     return Status::OK();
   }
 
@@ -181,6 +185,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     auto output_inv_stddev = GetAllocationSlice(*custom_call, {2});
     AddThunkToThunkSequence(
         absl::make_unique<CudnnBatchNormForwardTrainingThunk>(
+            context_->GetThunkInfo(custom_call),
             /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
             /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
             /*offset=*/GetAllocationSlice(*custom_call->operand(2)),
@@ -189,8 +194,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
             /*output_data=*/output_data,
             /*output_mean=*/output_mean,
             /*output_inv_stddev=*/output_inv_stddev,
-            /*output_tuple=*/GetAllocationSlice(*custom_call),
-            /*hlo=*/custom_call));
+            /*output_tuple=*/GetAllocationSlice(*custom_call)));
     return Status::OK();
   }
 
@@ -209,6 +213,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     auto output_grad_scale = GetAllocationSlice(*custom_call, {1});
     auto output_grad_offset = GetAllocationSlice(*custom_call, {2});
     AddThunkToThunkSequence(absl::make_unique<CudnnBatchNormBackwardThunk>(
+        context_->GetThunkInfo(custom_call),
         /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
         /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
         /*mean=*/GetAllocationSlice(*custom_call->operand(2)),
@@ -219,8 +224,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
         /*output_grad_data=*/output_grad_data,
         /*output_grad_scale=*/output_grad_scale,
         /*output_grad_offset=*/output_grad_offset,
-        /*output_tuple=*/GetAllocationSlice(*custom_call),
-        /*hlo=*/custom_call));
+        /*output_tuple=*/GetAllocationSlice(*custom_call)));
     return Status::OK();
   }
 
@@ -235,7 +239,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     auto scratch_slice = GetAllocationSlice(*custom_call, {1});
 
     AddThunkToThunkSequence(absl::make_unique<ConvolutionThunk>(
-        Cast<HloCustomCallInstruction>(custom_call), std::move(operand_slices),
+        context_->GetThunkInfo(custom_call), std::move(operand_slices),
         conv_result_slice, scratch_slice, tuple_result_slice));
     return Status::OK();
   }
@@ -269,22 +273,23 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
 
     if (operand_buffer != a_buffer) {
       thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+          context_->GetThunkInfo(custom_call),
           /*source_address=*/operand_buffer,
           /*destination_buffer=*/a_buffer,
-          /*mem_size=*/ShapeUtil::ByteSizeOf(shape), custom_call));
+          /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
     }
 
     thunks.push_back(absl::make_unique<CholeskyThunk>(
-        options, a_buffer, workspace_buffer, info_buffer,
-        custom_call->operand(0)->shape().element_type(), batch_size, n,
-        custom_call));
+        context_->GetThunkInfo(custom_call), options, a_buffer,
+        workspace_buffer, info_buffer,
+        custom_call->operand(0)->shape().element_type(), batch_size, n));
 
     // Elide the sequential thunk if there's no copy.
     if (thunks.size() == 1) {
       AddThunkToThunkSequence(std::move(thunks[0]));
     } else {
-      AddThunkToThunkSequence(
-          absl::make_unique<SequentialThunk>(std::move(thunks), custom_call));
+      AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+          context_->GetThunkInfo(custom_call), std::move(thunks)));
     }
 
     return Status::OK();
@@ -311,8 +316,9 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     ShapeTree<BufferAllocation::Slice> result_slices =
         get_slices_for_instr(custom_call);
     AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
-        call_target, std::move(operand_slices), std::move(result_slices),
-        Cast<HloCustomCallInstruction>(custom_call)->opaque(), custom_call));
+        context_->GetThunkInfo(custom_call), call_target,
+        std::move(operand_slices), std::move(result_slices),
+        Cast<HloCustomCallInstruction>(custom_call)->opaque()));
     return Status::OK();
   }
 #endif
@@ -347,9 +353,10 @@ Status ThunkEmitter::HandleTriangularSolve(HloInstruction* hlo) {
   auto destination_buffer = GetAllocationSlice(*hlo);
   if (operand_buffer != destination_buffer) {
     thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+        context_->GetThunkInfo(hlo),
         /*source_address=*/operand_buffer,
         /*destination_buffer=*/destination_buffer,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(hlo->operand(1)->shape()), hlo));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(hlo->operand(1)->shape())));
   }
 
   thunks.push_back(BuildTriangularSolveThunk(hlo));
@@ -358,8 +365,8 @@ Status ThunkEmitter::HandleTriangularSolve(HloInstruction* hlo) {
   if (thunks.size() == 1) {
     AddThunkToThunkSequence(std::move(thunks[0]));
   } else {
-    AddThunkToThunkSequence(
-        absl::make_unique<SequentialThunk>(std::move(thunks), hlo));
+    AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
+        context_->GetThunkInfo(hlo), std::move(thunks)));
   }
   return Status::OK();
 }
@@ -374,5 +381,12 @@ Status ThunkEmitter::HandleOutfeed(HloInstruction* outfeed) {
   return Status::OK();
 }
 
+Thunk::ThunkInfo ThunkEmitter::EmissionContext::GetThunkInfo(
+    const HloInstruction* hlo) const {
+  CHECK(hlo);
+  Thunk::ThunkInfo info;
+  info.hlo_instruction = hlo;
+  return info;
+}
 }  // namespace gpu
 }  // namespace xla

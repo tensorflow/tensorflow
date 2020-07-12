@@ -31,9 +31,6 @@ tensorflow::Status SetTpuMeshStateStructFns(void* library_handle) {
 tensorflow::Status SetCompileStructFn(void* library_handle) {
   auto* compile_fn = tensorflow::tpu::CompileApiFn();
 
-  TFTPU_SET_FN(compile_fn, TpuTopology_AvailableCoreCount);
-  TFTPU_SET_FN(compile_fn, TpuCompile_CreateCompilationCacheKey);
-  TFTPU_SET_FN(compile_fn, TpuCompile_CreateGuaranteedConstFingerprint);
   TFTPU_SET_FN(compile_fn, TpuCompile_CompileAheadOfTime);
   TFTPU_SET_FN(compile_fn, TpuCompile_BuildXLADeviceAssignment);
 
@@ -150,9 +147,13 @@ tensorflow::Status SetTpuNodeContextStructFns(void* library_handle) {
 tensorflow::Status SetTpuUtilStructFns(void* library_handle) {
   auto* util_fn = tensorflow::tpu::UtilApiFn();
 
+  TFTPU_SET_FN(util_fn, TpuTopology_AvailableCoreCount);
   TFTPU_SET_FN(util_fn, TpuCompile_IsTpuCompilationEnabled);
   TFTPU_SET_FN(util_fn, TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
   TFTPU_SET_FN(util_fn, TpuCompile_ToTpuShapeRepresentation);
+  TFTPU_SET_FN(util_fn, TpuCompile_CreateCompilationCacheKey);
+  TFTPU_SET_FN(util_fn, TpuCompile_DestroyCompilationCacheKey);
+  TFTPU_SET_FN(util_fn, TpuCompile_CreateGuaranteedConstFingerprint);
 
   return tensorflow::Status::OK();
 }
