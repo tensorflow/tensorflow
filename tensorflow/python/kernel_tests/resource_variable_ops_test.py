@@ -644,13 +644,16 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
             indices=[1], values=constant_op.constant([2.0], dtype=dtype))))
     self.assertAllCloseAccordingToType([0.0, 3.0], self.evaluate(v))
 
+  @parameterized.parameters(dtypes.float16, dtypes.float32, dtypes.float64)
   @test_util.run_in_graph_and_eager_modes
-  def testScatterUpdateVariableMethod(self):
-    v = resource_variable_ops.ResourceVariable([0.0, 6.0], name="update")
+  def testScatterUpdateVariableMethod(self, dtype):
+    v = resource_variable_ops.ResourceVariable(
+        [0.0, 6.0], name="update", dtype=dtype)
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(
-        v.scatter_update(ops.IndexedSlices(indices=[1], values=[3.0])))
-    self.assertAllEqual([0.0, 3.0], self.evaluate(v))
+        v.scatter_update(ops.IndexedSlices(
+            indices=[1], values=constant_op.constant([3.0], dtype=dtype))))
+    self.assertAllCloseAccordingToType([0.0, 3.0], self.evaluate(v))
 
   @test_util.run_deprecated_v1
   def testScatterUpdateString(self):
