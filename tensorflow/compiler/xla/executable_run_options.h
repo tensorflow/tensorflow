@@ -50,6 +50,7 @@ class RunId {
  public:
   // Creates a new, unique RunId.
   RunId();
+  explicit RunId(int64 value) : data_(value) {}
 
   RunId(const RunId&) = default;
   RunId& operator=(const RunId&) = default;

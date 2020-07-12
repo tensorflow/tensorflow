@@ -253,6 +253,9 @@ class KerasOptimizersTest(keras_parameterized.TestCase):
         batch_size=5,
         verbose=0)
 
+  def test_deserialization_error(self):
+    with self.assertRaisesRegex(ValueError, 'Could not interpret optimizer'):
+      keras.optimizers.get(0)
 
 if __name__ == '__main__':
   test.main()

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -54,19 +55,36 @@ class ExecuteNodeArgs : public EagerKernelArgs {
               const absl::InlinedVector<TensorHandle*, 4>& op_inputs,
               const core::RefCountPtr<KernelAndDevice>& kernel);
 
-  bool HasRemoteInputs() const override { return has_remote_inputs_; };
+  Status GetLocalArg(const FunctionArgIndex& index, Tensor* val) const override;
+
+  bool HasRemoteOrPackedInputs() const override {
+    return has_remote_inputs_ || has_packed_inputs_;
+  };
 
 #if !defined(IS_MOBILE_PLATFORM)
-  Status GetRemoteArg(const int index,
+  Status GetRemoteArg(const FunctionArgIndex& index,
                       eager::RemoteTensorHandle* val) const override {
     return serialize_remote_handle_(index, val);
   }
 #endif  // IS_MOBILE_PLATFORM
 
  private:
-  bool has_remote_inputs_ = false;
 #if !defined(IS_MOBILE_PLATFORM)
-  std::function<Status(const int, eager::RemoteTensorHandle*)>
+  // Returns whether `handle` is a remote handle or has a remote mirror on
+  // `input_device`
+  bool IsRemote(EagerContext* ctx, Device* input_device, TensorHandle* handle);
+#endif  // IS_MOBILE_PLATFORM
+
+  // Initialize a packed TensorHandle which is the `index`-th argument.
+  Status InitPackedHandle(const int index, EagerContext* ctx,
+                          Device* input_device, TensorHandle* packed_handle);
+
+  bool has_remote_inputs_ = false;
+  bool has_packed_inputs_ = false;
+  // Maps from the index of a packed arg to a list of sub-args.
+  absl::flat_hash_map<int, gtl::InlinedVector<TensorValue, 4>> packed_args_;
+#if !defined(IS_MOBILE_PLATFORM)
+  std::function<Status(const FunctionArgIndex&, eager::RemoteTensorHandle*)>
       serialize_remote_handle_;
 #endif  // IS_MOBILE_PLATFORM
 };

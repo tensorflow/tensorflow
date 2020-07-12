@@ -81,9 +81,14 @@ class HloModuleConfig {
     return entry_computation_layout_.has_value();
   }
 
-  // Sets the entry computation layout for this config. If the entry computation
-  // layout already exists, it is silently replaced.
+  // Sets the entry_computation_layout's parameter and result shapes for this
+  // config, according to the given program shape. The parameters and result
+  // are set to default layout.
   void SetDefaultComputationLayout(const ProgramShape& program_shape);
+
+  // Same as above but if the given program contains layout for parameters or
+  // result, the entry_computation_layout's layout is updated accordingly.
+  void SetComputationLayoutIfExists(const ProgramShape& program_shape);
 
   // Returns a constant reference to the layout of the entry computation.
   // Assumes the layout was set.
@@ -127,6 +132,11 @@ class HloModuleConfig {
     num_partitions_ = num_partitions;
   }
   int64 num_partitions() const { return num_partitions_; }
+
+  void set_use_spmd_partitioning(bool use_spmd_partitioning) {
+    use_spmd_partitioning_ = use_spmd_partitioning;
+  }
+  bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
 
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
@@ -199,6 +209,14 @@ class HloModuleConfig {
 
   std::vector<std::vector<int64>>* mutable_dot_config() { return &dot_config_; }
 
+  const std::vector<std::vector<std::vector<int64>>>& layout_config() const {
+    return layout_config_;
+  }
+
+  std::vector<std::vector<std::vector<int64>>>* mutable_layout_config() {
+    return &layout_config_;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -216,6 +234,10 @@ class HloModuleConfig {
   // The number of partitions (model parallelism) to compile this binary for.
   int64 num_partitions_ = 1;
 
+  // Whether to use SPMD (true) or MPMD (false) when num_partitions_ > 0 and XLA
+  // needs to partition the module.
+  bool use_spmd_partitioning_ = false;
+
   // The target maximum parallelism at which to partition HLOs for parallel
   // execution on the CPU backend.
   int64 intra_op_parallelism_threads_ = -1;
@@ -232,6 +254,9 @@ class HloModuleConfig {
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
 
+  // TODO(b/155665133): Consolidate fusion, dot, and layout config into a proto
+  // similar to backend config.
+
   // Custom fusion configuration, where fusion_config_[c][v] control if node v
   // in computation c must be fused to all its consumers (true) or not (false).
   std::vector<std::vector<bool>> fusion_config_;
@@ -240,6 +265,10 @@ class HloModuleConfig {
   // how to convert dot operation v (sorted topologically and by computation) to
   // convolution.
   std::vector<std::vector<int64>> dot_config_;
+
+  // Layout configuration, where layout_config_[v][i] controls the layout
+  // decision i of operation v.
+  std::vector<std::vector<std::vector<int64>>> layout_config_;
 };
 
 }  // namespace xla

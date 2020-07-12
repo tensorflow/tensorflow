@@ -18,14 +18,18 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/loader_util.h"
 #include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf_internal.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
@@ -65,12 +69,39 @@ uint64 GetLatencyMicroseconds(const uint64 start_microseconds) {
   return end_microseconds - start_microseconds;
 }
 
+// Ensure that constant tensors loaded from the saved model have valid shape.
+// Also ensure that constant nodes have a value assigned to them.
+// TODO(b/154763635): this is temporary and will be replaced with a better audit
+static Status ValidateSavedTensors(const GraphDef& graph_def) {
+  for (const auto& node : graph_def.node()) {
+    const auto node_iterator = node.attr().find("value");
+    if (node_iterator != node.attr().end()) {
+      AttrValue node_value = node_iterator->second;
+      if (node_value.has_tensor()) {
+        const PartialTensorShape node_shape(node_value.tensor().tensor_shape());
+        if (node_shape.num_elements() < 0) {
+          return errors::FailedPrecondition(
+              "Saved model contains node \"", node.name(), "\" (op \"",
+              node.op(), "\") which initializes from a tensor with ",
+              node_shape.num_elements(), " elements");
+        }
+      }
+    } else if (node.op() == "Const") {
+      return errors::FailedPrecondition(
+          "Saved model contains node \"", node.name(),
+          "\" which is a constant tensor but no value has been provided");
+    }
+  }
+  return Status::OK();
+}
+
 Status LoadMetaGraphIntoSession(const MetaGraphDef& meta_graph_def,
                                 const SessionOptions& session_options,
                                 std::unique_ptr<Session>* session) {
   Session* session_p = nullptr;
   TF_RETURN_IF_ERROR(NewSession(session_options, &session_p));
   session->reset(session_p);
+  TF_RETURN_IF_ERROR(ValidateSavedTensors(meta_graph_def.graph_def()));
   return (*session)->Create(meta_graph_def.graph_def());
 }
 
@@ -160,41 +191,6 @@ Status RunInitOp(const RunOptions& run_options, const string& export_dir,
   return Status::OK();
 }
 
-// A SavedModel may store the name of the initialization op to run in the
-// in the SignatureDef (v2) or a collection (v1). If an init_op collection
-// exists, then the collection must contain exactly one op.
-Status GetInitOp(const string& export_dir, const MetaGraphDef& meta_graph_def,
-                 string* init_op_name) {
-  const auto& sig_def_map = meta_graph_def.signature_def();
-  const auto& init_op_sig_it =
-      meta_graph_def.signature_def().find(kSavedModelInitOpSignatureKey);
-  if (init_op_sig_it != sig_def_map.end()) {
-    *init_op_name = init_op_sig_it->second.outputs()
-                        .find(kSavedModelInitOpSignatureKey)
-                        ->second.name();
-    return Status::OK();
-  }
-
-  const auto& collection_def_map = meta_graph_def.collection_def();
-  string init_op_collection_key;
-  if (collection_def_map.find(kSavedModelMainOpKey) !=
-      collection_def_map.end()) {
-    init_op_collection_key = kSavedModelMainOpKey;
-  } else {
-    init_op_collection_key = kSavedModelLegacyInitOpKey;
-  }
-
-  const auto init_op_it = collection_def_map.find(init_op_collection_key);
-  if (init_op_it != collection_def_map.end()) {
-    if (init_op_it->second.node_list().value_size() != 1) {
-      return errors::FailedPrecondition(
-          strings::StrCat("Expected exactly one main op in : ", export_dir));
-    }
-    *init_op_name = init_op_it->second.node_list().value(0);
-  }
-  return Status::OK();
-}
-
 Status RunRestore(const RunOptions& run_options, const string& export_dir,
                   const StringPiece restore_op_name,
                   const StringPiece variable_filename_const_op_name,
@@ -232,32 +228,6 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
                  nullptr /* outputs */, &run_metadata, session);
 }
 
-Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
-                        std::vector<AssetFileDef>* asset_file_defs) {
-  // With SavedModel v2, we write asset file def into metagraph instead of
-  // collection, so read from metagraph first.
-  if (meta_graph_def.asset_file_def_size() > 0) {
-    for (const auto& asset : meta_graph_def.asset_file_def()) {
-      asset_file_defs->push_back(asset);
-    }
-    return Status::OK();
-  }
-  // Fall back to read from collection to be backward compatible with v1.
-  const auto& collection_def_map = meta_graph_def.collection_def();
-  const auto assets_it = collection_def_map.find(kSavedModelAssetsKey);
-  if (assets_it == collection_def_map.end()) {
-    return Status::OK();
-  }
-  const auto& any_assets = assets_it->second.any_list().value();
-  for (const auto& any_asset : any_assets) {
-    AssetFileDef asset_file_def;
-    TF_RETURN_IF_ERROR(
-        ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef"));
-    asset_file_defs->push_back(asset_file_def);
-  }
-  return Status::OK();
-}
-
 Status ReadSavedModelDebugInfoIfPresent(
     const string& export_dir,
     std::unique_ptr<GraphDebugInfo>* debug_info_proto) {
@@ -291,7 +261,7 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
 
   std::vector<AssetFileDef> asset_file_defs;
   TF_RETURN_IF_ERROR(
-      GetAssetFileDefs(bundle->meta_graph_def, &asset_file_defs));
+      internal::GetAssetFileDefs(bundle->meta_graph_def, &asset_file_defs));
   TF_RETURN_IF_ERROR(
       RunRestore(run_options, export_dir,
                  bundle->meta_graph_def.saver_def().restore_op_name(),
@@ -305,7 +275,7 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
   const uint64 graph_init_start_microseconds = Env::Default()->NowMicros();
   string init_op_name;
   TF_RETURN_IF_ERROR(
-      GetInitOp(export_dir, bundle->meta_graph_def, &init_op_name));
+      internal::GetInitOp(export_dir, bundle->meta_graph_def, &init_op_name));
   TF_RETURN_IF_ERROR(RunInitOp(run_options, export_dir, bundle->meta_graph_def,
                                asset_file_defs, bundle->session.get(),
                                init_op_name));

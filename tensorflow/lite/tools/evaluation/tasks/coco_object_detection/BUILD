@@ -14,7 +14,10 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/lite/tools/evaluation/proto:evaluation_stages_py"],
+    deps = [
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_py",
+        "@absl_py//absl/logging",
+    ],
 )
 
 cc_library(
@@ -26,7 +29,6 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
-        "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
@@ -36,6 +38,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
     ],
+    alwayslink = 1,
 )
 
 cc_binary(

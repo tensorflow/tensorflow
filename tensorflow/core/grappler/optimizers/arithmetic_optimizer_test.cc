@@ -736,7 +736,7 @@ TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
     auto identity = ops::Identity(s.WithOpName("identity"), matmul);
 
     GrapplerItem item;
-    item.fetch = {"matmul"};
+    item.fetch = {"identity"};
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
     auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
@@ -795,9 +795,10 @@ TEST_F(ArithmeticOptimizerTest, FoldConjugateTransposeIntoBatchMatMul) {
   Output trans_a = ops::ConjugateTranspose(s.WithOpName("trans_a"), a, perm);
   Output trans_b = ops::ConjugateTranspose(s.WithOpName("trans_b"), b, perm);
   Output matmul = ops::BatchMatMul(s.WithOpName("matmul"), trans_a, trans_b);
+  Output identity = ops::Identity(s.WithOpName("identity"), matmul);
 
   GrapplerItem item;
-  item.fetch = {"matmul"};
+  item.fetch = {"identity"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
@@ -808,7 +809,7 @@ TEST_F(ArithmeticOptimizerTest, FoldConjugateTransposeIntoBatchMatMul) {
   OptimizeTwice(&optimizer, &item, &output);
 
   NodeMap node_map(&output);
-  EXPECT_EQ(output.node_size(), 11);
+  EXPECT_EQ(output.node_size(), 12);
 
   const string p = "ArithmeticOptimizer/FoldTransposeIntoMatMul";
   const string optimized_name = absl::StrCat(p, "_", "matmul");
@@ -827,37 +828,45 @@ TEST_F(ArithmeticOptimizerTest, FoldConjugateTransposeIntoBatchMatMul) {
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshapeIdentityReshape) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output inputs =
-      ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, 28, 28}));
-  Output inputs_shape = ops::Shape(s, inputs);
-  // The target shape of the reshape is the concatenation of `batch_size` and
-  // [3,28,28].
-  Output batch_size = ops::Slice(s, inputs_shape, ops::Const(s, {0}, {1}),
-                                 ops::Const(s, {1}, {1}));
-  Output target_shape = ops::Concat(
-      s.WithOpName("target_shape"),
-      {batch_size, ops::Const(s, {3, 28, 28}, {3})}, ops::Const(s, {0}, {}));
-  Output reshape = ops::Reshape(s, inputs, target_shape);
-  Output outputs = ops::Identity(s.WithOpName("outputs"), reshape);
+  for (bool is_broadcastto : {false, true}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output inputs =
+        ops::Placeholder(s, DT_FLOAT, ops::Placeholder::Shape({-1, 3, 28, 28}));
+    Output inputs_shape = ops::Shape(s, inputs);
+    // The target shape of the reshape is the concatenation of `batch_size` and
+    // [3,28,28].
+    Output batch_size = ops::Slice(s, inputs_shape, ops::Const(s, {0}, {1}),
+                                   ops::Const(s, {1}, {1}));
+    Output target_shape = ops::Concat(
+        s.WithOpName("target_shape"),
+        {batch_size, ops::Const(s, {3, 28, 28}, {3})}, ops::Const(s, {0}, {}));
+    if (is_broadcastto) {
+      Output outputs = ops::Identity(s.WithOpName("outputs"),
+                                     ops::BroadcastTo(s, inputs, target_shape));
+    } else {
+      Output outputs = ops::Identity(s.WithOpName("outputs"),
+                                     ops::Reshape(s, inputs, target_shape));
+    }
 
-  GrapplerItem item;
-  item.fetch = {"outputs"};
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 3, 28, 28}));
-  auto tensors_expected =
-      EvaluateNodes(item.graph, item.fetch, {{"Placeholder", x_t}});
-  ASSERT_EQ(tensors_expected.size(), 1);
+    GrapplerItem item;
+    item.fetch = {"outputs"};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3, 3, 28, 28}));
+    auto tensors_expected =
+        EvaluateNodes(item.graph, item.fetch, {{"Placeholder", x_t}});
+    ASSERT_EQ(tensors_expected.size(), 1);
 
-  GraphDef output;
-  ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveRedundantReshape(&optimizer);
-  OptimizeTwiceAndPrune(&optimizer, &item, &output);
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyRemoveRedundantReshape(&optimizer);
+    OptimizeTwiceAndPrune(&optimizer, &item, &output);
 
-  EXPECT_EQ(CountOpNodes(output, "Reshape"), 0);
-  auto tensors = EvaluateNodes(output, item.fetch, {{"Placeholder", x_t}});
-  ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+    EXPECT_EQ(CountOpNodes(output, "Reshape"), 0);
+    EXPECT_EQ(CountOpNodes(output, "BroadcastTo"), 0);
+    auto tensors = EvaluateNodes(output, item.fetch, {{"Placeholder", x_t}});
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+  }
 }
 
 TEST_F(ArithmeticOptimizerTest,
@@ -1022,7 +1031,9 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantReshapeCombineReshapes) {
                      ops::Const(s.WithOpName("perm"), {0, 2, 3, 1, 4}, {5}));
   Output nhwc = ops::Reshape(
       s.WithOpName("nhwc"), transpose,
-      ops::Const(s.WithOpName("nhwc_shape"), {8, 28, 28, 12}, {4}));
+      ops::Const(
+          s.WithControlDependencies(nchw_vect_c).WithOpName("nhwc_shape"),
+          {8, 28, 28, 12}, {4}));
   Output flatten = ops::Reshape(
       s.WithOpName("flatten"), nhwc,
       ops::Const(s.WithOpName("flatten_shape"), {8, 28 * 28 * 12}, {2}));
@@ -1328,6 +1339,37 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposes) {
   }
   EXPECT_EQ(nodes_after_optimization,
             std::set<string>({"id1", "id2", "inputs_shape", "inputs"}));
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveIdentityConjugateTransposes) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output re = ops::Const(s.WithOpName("re"), {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
+  Output im = ops::Const(s.WithOpName("im"), {5.0f, 6.0f, 7.0f, 8.0f}, {2, 2});
+  Output z = ops::Complex(s.WithOpName("z"), re, im);
+  Output perm = ops::Const(s.WithOpName("perm"), {0, 1}, {2});
+  Output transpose = ops::ConjugateTranspose(s.WithOpName("trans"), z, perm);
+  Output id = ops::Identity(s.WithOpName("id"), transpose);
+
+  GrapplerItem item;
+  item.fetch = {"id"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveIdentityTranspose(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  NodeMap node_map(&output);
+
+  EXPECT_EQ(output.node_size(), 5);
+
+  const string p = "ArithmeticOptimizer/RemoveIdentityTranspose";
+  const string optimized_name = absl::StrCat(p, "_", "trans");
+
+  const NodeDef* conj = node_map.GetNode(optimized_name);
+  ASSERT_NE(conj, nullptr);
+  EXPECT_EQ(conj->op(), "Conj");
+  ASSERT_EQ(conj->input_size(), 1);
+  EXPECT_EQ(conj->input(0), "z");
 }
 
 TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesMultipleOutputs) {
@@ -4083,6 +4125,94 @@ TEST_F(ArithmeticOptimizerTest, SimplifyAggregationBFloat16) {
   auto tensors = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorEqual<bfloat16>(tensors[0], tensors_expected[0]);
+}
+
+TEST_F(ArithmeticOptimizerTest, SimplifyEmbeddingLookup) {
+  for (DataType unique_idx_type : {DT_INT32, DT_INT64}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output embeddings = ops::Const(s.WithOpName("embeddings"),
+                                   {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
+    Output segment_ids =
+        ops::Const(s.WithOpName("segment_ids"), {0, 1, 1, 2, 2, 2, 2});
+    Output indices = ops::Const(s.WithOpName("indices"), {0, 0, 1, 0, 1, 0, 1});
+    auto unique = ops::Unique(s.WithOpName("unique"), indices,
+                              /*attrs=*/{unique_idx_type});
+    Output ids = unique.y;
+    Output idx = unique.idx;
+    Output gathered_rows =
+        ops::Gather(s.WithOpName("gathered_rows"), embeddings, ids);
+    Output result = ops::SparseSegmentSum(s.WithOpName("result"), gathered_rows,
+                                          idx, segment_ids);
+    Output id = ops::Identity(s.WithOpName("id"), result);
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    item.fetch = {"id"};
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+    ASSERT_EQ(tensors_expected.size(), 1);
+
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlySimplifyEmbeddingLookup(&optimizer);
+    OptimizeAndPrune(&optimizer, &item, &output);
+
+    for (const auto& node : output.node()) {
+      if (node.name() == "result") {
+        EXPECT_EQ(node.input(0), "embeddings");
+        EXPECT_EQ(node.input(1), "indices");
+      }
+      EXPECT_NE(node.op(), "Unique");
+      EXPECT_NE(node.op(), "Gather");
+    }
+
+    auto tensors = EvaluateNodes(output, item.fetch);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveCastIntoSegmentReduction) {
+  for (DataType indices_type : {DT_INT32, DT_INT64}) {
+    for (DataType segment_ids_type : {DT_INT32, DT_INT64}) {
+      tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+      Output embeddings = ops::Const(s.WithOpName("embeddings"),
+                                     {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
+      Output indices =
+          ops::Cast(s.WithOpName("cast_indices"),
+                    ops::Const(s.WithOpName("indices"), {0, 0, 1, 0, 1, 0, 1}),
+                    indices_type);
+      Output segment_ids = ops::Cast(
+          s.WithOpName("cast_segment_ids"),
+          ops::Const(s.WithOpName("segment_ids"), {0, 1, 1, 2, 2, 2, 2}),
+          segment_ids_type);
+      Output result = ops::SparseSegmentSum(s.WithOpName("result"), embeddings,
+                                            indices, segment_ids);
+      Output id = ops::Identity(s.WithOpName("id"), result);
+
+      GrapplerItem item;
+      TF_CHECK_OK(s.ToGraphDef(&item.graph));
+      item.fetch = {"id"};
+      auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+      ASSERT_EQ(tensors_expected.size(), 1);
+
+      GraphDef output;
+      ArithmeticOptimizer optimizer;
+      EnableOnlyRemoveCastIntoSegmentReduction(&optimizer);
+      OptimizeAndPrune(&optimizer, &item, &output);
+
+      for (const auto& node : output.node()) {
+        if (node.name() == "result") {
+          EXPECT_EQ(node.input(1), "indices");
+          EXPECT_EQ(node.input(2), "segment_ids");
+        }
+        EXPECT_NE(node.op(), "Cast");
+      }
+
+      auto tensors = EvaluateNodes(output, item.fetch);
+      ASSERT_EQ(tensors.size(), 1);
+      test::ExpectTensorEqual<float>(tensors[0], tensors_expected[0]);
+    }
+  }
 }
 
 }  // namespace grappler

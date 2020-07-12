@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/rewrite_utils.h"
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/graph_view.h"
@@ -116,6 +116,9 @@ Status ApplyRewrites(OpKernelContext* ctx,
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef(
           "graph", meta_graph_def, item_config);
+  // Grappler should not optimize function library of tf.data graphs. The
+  // tf.data meta optimizer takes care of optimizing tf.data functions.
+  grappler_item->optimization_options().optimize_function_library = false;
   std::unordered_map<string, tensorflow::DeviceProperties> device_map;
   tensorflow::grappler::VirtualCluster cluster(device_map);
 

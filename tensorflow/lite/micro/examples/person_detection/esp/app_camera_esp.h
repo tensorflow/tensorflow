@@ -19,6 +19,7 @@ limitations under the License.
 #include "esp_camera.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "sensor.h"
 
 /**
  * PIXFORMAT_RGB565,    // 2BPP/RGB565
@@ -30,7 +31,7 @@ limitations under the License.
 #define CAMERA_PIXEL_FORMAT PIXFORMAT_GRAYSCALE
 
 /*
- * FRAMESIZE_96x96,    // 96x96
+ * FRAMESIZE_96X96,    // 96x96
  * FRAMESIZE_QQVGA,    // 160x120
  * FRAMESIZE_QQVGA2,   // 128x160
  * FRAMESIZE_QCIF,     // 176x144
@@ -43,7 +44,7 @@ limitations under the License.
  * FRAMESIZE_SXGA,     // 1280x1024
  * FRAMESIZE_UXGA,     // 1600x1200
  */
-#define CAMERA_FRAME_SIZE FRAMESIZE_96x96
+#define CAMERA_FRAME_SIZE FRAMESIZE_96X96
 
 #if CONFIG_CAMERA_MODEL_WROVER_KIT
 #define PWDN_GPIO_NUM -1

@@ -32,8 +32,6 @@ namespace mlir {
 namespace TFL {
 namespace {
 
-using FuncSet = llvm::SmallSet<FuncOp, 4>;
-
 // Module pass to optimize TensorFlow functional ops.
 struct OptimizeFunctionalOpsPass
     : public PassWrapper<OptimizeFunctionalOpsPass, OperationPass<ModuleOp>> {
@@ -44,8 +42,8 @@ struct OptimizeFunctionalOpsPass
 // op operands' types.
 //
 // Requires the function has exactly one block.
-static void UpdateFuncType(FuncOp func) {
-  Operation* terminator = &func.getBlocks().front().back();
+void UpdateFuncType(FuncOp func) {
+  Operation* terminator = func.front().getTerminator();
   auto return_types = llvm::to_vector<4>(terminator->getOperandTypes());
 
   FunctionType func_type = func.getType();
@@ -57,7 +55,7 @@ static void UpdateFuncType(FuncOp func) {
 }
 
 // TODO(jpienaar): Remove when recursive side-effect modeling is added.
-static bool IsSideEffectFree(FuncOp func) {
+bool IsSideEffectFree(FuncOp func) {
   return !func.getBody()
               .walk([&](Operation* op) {
                 if (!MemoryEffectOpInterface::hasNoEffect(op) &&
@@ -72,8 +70,8 @@ static bool IsSideEffectFree(FuncOp func) {
 // function body based on the conditional value.
 class FoldIfOp : public OpRewritePattern<TF::IfOp> {
  public:
-  explicit FoldIfOp(MLIRContext* context, FuncSet* inlined_funcs)
-      : OpRewritePattern<TF::IfOp>(context), inlined_funcs_(inlined_funcs) {}
+  explicit FoldIfOp(MLIRContext* context)
+      : OpRewritePattern<TF::IfOp>(context) {}
 
   LogicalResult matchAndRewrite(TF::IfOp op,
                                 PatternRewriter& rewriter) const override {
@@ -82,7 +80,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     // updated if operands' shapes change after inlining. Without this
     // restriction, it would require tensor cast ops.
     FuncOp parent_op = op.getParentOfType<FuncOp>();
-    if (parent_op.getBlocks().size() != 1) return failure();
+    if (!llvm::hasSingleElement(parent_op)) return failure();
 
     // Find the then and else branch functions.
     SymbolTable table(op.getParentOfType<ModuleOp>());
@@ -95,8 +93,6 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     if (op.use_empty() &&
         (op.is_stateless() ||
          (IsSideEffectFree(then_branch) && IsSideEffectFree(else_branch)))) {
-      inlined_funcs_->insert(then_branch);
-      inlined_funcs_->insert(else_branch);
       rewriter.eraseOp(op.getOperation());
       return success();
     }
@@ -118,14 +114,14 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     // Make sure that the function has exactly one block to simplify inlining.
     // TFLite doesn't use control flow with blocks so functions with more than
     // one blocks are not encountered in practice.
-    if (func.getBody().getBlocks().size() != 1) return failure();
+    if (!llvm::hasSingleElement(func)) return failure();
 
     BlockAndValueMapping mapper;
     for (int i = 0, e = func.getNumArguments(); i != e; ++i)
       mapper.map(func.getArgument(i), op.getOperand(i + 1));
 
     llvm::SmallVector<Value, 4> updated_results;
-    for (auto& op_to_inline : func.getBody().front()) {
+    for (auto& op_to_inline : func.front()) {
       // If this is a terminator, identify the values to use to replace the
       // original If op.
       if (op_to_inline.isKnownTerminator()) {
@@ -145,64 +141,26 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     // return type should be updated.
     UpdateFuncType(parent_op);
 
-    // Track functions that could be erased if this op was the last reference
-    // of the function.
-    inlined_funcs_->insert(then_branch);
-    inlined_funcs_->insert(else_branch);
     return success();
   }
-
- private:
-  FuncSet* inlined_funcs_;
 };
-
-// Erases functions from the given candidates that are not referenced by any of
-// the ops in the module.
-static void EraseDeadFuncs(const FuncSet& candidate_funcs, ModuleOp module) {
-  if (candidate_funcs.empty()) return;
-
-  SymbolTable manager(module);
-
-  // Identify the functions that are used as symbols in the module and shouldn't
-  // be erased.
-  FuncSet in_use_funcs;
-  manager.getOp()->walk([&](Operation* op) {
-    for (auto attr : op->getAttrs()) {
-      if (auto symbol = attr.second.dyn_cast<FlatSymbolRefAttr>()) {
-        auto func = manager.lookup<FuncOp>(symbol.getValue());
-        in_use_funcs.insert(func);
-      }
-    }
-  });
-
-  for (FuncOp func : candidate_funcs) {
-    if (!in_use_funcs.count(func)) manager.erase(func);
-  }
-}
 
 void OptimizeFunctionalOpsPass::runOnOperation() {
   OwningRewritePatternList patterns;
 
-  FuncSet inlined_funcs;
-  patterns.insert<FoldIfOp>(&getContext(), &inlined_funcs);
+  patterns.insert<FoldIfOp>(&getContext());
 
   ModuleOp module = getOperation();
   applyPatternsAndFoldGreedily(module, patterns);
-
-  // Erase inlined functions that don't have any references.
-  //
-  // TODO(hinsu): Update this to not erase entry points once TFLite support to
-  // have multiple entry points is implemented. Until then, it is safe to
-  // erase these functions.
-  EraseDeadFuncs(inlined_funcs, module);
 }
+
+PassRegistration<OptimizeFunctionalOpsPass> pass(
+    "tfl-optimize-functional-ops", "Optimize TensorFlow functional ops");
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass() {
   return std::make_unique<OptimizeFunctionalOpsPass>();
 }
 
-static PassRegistration<OptimizeFunctionalOpsPass> pass(
-    "tfl-optimize-functional-ops", "Optimize TensorFlow functional ops");
 }  // namespace TFL
 }  // namespace mlir

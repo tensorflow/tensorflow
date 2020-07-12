@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import contextlib
 import functools
 
 import six
@@ -337,6 +338,13 @@ class OptimizerV2(trackable.Trackable):
 
     self._hypers_created = False
 
+    # Store the distribution strategy object if the optimizer is created inside
+    # strategy scope, so it could be used to create variables later.
+    if distribute_ctx.has_strategy():
+      self._distribution_strategy = distribute_ctx.get_strategy()
+    else:
+      self._distribution_strategy = None
+
   def minimize(self, loss, var_list, grad_loss=None, name=None):
     """Minimize `loss` by updating `var_list`.
 
@@ -631,7 +639,7 @@ class OptimizerV2(trackable.Trackable):
         # symbolic then the step update should be carried out under a graph
         # context. (eager updates execute immediately)
         with ops._get_graph_from_inputs(update_ops).as_default():  # pylint: disable=protected-access
-          with ops.control_dependencies(update_ops):
+          with ops.control_dependencies([control_flow_ops.group(update_ops)]):
             return self._iterations.assign_add(1, read_value=False)
 
       return self._iterations.assign_add(1)
@@ -800,30 +808,35 @@ class OptimizerV2(trackable.Trackable):
   def _create_hypers(self):
     if self._hypers_created:
       return
-    # Iterate hyper values deterministically.
-    for name, value in sorted(self._hyper.items()):
-      if isinstance(
-          value, (ops.Tensor, tf_variables.Variable)) or callable(value):
-        continue
-      else:
-        self._hyper[name] = self.add_weight(
-            name,
-            shape=[],
-            trainable=False,
-            initializer=value,
-            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+    with self._distribution_strategy_scope():
+      # Iterate hyper values deterministically.
+      for name, value in sorted(self._hyper.items()):
+        if isinstance(value,
+                      (ops.Tensor, tf_variables.Variable)) or callable(value):
+          # The check for `callable` covers the usage when `value` is a
+          # `LearningRateSchedule`, in which case it does not need to create a
+          # variable.
+          continue
+        else:
+          self._hyper[name] = self.add_weight(
+              name,
+              shape=[],
+              trainable=False,
+              initializer=value,
+              aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
     self._hypers_created = True
 
   @property
   def iterations(self):
     """Variable. The number of training steps this Optimizer has run."""
     if self._iterations is None:
-      self._iterations = self.add_weight(
-          "iter",
-          shape=[],
-          dtype=dtypes.int64,
-          trainable=False,
-          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+      with self._distribution_strategy_scope():
+        self._iterations = self.add_weight(
+            "iter",
+            shape=[],
+            dtype=dtypes.int64,
+            trainable=False,
+            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
       self._weights.append(self._iterations)
     return self._iterations
 
@@ -1232,6 +1245,15 @@ class OptimizerV2(trackable.Trackable):
       self._deferred_slot_restorations.setdefault(
           slot_name, {}).setdefault(variable_key, []).append(
               slot_variable_position)
+
+  @contextlib.contextmanager
+  def _distribution_strategy_scope(self):
+    """Returns the `tf.distribute.Strategy` this optimizer was created under."""
+    if self._distribution_strategy and not distribute_ctx.has_strategy():
+      with self._distribution_strategy.scope():
+        yield self._distribution_strategy.scope()
+    else:
+      yield
 
 
 def _filter_grads(grads_and_vars):

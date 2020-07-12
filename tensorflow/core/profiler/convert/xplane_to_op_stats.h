@@ -25,6 +25,17 @@ namespace profiler {
 // NOTE: call GroupTfEvents before if OpStats.step_db needs to be generated.
 OpStats ConvertXSpaceToOpStats(const XSpace& space);
 
+// Propagate and dedup the diagnostics in XSpace and add to OpStats.
+void PropagateXSpaceDiagnosticsToOpStats(const XSpace& space,
+                                         OpStats* op_stats);
+
+// Populates PerfEnv.
+PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
+                    double peak_hbm_bw_giga_bytes_per_second);
+
+// Extracts PerfEnv from XPlane stats.
+PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

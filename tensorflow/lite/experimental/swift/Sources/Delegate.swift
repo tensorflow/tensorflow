@@ -20,5 +20,5 @@ public protocol Delegate: class {
   typealias CDelegate = UnsafeMutablePointer<TfLiteDelegate>
 
   /// The delegate that performs model computations.
-  var cDelegate: CDelegate? { get }
+  var cDelegate: CDelegate { get }
 }

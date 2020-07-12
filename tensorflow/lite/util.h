@@ -21,12 +21,19 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_UTIL_H_
 #define TENSORFLOW_LITE_UTIL_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
+
+// Memory allocation parameter used by ArenaPlanner.
+// Clients (such as delegates) might look at this to ensure interop between
+// TFLite memory & hardware buffers.
+// NOTE: This only holds for tensors allocated on the arena.
+constexpr int kDefaultTensorAlignment = 64;
 
 // The prefix of Flex op custom code.
 // This will be matched agains the `custom_code` field in `OperatorCode`
@@ -59,6 +66,11 @@ struct TfLiteIntArrayDeleter {
     if (a) TfLiteIntArrayFree(a);
   }
 };
+
+// Helper for Building TfLiteIntArray that is wrapped in a unique_ptr,
+// So that it is automatically freed when it goes out of the scope.
+std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
+    const std::vector<int>& data);
 
 // Populates the size in bytes of a type into `bytes`. Returns kTfLiteOk for
 // valid types, and kTfLiteError otherwise.

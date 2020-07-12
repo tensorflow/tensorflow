@@ -131,6 +131,8 @@ def text_dataset_from_directory(directory,
     raise ValueError(
         '`label_mode` argument must be one of "int", "categorical", "binary", '
         'or None. Received: %s' % (label_mode,))
+  dataset_utils.check_validation_split_arg(
+      validation_split, subset, shuffle, seed)
 
   if seed is None:
     seed = np.random.randint(1e6)

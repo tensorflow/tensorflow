@@ -39,6 +39,10 @@ class Convolution : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
+    if (ctx.input_shapes.size() != 1) {
+      return absl::UnimplementedError(
+          "Convolution does not support more than 1 runtime tensor");
+    }
     const auto& attr =
         absl::any_cast<const Convolution2DAttributes&>(ctx.op_attr);
     auto weights = attr.weights.shape;
@@ -161,6 +165,10 @@ class Convolution1x1 : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
+    if (ctx.input_shapes.size() != 1) {
+      return absl::UnimplementedError(
+          "Convolution does not support more than 1 runtime tensor");
+    }
     const auto& attr =
         absl::any_cast<const Convolution2DAttributes&>(ctx.op_attr);
     if (attr.weights.shape.h != 1 || attr.weights.shape.w != 1) {

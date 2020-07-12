@@ -234,8 +234,7 @@ class ConstantTest(test.TestCase):
     self.assertEqual(c.get_shape(), [10])
 
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
-          TypeError, "Expected Tensor's shape"):
+      with self.assertRaisesRegex(TypeError, "Expected Tensor's shape"):
         c = constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[10])
 
   def testPromotionShapes(self):
@@ -249,9 +248,9 @@ class ConstantTest(test.TestCase):
   # pylint: disable=g-long-lambda
   def testShapeWrong(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError, "Too many elements provided."):
+      with self.assertRaisesRegex(ValueError, "Too many elements provided."):
         constant_op.constant_v1([1, 2, 3, 4, 5, 6, 7], shape=[5])
-      with self.assertRaisesRegexp(TypeError, "Expected Tensor's shape"):
+      with self.assertRaisesRegex(TypeError, "Expected Tensor's shape"):
         constant_op.constant([1, 2, 3, 4, 5, 6, 7], shape=[5])
 
   # pylint: enable=g-long-lambda
@@ -260,7 +259,7 @@ class ConstantTest(test.TestCase):
   def _testTooLargeConstant(self):
     with ops.Graph().as_default():
       large_array = np.zeros((512, 1024, 1024), dtype=np.float32)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           "Cannot create a tensor proto whose content is larger than 2GB."):
         c = constant_op.constant(large_array)
@@ -272,20 +271,20 @@ class ConstantTest(test.TestCase):
       large_array = np.zeros((256, 1024, 1024), dtype=np.float32)
       c = constant_op.constant(large_array)
       d = constant_op.constant(large_array)
-      with self.assertRaisesRegexp(ValueError,
-                                   "GraphDef cannot be larger than 2GB."):
+      with self.assertRaisesRegex(ValueError,
+                                  "GraphDef cannot be larger than 2GB."):
         g.as_graph_def()
 
   @test_util.run_deprecated_v1
   def testSparseValuesRaiseErrors(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "setting an array element with a sequence"):
+    with self.assertRaisesRegex(ValueError,
+                                "setting an array element with a sequence"):
       c = constant_op.constant([[1, 2], [3]], dtype=dtypes_lib.int32)
 
-    with self.assertRaisesRegexp(ValueError, "must be a dense"):
+    with self.assertRaisesRegex(ValueError, "must be a dense"):
       c = constant_op.constant([[1, 2], [3]])
 
-    with self.assertRaisesRegexp(ValueError, "must be a dense"):
+    with self.assertRaisesRegex(ValueError, "must be a dense"):
       c = constant_op.constant([[1, 2], [3], [4, 5]])
 
 
@@ -330,8 +329,8 @@ class AsTensorTest(test.TestCase):
       self.assertEqual(dtypes_lib.int64, x.dtype)
       self.assertAllEqual([2**31, 2, 3], self.evaluate(x))
 
-      with self.assertRaisesRegexp(
-          ValueError, "a dimension is too large .2147483648."):
+      with self.assertRaisesRegex(ValueError,
+                                  "a dimension is too large .2147483648."):
         x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31, 2, 3]),
                                   dtype=dtypes_lib.int32)
 
@@ -344,10 +343,10 @@ class AsTensorTest(test.TestCase):
           array_ops.zeros([6]), tensor_shape.TensorShape([2, 3]))
       self.assertAllEqual([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], self.evaluate(x))
 
-    with self.assertRaisesRegexp(ValueError, "partially known"):
+    with self.assertRaisesRegex(ValueError, "partially known"):
       ops.convert_to_tensor(tensor_shape.TensorShape(None))
 
-    with self.assertRaisesRegexp(ValueError, "partially known"):
+    with self.assertRaisesRegex(ValueError, "partially known"):
       ops.convert_to_tensor(tensor_shape.TensorShape([1, None, 64]))
 
     with self.assertRaises(TypeError):
@@ -368,14 +367,14 @@ class AsTensorTest(test.TestCase):
 
     shape = tensor_shape.TensorShape(None)
     if shape._v2_behavior:
-      with self.assertRaisesRegexp(ValueError, "None values not supported"):
+      with self.assertRaisesRegex(ValueError, "None values not supported"):
         ops.convert_to_tensor(shape[1])
-      with self.assertRaisesRegexp(ValueError, "None values not supported"):
+      with self.assertRaisesRegex(ValueError, "None values not supported"):
         ops.convert_to_tensor(tensor_shape.TensorShape([1, None, 64])[1])
     else:
-      with self.assertRaisesRegexp(ValueError, "unknown Dimension"):
+      with self.assertRaisesRegex(ValueError, "unknown Dimension"):
         ops.convert_to_tensor(shape[1])
-      with self.assertRaisesRegexp(ValueError, "unknown Dimension"):
+      with self.assertRaisesRegex(ValueError, "unknown Dimension"):
         ops.convert_to_tensor(tensor_shape.TensorShape([1, None, 64])[1])
 
 
@@ -431,11 +430,11 @@ class ZerosTest(test.TestCase):
       z = array_ops.zeros([2, 3])
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.zeros([2, 3]))
+      self.assertAllEqual(z, np.zeros([2, 3]))
       z = array_ops.zeros(array_ops.shape(d))
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.zeros([2, 3]))
+      self.assertAllEqual(z, np.zeros([2, 3]))
       # Test explicit type control
       for dtype in [
           dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
@@ -611,11 +610,11 @@ class OnesTest(test.TestCase):
       z = array_ops.ones([2, 3])
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.ones([2, 3]))
+      self.assertAllEqual(z, np.ones([2, 3]))
       z = array_ops.ones(array_ops.shape(d))
       self.assertEqual(z.dtype, dtypes_lib.float32)
       self.assertEqual([2, 3], z.get_shape())
-      self.assertAllEqual(z.eval(), np.ones([2, 3]))
+      self.assertAllEqual(z, np.ones([2, 3]))
       # Test explicit type control
       for dtype in (dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.int32,
                     dtypes_lib.uint8, dtypes_lib.int16, dtypes_lib.int8,
@@ -624,11 +623,11 @@ class OnesTest(test.TestCase):
         z = array_ops.ones([2, 3], dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
-        self.assertAllEqual(z.eval(), np.ones([2, 3]))
+        self.assertAllEqual(z, np.ones([2, 3]))
         z = array_ops.ones(array_ops.shape(d), dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
-        self.assertAllEqual(z.eval(), np.ones([2, 3]))
+        self.assertAllEqual(z, np.ones([2, 3]))
 
 
 class OnesLikeTest(test.TestCase):

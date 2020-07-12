@@ -168,6 +168,17 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     self._testReduction(math_ops.reduce_any, np.any, np.bool, self.BOOL_DATA,
                         index_dtype)
 
+  def testReduceSumWithDuplicateAxes(self, index_dtype):
+    with self.session() as sess:
+      with self.test_scope():
+        a = array_ops.placeholder(np.float32)
+        index = array_ops.placeholder(np.int32)
+        out = math_ops.reduce_sum(a, index)
+      with self.assertRaisesWithPredicateMatch(
+          errors_impl.InvalidArgumentError,
+          'Axes contains duplicate dimension'):
+        sess.run(out, {a: [10, 20, 30], index: [0, 0]})
+
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):
 

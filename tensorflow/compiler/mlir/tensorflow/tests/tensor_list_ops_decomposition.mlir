@@ -1,11 +1,11 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tensor-list-ops-decomposition | FileCheck %s -dump-input-on-failure
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-tensor-list-ops-decomposition | FileCheck %s
 
 // Test push and pop on a tensor list which is initially empty.
 
 // CHECK-LABEL: func @main
 func @main() -> (tensor<f32>, tensor<i32>) {
-  // CHECK-NEXT: "tf.Const"() {value = dense<[]> : tensor<0xi32>}
-  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NEXT: "tf.Const"() {value = dense<> : tensor<0xi32>}
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NEXT: "tf.Const"() {value = dense<10> : tensor<i32>}
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NEXT: %[[ZERO_SCALAR:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -28,10 +28,10 @@ func @main() -> (tensor<f32>, tensor<i32>) {
   // CHECK-NEXT: %[[SUB:.*]] = "tf.Sub"(%[[NEW_SIZE]], %[[CONST1_1]])
   // CHECK-NEXT: %[[SLICE_SIZE:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   // CHECK-NEXT: %[[SLICE:.*]] = "tf.Slice"(%[[COPY]], %[[SUB]], %[[SLICE_SIZE]]) : (tensor<10xf32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xf32>
-  // CHECK-NEXT: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NEXT: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NEXT: %[[ELEM:.*]] = "tf.Reshape"(%[[SLICE]], %[[ELEM_SHAPE]]) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
   %pop:2 = "tf.TensorListPopBack"(%push, %elem_shape) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>) -> (tensor<!tf.variant<tensor<f32>>>, tensor<f32>)
-  // CHECK-NEXT: %[[SCALAR_SHAPE:.*]] = "tf.Const"() {value = dense<[]> : tensor<0xi32>}
+  // CHECK-NEXT: %[[SCALAR_SHAPE:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>}
   // CHECK-NEXT: %[[LENGTH:.*]] = "tf.Reshape"(%[[NEW_SIZE]], %[[SCALAR_SHAPE]])
   %length = "tf.TensorListLength"(%push) : (tensor<!tf.variant<tensor<f32>>>) -> tensor<i32>
   // CHECK-NEXT:  return %[[ELEM]], %[[LENGTH]] : tensor<f32>, tensor<i32>
@@ -46,8 +46,8 @@ func @main() -> (tensor<f32>, tensor<i32>) {
 // CHECK-LABEL: func @main
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<i32>) -> (tensor<f32>, tensor<10xf32>, tensor<i32>)
 func @main(%arg0: tensor<i32>) -> (tensor<f32>, tensor<10xf32>, tensor<i32>) {
-  // CHECK-NEXT: "tf.Const"() {value = dense<[]> : tensor<0xi32>}
-  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NEXT: "tf.Const"() {value = dense<> : tensor<0xi32>}
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NEXT: %[[NUM:.*]] = "tf.Const"() {value = dense<10> : tensor<i32>}
   %num = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NEXT: %[[ZERO_SCALAR:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -69,7 +69,7 @@ func @main(%arg0: tensor<i32>) -> (tensor<f32>, tensor<10xf32>, tensor<i32>) {
   // CHECK-NEXT: %[[GET_INDEX:.*]] = "tf.Reshape"(%[[ARG0]], %[[SIZE_SHAPE2]]) : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
   // CHECK-NEXT: %[[SLICE_SIZE:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   // CHECK-NEXT: %[[SLICE:.*]] = "tf.Slice"(%[[UPDATE]], %[[GET_INDEX]], %[[SLICE_SIZE]]) : (tensor<10xf32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xf32>
-  // CHECK-NEXT: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NEXT: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NEXT: %[[ELEM:.*]] = "tf.Reshape"(%[[SLICE]], %[[ELEM_SHAPE]]) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
   %get = "tf.TensorListGetItem"(%set, %arg0, %elem_shape) : (tensor<!tf.variant<tensor<f32>>>, tensor<i32>, tensor<0xi32>) -> tensor<f32>
   // CHECK-NEXT: %[[ADDN:.*]] = "tf.AddN"(%[[UPDATE]], %[[BROADCAST]]) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
@@ -92,8 +92,8 @@ func @main(%arg0: tensor<i32>) -> (tensor<f32>, tensor<10xf32>, tensor<i32>) {
 // CHECK-LABEL: func @main
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<i32>, %[[ARG1:.*]]: tensor<10xf32>) -> tensor<f32>
 func @main(%arg0: tensor<i32>, %arg1: tensor<10xf32>) -> tensor<f32> {
-  // CHECK-NEXT: "tf.Const"() {value = dense<[]> : tensor<0xi32>}
-  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NEXT: "tf.Const"() {value = dense<> : tensor<0xi32>}
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NEXT: %[[BUFFER:.*]] = "tf.Identity"(%[[ARG1]]) : (tensor<10xf32>) -> tensor<10xf32>
   // CHECK-NEXT: %[[SIZE:.*]] = "tf.Const"() {value = dense<10> : tensor<1xi32>} : () -> tensor<1xi32>
   %tl = "tf.TensorListFromTensor"(%arg1, %elem_shape) : (tensor<10xf32>, tensor<0xi32>) -> tensor<!tf.variant<tensor<f32>>>
@@ -101,7 +101,7 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<10xf32>) -> tensor<f32> {
   // CHECK-NEXT: %[[GET_INDEX:.*]] = "tf.Reshape"(%[[ARG0]], %[[SIZE_SHAPE]]) : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
   // CHECK-NEXT: %[[SLICE_SIZE:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   // CHECK-NEXT: %[[SLICE:.*]] = "tf.Slice"(%[[BUFFER]], %[[GET_INDEX]], %[[SLICE_SIZE]]) : (tensor<10xf32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xf32>
-  // CHECK-NEXT: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NEXT: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NEXT: %[[ELEM:.*]] = "tf.Reshape"(%[[SLICE]], %[[ELEM_SHAPE]]) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
   %get = "tf.TensorListGetItem"(%tl, %arg0, %elem_shape) : (tensor<!tf.variant<tensor<f32>>>, tensor<i32>, tensor<0xi32>) -> tensor<f32>
   // CHECK-NEXT:  return %[[ELEM]] : tensor<f32>
@@ -164,7 +164,7 @@ func @main(%arg0: tensor<10x8x9xf32>, %arg1: tensor<5xi32>, %arg2: tensor<5x8x9x
 
 // CHECK-LABEL: func @main
 func @main() -> () {
-  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.EmptyTensorList
   %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
@@ -205,7 +205,7 @@ func @while_cond(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i32>) ->
 
 // CHECK-LABEL: func @main
 func @main(%arg0: tensor<i1>) -> () {
-  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.EmptyTensorList
   %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
@@ -231,14 +231,14 @@ func @if_then(%arg0: tensor<!tf.variant<tensor<f32>>>) -> tensor<!tf.variant<ten
 }
 // CHECK: func @if_else(%[[EARG0:.*]]: tensor<10xf32>, %[[EARG1:.*]]: tensor<1xi32>) -> (tensor<10xf32>, tensor<1xi32>)
 func @if_else(%arg0: tensor<!tf.variant<tensor<f32>>>) -> tensor<!tf.variant<tensor<f32>>> {
-  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NOT: "tf.TensorListPopBack"
   // CHECK: %[[COPY:.*]] = "tf.Identity"(%[[EARG0]])
   // CHECK: %[[CONST1_1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[EARG1]], %[[CONST1_1]])
   // CHECK: %[[SLICE_SIZE:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   // CHECK: %[[SLICE:.*]] = "tf.Slice"(%[[COPY]], %[[SUB]], %[[SLICE_SIZE]]) : (tensor<10xf32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xf32>
-  // CHECK: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK: %[[ELEM:.*]] = "tf.Reshape"(%[[SLICE]], %[[ELEM_SHAPE]]) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
   // CHECK-NOT: "tf.TensorListPopBack"
   %pop:2 = "tf.TensorListPopBack"(%arg0, %elem_shape) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>) -> (tensor<!tf.variant<tensor<f32>>>, tensor<f32>)
@@ -248,11 +248,73 @@ func @if_else(%arg0: tensor<!tf.variant<tensor<f32>>>) -> tensor<!tf.variant<ten
 
 // -----
 
+// Tests CaseOp.
+
+// CHECK-LABEL: func @main
+func @main(%arg0: tensor<i32>) -> () {
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NOT: tf.EmptyTensorList
+  %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
+  %case_op = "tf.Case"(%arg0, %tl) {branches = [@branch_0, @branch_1, @branch_2]}
+    : (tensor<i32>, tensor<!tf.variant<tensor<f32>>>) -> tensor<!tf.variant<tensor<f32>>>
+  // CHECK: "tf.Slice"
+  %pop:2 = "tf.TensorListPopBack"(%case_op, %elem_shape) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>) -> (tensor<!tf.variant<tensor<f32>>>, tensor<f32>)
+  // CHECK-NOT: tf.TensorListPopBack
+  // CHECK: return
+  return
+}
+// CHECK: func @branch_0(%[[TARG0:.*]]: tensor<10xf32>, %[[TARG1:.*]]: tensor<1xi32>) -> (tensor<10xf32>, tensor<1xi32>)
+func @branch_0(%arg0: tensor<!tf.variant<tensor<f32>>>) -> tensor<!tf.variant<tensor<f32>>> {
+  %elem = "tf._SomeOp"() : () -> tensor<f32>
+  // CHECK-NOT: "tf.TensorListPushBack"
+  // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"
+  // CHECK: %[[CONST1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[TARG1]], %[[CONST1]])
+  // CHECK-NOT: "tf.TensorListPushBack"
+  %push = "tf.TensorListPushBack"(%arg0, %elem) : (tensor<!tf.variant<tensor<f32>>>, tensor<f32>) -> tensor<!tf.variant<tensor<f32>>>
+  // CHECK: return %[[UPDATE]], %[[ADD]]
+  return %push : tensor<!tf.variant<tensor<f32>>>
+}
+// CHECK: func @branch_1(%[[EARG0:.*]]: tensor<10xf32>, %[[EARG1:.*]]: tensor<1xi32>) -> (tensor<10xf32>, tensor<1xi32>)
+func @branch_1(%arg0: tensor<!tf.variant<tensor<f32>>>) -> tensor<!tf.variant<tensor<f32>>> {
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NOT: "tf.TensorListPopBack"
+  // CHECK: %[[COPY:.*]] = "tf.Identity"(%[[EARG0]])
+  // CHECK: %[[CONST1_1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[EARG1]], %[[CONST1_1]])
+  // CHECK: %[[SLICE_SIZE:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[SLICE:.*]] = "tf.Slice"(%[[COPY]], %[[SUB]], %[[SLICE_SIZE]]) : (tensor<10xf32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xf32>
+  // CHECK: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK: %[[ELEM:.*]] = "tf.Reshape"(%[[SLICE]], %[[ELEM_SHAPE]]) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
+  // CHECK-NOT: "tf.TensorListPopBack"
+  %pop:2 = "tf.TensorListPopBack"(%arg0, %elem_shape) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>) -> (tensor<!tf.variant<tensor<f32>>>, tensor<f32>)
+  // CHECK:  return %[[COPY]], %[[SUB]]
+  return %pop#0 : tensor<!tf.variant<tensor<f32>>>
+}
+// CHECK: func @branch_2(%[[EARG0:.*]]: tensor<10xf32>, %[[EARG1:.*]]: tensor<1xi32>) -> (tensor<10xf32>, tensor<1xi32>)
+func @branch_2(%arg0: tensor<!tf.variant<tensor<f32>>>) -> tensor<!tf.variant<tensor<f32>>> {
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NOT: "tf.TensorListPopBack"
+  // CHECK: %[[COPY:.*]] = "tf.Identity"(%[[EARG0]])
+  // CHECK: %[[CONST1_1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[SUB:.*]] = "tf.Sub"(%[[EARG1]], %[[CONST1_1]])
+  // CHECK: %[[SLICE_SIZE:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[SLICE:.*]] = "tf.Slice"(%[[COPY]], %[[SUB]], %[[SLICE_SIZE]]) : (tensor<10xf32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1xf32>
+  // CHECK: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK: %[[ELEM:.*]] = "tf.Reshape"(%[[SLICE]], %[[ELEM_SHAPE]]) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
+  // CHECK-NOT: "tf.TensorListPopBack"
+  %pop:2 = "tf.TensorListPopBack"(%arg0, %elem_shape) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>) -> (tensor<!tf.variant<tensor<f32>>>, tensor<f32>)
+  // CHECK:  return %[[COPY]], %[[SUB]]
+  return %pop#0 : tensor<!tf.variant<tensor<f32>>>
+}
+// -----
+
 // Tests PartitionedCall/StatefulPartitionedCall.
 
 // CHECK-LABEL: func @main
 func @main(%arg0: tensor<i1>) -> () {
-  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.EmptyTensorList
   // CHECK: %[[INIT:.*]] = "tf.BroadcastTo"
@@ -295,7 +357,7 @@ func @callee(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i1>) -> tens
 
 // CHECK-LABEL: func @main
 func @main(%arg0: tensor<i1>) -> () {
-  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.EmptyTensorList
   // CHECK: %[[INIT:.*]] = "tf.BroadcastTo"
@@ -341,7 +403,7 @@ func @main() -> () {
 }
 // CHECK: func @callee()
 func @callee() -> () attributes {sym_visibility = "public"} {
-  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // CHECK-NOT: tf.EmptyTensorList
   // CHECK: "tf.BroadcastTo"
@@ -354,7 +416,7 @@ func @callee() -> () attributes {sym_visibility = "public"} {
 // Tests that the pass reports error on unknown maximum size.
 
 func @main(%arg0: tensor<i32>) -> () {
-  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // expected-error @+1 {{unknown max element count}}
   %tl = "tf.EmptyTensorList"(%elem_shape, %arg0) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
   return
@@ -377,7 +439,7 @@ func @main(%arg0: tensor<*xi32>)  -> () {
 // list.
 
 func @main(%arg0: tensor<*xi32>)  -> () {
-  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   %num = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   %tl = "tf.TensorListReserve"(%elem_shape, %num) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
   %elem = "tf._SomeOp"() : () -> tensor<f32>

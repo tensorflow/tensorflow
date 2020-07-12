@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -275,6 +276,18 @@ class CallFrameInterface {
   virtual size_t num_retvals() const = 0;
 
   virtual Status GetArg(int index, const Tensor** val) = 0;
+
+  // Optimized implementation of `GetArg()` that allows the caller to take
+  // ownership of the tensor. This method may only be called once per
+  // value of `index` and `CallFrameInterface` instance.
+  //
+  // REQUIRES: `this->CanConsumeArg(index) == true`.
+  virtual void ConsumeArg(int index, Tensor* val) {
+    LOG(ERROR) << "This `CallFrameInterface` implementation does not support "
+                  "consuming arguments.";
+  }
+  virtual bool CanConsumeArg(int index) const { return false; }
+
   virtual Status SetRetval(int index, const Tensor& val) = 0;
 };
 
@@ -331,6 +344,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
   static constexpr const char* const kIntsOnDeviceAttr =
       "experimental_ints_on_device";
+  static constexpr const char* const kSharedRendezvousAttr =
+      "shared_rendezvous";
 
   static constexpr const char* const kGradientOp = "SymbolicGradient";
   static constexpr const char* const kFuncAttr = "f";
@@ -525,6 +540,20 @@ class Device;
 // Forward declare. Defined in common_runtime/device_mgr.h
 class DeviceMgr;
 
+// Index of an _Arg node.
+struct FunctionArgIndex {
+  explicit FunctionArgIndex(const int index) : index(index) {}
+  FunctionArgIndex(const int index, const int sub_index)
+      : index(index), sub_index(sub_index) {}
+
+  // The value of the attribute "Index" of the _Arg node.
+  int index;
+  // Set only when the _Arg node represents multiple arguments (e.g. an _Arg
+  // node is replicated to multiple devices/subgraphs). Use sub-index to
+  // distinguish arguments with the same index.
+  int sub_index = -1;
+};
+
 class FunctionLibraryRuntime {
  public:
   virtual ~FunctionLibraryRuntime() {}
@@ -541,6 +570,10 @@ class FunctionLibraryRuntime {
 
     // Should the function be instantiated as a multi-device function?
     bool is_multi_device_function = false;
+
+    // If true, graph passes will be skipped when instantiating the function
+    // since they have already run on the main function side.
+    bool is_component_function = false;
 
     // For multi-device functions, a vector of canonical device names for
     // function's inputs. The device of resource inputs must be the device
@@ -575,6 +608,10 @@ class FunctionLibraryRuntime {
     // runtime will leave device specification empty and will rely on Placer to
     // infer correct device.
     std::vector<string> output_devices;
+
+    // Maps from a CompositeDevice name to a list of underlying physical
+    // devices.
+    absl::flat_hash_map<string, const std::vector<string>*> composite_devices;
 
     // This interface is EXPERIMENTAL and subject to change.
     //
@@ -730,6 +767,12 @@ class FunctionLibraryRuntime {
   virtual void Run(const Options& opts, Handle handle,
                    CallFrameInterface* call_frame, DoneCallback done) = 0;
 
+  virtual Status RunSync(Options opts, Handle handle,
+                         gtl::ArraySlice<Tensor> args,
+                         std::vector<Tensor>* rets) = 0;
+  virtual Status RunSync(Options opts, Handle handle,
+                         CallFrameInterface* call_frame) = 0;
+
   // Creates a "kernel" for the given NodeProperties "props".
   //
   // If succeeds, returns OK and the caller takes the ownership of the
@@ -808,6 +851,12 @@ class FunctionLibraryRuntime {
                              AttrSlice attrs);
 };
 
+// Returns the device of the `arg_index`-th function input. Update
+// `composite_devices` if the input device is a composite device.
+string GetFunctionResourceInputDevice(
+    const Tensor& input, const int arg_index, const FunctionDef& function_def,
+    absl::flat_hash_map<string, std::vector<string>>* composite_devices);
+
 // Returns a canonicalized string for the instantiation of the
 // function of the given "name", attributes "attrs", and "options".
 //
@@ -853,7 +902,10 @@ class DistributedFunctionLibraryRuntime {
  public:
   virtual ~DistributedFunctionLibraryRuntime() {}
 
-  // The _target attr in attrs determines where the function is instantiated.
+  // Instantiate a function on a remote target specified in `options.target`, by
+  // sending the name and definition of the function to the remote worker. The
+  // local `handle` is filled for the instantiated function data and can be used
+  // for subsequent run function calls on the remote target.
   virtual void Instantiate(
       const string& function_name, const FunctionLibraryDefinition& lib_def,
       AttrSlice attrs,
@@ -861,25 +913,34 @@ class DistributedFunctionLibraryRuntime {
       FunctionLibraryRuntime::LocalHandle* handle,
       FunctionLibraryRuntime::DoneCallback done) = 0;
 
+  // Run an instantiated remote function (specified by `handle`) with a list of
+  // input Tensors in `args` and get its output Tensors in `rets`. The input
+  // tensor data will be sent with the function execution request, and must be
+  // available on the current caller side.
   // opts.runner isn't used for execution.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
 
+  // Run an instantiated remote function (specified by `handle`) with a list of
+  // input Tensors or RemoteTensorHandles as `args` and get its output Tensors
+  // in `rets`. When using RemoteTensorHandles as function inputs, the
+  // corresponding tensor data will be resolved on the remote worker, so it is
+  // not required to be locally available on the caller side. Using
+  // RemoteTensorHandle inputs is not supported in TensorFlow v1 runtime.
   // TODO(yujingzhang): Support outputting tensors on remote devices.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
                    gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
-                   FunctionLibraryRuntime::DoneCallback done) {
-    done(errors::Unimplemented("Unimplemented."));
-  }
+                   FunctionLibraryRuntime::DoneCallback done) = 0;
 
+  // Clean up a previously instantiated function on remote worker.
   virtual void CleanUp(uint64 step_id,
                        FunctionLibraryRuntime::LocalHandle handle,
                        FunctionLibraryRuntime::DoneCallback done) = 0;
 
-  // DeviceMgr with *all* available devices.
+  // DeviceMgr with *all* available devices (i.e., local and remote).
   virtual DeviceMgr* remote_device_mgr() const = 0;
 };
 

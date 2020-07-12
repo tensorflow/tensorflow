@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -test-tf-lower-tf | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -test-tf-lower-tf | FileCheck %s
 
 // CHECK-LABEL: invert_permutation
 func @invert_permutation(%arg0: tensor<5xi32>) -> tensor<5xi32> {
@@ -84,6 +84,15 @@ func @mul_no_nan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32
 
   // CHECK: return %[[RESULT]]
   return %0 : tensor<2x3xf32>
+}
+
+// CHECK-LABEL: @is_nan
+func @is_nan(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
+  // CHECK: %[[NAN:.*]] = "tf.Const"() {value = dense<0x7FC00000> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[RESULT:.*]] = "tf.Equal"(%arg0, %[[NAN]]) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
+  %0 = "tf.IsNan"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
+  // CHECK: return %[[RESULT]]
+  return %0 : tensor<3x4xi1>
 }
 
 // CHECK-LABEL: func @fill

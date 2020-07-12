@@ -22,6 +22,7 @@ glob_lit_tests(
     default_tags = tf_cuda_tests_tags() + [
         "no_pip",
         "config-cuda-only",
+        "no_rocm",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
     exclude = [

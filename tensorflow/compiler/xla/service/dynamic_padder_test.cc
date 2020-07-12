@@ -44,12 +44,49 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
+OpDynamismSupport OpHasDynamismSupport(HloInstruction* hlo) {
+  if (hlo->opcode() != HloOpcode::kCustomCall) {
+    return OpDynamismSupport::kNoSupport;
+  }
+  if (hlo->custom_call_target() == "OpWithDynamicLowering") {
+    return OpDynamismSupport::kRequired;
+  }
+  return OpDynamismSupport::kNoSupport;
+}
+
+Status CustomCallDynamicDimensionInference(
+    HloInstruction* hlo, DynamicDimensionInference* inferencer) {
+  if (hlo->custom_call_target() == "OpWithDynamicLowering") {
+    if (hlo->shape().IsTuple()) {
+      // Use the operand's dynamic size as output dynamic size.
+      HloInstruction* dynamic_size =
+          inferencer->GetDynamicSize(hlo->mutable_operand(0), {1}, 0);
+      inferencer->SetDynamicSize(hlo, {1}, 0, dynamic_size);
+    } else {
+      // Use the operand's dynamic size as output dynamic size.
+      HloInstruction* dynamic_size =
+          inferencer->GetDynamicSize(hlo->mutable_operand(0), {}, 0);
+      inferencer->SetDynamicSize(hlo, {}, 0, dynamic_size);
+    }
+  }
+
+  return Status::OK();
+}
+
 class DynamicPadderTest : public HloTestBase {
  protected:
   DynamicPadderTest() : HloTestBase() { module_ = CreateNewVerifiedModule(); }
 
+  std::unique_ptr<HloModule> GetHloModule(const string& hlo_text) {
+    std::unique_ptr<HloModule> module =
+        ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+    return module;
+  }
+
   StatusOr<bool> RunPadder() {
-    DynamicPadder padder;
+    DynamicPadder padder(/*slice_dynamic_output=*/true,
+                         CustomCallDynamicDimensionInference,
+                         OpHasDynamismSupport);
     return padder.Run(module_.get());
   }
 
@@ -103,6 +140,120 @@ TEST_F(DynamicPadderTest, ReduceTest) {
   TF_ASSERT_OK(RunPadder().status());
 
   ExpectPadded(reduce->operand(0));
+}
+
+TEST_F(DynamicPadderTest, DynamicLoweringTest) {
+  const string hlo_text = R"(
+HloModule DynamicLowering
+
+ENTRY main {
+  param = s32[5] parameter(0)
+  const = s32[] constant(3)
+  param_padded = s32[<=5] set-dimension-size(param, const),
+                dimensions={0}
+  custom-call.1 = s32[<=5] custom-call(param_padded),
+    custom_call_target="OpWithDynamicLowering"
+  custom-call.2 = s32[<=5] custom-call(custom-call.1),
+    custom_call_target="OpWithDynamicLowering"
+  // Negate doesn't support dynamic lowering.
+  ROOT negate = s32[<=5] negate(custom-call.2)
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK(RunPadder().status());
+  // After rewrite, we should have :
+  //
+  //   param
+  //     |
+  //  SliceToDynamic
+  //     |
+  //  OpWithDynamicLowering (custom_call_1)
+  //     |
+  //  OpWithDynamicLowering (custom_call_2)
+  //     |
+  //  PadToStatic
+  //     |
+  //   Negate
+  //     |
+  //   SliceToDynamic // Root require dynamic form tensor.
+  auto custom_call_1 =
+      module_->entry_computation()->GetInstructionWithName("custom-call.1");
+  auto custom_call_2 =
+      module_->entry_computation()->GetInstructionWithName("custom-call.2");
+  // Test that the input to custom call
+  HloInstruction* slice_to_dynamic = custom_call_1->mutable_operand(0);
+  ASSERT_THAT(slice_to_dynamic->opcode(), HloOpcode::kCustomCall);
+  ASSERT_THAT(slice_to_dynamic->custom_call_target(), "SliceToDynamic");
+  ASSERT_EQ(custom_call_2->user_count(), 1);
+  HloInstruction* pad_to_static = custom_call_2->users()[0];
+  ASSERT_THAT(pad_to_static->opcode(), HloOpcode::kCustomCall);
+  ASSERT_THAT(pad_to_static->custom_call_target(), "PadToStatic");
+  slice_to_dynamic = module_->entry_computation()->root_instruction();
+  ASSERT_THAT(slice_to_dynamic->opcode(), HloOpcode::kCustomCall);
+  ASSERT_THAT(slice_to_dynamic->custom_call_target(), "SliceToDynamic");
+}
+
+TEST_F(DynamicPadderTest, DynamicLoweringTestTupleInput) {
+  const string hlo_text = R"(
+HloModule DynamicLowering
+
+ENTRY main {
+  param = s32[5] parameter(0)
+  const = s32[] constant(3)
+  param_padded = s32[<=5] set-dimension-size(param, const),
+                dimensions={0}
+  // Create a tuple with static and dynamic componenet.
+  tuple_arg = (s32[], s32[<=5]) tuple(const, param_padded)
+  custom-call.1 = (s32[], s32[<=5]) custom-call(tuple_arg),
+    custom_call_target="OpWithDynamicLowering"
+  custom-call.2 = (s32[], s32[<=5]) custom-call(custom-call.1),
+    custom_call_target="OpWithDynamicLowering"
+  data = s32[<=5]{0} get-tuple-element(custom-call.2), index=1
+  // Negate doesn't support dynamic lowering.
+  ROOT negate = s32[<=5] negate(data)
+}
+)";
+
+  module_ = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK(RunPadder().status());
+  // After rewrite, we should have :
+  //
+  //   param
+  //     |
+  //  SliceToDynamic
+  //     |
+  //    Tuple
+  //     |
+  //  OpWithDynamicLowering (custom_call_1)
+  //     |
+  //  OpWithDynamicLowering (custom_call_2)
+  //     |
+  //   GTE
+  //     |
+  //  PadToStatic
+  //     |
+  //   Negate
+  //     |
+  //   SliceToDynamic // Root require dynamic form tensor.
+
+  auto* root = module_->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              op::CustomCall("SliceToDynamic", op::Negate(), op::Constant()));
+  HloInstruction* negate = root->mutable_operand(0);
+  EXPECT_THAT(
+      negate,
+      op::Negate(op::GetTupleElement(op::CustomCall(
+          "PadToStatic", op::GetTupleElement(op::CustomCall(
+                             "OpWithDynamicLowering", ::testing::_))))));
+  auto custom_call_1 =
+      module_->entry_computation()->GetInstructionWithName("custom-call.1");
+  EXPECT_THAT(custom_call_1,
+              op::CustomCall(
+                  "OpWithDynamicLowering",
+                  op::Tuple(op::Constant(), op::CustomCall("SliceToDynamic"))));
 }
 
 TEST_F(DynamicPadderTest, ConvolutionTest) {

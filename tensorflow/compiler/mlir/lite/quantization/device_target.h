@@ -134,10 +134,17 @@ class DeviceTarget {
   explicit DeviceTarget(MLIRContext* ctx);
 
   // Retrieves the kernel spec for the quant region op.
-  Optional<KernelSpec> GetKernelSpec(quant::QuantizeRegionOp op) const;
+  Optional<KernelSpec> GetKernelSpec(
+      llvm::StringRef kernel, const KernelSpecs::Signature& signature) const;
 
   // Retrieves the scale decomposition function for the quant region op.
   ScaleDecomposeFn GetDecomposeFn(quant::QuantizeRegionOp op) const;
+
+  // converts specification to signature:
+  // - UniformedQuantizedType -> AnyQuantizedType
+  // - AnyQuantizedType (int) -> AnyQuantizedType
+  // - Float -> {}
+  static void AppendToSignature(Type spec, KernelSpecs::Signature* signature);
 
  protected:
   // Adds the kernel spec with the custom scale function for the kernel.
@@ -154,13 +161,6 @@ class DeviceTarget {
   // added before.
   KernelSpecs& RegisterKernel(llvm::StringRef kernel) { return specs_[kernel]; }
 
-  // converts specification to signature:
-  // - UniformedQuantizedType -> AnyQuantizedType
-  // - AnyQuantizedType (int) -> AnyQuantizedType
-  // - Float -> {}
-  void AppendToSignature(ArrayAttr specs_attr,
-                         KernelSpecs::Signature* signature) const;
-
   // For "mulmat->add" type of kernels, convert the scales of all the ports to
   // multipliers.
   static LogicalResult DecomposeMultiplyAccumulateScale(
@@ -168,11 +168,17 @@ class DeviceTarget {
       quant::QuantizedMultipliers* output_multipliers,
       quant::QuantizedRanges* output_ranges);
 
+  // For "reshape" type of kernels.
+  static LogicalResult DecomposeSameScale(
+      Operation* op, quant::QuantizedMultipliers* input_multipliers,
+      quant::QuantizedMultipliers* output_multipliers,
+      quant::QuantizedRanges* output_ranges);
+
   // A set of parameters are required to build the signatures.
   FloatType f32_;
-  IntegerType i8_;
-  int64_t i8_min_, i8_max_;
-  AnyQuantizedType any_, qi8_, qi8n_;
+  IntegerType i8_, i32_;
+  int64_t i8_min_, i8_max_, i32_min_, i32_max_;
+  AnyQuantizedType any_, qi8_, qi8n_, qi32_;
 
  private:
   // Maps the kernel names to all the available kernels.

@@ -298,7 +298,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     x_np = np.random.rand(2, 3) * 255.
     delta_h = np.random.rand() * 2.0 - 1.0
     fused = False
-    with self.assertRaisesRegexp(ValueError, "Shape must be at least rank 3"):
+    with self.assertRaisesRegex(ValueError, "Shape must be at least rank 3"):
       self._adjustHueTf(x_np, delta_h)
     x_np = np.random.rand(4, 2, 4) * 255.
     delta_h = np.random.rand() * 2.0 - 1.0
@@ -775,6 +775,7 @@ class ResizeBilinearNonAlignCornersTest(xla_test.XLATestCase):
 
 class NonMaxSuppressionTest(xla_test.XLATestCase):
 
+  @test_util.disable_mlir_bridge("%1")
   def testNMS128From1024(self):
     num_boxes = 1024
     boxes_np = np.random.normal(50, 10, (num_boxes, 4)).astype("f4")
@@ -809,6 +810,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
 
       self.assertEqual(indices_tf.size, max_output_size)
 
+  @test_util.disable_mlir_bridge("%1")
   def testNMS3From6Boxes(self):
     # Three boxes are selected based on IOU.
     boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
@@ -850,6 +852,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
       self.assertEqual(num_valid, 3)
       self.assertAllClose(indices_tf[:num_valid], [3, 0, 5])
 
+  @test_util.disable_mlir_bridge("%1")
   def testNMS3Then2WithScoreThresh(self):
     # Three boxes are selected based on IOU.
     # One is filtered out by score threshold.
@@ -892,6 +895,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
       self.assertEqual(num_valid, 2)
       self.assertAllClose(indices_tf[:num_valid], [3, 0])
 
+  @test_util.disable_mlir_bridge("%1")
   def testNMS3Then1WithScoreMaxThresh(self):
     # Three boxes are selected based on IOU.
     # One is filtered out by score threshold.
@@ -935,6 +939,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
       self.assertEqual(num_valid, 1)
       self.assertAllClose(indices_tf[:num_valid], [3])
 
+  @test_util.disable_mlir_bridge("%1")
   def testSelectFromContinuousOverLap(self):
     # Tests that a suppressed box does not itself suppress other boxes.
 
@@ -979,7 +984,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
 
 class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  @test_util.disable_mlir_bridge("%1")
   def testBatchedNMSFrom6(self):
     boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                    [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
@@ -1017,7 +1022,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
                         indices_output)
     self.assertAllEqual([5, 4], num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  @test_util.disable_mlir_bridge("%1")
   def testBatchedNMSFrom6Max3(self):
     boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                    [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
@@ -1051,7 +1056,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([[0, 1, 2], [0, 1, 3]], indices_output)
     self.assertAllEqual([3, 3], num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  @test_util.disable_mlir_bridge("%1")
   def testBatchedNMSSingleFrom6Max3(self):
     boxes_data = [[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                   [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]]
@@ -1082,7 +1087,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([0, 1, 2], indices_output)
     self.assertAllEqual(3, num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  @test_util.disable_mlir_bridge("%1")
   def testBatchedNMSSingleFrom6NoPad(self):
     boxes_data = [[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                   [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]]
@@ -1112,7 +1117,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([0, 1, 2, 4, 5], indices_output)
     self.assertAllEqual(5, num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  @test_util.disable_mlir_bridge("%1")
   def testBatchedNMSBatchDimsFrom6Max3(self):
     boxes_data = [[[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                     [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
@@ -1146,7 +1151,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([[[0, 1, 2], [0, 1, 3]]], indices_output)
     self.assertAllEqual([[3, 3]], num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  @test_util.disable_mlir_bridge("%1")
   def testBatchedNMSScoreThresholdFrom6Max3(self):
     boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                    [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
@@ -1182,7 +1187,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([3, 2], num_valid_output)
     self.assertAllEqual([[0, 1, 2], [0, 1, invalid_index]], indices_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  @test_util.disable_mlir_bridge("%1")
   def testBatchedNMSUnsortedInputFrom6(self):
     boxes_data = [[[0, 2, 1, 2], [3, 3, 4, 4], [0, 0, 1, 1],
                    [0, 0.4, 1, 1.4], [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8]],
@@ -1219,7 +1224,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
                         indices_output)
     self.assertAllEqual([5, 4], num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  @test_util.disable_mlir_bridge("%1")
   def testBatchedNMSNoncanonicalizedInputFrom6(self):
     boxes_data = [[[1, 0, 0, 1], [4, 3, 3, 4], [1, 0.4, 0, 1.4],
                    [1, 0.6, 0, 1.6], [1, 0.8, 0, 1.8], [1, 2, 0, 2]],
@@ -1257,7 +1262,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
                         indices_output)
     self.assertAllEqual([5, 4], num_valid_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  @test_util.disable_mlir_bridge("%1")
   def testBatchedNMSScoreThresholdCanInputsFrom6Max3(self):
     boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                    [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
@@ -1293,7 +1298,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
     self.assertAllEqual([3, 2], num_valid_output)
     self.assertAllEqual([[0, 1, 2], [0, 1, invalid_index]], indices_output)
 
-  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  @test_util.disable_mlir_bridge("%1")
   def testBatchedNMSFrom6DynamicInput(self):
     boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
                    [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],

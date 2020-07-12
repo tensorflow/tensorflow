@@ -129,7 +129,8 @@ void TFE_DeleteContextCapsule(PyObject* context);
 bool EagerTensor_CheckExact(const PyObject* o);
 
 // Helper function to construct a new EagerTensor from a TFE_TensorHandle.
-PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle);
+PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
+                                const bool is_packed = false);
 
 // Extracts the handle inside EagerTensor object `o`. Returns nullptr on error.
 TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
@@ -379,7 +380,7 @@ void TFE_Py_EnableInteractivePythonLogging();
 // Py_None.
 //
 // This function is not thread-safe.
-PyObject* TFE_Py_SetEagerContext(PyObject* python_context);
+PyObject* TFE_Py_SetEagerContext(PyObject* py_context);
 
 // Returns the current eager Context object (defined in eager/context.py)
 // that was last set using TFE_Py_SetEagerContext.

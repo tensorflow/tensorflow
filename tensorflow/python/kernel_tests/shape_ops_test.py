@@ -256,12 +256,12 @@ class ShapeOpsTest(test.TestCase):
   def testExpandDimsScalar(self):
     with self.cached_session():
       inp = constant_op.constant(7)
-      self.assertAllEqual([7], array_ops.expand_dims(inp, 0).eval())
-      self.assertAllEqual([7], array_ops.expand_dims(inp, -1).eval())
+      self.assertAllEqual([7], array_ops.expand_dims(inp, 0))
+      self.assertAllEqual([7], array_ops.expand_dims(inp, -1))
 
       inp = constant_op.constant(True)
-      self.assertAllEqual([True], array_ops.expand_dims(inp, 0).eval())
-      self.assertAllEqual([True], array_ops.expand_dims(inp, -1).eval())
+      self.assertAllEqual([True], array_ops.expand_dims(inp, 0))
+      self.assertAllEqual([True], array_ops.expand_dims(inp, -1))
 
   def testExpandDimsDimType(self):
     for dtype in [dtypes.int32, dtypes.int64]:
@@ -500,6 +500,8 @@ class TileTest(test.TestCase, parameterized.TestCase):
         "int16": (dtypes.int16, int),
         "int32": (dtypes.int32, int),
         "int64": (dtypes.int64, int),
+        "uint32": (dtypes.uint32, int),
+        "uint64": (dtypes.uint64, int),
         bytes: (dtypes.string, bytes)
     }
     for dtype_np, (dtype_tf, cast) in types_to_test.items():

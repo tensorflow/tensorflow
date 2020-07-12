@@ -17,17 +17,11 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_UNARY_ELEMENTWISE_TESTER_H_
 
 #include <cstdint>
-#include <functional>
-#include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/version.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -51,6 +45,13 @@ class UnaryElementwiseTester {
 
   int32_t Size() const { return size_; }
 
+  inline UnaryElementwiseTester& RelativeTolerance(float relative_tolerance) {
+    relative_tolerance_ = relative_tolerance;
+    return *this;
+  }
+
+  float RelativeTolerance() const { return relative_tolerance_; }
+
   void Test(tflite::BuiltinOperator unary_op, TfLiteDelegate* delegate) const;
 
  private:
@@ -60,6 +61,7 @@ class UnaryElementwiseTester {
 
   std::vector<int32_t> shape_;
   int32_t size_;
+  float relative_tolerance_{10.0f};
 };
 
 }  // namespace xnnpack

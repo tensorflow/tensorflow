@@ -131,6 +131,7 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
   TF_RETURN_IF_ERROR(XLATypeToCpp(shape.element_type(), &type));
   std::vector<string> dim_vars;
   string dim_sizes, indices;
+  int count = 1;
   if (shape.rank() == 0 ||
       (shape.dimensions_size() == 1 && shape.dimensions(0) == 1)) {
     dim_sizes = "[1]";
@@ -140,6 +141,7 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
       dim_vars.push_back(absl::StrCat("size_t dim", dim));
       dim_sizes += absl::StrCat("[", shape.dimensions(dim), "]");
       indices += absl::StrCat("[dim", dim, "]");
+      count *= shape.dimensions(dim);
     }
   }
   rewrites->push_back({"{{I}}", absl::StrCat(i)});
@@ -147,6 +149,7 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
   rewrites->push_back({"{{DIM_VARS}}", absl::StrJoin(dim_vars, ", ")});
   rewrites->push_back({"{{DIM_SIZES}}", dim_sizes});
   rewrites->push_back({"{{INDICES}}", indices});
+  rewrites->push_back({"{{COUNT}}", absl::StrCat(count)});
   return Status::OK();
 }
 
@@ -199,6 +202,12 @@ Status GenArgMethods(const tf2xla::Config& config,
     return (*static_cast<const {{TYPE}}(*){{DIM_SIZES}}>(
         arg_data({{I}}))){{INDICES}};
   }
+  int arg{{NAME}}_size() const {
+    return {{COUNT}} * sizeof({{TYPE}});
+  }
+  int arg{{NAME}}_count() const {
+    return {{COUNT}};
+  }
 )";
     *methods += RewriteWithName(absl::StrCat(i), code, rewrites);
     if (!config.feed(i).name().empty()) {
@@ -246,6 +255,12 @@ Status GenResultMethods(const tf2xla::Config& config,
     return (*static_cast<const {{TYPE}}(*){{DIM_SIZES}}>(
         result_data({{I}}))){{INDICES}};
   }
+  int result{{NAME}}_size() const {
+    return {{COUNT}} * sizeof({{TYPE}});
+  }
+  int result{{NAME}}_count() const {
+    return {{COUNT}};
+  }
 )";
     *methods += RewriteWithName(absl::StrCat(i), code, rewrites);
     if (!config.fetch(i).name().empty()) {
@@ -280,6 +295,12 @@ Status GenVariableMethods(const tf2xla::Config& config,
   const {{TYPE}}& var_{{NAME}}({{DIM_VARS}}) const {
     return (*static_cast<const {{TYPE}}(*){{DIM_SIZES}}>(
         arg_data({{I}}))){{INDICES}};
+  }
+  int var_{{NAME}}_size() const {
+    return {{COUNT}} * sizeof({{TYPE}});
+  }
+  int var_{{NAME}}_count() const {
+    return {{COUNT}};
   }
 )";
     const tf2xla::Variable& var = config.variable(i - config.feed_size());

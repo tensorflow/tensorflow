@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/c/eager/dlpack.h"
 
 #include "include/dlpack/dlpack.h"  // from @dlpack
-#include "tensorflow/c/eager/c_api_internal.h"
-#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
@@ -41,15 +43,15 @@ struct TfDlManagedTensorCtx {
 
 // Gets tensor from eager tensor handle.
 const Tensor* GetTensorFromHandle(TFE_TensorHandle* h, TF_Status* status) {
-  if (h == nullptr || h->handle == nullptr) {
+  if (h == nullptr) {
     status->status = tensorflow::errors::InvalidArgument("Invalid handle");
     return nullptr;
   }
   tensorflow::TensorHandle* handle =
-      tensorflow::TensorHandleFromInterface(h->handle);
-  if (handle->IsRemote()) {
+      tensorflow::TensorHandleFromInterface(tensorflow::unwrap(h));
+  if (handle->Type() != TensorHandle::LOCAL) {
     status->status = tensorflow::errors::InvalidArgument(
-        "DLPack doesn't support remote tensor");
+        "DLPack doesn't support ", handle->TypeString(), " tensor");
     return nullptr;
   }
   const tensorflow::Tensor* tensor;
@@ -107,7 +109,7 @@ DLDataType GetDlDataType(TF_DataType data_type, TF_Status* status) {
 // Gets DLPack's DLContext from eager tensor handle.
 DLContext GetDlContext(TFE_TensorHandle* h, TF_Status* status) {
   DLContext ctx;
-  const char* device_name = h->handle->DeviceName(&status->status);
+  const char* device_name = tensorflow::unwrap(h)->DeviceName(&status->status);
   DeviceNameUtils::ParsedName parsed_name;
   tensorflow::DeviceNameUtils::ParseFullName(device_name, &parsed_name);
   std::string device_type = parsed_name.type;
@@ -219,8 +221,7 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
 // Wraps the deleter function of DLManagedTensor to match the function signature
 // TFE_NewTensorHandleFromDeviceMemory.
 void DeallocatorWrapperFunc(void* data, size_t len, void* dlmt_vptr) {
-  DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(dlmt_vptr);
-  dlmt->deleter(const_cast<DLManagedTensor*>(dlmt));
+  TFE_CallDLManagedTensorDeleter(dlmt_vptr);
 }
 
 // Checks whether the stride array matches the layout of compact, row-majored
@@ -322,7 +323,7 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
 
   TFE_TensorHandle* handle = TFE_NewTensorHandleFromDeviceMemory(
       ctx, device_name.value().c_str(), dtype, dims, num_dims, data,
-      total_bytes, &DeallocatorWrapperFunc, &dlmt, status);
+      total_bytes, &DeallocatorWrapperFunc, dlmt, status);
 
   return handle;
 }

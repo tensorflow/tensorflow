@@ -44,7 +44,7 @@ export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py
 export TF_TEST_TARGETS="//tensorflow/python/..."
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
 export TF_TEST_FILTER_TAGS='-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py35,-gpu,-tpu,-benchmark-test'
-export IS_NIGHTLY=0 # Not nightly
+#export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
 export TF_PROJECT_NAME="tensorflow"
 export TF_PIP_TEST_ROOT="pip_test"
 

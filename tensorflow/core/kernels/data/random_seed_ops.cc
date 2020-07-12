@@ -72,6 +72,7 @@ void AnonymousSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
   int64 seed2;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
   // Seeds will be consumed by `CreateResource`, which is called via `Compute`.
+  mutex_lock l(mu_);
   seeds_ = absl::make_unique<RandomSeeds>(seed, seed2);
   OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, kReshuffle, &reshuffle_));
   AnonymousResourceOp<SeedGeneratorManager>::Compute(ctx);
@@ -82,7 +83,8 @@ std::string AnonymousSeedGeneratorHandleOp::name() { return kSeedGenerator; }
 Status AnonymousSeedGeneratorHandleOp::CreateResource(
     OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
-    FunctionLibraryRuntime* lib, SeedGeneratorManager** manager) {
+    FunctionLibraryRuntime* lib, SeedGeneratorManager** manager)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   if (reshuffle_) {
     *manager = new SeedGeneratorManager(new RandomSeedGenerator(*seeds_));
   } else {

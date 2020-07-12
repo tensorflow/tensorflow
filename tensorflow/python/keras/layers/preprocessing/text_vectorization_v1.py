@@ -18,14 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
-from tensorflow.python.keras.layers.preprocessing import categorical_encoding_v1
-from tensorflow.python.keras.layers.preprocessing import index_lookup_v1
+from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
+from tensorflow.python.keras.layers.preprocessing import string_lookup_v1
 from tensorflow.python.keras.layers.preprocessing import text_vectorization
-from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -81,17 +77,7 @@ class TextVectorization(text_vectorization.TextVectorization,
   """
 
   def _get_vectorization_class(self):
-    return categorical_encoding_v1.CategoricalEncoding
+    return category_encoding_v1.CategoryEncoding
 
   def _get_index_lookup_class(self):
-    return index_lookup_v1.IndexLookup
-
-  def _to_numpy(self, data):
-    """Converts preprocessed inputs into numpy arrays."""
-    if isinstance(data, np.ndarray):
-      return data
-    session = K.get_session()
-    data = session.run(data)
-    if isinstance(data, ragged_tensor_value.RaggedTensorValue):
-      data = np.array(data.to_list())
-    return data
+    return string_lookup_v1.StringLookup

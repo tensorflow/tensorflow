@@ -32,6 +32,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_dispatch
@@ -141,8 +142,7 @@ BINARY_INT_OPS = [
 
 # pylint: disable=g-complex-comprehension
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
-                               parameterized.TestCase):
+class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def assertSameShape(self, x, y):
     """Checks that x and y have the same shape (including ragged shapes)."""
@@ -232,6 +232,10 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
           {'op': array_ops.check_numerics,
            'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
            'message': 'check-numerics'},
+          {'op': nn_ops.dropout,
+           'x': ragged_factory_ops.constant_value([[-2.0, 3.0], [-3.0]]),
+           'rate': 0.5,
+           'seed': 1},
       ]
       )  # pyformat: disable
   def testUnaryElementwiseOp(self, x, op=math_ops.abs, **extra_args):
@@ -441,8 +445,8 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     x = ragged_factory_ops.constant([[1, 2], [3]])
     y = ragged_tensor.RaggedTensor.from_row_splits(
         array_ops.placeholder_with_default([1, 2, 3], shape=None), x.row_splits)
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Unable to broadcast: unknown rank'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Unable to broadcast: unknown rank'):
       math_ops.add(x, y)
 
   @parameterized.parameters([
@@ -758,7 +762,12 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
               'tensor': ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]]),
               'axis': [0, -1]
           },
-          expected=ragged_factory_ops.constant_value([[5, 4], [3, 2, 1]]))
+          expected=ragged_factory_ops.constant_value([[5, 4], [3, 2, 1]])),
+      dict(
+          op=string_ops.string_format,
+          kwargs={'template': 'Hi {}',
+                  'inputs': [ragged_factory_ops.constant_value([[1, 2], [3]])]},
+          expected='Hi [[1, 2], [3]]'),
   ])
   def testRaggedDispatch(self, op, expected, args=(), result_is_list=False,
                          kwargs=None):
@@ -814,13 +823,14 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
         'math.unsorted_segment_mean', 'math.unsorted_segment_min',
         'math.unsorted_segment_prod', 'math.unsorted_segment_sqrt_n',
         'math.unsorted_segment_sum', 'one_hot', 'ones_like', 'rank', 'realdiv',
-        'reduce_all', 'size', 'squeeze', 'stack', 'strings.as_string',
+        'math.reduce_all', 'size', 'squeeze', 'stack', 'strings.as_string',
         'strings.join', 'strings.length', 'strings.reduce_join',
         'strings.regex_full_match', 'strings.regex_replace', 'strings.strip',
         'strings.substr', 'strings.to_hash_bucket_fast',
         'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
         'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
-        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse'
+        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse',
+        'nn.dropout', 'strings.format', 'print'
     ]
 
     # Ops that should be listed as supported in v1 only.
@@ -832,15 +842,15 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
 
     v1_ragged_ops = ragged_dispatch.ragged_op_list(tf_version=1)
     for element in supported_ops + supported_ops_v1:
-      self.assertIn(element, v1_ragged_ops)
+      self.assertIn('`tf.' + element + '`', v1_ragged_ops)
     for element in supported_ops_v2:
-      self.assertNotIn(element, v1_ragged_ops)
+      self.assertNotIn('`tf.' + element + '`', v1_ragged_ops)
 
     v2_ragged_ops = ragged_dispatch.ragged_op_list(tf_version=2)
     for element in supported_ops + supported_ops_v2:
-      self.assertIn(element, v2_ragged_ops)
+      self.assertIn('`tf.' + element + '`', v2_ragged_ops)
     for element in supported_ops_v1:
-      self.assertNotIn(element, v2_ragged_ops)
+      self.assertNotIn('`tf.' + element + '`', v2_ragged_ops)
 
 
 if __name__ == '__main__':

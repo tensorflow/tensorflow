@@ -52,8 +52,7 @@ bazel test \
       -- \
       //tensorflow/... \
       -//tensorflow/compiler/... \
-      -//tensorflow/lite/delegates/gpu/gl/... \
-      -//tensorflow/lite/delegates/gpu/cl/... \
+      -//tensorflow/lite/... \
 && bazel test \
       --config=rocm \
       -k \

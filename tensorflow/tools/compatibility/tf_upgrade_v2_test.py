@@ -2155,7 +2155,7 @@ def _log_prob(self, x):
     expected = "tf.contrib.distribute.TPUStrategy"
     _, _, errors, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
-    self.assertIn("migrated to tf.distribute.experimental.TPUStrategy",
+    self.assertIn("migrated to tf.distribute.TPUStrategy",
                   errors[0])
 
     text = "tf.contrib.distribute.foo"

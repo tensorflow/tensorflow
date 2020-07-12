@@ -55,7 +55,8 @@ xla::StatusOr<bool> MakeLayout(absl::Span<const int64> minor_to_major,
   }
   std::vector<bool> dim_present(minor_to_major.size(), false);
   for (auto dim : minor_to_major) {
-    if (dim < 0 || dim >= minor_to_major.size()) {
+    const int minor_to_major_size = minor_to_major.size();
+    if (dim < 0 || dim >= minor_to_major_size) {
       return errors::InvalidArgument("Layout dimension out of range: dim=", dim,
                                      " rank=", minor_to_major.size());
     }
@@ -204,7 +205,8 @@ Status GetShapeWithLayout(
     *output_shape = xla::ShapeUtil::MakeTupleShape(shapes);
   } else {
     int64 rank = input_shape.rank();
-    if (rank != minor_to_major.size()) {
+    const int64 minor_to_major_size = minor_to_major.size();
+    if (rank != minor_to_major_size) {
       return errors::InvalidArgument(
           "Wrong number of layout attribute elements: rank=", rank,
           " elements=", minor_to_major.size());

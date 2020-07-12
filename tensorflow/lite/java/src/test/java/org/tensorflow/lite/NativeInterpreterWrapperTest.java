@@ -46,6 +46,9 @@ public final class NativeInterpreterWrapperTest {
   private static final String STRING_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/string.bin";
 
+  private static final String STRING_SCALAR_MODEL_PATH =
+      "tensorflow/lite/java/src/testdata/string_scalar.bin";
+
   private static final String INVALID_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/invalid_model.bin";
 
@@ -246,6 +249,20 @@ public final class NativeInterpreterWrapperTest {
   }
 
   @Test
+  public void testRunWithScalarString() {
+    try (NativeInterpreterWrapper wrapper =
+        new NativeInterpreterWrapper(STRING_SCALAR_MODEL_PATH)) {
+      String[] parsedOutputs = new String[1];
+      Map<Integer, Object> outputs = new HashMap<>();
+      outputs.put(0, parsedOutputs);
+      Object[] inputs = {"s1"};
+      wrapper.run(inputs, outputs);
+      String[] expected = {"s1"};
+      assertThat(parsedOutputs).isEqualTo(expected);
+    }
+  }
+
+  @Test
   public void testRunWithString_supplementaryUnicodeCharacters() {
     try (NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(STRING_MODEL_PATH)) {
       String[] oneD = {"\uD800\uDC01", "s22", "\ud841\udf0e"};
@@ -284,8 +301,8 @@ public final class NativeInterpreterWrapperTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot copy between a TensorFlowLite tensor with shape [2, 4, 4, 12] and "
-                    + "a Java object with shape [2, 4, 4, 10]");
+                "Cannot copy from a TensorFlowLite tensor (output_tensor) with shape [2, 4, 4, 12] "
+                    + "to a Java object with shape [2, 4, 4, 10]");
       }
     }
   }
@@ -348,7 +365,7 @@ public final class NativeInterpreterWrapperTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot convert between a TensorFlowLite buffer with 768 bytes and a "
+                "Cannot copy to a TensorFlowLite tensor (input) with 768 bytes from a "
                     + "Java Buffer with 3072 bytes.");
       }
       int[] inputDims = {4, 8, 8, 3};
@@ -376,7 +393,7 @@ public final class NativeInterpreterWrapperTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot convert between a TensorFlowLite buffer with 192 bytes and a "
+                "Cannot copy to a TensorFlowLite tensor (input) with 192 bytes from a "
                     + "Java Buffer with 336 bytes.");
       }
     }
@@ -477,7 +494,7 @@ public final class NativeInterpreterWrapperTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot copy between a TensorFlowLite tensor with shape [8, 7, 3] and a "
+                "Cannot copy from a TensorFlowLite tensor (output) with shape [8, 7, 3] to a "
                     + "Java object with shape [2, 8, 8, 3].");
       }
     }
@@ -501,7 +518,7 @@ public final class NativeInterpreterWrapperTest {
         assertThat(e)
             .hasMessageThat()
             .contains(
-                "Cannot copy between a TensorFlowLite tensor with shape [2, 8, 7, 3] and a "
+                "Cannot copy from a TensorFlowLite tensor (output) with shape [2, 8, 7, 3] to a "
                     + "Java object with shape [2, 8, 8, 3].");
       }
     }

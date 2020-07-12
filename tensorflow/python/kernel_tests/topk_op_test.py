@@ -203,8 +203,8 @@ class TopKTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testKTooLarge(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.assertRaisesRegexp(ValueError,
-                                 r"must have last dimension >= k = 4"):
+    with self.assertRaisesRegex(ValueError,
+                                r"must have last dimension >= k = 4"):
       nn_ops.top_k(inputs, 4)
 
   @test_util.run_deprecated_v1

@@ -149,7 +149,7 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
   }
   auto walk_res = func_op.walk([&](Operation* op) {
     if (auto var_handle = llvm::dyn_cast<TF::VarHandleOp>(op)) {
-      // Record VarHanldeOp's device attribute.
+      // Record VarHandleOp's device attribute.
       auto device_attr =
           var_handle.getAttrOfType<mlir::StringAttr>(kDeviceAttr);
       if (!device_attr || device_attr.getValue().empty()) {

@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -59,7 +60,7 @@ class ReducedShapeTest(test.TestCase):
 
   def _check(self, shape, axes, result):
     output = math_ops.reduced_shape(shape, axes=axes)
-    self.assertAllEqual(output.eval(), result)
+    self.assertAllEqual(output, result)
 
   @test_util.run_deprecated_v1
   def testSimple(self):
@@ -223,7 +224,7 @@ class SumReductionTest(BaseReductionTest):
 
     with self.session(graph=ops.Graph(), use_gpu=True) as sess:
       tf_arr = variables.Variable(arr)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
       tf_out_mean = self.evaluate(tf_mean)
     self.assertAllClose(tf_out_mean, 1.)
@@ -340,6 +341,14 @@ class SumReductionTest(BaseReductionTest):
                                              ".*must be at most rank 1.*"):
       math_ops.reduce_sum(c_unknown, reduction_axes)
 
+  def testInvalidRepeatedReductionIndices(self):
+    reduction_axes = constant_op.constant([0, 0])
+    c = constant_op.constant([1.0, 2.0])
+    with self.assertRaisesWithPredicateMatch(
+        errors.InvalidArgumentError,
+        ".*Axes contains duplicate dimension: 0.*"):
+      self.evaluate(math_ops.reduce_sum(c, reduction_axes))
+
   # Int64??
 
   @test_util.run_deprecated_v1
@@ -390,7 +399,7 @@ class SumReductionTest(BaseReductionTest):
         # A large number is needed to get Eigen to die
         x = array_ops.zeros((0, 9938), dtype=dtype)
         y = math_ops.reduce_sum(x, [0])
-        self.assertAllEqual(y.eval(), np.zeros(9938))
+        self.assertAllEqual(y, np.zeros(9938))
 
 
 class MeanReductionTest(BaseReductionTest):
@@ -697,7 +706,7 @@ class ProdReductionTest(BaseReductionTest):
         # A large number is needed to get Eigen to die
         x = array_ops.zeros((0, 9938), dtype=dtype)
         y = math_ops.reduce_prod(x, [0])
-        self.assertAllEqual(y.eval(), np.ones(9938))
+        self.assertAllEqual(y, np.ones(9938))
 
 
 class MinReductionTest(test.TestCase):
@@ -1124,7 +1133,7 @@ class CountNonzeroReductionTest(test.TestCase):
           # A large number is needed to get Eigen to die
           x = array_ops.zeros((0, 9938), dtype=dtype)
           y = math_ops.count_nonzero(x, [0])
-          self.assertAllEqual(y.eval(), np.zeros(9938))
+          self.assertAllEqual(y, np.zeros(9938))
 
   def testStringReduce(self):
     # Test case for GitHub issue 18712

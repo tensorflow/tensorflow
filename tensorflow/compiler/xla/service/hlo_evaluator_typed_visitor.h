@@ -451,6 +451,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleNegate<ReturnT>(negate);
   }
 
+  Status HandleLogistic(HloInstruction* logistic) override {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[logistic],
+        ElementWiseUnaryOp(logistic, [](ElementwiseT elem_operand) {
+          return static_cast<ElementwiseT>(1) /
+                 (static_cast<ElementwiseT>(1) + std::exp(-elem_operand));
+        }));
+    return Status::OK();
+  }
+
   template <typename NativeT,
             typename std::enable_if<std::is_integral<NativeT>::value>::type* =
                 nullptr>
@@ -698,6 +708,38 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                           return std::sqrt(elem_operand);
                         }));
     return Status::OK();
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleCbrt(HloInstruction* cbrt) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[cbrt],
+        ElementWiseUnaryOp(cbrt, [](ElementwiseT elem_operand) -> ElementwiseT {
+          return std::pow(elem_operand, static_cast<ElementwiseT>(1.0 / 3.0));
+          return elem_operand.real() < 0
+                     ? -std::pow(-elem_operand,
+                                 static_cast<ElementwiseT>(1.0 / 3.0))
+                     : std::pow(elem_operand,
+                                static_cast<ElementwiseT>(1.0 / 3.0));
+        }));
+    return Status::OK();
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleCbrt(HloInstruction* cbrt) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[cbrt],
+                        ElementWiseUnaryOp(cbrt, [](ElementwiseT elem_operand) {
+                          return std::cbrt(elem_operand);
+                        }));
+    return Status::OK();
+  }
+
+  Status HandleCbrt(HloInstruction* cbrt) override {
+    return HandleCbrt<ElementwiseT>(cbrt);
   }
 
   Status HandleRsqrt(HloInstruction* rsqrt) override {

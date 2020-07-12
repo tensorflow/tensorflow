@@ -35,6 +35,8 @@ distribution_strategy_context = LazyLoader(
 class Tape(object):
   """Represents a gradient propagation trace."""
 
+  __slots__ = ["_tape"]
+
   def __init__(self, tape):
     self._tape = tape
 
@@ -71,6 +73,8 @@ class VariableWatcher(object):
 
   assert variable_watcher.watched_variables == [var]
   """
+
+  __slots__ = ["_variable_watcher"]
 
   def __init__(self):
     self._variable_watcher = None

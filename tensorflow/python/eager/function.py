@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 import functools
 import itertools
+import pprint
 import threading
 import types as types_lib
 import weakref
@@ -64,7 +65,7 @@ from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
 
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.profiler import traceme
+from tensorflow.python.profiler import trace
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -80,14 +81,18 @@ from tensorflow.python.util import tf_inspect
 ag_ctx = lazy_loader.LazyLoader(
     "ag_ctx", globals(),
     "tensorflow.python.autograph.core.ag_ctx")
+np_arrays = lazy_loader.LazyLoader(
+    "np_arrays", globals(),
+    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
+SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 
 
-def _make_input_signature_hashable(elem, variable_map=None):
+def _make_input_signature_hashable(elem):
   """Rewrite input signature to be hashable.
 
   We replace nested variables in the input signature with TensorSpec in order to
@@ -95,18 +100,13 @@ def _make_input_signature_hashable(elem, variable_map=None):
 
   Args:
     elem: Input signature element
-    variable_map: Internal argument used for tracking variable aliases
 
   Returns:
     A hashable object for the requested input signature
   """
-  if variable_map is None:
-    variable_map = {}
-
   # TODO(slebedev): consider using nest.
   if isinstance(elem, tuple):
-    return tuple(map(lambda e: _make_input_signature_hashable(e, variable_map),
-                     elem))
+    return tuple(map(_make_input_signature_hashable, elem))
 
   try:
     hash(elem)
@@ -117,15 +117,17 @@ def _make_input_signature_hashable(elem, variable_map=None):
     v = elem()
 
     if resource_variable_ops.is_resource_variable(v):
-      idx = variable_map.get(id(v))
-      if idx is None:
-        idx = len(variable_map)
-        variable_map[id(v)] = idx
-
-      # We include the class name to avoid having different types of variables
-      # having the same hash. We Also include the variable index which allows
-      # us to return a different hash if variables have been aliased in a call.
-      return v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype), idx
+      # We special case variables here to use unique_id as the cache key. This
+      # ensures we have to retrace whenever a different variable is passed in.
+      # This is needed to support cases where the user may use the id of a
+      # variable in the function perhaps as a lookup in a dictionary.
+      #
+      # This choice leads to more retracing when we could have possibly used the
+      # shape and dtype instead. However, we expect the number of variables in a
+      # program to be bounded, and correspondingly the number of retraces.
+      #
+      # Note we also include the class name to avoid collisions with strings.
+      return v.__class__, v._unique_id  # pylint: disable=protected-access
 
     if _is_ndarray(v):
       # Numpy arrays are not hashable, but when calling functions we treat them
@@ -152,100 +154,33 @@ CacheKey = collections.namedtuple("CacheKey", [
 ])
 
 
-def _flat_shape_list(*params):
-  """Return a flat list of TensorShapes, one for each tensor[spec] in `*params`.
-
-  If `params` contains `CompositeTensors`, then they are expanded to their
-  components `Tensors`.
-
-  Args:
-    *params: Set of nested entries containing Tensors, TensorSpec, and
-      non-tensors.
-
-  Returns:
-    A list of entries containing either `None` or `TensorShape`.
-  """
-  return [
-      tensor_shape.TensorShape(x.shape)
-      if isinstance(x, (ops.Tensor, tensor_spec.DenseSpec)) else None
-      for x in nest.flatten(params, expand_composites=True)
-  ]
+def _type_spec_for(x):
+  """Returns a TypeSpec for `x`, or `None` if `x` doesn't have a TensorSpec."""
+  if isinstance(x, ops.Tensor):
+    return tensor_spec.TensorSpec.from_tensor(x)
+  elif isinstance(x, type_spec.TypeSpec):
+    return x
+  elif isinstance(x, composite_tensor.CompositeTensor):
+    return x._type_spec  # pylint: disable=protected-access
+  else:
+    return None
 
 
-def _shape_less_specific_than(relaxed, to_check):
-  """Checks if `relaxed` is less specific than `to_check`.
-
-  This is an asymmetric check, unlike `TensorShape.is_compatible_with`. If
-  `to_check` has a dimension with an undefined shape, `relaxed` must also have
-  an undefined shape for that dimension.
-
-  Args:
-    relaxed: A `TensorShape` to check against.
-    to_check: A second `TensorShape`.
-
-  Returns:
-    True if `to_check` represents a set of shapes which is a subset of
-    `relaxed`'s shapes and False otherwise.
-  """
-  if to_check.dims is not None and relaxed.dims is not None:
-    if to_check.rank != relaxed.rank:
-      return False
-    for check_dim, relaxed_dim in zip(to_check.dims, relaxed.dims):
-      if check_dim.value is None and relaxed_dim.value is not None:
-        return False
-      if not relaxed_dim.is_compatible_with(check_dim):
-        return False
-  return True
+def _is_type_subset(a, b):
+  """Returns true if TypeSpec `b` is a subset of type `a` (or if a is None.)"""
+  if a is None:
+    return True
+  else:
+    return a.most_specific_compatible_type(b) == a
 
 
-def _compatible_shapes(flat_relaxed, flat_to_check):
-  """Check if lists of TensorShapes contain compatible shapes.
-
-  Checks that each `flat_relaxed` shape covers a superset of the shapes of the
-  corresponding `flat_to_check` shape.
-
-  Args:
-    flat_relaxed: List of TensorShape or None.
-    flat_to_check: List of TensorShape or None.
-
-  Returns:
-    A python bool.
-
-  Raises:
-    RuntimeError:
-      if `len(flat_relaxed) != len(flat_to_check)`.
-    RuntimeError:
-      if `flat_relaxed[i] is None != flat_to_check[i] is None` for any `i`.
-  """
-
-  if len(flat_relaxed) != len(flat_to_check):
-    raise RuntimeError("Expected shape lists of identical lengths, but saw: "
-                       "%s and %s" % (flat_relaxed, flat_to_check))
-  def is_compatible(relaxed, to_check):
-    """Internal help function.
-
-    Args:
-      relaxed: TensorShape or None.
-      to_check: TensorShape or None.
-
-    Returns:
-      Python bool.
-
-    Raises:
-      RuntimeError: If `relaxed is None != to_check is None`.
-    """
-    # If both x and y are None, there is no shape to compare.  Otherwise check
-    # if they are compatible with each other.  Either way, both input signatures
-    # must have have Tensors in the same entries.  If not, raise an assertion
-    # error.
-    if relaxed is None != to_check is None:
-      raise RuntimeError(
-          "Expected signature type matches between flattened input shapes "
-          "%s and %s; but saw that (%s is None) != (%s is None)"
-          % (flat_relaxed, flat_to_check, relaxed, to_check))
-    return relaxed is None or _shape_less_specific_than(relaxed, to_check)
-  return all(is_compatible(relaxed, to_check)
-             for relaxed, to_check in zip(flat_relaxed, flat_to_check))
+def _shape_relaxed_type_for_composite_tensor(x):
+  """Returns a shape-relaxed TypeSpec for x (if composite) or x (if not)."""
+  if isinstance(x, composite_tensor.CompositeTensor):
+    # pylint: disable=protected-access
+    return x._type_spec._with_tensor_ranks_only()
+  else:
+    return x
 
 
 def common_shape(x, y):
@@ -302,7 +237,7 @@ def _parse_func_attrs(attributes):
     A dict of attributes where the key is the name of attribute and the value
       is the AttrValue proto.
   Raises:
-    ValueError: If the kwargs contains unwhitelisted name or unsupported value
+    ValueError: If the kwargs contains unallowlisted name or unsupported value
       types.
   """
   attrs = {}
@@ -326,6 +261,8 @@ def _parse_func_attrs(attributes):
 
 class _InterpolateFunctionError(object):
   """Context Manager that interpolates the exception from 'top_level_func'."""
+
+  __slots__ = ["_func"]
 
   def __init__(self, top_level_func):
     self._func = top_level_func
@@ -442,6 +379,8 @@ def _enclosing_xla_context():
 
 class _EagerDefinedFunctionDeleter(object):
   """Unregister function from eager context."""
+
+  __slots__ = ["name"]
 
   def __init__(self, name):
     self.name = name
@@ -792,7 +731,7 @@ class _DelayedRewriteGradientFunctions(object):
     # pylint: enable=protected-access
 
     capture_mapping = dict(
-        zip([ops.tensor_id(t) for t in self._func_graph.outputs], op.outputs))
+        zip((ops.tensor_id(t) for t in self._func_graph.outputs), op.outputs))
     remapped_captures = [
         capture_mapping.get(ops.tensor_id(capture), capture)
         for capture in backwards_function.captured_inputs
@@ -803,7 +742,11 @@ class _DelayedRewriteGradientFunctions(object):
     cleaned_doutputs = []
     for doutput, placeholder in zip(doutputs, self._func_graph.outputs):
       if backprop_util.IsTrainable(placeholder):
-        if doutput is not None:
+        if isinstance(doutput, ops.IndexedSlices):
+          # Gradient passed to a backward ConcreteFunction must be tf.Tensor,
+          # so we convert tf.IndexedSlices to tf.Tensor.
+          cleaned_doutputs.append(ops.convert_to_tensor(doutput))
+        elif doutput is not None:
           cleaned_doutputs.append(doutput)
         else:
           cleaned_doutputs.append(default_gradient.zeros_like(placeholder))
@@ -1253,7 +1196,7 @@ class _TapeGradientFunctions(object):
   def _wrap_backward_function(self, forward_graph, backward, outputs):
     """Create a backward function given `outputs` from the forward function."""
     capture_mapping = dict(
-        zip([ops.tensor_id(t) for t in forward_graph.outputs], outputs))
+        zip((ops.tensor_id(t) for t in forward_graph.outputs), outputs))
     remapped_captures = [
         capture_mapping.get(ops.tensor_id(capture), capture)
         for capture in backward.captured_inputs
@@ -1471,6 +1414,10 @@ _POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
 class _ForwardBackwardCall(object):
   """Holds the state of a function call between execution and recording."""
 
+  __slots__ = [
+      "_functions", "_inference_args", "_input_tangents", "_tape_watching"
+  ]
+
   def __init__(self, functions, inference_args, input_tangents, tape_watching):
     """Collects information about the function call.
 
@@ -1548,6 +1495,11 @@ class ConcreteFunction(object):
     self._func_graph = func_graph
     self._captured_inputs = self._func_graph.external_captures
     self._captured_closures = self._func_graph.deferred_external_captures
+    structured_outputs = self._func_graph.structured_outputs
+    self._ndarrays_list = (
+        isinstance(structured_outputs, (list, tuple)) and structured_outputs and
+        all(isinstance(o, np_arrays.ndarray) for o in structured_outputs))
+    self._ndarray_singleton = isinstance(structured_outputs, np_arrays.ndarray)
 
     # function_spec defines the structured signature.
     self._set_function_spec(function_spec)
@@ -1711,8 +1663,7 @@ class ConcreteFunction(object):
 
   def _call_impl(self, args, kwargs, cancellation_manager=None):
     """See `__call__` for details."""
-    with traceme.TraceMe(self._func_graph.name,
-                         tf_function_call="concrete"):
+    with trace.Trace(self._func_graph.name, tf_function_call="concrete"):
       # Construct the list of input tensors: check if the structured signature
       # applies first; and if not, then use the flat signature.
       if self._function_spec is not None:
@@ -1897,9 +1848,9 @@ class ConcreteFunction(object):
       `args` and `kwargs`.
     """
     return self._call_flat(
-        (t for t in nest.flatten((args, kwargs), expand_composites=True)
+        [t for t in nest.flatten((args, kwargs), expand_composites=True)
          if isinstance(t, (ops.Tensor,
-                           resource_variable_ops.BaseResourceVariable))),
+                           resource_variable_ops.BaseResourceVariable))],
         captured_inputs=self.captured_inputs,
         cancellation_manager=cancellation_manager)
 
@@ -1920,7 +1871,6 @@ class ConcreteFunction(object):
     Raises:
       ValueError: If `args` contains anything other than Tensors or Variables.
     """
-    args = list(args)
     ctx = context.context()
     executing_eagerly = ctx.executing_eagerly()
 
@@ -2216,9 +2166,15 @@ class ConcreteFunction(object):
     if self._func_graph.structured_outputs is None:
       return result
 
+    if result:
+      if self._ndarrays_list:
+        return [np_arrays.tensor_to_ndarray(o) for o in result]
+      elif self._ndarray_singleton:
+        return np_arrays.tensor_to_ndarray(result[0])
+
     # Replace outputs with results, skipping over any 'None' values.
-    outputs_list = nest.flatten(self._func_graph.structured_outputs,
-                                expand_composites=True)
+    outputs_list = nest.flatten(
+        self._func_graph.structured_outputs, expand_composites=True)
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
@@ -2250,6 +2206,14 @@ class ConcreteFunction(object):
     assert self._function_spec is not None
     arg_specs, kwarg_specs = self.structured_input_signature
     arg_names = list(self._function_spec.arg_names)
+
+    # If an explicit input_signature is provided to @tf.function, then any
+    # arguments with defaults that are not covered by that explicit signature
+    # are simply dropped from the signature.
+    # TODO(b/159639913) Look into whether dropping arguments with default values
+    # from the signature is the right thing to do.
+    arg_names = arg_names[:len(arg_specs)]
+
     if default_values:
       for i in range(len(arg_names)):
         if not _contains_type_spec(arg_specs[i]):
@@ -2288,7 +2252,8 @@ class ConcreteFunction(object):
         pieces = nest.flatten(spec, expand_composites=False)
         markers = [_Marker("<{}>".format(i + 1)) for i in range(len(pieces))]
         structure = nest.pack_sequence_as(spec, markers)
-        result = "{}".format(structure)
+        # Ensure dictionaries are sorted by key (for determinism)
+        result = pprint.pformat(structure, width=10000)
         for (marker, piece) in zip(markers, pieces):
           result += "\n      {}: {}".format(marker, pretty_print_spec(piece))
         return result
@@ -2298,6 +2263,14 @@ class ConcreteFunction(object):
     lines = [self._structured_signature_summary(default_values=True)]
     arg_specs, kwarg_specs = self.structured_input_signature
     names = list(self._function_spec.arg_names)
+
+    # If an explicit input_signature is provided to @tf.function, then any
+    # arguments with defaults that are not covered by that explicit signature
+    # are simply dropped from the signature.
+    # TODO(b/159639913) Look into whether dropping arguments with default values
+    # from the signature is the right thing to do.
+    names = names[:len(arg_specs)]
+
     names.extend(sorted(kwarg_specs))
     specs = list(arg_specs) + list(kwarg_specs.values())
     # note: we can skip bound args, since we already displayed thier bound
@@ -2688,7 +2661,9 @@ def _is_ndarray(value):
       # For legacy reasons we do not automatically promote Numpy strings.
       or isinstance(value, np.str_)
       # NumPy dtypes have __array__ as unbound methods.
-      or isinstance(value, type))
+      or isinstance(value, type)
+      # CompositeTensors should be flattened instead.
+      or isinstance(value, composite_tensor.CompositeTensor))
 
 
 def _convert_numpy_inputs(inputs):
@@ -2773,6 +2748,11 @@ class FunctionCache(object):
   """A lightweight container for cached functions.
   """
 
+  __slots__ = [
+      "missed", "primary", "arg_relaxed_specs", "arg_relaxed",
+      "_garbage_collectors"
+  ]
+
   def __init__(self):
     # The set of functions that have been missed; entries are CacheKey with
     # input_signature `None` (e.g. a "call context key")
@@ -2780,9 +2760,10 @@ class FunctionCache(object):
     # The primary cache, mapping a fully shaped CacheKey to a function.
     self.primary = collections.OrderedDict()
     # A cache key lookup, mapping a CacheKey generated without shape info to a
-    # flat list of relaxed shapes (one for each argument).  Arguments that are
-    # not Tensors contain a `None` for the corresponding relaxed shape.
-    self.arg_relaxed_shapes = collections.OrderedDict()
+    # flat list of `TypeSpec`s with relaxed shapes (one for each flattened
+    # argument). Arguments that are not Tensors or `CompositeTensor`s contain a
+    # `None` for the corresponding relaxed spec.
+    self.arg_relaxed_specs = collections.OrderedDict()
     # The secondary cache, mapping a CacheKey generated without shape info to a
     # function.
     self.arg_relaxed = collections.OrderedDict()
@@ -2790,7 +2771,7 @@ class FunctionCache(object):
     self._garbage_collectors = [
         _FunctionGarbageCollector(self.primary),
         _FunctionGarbageCollector(self.arg_relaxed),
-        _FunctionGarbageCollector(self.arg_relaxed_shapes)]
+        _FunctionGarbageCollector(self.arg_relaxed_specs)]
 
   def all_values(self):
     """A set of all `ConcreteFunction` instances held by this cache."""
@@ -2902,7 +2883,6 @@ class Function(object):
       graph_function, _, _ = self._maybe_define_function(args, kwargs)
     return graph_function
 
-  # XX TODO: make sure we fix up this path as well!?
   def _get_concrete_function_internal(self, *args, **kwargs):
     """Bypasses error checking when getting a graph function."""
     graph_function = self._get_concrete_function_internal_garbage_collected(
@@ -3042,9 +3022,10 @@ class Function(object):
     if not executing_eagerly:
       # We want to force function retracing for each different
       # XLAControlFlowContext, so add `xla_context_id` to the cache key.
-      tpu_context = _enclosing_xla_context()
-      if tpu_context is not None:
-        xla_context_id = id(tpu_context)
+      xla_context = _enclosing_xla_context()
+      if xla_context is not None and \
+            xla_context.RequiresUniqueFunctionRetracing():
+        xla_context_id = id(xla_context)
 
       with ops.init_scope():
         # The graph, or whether we're executing eagerly, should be a part of the
@@ -3130,33 +3111,60 @@ class Function(object):
 
   def _define_function_with_shape_relaxation(self, args, kwargs):
     """Define a function, relaxing arg shapes to avoid unnecessary retracing."""
+    any_composite_args = any(isinstance(x, composite_tensor.CompositeTensor)
+                             for x in nest.flatten((args, kwargs)))
 
-    rank_only_cache_key = self._cache_key(
-        args, kwargs, include_tensor_ranks_only=True)
+    # Build a cache key where TensorShapes include only rank information (and
+    # not information about the size of each dimension).
+    if not any_composite_args:
+      rank_only_cache_key = self._cache_key(
+          args, kwargs, include_tensor_ranks_only=True)
+    else:
+      # For the rank-only cache key, replace any composite tensors with
+      # shape-relaxed TypeSpecs.
+      (cache_key_args, cache_key_kwargs) = nest.map_structure(
+          _shape_relaxed_type_for_composite_tensor, (args, kwargs))
+      rank_only_cache_key = self._cache_key(
+          cache_key_args, cache_key_kwargs, include_tensor_ranks_only=True)
 
-    arg_shapes = _flat_shape_list(args, kwargs)
-    relaxed_arg_shapes = self._function_cache.arg_relaxed_shapes.get(
+    arg_specs = [_type_spec_for(x) for x in nest.flatten((args, kwargs))]
+    relaxed_arg_specs = self._function_cache.arg_relaxed_specs.get(
         rank_only_cache_key, None)
     relaxed_arg_function = self._function_cache.arg_relaxed.get(
         rank_only_cache_key, None)
 
     if (relaxed_arg_function is not None
-        and _compatible_shapes(flat_relaxed=relaxed_arg_shapes,
-                               flat_to_check=arg_shapes)):
+        and all(_is_type_subset(x, y) for (x, y) in
+                zip(relaxed_arg_specs, arg_specs))):
       return relaxed_arg_function, args, kwargs
 
-    if relaxed_arg_shapes is None:
-      relaxed_arg_shapes = arg_shapes
+    if relaxed_arg_specs is None:
+      relaxed_arg_specs = arg_specs
     else:
-      if len(arg_shapes) != len(relaxed_arg_shapes):
-        raise RuntimeError("Expected arg_shapes len to match "
-                           "relaxed_arg_shapes len: %d vs. %d"
-                           % (len(arg_shapes), len(relaxed_arg_shapes)))
-      relaxed_arg_shapes = [
-          common_shape(x, y) for (x, y) in zip(
-              arg_shapes, relaxed_arg_shapes)]
-    self._function_cache.arg_relaxed_shapes[rank_only_cache_key] = (
-        relaxed_arg_shapes)
+      if len(arg_specs) != len(relaxed_arg_specs):
+        raise RuntimeError("Expected arg_specs len to match "
+                           "relaxed_arg_specs len: %d vs. %d"
+                           % (len(arg_specs), len(relaxed_arg_specs)))
+      relaxed_arg_specs = [
+          x if x is None else x.most_specific_compatible_type(y)
+          for (x, y) in zip(arg_specs, relaxed_arg_specs)]
+    self._function_cache.arg_relaxed_specs[rank_only_cache_key] = (
+        relaxed_arg_specs)
+    relaxed_arg_shapes = [
+        x if x is None else x.shape
+        for x in nest.flatten(relaxed_arg_specs, expand_composites=True)]
+
+    if any_composite_args:
+      # Rebuild composite tensors with the relaxed TypeSpecs.  For example,
+      # if a tf.data iterator is passed as an argument, then we need to relax
+      # the TensorShapes in its element_spec.
+      (relaxed_arg_specs, relaxed_kwarg_specs) = nest.pack_sequence_as(
+          (args, kwargs), relaxed_arg_specs, expand_composites=False)
+      (args, kwargs) = nest.pack_sequence_as(
+          (relaxed_arg_specs, relaxed_kwarg_specs),
+          nest.flatten((args, kwargs), expand_composites=True),
+          expand_composites=True)
+
     graph_function = self._create_graph_function(
         args, kwargs, override_flat_arg_shapes=relaxed_arg_shapes)
     self._function_cache.arg_relaxed[rank_only_cache_key] = graph_function
@@ -3630,9 +3638,9 @@ def defun_with_attributes(func=None,
     input_signature: same as defun()'s input_signature.
     attributes: A dictionary of arguments which will be added to function def as
       attributes. Currently only support primitive types as value, and only
-      whitelisted attribute name is allowed. Unwhitelisted attribute name or
+      allowlisted attribute name is allowed. Unallowlisted attribute name or
       unsupported value will result into ValueError. `func_name` is also one of
-      the whitelisted argument which is a python string, and sets the name for
+      the allowlisted argument which is a python string, and sets the name for
       this `ConcreteFunction` in the graph.
     autograph: same as defun()'s autograph.
     experimental_autograph_options: same as defun()'s
@@ -3776,6 +3784,8 @@ def class_method_to_instance_method(original_function, instance):
 class _FunctionGarbageCollector(object):
   """Cleans up cycles when a defun goes out of scope."""
 
+  __slots__ = ["_cache"]
+
   def __init__(self, cache):
     self._cache = cache
 
@@ -3792,6 +3802,8 @@ class _FunctionGarbageCollector(object):
 
 class ConcreteFunctionGarbageCollector(object):
   """Cleans up reference cycles when a `ConcreteFunction` goes out of scope."""
+
+  __slots__ = ["_func_graph"]
 
   def __init__(self, func_graph):
     self._func_graph = func_graph
@@ -3811,6 +3823,8 @@ class ConcreteFunctionGarbageCollector(object):
 
 class _Marker(object):
   """Markers used to pretty-print nested args in function signatures."""
+
+  __slots__ = ["_s"]
 
   def __init__(self, s):
     self._s = s

@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -115,6 +116,9 @@ class LiteralBase {
   // required for that index.
   template <typename NativeT>
   NativeT GetFirstElement() const;
+
+  // As above but returns any integer type casted to an int64.
+  absl::optional<int64> GetFirstInteger() const;
 
   // As Get(), but determines the correct type and converts the value
   // into text.
@@ -771,6 +775,10 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   MutableBorrowingLiteral(MutableBorrowingLiteral literal,
                           const ShapeIndex& view_root);
   MutableBorrowingLiteral(const char* src_buf_ptr, const Shape& shape);
+
+  // Create a literal from a list of buffers and a shape.
+  // Returns a tuple literal if `shape` is a tuple type.
+  MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs, const Shape& shape);
 
  private:
   // Recursively copies the subtree from the `src_piece` at the given child

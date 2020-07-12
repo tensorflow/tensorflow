@@ -30,9 +30,10 @@ namespace {
 void EnableLogging(PassManager *pm) {
   // Print the whole module after each pass, which requires disabling
   // multi-threading as well.
-  pm->disableMultithreading();
+  pm->getContext()->disableMultithreading();
   pm->enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
       /*print_module_scope=*/true));
+  pm->enableTiming(std::make_unique<tensorflow::BridgeTimingConfig>());
 }
 }  // namespace
 
@@ -71,22 +72,22 @@ tensorflow::Status RunTPUBridge(
 }  // namespace
 
 void CreateTPUBridgePipeline(OpPassManager &pm) {
-  // Run island coarsening before shape inference to allow more exact shape
-  // inference using constant folding within islands.
-  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorIslandCoarseningPass());
-  // TODO(b/150462212): Move graph pruning before island coarsening.
   pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorGraphPruningPass());
+  // It is assumed at this stage there are no V1 control flow ops as Graph
+  // functionalization is ran before import. Ops can be lifted out of
+  // tf_executor dialect islands/graphs.
+  pm.addNestedPass<FuncOp>(CreateExecutorDialectToFunctionalConversionPass());
   // Run shape inference so that tf_executor/tf_device ops created later will
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
   OpPassManager &func_pm = pm.nest<FuncOp>();
   func_pm.addPass(CreateTPUClusterFormationPass());
-  func_pm.addPass(createCanonicalizerPass());
   // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
   // because DecomposeResourceOpsPass uses pattern rewriter which hoists
   // changed constants out of tf_device.Launch.
   func_pm.addPass(TFDevice::CreateDecomposeResourceOpsPass());
-
+  func_pm.addPass(CreateTPUHostComputationExpansionPass());
+  pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
   // Run another shape inference pass because resource decomposition might have
   // created new partial types.
   pm.addPass(TF::CreateTFShapeInferencePass());
@@ -106,6 +107,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+  pm.addPass(TF::CreateTFShapeInferencePass());
   // For V1 compatibility, we process a module where the graph does not have
   // feeds and fetched. We extract first the TPU computation in a submodule,
   // where it'll be in a function with args and returned values, much more like

@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -43,7 +44,6 @@ class _Merge(Layer):
     """
     super(_Merge, self).__init__(**kwargs)
     self.supports_masking = True
-    self._supports_ragged_inputs = True
 
   def _merge_function(self, inputs):
     raise NotImplementedError
@@ -523,7 +523,11 @@ class Concatenate(_Merge):
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
-    if not isinstance(input_shape, (tuple, list)):
+    if ((not isinstance(input_shape, (tuple, list))) or
+        (not isinstance(input_shape[0], (tuple, list)))):
+      # The tf_utils.shape_type_conversion decorator turns tensorshapes
+      # into tuples, so we need to verify that `input_shape` is a list/tuple,
+      # *and* that the individual elements are themselves shape tuples.
       raise ValueError('A `Concatenate` layer should be called '
                        'on a list of inputs.')
     input_shapes = input_shape
@@ -651,7 +655,6 @@ class Dot(_Merge):
     self.normalize = normalize
     self.supports_masking = True
     self._reshape_required = False
-    self._supports_ragged_inputs = False
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -677,6 +680,7 @@ class Dot(_Merge):
                        'Chosen axes: %s, %s' % (axes[0], axes[1]))
 
   def _merge_function(self, inputs):
+    base_layer_utils.no_ragged_support(inputs, self.name)
     if len(inputs) != 2:
       raise ValueError('A `Dot` layer should be called on exactly 2 inputs')
     x1 = inputs[0]

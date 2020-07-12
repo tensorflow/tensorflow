@@ -30,8 +30,8 @@ namespace {
 class OperatorTest : public ::testing::Test {
  protected:
   // Return the operator for the given name and type.
-  const BaseOperator& GetOperator(const string& name, OperatorType type) {
-    using OpsByName = std::map<string, std::unique_ptr<BaseOperator>>;
+  const BaseOperator& GetOperator(const std::string& name, OperatorType type) {
+    using OpsByName = std::map<std::string, std::unique_ptr<BaseOperator>>;
     using OpsByType = std::map<OperatorType, std::unique_ptr<BaseOperator>>;
 
     static auto* by_name = new OpsByName(BuildOperatorByNameMap());
@@ -86,7 +86,7 @@ class OperatorTest : public ::testing::Test {
   // Verify serialization and deserialization of simple operators (those
   // that don't have any configuration parameters).
   template <typename T>
-  void CheckSimpleOperator(const string& name, OperatorType type) {
+  void CheckSimpleOperator(const std::string& name, OperatorType type) {
     Options options;
     auto output_toco_op =
         SerializeAndDeserialize(GetOperator(name, type), T(), &options);
@@ -99,7 +99,7 @@ class OperatorTest : public ::testing::Test {
   }
 
   template <typename T>
-  void CheckReducerOperator(const string& name, OperatorType type) {
+  void CheckReducerOperator(const std::string& name, OperatorType type) {
     T op;
 
     op.keep_dims = false;
@@ -436,11 +436,25 @@ TEST_F(OperatorTest, ResizeBilinear_HalfPixelCenters) {
 TEST_F(OperatorTest, ResizeNearestNeighbor) {
   ResizeNearestNeighborOperator op;
   op.align_corners = true;
+  op.half_pixel_centers = false;
   auto output_toco_op =
       SerializeAndDeserialize(GetOperator("RESIZE_NEAREST_NEIGHBOR",
                                           OperatorType::kResizeNearestNeighbor),
                               op);
   EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
+}
+
+TEST_F(OperatorTest, ResizeNearestNeighbor_HalfPixelCenters) {
+  ResizeNearestNeighborOperator op;
+  op.align_corners = true;
+  op.half_pixel_centers = true;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("RESIZE_NEAREST_NEIGHBOR",
+                                          OperatorType::kResizeNearestNeighbor),
+                              op);
+  EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
 }
 
 TEST_F(OperatorTest, Svdf) {

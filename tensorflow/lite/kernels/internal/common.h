@@ -24,6 +24,7 @@ limitations under the License.
 #include <functional>
 
 #include "fixedpoint/fixedpoint.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -54,9 +55,12 @@ inline void GetActivationMinMax(FusedActivationFunctionType ac,
   }
 }
 
-inline float ActivationFunctionWithMinMax(float x, float output_activation_min,
-                                          float output_activation_max) {
-  return std::min(std::max(x, output_activation_min), output_activation_max);
+template <typename T>
+inline T ActivationFunctionWithMinMax(T x, T output_activation_min,
+                                      T output_activation_max) {
+  using std::max;
+  using std::min;
+  return min(max(x, output_activation_min), output_activation_max);
 }
 
 // Legacy function, left for compatibility only.
@@ -243,19 +247,19 @@ inline void gen_lut(const std::function<double(double)>& func, double min,
   double step = (max - min) / (num - 1);
   double half_step = step / 2.0;
   for (int i = 0; i < num - 1; i++) {
-    double sample_val = std::round(func(min + i * step) * 32768.0);
+    double sample_val = TfLiteRound(func(min + i * step) * 32768.0);
     double midpoint_interp_val =
-        std::round((func(min + (i + 1) * step) * 32768.0 +
-                    std::round(func(min + i * step) * 32768.0)) /
-                   2.0);
+        TfLiteRound((func(min + (i + 1) * step) * 32768.0 +
+                     TfLiteRound(func(min + i * step) * 32768.0)) /
+                    2.0);
     double midpoint_val =
-        std::round(func(min + i * step + half_step) * 32768.0);
+        TfLiteRound(func(min + i * step + half_step) * 32768.0);
     double midpoint_err = midpoint_interp_val - midpoint_val;
-    double bias = std::round(midpoint_err / 2.0);
+    double bias = TfLiteRound(midpoint_err / 2.0);
     table[i] = std::min(std::max(sample_val - bias, -32768.0), 32767.0);
   }
   table[num - 1] =
-      std::min(std::max(std::round(func(max) * 32768.0), -32768.0), 32767.0);
+      std::min(std::max(TfLiteRound(func(max) * 32768.0), -32768.0), 32767.0);
 }
 
 // int16 func table lookup, e.g., lookup exp() and 1/(1+x) used in softmax
@@ -407,6 +411,23 @@ SaturatingRoundingMultiplyByPOTParam(
     gemmlowp::FixedPoint<tRawType, tIntegerBits> a, int exponent) {
   return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
       SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
+}
+
+// Convert int32 multiplier to int16 with rounding.
+inline void DownScaleInt32ToInt16Multiplier(int32_t multiplier_int32,
+                                            int16_t* multiplier_int16) {
+  TFLITE_DCHECK_GE(multiplier_int32, 0);
+  static constexpr int32_t kRoundingOffset = 1 << 15;
+  if (multiplier_int32 >=
+      std::numeric_limits<int32_t>::max() - kRoundingOffset) {
+    *multiplier_int16 = std::numeric_limits<int16_t>::max();
+    return;
+  }
+  const int32_t result = (multiplier_int32 + kRoundingOffset) >> 16;
+  TFLITE_DCHECK_LE(result << 16, multiplier_int32 + kRoundingOffset);
+  TFLITE_DCHECK_GT(result << 16, multiplier_int32 - kRoundingOffset);
+  *multiplier_int16 = result;
+  TFLITE_DCHECK_EQ(*multiplier_int16, result);
 }
 
 // Minimum output bits to accommodate log of maximum input range.  It actually

@@ -122,6 +122,8 @@ class ObjectIdentityDictionary(collections_abc.MutableMapping):
   and comparing based on the equality of their contents by default).
   """
 
+  __slots__ = ["_storage"]
+
   def __init__(self):
     self._storage = {}
 
@@ -170,6 +172,8 @@ class ObjectIdentityWeakKeyDictionary(ObjectIdentityDictionary):
 
 class ObjectIdentitySet(collections_abc.MutableSet):
   """Like the built-in set, but compares objects with "is"."""
+
+  __slots__ = ["_storage"]
 
   def __init__(self, *args):
     self._storage = set(self._wrap_key(obj) for obj in list(*args))

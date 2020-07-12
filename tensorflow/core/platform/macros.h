@@ -79,11 +79,7 @@ limitations under the License.
 // analysis. Giving it this information can help it optimize for the
 // common case in the absence of better information (ie.
 // -fprofile-arcs).
-//
-// We need to disable this for GPU builds, though, since nvcc8 and older
-// don't recognize `__builtin_expect` as a builtin, and fail compilation.
-#if (!defined(__NVCC__)) && \
-    (TF_HAS_BUILTIN(__builtin_expect) || (defined(__GNUC__) && __GNUC__ >= 3))
+#if TF_HAS_BUILTIN(__builtin_expect) || (defined(__GNUC__) && __GNUC__ >= 3)
 #define TF_PREDICT_FALSE(x) (__builtin_expect(x, 0))
 #define TF_PREDICT_TRUE(x) (__builtin_expect(!!(x), 1))
 #else

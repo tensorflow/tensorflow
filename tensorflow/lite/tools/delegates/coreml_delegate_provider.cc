@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 #if defined(__APPLE__)
+#include "TargetConditionals.h"
 #if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
 // Only enable metal delegate when using a real iPhone device.
 #define REAL_IPHONE_DEVICE
@@ -31,12 +32,13 @@ class CoreMlDelegateProvider : public DelegateProvider {
  public:
   CoreMlDelegateProvider() {
 #if defined(REAL_IPHONE_DEVICE)
-    default_params_.AddParam("use_coreml", ToolParam::Create<bool>(true));
+    default_params_.AddParam("use_coreml", ToolParam::Create<bool>(false));
+    default_params_.AddParam("coreml_version", ToolParam::Create<int>(0));
 #endif
   }
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -49,6 +51,10 @@ std::vector<Flag> CoreMlDelegateProvider::CreateFlags(
 #if defined(REAL_IPHONE_DEVICE)
   std::vector<Flag> flags = {
       CreateFlag<bool>("use_coreml", params, "use Core ML"),
+      CreateFlag<int>("coreml_version", params,
+                      "Target Core ML version for model conversion. "
+                      "The default value is 0 and it means using the newest "
+                      "version that's available on the device."),
   };
   return flags;
 #else
@@ -56,10 +62,11 @@ std::vector<Flag> CoreMlDelegateProvider::CreateFlags(
 #endif
 }
 
-void CoreMlDelegateProvider::LogParams(const ToolParams& params) const {
+void CoreMlDelegateProvider::LogParams(const ToolParams& params,
+                                       bool verbose) const {
 #if defined(REAL_IPHONE_DEVICE)
-  TFLITE_LOG(INFO) << "Use Core ML : [" << params.Get<bool>("use_coreml")
-                   << "]";
+  LOG_TOOL_PARAM(params, bool, "use_coreml", "Use CoreML", verbose);
+  LOG_TOOL_PARAM(params, int, "coreml_version", "CoreML version", verbose);
 #endif
 }
 
@@ -71,6 +78,7 @@ TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
   if (params.Get<bool>("use_coreml")) {
     TfLiteCoreMlDelegateOptions coreml_opts = {
         .enabled_devices = TfLiteCoreMlDelegateAllDevices};
+    coreml_opts.coreml_version = params.Get<int>("coreml_version");
     coreml_opts.max_delegated_partitions =
         params.Get<int>("max_delegated_partitions");
     coreml_opts.min_nodes_per_partition =

@@ -1,5 +1,6 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
 
+// CHECK-LABEL: main
 func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
 // CHECK:   %{{.*}} = "tfl.quantize"(%{{.*}}) {qtype = tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>} : (tensor<1x224x224x3xf32>) -> tensor<1x224x224x3x!quant.uniform<u8:f32, 7.812500e-03:128>>
 // The float values here doesn't match exactly because double -> float -> double is lossy
@@ -16,4 +17,19 @@ func @main(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x1001xf32> {
   %5 = "tfl.softmax"(%4) {beta = 1.000000e+00 : f32} : (tensor<1x1001x!quant.uniform<u8:f32, 0.023528476789885875>>) -> tensor<1x1001x!quant.uniform<u8:f32, 3.906250e-03>>
   %6 = "tfl.dequantize"(%5) : (tensor<1x1001x!quant.uniform<u8:f32, 3.906250e-03>>) -> tensor<1x1001xf32>
   return %6 : tensor<1x1001xf32>
+}
+
+// CHECK-LABEL: quantized_constant
+func @quantized_constant(%arg0: tensor<1x2xf32>) -> tensor<2x2xf32> {
+  %1 = "tfl.quantize"(%arg0) {qtype = tensor<1x2x!quant.uniform<u8:f32, 1.0>>, volatile} : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<u8:f32, 1.0>>
+  %cst = "tfl.pseudo_qconst"() {qtype = tensor<1x2x!quant.uniform<u8:f32, 1.0>>, value = dense<-76> : tensor<1x2xi8>} : () -> tensor<1x2x!quant.uniform<u8:f32, 1.0>>
+  %2 = "tfl.concatenation"(%1, %cst) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2x!quant.uniform<u8:f32, 1.0>>, tensor<1x2x!quant.uniform<u8:f32, 1.0>>) -> tensor<2x2x!quant.uniform<u8:f32, 1.0>>
+  %3 = "tfl.dequantize"(%2) : (tensor<2x2x!quant.uniform<u8:f32, 1.0>>) -> tensor<2x2xf32>
+  return %3 : tensor<2x2xf32>
+
+// CHECK-NEXT: %[[Q:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>} : (tensor<1x2xf32>) -> tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>
+// CHECK-NEXT: %[[CST:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>, value = dense<-76> : tensor<1x2xi8>} : () -> tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>
+// CHECK-NEXT: %[[CONCAT:.*]] = "tfl.concatenation"(%[[Q]], %[[CST]]) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>, tensor<1x2x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00>>
+// CHECK-NEXT: %[[DQ:.*]] = "tfl.dequantize"(%[[CONCAT]]) : (tensor<2x2x!quant.uniform<u8:f32, 1.000000e+00>>) -> tensor<2x2xf32>
+// CHECK-NEXT: return %[[DQ]] : tensor<2x2xf32>
 }

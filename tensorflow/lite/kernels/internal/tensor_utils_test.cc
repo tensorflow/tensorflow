@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -34,18 +35,6 @@ TEST(uKernels, FloorLog2Test) {
     EXPECT_EQ(::tflite::FloorLog2(i),
               static_cast<int>(std::floor(std::log2(i))));
   }
-}
-
-TEST(uKernels, ClipTest) {
-  constexpr int kVectorSize = 10;
-  constexpr float kAbsLimit = 2.0;
-  static float input[kVectorSize] = {0.0,  -0.5, 1.0,  -1.5, 2.0,
-                                     -2.5, 3.0,  -3.5, 4.0,  -4.5};
-  std::vector<float> output(kVectorSize);
-  ClipVector(input, kVectorSize, kAbsLimit, output.data());
-  EXPECT_THAT(output,
-              ElementsAreArray(ArrayFloatNear(
-                  {0.0, -0.5, 1.0, -1.5, 2.0, -2.0, 2.0, -2.0, 2.0, -2.0})));
 }
 
 TEST(uKernels, VectorScalarMultiply) {
@@ -975,15 +964,28 @@ TEST(uKernels, QuantAddTest) {
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
 }
 
+TEST(uKernels, ClipTest) {
+  constexpr int kVectorSize = 10;
+  constexpr float kAbsLimit = 2.0;
+  std::vector<float> input = {0.0,  -0.5, 1.0,  -1.5, 2.0,
+                              -2.5, 3.0,  -3.5, 4.0,  -4.5};
+  CwiseClipping(input.data(), kVectorSize, kAbsLimit);
+  const std::vector<float> expected_output = {0.0,  -0.5, 1.0,  -1.5, 2.0,
+                                              -2.0, 2.0,  -2.0, 2.0,  -2.0};
+  EXPECT_THAT(input, testing::ElementsAreArray(expected_output));
+}
+
 // Quantized clipping for 16 bit.
 TEST(uKernels, QuantClip16Test) {
+  constexpr int kVectorSize = 30;
+  constexpr int16_t kAbsLimit = 300;
   std::vector<int16_t> input = {
       -10500, 1,     -2,     -7404,  200,    -5401,  -1757, -7668,
       -19248, -9692, -24249, -17923, -15840, -10026, 5249,  -89,
       1787,   -200,  -6691,  -19524, -13439, -24048, -1123, 32767,
       -17267, -3378, 823,    11482,  -11139, 7508,
   };
-  CwiseClipping(input.data(), 300, 2, 15);
+  CwiseClipping(input.data(), kVectorSize, kAbsLimit);
   const std::vector<int16_t> expected_output = {
       -300, 1,    -2,   -300, 200,  -300, -300, -300, -300, -300,
       -300, -300, -300, -300, 300,  -89,  300,  -200, -300, -300,
@@ -994,11 +996,13 @@ TEST(uKernels, QuantClip16Test) {
 
 // Quantized clipping for 8 bit.
 TEST(uKernels, QuantClip8Test) {
+  constexpr int kVectorSize = 30;
+  constexpr int8_t kAbsLimit = 32;
   std::vector<int8_t> input = {
       4,   -11, -5, -34, -10, -17, -27, -22, 15,  127, -128, 1,  3, 56, 3,
       -21, 1,   9,  -13, 10,  0,   -1,  -55, -40, 127, -128, 11, 4, 6,  32,
   };
-  CwiseClipping(input.data(), 32, 2, 15);
+  CwiseClipping(input.data(), kVectorSize, kAbsLimit);
   const std::vector<int8_t> expected_output = {
       4,   -11, -5, -32, -10, -17, -27, -22, 15,  32, -32, 1,  3, 32, 3,
       -21, 1,   9,  -13, 10,  0,   -1,  -32, -32, 32, -32, 11, 4, 6,  32,
@@ -1135,11 +1139,15 @@ std::vector<float> TestPerChannelDotprodMatrixBatchVectorMultiply(
     bool is_per_channel = true) {
   MatrixVectorData data =
       SetupMatrixVectorData(rows, cols, batch, negative, is_per_channel);
-
+  std::vector<int32_t> scratch(rows * batch);
+  std::vector<int32_t> row_sums(rows);
+  bool compute_row_sums = true;
+  CpuBackendContext context;
   MatrixBatchVectorMultiplyAccumulate(
       data.matrix.data(), rows, cols, data.vectors.data(),
       data.scale_factors.data(), batch, &data.results[0],
-      data.per_channel_scales.data(), data.input_offsets.data());
+      data.per_channel_scales.data(), data.input_offsets.data(), scratch.data(),
+      row_sums.data(), &compute_row_sums, &context);
   return data.results;
 }
 
@@ -1938,13 +1946,13 @@ TEST(uKernels, ReductionSumVectorIntegerTest) {
   EXPECT_THAT(result1, testing::ElementsAreArray({3, 6, -1, 3, 15}));
 }
 
-void TwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
-                           const int8_t* recurrent, int8_t recurrent_zp,
-                           int32_t input_effective_scale_a,
-                           int32_t input_effective_scale_b,
-                           int32_t recurrent_effective_scale_a,
-                           int32_t recurrent_effective_scale_b, int32_t n_batch,
-                           int32_t n_cell, int16_t* output);
+void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
+                          const int8_t* recurrent, int8_t recurrent_zp,
+                          int32_t input_effective_scale_a,
+                          int32_t input_effective_scale_b,
+                          int32_t recurrent_effective_scale_a,
+                          int32_t recurrent_effective_scale_b, int32_t n_batch,
+                          int32_t n_cell, int16_t* output);
 
 TEST(uKernels, TwoGateSaturateAddTest) {
   const std::vector<int8_t> input1 = {1, 2, 3, 4, 55, 66, 77};
@@ -1957,9 +1965,9 @@ TEST(uKernels, TwoGateSaturateAddTest) {
   const int32_t shift2 = -6;
   std::vector<int16_t> output(7);
 
-  TwoGateSaturationgAdd(input1.data(), input1_zp, input2.data(), input2_zp,
-                        multiplier1, shift1, multiplier2, shift2, 1, 7,
-                        output.data());
+  TwoGateSaturatingAdd(input1.data(), input1_zp, input2.data(), input2_zp,
+                       multiplier1, shift1, multiplier2, shift2, 1, 7,
+                       output.data());
 
   const std::vector<int16_t> expected_output = {1, 0, 0, 0, 0, 1, 1};
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));

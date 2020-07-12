@@ -368,6 +368,7 @@ def tf_proto_library_cc(
         j2objc_api_version = 1,
         cc_api_version = 2,
         js_codegen = "jspb",
+        create_service = False,
         make_default_target_header_only = False):
     js_codegen = js_codegen  # unused argument
     native.filegroup(
@@ -376,6 +377,7 @@ def tf_proto_library_cc(
         testonly = testonly,
         visibility = visibility,
     )
+    _ignore = create_service
 
     use_grpc_plugin = None
     if cc_grpc_version:
@@ -500,6 +502,7 @@ def tf_proto_library(
         use_grpc_namespace = False,
         j2objc_api_version = 1,
         js_codegen = "jspb",
+        create_service = False,
         make_default_target_header_only = False,
         exports = []):
     """Make a proto library, possibly depending on other proto libraries."""
@@ -507,7 +510,7 @@ def tf_proto_library(
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
     # opensource projects importing TF in bazel can use them safely (i.e. w/o ODR or
     # ABI violations).
-    _ignore = (js_codegen, exports)
+    _ignore = (js_codegen, exports, create_service)
 
     native.proto_library(
         name = name,
@@ -577,8 +580,8 @@ def tf_additional_all_protos():
 
 def tf_protos_all_impl():
     return [
-        clean_dep("//tensorflow/core:autotuning_proto_cc_impl"),
-        clean_dep("//tensorflow/core:conv_autotuning_proto_cc_impl"),
+        clean_dep("//tensorflow/core/protobuf:autotuning_proto_cc_impl"),
+        clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
         clean_dep("//tensorflow/core:protos_all_cc_impl"),
     ]
 
@@ -638,7 +641,9 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:android"): [],
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:windows"): [],
+        clean_dep("//tensorflow:windows"): [
+            "//tensorflow/core/platform/cloud:gcs_file_system",
+        ],
         clean_dep("//tensorflow:no_gcp_support"): [],
         "//conditions:default": [
             "//tensorflow/core/platform/cloud:gcs_file_system",
@@ -656,7 +661,9 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow:android"): [],
         clean_dep("//tensorflow:ios"): [],
         clean_dep("//tensorflow:linux_s390x"): [],
-        clean_dep("//tensorflow:windows"): [],
+        clean_dep("//tensorflow:windows"): [
+            clean_dep("//tensorflow/core/platform/s3:s3_file_system"),
+        ],
         clean_dep("//tensorflow:no_aws_support"): [],
         "//conditions:default": [
             clean_dep("//tensorflow/core/platform/s3:s3_file_system"),
@@ -715,12 +722,6 @@ def tf_fingerprint_deps():
         "@farmhash_archive//:farmhash",
     ]
 
-def tf_protobuf_full_deps():
-    return tf_protobuf_deps()
-
-def tf_protobuf_lite_deps():
-    return tf_protobuf_deps()
-
 def tf_protobuf_deps():
     return if_static(
         [
@@ -728,6 +729,9 @@ def tf_protobuf_deps():
         ],
         otherwise = [clean_dep("@com_google_protobuf//:protobuf_headers")],
     )
+
+def tf_portable_proto_lib():
+    return ["//tensorflow/core:protos_all_cc_impl"]
 
 def tf_protobuf_compiler_deps():
     return if_static(
@@ -766,7 +770,7 @@ def tf_portable_deps_no_runtime():
         "@nsync//:nsync_cpp",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
-    ] + tf_protobuf_deps()
+    ]
 
 def tf_google_mobile_srcs_no_runtime():
     return []
@@ -778,3 +782,9 @@ def if_llvm_aarch64_available(then, otherwise = []):
     # TODO(b/...): The TF XLA build fails when adding a dependency on
     # @llvm/llvm-project/llvm:aarch64_target.
     return otherwise
+
+def if_llvm_system_z_available(then, otherwise = []):
+    return select({
+        "//tensorflow:linux_s390x": then,
+        "//conditions:default": otherwise,
+    })

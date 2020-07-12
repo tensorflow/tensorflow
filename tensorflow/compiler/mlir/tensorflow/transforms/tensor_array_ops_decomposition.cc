@@ -105,17 +105,12 @@ LogicalResult GetSplitElementTypeAndCount(TF::TensorArraySplitV3Op split,
 // Tries to infer the tensor array element shape.
 llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
     TF::TensorArrayV3Op ta, ModuleOp module) {
-  tensorflow::TensorShapeProto element_shape;
-  if (tensorflow::mangling_util::DemangleShape(ta.element_shape().str(),
-                                               &element_shape)
-          .ok()) {
-    tensorflow::PartialTensorShape shape(element_shape);
-    if (shape.IsFullyDefined()) {
-      // Convert int64 to int64_.
-      auto int64_dims = shape.dim_sizes();
-      llvm::SmallVector<int64_t, 8> dims(int64_dims.begin(), int64_dims.end());
-      return dims;
-    }
+  auto element_shape = ta.element_shapeAttr().cast<mlir::TF::ShapeAttr>();
+  if (element_shape.hasStaticShape()) {
+    auto shape = element_shape.getShape();
+    // Convert int64 to int64_.
+    llvm::SmallVector<int64_t, 8> dims(shape.begin(), shape.end());
+    return dims;
   }
 
   bool has_failure = false;
@@ -445,7 +440,7 @@ llvm::SmallDenseMap<int64_t, llvm::SmallVector<string, 4>> AccessedGradients(
   };
   for (FuncOp func : funcs) {
     for (auto& op : func.front().getOperations()) {
-      if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+      if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
         op.replaceAllUsesWith(op.getOperands());
         continue;
       }
@@ -764,7 +759,7 @@ LogicalResult HandlePartitionedCallOp(
     return it->getSecond().accumulate_on_write;
   };
   FuncOp lowered_callee = callee;
-  if (callee.getVisibility() != SymbolTable::Visibility::Private) {
+  if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
     lowered_callee.setVisibility(SymbolTable::Visibility::Private);
@@ -814,7 +809,7 @@ LogicalResult DecomposeTensorArrayOps(
     llvm::StringMap<PartitionedCallTensorArrayOpsInfo>*
         decomposed_partitioned_call_callees) {
   for (auto& op : llvm::make_early_inc_range(block->getOperations())) {
-    if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+    if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
       op.replaceAllUsesWith(op.getOperands());
       op.erase();
     } else if (auto ta = llvm::dyn_cast<TF::TensorArrayV3Op>(&op)) {

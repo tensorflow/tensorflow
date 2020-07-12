@@ -56,7 +56,7 @@ class Status {
   static Status OK() { return Status(); }
 
   /// Returns true iff the status indicates success.
-  bool ok() const { return (state_ == NULL); }
+  bool ok() const { return (state_ == nullptr); }
 
   tensorflow::error::Code code() const {
     return ok() ? tensorflow::error::OK : state_->code;

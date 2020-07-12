@@ -78,8 +78,8 @@ inline void ComparisonImpl(
   }
 }
 
-template <bool (*F)(const StringRef&, const StringRef&)>
-inline void ComparisonStringImpl(const RuntimeShape& input1_shape,
+inline void ComparisonStringImpl(bool (*F)(const StringRef&, const StringRef&),
+                                 const RuntimeShape& input1_shape,
                                  const TfLiteTensor* input1,
                                  const RuntimeShape& input2_shape,
                                  const TfLiteTensor* input2,
@@ -180,8 +180,8 @@ inline void BroadcastComparison4DSlowImpl(
   }
 }
 
-template <bool (*F)(const StringRef&, const StringRef&)>
 inline void BroadcastComparison4DSlowStringImpl(
+    bool (*F)(const StringRef&, const StringRef&),
     const RuntimeShape& unextended_input1_shape, const TfLiteTensor* input1,
     const RuntimeShape& unextended_input2_shape, const TfLiteTensor* input2,
     const RuntimeShape& unextended_output_shape, bool* output_data) {

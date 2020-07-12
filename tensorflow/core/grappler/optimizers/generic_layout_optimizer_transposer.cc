@@ -242,7 +242,7 @@ Status Transposer::CreateConstPermNode(TransposeContext* context,
 
   AttrValue attr_tensor;
   Tensor tensor(DT_INT32, TensorShape({4}));
-  for (int i = 0; i < permutation.size(); i++) {
+  for (int i = 0, iter_limit = permutation.size(); i < iter_limit; i++) {
     tensor.flat<int>()(i) = permutation[i];
   }
   tensor.AsProtoTensorContent(attr_tensor.mutable_tensor());
@@ -538,10 +538,11 @@ bool Transposer::IsFaninPortDimsNIfConst(const utils::MutableNodeView& node,
     if (!tensor.FromProto(value_attr->tensor())) {
       return false;
     }
-    if (tensor.dims() != dims.size()) {
+    const int dims_size = dims.size();
+    if (tensor.dims() != dims_size) {
       return false;
     }
-    for (int i = 0; i < dims.size(); ++i) {
+    for (int i = 0; i < dims_size; ++i) {
       if (tensor.dim_size(i) != dims[i]) {
         return false;
       }
@@ -739,28 +740,13 @@ Status Conv2DBackpropInputTransposer::TransposeNode(
     VLOG(3) << fanin_node->GetName() << " is not a vector.";
     return Status::OK();
   }
-  int vector_size = fanin_shape.dim(0).size();
-  if (vector_size == -1) {
-    VLOG(3) << "The number of elements in " << fanin_node->GetName()
-            << " is unknown.";
-    return Status::OK();
-  }
-  if (vector_size != 2 && vector_size != 4) {
-    return errors::InvalidArgument(
-        fanin_node->GetName(), " must be a vector of size 2 or 4, but found ",
-        vector_size);
-  }
 
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
           << "' with op '" << node->GetOp() << "' from data format '"
           << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
-  // Do not permute a input_sizes of size 2 because it represents HW regardless
-  // of whether NCHW or NHWC.
-  if (vector_size != 2) {
-    TF_RETURN_IF_ERROR(
-        UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
-  }
+  TF_RETURN_IF_ERROR(
+      UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {2}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();
@@ -878,12 +864,13 @@ inline bool IsValidConstPermTransposeNode(const utils::MutableNodeView& node,
   if (!GetValueAttrFromConstInputNode(node, IsTranspose, 1, &tensor)) {
     return false;
   }
-  if (tensor.NumElements() != permutation.size()) {
+  const int permutation_size = permutation.size();
+  if (tensor.NumElements() != permutation_size) {
     return false;
   }
 
   const auto& tensor_data = tensor.unaligned_flat<int32>();
-  for (int i = 0; i < permutation.size(); i++) {
+  for (int i = 0; i < permutation_size; i++) {
     if (permutation[i] != tensor_data(i)) {
       return false;
     }
@@ -1244,10 +1231,11 @@ bool ReduceTransposer::KeepDims(const utils::MutableNodeView& node) {
 
 bool ReduceTransposer::IsAlongAxis(const Tensor& tensor,
                                    absl::Span<const int> axis, int rank) {
-  if (tensor.dims() != 1 || tensor.dim_size(0) != axis.size()) {
+  const int axis_size = axis.size();
+  if (tensor.dims() != 1 || tensor.dim_size(0) != axis_size) {
     return false;
   }
-  for (int i = 0; i < axis.size(); ++i) {
+  for (int i = 0; i < axis_size; ++i) {
     int local_axis = tensor.flat<int>()(i);
     if (local_axis < 0) {
       local_axis += rank;
@@ -1459,12 +1447,13 @@ bool SqueezeTransposer::IsAlongAxis(const AttrValue& attr,
                                     int rank) const {
   const auto& list = attr.list();
   // If list is empty, Squeeze op will squeeze all dimensions of size 1.
+  int axis_size = axis.size();
   if (list.i_size() == 0) {
     return true;
-  } else if (list.i_size() != axis.size()) {
+  } else if (list.i_size() != axis_size) {
     return false;
   }
-  for (int i = 0; i < axis.size(); ++i) {
+  for (int i = 0; i < axis_size; ++i) {
     int local_axis = list.i(i);
     if (local_axis < 0) {
       local_axis += rank;
@@ -1578,7 +1567,8 @@ Status StridedSliceTransposer::PermuteMask(TransposeContext* context,
     return errors::InvalidArgument("invalid mask value: ", mask_i);
   }
   int result = 0;
-  for (int i = 0; i < context->src_to_dst.size(); i++) {
+  for (int i = 0, iter_limit = context->src_to_dst.size(); i < iter_limit;
+       i++) {
     const int final_pos = context->src_to_dst[i];
     const int position_mask = 1 << final_pos;
     const int bit_i = (mask_i & position_mask) >> final_pos;
@@ -1672,19 +1662,14 @@ string GetDeviceName(const VirtualPlacer* virtual_placer, const NodeDef& node) {
 }
 
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node) {
-  std::set<string> default_layout_sensitive_ops = {"AvgPool",
-                                                   "BiasAdd",
-                                                   "Conv2D",
-                                                   "DepthwiseConv2dNative",
-                                                   "DepthToSpace",
-                                                   "FusedBatchNorm",
-                                                   "FusedBatchNormV2",
-                                                   "FusedBatchNormV3",
-                                                   "FusedConv2DBiasActivation",
-                                                   "MaxPool",
-                                                   "SpaceToDepth"};
-  return default_layout_sensitive_ops.find(node.op()) !=
-         default_layout_sensitive_ops.end();
+  static absl::flat_hash_set<string>* default_layout_sensitive_ops =
+      new absl::flat_hash_set<std::string>(
+          {"AvgPool", "BiasAdd", "Conv2D", "DepthwiseConv2dNative",
+           "DepthToSpace", "FusedBatchNorm", "FusedBatchNormV2",
+           "FusedBatchNormV3", "FusedConv2DBiasActivation", "MaxPool",
+           "SpaceToDepth"});
+  return default_layout_sensitive_ops->find(node.op()) !=
+         default_layout_sensitive_ops->end();
 }
 
 bool IsLayoutSensitiveOp(const NodeDef& node) {
@@ -1699,37 +1684,72 @@ bool IsLayoutSensitiveOp(const NodeDef& node) {
 }
 
 bool IsDefaultLayoutAgnosticOp(const NodeDef& node) {
-  std::set<string> agnostic_nodes = {"Abs",          "Acos",
-                                     "Acosh",        "Angle",
-                                     "Asin",         "Asinh",
-                                     "Atan",         "Atanh",
-                                     "Bitcast",      "Cast",
-                                     "Ceil",         "CheckNumerics",
-                                     "ComplexAbs",   "Conj",
-                                     "Cos",          "Cosh",
-                                     "Digamma",      "Elu",
-                                     "Enter",        "Erf",
-                                     "Erfc",         "Exit",
-                                     "Exp",          "Expm1",
-                                     "Floor",        "GuaranteeConst",
-                                     "Identity",     "Imag",
-                                     "Inv",          "IsFinite",
-                                     "IsInf",        "IsNan",
-                                     "Lgamma",       "Log",
-                                     "LogicalNot",   "Log1p",
-                                     "Neg",          "NextIteration",
-                                     "OnesLike",     "PreventGradient",
-                                     "Real",         "Reciprocal",
-                                     "Relu",         "Relu6",
-                                     "Rint",         "Selu",
-                                     "Sigmoid",      "Sign",
-                                     "Sin",          "Sinh",
-                                     "Snapshot",     "Softplus",
-                                     "Round",        "Rsqrt",
-                                     "Sqrt",         "Square",
-                                     "StopGradient", "Tan",
-                                     "Tanh",         "ZerosLike"};
-  return agnostic_nodes.find(node.op()) != agnostic_nodes.end();
+  static absl::flat_hash_set<string>* agnostic_nodes =
+      new absl::flat_hash_set<std::string>({"Abs",
+                                            "Acos",
+                                            "Acosh",
+                                            "Angle",
+                                            "Asin",
+                                            "Asinh",
+                                            "Atan",
+                                            "Atanh",
+                                            "Bitcast",
+                                            "Cast",
+                                            "Ceil",
+                                            "CheckNumerics",
+                                            "ComplexAbs",
+                                            "Conj",
+                                            "Cos",
+                                            "Cosh",
+                                            "Digamma",
+                                            "Elu",
+                                            "Enter",
+                                            "Erf",
+                                            "Erfc",
+                                            "Exit",
+                                            "Exp",
+                                            "Expm1",
+                                            "FakeQuantWithMinMaxVars",
+                                            "FakeQuantWithMinMaxArgs",
+                                            "Floor",
+                                            "GuaranteeConst",
+                                            "Identity",
+                                            "Imag",
+                                            "Inv",
+                                            "IsFinite",
+                                            "IsInf",
+                                            "IsNan",
+                                            "Lgamma",
+                                            "Log",
+                                            "LogicalNot",
+                                            "Log1p",
+                                            "Neg",
+                                            "NextIteration",
+                                            "OnesLike",
+                                            "PreventGradient",
+                                            "QuantizeAndDequantizeV2",
+                                            "QuantizeAndDequantizeV3",
+                                            "Real",
+                                            "Reciprocal",
+                                            "Relu",
+                                            "Relu6",
+                                            "Rint",
+                                            "Selu",
+                                            "Sigmoid",
+                                            "Sign",
+                                            "Sin",
+                                            "Sinh",
+                                            "Snapshot",
+                                            "Softplus",
+                                            "Round",
+                                            "Rsqrt",
+                                            "Sqrt",
+                                            "Square",
+                                            "StopGradient",
+                                            "Tan",
+                                            "Tanh",
+                                            "ZerosLike"});
+  return agnostic_nodes->find(node.op()) != agnostic_nodes->end();
 }
 
 bool IsLayoutAgnosticOp(const NodeDef& node) {

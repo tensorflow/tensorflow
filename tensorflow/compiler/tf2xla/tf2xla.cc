@@ -87,7 +87,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   *computation = std::move(*result.computation);
 
   int num_const_results = 0;
-  for (int i = 0; i < result.outputs.size(); ++i) {
+  for (int i = 0, iter_limit = result.outputs.size(); i < iter_limit; ++i) {
     // Ending up with const results (i.e. output args) is an error, since it
     // means that one or more fetches that the user specified will be dropped
     // from the generated function.  It's most likely a configuration error,

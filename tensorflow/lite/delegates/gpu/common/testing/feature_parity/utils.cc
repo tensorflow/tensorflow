@@ -116,7 +116,7 @@ absl::optional<std::string> CoordinateToString(TfLiteIntArray* shape,
   return result;
 }
 
-// Builds intepreter for a model, allocates tensors.
+// Builds interpreter for a model, allocates tensors.
 absl::Status BuildInterpreter(const Model* model,
                               std::unique_ptr<Interpreter>* interpreter) {
   TfLiteStatus status =

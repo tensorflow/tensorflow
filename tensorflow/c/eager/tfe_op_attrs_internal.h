@@ -15,34 +15,21 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_TFE_OP_ATTRS_INTERNAL_H_
 #define TENSORFLOW_C_EAGER_TFE_OP_ATTRS_INTERNAL_H_
 
-#include <algorithm>
-#include <cstddef>
-#include <map>
-#include <memory>
-#include <queue>
-#include <string>
-#include <vector>
-
-#include "tensorflow/c/eager/tfe_context_internal.h"
-#include "tensorflow/c/eager/tfe_op_internal.h"
+#include "tensorflow/c/conversion_macros.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 
 // An equivalent of a tensorflow::NameAttrList protocol buffer, but used in ways
 // that sometimes do not require serialization.
-struct TFE_OpAttrs {
-  explicit TFE_OpAttrs() : name(nullptr), attributes(nullptr) {}
+typedef struct TFE_OpAttrs TFE_OpAttrs;
 
-  explicit TFE_OpAttrs(const tensorflow::AttrBuilder* value,
-                       const char* op_name)
-      : name(op_name), attributes(value) {}
-
-  const char* name;
-  const tensorflow::AttrBuilder* attributes;
-};
+typedef struct TFE_Context TFE_Context;
+typedef struct TFE_Op TFE_Op;
 
 namespace tensorflow {
+DEFINE_CONVERSION_FUNCTIONS(tensorflow::AttrBuilder, TFE_OpAttrs);
+
 // Set an AttrValue on the op. Doesn't handle the list types.
 void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const tensorflow::AttrValue& default_value,

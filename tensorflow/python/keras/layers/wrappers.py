@@ -125,7 +125,6 @@ class TimeDistributed(Wrapper):
               input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
-    self._supports_ragged_inputs = True
 
     # It is safe to use the fast, reshape-based approach with all of our
     # built-in Layers.
@@ -342,10 +341,11 @@ class Bidirectional(Wrapper):
       combined. One of {'sum', 'mul', 'concat', 'ave', None}. If None, the
       outputs will not be combined, they will be returned as a list. Default
       value is 'concat'.
-    backward_layer: Optional `keras.layers.RNN`, or keras.layers.Layer` instance
-      to be used to handle backwards input processing. If `backward_layer` is
-      not provided, the layer instance passed as the `layer` argument will be
-      used to generate the backward layer automatically.
+    backward_layer: Optional `keras.layers.RNN`, or `keras.layers.Layer`
+      instance to be used to handle backwards input processing.
+      If `backward_layer` is not provided, the layer instance passed as the
+      `layer` argument will be used to generate the backward layer
+      automatically.
       Note that the provided `backward_layer` layer should have properties
       matching those of the `layer` argument, in particular it should have the
       same values for `stateful`, `return_states`, `return_sequence`, etc.
@@ -356,6 +356,10 @@ class Bidirectional(Wrapper):
   Call arguments:
     The call arguments for this layer are the same as those of the wrapped RNN
       layer.
+    Beware that when passing the `initial_state` argument during the call of
+    this layer, the first half in the list of elements in the `initial_state`
+    list will be passed to the forward RNN call and the last half in the list
+    of elements will be passed to the backward RNN call.
 
   Raises:
     ValueError:
@@ -449,7 +453,6 @@ class Bidirectional(Wrapper):
     self._trainable = True
     self._num_constants = 0
     self.input_spec = layer.input_spec
-    self._supports_ragged_inputs = True
 
   def _verify_layer_config(self):
     """Ensure the forward and backward layers have valid common property."""
