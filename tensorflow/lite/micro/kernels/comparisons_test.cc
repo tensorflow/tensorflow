@@ -45,10 +45,15 @@ void TestComparison(tflite::BuiltinOperator op, TfLiteTensor* tensors,
   const int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
+  void* user_data = nullptr;
+  if (registration->init) {
+    user_data = registration->init(&context, /*buffer=*/nullptr, /*length=*/0);
+  }
+
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.user_data = nullptr;
+  node.user_data = user_data;
   node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
