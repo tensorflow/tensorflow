@@ -45,6 +45,16 @@ limitations under the License.
 extern "C" {
 #endif
 
+// Allocator Attributes used for tensor allocation 
+struct TF_AllocatorAttributes { 
+  size_t struct_size; 
+  unsigned char on_host; 
+} TF_AllocatorAttributes; 
+
+
+#define TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE \
+    TF_OFFSET_OF_END(TF_AllocatorAttributes, on_host) 
+
 // --------------------------------------------------------------------------
 // TF_Tensor holds a multi-dimensional array of elements of a single data type.
 // For all types other than TF_STRING, the data buffer stores elements
