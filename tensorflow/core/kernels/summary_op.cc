@@ -32,47 +32,6 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-class SummaryScalarOp : public OpKernel {
- public:
-  explicit SummaryScalarOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* c) override {
-    const Tensor& tags = c->input(0);
-    const Tensor& values = c->input(1);
-
-    OP_REQUIRES(
-        c,
-        tags.IsSameSize(values) || (TensorShapeUtils::IsScalar(tags.shape()) &&
-                                    TensorShapeUtils::IsScalar(values.shape())),
-        errors::InvalidArgument(
-            "tags and values not the same shape: ", tags.shape().DebugString(),
-            " != ", values.shape().DebugString(), SingleTag(tags)));
-    auto Ttags = tags.flat<tstring>();
-    auto Tvalues = values.flat<T>();
-    Summary s;
-    for (int i = 0; i < Ttags.size(); i++) {
-      Summary::Value* v = s.add_value();
-      const tstring& Ttags_i = Ttags(i);
-      v->set_tag(Ttags_i.data(), Ttags_i.size());
-      v->set_simple_value(float(Tvalues(i)));
-    }
-
-    Tensor* summary_tensor = nullptr;
-    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
-  }
-
-  // If there's only one tag, include it in the error message
-  static string SingleTag(const Tensor& tags) {
-    if (tags.NumElements() == 1) {
-      return strings::StrCat(" (tag '", tags.flat<tstring>()(0), "')");
-    } else {
-      return "";
-    }
-  }
-};
-
-template <typename T>
 class SummaryHistoOp : public OpKernel {
  public:
   // SummaryHistoOp could be extended to take a list of custom bucket
@@ -114,9 +73,6 @@ class SummaryHistoOp : public OpKernel {
 };
 
 #define REGISTER(T)                                                       \
-  REGISTER_KERNEL_BUILDER(                                                \
-      Name("ScalarSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"),    \
-      SummaryScalarOp<T>);                                                \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("HistogramSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SummaryHistoOp<T>);

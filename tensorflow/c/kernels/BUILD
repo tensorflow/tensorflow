@@ -88,12 +88,15 @@ tf_cc_test(
 filegroup(
     name = "android_all_op_kernels",
     srcs = [
-        "bitcast_op.cc", "summary_op.cc"
+        "bitcast_op.cc", 
+        "summary_op.cc"
     ],
 )
 # LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
 
 filegroup(
     name = "android_all_ops",
-    srcs = ["ops/bitcast.cc", "ops/summary.cc"],
+    srcs = ["ops/bitcast.cc", 
+            "ops/summary.cc"
+    ],
 )

@@ -34,17 +34,11 @@ typedef struct Params{
     if (TF_GetCode(status) == TF_OK){ 
       TF_GetInput(ctx, 1, &values, status);
     }
-    else {
-      values = nullptr; 
-    }
   }; 
   ~Params(){ 
     TF_DeleteStatus(status); 
     TF_DeleteTensor(tags); 
-    // edge case if params fails to initialize 
-    if (values != nullptr){
-      TF_DeleteTensor(values); 
-    }
+    TF_DeleteTensor(values);
   }
 }; 
 
@@ -134,7 +128,7 @@ template <typename T>
 void RegisterSummaryScalarOpKernel() {
   TF_Status* status = TF_NewStatus();
   {
-    auto* builder = TF_NewKernelBuilder("SummaryScalar", 
+    auto* builder = TF_NewKernelBuilder("ScalarSummary", 
                                         tensorflow::DEVICE_CPU,
                                         &SummaryScalarOp_Create, 
                                         &SummaryScalarOp_Compute<T>,
@@ -143,7 +137,7 @@ void RegisterSummaryScalarOpKernel() {
         static_cast<TF_DataType>(tensorflow::DataTypeToEnum<T>::v()), status); 
     CHECK_EQ(TF_OK, TF_GetCode(status))
         << "Error while adding type constraint";
-    TF_RegisterKernelBuilder("SummaryScalar", builder, status);
+    TF_RegisterKernelBuilder("ScalarSummary", builder, status);
     CHECK_EQ(TF_OK, TF_GetCode(status))
         << "Error while registering Summary Scalar kernel";
   }

@@ -45,7 +45,7 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
   // Initialize node used to fetch OpKernel 
   Status status;
   NodeDef def;
-  def.set_op("SummaryScalar");
+  def.set_op("ScalarSummary");
 
   def.set_device(DEVICE_CPU);
 
@@ -165,7 +165,7 @@ TEST(ScalarSummaryOpTest, Error_WrongWithSingleTag) {
 
 TEST(ScalarSummaryOpTest, IsRegistered){ 
   const OpRegistrationData* reg;
-  TF_CHECK_OK(OpRegistry::Global()->LookUp("SummaryScalar", &reg));
+  TF_CHECK_OK(OpRegistry::Global()->LookUp("ScalarSummary", &reg));
 }
 
 }  // namespace

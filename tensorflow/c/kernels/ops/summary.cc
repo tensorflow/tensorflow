@@ -41,7 +41,7 @@ void Register_ScalarSummaryOp() {
   TF_Status* status = TF_NewStatus();
 
   TF_OpDefinitionBuilder* op_builder = 
-      TF_NewOpDefinitionBuilder("SummaryScalar");
+      TF_NewOpDefinitionBuilder("ScalarSummary");
   TF_OpDefinitionBuilderAddInput(op_builder, "tags: string");
   TF_OpDefinitionBuilderAddInput(op_builder, "values: T");
   TF_OpDefinitionBuilderAddOutput(op_builder, "summary: string");
@@ -56,7 +56,7 @@ void Register_ScalarSummaryOp() {
 }
 
 TF_ATTRIBUTE_UNUSED static bool SummaryScalarOpRegistered = []() {
-  if (SHOULD_REGISTER_OP("SummaryScalar")) {
+  if (SHOULD_REGISTER_OP("ScalarSummary")) {
     Register_ScalarSummaryOp();
   }
   return true;
