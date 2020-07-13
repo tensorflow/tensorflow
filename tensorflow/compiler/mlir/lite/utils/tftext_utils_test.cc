@@ -41,13 +41,13 @@ void Register(const std::string& op_name, OpRegistry* registry) {
 TEST(TfTextUtilsTest, TestTfTextRegistered) {
   std::unique_ptr<OpRegistry> registry(new OpRegistry);
   Register("WhitespaceTokenizeWithOffsets", registry.get());
-  EXPECT_TRUE(IsTfTextRegistered(registry.get()));
+  EXPECT_TRUE(IsTFTextRegistered(registry.get()));
 }
 
 TEST(TfTextUtilsTest, TestTfTextNotRegistered) {
   std::unique_ptr<OpRegistry> registry(new OpRegistry);
   Register("Test", registry.get());
-  EXPECT_FALSE(IsTfTextRegistered(registry.get()));
+  EXPECT_FALSE(IsTFTextRegistered(registry.get()));
 }
 }  // namespace TFL
 }  // namespace mlir
