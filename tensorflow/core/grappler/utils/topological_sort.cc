@@ -96,8 +96,8 @@ Status ComputeTopologicalOrder(
                  "at node = "
               << graph.node(back).DebugString();
       for (int i = 0; i < graph_view.num_nodes(); ++i) {
-        const int graph_view_GetFanin_i_size = graph_view.GetFanin(i).size();
-        if (num_ready_inputs[i] != graph_view_GetFanin_i_size) {
+        const int graph_view_Get_fanin_i_size = graph_view.GetFanin(i).size();
+        if (num_ready_inputs[i] != graph_view_Get_fanin_i_size) {
           VLOG(1) << "Node not ready: " << graph.node(i).DebugString();
         }
       }
