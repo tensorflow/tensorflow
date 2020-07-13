@@ -20,6 +20,9 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include <cstdlib>
+#include <string>
+using tensorflow::string;
 
 // Graph Tracing for abstract operation MatMul
 TF_AbstractTensor* AbstractMatMul(TF_AbstractTensor* A, TF_AbstractTensor* B, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s);
@@ -37,5 +40,5 @@ TF_AbstractTensor* AbstractSparseSoftmaxCrossEntropyLoss(TF_AbstractTensor* scor
 TF_AbstractFunction* AbstractFinalizeFunction(TF_OutputList* func_outputs, TF_ExecutionContext* graph_ctx, TF_Status* s);
 
 // Returns a 2-layer AbstractFunction* that traces a 2-layer MNIST Model
-TF_AbstractFunction* getAbstractMNISTForward(TF_Status* s);
+TF_AbstractFunction* getAbstractMNISTForward(TF_Status* s, string fn_name);
 #endif  // TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_

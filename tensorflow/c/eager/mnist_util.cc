@@ -29,7 +29,6 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
-//#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -39,8 +38,6 @@ using tensorflow::string;
 using namespace std;
 
 
-
-// Tracing function that traces a MatMul operation in graph mode
 TF_AbstractTensor* AbstractMatMul(TF_AbstractTensor* A, TF_AbstractTensor* B, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s) {
     auto* mm_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(mm_op, "MatMul", s);
@@ -61,7 +58,6 @@ TF_AbstractTensor* AbstractMatMul(TF_AbstractTensor* A, TF_AbstractTensor* B, co
     return mm_out;
 }
 
-// Tracing function that traces an Add operation in graph mode
 TF_AbstractTensor* AbstractAdd(TF_AbstractTensor* A, TF_AbstractTensor* B, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s) {
     auto* add_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(add_op, "Add", s);
@@ -121,31 +117,27 @@ TF_AbstractTensor* AbstractRelu(TF_AbstractTensor* A, const char* op_name, TF_Ex
 TF_AbstractTensor* AbstractSparseSoftmaxCrossEntropyLoss(TF_AbstractTensor* scores, TF_AbstractTensor* y_labels, const char* op_name, TF_ExecutionContext* graph_ctx, TF_Status* s){
     
     // Build an abstract operation, inputs and output.
-    auto* sm = TF_NewAbstractOp(graph_ctx);
-    TF_AbstractOpSetOpType(sm, "SparseSoftmaxCrossEntropyWithLogits", s);
-    TF_AbstractOpSetOpName(sm, op_name, s);
-
-    TF_AbstractTensor* inputs[2] = {scores,y_labels}; 
-    TF_OutputList* softmax_outputs = TF_NewOutputList();
-    TF_OutputListSetNumOutputs(softmax_outputs, 2, s);
-
+    auto* sm_op = TF_NewAbstractOp(graph_ctx);
+    TF_AbstractOpSetOpType(sm_op, "SparseSoftmaxCrossEntropyWithLogits", s);
+    TF_AbstractOpSetOpName(sm_op, op_name, s);
+    
+    TF_AbstractTensor* inputs[2] = {scores, y_labels};
+    TF_OutputList* sm_outputs = TF_NewOutputList();
+    TF_OutputListSetNumOutputs(sm_outputs, 2, s);
+    
     // Trace the operation now (create a node in the graph).
-    TF_ExecuteOperation(sm, 2, inputs, softmax_outputs, s);
-    TF_DeleteAbstractOp(sm);
+    TF_ExecuteOperation(sm_op, 2, inputs, sm_outputs, s);
+    TF_DeleteAbstractOp(sm_op);
     
     // Extract the resulting tensor.
-    TF_AbstractTensor* softmax_loss = TF_OutputListGet(softmax_outputs, 0);
-    TF_AbstractTensor* backprop = TF_OutputListGet(softmax_outputs, 1); // Don't need this for forward pass
-    
-    //TF_DeleteAbstractTensor(backprop); // getting error when I try to delete this tensor?
-    TF_DeleteOutputList(softmax_outputs);
+    TF_AbstractTensor* sm_loss = TF_OutputListGet(sm_outputs, 0);
+    TF_DeleteAbstractTensor(TF_OutputListGet(sm_outputs, 1)); // Delete 2nd output, not needed for forward pass
+    TF_DeleteOutputList(sm_outputs);
 
-    
-    return softmax_loss;
-
+    return sm_loss;
 }
 
-TF_AbstractFunction* getAbstractMNISTForward(TF_Status* s){
+TF_AbstractFunction* getAbstractMNISTForward(TF_Status* s, string fn_name){
 
   /**
     * We will trace a 2-layer fully connected network for an MNIST model:
@@ -159,14 +151,13 @@ TF_AbstractFunction* getAbstractMNISTForward(TF_Status* s){
     *
     */
 
-  // Start a new function / execution context.
-  string fn_name = "MNIST_forward";
+  // Start a new function & execution context.
   TF_ExecutionContext* graph_ctx = TF_CreateFunction(fn_name.c_str(), s);
  
   auto* X_abstract = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s); // X = data
   auto* W1_abstract = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s); // W1 = first FC layer
   auto* W2_abstract = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s); // W2  = second FC layer
-  auto* y_abstract = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s); // W2  = second FC layer
+  auto* y_abstract = TF_AddFunctionParameter(graph_ctx, TF_INT32, s); // y = true labels
 
   // Tracing
   TF_AbstractTensor* mm_out_1 = AbstractMatMul(X_abstract, W1_abstract, "mm1", graph_ctx, s);
