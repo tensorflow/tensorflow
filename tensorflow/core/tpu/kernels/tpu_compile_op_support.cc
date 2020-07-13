@@ -446,11 +446,11 @@ StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
   compilation_request.set_use_mlir(use_mlir);
   if (use_mlir) {
     VLOG(1) << "Serializing MlirModule";
-    const MlirToHloArgs& mlir_computation = std::get<0>(computation);
+    const MlirToHloArgs& mlir_computation = absl::get<0>(computation);
     *compilation_request.mutable_mlir_module() = mlir_computation.mlir_module;
   } else {
     VLOG(1) << "Serializing FunctionDefinitionLibrary";
-    const FunctionToHloArgs& function_computation = std::get<1>(computation);
+    const FunctionToHloArgs& function_computation = absl::get<1>(computation);
     *compilation_request.mutable_fdef_lib() =
         function_computation.flib_def->ToProto();
     compilation_request.set_graph_def_version(
@@ -461,14 +461,14 @@ StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
     // to avoid passing guaranteed_constants over C_API.
     if (function_computation.guaranteed_constants.index() == 0) {
       absl::Span<const TensorProto* const> guaranteed_constants =
-          std::get<0>(function_computation.guaranteed_constants);
+          absl::get<0>(function_computation.guaranteed_constants);
       for (const TensorProto* constant : guaranteed_constants) {
         *compilation_request.add_guaranteed_constants() = *constant;
       }
     } else {
       CHECK_EQ(function_computation.guaranteed_constants.index(), 1);
       const OpInputList& guaranteed_constants =
-          *std::get<1>(function_computation.guaranteed_constants);
+          *absl::get<1>(function_computation.guaranteed_constants);
       for (const Tensor& constant : guaranteed_constants) {
         constant.AsProtoTensorContent(
             compilation_request.add_guaranteed_constants());

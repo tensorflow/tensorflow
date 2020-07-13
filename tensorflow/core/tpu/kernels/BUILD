@@ -62,6 +62,7 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_platform_interface",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
     alwayslink = 1,
 )

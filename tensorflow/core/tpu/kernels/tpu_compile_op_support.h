@@ -46,7 +46,7 @@ namespace se = ::stream_executor;
 
 // List of parameters for lowering Mlir to HLO IR.
 struct MlirToHloArgs {
-  absl::string_view mlir_module;
+  const std::string& mlir_module;
 };
 
 // Variant of guaranteed constant tensors types.

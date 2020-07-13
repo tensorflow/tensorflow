@@ -190,8 +190,8 @@ Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
         arg.kind = XlaCompiler::Argument::kConstant;
         guaranteed_constants_size =
             guaranteed_constants.index() == 0
-                ? std::get<0>(guaranteed_constants).size()
-                : std::get<1>(guaranteed_constants)->size();
+                ? absl::get<0>(guaranteed_constants).size()
+                : absl::get<1>(guaranteed_constants)->size();
         TF_RET_CHECK(constant_count < guaranteed_constants_size)
             << "More constant args in TPUCompileMetadataProto than constant "
                "tensors.";
@@ -200,13 +200,13 @@ Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
           // const>`.
           Tensor tensor;
           CHECK(tensor.FromProto(
-              *std::get<0>(guaranteed_constants)[constant_count++]))
+              *absl::get<0>(guaranteed_constants)[constant_count++]))
               << "Failed to deserialize invalid `TensorProto` into `Tensor`.";
           arg.constant_value = tensor;
         } else {
           // `guaranteed_constants` is of type `const OpInputList* const`.
           arg.constant_value =
-              (*std::get<1>(guaranteed_constants))[constant_count++];
+              (*absl::get<1>(guaranteed_constants))[constant_count++];
         }
         break;
       case tpu::TPUCompileMetadataProto::Arg::INVALID:
