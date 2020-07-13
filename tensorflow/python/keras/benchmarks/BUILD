@@ -23,6 +23,15 @@ exports_files(["LICENSE"])
 # to the regular expression is executed.
 # e.g. --benchmarks=".*lstm*." will run all lstm layer related benchmarks.
 
+# Add all benchmarks related utils here for pip testing dependencis.
+py_library(
+    name = "keras_benchmark_lib_pip",
+    deps = [
+        ":benchmark_util",
+        "//tensorflow/python/keras/benchmarks/saved_model_benchmarks:saved_model_benchmark_util",
+    ],
+)
+
 py_test(
     name = "keras_cpu_benchmark_test",
     size = "large",
@@ -46,22 +55,6 @@ cuda_py_test(
     ],
     deps = [
         "//tensorflow:tensorflow_py",
-    ],
-)
-
-cuda_py_test(
-    name = "applications_saved_model_test",
-    size = "medium",
-    srcs = ["applications_saved_model_test.py"],
-    shard_count = 8,
-    tags = [
-        "no_oss_py38",  # b/160170347
-        "no_windows",  # b/160269052
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras/applications",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
