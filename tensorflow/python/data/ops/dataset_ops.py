@@ -3778,11 +3778,11 @@ class _NumpyIterator(object):
   def __iter__(self):
     return self
 
-  def next(self):
+  def __next__(self):
     return nest.map_structure(lambda x: x.numpy(), next(self._iterator))
 
-  def __next__(self):
-    return self.next()
+  def next(self):
+    return self.__next__()
 
 
 class _VariantTracker(tracking.CapturableResource):
