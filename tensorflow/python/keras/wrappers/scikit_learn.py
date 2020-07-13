@@ -114,7 +114,7 @@ class BaseWrapper(object):
     Returns:
         Dictionary of parameter names mapped to their values.
     """
-    res = copy.deepcopy(self.sk_params)
+    res = self.sk_params.copy()
     res.update({'build_fn': self.build_fn})
     return res
 
