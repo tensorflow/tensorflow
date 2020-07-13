@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace xla {
 
-// Provides a way to construct xla_hlo dialect ops in MLIR using XlaBuilder
+// Provides a way to construct mhlo dialect ops in MLIR using XlaBuilder
 // interface.
 //
 // Requires that all XlaOp arguments are either returned by any of the builder
@@ -124,11 +124,11 @@ class MlirHloBuilder : public XlaBuilder {
                               FftType fft_type,
                               absl::Span<const int64> fft_length) override;
 
-  StatusOr<XlaOp> CustomCallInternal(const string& call_target_name,
-                                     absl::Span<const XlaOp> operands,
-                                     const Shape& shape, const string& opaque,
-                                     absl::optional<absl::Span<const Shape>>
-                                         operand_shapes_with_layout) override;
+  StatusOr<XlaOp> CustomCallInternal(
+      const string& call_target_name, absl::Span<const XlaOp> operands,
+      const Shape& shape, const string& opaque,
+      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+      bool has_side_effect) override;
 
   StatusOr<XlaOp> ReduceInternal(
       const Shape& shape, absl::Span<const XlaOp> all_operands,

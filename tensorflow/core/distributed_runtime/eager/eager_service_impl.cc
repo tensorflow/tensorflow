@@ -446,6 +446,12 @@ void EagerServiceImpl::RunComponentFunction(
         "Received RunComponentFunction request with remote function device. "));
     return;
   }
+  s = op->SetAttrBool("is_component_function", true);
+  if (!s.ok()) {
+    done(errors::Internal("Error setting is_component_function attribute: ",
+                          s.error_message()));
+    return;
+  }
 
   auto* retvals = new absl::FixedArray<TensorHandle*>(*num_retvals);
   VLOG(3) << "ServerContext: Calling EagerLocalExecuteAsync for op "

@@ -38,17 +38,25 @@ alignas(16) uint8_t tensor_arena[tensor_arena_size];
 // A random number generator seed to generate input values.
 constexpr int kRandomSeed = 42;
 
-MicroBenchmarkRunner<int16_t>& GetBenchmarkRunner() {
+MicroBenchmarkRunner<int16_t>* benchmark_runner = nullptr;
+
+void InitializeBenchmarkRunner() {
   // NOLINTNEXTLINE
-  static MicroBenchmarkRunner<int16_t> runner(
-      g_keyword_scrambled_model_data, tensor_arena, tensor_arena_size, 0);
-  return runner;
+  static MicroBenchmarkRunner<int16_t> runner(g_keyword_scrambled_model_data,
+                                              tensor_arena, tensor_arena_size);
+  benchmark_runner = &runner;
 }
 
-void KeywordRunTenIerations() {
-  // TODO(b/152644476): Add a way to run more than a single deterministic input.
-  for (int i = 0; i < 10; i++) {
-    GetBenchmarkRunner().RunSingleIterationRandomInput();
+// Initializes keyword runner and sets random inputs.
+void InitializeKeywordRunner() {
+  InitializeBenchmarkRunner();
+  benchmark_runner->SetRandomInput(kRandomSeed);
+}
+
+// This method assumes InitializeKeywordRunner has already been run.
+void KeywordRunNIerations(int iterations) {
+  for (int i = 0; i < iterations; i++) {
+    benchmark_runner->RunSingleIteration();
   }
 }
 
@@ -56,8 +64,10 @@ void KeywordRunTenIerations() {
 
 TF_LITE_MICRO_BENCHMARKS_BEGIN
 
-TF_LITE_MICRO_BENCHMARK(GetBenchmarkRunner().RunSingleIterationRandomInput());
+TF_LITE_MICRO_BENCHMARK(InitializeKeywordRunner());
 
-TF_LITE_MICRO_BENCHMARK(KeywordRunTenIerations());
+TF_LITE_MICRO_BENCHMARK(KeywordRunNIerations(1));
+
+TF_LITE_MICRO_BENCHMARK(KeywordRunNIerations(10));
 
 TF_LITE_MICRO_BENCHMARKS_END

@@ -472,23 +472,17 @@ filegroup(
     ],
 )
 
-genrule(
+gentbl(
     name = "op_quant_spec_getters_inc",
-    srcs = [
-        "ir/tfl_ops.td",
-        "ir/tfl_op_interfaces.td",
-        "experimental/tfl_hardware_interfaces.td",
+    tbl_outs = [("", "utils/generated_op_quant_spec_getters.inc")],
+    tblgen = "//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen",
+    td_file = "ir/tfl_ops.td",
+    td_srcs = [
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
+        "experimental/tfl_hardware_interfaces.td",
+        "ir/tfl_op_interfaces.td",
     ],
-    outs = [
-        "utils/generated_op_quant_spec_getters.inc",
-    ],
-    cmd = ("$(location //tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen) " +
-           "-I external/llvm-project/mlir/include " +
-           "-I tensorflow/compiler/mlir " +
-           "$(location //tensorflow/compiler/mlir/lite:ir/tfl_ops.td) " + " -o $@"),
-    tools = ["//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen"],
 )
 
 # Library with tensorflow Lite dialect static initialization.

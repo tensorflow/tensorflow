@@ -231,10 +231,7 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   doc_generator.build(output_dir)
 
   out_path = pathlib.Path(output_dir)
-  num_files = len(list(out_path.rglob("*")))
-  if num_files < 2000:
-    raise ValueError("The TensorFlow api should be more than 2500 files"
-                     "(found {}).".format(num_files))
+
   expected_path_contents = {
       "tf/summary/audio.md":
           "tensorboard/plugins/audio/summary_v2.py",
@@ -244,8 +241,6 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
           "python/ops/nn_impl.py",
       "tf/keras/Model.md":
           "tensorflow/python/keras/engine/training.py",
-      "tf/compat/v1/gradients.md":
-          "tensorflow/python/ops/gradients_impl.py",
   }
 
   all_passed = True
@@ -261,6 +256,28 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
 
   if not all_passed:
     raise ValueError("\n".join(error_msg_parts))
+
+  rejected_path_contents = {
+      "tf/keras/optimizers.md": "keras/optimizers/__init__.py",
+  }
+
+  all_passed = True
+  error_msg_parts = [
+      'Bad "view source" links in generated files, please check:'
+  ]
+  for rel_path, content in rejected_path_contents.items():
+    path = out_path / rel_path
+    if content in path.read_text():
+      all_passed = False
+      error_msg_parts.append("  " + str(path))
+
+  if not all_passed:
+    raise ValueError("\n".join(error_msg_parts))
+
+  num_files = len(list(out_path.rglob("*")))
+  if num_files < 2000:
+    raise ValueError("The TensorFlow api should be more than 2000 files"
+                     "(found {}).".format(num_files))
 
 
 def main(argv):

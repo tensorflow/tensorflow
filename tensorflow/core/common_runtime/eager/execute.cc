@@ -470,20 +470,8 @@ Status GetOrCreateKernelAndDevice(
 
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
-      PrioritizedDeviceTypeVector supported_devs;
-      auto device_type_list = ctx.prioritized_device_type_list();
       TF_RETURN_IF_ERROR(
-          SupportedDeviceTypesForNode(*device_type_list, ndef, &supported_devs,
-                                      &ctx.HostCPU()->parsed_name()));
-      if (supported_devs.empty()) {
-        return errors::NotFound(
-            "Could not find device for node: ",
-            errors::FormatNodeNameForError(ndef.name()), " = ", ndef.op(), "[",
-            SummarizeAttrs(ndef), "]", "\nAll kernels registered for op ",
-            ndef.op(), ":\n", KernelsRegisteredForOp(ndef.op()));
-      }
-      TF_RETURN_IF_ERROR(ctx.SelectDevice(op->GetDeviceParsedName(),
-                                          supported_devs, DT_INVALID, &device));
+          ctx.SelectDevice(op->GetDeviceParsedName(), ndef, &device));
 
       DVLOG(1) << "Placer place op [" << op->Name()
                << "] on device: " << device->name();

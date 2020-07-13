@@ -86,8 +86,9 @@ auto* tf_data_fingerprint_counter = monitoring::Counter<1>::New(
 auto* tf_data_getnext_duration_usecs_histogram = monitoring::Sampler<0>::New(
     {"/tensorflow/data/getnext_duration",
      "Microseconds spent fetching an element from tf.data Dataset iterator."},
-    // Power of 2 with bucket count 10 (1024 microseconds)
-    {monitoring::Buckets::Exponential(1, 2, 10)});
+    // Power of 2 with bucket count 10 (1024 microseconds) and 1 second.
+    {monitoring::Buckets::Explicit(
+        {2., 4., 8., 16., 32., 64., 128., 256., 512., 1024., 1e6})});
 
 auto* tf_data_getnext_time_between_msecs_histogram =
     monitoring::Sampler<0>::New(

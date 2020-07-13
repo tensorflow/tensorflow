@@ -92,6 +92,13 @@ class InterpreterWrapper {
   // Adds a delegate to the interpreter.
   PyObject* ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
+  // Experimental and subject to change.
+  //
+  // Returns a pointer to the underlying interpreter.
+  tflite_api_dispatcher::Interpreter* interpreter() {
+    return interpreter_.get();
+  }
+
  private:
   // Helper function to construct an `InterpreterWrapper` object.
   // It only returns InterpreterWrapper if it can construct an `Interpreter`.

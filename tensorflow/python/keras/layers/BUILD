@@ -784,6 +784,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 12,
     tags = ["no_cuda11"],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -799,6 +800,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 12,
     tags = ["no_cuda11"],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

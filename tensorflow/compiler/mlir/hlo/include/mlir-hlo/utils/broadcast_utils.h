@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_BROADCAST_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_IR_BROADCAST_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_
 
 // Utilities relating to implementing HLO broadcasting.
 // Note: This file should not depend on any non-MLIR TensorFlow libraries.
@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
-namespace xla {
+namespace hlo {
 
 // Checks whether the given operand types and broadcast_dims attr represent a
 // legal combination for "numpy" style broadcasting (where 1-dims are prepended
@@ -43,7 +43,7 @@ Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
                                                         Value rhs,
                                                         OpBuilder& builder);
 
-}  // namespace xla
+}  // namespace hlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_IR_BROADCAST_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_

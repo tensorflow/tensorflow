@@ -50828,6 +50828,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "use_spmd_for_xla_partitioning"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "TPUReplicatedInput"

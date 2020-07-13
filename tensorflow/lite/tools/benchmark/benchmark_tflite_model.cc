@@ -352,38 +352,35 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
 
 void BenchmarkTfLiteModel::LogParams() {
   BenchmarkModel::LogParams();
-  TFLITE_LOG(INFO) << "Graph: [" << params_.Get<std::string>("graph") << "]";
-
   const bool verbose = params_.Get<bool>("verbose");
-
-#define LOG_PARAM(type, name, prefix, suffix) \
-  LOG_BENCHMARK_PARAM(params_, type, name, prefix, suffix, verbose)
-
-  LOG_PARAM(std::string, "input_layer", "Input layers: [", "]");
-  LOG_PARAM(std::string, "input_layer_shape", "Input shapes: [", "]");
-  LOG_PARAM(std::string, "input_layer_value_range", "Input value ranges: [",
-            "]");
-  LOG_PARAM(std::string, "input_layer_value_files", "Input value files: [",
-            "]");
+  // Always log the value of --graph.
+  LOG_BENCHMARK_PARAM(std::string, "graph", "Graph", /*verbose*/ true);
+  LOG_BENCHMARK_PARAM(std::string, "input_layer", "Input layers", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "input_layer_shape", "Input shapes",
+                      verbose);
+  LOG_BENCHMARK_PARAM(std::string, "input_layer_value_range",
+                      "Input value ranges", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "input_layer_value_files",
+                      "Input value files", verbose);
 
 #if defined(__ANDROID__)
-  LOG_PARAM(bool, "use_legacy_nnapi", "Use legacy nnapi: [", "]");
+  LOG_BENCHMARK_PARAM(bool, "use_legacy_nnapi", "Use legacy nnapi", verbose);
 #endif
-  LOG_PARAM(bool, "allow_fp16", "Allow fp16: [", "]");
-  LOG_PARAM(bool, "require_full_delegation", "Require full delegation: [", "]");
-  LOG_PARAM(bool, "enable_op_profiling", "Enable op profiling: [", "]");
-  LOG_PARAM(int32_t, "max_profiling_buffer_entries",
-            "Max profiling buffer entries: [", "]");
-  LOG_PARAM(std::string, "profiling_output_csv_file",
-            "CSV File to export profiling data to: [", "]");
-  LOG_PARAM(bool, "enable_platform_tracing", "Enable platform-wide tracing: [",
-            "]");
-
-#undef LOG_PARAM
+  LOG_BENCHMARK_PARAM(bool, "allow_fp16", "Allow fp16", verbose);
+  LOG_BENCHMARK_PARAM(bool, "require_full_delegation",
+                      "Require full delegation", verbose);
+  LOG_BENCHMARK_PARAM(bool, "enable_op_profiling", "Enable op profiling",
+                      verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "max_profiling_buffer_entries",
+                      "Max profiling buffer entries", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "profiling_output_csv_file",
+                      "CSV File to export profiling data to", verbose);
+  LOG_BENCHMARK_PARAM(bool, "enable_platform_tracing",
+                      "Enable platform-wide tracing", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
-    delegate_provider->LogParams(params_);
+    delegate_provider->LogParams(params_, verbose);
   }
 }
 

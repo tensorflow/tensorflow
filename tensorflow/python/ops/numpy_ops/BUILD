@@ -14,6 +14,7 @@ py_library(
         "np_array_ops.py",
         "np_arrays.py",
         "np_dtypes.py",
+        "np_export.py",
         "np_math_ops.py",
         "np_random.py",
         "np_utils.py",

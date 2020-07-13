@@ -522,6 +522,8 @@ class IteratorResourceDeleter(object):
   object is part of a reference cycle, the cycle will be collectable.
   """
 
+  __slots__ = ["_deleter", "_handle", "_device", "_eager_mode"]
+
   def __init__(self, handle, device, deleter):
     self._deleter = deleter
     self._handle = handle

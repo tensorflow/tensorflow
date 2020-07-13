@@ -65,7 +65,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
       /*compile_time_const_nodes=*/nullptr, ctx->function_library()));
 
   args->resize(expressions.size());
-  for (int i = 0; i < args->size(); ++i) {
+  for (int i = 0, iter_limit = args->size(); i < iter_limit; ++i) {
     XlaCompiler::Argument& arg = (*args)[i];
     arg.type = ctx->input_type(i);
     arg.shape = ctx->InputShape(i);
@@ -161,7 +161,8 @@ Status GraphCompiler::Compile() {
     for (auto* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
       const Node* src = e->src();
-      TF_RET_CHECK(src->id() < output_registry.size());
+      const int output_registry_size = output_registry.size();
+      TF_RET_CHECK(src->id() < output_registry_size);
       const NodeOutputs& src_outputs = output_registry[src->id()];
 
       tensor_inputs_.at(e->dst_input()) = src_outputs.at(e->src_output());
@@ -268,7 +269,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   TF_RET_CHECK(arguments.size() == expressions.size());
 
   std::vector<xla::XlaOp> handles;
-  for (int64 i = 0; i < expressions.size(); ++i) {
+  for (int64 i = 0, iter_limit = expressions.size(); i < iter_limit; ++i) {
     if (arguments[i].kind == XlaCompiler::Argument::kConstant) {
       continue;
     }
@@ -312,7 +313,8 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
     }
   }
 
-  for (int64 i = 0; i < result.resource_updates.size(); i++) {
+  for (int64 i = 0, iter_limit = result.resource_updates.size(); i < iter_limit;
+       i++) {
     if (result.resource_updates[i].modified) {
       XlaResource* resource =
           expressions[result.resource_updates[i].input_index]->resource();

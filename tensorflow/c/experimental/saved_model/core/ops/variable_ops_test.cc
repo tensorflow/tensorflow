@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/c/experimental/saved_model/core/test_utils.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -39,17 +40,8 @@ ImmediateTensorHandlePtr CreateScalarTensorHandle(EagerContext* context,
 class VariableOpsTest : public ::testing::Test {
  public:
   VariableOpsTest()
-      : device_mgr_(std::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
-            "CPU", {}, "/job:localhost/replica:0/task:0"))),
-        ctx_(new EagerContext(
-            SessionOptions(),
-            tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-            tensorflow::ContextMirroringPolicy::MIRRORING_NONE,
-            /* async= */ false,
-            /* lazy_copy_function_remote_inputs= */ false, device_mgr_.get(),
-            /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
-            /* custom_kernel_creator= */ nullptr,
-            /* cluster_flr= */ nullptr)) {}
+      : device_mgr_(testing::CreateTestingDeviceMgr()),
+        ctx_(testing::CreateTestingEagerContext(device_mgr_.get())) {}
 
   EagerContext* context() { return ctx_.get(); }
 

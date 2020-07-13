@@ -541,9 +541,9 @@ NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
 }
 
 NcclAllReduceThunk::NcclAllReduceThunk(
-    int64 replica_count, std::vector<NcclAllReduceThunk::Buffer> buffers,
-    const HloInstruction* all_reduce)
-    : Thunk(Thunk::kNcclAllReduce, all_reduce),
+    ThunkInfo thunk_info, int64 replica_count,
+    std::vector<NcclAllReduceThunk::Buffer> buffers)
+    : Thunk(Thunk::kNcclAllReduce, thunk_info),
       replica_count_(replica_count),
       buffers_(std::move(buffers)),
       aux_data_(absl::make_unique<AuxData>()) {
@@ -555,7 +555,7 @@ NcclAllReduceThunk::NcclAllReduceThunk(
 Status NcclAllReduceThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << "Starting NcclAllReduceThunk.";
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
 
   auto* instr = Cast<HloAllReduceInstruction>(hlo_instruction());
   int64 local_device_ordinal = params.stream->parent()->device_ordinal();

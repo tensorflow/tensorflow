@@ -89,6 +89,16 @@ def _find_originating_frame(caller_fn_scope, innermost=True):
   return result
 
 
+def locals_in_original_context(caller_fn_scope):
+  """Executes the locals function in the context of a specified function."""
+  return _find_originating_frame(caller_fn_scope, innermost=True).f_locals
+
+
+def globals_in_original_context(caller_fn_scope):
+  """Executes the locals function in the context of a specified function."""
+  return _find_originating_frame(caller_fn_scope, innermost=True).f_globals
+
+
 def eval_in_original_context(f, args, caller_fn_scope):
   """Executes the eval function in the context of a specified function."""
   # When control flow is rewritten using functions, eval should use the

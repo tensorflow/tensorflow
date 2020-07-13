@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc
 
+#include <cstdint>
 #include <memory>
 
 #define EIGEN_USE_THREADS
@@ -786,20 +787,15 @@ class DecodeImageV2Op : public OpKernel {
         *(reinterpret_cast<const int16*>(img_bytes + 28)));
     const int16 bpp = ByteSwapInt16ForBigEndian(bpp_);
 
-    if (channels_) {
-      OP_REQUIRES(context, (channels_ == bpp / 8),
-                  errors::InvalidArgument(
-                      "channels attribute ", channels_,
-                      " does not match bits per pixel from file ", bpp / 8));
-    } else {
-      channels_ = bpp / 8;
-    }
-
-    // Current implementation only supports 1, 3 or 4 channel
-    // bitmaps.
-    OP_REQUIRES(context, (channels_ == 1 || channels_ == 3 || channels_ == 4),
-                errors::InvalidArgument(
-                    "Number of channels must be 1, 3 or 4, was ", channels_));
+    // `channels_` is desired number of channels. `img_channels` is number of
+    // channels inherent in the image.
+    int img_channels = bpp / 8;
+    OP_REQUIRES(
+        context, (img_channels == 1 || img_channels == 3 || img_channels == 4),
+        errors::InvalidArgument(
+            "Number of channels inherent in the image must be 1, 3 or 4, was ",
+            img_channels));
+    const int requested_channels = channels_ ? channels_ : img_channels;
 
     OP_REQUIRES(context, width > 0,
                 errors::InvalidArgument("Width must be positive"));
@@ -820,14 +816,24 @@ class DecodeImageV2Op : public OpKernel {
     const int32 abs_height = abs(height);
 
     // there may be padding bytes when the width is not a multiple of 4 bytes
-    const int row_size = (channels_ * width + 3) / 4 * 4;
+    const int row_size = (img_channels * width + 3) / 4 * 4;
+
+    // Make sure the size of input data matches up with the total size of
+    // headers plus height * row_size.
+    int size_diff = input.size() - header_size - (row_size * abs_height);
+    OP_REQUIRES(
+        context, size_diff == 0,
+        errors::InvalidArgument(
+            "Input size should match (header_size + row_size * abs_height) but "
+            "they differ by ",
+            size_diff));
 
     const int64 last_pixel_offset = static_cast<int64>(header_size) +
                                     (abs_height - 1) * row_size +
-                                    (width - 1) * channels_;
+                                    (width - 1) * img_channels;
 
     // [expected file size] = [last pixel offset] + [last pixel size=channels]
-    const int64 expected_file_size = last_pixel_offset + channels_;
+    const int64 expected_file_size = last_pixel_offset + img_channels;
 
     OP_REQUIRES(
         context, (expected_file_size <= input.size()),
@@ -842,20 +848,22 @@ class DecodeImageV2Op : public OpKernel {
     // Decode image, allocating tensor once the image size is known.
     Tensor* output = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(
-                     0, TensorShape({abs_height, width, channels_}), &output));
+        context,
+        context->allocate_output(
+            0, TensorShape({abs_height, width, requested_channels}), &output));
 
     const uint8* bmp_pixels = &img_bytes[header_size];
 
     if (data_type_ == DataType::DT_UINT8) {
       DecodeBMP(bmp_pixels, row_size, output->flat<uint8>().data(), width,
-                abs_height, channels_, top_down);
+                abs_height, requested_channels, img_channels, top_down);
     } else {
-      std::unique_ptr<uint8[]> buffer(new uint8[height * width * channels_]);
+      std::unique_ptr<uint8[]> buffer(
+          new uint8[height * width * requested_channels]);
       DecodeBMP(bmp_pixels, row_size, buffer.get(), width, abs_height,
-                channels_, top_down);
+                requested_channels, img_channels, top_down);
       TTypes<uint8, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
-                                                 channels_);
+                                                 requested_channels);
       // Convert the raw uint8 buffer to desired dtype.
       // Use eigen threadpooling to speed up the copy operation.
       const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
@@ -872,11 +880,11 @@ class DecodeImageV2Op : public OpKernel {
     }
   }
 
-  void DecodeBMP(const uint8* input, const int row_size, uint8* const output,
-                 const int width, const int height, const int channels,
-                 bool top_down);
-
  private:
+  void DecodeBMP(const uint8* input, const int row_size, uint8* const output,
+                 const int width, const int height, const int output_channels,
+                 const int input_channels, bool top_down);
+
   int channels_ = 0;
   DataType data_type_ = DataType::DT_UINT8;
   bool expand_animations_ = true;
@@ -895,40 +903,60 @@ REGISTER_KERNEL_BUILDER(Name("DecodeBmp").Device(DEVICE_CPU), DecodeImageV2Op);
 
 void DecodeImageV2Op::DecodeBMP(const uint8* input, const int row_size,
                                 uint8* const output, const int width,
-                                const int height, const int channels,
-                                bool top_down) {
+                                const int height, const int output_channels,
+                                const int input_channels, bool top_down) {
   for (int i = 0; i < height; i++) {
     int src_pos;
     int dst_pos;
 
     for (int j = 0; j < width; j++) {
       if (!top_down) {
-        src_pos = ((height - 1 - i) * row_size) + j * channels;
+        src_pos = ((height - 1 - i) * row_size) + j * input_channels;
       } else {
-        src_pos = i * row_size + j * channels;
+        src_pos = i * row_size + j * input_channels;
       }
 
-      dst_pos = (i * width + j) * channels;
+      dst_pos = (i * width + j) * output_channels;
 
-      switch (channels) {
+      switch (input_channels) {
         case 1:
           output[dst_pos] = input[src_pos];
+          // Set 2nd and 3rd channels if user requested for 3 or 4 channels.
+          // Repeat 1st channel's value.
+          if (output_channels == 3 || output_channels == 4) {
+            output[dst_pos + 1] = input[src_pos];
+            output[dst_pos + 2] = input[src_pos];
+          }
+          // Set 4th channel (alpha) to maximum value if user requested for
+          // 4 channels.
+          if (output_channels == 4) {
+            output[dst_pos + 3] = UINT8_MAX;
+          }
           break;
         case 3:
           // BGR -> RGB
           output[dst_pos] = input[src_pos + 2];
           output[dst_pos + 1] = input[src_pos + 1];
           output[dst_pos + 2] = input[src_pos];
+          // Set 4th channel (alpha) to maximum value if the user requested for
+          // 4 channels and the input image has 3 channels only.
+          if (output_channels == 4) {
+            output[dst_pos + 3] = UINT8_MAX;
+          }
           break;
         case 4:
           // BGRA -> RGBA
           output[dst_pos] = input[src_pos + 2];
           output[dst_pos + 1] = input[src_pos + 1];
           output[dst_pos + 2] = input[src_pos];
-          output[dst_pos + 3] = input[src_pos + 3];
+          // Set 4th channel only if the user requested for 4 channels. If not,
+          // then user requested 3 channels; skip this step.
+          if (output_channels == 4) {
+            output[dst_pos + 3] = input[src_pos + 3];
+          }
           break;
         default:
-          LOG(FATAL) << "Unexpected number of channels: " << channels;
+          LOG(FATAL) << "Unexpected number of channels: " << input_channels;
           break;
       }
     }

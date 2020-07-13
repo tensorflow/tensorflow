@@ -53,9 +53,6 @@ int GetNumberOfRuntimeInputsForNode(const TfLiteContext* context,
 int GetNumberOfConstInputsForNode(const TfLiteContext* context,
                                   const TfLiteNode* tflite_node);
 
-int GetNumberOfRuntimeOutputsForNode(const TfLiteContext* context,
-                                     const TfLiteNode* tflite_node);
-
 absl::Status CheckInputsOutputs(const TfLiteContext* context,
                                 const TfLiteNode* tflite_node,
                                 int runtime_inputs, int outputs);

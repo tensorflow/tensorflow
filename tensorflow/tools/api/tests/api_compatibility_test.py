@@ -297,6 +297,9 @@ class ApiCompatibilityTest(test.TestCase):
           file_io.write_string_to_file(
               filepath, text_format.MessageToString(actual_dict[key]))
       else:
+        # Include the actual differences to help debugging.
+        for d in diffs:
+          logging.error('    %s', d)
         # Fail if we cannot fix the test by updating goldens.
         self.fail('%d differences found between API and golden.' % diff_count)
 

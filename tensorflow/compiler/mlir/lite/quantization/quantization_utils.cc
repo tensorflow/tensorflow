@@ -449,7 +449,7 @@ static bool PreferResultScale(Operation* op) {
 // only considers the ops with restricted output params.
 static bool IsStatsRedundant(Operation* op,
                              OpQuantSpecGetter op_quant_spec_getter) {
-  return !op_quant_spec_getter(op)->restricted_output_params.empty();
+  return llvm::isa<FixedOutputRangeInterface>(op);
 }
 
 bool RemoveRedundantStatsOps(mlir::FuncOp func,
@@ -469,7 +469,7 @@ bool RemoveRedundantStatsOps(mlir::FuncOp func,
 
   // Step 1: forward pass: propagate any value scales which are not produces
   // by `SameOperandsAndResultsScale`. Additionally, remove the value scales
-  // which are produced by the `restricted_output_params`.
+  // which are produced by the ops with the `FixedOutputRangeInterface`.
   // Note that we don't propagate across the multiple-operands
   // `SameOperandsAndResultsScale` ops like `concatenation`.
   func.walk(
@@ -593,6 +593,28 @@ LogicalResult VerifySameScales(Operation* op) {
     return op->emitOpError(err_msg);
   }
   return success();
+}
+
+quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
+                                                Type tensor_type, double scale,
+                                                int64_t zero_point,
+                                                int64_t storage_min,
+                                                int64_t storage_max) {
+  auto result_type = tensor_type.cast<ShapedType>();
+  if (!result_type.getElementType().isa<FloatType>()) return {};
+  Builder builder(result_type.getContext());
+
+  // Only support 8-bits
+  if (bit_width != 8) return {};
+  IntegerType storage_type = builder.getIntegerType(bit_width);
+  if (!is_signed) {
+    zero_point += 128;
+    storage_min += 128;
+    storage_max += 128;
+  }
+  return quant::UniformQuantizedType::getChecked(
+      is_signed, storage_type, result_type.getElementType(), scale, zero_point,
+      storage_min, storage_max, builder.getUnknownLoc());
 }
 }  // namespace quant
 }  // namespace mlir

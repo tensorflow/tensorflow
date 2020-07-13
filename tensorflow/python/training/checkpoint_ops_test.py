@@ -156,8 +156,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.global_variables_initializer())
-      self.assertAllClose(expected_remapped_matrix,
-                          remapped_matrix.as_tensor().eval())
+      self.assertAllClose(expected_remapped_matrix, remapped_matrix.as_tensor())
 
   def test_load_and_remap_output_layer_weight_initializer_dnn_output(self):
     """Tests for the output layer initializer in the DNN output case."""
@@ -190,8 +189,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.global_variables_initializer())
-      self.assertAllClose(expected_remapped_matrix,
-                          remapped_matrix.as_tensor().eval())
+      self.assertAllClose(expected_remapped_matrix, remapped_matrix.as_tensor())
 
   def test_initializer_with_oov_only_partition(self):
     """Tests for the output layer initializer where one partition is all OOV."""
@@ -228,8 +226,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.global_variables_initializer())
-      self.assertAllClose(expected_remapped_matrix,
-                          remapped_matrix.as_tensor().eval())
+      self.assertAllClose(expected_remapped_matrix, remapped_matrix.as_tensor())
 
   def test_load_and_remap_linear_multiclass_initializer_default_init(self):
     """Tests where the zeros_initializer default is used for linear."""
@@ -264,8 +261,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
 
     with self.cached_session():
       self.evaluate(variables.global_variables_initializer())
-      self.assertAllClose(expected_remapped_matrix,
-                          remapped_matrix.as_tensor().eval())
+      self.assertAllClose(expected_remapped_matrix, remapped_matrix.as_tensor())
 
   def test_load_embedding_initializer(self):
     """Tests for the load_embedding_initializer wrapper."""
@@ -299,7 +295,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
     with self.cached_session():
       self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_embeddings,
-                          remapped_embeddings.as_tensor().eval())
+                          remapped_embeddings.as_tensor())
 
   def test_load_embedding_initializer_large_oov(self):
     """Tests for the large OOV case for load_embedding_initializer wrapper."""
@@ -345,7 +341,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
     with self.cached_session():
       self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_embeddings,
-                          remapped_embeddings.as_tensor().eval())
+                          remapped_embeddings.as_tensor())
 
   def test_load_embedding_initializer_old_row_vocab(self):
     """Tests for load_embedding_initializer where we constrain old vocab."""
@@ -383,7 +379,8 @@ class LoadAndRemapWrappersTest(test.TestCase):
     with self.cached_session():
       self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_embeddings,
-                          remapped_embeddings.as_tensor().eval())
+                          remapped_embeddings.as_tensor())
+
 
 if __name__ == '__main__':
   test.main()

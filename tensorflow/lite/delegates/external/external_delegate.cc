@@ -17,41 +17,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#if defined(_WIN32)
-#include <Windows.h>
-#else
-#include <dlfcn.h>
-#endif
-
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/shared_library.h"
 
 namespace tflite {
 namespace {
-
-// Library Support construct to handle dynamic library operations
-#if defined(_WIN32)
-struct LibSupport {
-  static void* Load(const char* lib) { return LoadLibrary(lib); }
-
-  static void* GetSymbol(void* handle, const char* symbol) {
-    return (void*)GetProcAddress((HMODULE)handle, symbol);
-  }
-
-  static int UnLoad(void* handle) { return FreeLibrary((HMODULE)handle); }
-};
-#else
-struct LibSupport {
-  static void* Load(const char* lib) {
-    return dlopen(lib, RTLD_LAZY | RTLD_LOCAL);
-  }
-
-  static void* GetSymbol(void* handle, const char* symbol) {
-    return dlsym(handle, symbol);
-  }
-
-  static int UnLoad(void* handle) { return dlclose(handle); }
-};
-#endif
 
 // External delegate library construct
 struct ExternalLib {
@@ -62,15 +32,17 @@ struct ExternalLib {
 
   // Open a given delegate library and load the create/destroy symbols
   bool load(const std::string library) {
-    void* handle = LibSupport::Load(library.c_str());
+    void* handle = SharedLibrary::LoadLibrary(library.c_str());
     if (handle == nullptr) {
       TFLITE_LOG(TFLITE_LOG_INFO, "Unable to load external delegate from : %s",
                  library.c_str());
     } else {
-      create = reinterpret_cast<decltype(create)>(
-          LibSupport::GetSymbol(handle, "tflite_plugin_create_delegate"));
-      destroy = reinterpret_cast<decltype(destroy)>(
-          LibSupport::GetSymbol(handle, "tflite_plugin_destroy_delegate"));
+      create =
+          reinterpret_cast<decltype(create)>(SharedLibrary::GetLibrarySymbol(
+              handle, "tflite_plugin_create_delegate"));
+      destroy =
+          reinterpret_cast<decltype(destroy)>(SharedLibrary::GetLibrarySymbol(
+              handle, "tflite_plugin_destroy_delegate"));
       return create && destroy;
     }
     return false;

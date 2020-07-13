@@ -47,9 +47,14 @@ namespace grappler {
 // MatMul + ... -> _FusedMatMul:
 //   (1) MatMul + BiasAdd + <Activation>
 //
+// DepthwiseConv2dNative + ... -> _FusedDepthwiseConv2dNative:
+//   (1) DepthwiseConv2dNative + BiasAdd + <Activation>
+//
 // FusedBatchNorm[$is_training] + ... -> _FusedBatchNormEx[$is_training]
 //   (1) FusedBatchNorm + <Activation>
 //   (2) FusedBatchNorm + SideInput + <Activation>
+//
+// In all cases, the supported activation functions are Relu, Relu6, and Elu.
 //
 // Both Conv2D and MatMul implemented as Tensor contraction (on CPU), so all the
 // patterns are "ContractionWith...".
