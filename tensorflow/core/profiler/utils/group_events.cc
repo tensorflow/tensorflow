@@ -148,7 +148,7 @@ bool IsImplicitRootEvent(const XEventVisitor& event) {
 }
 
 void ProcessRootEvent(int64 group_id, EventNode* root_event,
-                      EventGroupNameMap* event_group_name_map) {
+                      GroupMetadataMap* group_metadata_map) {
   root_event->PropagateGroupId(group_id);
   std::string group_name = root_event->GetGroupName();
   // TODO(jihochoi): change event name instead.
@@ -158,7 +158,7 @@ void ProcessRootEvent(int64 group_id, EventNode* root_event,
     // `step_name` stat's value if present.
     root_event->AddStepName(group_name);
   }
-  event_group_name_map->emplace(group_id, std::move(group_name));
+  (*group_metadata_map)[group_id].name = std::move(group_name);
 }
 
 bool IsTfDataEvent(const EventNode& event_node) {
@@ -502,7 +502,7 @@ void EventForest::CreateEventGroup() {
   if (!tf_loop_root_events_.empty()) {
     // If a TF loop is used, each TF loop iteration becomes a root.
     for (EventNode* root_event : tf_loop_root_events_) {
-      ProcessRootEvent(next_group_id_++, root_event, &event_group_name_map_);
+      ProcessRootEvent(next_group_id_++, root_event, &group_metadata_map_);
     }
     return;
   }
@@ -510,7 +510,7 @@ void EventForest::CreateEventGroup() {
   SortEventList(&root_events_);
   for (EventNode* root_event : root_events_) {
     if (IsTopRoot(root_event)) {
-      ProcessRootEvent(next_group_id_++, root_event, &event_group_name_map_);
+      ProcessRootEvent(next_group_id_++, root_event, &group_metadata_map_);
     }
   }
 }
@@ -618,6 +618,20 @@ void EventForest::ProcessWorker() {
   }
 }
 
+void EventForest::ProcessModelIds() {
+  auto session_run_event_list =
+      gtl::FindOrNull(event_node_map_, HostEventType::kSessionRun);
+  if (!session_run_event_list) return;
+  for (const auto& session_run_event : *session_run_event_list) {
+    auto group_id = session_run_event->GetGroupId();
+    if (!group_id.has_value()) continue;
+    absl::optional<XStatVisitor> model_id =
+        session_run_event->GetEventVisitor().GetStat(StatType::kModelId);
+    if (!model_id.has_value()) continue;
+    group_metadata_map_[*group_id].model_id = model_id->ToString();
+  }
+}
+
 EventForest::EventForest(
     const std::vector<InterThreadConnectInfo>& connect_info_list,
     const std::vector<int64>& root_event_types,
@@ -638,6 +652,7 @@ EventForest::EventForest(
   CreateEventGroup();
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
+  ProcessModelIds();
 }
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
@@ -654,13 +669,13 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
   return connect_info_list;
 }
 
-void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
+void GroupTfEvents(XSpace* space, GroupMetadataMap* group_metadata_map) {
   if (!space) return;
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
   EventForest event_forest(connect_info_list, {}, CreateTfXPlaneVisitor, space);
-  if (event_group_name_map) {
-    *event_group_name_map = event_forest.GetEventGroupNameMap();
+  if (group_metadata_map) {
+    *group_metadata_map = event_forest.GetGroupMetadataMap();
   }
 }
 

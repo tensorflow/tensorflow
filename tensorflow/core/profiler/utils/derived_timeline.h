@@ -85,20 +85,20 @@ void ProcessTfOpEvent(absl::string_view tf_op_full_name, int64 offset_ps,
 // with the same value are merged into a single event except for XLA modules.
 // The device_trace is both input and output.
 void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
-                                 const EventGroupNameMap& event_group_name_map,
+                                 const GroupMetadataMap& group_metadata_map,
                                  XPlane* device_trace,
                                  bool step_info_only = false);
 
 // Derives "Launch Activities Summary" line from host trace.
 void DeriveEventsFromHostTrace(const XPlane* host_trace,
-                               const EventGroupNameMap& event_group_name_map,
+                               const GroupMetadataMap& group_metadata_map,
                                std::vector<XPlane*> device_traces);
 
 // Loops through XPlanes of input XSpace, if it is "device" XPlane, generating
 // derived timelines for the plane by calling DeriveEventsFromAnnotations.
-void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
+void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               XSpace* space, bool step_info_only = false);
-void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
+void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               const std::vector<XPlane*>& device_traces,
                               bool step_info_only = false);
 

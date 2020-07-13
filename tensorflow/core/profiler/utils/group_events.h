@@ -126,7 +126,12 @@ using EventNodeMap =
     absl::flat_hash_map<int64 /*event_type*/,
                         std::vector<std::unique_ptr<EventNode>>>;
 
-using EventGroupNameMap = absl::flat_hash_map<int64 /*group_id*/, std::string>;
+struct GroupMetadata {
+  std::string name;
+  std::string model_id;  // inference only.
+};
+
+using GroupMetadataMap = absl::flat_hash_map<int64 /*group_id*/, GroupMetadata>;
 
 using EventList = std::vector<EventNode*>;
 
@@ -153,8 +158,8 @@ class EventForest {
 
   const EventNodeMap& GetEventNodeMap() const { return event_node_map_; }
 
-  const EventGroupNameMap& GetEventGroupNameMap() const {
-    return event_group_name_map_;
+  const GroupMetadataMap& GetGroupMetadataMap() const {
+    return group_metadata_map_;
   }
 
  private:
@@ -190,9 +195,12 @@ class EventForest {
   // eager ops (e.g., for Keras callback).
   void ProcessWorker();
 
+  // Adds model ids to group_metadata_map_ for inference profiles.
+  void ProcessModelIds();
+
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;
-  EventGroupNameMap event_group_name_map_;
+  GroupMetadataMap group_metadata_map_;
   EventList root_events_;
   EventList tf_loop_root_events_;
   int64 next_group_id_ = 0;
@@ -202,7 +210,7 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList();
 
 // Calls GroupEvents with connect_info_list and root_event_types specific to
 // TensorFlow.
-void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map);
+void GroupTfEvents(XSpace* space, GroupMetadataMap* group_metadata_map);
 
 }  // namespace profiler
 }  // namespace tensorflow
