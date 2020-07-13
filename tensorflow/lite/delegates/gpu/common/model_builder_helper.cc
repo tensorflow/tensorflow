@@ -127,8 +127,10 @@ absl::Status PopulateQuantParams(const TfLiteTensor& tensor,
 int GetNumberOfRuntimeInputsForNode(const TfLiteContext* context,
                                     const TfLiteNode* tflite_node) {
   int number_of_runtime_inputs = 0;
-  for (int i = 0; i < tflite_node->inputs->size; i++) {
-    if (!IsConstantTensor(&context->tensors[tflite_node->inputs->data[i]])) {
+  for (int i = 0; i < NumInputs(tflite_node); i++) {
+    const TfLiteTensor* tensor =
+        GetOptionalInputTensor(context, tflite_node, i);
+    if (tensor != nullptr && !IsConstantTensor(tensor)) {
       number_of_runtime_inputs++;
     }
   }
@@ -137,7 +139,7 @@ int GetNumberOfRuntimeInputsForNode(const TfLiteContext* context,
 
 int GetNumberOfConstInputsForNode(const TfLiteContext* context,
                                   const TfLiteNode* tflite_node) {
-  return tflite_node->inputs->size -
+  return NumInputs(tflite_node) -
          GetNumberOfRuntimeInputsForNode(context, tflite_node);
 }
 
