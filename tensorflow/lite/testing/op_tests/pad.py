@@ -38,7 +38,7 @@ def make_pad_tests(options):
                        [[0, 1], [0, 0], [0, 0], [2, 3]]],
           "constant_paddings": [True, False],
           "fully_quantize": [False],
-          "quantize_mode_16x8": [False]
+          "quant_16x8": [False]
       },
       # 2D:
       {
@@ -47,7 +47,7 @@ def make_pad_tests(options):
           "paddings": [[[0, 1], [2, 3]]],
           "constant_paddings": [True, False],
           "fully_quantize": [False],
-          "quantize_mode_16x8": [False]
+          "quant_16x8": [False]
       },
       # 1D:
       {
@@ -56,7 +56,7 @@ def make_pad_tests(options):
           "paddings": [[[1, 2]]],
           "constant_paddings": [False],
           "fully_quantize": [False],
-          "quantize_mode_16x8": [False]
+          "quant_16x8": [False]
       },
       # 4D:
       {
@@ -67,7 +67,7 @@ def make_pad_tests(options):
                        [[0, 0], [0, 0], [0, 0], [0, 0]]],
           "constant_paddings": [True],
           "fully_quantize": [True],
-          "quantize_mode_16x8": [False]
+          "quant_16x8": [False]
       },
       {
           "dtype": [tf.float32],
@@ -77,7 +77,7 @@ def make_pad_tests(options):
                        [[0, 0], [0, 0], [0, 0], [0, 0]]],
           "constant_paddings": [True],
           "fully_quantize": [True],
-          "quantize_mode_16x8": [True]
+          "quant_16x8": [True]
       },
       # 2D:
       {
@@ -86,7 +86,7 @@ def make_pad_tests(options):
           "paddings": [[[0, 1], [2, 3]]],
           "constant_paddings": [True],
           "fully_quantize": [True],
-          "quantize_mode_16x8": [False],
+          "quant_16x8": [False],
       },
       {
           "dtype": [tf.float32],
@@ -94,7 +94,7 @@ def make_pad_tests(options):
           "paddings": [[[0, 1], [2, 3]]],
           "constant_paddings": [True],
           "fully_quantize": [True],
-          "quantize_mode_16x8": [True],
+          "quant_16x8": [True],
       },
       # 1D:
       {
@@ -103,7 +103,7 @@ def make_pad_tests(options):
           "paddings": [[[1, 2]]],
           "constant_paddings": [True],
           "fully_quantize": [True],
-          "quantize_mode_16x8": [False],
+          "quant_16x8": [False],
       },
       {
           "dtype": [tf.float32],
@@ -111,7 +111,7 @@ def make_pad_tests(options):
           "paddings": [[[1, 2]]],
           "constant_paddings": [True],
           "fully_quantize": [True],
-          "quantize_mode_16x8": [True],
+          "quant_16x8": [True],
       },
   ]
 
