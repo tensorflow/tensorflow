@@ -40,6 +40,7 @@ GemmThunk::GemmThunk(ThunkInfo thunk_info,
                      bool implements_whole_instruction,
                      const GemmBackendConfig &backend_config)
     : Thunk(Kind::kGemm, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
       output_buffer_(output_buffer),
@@ -51,11 +52,11 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
     return params.buffer_allocations->GetDeviceAddress(slice);
   };
 
-  VLOG(3) << "Running GEMM thunk on instruction: " << hlo_instruction();
+  VLOG(3) << "Running GEMM thunk on instruction: " << hlo_instruction_;
   se::DeviceMemoryBase lhs_data = get_device_address(lhs_buffer_);
   se::DeviceMemoryBase rhs_data = get_device_address(rhs_buffer_);
   se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
-  return RunGemm(hlo_instruction(), backend_config_, lhs_data, rhs_data,
+  return RunGemm(hlo_instruction_, backend_config_, lhs_data, rhs_data,
                  output_data, params.stream, implements_whole_instruction_,
                  profile_index(), params.profiler);
 }
