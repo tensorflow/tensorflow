@@ -32,8 +32,21 @@ def make_leaky_relu_tests(options):
       {
           "input_shape": [[], [1], [5], [1, 10, 10, 3], [3, 3, 3, 3]],
           "alpha": [0.1, 1.0, 2.0, -0.1, -1.0, -2.0],
+          "fully_quantize": [False],
+          "quant_16x8": [False],
       },
-  ]
+      {
+          "input_shape": [[1, 10, 10, 3]],
+          "alpha": [0.1],
+          "fully_quantize": [True],
+          "quant_16x8": [True],
+      },
+      {
+          "input_shape": [[1, 10, 10, 3]],
+          "alpha": [0.1],
+          "fully_quantize": [True],
+          "quant_16x8": [False]
+      }]
 
   def build_graph(parameters):
     """Build the graph for the test case."""
