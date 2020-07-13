@@ -16,11 +16,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-<<<<<<< HEAD
 from tensorflow.python.platform import test as test_lib
-=======
 import gc
->>>>>>> google_upstream/master
 
 import tensorflow as tf
 layers = tf.keras.layers

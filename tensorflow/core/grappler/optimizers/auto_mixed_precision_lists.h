@@ -152,15 +152,12 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
       list.insert("Conv3DBackpropInput");
       list.insert("Conv3DBackpropInputV2");
     }
-<<<<<<< HEAD
 #if TENSORFLOW_USE_ROCM
       list.insert("_ROCmFusedConvolutionBiasActivation");
 #endif
-=======
     UpdateList("ALLOWLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
     // TODO(reedwm): This should be removed if we don't have active users.
->>>>>>> google_upstream/master
     UpdateList("WHITELIST", &list);
 
     return list;
