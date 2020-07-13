@@ -443,7 +443,7 @@ func @DontRemoveTrivialMul(%arg0: tensor<1x6x8x1xf32>) -> tensor<1x6x8x1xf32> {
   // CHECK: return %[[RESULT]] : tensor<1x6x8x1xf32>
 }
 
-// Do not fold if total result size is large (>128 KB) and more than 2 times
+// Do not fold if total result size is large (>256 KB) and more than 2 times
 // the size of operands.
 
 // LINT.IfChange(folding-policy-test)

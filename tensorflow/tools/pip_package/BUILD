@@ -132,6 +132,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     "//tensorflow/python/keras/tests:model_subclassing_test_util",
     "//tensorflow/python/keras/tests:model_architectures",
+    "//tensorflow/python/keras/benchmarks:benchmark_util",
     "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
     "//tensorflow/python/kernel_tests:bias_op_base",
     "//tensorflow/python/kernel_tests/random:util",

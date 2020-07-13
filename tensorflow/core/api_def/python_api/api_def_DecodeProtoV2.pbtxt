@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "DecodeProtoV2"
+  endpoint {
+    name: "io.decode_proto"
+  }
+}

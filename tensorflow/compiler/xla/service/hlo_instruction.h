@@ -1931,6 +1931,8 @@ class HloInstruction {
   };
 
  private:
+  friend class HloComputation;
+
   // Implementation for non-common logic of CloneWithNewOperands.
   virtual std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
@@ -1953,14 +1955,10 @@ class HloInstruction {
   virtual bool IsElementwiseImpl(
       const absl::optional<int64>& operand_idx) const;
 
-  // Prints an operand to a string.
+  // Prints an operand to a string. Accessed by friend class HloInstruction.
   virtual string OperandsToStringWithCanonicalNameMap(
       const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const;
-
-  // Allow HloInstruction to access the ToStringWithCanonicalNameMap() and
-  // OperandsToStringWithCanonicalNameMap() functions.
-  friend class HloComputation;
 
   // See comments on Identical().
   virtual bool IdenticalSlowPath(
@@ -1989,6 +1987,13 @@ class HloInstruction {
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
   Status GetBackendConfigInternal(tensorflow::protobuf::Message* proto) const;
+
+  // Mark this instruction as dead. Accessed by friend class HloInstruction.
+  void MarkAsDead() { marked_as_dead_ = true; }
+
+  // Has this instruction been marked as dead? Accessed by friend class
+  // HloInstruction.
+  bool IsMarkedAsDead() const { return marked_as_dead_; }
 
   int unique_id_;  // Unique to this HloInstruction within a HloModule
 
@@ -2070,6 +2075,10 @@ class HloInstruction {
   // The number of partitions per outer dimension (listed in order from
   // outer-most dimension first).
   std::vector<int64> outer_dimension_partitions_;
+
+  // Intrusive flag used by HloComputation, whether this instruction has
+  // been marked as dead.
+  bool marked_as_dead_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };

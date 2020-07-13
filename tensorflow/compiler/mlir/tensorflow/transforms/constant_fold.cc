@@ -40,7 +40,7 @@ namespace TF {
 // LINT.IfChange(folding-policy)
 static bool ShouldBeFolded(Operation* inst) {
   constexpr int kSizeFactor = 2;
-  constexpr int64_t kSizeThreshold = (1 << 20);  // 128 KB
+  constexpr int64_t kSizeThreshold = (1 << 21);  // 256 KB
   bool has_unknown_shape = false;
   auto get_size = [&](TypeRange types) {
     int64_t size = 0;

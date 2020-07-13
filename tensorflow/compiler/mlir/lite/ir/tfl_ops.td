@@ -1676,12 +1676,7 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [
 }
 
 def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
-    FixedOutputRangeInterface,
-    // central_value = min_value / 2 + (max_value - 1) / 2 + 1
-    // zero_point = central_value
-    // scale = 1. / (central_value - min_value)
-    FixedResultScale<Int8UniformQuantizedType<0, 78125, -7>>,
-    FixedResultScale<UInt8UniformQuantizedType<128, 78125, -7>>]> {
+    FixedOutputRangeInterface]> {
   let summary = "L2 Normalize Operator";
 
   let description = [{
@@ -1703,29 +1698,12 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = output().getType().cast<ShapedType>();
-    if (!result_type.getElementType().isa<FloatType>()) return {};
-    Builder builder(result_type.getContext());
-
-    // Only support 8-bits
-    if (bit_width != 8) return {};
-    IntegerType storage_type = builder.getIntegerType(bit_width);
-
-    double scale = 1.0 / 128;
-    int64_t zero_point, storage_min, storage_max;
-    if (is_signed) {
-      zero_point = 0;
-      storage_min = -128;
-      storage_max = 127;
-    } else {
-      zero_point = 128;
-      storage_min = 0;
-      storage_max = 255;
-    }
-
-    return quant::UniformQuantizedType::getChecked(
-        is_signed, storage_type, result_type.getElementType(), scale,
-        zero_point, storage_min, storage_max, builder.getUnknownLoc());
+    auto result_type = output().getType();
+    // central_value = min_value / 2 + (max_value - 1) / 2 + 1
+    // zero_point = central_value
+    // scale = 1. / (central_value - min_value)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0 / 128, /*zero_point=*/0);
   }
   }];
 }
@@ -1834,10 +1812,6 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultShape,
-    // zero_point = 0
-    // scale = 1. / (max_value + 1)
-    FixedResultScale<Int8UniformQuantizedType<-128, 390625, -8>>,
-    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>,
     FixedOutputRangeInterface,
     TFL_GpuTargetOp]> {
   let summary = "Logistic operator";
@@ -1854,29 +1828,11 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
   // FixedOutputRangeInterface:
   quant::UniformQuantizedType GetFixedOutputRange(
       bool is_signed, int bit_width) {
-    auto result_type = y().getType().cast<ShapedType>();
-    if (!result_type.getElementType().isa<FloatType>()) return {};
-    Builder builder(result_type.getContext());
-
-    // Only support 8-bits
-    if (bit_width != 8) return {};
-    IntegerType storage_type = builder.getIntegerType(bit_width);
-
-    double scale = 1.0 / 256;
-    int64_t zero_point, storage_min, storage_max;
-    if (is_signed) {
-      zero_point = -128;
-      storage_min = -128;
-      storage_max = 127;
-    } else {
-      zero_point = 0;
-      storage_min = 0;
-      storage_max = 255;
-    }
-
-    return quant::UniformQuantizedType::getChecked(
-        is_signed, storage_type, result_type.getElementType(), scale,
-        zero_point, storage_min, storage_max, builder.getUnknownLoc());
+    auto result_type = y().getType();
+    // zero_point = 0
+    // scale = 1. / (max_value + 1)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0 / 256, /*zero_point=*/-128);
   }
   }];
 }
@@ -1905,10 +1861,7 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
     SameOperandsAndResultShape,
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    // zero_point = max_value
-    // scale = -log_softmax_output_min / (max_value + 1)
-    FixedResultScale<Int8UniformQuantizedType<127, 625, -4>>,
-    FixedResultScale<UInt8UniformQuantizedType<255, 625, -4>>]> {
+    FixedOutputRangeInterface]> {
   let summary = "Log softmax operator";
 
   let description = [{
@@ -1922,6 +1875,18 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
   let results = (outs TFL_TensorOf<[F32, QUI8, QI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = output().getType();
+    // zero_point = max_value
+    // scale = -log_softmax_output_min / (max_value + 1)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/16.0 / 256, /*zero_point=*/127);
+  }
+  }];
 }
 
 // TODO(ashwinm): Revisit the granularity of the PredOpTraits. We could
@@ -2833,10 +2798,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     TFL_OperandHasRankRange<0, 1, 4>,
     SameOperandsAndResultShape,
-    // zero_point = 0
-    // scale = 1. / (max_value + 1)
-    FixedResultScale<Int8UniformQuantizedType<-128, 390625, -8>>,
-    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>,
+    FixedOutputRangeInterface,
     TFL_GpuTargetOp]> {
   let summary = "Softmax operator";
 
@@ -2854,6 +2816,18 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output);
 
   let hasOptions = 1;
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = output().getType();
+    // zero_point = 0
+    // scale = 1. / (max_value + 1)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0 / 256, /*zero_point=*/-128);
+  }
+  }];
 }
 
 def TFL_SqrtOp: TFL_Op<"sqrt", [
@@ -2959,11 +2933,7 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     SameOperandsAndResultShape,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    // central_value = min_value / 2 + (max_value - 1) / 2 + 1
-    // zero_point = central_value
-    // scale = 1. / (central_value - min_value)
-    FixedResultScale<Int8UniformQuantizedType<0, 78125, -7>>,
-    FixedResultScale<UInt8UniformQuantizedType<128, 78125, -7>>,
+    FixedOutputRangeInterface,
     TFL_GpuTargetOp]> {
   let summary = "Hyperbolic tangent operator";
 
@@ -2985,6 +2955,19 @@ def TFL_TanhOp: TFL_Op<"tanh", [
       state.addTypes(input.getType());
     }]>
   ];
+
+  let extraClassDeclaration = [{
+  // FixedOutputRangeInterface:
+  quant::UniformQuantizedType GetFixedOutputRange(
+      bool is_signed, int bit_width) {
+    auto result_type = output().getType();
+    // central_value = min_value / 2 + (max_value - 1) / 2 + 1
+    // zero_point = central_value
+    // scale = 1. / (central_value - min_value)
+    return quant::GetFixedOutputRange(is_signed, bit_width, result_type,
+        /*scale=*/1.0 / 128, /*zero_point=*/0);
+  }
+  }];
 }
 
 def TFL_TileOp: TFL_Op<"tile", [

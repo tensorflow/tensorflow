@@ -378,11 +378,11 @@ def _promote_dtype(*arrays):
 
 def _promote_dtype_binary(t1, t2):
   dtype = np_utils._result_type_binary(t1, t2)  # pylint: disable=protected-access
-  def _fast_asarray(a):
-    if isinstance(a, np_arrays.ndarray) and dtype == a.dtype:
-      return a
-    return _array_internal(a, dtype=dtype, copy=False)
-  return _fast_asarray(t1), _fast_asarray(t2)
+  if not(isinstance(t1, np_arrays.ndarray) and dtype == t1.dtype):
+    t1 = _array_internal(t1, dtype=dtype, copy=False)
+  if not(isinstance(t2, np_arrays.ndarray) and dtype == t2.dtype):
+    t2 = _array_internal(t2, dtype=dtype, copy=False)
+  return t1, t2
 
 
 @np_utils.np_doc('all')

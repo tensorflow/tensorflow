@@ -437,22 +437,39 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_layer_names(self):
-    inputs = input_layer.Input(shape=[2])
-    add1 = inputs + inputs
-    add2 = layers.Add()([inputs, inputs])
-    add3 = inputs + inputs
-    add4 = layers.Add()([inputs, inputs])
-    model = training_lib.Model(inputs=[inputs],
-                               outputs=[add1, add2, add3, add4])
-    actual_names = [l.name for l in model.layers]
-    graph_names = [
-        'input_1', 'tf_op_layer_AddV2', 'add', 'tf_op_layer_AddV2_1', 'add_1'
-    ]
-    eager_names = [
-        'input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'
-    ]
-    for actual, eager, graph in zip(actual_names, graph_names, eager_names):
-      self.assertIn(actual, {eager, graph})
+    with testing_utils.use_keras_tensors_scope(False):
+      inputs = input_layer.Input(shape=[2])
+      add1 = inputs + inputs
+      add2 = layers.Add()([inputs, inputs])
+      add3 = inputs + inputs
+      add4 = layers.Add()([inputs, inputs])
+      model = training_lib.Model(
+          inputs=[inputs], outputs=[add1, add2, add3, add4])
+      actual_names = [l.name for l in model.layers]
+      graph_names = [
+          'input_1', 'tf_op_layer_AddV2', 'add', 'tf_op_layer_AddV2_1', 'add_1'
+      ]
+      eager_names = [
+          'input_1', 'tf_op_layer_add', 'add', 'tf_op_layer_add_2', 'add_1'
+      ]
+      for actual, eager, graph in zip(actual_names, graph_names, eager_names):
+        self.assertIn(actual, {eager, graph})
+    if context.executing_eagerly():
+      backend.clear_session()
+      with testing_utils.use_keras_tensors_scope(True):
+        inputs = input_layer.Input(shape=[2])
+        add1 = inputs + inputs
+        add2 = layers.Add()([inputs, inputs])
+        add3 = inputs + inputs
+        add4 = layers.Add()([inputs, inputs])
+        model = training_lib.Model(
+            inputs=[inputs], outputs=[add1, add2, add3, add4])
+        actual_names = [l.name for l in model.layers]
+        expected_names = [
+            'input_1', 'tf.__operators__.add', 'add', 'tf.__operators__.add_1',
+            'add_1'
+        ]
+        self.assertAllEqual(actual_names, expected_names)
 
   def test_add_trainable_weight_on_frozen_layer(self):
 
