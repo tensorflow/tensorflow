@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -896,10 +896,6 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraphMatMul) {
 
   TF_DeleteOutputList(func_outputs);
   TF_DeleteExecutionContext(eager_execution_ctx);
-<<<<<<< HEAD
-=======
-  TF_DeleteExecutionContext(graph_ctx);
->>>>>>> aef53d7fe63191dc3adb3efd417c2054e3addc3e
   TF_DeleteAbstractFunction(func);
 }
 
