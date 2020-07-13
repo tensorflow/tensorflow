@@ -116,6 +116,7 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul) {
 
   TF_AbstractTensor* at = TF_CreateAbstractTensorFromEagerTensor(
       t, status.get());  // get abstract tensor
+
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build an abstract operation.
@@ -892,6 +893,10 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraphMatMul) {
 
   TF_DeleteOutputList(func_outputs);
   TF_DeleteExecutionContext(eager_execution_ctx);
+<<<<<<< HEAD
+=======
+  TF_DeleteExecutionContext(graph_ctx);
+>>>>>>> aef53d7fe63191dc3adb3efd417c2054e3addc3e
   TF_DeleteAbstractFunction(func);
 }
 
