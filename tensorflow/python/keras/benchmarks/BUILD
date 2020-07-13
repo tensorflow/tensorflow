@@ -88,9 +88,6 @@ py_test(
     size = "medium",
     srcs = ["keras_examples_benchmarks/bidirectional_lstm_benchmark_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_windows",  # b/160628318
-    ],
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -102,9 +99,6 @@ py_test(
     size = "medium",
     srcs = ["keras_examples_benchmarks/text_classification_transformer_benchmark_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_windows",  # b/160628318
-    ],
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",

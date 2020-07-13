@@ -17,18 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
 
 import tensorflow as tf
 
-from tensorflow.python.platform import benchmark
 from tensorflow.python.keras.benchmarks import benchmark_util
 
 
-class TextWithTransformerBenchmark(
-    six.with_metaclass(benchmark.ParameterizedBenchmark, tf.test.Benchmark)):
+class TextWithTransformerBenchmark(tf.test.Benchmark):
   """Benchmarks for Text classification with Transformer
-  using `ParameterizedBenchmark`."""
+  using `tf.test.Benchmark`."""
   def __init__(self):
     super(TextWithTransformerBenchmark, self).__init__()
     self.max_feature = 20000
@@ -37,19 +34,6 @@ class TextWithTransformerBenchmark(
         num_words=self.max_feature)
     self.imdb_x = tf.keras.preprocessing.sequence.pad_sequences(
         self.imdb_x, maxlen=self.max_len)
-
-  # The parameters of each benchmark is a tuple:
-
-  # (benchmark_name_suffix, batch_size, run_iters).
-  # benchmark_name_suffix: The suffix of the benchmark test name with
-  # convention `{bs}_{batch_size}`.
-  # batch_size: Integer. Number of samples per gradient update.
-  # run_iters: Integer. Number of iterations to run the
-  # performance measurement.
-
-  _benchmark_parameters = [
-      ('bs_64', 64, 2), ('bs_128', 128, 1),
-      ('bs_256', 256, 1), ('bs_512', 512, 3)]
 
   def _build_model(self):
     """model from https://keras.io/examples/nlp/text_classification_with_transformer/"""
@@ -76,7 +60,7 @@ class TextWithTransformerBenchmark(
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
 
-  def benchmark_text_classification(self, batch_size, run_iters):
+  def benchmark_text_classification_bs_64(self):
     """ Required Arguments for measure_performance.
 
       x: Input data, it could be Numpy or load from tfds.
@@ -87,6 +71,8 @@ class TextWithTransformerBenchmark(
       Other details can see in `measure_performance()` method of
       benchmark_util.
     """
+    batch_size = 64
+    run_iters = 2
     results = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
@@ -100,6 +86,57 @@ class TextWithTransformerBenchmark(
     self.report_benchmark(
         iters=run_iters, wall_time=results['wall_time'], extras=results)
 
+  def benchmark_text_classification_bs_128(self):
+    """ Required Arguments for measure_performance.
+
+      x: Input data, it could be Numpy or load from tfds.
+      y: Target data. If `x` is a dataset, generator instance,
+         `y` should not be specified.
+      loss: Loss function for model.
+      optimizer: Optimizer for model.
+      Other details can see in `measure_performance()` method of
+      benchmark_util.
+    """
+    batch_size = 128
+    run_iters = 3
+    results = benchmark_util.measure_performance(
+        self._build_model,
+        x=self.imdb_x,
+        y=self.imdb_y,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(
+        iters=run_iters, wall_time=results['wall_time'], extras=results)
+
+  def benchmark_text_classification_bs_256(self):
+    """ Required Arguments for measure_performance.
+
+      x: Input data, it could be Numpy or load from tfds.
+      y: Target data. If `x` is a dataset, generator instance,
+         `y` should not be specified.
+      loss: Loss function for model.
+      optimizer: Optimizer for model.
+      Other details can see in `measure_performance()` method of
+      benchmark_util.
+    """
+    batch_size = 256
+    run_iters = 2
+    results = benchmark_util.measure_performance(
+        self._build_model,
+        x=self.imdb_x,
+        y=self.imdb_y,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(
+        iters=run_iters, wall_time=results['wall_time'], extras=results)
 
 class MultiHeadSelfAttention(tf.keras.layers.Layer):
   """Implement multi head self attention as a Keras layer."""
