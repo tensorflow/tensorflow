@@ -18,8 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
-#include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -31,15 +30,35 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
 
 namespace tensorflow {
 namespace tpu {
 
 namespace se = ::stream_executor;
+
+// List of parameters for lowering Mlir to HLO IR.
+struct MlirToHloArgs {
+  absl::string_view mlir_module;
+};
+
+// Variant of guaranteed constant tensors types.
+using GuaranteedConsts = std::variant<absl::Span<const TensorProto* const>,
+                                      const OpInputList* const>;
+
+// List of parameters for lowering function library definition to HLO IR.
+struct FunctionToHloArgs {
+  const NameAttrList* const function;
+  const FunctionLibraryDefinition* const flib_def;
+  int graph_def_version;
+  GuaranteedConsts guaranteed_constants;
+};
 
 // Persistent cache for compiled TPU program and the related compiler metadata
 // intended for TPU inference.
