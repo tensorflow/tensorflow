@@ -40,6 +40,7 @@ def make_conv_activation_tests(activation_op):
             "constant_filter": [True, False],
             "channel_multiplier": [1, 2],
             "fully_quantize": [False],
+            "quant_16x8": [False],
             "dynamic_range_quantize": [False],
         },
         # TODO(b/134702301): The fully_quantize param is just ignored by the
@@ -55,6 +56,7 @@ def make_conv_activation_tests(activation_op):
             "constant_filter": [True],
             "channel_multiplier": [1, 2],
             "fully_quantize": [True],
+            "quant_16x8": [False, True],
             "dynamic_range_quantize": [False],
         },
         {
@@ -67,6 +69,7 @@ def make_conv_activation_tests(activation_op):
             "constant_filter": [True],
             "channel_multiplier": [1, 2],
             "fully_quantize": [False],
+            "quant_16x8": [False],
             "dynamic_range_quantize": [True],
         },
     ]
