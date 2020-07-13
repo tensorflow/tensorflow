@@ -48,6 +48,11 @@ class AddBias : public NodeTransformation {
  public:
   TransformResult ApplyToNode(Node* node, GraphFloat32* graph) final {
     if (node->operation.type == ToString(OperationType::CONVOLUTION_2D)) {
+      if (graph->FindInputs(node->id).size() != 1) {
+        return {TransformStatus::DECLINED,
+                "This transformation is only applicable to conv with one "
+                "runtime input."};
+      }
       auto& attr =
           absl::any_cast<Convolution2DAttributes&>(node->operation.attributes);
       return FillBias(attr.weights.shape.o, &attr.bias);
