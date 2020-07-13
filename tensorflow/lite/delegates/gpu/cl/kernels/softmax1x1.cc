@@ -100,12 +100,10 @@ std::string GetSoftmaxKernelCode(const OperationDef& op_def, Arguments* args) {
 }
 }  // namespace
 
-Softmax1x1::Softmax1x1(Softmax1x1&& kernel)
-    : GPUOperation(std::move(kernel)), kernel_(std::move(kernel.kernel_)) {}
+Softmax1x1::Softmax1x1(Softmax1x1&& kernel) : GPUOperation(std::move(kernel)) {}
 
 Softmax1x1& Softmax1x1::operator=(Softmax1x1&& kernel) {
   if (this != &kernel) {
-    kernel_ = std::move(kernel.kernel_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;

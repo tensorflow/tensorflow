@@ -102,15 +102,10 @@ std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device,
 
 LSTM::LSTM(const OperationDef& definition) : GPUOperation(definition) {}
 
-LSTM::LSTM(LSTM&& kernel)
-    : GPUOperation(std::move(kernel)),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
+LSTM::LSTM(LSTM&& kernel) : GPUOperation(std::move(kernel)) {}
 
 LSTM& LSTM::operator=(LSTM&& kernel) {
   if (this != &kernel) {
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;

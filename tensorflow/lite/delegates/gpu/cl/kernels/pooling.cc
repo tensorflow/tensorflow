@@ -335,9 +335,7 @@ Pooling::Pooling(Pooling&& kernel)
       padding_(kernel.padding_),
       kernel_size_(kernel.kernel_size_),
       type_(kernel.type_),
-      output_indices_(kernel.output_indices_),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
+      output_indices_(kernel.output_indices_) {}
 
 Pooling& Pooling::operator=(Pooling&& kernel) {
   if (this != &kernel) {
@@ -346,8 +344,6 @@ Pooling& Pooling::operator=(Pooling&& kernel) {
     std::swap(kernel_size_, kernel.kernel_size_);
     std::swap(type_, kernel.type_);
     std::swap(output_indices_, kernel.output_indices_);
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;

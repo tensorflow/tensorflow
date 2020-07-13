@@ -103,9 +103,6 @@ class ConvTexture : public GPUOperation {
   bool different_weights_for_height_;
 
   int3 block_size_ = int3(2, 2, 2);
-
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 template <DataType T>

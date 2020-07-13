@@ -79,16 +79,11 @@ std::string GetSpaceToDepthCode(const OperationDef& op_def, Arguments* args) {
 }  // namespace
 
 SpaceToDepth::SpaceToDepth(SpaceToDepth&& operation)
-    : GPUOperation(std::move(operation)),
-      attr_(operation.attr_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
 
 SpaceToDepth& SpaceToDepth::operator=(SpaceToDepth&& operation) {
   if (this != &operation) {
     attr_ = operation.attr_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

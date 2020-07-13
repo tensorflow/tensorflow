@@ -29,7 +29,7 @@ namespace cl {
 class Reshapex4 : public GPUOperation {
  public:
   explicit Reshapex4(const OperationDef& definition)
-      : GPUOperation(definition), work_group_size_(8, 4, 1) {}
+      : GPUOperation(definition) {}
   absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
 
@@ -44,9 +44,6 @@ class Reshapex4 : public GPUOperation {
  private:
   absl::Status BindArguments();
   int3 GetGridSize() const;
-
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 // More optimized, but require src_channels % 4 == 0 and dst_channels % 4 == 0

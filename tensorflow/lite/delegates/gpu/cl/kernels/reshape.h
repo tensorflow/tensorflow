@@ -27,8 +27,7 @@ namespace cl {
 
 class Reshape : public GPUOperation {
  public:
-  explicit Reshape(const OperationDef& definition)
-      : GPUOperation(definition), work_group_size_(8, 4, 1) {}
+  explicit Reshape(const OperationDef& definition) : GPUOperation(definition) {}
   absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
 
@@ -43,9 +42,6 @@ class Reshape : public GPUOperation {
  private:
   absl::Status BindArguments();
   int3 GetGridSize() const;
-
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 Reshape CreateReshape(const OperationDef& definition);

@@ -125,16 +125,12 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
 ConcatXY::ConcatXY(ConcatXY&& operation)
     : GPUOperation(std::move(operation)),
       attr_(operation.attr_),
-      tensors_count_(operation.tensors_count_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      tensors_count_(operation.tensors_count_) {}
 
 ConcatXY& ConcatXY::operator=(ConcatXY&& operation) {
   if (this != &operation) {
     attr_ = operation.attr_;
     tensors_count_ = operation.tensors_count_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

@@ -340,8 +340,9 @@ ConvTexture::ConvTexture(const OperationDef& definition,
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h),
       dilation_(attr.dilations.w, attr.dilations.h),
       different_weights_for_height_(false),
-      block_size_(2, 2, 2),
-      work_group_size_(4, 4, 2) {}
+      block_size_(2, 2, 2) {
+  work_group_size_ = int3(4, 4, 2);
+}
 
 ConvTexture::ConvTexture(const OperationDef& definition)
     : GPUOperation(definition),
@@ -350,8 +351,9 @@ ConvTexture::ConvTexture(const OperationDef& definition)
       padding_(0, 0),
       dilation_(1, 1),
       different_weights_for_height_(false),
-      block_size_(4, 1, 2),
-      work_group_size_(16, 1, 2) {}
+      block_size_(4, 1, 2) {
+  work_group_size_ = int3(16, 1, 2);
+}
 
 ConvTexture::ConvTexture(ConvTexture&& operation)
     : GPUOperation(std::move(operation)),
@@ -360,9 +362,7 @@ ConvTexture::ConvTexture(ConvTexture&& operation)
       padding_(operation.padding_),
       dilation_(operation.dilation_),
       different_weights_for_height_(operation.different_weights_for_height_),
-      block_size_(operation.block_size_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      block_size_(operation.block_size_) {}
 
 ConvTexture& ConvTexture::operator=(ConvTexture&& operation) {
   if (this != &operation) {
@@ -373,8 +373,6 @@ ConvTexture& ConvTexture::operator=(ConvTexture&& operation) {
     std::swap(different_weights_for_height_,
               operation.different_weights_for_height_);
     std::swap(block_size_, operation.block_size_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

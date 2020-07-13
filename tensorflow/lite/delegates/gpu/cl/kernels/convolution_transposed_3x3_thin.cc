@@ -177,17 +177,13 @@ ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
     ConvolutionTransposed3x3Thin&& operation)
     : GPUOperation(std::move(operation)),
       src_channels_(operation.src_channels_),
-      dst_channels_(operation.dst_channels_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      dst_channels_(operation.dst_channels_) {}
 
 ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
     ConvolutionTransposed3x3Thin&& operation) {
   if (this != &operation) {
     std::swap(src_channels_, operation.src_channels_);
     std::swap(dst_channels_, operation.dst_channels_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
