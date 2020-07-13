@@ -147,6 +147,12 @@ CreateTpuAotCompilationRequest(
     const std::vector<std::vector<std::pair<int, bool>>>&
         per_core_variable_indices,
     const absl::optional<xla::DeviceAssignment>& device_assignment);
+
+se::port::StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
+    const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+    const TPUCompileMetadataProto& metadata,
+    const std::vector<TensorShape>& arg_shapes);
+
 }  // namespace tpu
 }  // namespace tensorflow
 

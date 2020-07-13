@@ -435,5 +435,55 @@ StatusOr<TpuAotCompilationRequestProto> CreateTpuAotCompilationRequest(
   VLOG(1) << "TpuAotCompilationRequest:\n" << aot_request.DebugString();
   return aot_request;
 }
+
+StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
+    const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+    const TPUCompileMetadataProto& metadata,
+    const std::vector<TensorShape>& arg_shapes) {
+  VLOG(1) << "CreateTpuCompilationRequest.";
+  TpuCompilationRequestProto compilation_request;
+  bool use_mlir = computation.index() == 0;
+  compilation_request.set_use_mlir(use_mlir);
+  if (use_mlir) {
+    VLOG(1) << "Serializing MlirModule";
+    const MlirToHloArgs& mlir_computation = std::get<0>(computation);
+    *compilation_request.mutable_mlir_module() = mlir_computation.mlir_module;
+  } else {
+    VLOG(1) << "Serializing FunctionDefinitionLibrary";
+    const FunctionToHloArgs& function_computation = std::get<1>(computation);
+    *compilation_request.mutable_fdef_lib() =
+        function_computation.flib_def->ToProto();
+    compilation_request.set_graph_def_version(
+        function_computation.graph_def_version);
+    *compilation_request.mutable_function() = *function_computation.function;
+    // TODO(b/160937500): serializing and copying large guaranteed_constants can
+    // be a perf hit. There is a future work to refactor the compilation layer
+    // to avoid passing guaranteed_constants over C_API.
+    if (function_computation.guaranteed_constants.index() == 0) {
+      absl::Span<const TensorProto* const> guaranteed_constants =
+          std::get<0>(function_computation.guaranteed_constants);
+      for (const TensorProto* constant : guaranteed_constants) {
+        *compilation_request.add_guaranteed_constants() = *constant;
+      }
+    } else {
+      CHECK_EQ(function_computation.guaranteed_constants.index(), 1);
+      const OpInputList& guaranteed_constants =
+          *std::get<1>(function_computation.guaranteed_constants);
+      for (const Tensor& constant : guaranteed_constants) {
+        constant.AsProtoTensorContent(
+            compilation_request.add_guaranteed_constants());
+      }
+    }
+  }
+
+  for (const TensorShape& shape : arg_shapes) {
+    shape.AsProto(compilation_request.add_arg_shapes());
+  }
+
+  *(compilation_request.mutable_metadata()) = metadata;
+
+  VLOG(1) << "TpuCompilationRequest:\n" << compilation_request.DebugString();
+  return compilation_request;
+}
 }  // namespace tpu
 }  // namespace tensorflow
