@@ -25,6 +25,15 @@ from tensorflow.python.keras.benchmarks import benchmark_util
 
 class BidirectionalLSTMBenchmark(tf.test.Benchmark):
   """Benchmarks for Bidirectional LSTM using `tf.test.Benchmark`."""
+  # Required Arguments for measure_performance.
+  #   x: Input data, it could be Numpy or load from tfds.
+  #   y: Target data. If `x` is a dataset, generator instance,
+  #      `y` should not be specified.
+  #   loss: Loss function for model.
+  #   optimizer: Optimizer for model.
+  #   Other details can see in `measure_performance()` method of
+  #   benchmark_util.
+
   def __init__(self):
     super(BidirectionalLSTMBenchmark, self).__init__()
     self.max_feature = 20000
@@ -35,7 +44,7 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
         self.imdb_x, maxlen=self.max_len)
 
   def _build_model(self):
-    """model from https://keras.io/examples/nlp/bidirectional_lstm_imdb/"""
+    """Model from https://keras.io/examples/nlp/bidirectional_lstm_imdb/."""
     inputs = tf.keras.Input(shape=(None,), dtype='int32')
     x = tf.keras.layers.Embedding(self.max_feature, 128)(inputs)
     x = tf.keras.layers.Bidirectional(
@@ -47,18 +56,9 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
     return model
 
   def benchmark_bidirect_lstm_imdb_bs_128(self):
-    """ Required Arguments for measure_performance.
-
-      x: Input data, it could be Numpy or load from tfds.
-      y: Target data. If `x` is a dataset, generator instance,
-         `y` should not be specified.
-      loss: Loss function for model.
-      optimizer: Optimizer for model.
-      Other details can see in `measure_performance()` method of
-      benchmark_util.
-    """
+    """Measure performance with batch_size=128 and run_iters=3."""
     batch_size = 128
-    run_iters = 1
+    run_iters = 3
     results = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
@@ -73,16 +73,7 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
         iters=run_iters, wall_time=results['wall_time'], extras=results)
 
   def benchmark_bidirect_lstm_imdb_bs_256(self):
-    """ Required Arguments for measure_performance.
-
-      x: Input data, it could be Numpy or load from tfds.
-      y: Target data. If `x` is a dataset, generator instance,
-         `y` should not be specified.
-      loss: Loss function for model.
-      optimizer: Optimizer for model.
-      Other details can see in `measure_performance()` method of
-      benchmark_util.
-    """
+    """Measure performance with batch_size=256 and run_iters=2."""
     batch_size = 256
     run_iters = 2
     results = benchmark_util.measure_performance(
@@ -99,18 +90,9 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
         iters=run_iters, wall_time=results['wall_time'], extras=results)
 
   def benchmark_bidirect_lstm_imdb_bs_512(self):
-    """ Required Arguments for measure_performance.
-
-      x: Input data, it could be Numpy or load from tfds.
-      y: Target data. If `x` is a dataset, generator instance,
-         `y` should not be specified.
-      loss: Loss function for model.
-      optimizer: Optimizer for model.
-      Other details can see in `measure_performance()` method of
-      benchmark_util.
-    """
+    """Measure performance with batch_size=512 and run_iters=4."""
     batch_size = 512
-    run_iters = 1
+    run_iters = 4
     results = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,

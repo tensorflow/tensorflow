@@ -26,6 +26,15 @@ from tensorflow.python.keras.benchmarks import benchmark_util
 class TextWithTransformerBenchmark(tf.test.Benchmark):
   """Benchmarks for Text classification with Transformer
   using `tf.test.Benchmark`."""
+  # Required Arguments for measure_performance.
+  #   x: Input data, it could be Numpy or load from tfds.
+  #   y: Target data. If `x` is a dataset, generator instance,
+  #      `y` should not be specified.
+  #   loss: Loss function for model.
+  #   optimizer: Optimizer for model.
+  #   Other details can see in `measure_performance()` method of
+  #   benchmark_util.
+
   def __init__(self):
     super(TextWithTransformerBenchmark, self).__init__()
     self.max_feature = 20000
@@ -36,7 +45,7 @@ class TextWithTransformerBenchmark(tf.test.Benchmark):
         self.imdb_x, maxlen=self.max_len)
 
   def _build_model(self):
-    """model from https://keras.io/examples/nlp/text_classification_with_transformer/"""
+    """Model from https://keras.io/examples/nlp/text_classification_with_transformer/."""
     embed_dim = 32
     num_heads = 2
     ff_dim = 32
@@ -60,43 +69,8 @@ class TextWithTransformerBenchmark(tf.test.Benchmark):
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
 
-  def benchmark_text_classification_bs_64(self):
-    """ Required Arguments for measure_performance.
-
-      x: Input data, it could be Numpy or load from tfds.
-      y: Target data. If `x` is a dataset, generator instance,
-         `y` should not be specified.
-      loss: Loss function for model.
-      optimizer: Optimizer for model.
-      Other details can see in `measure_performance()` method of
-      benchmark_util.
-    """
-    batch_size = 64
-    run_iters = 2
-    results = benchmark_util.measure_performance(
-        self._build_model,
-        x=self.imdb_x,
-        y=self.imdb_y,
-        batch_size=batch_size,
-        run_iters=run_iters,
-        optimizer='adam',
-        loss='sparse_categorical_crossentropy',
-        metrics=['accuracy'])
-
-    self.report_benchmark(
-        iters=run_iters, wall_time=results['wall_time'], extras=results)
-
   def benchmark_text_classification_bs_128(self):
-    """ Required Arguments for measure_performance.
-
-      x: Input data, it could be Numpy or load from tfds.
-      y: Target data. If `x` is a dataset, generator instance,
-         `y` should not be specified.
-      loss: Loss function for model.
-      optimizer: Optimizer for model.
-      Other details can see in `measure_performance()` method of
-      benchmark_util.
-    """
+    """Measure performance with batch_size=128 and run_iters=3."""
     batch_size = 128
     run_iters = 3
     results = benchmark_util.measure_performance(
@@ -112,19 +86,27 @@ class TextWithTransformerBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=results['wall_time'], extras=results)
 
-  def benchmark_text_classification_bs_256(self):
-    """ Required Arguments for measure_performance.
+  def benchmark_text_classification_bs_512(self):
+    """Measure performance with batch_size=512 and run_iters=4."""
+    batch_size = 512
+    run_iters = 4
+    results = benchmark_util.measure_performance(
+        self._build_model,
+        x=self.imdb_x,
+        y=self.imdb_y,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        optimizer='adam',
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy'])
 
-      x: Input data, it could be Numpy or load from tfds.
-      y: Target data. If `x` is a dataset, generator instance,
-         `y` should not be specified.
-      loss: Loss function for model.
-      optimizer: Optimizer for model.
-      Other details can see in `measure_performance()` method of
-      benchmark_util.
-    """
+    self.report_benchmark(
+        iters=run_iters, wall_time=results['wall_time'], extras=results)
+
+  def benchmark_text_classification_bs_256(self):
+    """Measure performance with batch_size=256 and run_iters=3."""
     batch_size = 256
-    run_iters = 2
+    run_iters = 3
     results = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
