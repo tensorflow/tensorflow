@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -49,8 +50,8 @@ struct MlirToHloArgs {
 };
 
 // Variant of guaranteed constant tensors types.
-using GuaranteedConsts = std::variant<absl::Span<const TensorProto* const>,
-                                      const OpInputList* const>;
+using GuaranteedConsts = absl::variant<absl::Span<const TensorProto* const>,
+                                       const OpInputList* const>;
 
 // List of parameters for lowering function library definition to HLO IR.
 struct FunctionToHloArgs {
@@ -149,7 +150,7 @@ CreateTpuAotCompilationRequest(
     const absl::optional<xla::DeviceAssignment>& device_assignment);
 
 se::port::StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
-    const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+    const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
     const TPUCompileMetadataProto& metadata,
     const std::vector<TensorShape>& arg_shapes);
 

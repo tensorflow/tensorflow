@@ -437,7 +437,7 @@ StatusOr<TpuAotCompilationRequestProto> CreateTpuAotCompilationRequest(
 }
 
 StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
-    const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+    const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
     const TPUCompileMetadataProto& metadata,
     const std::vector<TensorShape>& arg_shapes) {
   VLOG(1) << "CreateTpuCompilationRequest.";
