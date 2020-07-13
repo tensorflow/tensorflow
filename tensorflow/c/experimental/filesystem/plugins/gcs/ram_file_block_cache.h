@@ -66,7 +66,7 @@ class RamFileBlockCache : public FileBlockCache {
           TF_StartThread(&thread_options, "TF_prune_FBC", PruneThread, this));
     }
     std::cout << "GCS file block cache is "
-              << (IsCacheEnabled() ? "enabled" : "disabled");
+              << (IsCacheEnabled() ? "enabled" : "disabled") << "\n";
   }
 
   ~RamFileBlockCache() override {

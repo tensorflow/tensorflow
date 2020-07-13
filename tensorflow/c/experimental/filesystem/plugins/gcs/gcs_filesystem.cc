@@ -98,13 +98,16 @@ static void MaybeAppendSlash(std::string* name) {
 }
 
 // A helper function to actually read the data from GCS.
-static void LoadBufferFromGCS(const std::string& bucket,
-                              const std::string& object, size_t offset,
+static void LoadBufferFromGCS(const std::string& path, size_t offset,
                               size_t buffer_size, char* buffer,
                               size_t* bytes_transferred,
                               gcs::Client* gcs_client, TF_Status* status) {
+  std::string bucket, object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
   auto stream = gcs_client->ReadObject(
       bucket, object, gcs::ReadRange(offset, offset + buffer_size));
+  TF_SetStatusFromGCSStatus(stream.status(), status);
   if ((TF_GetCode(status) != TF_OK) &&
       (TF_GetCode(status) != TF_OUT_OF_RANGE)) {
     return;
@@ -129,11 +132,8 @@ std::unique_ptr<tf_gcs_filesystem::FileBlockCache> MakeFileBlockCache(
           [gcs_client](const std::string& path, size_t offset, size_t n,
                        char* buffer, size_t* bytes_transferred,
                        TF_Status* status) {
-            std::string bucket, object;
-            ParseGCSPath(path, false, &bucket, &object, status);
-            if (TF_GetCode(status) != TF_OK) return;
-            LoadBufferFromGCS(bucket, object, offset, n, buffer,
-                              bytes_transferred, gcs_client, status);
+            LoadBufferFromGCS(path, offset, n, buffer, bytes_transferred,
+                              gcs_client, status);
             return;
           }));
   return file_block_cache;
@@ -143,9 +143,10 @@ std::unique_ptr<tf_gcs_filesystem::FileBlockCache> MakeFileBlockCache(
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
 typedef struct GCSFile {
-  const std::string bucket;
-  const std::string object;
-  gcs::Client* gcs_client;  // not owned
+  const std::string path;
+  std::function<int64_t(const std::string& path, int64_t offset, size_t n,
+                        char* buffer, TF_Status* status)>
+      read_fn;
 } GCSFile;
 
 void Cleanup(TF_RandomAccessFile* file) {
@@ -159,24 +160,7 @@ void Cleanup(TF_RandomAccessFile* file) {
 int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
              char* buffer, TF_Status* status) {
   auto gcs_file = static_cast<GCSFile*>(file->plugin_file);
-  auto stream = gcs_file->gcs_client->ReadObject(
-      gcs_file->bucket, gcs_file->object, gcs::ReadRange(offset, offset + n));
-  TF_SetStatusFromGCSStatus(stream.status(), status);
-  if ((TF_GetCode(status) != TF_OK) &&
-      (TF_GetCode(status) != TF_OUT_OF_RANGE)) {
-    return -1;
-  }
-  int64_t read;
-  if (!absl::SimpleAtoi(stream.headers().find("content-length")->second,
-                        &read)) {
-    TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
-    return -1;
-  }
-  if (read != n) {
-    TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
-  }
-  stream.read(buffer, read);
-  return read;
+  return gcs_file->read_fn(gcs_file->path, offset, n, buffer, status);
 }
 
 }  // namespace tf_random_access_file
@@ -400,13 +384,27 @@ void Cleanup(TF_Filesystem* filesystem) {
 // TODO(vnvo2409): Implement later
 void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
                          TF_RandomAccessFile* file, TF_Status* status) {
-  std::string bucket, object;
-  ParseGCSPath(path, false, &bucket, &object, status);
-  if (TF_GetCode(status) != TF_OK) return;
-
   auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
-  file->plugin_file = new tf_random_access_file::GCSFile(
-      {std::move(bucket), std::move(object), &gcs_file->gcs_client});
+  auto read_fn = [gcs_file](const std::string& path, int64_t offset, size_t n,
+                            char* buffer, TF_Status* status) -> int64_t {
+    size_t byte_transfered;
+    if (gcs_file->file_block_cache->IsCacheEnabled()) {
+      gcs_file->file_block_cache->Read(path, offset, n, buffer,
+                                       &byte_transfered, status);
+    } else {
+      LoadBufferFromGCS(path, offset, n, buffer, &byte_transfered,
+                        &gcs_file->gcs_client, status);
+    }
+    if (TF_GetCode(status) != TF_OK) {
+      return -1;
+    }
+    if (byte_transfered < n) {
+      TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested.");
+    }
+    return byte_transfered;
+  };
+  file->plugin_file =
+      new tf_random_access_file::GCSFile({path, std::move(read_fn)});
   TF_SetStatus(status, TF_OK, "");
 }
 
