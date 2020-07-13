@@ -798,36 +798,7 @@ tf_gen_op_libs(
         "ragged_conversion_ops",
         "ragged_math_ops",
     ],
-    deps = [":ragged_to_dense_util"],
-)
-
-cc_library(
-    name = "ragged_to_dense_util",
-    srcs = [
-        "ops/ragged_to_dense_util.cc",
-    ],
-    hdrs = [
-        "ops/ragged_to_dense_util.h",
-    ],
-    deps = [
-        ":framework",
-        ":protos_all_cc",
-    ],
-)
-
-tf_cc_test(
-    name = "ragged_to_dense_util_test",
-    srcs = [
-        "ops/ragged_to_dense_util_test.cc",
-    ],
-    deps = [
-        ":framework",
-        ":protos_all_cc",
-        ":ragged_to_dense_util",
-        ":test",
-        ":testlib",
-        "@com_google_googletest//:gtest_main",
-    ],
+    deps = ["//tensorflow/core/util:ragged_to_dense_util"],
 )
 
 cc_library(
