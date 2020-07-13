@@ -69,8 +69,7 @@ class CholeskySolveTest(test.TestCase):
             with self.subTest(n=n, np_type=np_type, atol=atol, k=k):
               rhs = self.rng.randn(2, n, k).astype(np_type)
               x = linalg_ops.cholesky_solve(chol, rhs)
-              self.assertAllClose(
-                  rhs, math_ops.matmul(array, x).eval(), atol=atol)
+              self.assertAllClose(rhs, math_ops.matmul(array, x), atol=atol)
 
 
 class LogdetTest(test.TestCase):

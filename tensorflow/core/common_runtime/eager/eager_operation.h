@@ -80,7 +80,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   Status SetAttrValue(const char* attr_name, const AttrValue& value);
 
   Status AddInput(AbstractTensorHandle* input) override;
-  Status AddInputList(absl::Span<AbstractTensorHandle*> inputs) override;
+  Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override;
   Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                  int* num_retvals) override;
   const tensorflow::OpDef* OpDef() const override { return op_def_; };

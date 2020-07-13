@@ -1644,13 +1644,21 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
           run_eagerly=testing_utils.should_run_eagerly())
 
   @keras_parameterized.run_with_all_model_types
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_sparse_op_with_op_layer(self):
-    inputs = layers_module.Input(shape=(2,), sparse=True, name='sparse_tensor')
-    output = sparse_ops.sparse_minimum(inputs, inputs)
-    with self.assertRaisesRegex(ValueError,
-                                'not supported by Keras automatic op wrapping'):
-      training_module.Model([inputs], output)
+    with testing_utils.use_keras_tensors_scope(False):
+      # The meaningful error is only raised w/o KerasTensors.
+      # It's tricky to raise the exact same error w/ KerasTensors enabled.
+      # We may want to add dispatching to the sparse_ops and have dispatch
+      # trigger on attributeerror so that these ops fully work w/ KerasTensors.
+      # This may need to wait until dispatch v2
+      inputs = layers_module.Input(
+          shape=(2,), sparse=True, name='sparse_tensor')
+      output = sparse_ops.sparse_minimum(inputs, inputs)
+      with self.assertRaisesRegex(
+          ValueError, 'not supported by Keras automatic '
+          'op wrapping'):
+        training_module.Model([inputs], output)
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_predict_error_with_empty_x(self):
@@ -2906,7 +2914,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     scores = model.train_on_batch(x, y, sample_weight=w)
     self.assertArrayNear(scores, [0.3328, 0.8], 0.001)
 
-  @keras_parameterized.run_all_keras_modes(skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes
   def test_add_metric_with_tensor_on_model(self):
     x = layers_module.Input(shape=(1,))
     y = layers_module.Dense(1, kernel_initializer='ones')(x)
@@ -2920,11 +2928,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
       with self.assertRaisesRegex(
           ValueError, 'Expected a symbolic Tensor for the metric value'):
         model.add_metric(mean_result, name='metric_2')
-
-    with self.assertRaisesRegex(
-        ValueError, 'Using the result of calling a `Metric` object '):
-      with backend.get_graph().as_default():
-        model.add_metric(metrics_module.Mean(name='metric_2')(y))
+    else:
+      with self.assertRaisesRegex(
+          ValueError, 'Using the result of calling a `Metric` object '):
+        with backend.get_graph().as_default():
+          model.add_metric(metrics_module.Mean(name='metric_2')(y))
 
     model.compile(
         'sgd',
@@ -3021,8 +3029,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     self.assertEqual(history.history['metric_1'][-1], 5)
     self.assertAlmostEqual(history.history['val_metric_1'][-1], 5, 0)
 
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True,
-                                           skip_keras_tensors=True)
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_model_metrics_list(self):
 
     class LayerWithAddMetric(layers_module.Layer):
@@ -3063,10 +3070,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
           ValueError, 'Expected a symbolic Tensor for the metric value'):
         model.add_metric(mean_result, name='metric_4')
 
-    with self.assertRaisesRegex(
-        ValueError, 'Using the result of calling a `Metric` object '):
-      with backend.get_graph().as_default():
-        model.add_metric(metrics_module.Mean(name='metric_4')(y))
+    else:
+      with self.assertRaisesRegex(
+          ValueError, 'Using the result of calling a `Metric` object '):
+        with backend.get_graph().as_default():
+          model.add_metric(metrics_module.Mean(name='metric_4')(y))
 
     model.compile(
         'sgd',

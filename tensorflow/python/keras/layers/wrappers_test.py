@@ -333,7 +333,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
         keras.layers.RNN(keras.layers.SimpleRNNCell(10), stateful=True))
     self.assertFalse(td2._always_use_reshape)
 
-    # Custom layers are not whitelisted for the fast reshape implementation.
+    # Custom layers are not allowlisted for the fast reshape implementation.
     td3 = keras.layers.TimeDistributed(NoReshapeLayer())
     self.assertFalse(td3._always_use_reshape)
 

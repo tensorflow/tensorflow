@@ -169,6 +169,32 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     return %1, %arg1, %arg2 : tensor<*xf32>, tensor<*x!tf.resource>, tensor<!tf.resource<tensor<*xf32>>>
   }
 
+  // CHECK-LABEL: func @shape_from_case_to_branch_functions(
+  // CHECK-SAME:    %[[ARG_0:.*]]: tensor<i32>,
+  // CHECK-SAME:    %[[ARG_1:.*]]: tensor<!tf.resource<tensor<1x2x3xf32>>>
+  func @shape_from_case_to_branch_functions(%arg0: tensor<i32>, %arg1: tensor<!tf.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32> {
+    // CHECK: %[[CASE:.*]] = "tf.Case"(%[[ARG_0]], %[[ARG_1]])
+    %0 = "tf.Case"(%arg0, %arg1) {branches = [@branch_0, @branch_1]} : (tensor<i32>, tensor<!tf.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
+    // CHECK:           return %[[CASE]] : tensor<1x2x3xf32>
+    return %0 : tensor<1x2x3xf32>
+  }
+  // CHECK-LABEL: func @branch_0
+  // CHECK-SAME:    %[[ARG_0:.*]]: tensor<!tf.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
+  func @branch_0(%arg0: tensor<!tf.resource>) -> tensor<*xf32> {
+    // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[ARG_0]]) : (tensor<!tf.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
+    %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource>) -> (tensor<*xf32>)
+    // CHECK: return %[[READ]] : tensor<1x2x3xf32>
+  return %0 : tensor<*xf32>
+  }
+  // CHECK-LABEL: func @branch_1
+  // CHECK-SAME:    %[[ARG_0:.*]]: tensor<!tf.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
+  func @branch_1(%arg0: tensor<!tf.resource>) -> tensor<*xf32> {
+    // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[ARG_0]]) : (tensor<!tf.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
+    %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource>) -> (tensor<*xf32>)
+    // CHECK: return %[[READ]] : tensor<1x2x3xf32>
+    return %0 : tensor<*xf32>
+  }
+
   func @partitioned_call(%arg0: tensor<i32>) -> tensor<*xi32> {
     %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @partitioned_call_func} : (tensor<i32>) -> (tensor<*xi32>)
     return %0 : tensor<*xi32>
@@ -328,19 +354,25 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
   // Test propagation from called functions to the call site.
   // CHECK-LABEL: func @stateful_partitioned_call(
   // CHECK-SAME: -> tensor<20xi32>
-  func @stateful_partitioned_call(%arg0: tensor<20xi32>) -> tensor<*xi32> {
+  func @stateful_partitioned_call(%arg0: tensor<20xi32>, %arg1: tensor<?xi32>) -> tensor<*xi32> {
     // CHECK: tf.PartitionedCall
     // CHECK-SAME: (tensor<20xi32>) -> tensor<20xi32>
-    %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @a_called_func} : (tensor<20xi32>) -> (tensor<*xi32>)
+    %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @partitioned_called_func} : (tensor<20xi32>) -> tensor<*xi32>
     // CHECK: tf.StatefulPartitionedCall
     // CHECK-SAME: (tensor<20xi32>) -> tensor<20xi32>
-    %1 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @stateful_partitioned_call_func} : (tensor<20xi32>) -> (tensor<*xi32>)
+    %1 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @stateful_partitioned_call_func} : (tensor<20xi32>) -> tensor<*xi32>
+    // CHECK: tf.TPUPartitionedCall
+    // CHECK-SAME: (tensor<20xi32>, tensor<?xi32>) -> tensor<20xi32>
+    %2 = "tf.TPUPartitionedCall"(%arg0, %arg1) {autotuner_thresh = 0 : i64, f = @tpu_partitioned_call_func} : (tensor<20xi32>, tensor<?xi32>) -> tensor<*xi32>
     return %0 : tensor<*xi32>
   }
-  func @a_called_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+  func @partitioned_called_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
     return %arg0 : tensor<?xi32>
   }
   func @stateful_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+    return %arg0 : tensor<?xi32>
+  }
+  func @tpu_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
     return %arg0 : tensor<?xi32>
   }
 

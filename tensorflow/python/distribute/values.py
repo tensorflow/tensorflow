@@ -32,7 +32,6 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
@@ -93,14 +92,14 @@ class DistributedValues(object):
 
   1. Created from a `tf.distribute.DistributedDataset`:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
 
   2. Returned by `run`:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> @tf.function
   ... def run():
   ...   ctx = tf.distribute.get_replica_context()
@@ -109,7 +108,7 @@ class DistributedValues(object):
 
   3. As input into `run`:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
@@ -120,7 +119,7 @@ class DistributedValues(object):
 
   4. Reduce value:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
@@ -128,16 +127,16 @@ class DistributedValues(object):
   ...                                 distributed_values,
   ...                                 axis = 0)
 
-  5. Inspect per replica values:
+  5. Inspect local replica values:
 
-  >>> strategy = tf.distribute.MirroredStrategy()
+  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> per_replica_values = strategy.experimental_local_results(
   ...    distributed_values)
   >>> per_replica_values
-  (<tf.Tensor: shape=(2,), dtype=float32,
-   numpy=array([5., 6.], dtype=float32)>,)
+  (<tf.Tensor: shape=(1,), dtype=float32, numpy=array([5.], dtype=float32)>,
+   <tf.Tensor: shape=(1,), dtype=float32, numpy=array([6.], dtype=float32)>)
 
   """
 
@@ -849,17 +848,26 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       return ops.convert_to_tensor(
           self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
-  def _map_resources(self):
+  def _map_resources(self, save_options):
     """For implementing `Trackable`."""
-    new_obj = resource_variable_ops.copy_to_graph_uninitialized(self._primary)
-    obj_map, resource_map = {}, {}
-    for v in self._values:
-      obj_map[v] = new_obj
-      resource_map[v.handle] = new_obj.handle
-    obj_map[self] = new_obj
-    resource_map[self] = new_obj.handle
+    # Initialize for self._primary first, so that obj_map[self._primary] and
+    # resource_map[self._primary.handle] contain mapped values.
+    obj_map, resource_map = self._primary._map_resources(save_options)  # pylint:disable=protected-access
+    for v in [v for v in self._values if v != self._primary]:
+
+      if (save_options.experimental_variable_policy  # pylint:disable=protected-access
+          ._expand_distributed_variables()):
+        v_obj_map, v_resource_map = v._map_resources(save_options)  # pylint:disable=protected-access
+        obj_map.update(v_obj_map)
+        resource_map.update(v_resource_map)
+      else:
+        obj_map[v] = obj_map[self._primary]
+        resource_map[v.handle] = resource_map[self._primary.handle]
+    obj_map[self] = obj_map[self._primary]
+    resource_map[self] = resource_map[self._primary.handle]
     if self._packed_var is not None:
-      resource_map[self._packed_var.packed_handle] = new_obj.handle
+      resource_map[self._packed_var.packed_handle] = resource_map[
+          self._primary.handle]
     return obj_map, resource_map
 
 
@@ -1236,6 +1244,7 @@ class OnReadPolicy(VariablePolicy):
 
   def assign_sub(self, var, value, use_locking=False, name=None,
                  read_value=True):
+    """Subtracts a value from this variable."""
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
       if ds_context.in_cross_replica_context():
         return values_util.on_read_assign_sub_cross_replica(
@@ -1247,6 +1256,7 @@ class OnReadPolicy(VariablePolicy):
 
   def assign_add(self, var, value, use_locking=False, name=None,
                  read_value=True):
+    """Adds a value to this variable."""
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
       if ds_context.in_cross_replica_context():
         return values_util.on_read_assign_add_cross_replica(
@@ -1297,6 +1307,7 @@ class OnReadPolicy(VariablePolicy):
 
   def get_saveable(self, var, primary_var, name):
     """Create a saveable object for the given variable."""
+
     # We use a callable so that we don't have to evaluate this expression
     # in the case where we are trying to restore instead of save.
     def tensor():

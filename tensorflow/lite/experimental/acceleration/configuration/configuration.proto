@@ -32,7 +32,7 @@ package tflite.proto;
 // compatibility list entries have been developed for and what settings are used
 // for NNAPI.
 enum ExecutionPreference {
-  // Match any selected preference. Whitelist (semantically - value is same as
+  // Match any selected preference. Allowlist (semantically - value is same as
   // on input).
   ANY = 0;
   // Match low latency preference. Both compatibility list and input.

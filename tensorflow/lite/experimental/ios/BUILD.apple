@@ -12,9 +12,9 @@ package(
 )
 
 sh_binary(
-    name = "hide_symbols_with_whitelist",
+    name = "hide_symbols_with_allowlist",
     srcs = [
-        "hide_symbols_with_whitelist.sh",
+        "hide_symbols_with_allowlist.sh",
     ],
 )
 
@@ -53,9 +53,9 @@ tflite_ios_static_framework(
         ":xnnpack_delegate.h",
         "//tensorflow/lite/c:common.h",
     ],
+    allowlist_symbols_file = ":allowlist_TensorFlowLiteC.txt",
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    whitelist_symbols_file = ":whitelist_TensorFlowLiteC.txt",
     deps = [
         ":tensorflow_lite_c",
     ],
@@ -101,9 +101,9 @@ tflite_ios_static_framework(
     hdrs = [
         ":coreml_delegate.h",
     ],
+    allowlist_symbols_file = ":allowlist_TensorFlowLiteCCoreML.txt",
     bundle_name = "TensorFlowLiteCCoreML",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    whitelist_symbols_file = ":whitelist_TensorFlowLiteCCoreML.txt",
     deps = [
         "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
     ],
@@ -120,9 +120,9 @@ tflite_ios_static_framework(
     hdrs = [
         "//tensorflow/lite/delegates/gpu:metal_delegate.h",
     ],
+    allowlist_symbols_file = ":allowlist_TensorFlowLiteCMetal.txt",
     bundle_name = "TensorFlowLiteCMetal",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    whitelist_symbols_file = ":whitelist_TensorFlowLiteCMetal.txt",
     deps = [
         "//tensorflow/lite/delegates/gpu:metal_delegate",
     ],

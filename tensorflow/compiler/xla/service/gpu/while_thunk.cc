@@ -24,20 +24,20 @@ namespace xla {
 namespace gpu {
 
 WhileThunk::WhileThunk(
+    ThunkInfo thunk_info,
     const BufferAllocation::Slice& condition_result_buffer_index,
     std::unique_ptr<ThunkSequence> condition_thunk_sequence,
-    std::unique_ptr<ThunkSequence> body_thunk_sequence,
-    const HloInstruction* hlo)
-    : Thunk(Kind::kWhile, hlo),
+    std::unique_ptr<ThunkSequence> body_thunk_sequence)
+    : Thunk(Kind::kWhile, thunk_info),
       condition_result_buffer_index_(condition_result_buffer_index),
       // Pass nullptr as the HloInstruction* to the condition_thunk_sequence_
       // and body_thunk_sequence_ constructors because these SequentialThunks
       // are logically "part of" this WhileThunk, and shouldn't be profiled
       // separately from it.
       condition_thunk_sequence_(absl::make_unique<SequentialThunk>(
-          std::move(*condition_thunk_sequence), nullptr)),
+          ThunkInfo(), std::move(*condition_thunk_sequence))),
       body_thunk_sequence_(absl::make_unique<SequentialThunk>(
-          std::move(*body_thunk_sequence), nullptr)) {}
+          ThunkInfo(), std::move(*body_thunk_sequence))) {}
 
 void WhileThunk::ComputeAnnotations() {
   Thunk::ComputeAnnotations();
@@ -61,7 +61,7 @@ Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.buffer_allocations->GetDeviceAddress(
           condition_result_buffer_index_);
 
-  auto op_profiler = profiler.MakeScopedInstructionProfiler(hlo_instruction());
+  auto op_profiler = profiler.MakeScopedInstructionProfiler(profile_index());
   while (true) {
     // Invoke thunk sequence for while 'condition' computation.
     profiler.StartHloComputation();

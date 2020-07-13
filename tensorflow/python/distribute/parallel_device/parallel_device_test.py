@@ -217,6 +217,42 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       outputs = self.device.unpack(v)
     self.assertAllClose([-1., 3.], outputs)
 
+  def _assert_close_to_non_parallel(self, computation):
+    """Asserts that replication of `computation` works and is equivalent."""
+    with ops.device(self.device.name):
+      parallel_result = computation()
+    non_parallel_result = computation()
+    # The computations should have the same number and structure of Tensor
+    # objects, even though the tensors themselves will be on different devices
+    # and represent different numbers of values.
+    nest.assert_same_structure(parallel_result, non_parallel_result)
+    non_parallel_flat = nest.flatten(non_parallel_result)
+    parallel_flat = nest.flatten(parallel_result)
+    self.assertGreater(len(parallel_flat), 0)
+    for non_parallel, parallel in zip(non_parallel_flat, parallel_flat):
+      self.assertEqual(self.device.name, parallel.device)
+      self.assertNotEqual(self.device.name, non_parallel.device)
+      for parallel_component in self.device.unpack(parallel):
+        self.assertAllClose(non_parallel, parallel_component)
+
+  def test_euclidean_norm(self):
+    def _test_fn():
+      with backprop.GradientTape() as tape:
+        x = array_ops.ones([5, 5])
+        tape.watch(x)
+        y = math_ops.reduce_euclidean_norm(x, axis=constant_op.constant(1))
+      return y, tape.gradient(y, x)
+    self._assert_close_to_non_parallel(_test_fn)
+
+  def test_reduce_sum(self):
+    def _test_fn():
+      with backprop.GradientTape() as tape:
+        x = array_ops.ones([5, 5])
+        tape.watch(x)
+        y = math_ops.reduce_sum(x, axis=constant_op.constant(1))
+      return y, tape.gradient(y, x)
+    self._assert_close_to_non_parallel(_test_fn)
+
 
 class LayerTests(_VirtualDeviceTestCase):
 

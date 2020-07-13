@@ -287,6 +287,11 @@ CreateTPUExtractHeadTailOutsideCompilationPass();
 // that are only used for host computation.
 std::unique_ptr<OperationPass<FuncOp>> CreateTPUHostComputationExpansionPass();
 
+// Creates a pass that updates inputs to TPU embedding layer enqueue ops so that
+// correct ops are invoked during training and evaluation.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateTPUUpdateEmbeddingEnqueueOpInputsPass();
+
 // Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
 // ops to a separate parallel_execute region to run on CPU.
 std::unique_ptr<OperationPass<ModuleOp>>

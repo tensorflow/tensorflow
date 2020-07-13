@@ -35,7 +35,7 @@ def HLO_Complex : Complex<AnyTypeOf<[F32, F64]>>;
 defvar BroadcastDimAttr = I64ElementsAttr;
 
 //===----------------------------------------------------------------------===//
-// XLA on tensors type definitions.
+// MHLO on tensors type definitions.
 //===----------------------------------------------------------------------===//
 
 // Token type.
@@ -78,7 +78,7 @@ def HLO_StaticShapeTensor : StaticShapeTensorOf<[
       AnyFloat, HLO_Pred, HLO_Int, HLO_Complex]>;
 
 //===----------------------------------------------------------------------===//
-// XLA on tensors combined type definitions.
+// MHLO on tensors combined type definitions.
 //===----------------------------------------------------------------------===//
 
 // Any integer or floating-point tensor types
@@ -97,7 +97,7 @@ def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, HLO_Complex]>;
 def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
 
 //===----------------------------------------------------------------------===//
-// XLA nullary op definitions.
+// MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
 
 class BASE_HLO_ConstOp {
@@ -117,7 +117,7 @@ class BASE_HLO_IotaOp {
 }
 
 //===----------------------------------------------------------------------===//
-// XLA unary elementwise op definitions.
+// MHLO unary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
