@@ -774,7 +774,7 @@ void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
   std::vector<std::string> use_names;
   use_times.reserve(uses.size());
   use_names.reserve(uses.size());
-  for (auto use : uses) {
+  for (const auto& use : uses) {
     use_times.push_back(use.first);
     use_names.push_back(use.second);
   }
