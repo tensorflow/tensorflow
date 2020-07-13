@@ -64,7 +64,8 @@ XlaContext::XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder)
 string XlaContext::DebugString() const { return "XLA JIT context"; }
 
 void XlaContext::SetRetval(int index, const XlaExpression& expression) {
-  if (retvals_.size() <= index) {
+  const int64 retvals_size = retvals_.size();
+  if (retvals_size <= index) {
     retvals_.resize(index + 1);
   }
   retvals_[index] = expression;

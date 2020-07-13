@@ -470,20 +470,8 @@ Status GetOrCreateKernelAndDevice(
 
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
-      PrioritizedDeviceTypeVector supported_devs;
-      auto device_type_list = ctx.prioritized_device_type_list();
       TF_RETURN_IF_ERROR(
-          SupportedDeviceTypesForNode(*device_type_list, ndef, &supported_devs,
-                                      &ctx.HostCPU()->parsed_name()));
-      if (supported_devs.empty()) {
-        return errors::NotFound(
-            "Could not find device for node: ",
-            errors::FormatNodeNameForError(ndef.name()), " = ", ndef.op(), "[",
-            SummarizeAttrs(ndef), "]", "\nAll kernels registered for op ",
-            ndef.op(), ":\n", KernelsRegisteredForOp(ndef.op()));
-      }
-      TF_RETURN_IF_ERROR(ctx.SelectDevice(op->GetDeviceParsedName(),
-                                          supported_devs, DT_INVALID, &device));
+          ctx.SelectDevice(op->GetDeviceParsedName(), ndef, &device));
 
       DVLOG(1) << "Placer place op [" << op->Name()
                << "] on device: " << device->name();
@@ -664,6 +652,39 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   }
 
   return s;
+}
+
+// Run a Pack op to pack the tensors pointed by a packed input TensorHandle if
+// the op is a primitive op.
+Status MaybePackInputTensor(EagerOperation* op) {
+  if (op->is_function()) {
+    // Functions could take packed TensorHandles as inputs.
+    return Status::OK();
+  }
+  EagerContext& ctx = op->EagerContext();
+  for (int i = 0; i < op->Inputs().size(); ++i) {
+    TensorHandle* handle = op->Inputs()[i];
+    if (handle->Type() == TensorHandle::PACKED) {
+      EagerOperation pack_op(&ctx);
+      TF_RETURN_IF_ERROR(pack_op.Reset("Pack", /*device_name=*/nullptr,
+                                       /*remote=*/false, /*executor=*/nullptr));
+      pack_op.MutableAttrs()->Set("N", handle->NumPackedHandles());
+      pack_op.MutableAttrs()->Set("T", handle->dtype);
+      for (int i = 0; i < handle->NumPackedHandles(); ++i) {
+        tensorflow::TensorHandle* h = nullptr;
+        TF_RETURN_IF_ERROR(handle->ExtractPackedHandle(i, &h));
+        TF_RETURN_IF_ERROR(pack_op.AddInput(h));
+      }
+      int num_retvals = 1;
+      absl::FixedArray<tensorflow::TensorHandle*> retvals(num_retvals);
+      TF_RETURN_IF_ERROR(
+          EagerLocalExecute(&pack_op, retvals.data(), &num_retvals));
+      tensorflow::TensorHandle* ret = retvals.at(0);
+      op->UpdateInput(i, ret);
+      ret->Unref();
+    }
+  }
+  return Status::OK();
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -951,6 +972,7 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
     if (out_op) {
       op = out_op.get();
     }
+    TF_RETURN_IF_ERROR(MaybePackInputTensor(op));
     return EagerLocalExecute(op, retvals, num_retvals);
   }
 

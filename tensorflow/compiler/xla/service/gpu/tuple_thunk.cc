@@ -34,7 +34,7 @@ Status TupleThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   SafeH2DMemcpy(se::DeviceMemory<void*>(
                     buffer_allocations.GetDeviceAddress(dest_buffer_)),
                 std::move(tuple_data), n, &stream,

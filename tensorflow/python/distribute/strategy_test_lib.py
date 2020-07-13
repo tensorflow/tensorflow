@@ -52,6 +52,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_util
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 
 
 class _TestException(Exception):
@@ -113,18 +114,27 @@ def _events_from_logdir(test_case, logdir):
   return result
 
 
+def create_variable_like_keras_layer(name, shape, dtype):
+  """Utitlity for create variables that works like variable in keras layer."""
+  initializer = functools.partial(
+      init_ops_v2.GlorotUniform(), shape, dtype=dtype)
+  return variables.Variable(
+      initial_value=initializer, name=name, trainable=True)
+
+
+def is_optimizer_v2_instance(optimizer_obj):
+  # For a optimizer instance, the v2 implementation has var_list as a required
+  # argument.
+  arg_spec = tf_inspect.getfullargspec(optimizer_obj.minimize)
+  return "var_list" in arg_spec.args[:-len(arg_spec.defaults)]
+
+
 class DistributionTestBase(test.TestCase):
   """Some tests that should work with any DistributionStrategy."""
 
-  def _create_variable_like_keras_dense_layer(self, name, shape, dtype):
-    initializer = functools.partial(
-        init_ops_v2.GlorotUniform(), shape, dtype=dtype)
-    return variables.Variable(
-        initial_value=initializer, name=name, trainable=True)
-
   def _test_minimize_loss_eager(self, d):
     with d.scope():
-      kernel = self._create_variable_like_keras_dense_layer(
+      kernel = create_variable_like_keras_layer(
           name="kernel", shape=(1, 1), dtype=dtypes.float32)
       def loss(x):
         y = array_ops.reshape(
@@ -182,7 +192,7 @@ class DistributionTestBase(test.TestCase):
          ops.Graph().as_default(), \
          self.cached_session(config=config) as sess, \
          d.scope():
-      kernel = self._create_variable_like_keras_dense_layer(
+      kernel = create_variable_like_keras_layer(
           name="kernel", shape=(1, 1), dtype=dtypes.float32)
 
       def loss(x):

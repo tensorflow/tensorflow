@@ -18,8 +18,8 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/mlir/xla/ir/chlo_ops.td"
-include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
+include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
+include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 def SignedIntTensor : TensorOf<[I1, I8, I16, I32, I64]>;
 
@@ -259,7 +259,7 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis)),
 //===----------------------------------------------------------------------===//
 
 def CastElementsToI64Elements : NativeCodeCall<
-  "xla::ConvertElementsAttr("
+  "hlo::ConvertElementsAttr("
     "$0, $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
 
 def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
@@ -339,18 +339,6 @@ def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
           (TF_TransposeOp $b, (TF_ConstOp (Get2DTransposePerm $transpose_b))),
           /*precision_config=*/(NullArrayAttr))>;
 
-
-//===----------------------------------------------------------------------===//
-// SparseMatMul op patterns.
-//===----------------------------------------------------------------------===//
-
-// Ignores the sparseness hints and translates tf.SparseMatMul to tf.MatMul
-// until we will have an implementation that can use the information.
-def SparseMatMulToMatMul : Pat<(TF_SparseMatMulOp $a, $b, $a_sparse, $b_sparse,
-                                $transpose_a, $transpose_b),
-                               (TF_MatMulOp $a, $b, $transpose_a,
-                                $transpose_b)>;
-
 //===----------------------------------------------------------------------===//
 // MatrixBandPart op pattern.
 //===----------------------------------------------------------------------===//
@@ -366,7 +354,7 @@ class GetDimensionSizeFromEnd<string dimFromEnd>: NativeCodeCall<
 // For now, this op needs to be created in C++ because the expected output type
 // cannot be inferred.
 class createIotaOp<string dim>: NativeCodeCall<
-  "$_builder.create<xla_hlo::IotaOp>($0.getOwner()->getLoc(), "
+  "$_builder.create<mhlo::IotaOp>($0.getOwner()->getLoc(), "
   "Get2DTensorType($1), $_builder.getI64IntegerAttr(" # dim # "))">;
 
 // This op needs to be created in C++ because the generated Convert Op has no

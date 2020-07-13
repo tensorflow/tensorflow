@@ -53,6 +53,10 @@ and the following optional parameters:
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
     and the path to include the name of the output CSV; otherwise results are
     printed to `stdout`.
+*  `verbose`: `bool` (default=false) \
+    Whether to log parameters whose values are not set. By default, only log
+    those parameters that are set by parsing their values from the commandline
+    flags.
 
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by
@@ -77,8 +81,10 @@ Note when `use_legacy_nnapi` is selected, this parameter won't work.
     Note some Android P devices will fail to use NNAPI for models in
     `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
 *   `nnapi_execution_preference`: `str` (default="")
-*   `nnapi_execution_priority`: `str` (default="")
-*   `nnapi_accelerator_name`: `str` (default="")
+*   `nnapi_execution_priority`: `str` (default="") \
+    Note this requires Anroid 11+.
+*   `nnapi_accelerator_name`: `str` (default="") \
+    Note this requires Anroid 10+.
 *   `disable_nnapi_cpu`: `bool` (default=false)
 *   `nnapi_allow_fp16`: `bool` (default=false)
 
@@ -291,3 +297,28 @@ some additional parameters as detailed below.
 *   `random_shuffle_benchmark_runs`: `bool` (default=true) \
     Whether to perform all benchmark runs, each of which has different
     performance options, in a random order.
+
+## Build the benchmark tool with Tensorflow ops support
+
+You can build the benchmark tool with [Tensorflow operators support](https://www.tensorflow.org/lite/guide/ops_select).
+
+### How to build
+
+To build the tool, you need to use 'benchmark_model_plus_flex' target with
+'--config=monolithic' option.
+
+```
+bazel build -c opt \
+  --config=monolithic \
+  tensorflow/lite/tools/benchmark:benchmark_model_plus_flex
+```
+
+### How to benchmark tflite model with Tensorflow ops
+
+Tensorflow ops support just works the benchmark tool is built with Tensorflow
+ops support. It doesn't require any additional option to use it.
+
+```
+bazel-bin/tensorflow/lite/tools/benchmark/benchmark_model_plus_flex \
+  --graph=model_converted_with_TF_ops.tflite \
+```

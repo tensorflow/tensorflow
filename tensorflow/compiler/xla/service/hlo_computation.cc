@@ -249,12 +249,7 @@ bool HloComputation::HasSideEffect() const {
 }
 
 bool HloComputation::IsMarkedAsDead(const HloInstruction* inst) {
-  for (auto& to_be_delete : to_be_deleted_) {
-    if (to_be_delete.get() == inst) {
-      return true;
-    }
-  }
-  return false;
+  return inst->IsMarkedAsDead();
 }
 
 Status HloComputation::RemoveInstructionAndUnusedOperands(
@@ -320,6 +315,7 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   (*inst_it->second)->set_parent(nullptr);
   to_be_deleted_.emplace_back(inst_it->second->release());
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
+  to_be_deleted_.back()->MarkAsDead();
   instructions_.erase(inst_it->second);
   instruction_iterators_.erase(inst_it);
   return Status::OK();
@@ -549,7 +545,11 @@ string HloComputation::ToString(
     if (options.print_percent()) {
       s << "%";
     }
-    s << PrintName(name(), options.print_ids()) << " ";
+    if (options.print_ids() || !IsEntryComputation()) {
+      // Exclude entry computation's name because it includes and leads to
+      // non-deterministic fingerprint.
+      s << PrintName(name(), options.print_ids()) << " ";
+    }
   }
 
   if (options.print_program_shape()) {

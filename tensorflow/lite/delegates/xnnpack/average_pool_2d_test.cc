@@ -25,6 +25,60 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
+TEST(AveragePool2D, UnitPoolSamePadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto input_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(5, 16), std::ref(rng));
+
+  Pool2DTester()
+      .BatchSize(batch_rng())
+      .InputHeight(input_rng())
+      .InputWidth(input_rng())
+      .Channels(channel_rng())
+      .PoolingHeight(1)
+      .PoolingWidth(1)
+      .StrideHeight(1)
+      .StrideWidth(1)
+      .SamePadding()
+      .Test(BuiltinOperator_AVERAGE_POOL_2D, xnnpack_delegate.get());
+}
+
+TEST(AveragePool2D, UnitPoolValidPadding) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
+  auto input_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(10, 25), std::ref(rng));
+  auto channel_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(5, 16), std::ref(rng));
+
+  Pool2DTester()
+      .BatchSize(batch_rng())
+      .InputHeight(input_rng())
+      .InputWidth(input_rng())
+      .Channels(channel_rng())
+      .PoolingHeight(1)
+      .PoolingWidth(1)
+      .StrideHeight(1)
+      .StrideWidth(1)
+      .ValidPadding()
+      .Test(BuiltinOperator_AVERAGE_POOL_2D, xnnpack_delegate.get());
+}
+
 TEST(AveragePool2D, EqualPoolAndStrideWithSamePadding) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),

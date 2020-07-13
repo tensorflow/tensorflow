@@ -36,6 +36,7 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
+constexpr int kMaxChannels = 256;
 
 // Depthwise conv is quantized along dimension 3:
 // https://www.tensorflow.org/lite/performance/quantization_spec
@@ -49,8 +50,9 @@ struct OpData {
   int output_shift;
 
   // Per channel output multiplier and shift.
-  int32_t* per_channel_output_multiplier;
-  int32_t* per_channel_output_shift;
+  // TODO: Allocate dynamic buffers when b/158779832 is resolved
+  int32_t per_channel_output_multiplier[kMaxChannels];
+  int32_t per_channel_output_shift[kMaxChannels];
   // The range of the fused activation layer. For example for kNone and
   // uint8_t these would be 0 and 255.
   int32_t output_activation_min;
@@ -129,13 +131,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // Allocate memory for per-channel quantization parameters
     const int num_channels =
         filter->dims->data[kDepthwiseConvQuantizedDimension];
-    // Dynamically allocate per-channel quantization parameters.
-    TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-        context, num_channels * sizeof(int32_t),
-        reinterpret_cast<void**>(&data->per_channel_output_multiplier)));
-    TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-        context, num_channels * sizeof(int32_t),
-        reinterpret_cast<void**>(&data->per_channel_output_shift)));
+    TFLITE_DCHECK_LE(num_channels, kMaxChannels);
+
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
 
@@ -235,8 +232,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
 }
 
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
-                             TfLiteDepthwiseConvParams* params,
-                             const OpData* data, const TfLiteTensor* input,
+                             TfLiteDepthwiseConvParams* params, OpData* data,
+                             const TfLiteTensor* input,
                              const TfLiteTensor* filter,
                              const TfLiteTensor* bias, TfLiteTensor* output) {
   cmsis_nn_dw_conv_params dw_conv_params;
@@ -408,7 +405,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   auto* params =
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
-  const OpData& data = *(static_cast<const OpData*>(node->user_data));
+  OpData& data = *(static_cast<OpData*>(node->user_data));
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
@@ -439,16 +436,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace depthwise_conv
 
-TfLiteRegistration* Register_DEPTHWISE_CONV_2D() {
-  static TfLiteRegistration r = {/*init=*/depthwise_conv::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/depthwise_conv::Prepare,
-                                 /*invoke=*/depthwise_conv::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_DEPTHWISE_CONV_2D() {
+  return {/*init=*/depthwise_conv::Init,
+          /*free=*/nullptr,
+          /*prepare=*/depthwise_conv::Prepare,
+          /*invoke=*/depthwise_conv::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

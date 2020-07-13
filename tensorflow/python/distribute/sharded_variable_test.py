@@ -173,23 +173,23 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual([3., 2.], root.train([0, 1]).numpy())
 
   def test_validation_errors(self):
-    with self.assertRaisesRegexp(ValueError, 'Expected a list of '):
+    with self.assertRaisesRegex(ValueError, 'Expected a list of '):
       sharded_variable.ShardedVariable(
           [variables_lib.Variable([0]), 'not-a-variable'])
 
-    with self.assertRaisesRegexp(ValueError, 'must have the same dtype'):
+    with self.assertRaisesRegex(ValueError, 'must have the same dtype'):
       sharded_variable.ShardedVariable([
           variables_lib.Variable([0], dtype='int64'),
           variables_lib.Variable([1], dtype='int32')
       ])
 
-    with self.assertRaisesRegexp(ValueError, 'the same shapes except'):
+    with self.assertRaisesRegex(ValueError, 'the same shapes except'):
       sharded_variable.ShardedVariable([
           variables_lib.Variable(array_ops.ones((5, 10))),
           variables_lib.Variable(array_ops.ones((5, 20)))
       ])
 
-    with self.assertRaisesRegexp(ValueError, '`SaveSliceInfo` should not'):
+    with self.assertRaisesRegex(ValueError, '`SaveSliceInfo` should not'):
       v = variables_lib.Variable([0])
       v._set_save_slice_info(
           variables_lib.Variable.SaveSliceInfo(

@@ -76,11 +76,12 @@ class LoggingWrapper {
       tflite::logging::LoggingWrapper::LogSeverity::severity) \
       .Stream()
 
-#define TFLITE_TOOLS_CHECK(condition)                      \
-  tflite::logging::LoggingWrapper(                         \
-      tflite::logging::LoggingWrapper::LogSeverity::FATAL, \
-      (condition) ? false : true)                          \
+#define TFLITE_MAY_LOG(severity, should_log)                                \
+  tflite::logging::LoggingWrapper(                                          \
+      tflite::logging::LoggingWrapper::LogSeverity::severity, (should_log)) \
       .Stream()
+
+#define TFLITE_TOOLS_CHECK(condition) TFLITE_MAY_LOG(FATAL, !(condition))
 
 #define TFLITE_TOOLS_CHECK_EQ(a, b) TFLITE_TOOLS_CHECK((a) == (b))
 

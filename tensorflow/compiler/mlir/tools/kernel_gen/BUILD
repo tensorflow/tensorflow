@@ -22,11 +22,11 @@ cc_library(
         "@llvm-project//mlir:TargetNVVMIR",
         "@llvm-project//mlir:Transforms",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/xla:hlo",
-        "//tensorflow/compiler/mlir/xla:lhlo",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/xla:xla_materialize_broadcasts",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/xla:xla_unfuse_batch_norm",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
@@ -41,7 +41,7 @@ cc_library(
 tf_cc_binary(
     name = "tf_to_cubin",
     srcs = ["tf_to_cubin.cc"],
-    visibility = ["//tensorflow/core/kernels/cubin_headers:__pkg__"],
+    visibility = ["//tensorflow/core/kernels/mlir_generated:__pkg__"],
     deps = [
         ":cubin_creator",
         "//tensorflow/compiler/mlir:init_mlir",

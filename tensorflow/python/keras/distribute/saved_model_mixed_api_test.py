@@ -25,8 +25,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import saved_model_test_base as test_base
 from tensorflow.python.eager import test
+from tensorflow.python.keras.distribute import saved_model_test_base as test_base
 from tensorflow.python.keras.saving import save
 
 _DEFAULT_FUNCTION_KEY = 'serving_default'

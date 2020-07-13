@@ -38,7 +38,7 @@ class AssertsTest(converter_testing.TestCase):
     tr = self.transform(f, (functions, asserts, return_statements))
 
     op = tr(constant_op.constant(False))
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, 'testmsg'):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, 'testmsg'):
       self.evaluate(op)
 
 

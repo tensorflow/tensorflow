@@ -1,6 +1,6 @@
 // RUN: tf-opt -verify-diagnostics -tf-saved-model-lift-variables-test -split-input-file %s | FileCheck %s --dump-input=fail
 
-module attributes {tf_saved_model.semantics} {
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
   // Test case: Freezing VarHandleOp ops.
 
@@ -24,7 +24,7 @@ module attributes {tf_saved_model.semantics} {
 
 // -----
 
-module attributes {tf_saved_model.semantics} {
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
   // Test case: Freezing shared VarHandleOp ops.
 

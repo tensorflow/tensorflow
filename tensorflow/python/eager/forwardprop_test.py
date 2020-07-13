@@ -282,7 +282,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   def testJVPFunctionRaisesError(self):
     sum_outputs = (constant_op.constant(6.),)
 
-    with self.assertRaisesRegexp(ValueError, r".*was expected to be of shape*"):
+    with self.assertRaisesRegex(ValueError, r".*was expected to be of shape*"):
       forwardprop._jvp_dispatch(
           op_name="Add",
           attr_tuple=(),
@@ -343,7 +343,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testMultipleWatchesAdd(self):
     x = constant_op.constant(-2.)
-    with self.assertRaisesRegexp(ValueError, "multiple times"):
+    with self.assertRaisesRegex(ValueError, "multiple times"):
       with forwardprop.ForwardAccumulator(
           [x, x], [1., 2.]):
         pass
@@ -365,7 +365,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(1.5, acc.jvp(x))
       y = 4. * x
       self.assertAllClose(6., acc.jvp(y))
-      with self.assertRaisesRegexp(ValueError, "already recording"):
+      with self.assertRaisesRegex(ValueError, "already recording"):
         with acc:
           pass
     z = 4. * x
@@ -434,8 +434,8 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     def f(x):
       return math_ops.reduce_prod(math_ops.tanh(x)**2)
 
-    with self.assertRaisesRegexp(NotImplementedError,
-                                 "recompute_grad tried to transpose"):
+    with self.assertRaisesRegex(NotImplementedError,
+                                "recompute_grad tried to transpose"):
       primals = [constant_op.constant([1.])]
       sym_jac_fwd = _jacfwd(f, primals)
 
@@ -450,7 +450,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     c = constant_op.constant(1.)
     d = constant_op.constant(2.)
     with forwardprop.ForwardAccumulator(c, d):
-      with self.assertRaisesRegexp(ValueError, "test_error_string"):
+      with self.assertRaisesRegex(ValueError, "test_error_string"):
         f(c)
 
   @parameterized.named_parameters(

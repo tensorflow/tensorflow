@@ -247,11 +247,19 @@ def resolve(node, source, context_filepath, context_lineno, context_col_offset):
   # TODO(mdan): Pull this to a separate utility.
   code_reader = six.StringIO(source)
   comments_map = {}
-  for token in tokenize.generate_tokens(code_reader.readline):
-    tok_type, tok_string, loc, _, _ = token
-    srow, _ = loc
-    if tok_type == tokenize.COMMENT:
-      comments_map[srow] = tok_string.strip()[1:].strip()
+  try:
+    for token in tokenize.generate_tokens(code_reader.readline):
+      tok_type, tok_string, loc, _, _ = token
+      srow, _ = loc
+      if tok_type == tokenize.COMMENT:
+        comments_map[srow] = tok_string.strip()[1:].strip()
+  except tokenize.TokenError:
+    if isinstance(node, gast.Lambda):
+      # Source code resolution in older Python versions is brittle for
+      # lambda functions, and may contain garbage.
+      pass
+    else:
+      raise
 
   source_lines = source.split('\n')
   visitor = OriginResolver(node, source_lines, comments_map,
