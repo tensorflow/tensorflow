@@ -45,8 +45,15 @@ limitations under the License.
 extern "C" {
 #endif
 
-// Allocator Attributes used for tensor allocation 
-struct TF_AllocatorAttributes { 
+// Macro used to calculate struct size for maintaining ABI stability across 
+// different struct implementations. 
+#ifndef TF_OFFSET_OF_END
+#define TF_OFFSET_OF_END(TYPE, MEMBER) (offsetof(TYPE, MEMBER) + \
+    sizeof(((TYPE *)0)->MEMBER))
+#endif // TF_OFFSET_OF_END
+
+// Allocator Attributes used for tensor allocation. 
+typedef struct TF_AllocatorAttributes { 
   size_t struct_size; 
   unsigned char on_host; 
 } TF_AllocatorAttributes; 
