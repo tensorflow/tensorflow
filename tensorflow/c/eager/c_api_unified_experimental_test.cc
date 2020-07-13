@@ -117,7 +117,7 @@ TEST_P(UnifiedCAPI, TestBasicEagerMatMul) {
 
   float vals [] = {0.0f,0.0f,0.0f,0.0f};
   TFE_Context* eager_ctx = TF_ExecutionContextGetTFEContext(ctx,status.get());
-  TFE_TensorHandle* t = TestMatrixTensorHandleWithInput(eager_ctx, vals, dims,num_dims); //, dims[0],dims[1]);
+  TFE_TensorHandle* t = TestMatrixTensorHandleWithInput(eager_ctx, vals, dims,num_dims);
   
   TF_AbstractTensor* at =
       TF_CreateAbstractTensorFromEagerTensor(t, status.get()); // get abstract tensor
