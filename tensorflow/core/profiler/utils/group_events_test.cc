@@ -83,7 +83,7 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
 
   auto main_thread = host_plane_builder.GetOrCreateLine(0);
   CreateXEvent(&host_plane_builder, &main_thread, "train", 0, 100,
-               {{StatType::kStepNum, kStepNum}, {StatType::kIsRoot, 1LL}});
+               {{StatType::kStepNum, kStepNum}, {StatType::kIsRoot, int64{1}}});
   CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
                10, 90, {{StatType::kStepId, kStepId}});
 
