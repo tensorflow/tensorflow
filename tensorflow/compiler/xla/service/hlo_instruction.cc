@@ -833,6 +833,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -1615,6 +1616,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -1887,7 +1889,7 @@ Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
 
 void HloInstruction::AppendOperand(HloInstruction* operand) {
   if (operand->parent() != nullptr) {
-    CHECK(!operand->parent()->IsMarkedAsDead(operand))
+    DCHECK(!operand->parent()->IsMarkedAsDead(operand))
         << "Operand " << operand->name() << " is already marked dead";
   }
   operands_.push_back(operand);
@@ -1993,6 +1995,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -2440,6 +2443,7 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -2835,7 +2839,8 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
     : unique_id_(-1),
       opcode_(opcode),
       shape_(shape),
-      name_(HloOpcodeString(opcode)) {
+      name_(HloOpcodeString(opcode)),
+      marked_as_dead_(false) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
 }
 
@@ -2854,6 +2859,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleBatchNormInference(this);
     case HloOpcode::kBatchNormGrad:
       return visitor->HandleBatchNormGrad(this);
+    case HloOpcode::kLogistic:
+      return visitor->HandleLogistic(this);
     case HloOpcode::kSign:
       return visitor->HandleSign(this);
     case HloOpcode::kConstant:

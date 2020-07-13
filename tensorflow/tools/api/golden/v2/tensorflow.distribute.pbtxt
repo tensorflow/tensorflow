@@ -73,6 +73,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TPUStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "cluster_resolver"
     mtype: "<type \'module\'>"
   }

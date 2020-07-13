@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_OPERATION_H_
 #define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_OPERATION_H_
 
+#include <memory>
+
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
@@ -32,7 +34,6 @@ namespace tensorflow {
 // Abstract interface to an operation.
 class ImmediateExecutionOperation : public AbstractOperation {
  public:
-  static constexpr AbstractOperationKind kKind = kImmediateExecution;
   virtual void Clear() = 0;
 
   virtual const tensorflow::OpDef* OpDef() const = 0;
@@ -43,10 +44,30 @@ class ImmediateExecutionOperation : public AbstractOperation {
   // Experimental
   virtual Status SetUseXla(bool enable) = 0;
 
+  // For LLVM style RTTI.
+  static bool classof(const AbstractOperation* ptr) {
+    return ptr->getKind() == kEager || ptr->getKind() == kTfrt;
+  }
+
  protected:
-  ImmediateExecutionOperation() : AbstractOperation(kKind) {}
+  explicit ImmediateExecutionOperation(AbstractOperationKind kind)
+      : AbstractOperation(kind) {}
   ~ImmediateExecutionOperation() override {}
 };
+
+namespace internal {
+struct ImmediateExecutionOperationDeleter {
+  void operator()(ImmediateExecutionOperation* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using ImmediateOpPtr =
+    std::unique_ptr<ImmediateExecutionOperation,
+                    internal::ImmediateExecutionOperationDeleter>;
 
 }  // namespace tensorflow
 

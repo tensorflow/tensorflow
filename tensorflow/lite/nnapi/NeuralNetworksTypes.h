@@ -46,6 +46,7 @@ enum {
   ANEURALNETWORKS_TENSOR_QUANT16_SYMM = 7,
   ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL = 11,
   ANEURALNETWORKS_TENSOR_QUANT8_SYMM = 13,
+  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED = 14,
 };
 
 /**
@@ -675,5 +676,16 @@ typedef int (*ANeuralNetworksMemory_createFromDesc_fn)(
 
 typedef int (*ANeuralNetworksMemory_copy_fn)(const ANeuralNetworksMemory* src,
                                              const ANeuralNetworksMemory* dst);
+
+typedef int (*ANeuralNetworksEvent_createFromSyncFenceFd_fn)(
+    int sync_fence_fd, ANeuralNetworksEvent** event);
+
+typedef int (*ANeuralNetworksEvent_getSyncFenceFd_fn)(
+    const ANeuralNetworksEvent* event, int* sync_fence_fd);
+
+typedef int (*ANeuralNetworksExecution_startComputeWithDependencies_fn)(
+    ANeuralNetworksExecution* execution,
+    const ANeuralNetworksEvent* const* dependencies, uint32_t num_dependencies,
+    uint64_t duration, ANeuralNetworksEvent** event);
 
 #endif  // TENSORFLOW_LITE_NNAPI_NEURALNETWORKSTYPES_H_

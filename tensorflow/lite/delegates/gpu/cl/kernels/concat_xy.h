@@ -48,8 +48,6 @@ class ConcatXY : public GPUOperation {
 
   ConcatAttributes attr_;
   int tensors_count_;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 ConcatXY CreateConcatXY(const OperationDef& definition,

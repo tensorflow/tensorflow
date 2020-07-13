@@ -60,7 +60,8 @@ void FreezeGlobalTensorsPass::runOnOperation() {
 
     for (int i = 0, e = func.getNumArguments(); i < e; ++i) {
       SmallVector<TF::ReadVariableOp, 4> read_variable_ops_to_erase;
-      auto global_tensor = LookupBoundInput(func, i, symbol_table);
+      auto global_tensor =
+          LookupBoundInputOfType<GlobalTensorOp>(func, i, symbol_table);
 
       if (!global_tensor) continue;
       frozen_global_tensors.insert(global_tensor);

@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_ABSTRACT_CONTEXT_H_
 #define TENSORFLOW_C_EAGER_ABSTRACT_CONTEXT_H_
 
-#include <vector>
+#include <memory>
 
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/eager/abstract_operation.h"
@@ -32,7 +32,7 @@ namespace tensorflow {
 // environment, a traced representation etc.
 class AbstractContext {
  protected:
-  enum AbstractContextKind { kTracing, kImmediateExecution };
+  enum AbstractContextKind { kGraph, kMlir, kEager, kTfrt };
   explicit AbstractContext(AbstractContextKind kind) : kind_(kind) {}
   virtual ~AbstractContext() {}
 
@@ -63,6 +63,19 @@ class AbstractContext {
  private:
   const AbstractContextKind kind_;
 };
+
+namespace internal {
+struct AbstractContextDeleter {
+  void operator()(AbstractContext* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using AbstractContextPtr =
+    std::unique_ptr<AbstractContext, internal::AbstractContextDeleter>;
 
 }  // namespace tensorflow
 

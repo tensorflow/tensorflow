@@ -796,7 +796,7 @@ class BinaryOpTest(test.TestCase):
   def testPowNegativeExponent(self):
     for dtype in [np.int32, np.int64]:
       with test_util.force_cpu():
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors_impl.InvalidArgumentError,
             "Integers to negative integer powers are not allowed"):
           x = np.array([5, 2]).astype(dtype)
@@ -804,7 +804,7 @@ class BinaryOpTest(test.TestCase):
           self.evaluate(math_ops.pow(x, y))
 
       with test_util.force_cpu():
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors_impl.InvalidArgumentError,
             "Integers to negative integer powers are not allowed"):
           x = np.array([5, 2]).astype(dtype)
@@ -812,7 +812,7 @@ class BinaryOpTest(test.TestCase):
           self.evaluate(math_ops.pow(x, y))
 
       with test_util.force_cpu():
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors_impl.InvalidArgumentError,
             "Integers to negative integer powers are not allowed"):
           x = np.array([5, 2]).astype(dtype)
@@ -948,7 +948,7 @@ class ComparisonOpTest(test.TestCase):
     y = np.arange(0, 10).reshape([5, 2])
     for t in dtypes:
       for f in funcs:
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             (ValueError, errors.InvalidArgumentError),
             "Incompatible shapes|Dimensions must be equal"):
           f(x.astype(t), y.astype(t))

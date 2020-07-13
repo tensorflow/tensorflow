@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
@@ -36,7 +37,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h.inc"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -69,16 +69,16 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 namespace {
 
 template <typename T, size_t N>
 using InlinedVector = tensorflow::gtl::InlinedVector<T, N>;  // non-absl ok
 
-static bool IsOpWhitelisted(Operation* op) {
-  // White-listed TensorFlow ops are known to have well behaved tf2xla kernels
+static bool IsOpAllowlisted(Operation* op) {
+  // Allowlisted TensorFlow ops are known to have well behaved tf2xla kernels
   // building valid MLIR using MlirHloBuilder.
-  // TODO(hinsu): Drop explicit whitelist when MLIR based bridge is enabled for
+  // TODO(hinsu): Drop explicit allowlist when MLIR based bridge is enabled for
   // all tf2xla kernels.
   // clang-format off
   static llvm::SmallDenseSet<mlir::TypeID, 512> ops = {
@@ -88,6 +88,9 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::AddNOp>(),
     TypeID::get<TF::AddV2Op>(),
     TypeID::get<TF::AngleOp>(),
+    TypeID::get<TF::AdjustContrastv2Op>(),
+    TypeID::get<TF::AdjustHueOp>(),
+    TypeID::get<TF::AdjustSaturationOp>(),
     TypeID::get<TF::ApproximateEqualOp>(),
     TypeID::get<TF::ArgMaxOp>(),
     TypeID::get<TF::ArgMinOp>(),
@@ -127,6 +130,7 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::GatherNdOp>(),
     TypeID::get<TF::GreaterEqualOp>(),
     TypeID::get<TF::GreaterOp>(),
+    TypeID::get<TF::HSVToRGBOp>(),
     TypeID::get<TF::IFFT2DOp>(),
     TypeID::get<TF::IFFT3DOp>(),
     TypeID::get<TF::IFFTOp>(),
@@ -157,10 +161,14 @@ static bool IsOpWhitelisted(Operation* op) {
     TypeID::get<TF::PowOp>(),
     TypeID::get<TF::RFFT2DOp>(),
     TypeID::get<TF::RFFT3DOp>(),
+    TypeID::get<TF::RGBToHSVOp>(),
     TypeID::get<TF::RealDivOp>(),
     TypeID::get<TF::ReciprocalOp>(),
     TypeID::get<TF::ReciprocalGradOp>(),
     TypeID::get<TF::Relu6GradOp>(),
+    TypeID::get<TF::ResizeBilinearOp>(),
+    TypeID::get<TF::ResizeBilinearGradOp>(),
+    TypeID::get<TF::ResizeNearestNeighborOp>(),
     TypeID::get<TF::ReverseSequenceOp>(),
     TypeID::get<TF::RightShiftOp>(),
     TypeID::get<TF::RintOp>(),
@@ -312,13 +320,14 @@ LogicalResult FuncLegalizer::PrepareParams() {
 }
 
 LogicalResult FuncLegalizer::Legalize() {
+  if (func_.empty()) return success();
+
   // TensorFlow functions don't use CFGs.
-  if (func_.getBlocks().size() > 1) {
+  if (!llvm::hasSingleElement(func_)) {
     emitError(func_.getLoc()) << "requires at most one block in a TF function";
     return failure();
   }
-  if (func_.getBlocks().empty()) return success();
-  Block& block = func_.getBlocks().front();
+  Block& block = func_.front();
 
   std::vector<Operation*> ops;
   ops.reserve(block.getOperations().size());
@@ -333,7 +342,7 @@ LogicalResult FuncLegalizer::Legalize() {
 }
 
 LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
-  if (!IsOpWhitelisted(op)) return success();
+  if (!IsOpAllowlisted(op)) return success();
 
   // Only static shaped operands are supported in XLA builders for now.
   for (Type ty : op->getOperandTypes()) {
@@ -535,5 +544,5 @@ std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
   return std::make_unique<LegalizeTF>(device_type);
 }
 
-}  // end namespace xla_hlo
+}  // end namespace mhlo
 }  // end namespace mlir

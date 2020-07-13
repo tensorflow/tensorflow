@@ -158,10 +158,9 @@ class Hashing(Layer):
   def _preprocess_inputs(self, inputs):
     if isinstance(inputs, (tuple, list)):
       # If any of them is tensor or ndarray, then treat as list
-      if any([
+      if any(
           tensor_util.is_tensor(inp) or isinstance(inp, np.ndarray)
-          for inp in inputs
-      ]):
+          for inp in inputs):
         return [self._preprocess_single_input(inp) for inp in inputs]
     return self._preprocess_single_input(inputs)
 
@@ -261,15 +260,13 @@ class Hashing(Layer):
         return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
     input_shapes = [x.shape for x in input_spec]
     output_shape = self.compute_output_shape(input_shapes)
-    if any([
+    if any(
         isinstance(inp_spec, ragged_tensor.RaggedTensorSpec)
-        for inp_spec in input_spec
-    ]):
+        for inp_spec in input_spec):
       return tensor_spec.TensorSpec(shape=output_shape, dtype=dtypes.int64)
-    elif any([
+    elif any(
         isinstance(inp_spec, sparse_tensor.SparseTensorSpec)
-        for inp_spec in input_spec
-    ]):
+        for inp_spec in input_spec):
       return sparse_tensor.SparseTensorSpec(
           shape=output_shape, dtype=dtypes.int64)
     return tensor_spec.TensorSpec(shape=output_shape, dtype=dtypes.int64)

@@ -96,7 +96,7 @@ class ResourceAnalyzer {
     }
 
     func.walk([&](Operation* op) {
-      if (isa<TF::ReadVariableOp>(op) || isa<ReturnOp>(op)) {
+      if (isa<TF::ReadVariableOp, ReturnOp>(op)) {
         return;
       }
       if (auto assign_variable = dyn_cast<TF::AssignVariableOp>(op)) {

@@ -32,6 +32,7 @@ llvm_targets = [
     "ARM",
     "NVPTX",
     "PowerPC",
+    "SystemZ",
     "X86",
 ]
 
@@ -534,6 +535,23 @@ llvm_target_list = [
         ],
     },
     {
+        "name": "SystemZ",
+        "lower_name": "system_z",
+        "short_name": "SystemZ",
+        "dir_name": "SystemZ",
+        "tbl_outs": [
+            ("-gen-asm-writer", "lib/Target/SystemZ/SystemZGenAsmWriter.inc"),
+            ("-gen-asm-matcher", "lib/Target/SystemZ/SystemZGenAsmMatcher.inc"),
+            ("-gen-emitter", "lib/Target/SystemZ/SystemZGenMCCodeEmitter.inc"),
+            ("-gen-register-info", "lib/Target/SystemZ/SystemZGenRegisterInfo.inc"),
+            ("-gen-instr-info", "lib/Target/SystemZ/SystemZGenInstrInfo.inc"),
+            ("-gen-dag-isel", "lib/Target/SystemZ/SystemZGenDAGISel.inc"),
+            ("-gen-callingconv", "lib/Target/SystemZ/SystemZGenCallingConv.inc"),
+            ("-gen-subtarget", "lib/Target/SystemZ/SystemZGenSubtargetInfo.inc"),
+            ("-gen-disassembler", "lib/Target/SystemZ/SystemZGenDisassemblerTables.inc"),
+        ],
+    },
+    {
         "name": "X86",
         "lower_name": "x86",
         "short_name": "X86",
@@ -561,6 +579,7 @@ filegroup(
     name = "common_target_td_sources",
     srcs = glob([
         "include/llvm/CodeGen/*.td",
+        "include/llvm/Frontend/Directive/*.td",
         "include/llvm/IR/Intrinsics*.td",
         "include/llvm/TableGen/*.td",
         "include/llvm/Target/*.td",
@@ -666,6 +685,62 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "omp_gen",
+    tbl_outs = [("--gen-directive-decl", "include/llvm/Frontend/OpenMP/OMP.h.inc")],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/Frontend/OpenMP/OMP.td",
+    td_srcs = glob([
+        "include/llvm/Frontend/OpenMP/*.td",
+        "include/llvm/Frontend/Directive/*.td",
+    ]),
+)
+
+gentbl(
+    name = "omp_gen_impl",
+    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp.inc")],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/Frontend/OpenMP/OMP.td",
+    td_srcs = glob([
+        "include/llvm/Frontend/OpenMP/*.td",
+        "include/llvm/Frontend/Directive/*.td",
+    ]),
+)
+
+# TODO(b/159809163): autogenerate this after enabling release-mode ML
+# InlineAdvisor
+cc_library(
+    name = "Analysis",
+    srcs = glob(
+        [
+            "lib/Analysis/*.c",
+            "lib/Analysis/*.cpp",
+            "lib/Analysis/*.inc",
+            "include/llvm/Transforms/Utils/Local.h",
+            "include/llvm/Transforms/Scalar.h",
+            "lib/Analysis/*.h",
+        ],
+        exclude = [
+            "lib/Analysis/MLInlineAdvisor.cpp",
+            "lib/Analysis/ReleaseModeModelRunner.cpp",
+        ],
+    ),
+    hdrs = glob([
+        "include/llvm/Analysis/*.h",
+        "include/llvm/Analysis/*.def",
+        "include/llvm/Analysis/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":BinaryFormat",
+        ":Core",
+        ":Object",
+        ":ProfileData",
+        ":Support",
+        ":config",
+    ],
+)
+
 ########################## Begin generated content ##########################
 cc_library(
     name = "AArch64AsmParser",
@@ -698,6 +773,7 @@ cc_library(
         "lib/Target/AArch64/*.c",
         "lib/Target/AArch64/*.cpp",
         "lib/Target/AArch64/*.inc",
+        "lib/Target/AArch64/GISel/*.cpp",
     ]),
     hdrs = glob([
         "include/llvm/Target/AArch64/*.h",
@@ -1381,32 +1457,6 @@ cc_library(
 )
 
 cc_library(
-    name = "Analysis",
-    srcs = glob([
-        "lib/Analysis/*.c",
-        "lib/Analysis/*.cpp",
-        "lib/Analysis/*.inc",
-        "include/llvm/Transforms/Utils/Local.h",
-        "include/llvm/Transforms/Scalar.h",
-        "lib/Analysis/*.h",
-    ]),
-    hdrs = glob([
-        "include/llvm/Analysis/*.h",
-        "include/llvm/Analysis/*.def",
-        "include/llvm/Analysis/*.inc",
-    ]),
-    copts = llvm_copts,
-    deps = [
-        ":BinaryFormat",
-        ":Core",
-        ":Object",
-        ":ProfileData",
-        ":Support",
-        ":config",
-    ],
-)
-
-cc_library(
     name = "AsmParser",
     srcs = glob([
         "lib/AsmParser/*.c",
@@ -2052,6 +2102,8 @@ cc_library(
         ":Support",
         ":TransformUtils",
         ":config",
+        ":omp_gen",
+        ":omp_gen_impl",
     ],
 )
 
@@ -3888,6 +3940,7 @@ cc_library(
     deps = [
         ":MC",
         ":Support",
+        ":SystemZCommonTableGen",
         ":SystemZInfo",
         ":config",
     ],
@@ -3923,6 +3976,7 @@ cc_library(
         "lib/Target/SystemZ/TargetInfo/*.c",
         "lib/Target/SystemZ/TargetInfo/*.cpp",
         "lib/Target/SystemZ/TargetInfo/*.inc",
+        "lib/Target/SystemZ/MCTargetDesc/*.h",
     ]),
     hdrs = glob([
         "include/llvm/Target/SystemZ/TargetInfo/*.h",
@@ -3933,6 +3987,7 @@ cc_library(
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/SystemZ"],
     deps = [
         ":Support",
+        ":SystemZCommonTableGen",
         ":config",
     ],
 )

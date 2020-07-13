@@ -109,7 +109,7 @@ class TestModuleNaming(test_util.TensorFlowTestCase):
 
   def test_invalid_name(self):
     msg = ".* is not a valid module name"
-    with self.assertRaisesRegexp(ValueError, msg):
+    with self.assertRaisesRegex(ValueError, msg):
       module.Module(name="$Foo")
 
   @test_util.run_in_graph_and_eager_modes
@@ -303,7 +303,7 @@ class AbcTest(test_util.TensorFlowTestCase):
 
   def testAbstract(self):
     msg = "Can't instantiate .* abstract methods"
-    with self.assertRaisesRegexp(TypeError, msg):
+    with self.assertRaisesRegex(TypeError, msg):
       AbstractModule()  # pylint: disable=abstract-class-instantiated
 
   def testConcrete(self):

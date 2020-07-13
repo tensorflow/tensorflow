@@ -14,6 +14,7 @@ py_library(
         "np_array_ops.py",
         "np_arrays.py",
         "np_dtypes.py",
+        "np_export.py",
         "np_math_ops.py",
         "np_random.py",
         "np_utils.py",
@@ -65,16 +66,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "np_backprop_test",
-    srcs = ["np_backprop_test.py"],
-    deps = [
-        ":numpy",
-        "//tensorflow/python:platform",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
     name = "np_logic_test",
     srcs = ["np_logic_test.py"],
     deps = [
@@ -121,7 +112,7 @@ cuda_py_test(
     srcs = ["np_interop_test.py"],
     deps = [
         ":numpy",
-        "//tensorflow/python:platform",
-        "@absl_py//absl/testing:parameterized",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )

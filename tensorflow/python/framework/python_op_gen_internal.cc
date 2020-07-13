@@ -513,10 +513,11 @@ const ApiDef::Attr* FindAttr(StringPiece name, const ApiDef& api_def) {
 }
 
 GenPythonOp::GenPythonOp(const OpDef& op_def, const ApiDef& api_def,
-                         const string& function_name)
+                         const string& function_name, bool add_type_annotations)
     : op_def_(op_def),
       api_def_(api_def),
       function_name_(function_name),
+      add_type_annotations_(add_type_annotations),
       num_outs_(op_def.output_arg_size()) {}
 
 GenPythonOp::~GenPythonOp() {}
@@ -561,11 +562,12 @@ string GenPythonOp::Code() {
   // from the end of args_no_default, and adding args_no_default.
   attrs_.reserve(params_no_default.size() - op_def_.input_arg_size() +
                  params_with_default.size());
-  for (int i = op_def_.input_arg_size(); i < params_no_default.size(); ++i) {
+  for (int i = op_def_.input_arg_size(), iter_limit = params_no_default.size();
+       i < iter_limit; ++i) {
     attrs_.push_back(params_no_default[i].GetName());
   }
-  for (int i = 0; i < params_with_default.size(); ++i) {
-    attrs_.push_back(params_with_default[i].GetName());
+  for (const auto& param : params_with_default) {
+    attrs_.push_back(param.GetName());
   }
 
   param_names_.reserve(params_no_default.size() + params_with_default.size());

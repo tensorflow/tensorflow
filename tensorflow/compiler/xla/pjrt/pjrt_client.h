@@ -20,15 +20,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -403,6 +406,10 @@ class PjRtBuffer {
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or_;
   };
 
+  // Returns a buffer with uninitialized contents.
+  static StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitialized(
+      const Shape& shape, PjRtClient* client, Device* device);
+
   // Describes the semantics the caller to FromHostBuffer expects from the
   // runtime, in a total order from most restrictive to least restrictive.
   enum class HostBufferSemantics {
@@ -478,13 +485,20 @@ class PjRtBuffer {
 
   // Returns the buffer's value as an XLA Literal. If the value has previously
   // been prefetched to the host, then returns the prefetched version, otherwise
-  // copies the buffer to the host. Blocks until the value is ready.
-  StatusOr<std::shared_ptr<Literal>> ToLiteral();
+  // copies the buffer to the host. Blocks until the value is ready. If
+  // `discard_cached_copy` is true then buffer will no longer keep hold of a
+  // cached copy of the literal (i.e. The reference to the host value will be
+  // removed.) If a layout is passed than a literal with this layout will be
+  // returned.
+  StatusOr<std::shared_ptr<Literal>> ToLiteral(
+      bool discard_cached_copy = false,
+      absl::optional<xla::Layout> layout = {});
 
   // Initiates a copy of the buffer to the host. Does not block waiting for
   // the transfer to complete. The value can be retrieved by a later call to
-  // ToLiteral().
-  Status CopyToHostAsync();
+  // ToLiteral(). If a layout is passed then a cached copy with this layout will
+  // be created.
+  Status CopyToHostAsync(absl::optional<xla::Layout> layout = {});
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
@@ -592,6 +606,14 @@ class PjRtBuffer {
   // successfully donated to an execution.
   void ConfirmDonation(TrackedDeviceBuffer* device_buffer);
 
+  // Initiates a copy of the buffer to the host. Does not block waiting for
+  // the transfer to complete. A host value is returned and if
+  // `discard_cached_copy` is false stored in an internal buffer so that future
+  // transfers don't have to transfer the data from host again. If a layout is
+  // passed then a literal of this layout will be returned and possibly cached.
+  StatusOr<std::shared_ptr<HostValue>> CopyToHostAsyncInternal(
+      bool discard_cached_copy, absl::optional<xla::Layout> layout);
+
   // Drops a hold without taking any other action. Does a sanity check that
   // buffer==device_buffer_ or device_buffer_==nullptr.
   void DropHold(ScopedHold::Type type, TrackedDeviceBuffer* buffer);
@@ -610,6 +632,8 @@ class PjRtBuffer {
 
   mutable absl::Mutex mu_;
   std::shared_ptr<TrackedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<xla::Layout, std::shared_ptr<HostValue>> host_values_
+      TF_GUARDED_BY(mu_);
   std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ TF_GUARDED_BY(mu_);
@@ -627,6 +651,12 @@ struct CompileOptions {
 
   // XLA's compilation time options.
   ExecutableBuildOptions executable_build_options;
+
+  // If true, the executable can be run on any device. May only be true if
+  // !executable_build_options.has_device_assignment(), so only applies to
+  // single-device executables. Beware: on GPUs, sometimes an executable
+  // compiled for one device doesn't run on another.
+  bool compile_portable_executable = false;
 };
 
 struct ExecuteOptions {
@@ -653,7 +683,7 @@ class PjRtExecutable {
 
   PjRtExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
                  bool parameter_is_tupled_arguments,
-                 DeviceAssignment device_assignment,
+                 std::shared_ptr<DeviceAssignment> device_assignment,
                  std::vector<std::pair<int, int>> local_logical_device_ids,
                  std::vector<Device*> local_devices, PjRtClient* client);
 
@@ -718,10 +748,12 @@ class PjRtExecutable {
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, Device* device,
-      std::vector<PjRtBuffer::ScopedHold>* device_buffers) const;
+      std::vector<PjRtBuffer::ScopedHold>* device_buffers,
+      std::shared_ptr<DeviceAssignment> device_assignment) const;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
-      int partition, const RunId& run_id, const ExecuteOptions& options) const;
+      int partition, const RunId& run_id, const ExecuteOptions& options,
+      Device* device = nullptr) const;
 
   // Create shared pointers so we can free them after the execution: with
   // asynchronous execution, the process being executed can outlive the

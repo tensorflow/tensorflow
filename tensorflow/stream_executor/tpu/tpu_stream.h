@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_STREAM_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_STREAM_H_
 
-#include "tensorflow/core/tpu/tpu_library_loader.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/stream_executor/tpu/device_memory_base_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_stream_interface.h"
@@ -46,8 +46,10 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     tensorflow::tpu::ExecutorApiFn()
         ->TpuStream_TpuEnqueueOnDeviceSendRecvLocalFn(
             stream_,
-            TpuConversions::DeviceMemoryBaseToSE_DeviceMemoryBase(send_buffer),
-            TpuConversions::DeviceMemoryBaseToSE_DeviceMemoryBase(recv_buffer),
+            DeviceMemoryBaseHelper::DeviceMemoryBaseToSE_DeviceMemoryBase(
+                send_buffer),
+            DeviceMemoryBaseHelper::DeviceMemoryBaseToSE_DeviceMemoryBase(
+                recv_buffer),
             status.c_status);
     return status.status();
   }

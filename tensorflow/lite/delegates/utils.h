@@ -33,7 +33,8 @@ namespace tflite {
 namespace delegates {
 
 // Creates a new Read/Write tensor having the same shape as the original, but
-// with a different type.
+// with a different type. Note that this might void existing references to
+// tensors.
 TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
                                               const int original_tensor_index,
                                               TfLiteType new_type,

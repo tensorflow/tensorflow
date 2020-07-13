@@ -59,7 +59,7 @@ load(
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.2.0"
+VERSION = "2.4.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 
 # Sanitize a dependency so that it works correctly from code that includes
@@ -1932,6 +1932,10 @@ register_extension_info(
 def py_strict_library(name, **kwargs):
     native.py_library(name = name, **kwargs)
 
+# Placeholder to use until bazel supports py_strict_test.
+def py_strict_test(name, **kwargs):
+    py_test(name = name, **kwargs)
+
 def tf_custom_op_py_library(
         name,
         srcs = [],
@@ -2141,6 +2145,12 @@ def pywrap_tensorflow_macro(
 # This macro is for running python tests against system installed pip package
 # on Windows.
 #
+# This macro can also enable testing with the experimental mlir bridge when
+# enable_mlir_bridge is true. When it is enabled tests are run both with and without
+# the mlir bridge. Support for enabling the mlir bridge is added here because
+# it allows all tensorflow tests to be configured to be run with and without the
+# mlir bridge.
+#
 # py_test is built as an executable python zip file on Windows, which contains all
 # dependencies of the target. Because of the C++ extensions, it would be very
 # inefficient if the py_test zips all runfiles, plus we don't need them when running
@@ -2158,12 +2168,19 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
     # Python version placeholder
     if kwargs.get("python_version", None) == "PY3":
         kwargs["tags"] = kwargs.get("tags", []) + ["no_oss_py2"]
+    deps = deps.to_list() if type(deps) == "depset" else deps
     native.py_test(
         # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
-            "//conditions:default": deps,
-            clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
-        }),
+                   "//conditions:default": deps,
+                   clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
+               }) +
+               select({
+                   str(Label("//tensorflow:enable_mlir_bridge")): [
+                       "//tensorflow/python:is_mlir_bridge_test_true",
+                   ],
+                   "//conditions:default": [],
+               }),
         data = data + select({
             "//conditions:default": kernels,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],

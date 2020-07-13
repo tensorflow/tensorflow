@@ -44,6 +44,7 @@ inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                                int index) {
   return &context->tensors[node->outputs->data[index]];
 }
+#ifndef TF_LITE_STATIC_MEMORY
 inline TfLiteTensor* GetTemporary(TfLiteContext* context,
                                   const TfLiteNode* node, int index) {
   return &context->tensors[node->temporaries->data[index]];
@@ -52,11 +53,12 @@ inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
                                             const TfLiteNode* node, int index) {
   return &context->tensors[node->intermediates->data[index]];
 }
-inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
-inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
 inline int NumIntermediates(const TfLiteNode* node) {
   return node->intermediates->size;
 }
+#endif  // TF_LITE_STATIC_MEMORY
+inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
+inline int NumOutputs(const TfLiteNode* node) { return node->outputs->size; }
 
 inline int64_t NumElements(const TfLiteIntArray* dims) {
   int64_t count = 1;
@@ -70,7 +72,7 @@ inline int64_t NumElements(const TfLiteTensor* t) {
   return NumElements(t->dims);
 }
 
-inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
+inline const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
                                                   const TfLiteNode* node,
                                                   int index) {
   const bool use_tensor = index < node->inputs->size &&
@@ -169,7 +171,7 @@ void CalculateActivationRange(TfLiteFusedActivation activation,
   } else if (activation == kTfLiteActRelu6) {
     *activation_min = 0;
     *activation_max = 6;
-  } else if (activation == kTfLiteActRelu1) {
+  } else if (activation == kTfLiteActReluN1To1) {
     *activation_min = -1;
     *activation_max = 1;
   } else {

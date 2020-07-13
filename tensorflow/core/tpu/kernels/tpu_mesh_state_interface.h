@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
-#include "tensorflow/core/tpu/tpu_library_loader.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 
@@ -29,7 +29,7 @@ class TpuMeshCommonState;
 
 namespace tpu {
 
-const char kTpuMeshCommonStateResourceName[] = "tpu_mesh_common_state";
+const char kTpuMeshStateInterfaceResourceName[] = "tpu_mesh_common_state";
 
 class TpuMeshStateInterface : public tensorflow::ResourceBase {
  public:
@@ -63,8 +63,8 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
     // Static device assignment enables XLA to perform certain optimization when
     // all cores are used in the replicated computation.
     return metadata.num_cores_per_replica() * metadata.num_replicas() ==
-           CompileApiFn()->TpuTopology_AvailableCoreCountFn(mesh_state_,
-                                                            tpu_core_type);
+           UtilApiFn()->TpuTopology_AvailableCoreCountFn(mesh_state_,
+                                                         tpu_core_type);
   }
 
   string DebugString() const override { return "TpuMeshStateInterface"; }

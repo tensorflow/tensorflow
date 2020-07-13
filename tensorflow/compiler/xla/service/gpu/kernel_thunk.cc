@@ -33,14 +33,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-KernelThunk::KernelThunk(absl::Span<const BufferAllocation* const> args,
-                         const string& kernel_name,
-                         const HloInstruction* hlo_instruction,
-                         int unroll_factor)
-    : Thunk(Kind::kKernel, hlo_instruction),
+KernelThunk::KernelThunk(ThunkInfo thunk_info,
+                         absl::Span<const BufferAllocation* const> args,
+                         const string& kernel_name)
+    : Thunk(Kind::kKernel, thunk_info),
       args_(args.begin(), args.end()),
-      kernel_name_(kernel_name),
-      unroll_factor_(unroll_factor) {}
+      kernel_name_(kernel_name) {}
 
 Status KernelThunk::Initialize(const GpuExecutable& executable,
                                se::StreamExecutor* executor) {
@@ -116,7 +114,7 @@ Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   return ExecuteKernelOnStream(*kernel, buffer_args,
                                launch_dimensions.threads_per_block(),
                                launch_dimensions.block_count(), params.stream);

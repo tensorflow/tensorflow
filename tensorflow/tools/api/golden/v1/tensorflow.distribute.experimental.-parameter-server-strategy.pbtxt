@@ -5,6 +5,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.distribute.distribute_lib.StrategyBase\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "cluster_resolver"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "extended"
     mtype: "<type \'property\'>"
   }

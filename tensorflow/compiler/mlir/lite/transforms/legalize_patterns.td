@@ -132,6 +132,12 @@ def LegalizeLeakyRelu : Pat<(TF_LeakyReluOp $arg, F32Attr:$a),
 
 def LegalizeLog : Pat<(TF_LogOp $arg), (TFL_LogOp $arg)>;
 
+def LegalizeLog1p : Pat<
+  (TF_Log1pOp F32Tensor:$arg),
+  (TFL_LogOp (TFL_AddOp $arg,
+                  (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+                  TFL_AF_None))>;
+
 def LegalizeNot : Pat<(TF_LogicalNotOp $arg), (TFL_LogicalNotOp $arg)>;
 
 def LegalizeLogSoftmax : Pat<(TF_LogSoftmaxOp $arg), (TFL_LogSoftmaxOp $arg)>;

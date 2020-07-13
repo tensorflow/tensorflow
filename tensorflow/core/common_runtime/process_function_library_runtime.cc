@@ -744,9 +744,20 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimization_options.device_set = dev_set.get();
   optimization_options.is_function_graph = true;
 
+  // Do not run graph optimization passes for component functions, since they
+  // have already processed the main function.
+  bool should_run_graph_passes = !options.is_component_function;
+  if (!should_run_graph_passes) {
+    VLOG(1) << "Skipping graph optimization passes when instantiating "
+               "component function "
+            << function_name;
+  }
+
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
-  TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
-      OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
+  if (should_run_graph_passes) {
+    TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
+        OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
+  }
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
@@ -758,8 +769,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(placer.Run());
 
   DumpGraph("Before running POST_PLACEMENT passes", graph.get());
-  TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
-      OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
+  if (should_run_graph_passes) {
+    TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
+        OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
+  }
 
   Device* cpu_device;
   TF_RETURN_IF_ERROR(device_mgr_->LookupDevice("CPU:0", &cpu_device));
@@ -777,8 +790,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   }
 
   DumpGraph("Before running POST_REWRITE_FOR_EXEC passes", graph.get());
-  TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
-      OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
+  if (should_run_graph_passes) {
+    TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
+        OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
+  }
 
   // Expand the nodes assigned to a CompositeDevice before graph partition to
   // avoid generating a subgraph on a virtual device for execution.
@@ -813,8 +828,10 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // Normally POST_PARTITIONING passes are run by distributed workers.
   // Distributed workers are currently not supported in this code path, so we
   // run the passes here.
-  TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
-      OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
+  if (should_run_graph_passes) {
+    TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
+        OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
+  }
   for (const auto& pair : subgraphs) {
     const auto* optimized_subgraph = pair.second.get();
     DumpGraph(
@@ -1356,11 +1373,22 @@ void ProcessFunctionLibraryRuntime::Run(
       // "Index"s of _Arg nodes are unique when all arguments are local Tensors.
       for (const auto& it : comp_data.arg_indices) {
         if (it.sub_index >= 0) {
-          return errors::InvalidArgument("Got unexpected sub_index ",
-                                         it.sub_index, " for argument ",
-                                         it.index);
+          const Tensor& t = args[it.index];
+          if (t.dtype() != DT_RESOURCE) {
+            return errors::InvalidArgument("Got unexpected sub_index ",
+                                           it.sub_index, " for argument ",
+                                           it.index);
+          }
+          const auto& handles = t.flat<ResourceHandle>();
+          if (it.sub_index >= handles.size()) {
+            return errors::InvalidArgument(
+                "Sub_index ", it.sub_index, "is out of range [0,",
+                handles.size(), ") for argument ", it.index);
+          }
+          comp_args->args.push_back(Tensor(handles(it.sub_index)));
+        } else {
+          comp_args->args.push_back(args[it.index]);
         }
-        comp_args->args.push_back(args[it.index]);
       }
       return Status::OK();
     };

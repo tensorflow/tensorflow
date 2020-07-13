@@ -26,7 +26,7 @@ namespace {
 
 bool IsActivationReluOrNone(TfLiteFusedActivation activation) {
   return (activation == kTfLiteActRelu || activation == kTfLiteActRelu6 ||
-          activation == kTfLiteActRelu1 || activation == kTfLiteActNone);
+          activation == kTfLiteActReluN1To1 || activation == kTfLiteActNone);
 }
 
 bool TensorTypeMatch(int tensor_id, TfLiteContext* context,
@@ -70,7 +70,7 @@ TfLiteStatus Get4DShape(unsigned int* batch_size, unsigned int* height_size,
   return kTfLiteOk;
 }
 
-// We maintain an op-version whitelist here to ensure we don't accept unintended
+// We maintain an op-version allowlist here to ensure we don't accept unintended
 // ops.
 bool CheckOpVersion(const TfLiteRegistration* registration) {
   switch (registration->builtin_code) {

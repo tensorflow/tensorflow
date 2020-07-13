@@ -798,36 +798,7 @@ tf_gen_op_libs(
         "ragged_conversion_ops",
         "ragged_math_ops",
     ],
-    deps = [":ragged_to_dense_util"],
-)
-
-cc_library(
-    name = "ragged_to_dense_util",
-    srcs = [
-        "ops/ragged_to_dense_util.cc",
-    ],
-    hdrs = [
-        "ops/ragged_to_dense_util.h",
-    ],
-    deps = [
-        ":framework",
-        ":protos_all_cc",
-    ],
-)
-
-tf_cc_test(
-    name = "ragged_to_dense_util_test",
-    srcs = [
-        "ops/ragged_to_dense_util_test.cc",
-    ],
-    deps = [
-        ":framework",
-        ":protos_all_cc",
-        ":ragged_to_dense_util",
-        ":test",
-        ":testlib",
-        "@com_google_googletest//:gtest_main",
-    ],
+    deps = ["//tensorflow/core/util:ragged_to_dense_util"],
 )
 
 cc_library(
@@ -1297,7 +1268,6 @@ filegroup(
     srcs = [
         # Sources for which we do not yet have granular targets.
         "//tensorflow/c/eager:srcs",
-        "//tensorflow/c/experimental/saved_model/core:mobile_srcs_only_runtime",
         "//tensorflow/c:srcs",
         "//tensorflow/core/common_runtime:mobile_srcs_only_runtime",
         "//tensorflow/core/common_runtime/eager:srcs",
@@ -1736,6 +1706,7 @@ filegroup(
         "//tensorflow/core/lib/gtl:legacy_lib_internal_public_gtl_headers",
         "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
         "//tensorflow/core/lib/io:legacy_lib_internal_public_headers",
+        "//tensorflow/core/lib/llvm_rtti:legacy_lib_core_all_headers",
         "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_internal_public_headers",
         "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
@@ -1864,7 +1835,9 @@ cc_library(
         "//tensorflow/core/lib/io:random_inputstream",
         "//tensorflow/core/lib/io:record_reader",
         "//tensorflow/core/lib/io:record_writer",
+        "//tensorflow/core/lib/io:snappy_compression_options",
         "//tensorflow/core/lib/io:snappy_inputbuffer",
+        "//tensorflow/core/lib/io:snappy_inputstream",
         "//tensorflow/core/lib/io:snappy_outputbuffer",
         "//tensorflow/core/lib/io:table",
         "//tensorflow/core/lib/io:table_options",
@@ -2257,7 +2230,6 @@ tf_cuda_library(
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/tpu:tpu_library_loader",
         "//tensorflow/core/util:einsum_op_util",
         "//tensorflow/core/util:padding",
         "//tensorflow/core/util:port",
@@ -2999,6 +2971,13 @@ filegroup(
         "lib/gif/testdata/optimized.gif",
         # BMP data
         "lib/bmp/testdata/lena.bmp",
+        "lib/bmp/testdata/rgb_small.bmp",
+        "lib/bmp/testdata/rgb_small_255.bmp",
+        "lib/bmp/testdata/rgba_small.bmp",
+        "lib/bmp/testdata/rgba_small_255.bmp",
+        "lib/bmp/testdata/grayscale_small.bmp",
+        "lib/bmp/testdata/grayscale_small_3channels.bmp",
+        "lib/bmp/testdata/grayscale_small_4channels.bmp",
         # SSIM, PSNR data
         "lib/ssim/testdata/checkerboard1.png",
         "lib/ssim/testdata/checkerboard2.png",

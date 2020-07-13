@@ -222,24 +222,18 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   // Select an appropriate device for an operation.
   //
-  // Given the preferred device for the operation, and the list of devices the
-  // operation supports, finds the best suitable device for the operation in
-  // this context.
+  // Given the preferred device for the operation, and the node_def, finds the
+  // best suitable device for the operation in this context.
   //
   // The preferred device is specified as a `ParsedName` containing the elements
   // (details) that the resulting device should match. If there are no such
   // devices, and the context currently allows soft device placement, a suitable
   // device not matching `preferred` will be chosen.
   //
-  // The `dtype` parameter specifies the operation's result data type, if
-  // known. Setting it to DT_INVALID will make this method not use the data type
-  // for its decisions.
-  //
   // The chosen device is stored in the `device` argument. The argument is not
   // modified unless this method returns `Status::OK()`.
   Status SelectDevice(DeviceNameUtils::ParsedName preferred,
-                      const PrioritizedDeviceTypeVector& supported,
-                      const DataType dtype, Device** device) const;
+                      const NodeDef& ndef, Device** out) const;
 
   // Sets the implicit copy policy for the current thread.
   void SetThreadLocalMirroringPolicy(ContextMirroringPolicy);
@@ -377,8 +371,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // class/struct.
   //
   // Enables the eager context to communicate with remote devices. When
-  // initializing with this method, this context will be the master context,
-  // which will kill all its slaves in shutdown.
+  // initializing with this method, this context will be the primary context,
+  // which will kill all its remote contexts in shutdown.
   //
   // - server: A ServerInterface that exports the tensorflow.WorkerService.
   // Note that this class expects the server to already have been started.
@@ -478,15 +472,13 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // On mobile, it just cleans the caches.
   void WaitForAndCloseRemoteContexts();
 
-  bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
+  bool PinSmallOpsToCPU() const { return pin_small_ops_to_cpu_; }
 
   tensorflow::Env* TFEnv() const { return env_; }
 
-  std::vector<const FunctionDef*> ListRegisteredFunctions();
-
   Status FindDeviceFromName(const char* device_name, Device** device) const;
 
-  Status FindCompositeDeviceFromName(const char* device_name,
+  Status FindCompositeDeviceFromName(StringPiece device_name,
                                      CompositeDevice** device) const;
 
   Status FindCustomDeviceFromName(const string& device_name,
@@ -495,9 +487,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status RegisterCustomDevice(const string& name,
                               std::unique_ptr<CustomDevice> device);
 
-  // Find or create a composite device with the given `underlying_devices`.
+  // Find or create a composite device with the given `underlying_devices` and
+  // `device_name` (if not empty).
   Status FindOrCreateCompositeDevice(
-      const std::vector<string>& underlying_devices,
+      const std::vector<string>& underlying_devices, const string& device_name,
       CompositeDevice** composite_device);
 
   bool OnSameTask(const Device* first, const Device* second) const;
@@ -512,7 +505,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void InitPrioritizedDeviceTypeList();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
   Status RegisterExistingFunctionsOnRemoteWorkers(
-      const std::vector<const FunctionDef*>& function_defs,
       const std::vector<string>& remote_workers);
 
   void ResetPFLR(const DeviceMgr* device_mgr, Env* env,
@@ -668,6 +660,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
 
+  // For LLVM style RTTI.
+  static bool classof(const AbstractContext* ptr) {
+    return ptr->getKind() == kEager;
+  }
+
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should
   // be).
@@ -721,6 +718,19 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {
   return down_cast<EagerContext*>(context);
 }
+
+namespace internal {
+struct EagerContextDeleter {
+  void operator()(EagerContext* p) const {
+    if (p != nullptr) {
+      p->Release();
+    }
+  }
+};
+}  // namespace internal
+
+using EagerContextPtr =
+    std::unique_ptr<EagerContext, internal::EagerContextDeleter>;
 
 }  // namespace tensorflow
 

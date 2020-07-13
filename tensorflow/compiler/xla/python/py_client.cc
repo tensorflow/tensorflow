@@ -275,7 +275,8 @@ py::bytes PyClient::HeapProfile() {
       kind_label->set_str(buffer_string_id);
       auto* device_label = sample->add_label();
       device_label->set_key(device_string_id);
-      device_label->set_num(entry.first.device->id());
+      device_label->set_str(
+          builder.StringId(entry.first.device->DebugString()));
     } else {
       kind_label->set_str(executable_string_id);
     }

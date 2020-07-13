@@ -81,6 +81,9 @@ from tensorflow.python.util import tf_inspect
 ag_ctx = lazy_loader.LazyLoader(
     "ag_ctx", globals(),
     "tensorflow.python.autograph.core.ag_ctx")
+np_arrays = lazy_loader.LazyLoader(
+    "np_arrays", globals(),
+    "tensorflow.python.ops.numpy_ops.np_arrays")
 
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
@@ -89,7 +92,7 @@ IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
 
 
-def _make_input_signature_hashable(elem, variable_map=None):
+def _make_input_signature_hashable(elem):
   """Rewrite input signature to be hashable.
 
   We replace nested variables in the input signature with TensorSpec in order to
@@ -97,18 +100,13 @@ def _make_input_signature_hashable(elem, variable_map=None):
 
   Args:
     elem: Input signature element
-    variable_map: Internal argument used for tracking variable aliases
 
   Returns:
     A hashable object for the requested input signature
   """
-  if variable_map is None:
-    variable_map = {}
-
   # TODO(slebedev): consider using nest.
   if isinstance(elem, tuple):
-    return tuple(map(lambda e: _make_input_signature_hashable(e, variable_map),
-                     elem))
+    return tuple(map(_make_input_signature_hashable, elem))
 
   try:
     hash(elem)
@@ -119,15 +117,17 @@ def _make_input_signature_hashable(elem, variable_map=None):
     v = elem()
 
     if resource_variable_ops.is_resource_variable(v):
-      idx = variable_map.get(id(v))
-      if idx is None:
-        idx = len(variable_map)
-        variable_map[id(v)] = idx
-
-      # We include the class name to avoid having different types of variables
-      # having the same hash. We Also include the variable index which allows
-      # us to return a different hash if variables have been aliased in a call.
-      return v.__class__, tensor_spec.TensorSpec(v.shape, v.dtype), idx
+      # We special case variables here to use unique_id as the cache key. This
+      # ensures we have to retrace whenever a different variable is passed in.
+      # This is needed to support cases where the user may use the id of a
+      # variable in the function perhaps as a lookup in a dictionary.
+      #
+      # This choice leads to more retracing when we could have possibly used the
+      # shape and dtype instead. However, we expect the number of variables in a
+      # program to be bounded, and correspondingly the number of retraces.
+      #
+      # Note we also include the class name to avoid collisions with strings.
+      return v.__class__, v._unique_id  # pylint: disable=protected-access
 
     if _is_ndarray(v):
       # Numpy arrays are not hashable, but when calling functions we treat them
@@ -237,7 +237,7 @@ def _parse_func_attrs(attributes):
     A dict of attributes where the key is the name of attribute and the value
       is the AttrValue proto.
   Raises:
-    ValueError: If the kwargs contains unwhitelisted name or unsupported value
+    ValueError: If the kwargs contains unallowlisted name or unsupported value
       types.
   """
   attrs = {}
@@ -261,6 +261,8 @@ def _parse_func_attrs(attributes):
 
 class _InterpolateFunctionError(object):
   """Context Manager that interpolates the exception from 'top_level_func'."""
+
+  __slots__ = ["_func"]
 
   def __init__(self, top_level_func):
     self._func = top_level_func
@@ -377,6 +379,8 @@ def _enclosing_xla_context():
 
 class _EagerDefinedFunctionDeleter(object):
   """Unregister function from eager context."""
+
+  __slots__ = ["name"]
 
   def __init__(self, name):
     self.name = name
@@ -1192,7 +1196,7 @@ class _TapeGradientFunctions(object):
   def _wrap_backward_function(self, forward_graph, backward, outputs):
     """Create a backward function given `outputs` from the forward function."""
     capture_mapping = dict(
-        zip([ops.tensor_id(t) for t in forward_graph.outputs], outputs))
+        zip((ops.tensor_id(t) for t in forward_graph.outputs), outputs))
     remapped_captures = [
         capture_mapping.get(ops.tensor_id(capture), capture)
         for capture in backward.captured_inputs
@@ -1410,6 +1414,10 @@ _POSSIBLE_GRADIENT_TYPES_HIGHER_ORDER = 2
 class _ForwardBackwardCall(object):
   """Holds the state of a function call between execution and recording."""
 
+  __slots__ = [
+      "_functions", "_inference_args", "_input_tangents", "_tape_watching"
+  ]
+
   def __init__(self, functions, inference_args, input_tangents, tape_watching):
     """Collects information about the function call.
 
@@ -1487,6 +1495,11 @@ class ConcreteFunction(object):
     self._func_graph = func_graph
     self._captured_inputs = self._func_graph.external_captures
     self._captured_closures = self._func_graph.deferred_external_captures
+    structured_outputs = self._func_graph.structured_outputs
+    self._ndarrays_list = (
+        isinstance(structured_outputs, (list, tuple)) and structured_outputs and
+        all(isinstance(o, np_arrays.ndarray) for o in structured_outputs))
+    self._ndarray_singleton = isinstance(structured_outputs, np_arrays.ndarray)
 
     # function_spec defines the structured signature.
     self._set_function_spec(function_spec)
@@ -2153,9 +2166,15 @@ class ConcreteFunction(object):
     if self._func_graph.structured_outputs is None:
       return result
 
+    if result:
+      if self._ndarrays_list:
+        return [np_arrays.tensor_to_ndarray(o) for o in result]
+      elif self._ndarray_singleton:
+        return np_arrays.tensor_to_ndarray(result[0])
+
     # Replace outputs with results, skipping over any 'None' values.
-    outputs_list = nest.flatten(self._func_graph.structured_outputs,
-                                expand_composites=True)
+    outputs_list = nest.flatten(
+        self._func_graph.structured_outputs, expand_composites=True)
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
@@ -2187,6 +2206,14 @@ class ConcreteFunction(object):
     assert self._function_spec is not None
     arg_specs, kwarg_specs = self.structured_input_signature
     arg_names = list(self._function_spec.arg_names)
+
+    # If an explicit input_signature is provided to @tf.function, then any
+    # arguments with defaults that are not covered by that explicit signature
+    # are simply dropped from the signature.
+    # TODO(b/159639913) Look into whether dropping arguments with default values
+    # from the signature is the right thing to do.
+    arg_names = arg_names[:len(arg_specs)]
+
     if default_values:
       for i in range(len(arg_names)):
         if not _contains_type_spec(arg_specs[i]):
@@ -2236,6 +2263,14 @@ class ConcreteFunction(object):
     lines = [self._structured_signature_summary(default_values=True)]
     arg_specs, kwarg_specs = self.structured_input_signature
     names = list(self._function_spec.arg_names)
+
+    # If an explicit input_signature is provided to @tf.function, then any
+    # arguments with defaults that are not covered by that explicit signature
+    # are simply dropped from the signature.
+    # TODO(b/159639913) Look into whether dropping arguments with default values
+    # from the signature is the right thing to do.
+    names = names[:len(arg_specs)]
+
     names.extend(sorted(kwarg_specs))
     specs = list(arg_specs) + list(kwarg_specs.values())
     # note: we can skip bound args, since we already displayed thier bound
@@ -2713,6 +2748,11 @@ class FunctionCache(object):
   """A lightweight container for cached functions.
   """
 
+  __slots__ = [
+      "missed", "primary", "arg_relaxed_specs", "arg_relaxed",
+      "_garbage_collectors"
+  ]
+
   def __init__(self):
     # The set of functions that have been missed; entries are CacheKey with
     # input_signature `None` (e.g. a "call context key")
@@ -2843,7 +2883,6 @@ class Function(object):
       graph_function, _, _ = self._maybe_define_function(args, kwargs)
     return graph_function
 
-  # XX TODO: make sure we fix up this path as well!?
   def _get_concrete_function_internal(self, *args, **kwargs):
     """Bypasses error checking when getting a graph function."""
     graph_function = self._get_concrete_function_internal_garbage_collected(
@@ -3599,9 +3638,9 @@ def defun_with_attributes(func=None,
     input_signature: same as defun()'s input_signature.
     attributes: A dictionary of arguments which will be added to function def as
       attributes. Currently only support primitive types as value, and only
-      whitelisted attribute name is allowed. Unwhitelisted attribute name or
+      allowlisted attribute name is allowed. Unallowlisted attribute name or
       unsupported value will result into ValueError. `func_name` is also one of
-      the whitelisted argument which is a python string, and sets the name for
+      the allowlisted argument which is a python string, and sets the name for
       this `ConcreteFunction` in the graph.
     autograph: same as defun()'s autograph.
     experimental_autograph_options: same as defun()'s
@@ -3745,6 +3784,8 @@ def class_method_to_instance_method(original_function, instance):
 class _FunctionGarbageCollector(object):
   """Cleans up cycles when a defun goes out of scope."""
 
+  __slots__ = ["_cache"]
+
   def __init__(self, cache):
     self._cache = cache
 
@@ -3761,6 +3802,8 @@ class _FunctionGarbageCollector(object):
 
 class ConcreteFunctionGarbageCollector(object):
   """Cleans up reference cycles when a `ConcreteFunction` goes out of scope."""
+
+  __slots__ = ["_func_graph"]
 
   def __init__(self, func_graph):
     self._func_graph = func_graph
@@ -3780,6 +3823,8 @@ class ConcreteFunctionGarbageCollector(object):
 
 class _Marker(object):
   """Markers used to pretty-print nested args in function signatures."""
+
+  __slots__ = ["_s"]
 
   def __init__(self, s):
     self._s = s

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_TIMER_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/tpu/tpu_library_loader.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 

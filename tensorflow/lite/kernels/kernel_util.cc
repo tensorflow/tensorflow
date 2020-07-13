@@ -188,7 +188,7 @@ void CalculateActivationRangeQuantizedImpl(TfLiteFusedActivation activation,
   } else if (activation == kTfLiteActRelu6) {
     *act_min = std::max(qmin, quantize(0.0));
     *act_max = std::min(qmax, quantize(6.0));
-  } else if (activation == kTfLiteActRelu1) {
+  } else if (activation == kTfLiteActReluN1To1) {
     *act_min = std::max(qmin, quantize(-1.0));
     *act_max = std::min(qmax, quantize(1.0));
   } else {

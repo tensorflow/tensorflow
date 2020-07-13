@@ -4,7 +4,13 @@ module attributes {tf_saved_model.semantics} {
 
   // CHECK: tf_saved_model.session_initializer
   "tf_saved_model.session_initializer"() {
-    initializer = @f
+    initializer = @init
+  } : () -> ()
+
+  // CHECK: tf_saved_model.asset
+  "tf_saved_model.asset"() {
+    filename = "asset_filename",
+    sym_name = "asset_sym_name"
   } : () -> ()
 
   // Representation for constants: (immutable) global tensor.
@@ -44,11 +50,23 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 
+  // Representation for init functions
+  // CHECK: func @init
+  // CHECK-SAME: exported_names = ["__tf_saved_model_session_initializer"]
+  func @init(
+    %arg0: tensor<!tf.string> {tf_saved_model.bound_input = @asset_sym_name},
+    %arg1: tensor<!tf.resource<tensor<1x64xf32>>> {tf_saved_model.bound_input = @some_constant}
+  ) attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer"]}
+  {
+    "tf.some_call"(%arg1) : (tensor<!tf.resource<tensor<1x64xf32>>>) -> ()
+    return
+  }
+
 }
 
 // -----
 
-module attributes {tf_saved_model.semantics} {
+module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} {
 
   // CHECK: func @f
   func @f(

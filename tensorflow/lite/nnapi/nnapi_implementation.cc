@@ -237,6 +237,12 @@ const NnApi LoadNnApi() {
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
                          ANeuralNetworksMemory_createFromDesc);
   LOAD_FUNCTION_OPTIONAL(libneuralnetworks, ANeuralNetworksMemory_copy);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksEvent_createFromSyncFenceFd);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksEvent_getSyncFenceFd);
+  LOAD_FUNCTION_OPTIONAL(libneuralnetworks,
+                         ANeuralNetworksExecution_startComputeWithDependencies);
 
   return nnapi;
 }

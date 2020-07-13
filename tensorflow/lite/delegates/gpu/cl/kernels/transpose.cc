@@ -104,16 +104,11 @@ std::string GetTransposeCode(
 }  // namespace
 
 Transpose::Transpose(Transpose&& operation)
-    : GPUOperation(std::move(operation)),
-      attr_(operation.attr_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
 
 Transpose& Transpose::operator=(Transpose&& operation) {
   if (this != &operation) {
     attr_ = operation.attr_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

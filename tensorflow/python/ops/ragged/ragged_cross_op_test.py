@@ -364,7 +364,7 @@ class RaggedCrossOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           message='inputs must all have the same batch dimension size'),
   ])
   def testStaticError(self, inputs, exception=ValueError, message=None):
-    with self.assertRaisesRegexp(exception, message):
+    with self.assertRaisesRegex(exception, message):
       ragged_array_ops.cross(inputs)
 
   @parameterized.named_parameters([
@@ -381,7 +381,7 @@ class RaggedCrossOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                        inputs,
                        exception=errors.InvalidArgumentError,
                        message=None):
-    with self.assertRaisesRegexp(exception, message):
+    with self.assertRaisesRegex(exception, message):
       self.evaluate(ragged_array_ops.cross(inputs))
 
   def _ragged_to_sparse(self, t):

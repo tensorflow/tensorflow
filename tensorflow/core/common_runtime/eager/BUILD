@@ -29,6 +29,7 @@ tf_cuda_library(
         ":context",
         ":eager_operation",
         ":execute",
+        ":placement_utils",
         ":tensor_handle",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
@@ -116,6 +117,21 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "placement_test",
+    srcs = ["placement_test.cc"],
+    deps = [
+        ":context",
+        ":core",
+        ":eager_operation",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -489,6 +505,7 @@ cc_library(
         ":eager_op_rewrite_registry",
         ":eager_operation",
         ":kernel_and_device",
+        ":placement_utils",
         ":tensor_handle",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -517,6 +534,35 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
             "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
+        ],
+    }),
+)
+
+tf_cuda_library(
+    name = "placement_utils",
+    srcs = [
+        "placement_utils.cc",
+    ],
+    hdrs = [
+        "placement_utils.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":attr_builder",
+        ":eager_operation",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:core_cpu_lib",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )

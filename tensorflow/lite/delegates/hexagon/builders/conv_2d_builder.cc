@@ -197,7 +197,7 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   if (activation == kTfLiteActRelu6) {
     conv_output_min = 0;
     conv_output_max = 6;
-  } else if (activation == kTfLiteActRelu1) {
+  } else if (activation == kTfLiteActReluN1To1) {
     conv_output_min = -1;
     conv_output_max = 1;
   } else if (activation == kTfLiteActRelu) {

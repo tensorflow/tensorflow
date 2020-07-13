@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 #if defined(__APPLE__)
+#include "TargetConditionals.h"
 #if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
 // Only enable metal delegate when using a real iPhone device.
 #define REAL_IPHONE_DEVICE
@@ -37,7 +38,7 @@ class CoreMlDelegateProvider : public DelegateProvider {
   }
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -61,10 +62,11 @@ std::vector<Flag> CoreMlDelegateProvider::CreateFlags(
 #endif
 }
 
-void CoreMlDelegateProvider::LogParams(const ToolParams& params) const {
+void CoreMlDelegateProvider::LogParams(const ToolParams& params,
+                                       bool verbose) const {
 #if defined(REAL_IPHONE_DEVICE)
-  TFLITE_LOG(INFO) << "Use Core ML : [" << params.Get<bool>("use_coreml")
-                   << "]";
+  LOG_TOOL_PARAM(params, bool, "use_coreml", "Use CoreML", verbose);
+  LOG_TOOL_PARAM(params, int, "coreml_version", "CoreML version", verbose);
 #endif
 }
 

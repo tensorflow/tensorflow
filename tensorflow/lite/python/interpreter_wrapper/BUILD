@@ -28,6 +28,7 @@ cc_library(
         ":python_error_reporter",
         ":python_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:shared_library",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",

@@ -143,13 +143,13 @@ class SparseXentTest(test.TestCase):
 
   def testShapeMismatch(self):
     with self.session(use_gpu=True):
-      with self.assertRaisesRegexp(ValueError, ".*Rank mismatch:*"):
+      with self.assertRaisesRegex(ValueError, ".*Rank mismatch:*"):
         nn_ops.sparse_softmax_cross_entropy_with_logits(
             labels=[[0, 2]], logits=[[0., 1.], [2., 3.], [2., 3.]])
 
   def testScalar(self):
     with self.session(use_gpu=True):
-      with self.assertRaisesRegexp(ValueError, ".*Logits cannot be scalars*"):
+      with self.assertRaisesRegex(ValueError, ".*Logits cannot be scalars*"):
         nn_ops.sparse_softmax_cross_entropy_with_logits(
             labels=constant_op.constant(0), logits=constant_op.constant(1.0))
 
@@ -267,8 +267,8 @@ class SparseXentTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testScalarHandling(self):
     with self.session(use_gpu=False) as sess:
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   ".*labels must be 1-D.*"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  ".*labels must be 1-D.*"):
         labels = array_ops.placeholder(dtypes.int32, shape=[None, 1])
         logits = array_ops.placeholder(dtypes.float32, shape=[None, 3])
         ce = nn_ops.sparse_softmax_cross_entropy_with_logits(

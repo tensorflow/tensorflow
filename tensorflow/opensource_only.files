@@ -233,7 +233,6 @@ tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/archives.bzl
 tensorflow/third_party/toolchains/preconfig/generate/containers.bzl
 tensorflow/third_party/toolchains/preconfig/generate/generate.bzl
-tensorflow/third_party/toolchains/preconfig/generate/workspace.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/dummy_toolchain.bzl
@@ -268,6 +267,7 @@ tensorflow/third_party/toolchains/remote_config/rbe_config.bzl
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/tools/build_info/BUILD
+tensorflow/tools/ci_build/horovod/gpu/nightly.sh
 tensorflow/tools/ci_build/release/common.sh
 tensorflow/tools/ci_build/release/common_win.bat
 tensorflow/tools/ci_build/release/macos/cpu_libtensorflow/build.sh

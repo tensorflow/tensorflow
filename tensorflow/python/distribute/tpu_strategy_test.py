@@ -44,6 +44,7 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
@@ -122,9 +123,30 @@ class TPUTest(test.TestCase):
       result = bar() + 1
       self.assertAllEqual(result, 2)
 
+  def test_on_demand_op_with_dynamic_output(self):
+    with ops.device("/device:TPU:0"):
+      where_output = array_ops.where([True, False, True])
+    self.assertAllEqual(where_output, [[0], [2]])
+
+    with ops.device("/device:TPU:0"):
+      repeat_output = array_ops.repeat(math_ops.range(2), [1, 4])
+    self.assertAllEqual(repeat_output, [0, 1, 1, 1, 1])
+
 
 @parameterized.named_parameters([("PackedVar", True), ("", False)])
 class TPUStrategyTest(test.TestCase, parameterized.TestCase):
+
+  def test_function_compile_with_xla(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+    with strategy.scope():
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def func():
+      return v.read_value() + 1.0
+
+    with ops.device("/device:TPU:0"):
+      self.assertAllEqual(func(), 2.0)
 
   def test_sequential_experimental_runs(self, enable_packed_var):
     resolver = get_tpu_cluster_resolver()
@@ -475,9 +497,11 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
       return dataset.map(make_sparse)
 
-    strategy.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn,
+            distribute_lib.InputOptions(
+                experimental_prefetch_to_device=False)))
 
     result = sparse_lookup(dataset)
     self.assertAllEqual(result,
@@ -520,9 +544,11 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
       return dataset.map(make_sparse)
 
-    strategy.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
     dataset = iter(
-        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn,
+            options=distribute_lib.InputOptions(
+                experimental_prefetch_to_device=False)))
 
     result = sparse_lookup(dataset)
     self.assertAllEqual(result, [[0.0, 2.0], [1.5, 5.0]])
@@ -549,6 +575,13 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     with strategy.scope():
       update_variable.get_concrete_function()
       self.assertLen(strategy.extended.worker_devices, trace_count[0])
+
+  def test_cluster_resolver_available(self, enable_packed_var):
+    resolver = get_tpu_cluster_resolver()
+    remote.connect_to_cluster(resolver)
+    tpu_strategy_util.initialize_tpu_system(resolver)
+    strategy = tpu_lib.TPUStrategy(resolver)
+    self.assertIs(strategy.cluster_resolver, resolver)
 
 
 class TPUStrategyDataPrefetchTest(test.TestCase):
@@ -593,6 +626,62 @@ class TPUStrategyDataPrefetchTest(test.TestCase):
     dataset_location = tf_device.DeviceSpec.from_string(
         dataset_item.values[0].device)
     self.assertEqual(dataset_location.device_type, "CPU")
+
+  def test_prefetch_to_device_sparse_dataset(self):
+    strategy = get_tpu_strategy()
+    # Values here aren't important.
+    dataset = dataset_ops.Dataset.from_tensors(
+        sparse_tensor.SparseTensor(indices=[[0, 0], [0, 1], [1, 0]],
+                                   values=[1, 2, 3],
+                                   dense_shape=[2, 2]))
+    dataset = dataset.repeat()
+    dataset = dataset.batch(strategy.num_replicas_in_sync)
+
+    with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
+      iter(strategy.experimental_distribute_dataset(dataset))
+
+  def test_prefetch_to_device_ragged_dataset(self):
+    strategy = get_tpu_strategy()
+    # Values here aren't important.
+    dataset = dataset_ops.Dataset.from_tensors(
+        ragged_tensor.RaggedTensor.from_row_splits(
+            values=[1, 2, 3],
+            row_splits=[0, 2, 3]))
+    dataset = dataset.repeat()
+    dataset = dataset.batch(strategy.num_replicas_in_sync)
+
+    with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
+      iter(strategy.experimental_distribute_dataset(dataset))
+
+  def test_prefetch_to_device_sparse_dataset_fn(self):
+    strategy = get_tpu_strategy()
+    def dataset_fn(ctx):
+      del ctx
+      # Values here aren't important.
+      dataset = dataset_ops.Dataset.from_tensors(
+          sparse_tensor.SparseTensor(indices=[[0, 0], [0, 1], [1, 0]],
+                                     values=[1, 2, 3],
+                                     dense_shape=[2, 2]))
+      dataset = dataset.repeat()
+      return dataset.batch(strategy.num_replicas_in_sync)
+
+    with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
+      iter(strategy.experimental_distribute_datasets_from_function(dataset_fn))
+
+  def test_prefetch_to_device_ragged_dataset_fn(self):
+    strategy = get_tpu_strategy()
+    def dataset_fn(ctx):
+      del ctx
+      # Values here aren't important.
+      dataset = dataset_ops.Dataset.from_tensors(
+          ragged_tensor.RaggedTensor.from_row_splits(
+              values=[1, 2, 3],
+              row_splits=[0, 2, 3]))
+      dataset = dataset.repeat()
+      return dataset.batch(strategy.num_replicas_in_sync)
+
+    with self.assertRaisesRegex(ValueError, "TPUStrategy does not support"):
+      iter(strategy.experimental_distribute_datasets_from_function(dataset_fn))
 
 if __name__ == "__main__":
   test.main()

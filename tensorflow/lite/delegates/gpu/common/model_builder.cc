@@ -109,7 +109,7 @@ absl::Status IsActivationSupported(TfLiteFusedActivation fused_activation) {
   switch (fused_activation) {
     case kTfLiteActNone:
     case kTfLiteActRelu:
-    case kTfLiteActRelu1:
+    case kTfLiteActReluN1To1:
     case kTfLiteActRelu6:
     case kTfLiteActTanh:
       return absl::OkStatus();
@@ -140,12 +140,12 @@ absl::Status MaybeFuseActivation(TfLiteFusedActivation fused_activation,
   }
   switch (fused_activation) {
     case kTfLiteActRelu:
-    case kTfLiteActRelu1:
+    case kTfLiteActReluN1To1:
     case kTfLiteActRelu6: {
       ReLUAttributes attr;
       attr.clip = fused_activation == kTfLiteActRelu
                       ? 0.0f
-                      : (fused_activation == kTfLiteActRelu1 ? 1.0f : 6.0f);
+                      : (fused_activation == kTfLiteActReluN1To1 ? 1.0f : 6.0f);
       for (auto index : output_indices) {
         Node* activation_node;
         RETURN_IF_ERROR(
@@ -525,8 +525,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
           absl::StrCat("Expected 1 or 2 input tensor(s), but node has ",
                        runtime_inputs, " runtime inputs."));
     }
-    const int runtime_outputs =
-        GetNumberOfRuntimeOutputsForNode(context, tflite_node);
+    const int runtime_outputs = NumOutputs(tflite_node);
     if (runtime_outputs != 1) {
       return absl::InternalError(
           absl::StrCat("Expected 1 output tensor(s), but node has ",
