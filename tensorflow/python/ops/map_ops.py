@@ -54,9 +54,7 @@ def tensor_map_replace(input_handle, key, value):
 
 @ops.RegisterGradient("TensorMapLookup")
 def LookupGrad(op, dval):
-  # map grad should be a map that is 0 everywhere except 1 @key k
   m, k = op.inputs
-  #m = gen_map_ops.tensor_map_zeros(m)
   map_grad = empty_tensor_map()
   map_grad = tensor_map_insert(map_grad, k, dval)
   key = op.inputs[1]

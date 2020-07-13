@@ -58,7 +58,7 @@ namespace tensorflow {
 //     bool can_alias = false;
 //     auto fw = c->forward_input(..., DT_VARIANT, {}, ...);
 //     if (fw && fw->dtype() == DT_VARIANT && fw->NumElements() == 1) {
-//       auto* tl = fw->scalar<Variant>()().get<TensorList>();
+//       auto* tl = fw->scalar<Variant>()().get<TensorMap>();
 //       if (tl && tl->RefCountIsOne()) {
 //         can_alias = true;
 //       }
@@ -132,7 +132,7 @@ class TensorMap {
   PartialTensorShape& shape() { return element_shape; }
   DataType dtype() { return element_dtype; }
 
-  // Get a new TensorList containing a copy of the underlying tensor container.
+  // Get a new TensorMap containing a copy of the underlying tensor container.
   TensorMap Copy() const {
     TensorMap out;
     out.element_shape = element_shape;
@@ -185,7 +185,6 @@ class TensorMap {
  private:
   class Tensors : public core::RefCounted {
    public:
-    //std::unordered_map<Tensor,Tensor> values_;
     absl::flat_hash_map<TensorKey,Tensor> values_;
   };
   Tensors* tensors_;

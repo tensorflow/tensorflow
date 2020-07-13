@@ -93,7 +93,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       m = map_ops.tensor_map_insert(m, k, v)
       l = map_ops.tensor_map_lookup(m, k)
       l *= 5
-      g = tape.gradient(l,v)
+      g = tape.gradient(l, v)
       self.assertAllClose(g, 5.0)
 
 

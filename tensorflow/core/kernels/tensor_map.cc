@@ -90,9 +90,9 @@ bool TensorMap::Decode(const VariantTensorData& data) {
   while (tensors_it != data.tensors().end())
   {
     // should assert that tensors_it + 1 is also not the end
-    /*if (*std::next(tensors_it) == data.tensors().end()) {
+    if (std::next(tensors_it) == data.tensors().end()) {
       return false;
-    }*/
+    }
     TensorKey k = TensorKey(*tensors_it); // copy inefficient?
     tensors().emplace(k,*++tensors_it);
     tensors_it++;
