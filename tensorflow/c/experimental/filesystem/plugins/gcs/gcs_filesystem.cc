@@ -29,6 +29,20 @@ limitations under the License.
 // This filesystem will support `gs://` URI schemes.
 namespace gcs = google::cloud::storage;
 
+// The environment variable that overrides the block size for aligned reads from
+// GCS. Specified in MB (e.g. "16" = 16 x 1024 x 1024 = 16777216 bytes).
+constexpr char kBlockSize[] = "GCS_READ_CACHE_BLOCK_SIZE_MB";
+constexpr size_t kDefaultBlockSize = 64 * 1024 * 1024;
+// The environment variable that overrides the max size of the LRU cache of
+// blocks read from GCS. Specified in MB.
+constexpr char kMaxCacheSize[] = "GCS_READ_CACHE_MAX_SIZE_MB";
+constexpr size_t kDefaultMaxCacheSize = 0;
+// The environment variable that overrides the maximum staleness of cached file
+// contents. Once any block of a file reaches this staleness, all cached blocks
+// will be evicted on the next read.
+constexpr char kMaxStaleness[] = "GCS_READ_CACHE_MAX_STALENESS";
+constexpr uint64_t kDefaultMaxStaleness = 0;
+
 // How to upload new data when Flush() is called multiple times.
 // By default the entire file is reuploaded.
 constexpr char kAppendMode[] = "GCS_APPEND_MODE";
@@ -350,8 +364,31 @@ void Init(TF_Filesystem* filesystem, TF_Status* status) {
   bool compose =
       (append_mode != nullptr) && (!strcmp(kAppendMode, append_mode));
 
+  uint64_t value;
+  uint64_t block_size = kDefaultBlockSize;
+  size_t max_bytes = kDefaultMaxCacheSize;
+  uint64_t max_staleness = kDefaultMaxStaleness;
+
+  // Apply the overrides for the block size (MB), max bytes (MB), and max
+  // staleness (seconds) if provided.
+  if (absl::SimpleAtoi(std::getenv(kBlockSize), &value)) {
+    block_size = value * 1024 * 1024;
+  }
+  if (absl::SimpleAtoi(std::getenv(kMaxCacheSize), &value)) {
+    max_bytes = static_cast<size_t>(value * 1024 * 1024);
+  }
+  if (absl::SimpleAtoi(std::getenv(kMaxStaleness), &value)) {
+    max_staleness = value;
+  }
+  // We initialize `file_block_cache` by nullptr first because there should be
+  // only one copy of `gcs::Client`.
   filesystem->plugin_filesystem =
-      new GCSFile({std::move(client.value()), compose});
+      new GCSFile({std::move(client.value()), compose, block_size, nullptr});
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  // We now use the `gcs::Client` of the `filesystem` to initialize
+  // `file_block_cache`.
+  gcs_file->file_block_cache = MakeFileBlockCache(
+      block_size, max_bytes, max_staleness, &gcs_file->gcs_client);
   TF_SetStatus(status, TF_OK, "");
 }
 

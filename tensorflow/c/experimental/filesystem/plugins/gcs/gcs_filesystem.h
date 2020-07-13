@@ -17,6 +17,7 @@
 
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/file_block_cache.h"
 #include "tensorflow/c/tf_status.h"
 
 void ParseGCSPath(const std::string& fname, bool object_empty_ok,
@@ -48,6 +49,8 @@ namespace tf_gcs_filesystem {
 typedef struct GCSFile {
   google::cloud::storage::Client gcs_client;  // owned
   bool compose;
+  size_t block_size;
+  std::unique_ptr<FileBlockCache> file_block_cache;
 } GCSFile;
 void Init(TF_Filesystem* filesystem, TF_Status* status);
 void Cleanup(TF_Filesystem* filesystem);
