@@ -273,7 +273,6 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/core:framework",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -361,7 +360,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:unroll_batch_matmul_pass",
         "//tensorflow/compiler/xla:status",
