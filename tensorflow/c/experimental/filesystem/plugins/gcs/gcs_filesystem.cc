@@ -20,7 +20,9 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "google/cloud/storage/client.h"
 #include "tensorflow/c/env.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/file_block_cache.h"
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/gcs_helper.h"
+#include "tensorflow/c/experimental/filesystem/plugins/gcs/ram_file_block_cache.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for GCS environments.
@@ -79,6 +81,48 @@ static void MaybeAppendSlash(std::string* name) {
     *name = "/";
   else if (name->back() != '/')
     name->push_back('/');
+}
+
+// A helper function to actually read the data from GCS.
+static void LoadBufferFromGCS(const std::string& bucket,
+                              const std::string& object, size_t offset,
+                              size_t buffer_size, char* buffer,
+                              size_t* bytes_transferred,
+                              gcs::Client* gcs_client, TF_Status* status) {
+  auto stream = gcs_client->ReadObject(
+      bucket, object, gcs::ReadRange(offset, offset + buffer_size));
+  if ((TF_GetCode(status) != TF_OK) &&
+      (TF_GetCode(status) != TF_OUT_OF_RANGE)) {
+    return;
+  }
+  if (!absl::SimpleAtoi(stream.headers().find("content-length")->second,
+                        bytes_transferred)) {
+    TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
+    return;
+  }
+  // TODO(vnvo2409): Check stat cache to see if we encountered an interrupted
+  // read.
+  stream.read(buffer, *bytes_transferred);
+}
+
+// A helper function to build a FileBlockCache for GcsFileSystem.
+std::unique_ptr<tf_gcs_filesystem::FileBlockCache> MakeFileBlockCache(
+    size_t block_size, size_t max_bytes, uint64_t max_staleness,
+    gcs::Client* gcs_client) {
+  std::unique_ptr<tf_gcs_filesystem::FileBlockCache> file_block_cache(
+      new tf_gcs_filesystem::RamFileBlockCache(
+          block_size, max_bytes, max_staleness,
+          [gcs_client](const std::string& path, size_t offset, size_t n,
+                       char* buffer, size_t* bytes_transferred,
+                       TF_Status* status) {
+            std::string bucket, object;
+            ParseGCSPath(path, false, &bucket, &object, status);
+            if (TF_GetCode(status) != TF_OK) return;
+            LoadBufferFromGCS(bucket, object, offset, n, buffer,
+                              bytes_transferred, gcs_client, status);
+            return;
+          }));
+  return file_block_cache;
 }
 
 // SECTION 1. Implementation for `TF_RandomAccessFile`
