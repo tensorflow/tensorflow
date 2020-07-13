@@ -165,7 +165,7 @@ class DistributedIteratorInterface(collections.Iterator,
 
     Example use:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> dataset = tf.data.Dataset.range(100).batch(2)
     >>> dist_dataset = strategy.experimental_distribute_dataset(dataset)
     >>> dist_dataset_iterator = iter(dist_dataset)
@@ -176,18 +176,8 @@ class DistributedIteratorInterface(collections.Iterator,
     >>> for _ in range(step_num):
     ...   strategy.run(one_step, args=(dist_dataset_iterator.get_next(),))
     >>> strategy.experimental_local_results(dist_dataset_iterator.get_next())
-    (<tf.Tensor: shape=(2,), dtype=int64, numpy=array([10, 11])>,)
-
-    The above example corresponds to the case where you have only one device. If
-    you have two devices, for example,
-    ```python
-    strategy = tf.distribute.MirroredStrategy(['/gpu:0', '/gpu:1'])
-    ```
-    Then the final line will print out:
-    ```python
     (<tf.Tensor: shape=(1,), dtype=int64, numpy=array([10])>,
      <tf.Tensor: shape=(1,), dtype=int64, numpy=array([11])>)
-    ```
 
     Returns:
       A single `tf.Tensor` or a `tf.distribute.DistributedValues` which contains
@@ -207,25 +197,14 @@ class DistributedIteratorInterface(collections.Iterator,
     Example usage:
 
     >>> global_batch_size = 16
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> dataset = tf.data.Dataset.from_tensors(([1.],[2])).repeat(100).batch(global_batch_size)
     >>> distributed_iterator = iter(strategy.experimental_distribute_dataset(dataset))
     >>> distributed_iterator.element_spec
-    (TensorSpec(shape=(None, 1), dtype=tf.float32, name=None),
-     TensorSpec(shape=(None, 1), dtype=tf.int32, name=None))
-
-    The above example corresponds to the case where you have only one device. If
-    you have two devices, for example,
-    ```python
-    strategy = tf.distribute.MirroredStrategy(['/gpu:0', '/gpu:1'])
-    ```
-    Then the final line will print out:
-    ```python
     (PerReplicaSpec(TensorSpec(shape=(None, 1), dtype=tf.float32, name=None),
                     TensorSpec(shape=(None, 1), dtype=tf.float32, name=None)),
      PerReplicaSpec(TensorSpec(shape=(None, 1), dtype=tf.int32, name=None),
                     TensorSpec(shape=(None, 1), dtype=tf.int32, name=None)))
-    ```
 
     Returns:
       A nested structure of `tf.TypeSpec` objects matching the structure of an
@@ -244,7 +223,7 @@ class DistributedIteratorInterface(collections.Iterator,
 
     Example usage:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> global_batch_size = 2
     >>> steps_per_loop = 2
     >>> dataset = tf.data.Dataset.range(10).batch(global_batch_size)
@@ -312,8 +291,8 @@ class DistributedDatasetInterface(collections.Iterable,
 
     * use a pythonic for-loop construct:
 
-      >>> global_batch_size = 2
-      >>> strategy = tf.distribute.MirroredStrategy()
+      >>> global_batch_size = 4
+      >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
       >>> dataset = tf.data.Dataset.from_tensors(([1.],[1.])).repeat(4).batch(global_batch_size)
       >>> dist_dataset = strategy.experimental_distribute_dataset(dataset)
       >>> @tf.function
@@ -324,12 +303,14 @@ class DistributedDatasetInterface(collections.Iterable,
       ...   # train_step trains the model using the dataset elements
       ...   loss = strategy.run(train_step, args=(x,))
       ...   print("Loss is", loss)
-      Loss is tf.Tensor(
+      Loss is PerReplica:{
+        0: tf.Tensor(
+      [[0.7]
+       [0.7]], shape=(2, 1), dtype=float32),
+        1: tf.Tensor(
       [[0.7]
        [0.7]], shape=(2, 1), dtype=float32)
-      Loss is tf.Tensor(
-      [[0.7]
-       [0.7]], shape=(2, 1), dtype=float32)
+      }
 
       Placing the loop inside a `tf.function` will give a performance boost.
       However `break` and `return` are currently not supported if the loop is
@@ -342,7 +323,7 @@ class DistributedDatasetInterface(collections.Iterable,
       `tf.distribute.DistributedIterator`
 
       >>> global_batch_size = 4
-      >>> strategy = tf.distribute.MirroredStrategy()
+      >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
       >>> train_dataset = tf.data.Dataset.from_tensors(([1.],[1.])).repeat(50).batch(global_batch_size)
       >>> train_dist_dataset = strategy.experimental_distribute_dataset(train_dataset)
       >>> @tf.function
@@ -362,10 +343,10 @@ class DistributedDatasetInterface(collections.Iterable,
       ...     total_loss += distributed_train_step(next(dist_dataset_iterator))
       ...     num_batches += 1
       ...   average_train_loss = total_loss / num_batches
-      ...   template = ("Epoch {}, Loss: {}")
+      ...   template = ("Epoch {}, Loss: {:.4f}")
       ...   print (template.format(epoch+1, average_train_loss))
-      Epoch 1, Loss: 0.10000000894069672
-      Epoch 2, Loss: 0.10000000894069672
+      Epoch 1, Loss: 0.2000
+      Epoch 2, Loss: 0.2000
 
 
     To achieve a performance improvement, you can also wrap the `strategy.run`
@@ -389,10 +370,10 @@ class DistributedDatasetInterface(collections.Iterable,
 
     For example:
 
-    >>> global_batch_size = 2
+    >>> global_batch_size = 4
     >>> epochs = 1
     >>> steps_per_epoch = 1
-    >>> mirrored_strategy = tf.distribute.MirroredStrategy()
+    >>> mirrored_strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> dataset = tf.data.Dataset.from_tensors(([2.])).repeat(100).batch(global_batch_size)
     >>> dist_dataset = mirrored_strategy.experimental_distribute_dataset(dataset)
     >>> @tf.function(input_signature=[dist_dataset.element_spec])
@@ -405,9 +386,14 @@ class DistributedDatasetInterface(collections.Iterable,
     ...   for _ in range(steps_per_epoch):
     ...     output = train_step(next(iterator))
     ...     print(output)
-    tf.Tensor(
+    PerReplica:{
+      0: tf.Tensor(
+    [[4.]
+     [4.]], shape=(2, 1), dtype=float32),
+      1: tf.Tensor(
     [[4.]
      [4.]], shape=(2, 1), dtype=float32)
+    }
 
 
   Visit the [tutorial](https://www.tensorflow.org/tutorials/distribute/input)
@@ -422,25 +408,14 @@ class DistributedDatasetInterface(collections.Iterable,
     Example usage:
 
     >>> global_batch_size = 4
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3, 4]).repeat().batch(global_batch_size)
     >>> distributed_iterator = iter(strategy.experimental_distribute_dataset(dataset))
     >>> print(next(distributed_iterator))
-    tf.Tensor([1 2 3 4], shape=(4,), dtype=int32)
-
-
-    The above example corresponds to the case where you have only one device. If
-    you have two devices, for example,
-    ```python
-    strategy = tf.distribute.MirroredStrategy(['/gpu:0', '/gpu:1'])
-    ```
-    Then the final line will print out:
-    ```python
     PerReplica:{
       0: tf.Tensor([1 2], shape=(2,), dtype=int32),
       1: tf.Tensor([3 4], shape=(2,), dtype=int32)
     }
-    ```
 
     Returns:
       An `tf.distribute.DistributedIterator` instance for the given
@@ -456,25 +431,14 @@ class DistributedDatasetInterface(collections.Iterable,
     Example usage:
 
     >>> global_batch_size = 16
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> dataset = tf.data.Dataset.from_tensors(([1.],[2])).repeat(100).batch(global_batch_size)
     >>> dist_dataset = strategy.experimental_distribute_dataset(dataset)
     >>> dist_dataset.element_spec
-    (TensorSpec(shape=(None, 1), dtype=tf.float32, name=None),
-     TensorSpec(shape=(None, 1), dtype=tf.int32, name=None))
-
-    The above example corresponds to the case where you have only one device. If
-    you have two devices, for example,
-    ```python
-    strategy = tf.distribute.MirroredStrategy(['/gpu:0', '/gpu:1'])
-    ```
-    Then the final line will print out:
-    ```python
     (PerReplicaSpec(TensorSpec(shape=(None, 1), dtype=tf.float32, name=None),
                     TensorSpec(shape=(None, 1), dtype=tf.float32, name=None)),
      PerReplicaSpec(TensorSpec(shape=(None, 1), dtype=tf.int32, name=None),
                     TensorSpec(shape=(None, 1), dtype=tf.int32, name=None)))
-    ```
 
     Returns:
       A nested structure of `tf.TypeSpec` objects matching the structure of an

@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import shutil
 import tempfile
+import uuid
 
 from absl.testing import parameterized
 import numpy as np
@@ -1192,8 +1193,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       self.evaluate(v.assign(42.))
-      prefix = os.path.join(self.get_temp_dir(),
-                            '{}'.format(ops.uid()), 'ckpt/')
+      prefix = os.path.join(self.get_temp_dir(), str(uuid.uuid4()), 'ckpt/')
       m.save_weights(prefix)
       self.evaluate(v.assign(2.))
       m.load_weights(prefix)
@@ -1236,8 +1236,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       self.evaluate(v.assign(42.))
-      prefix = os.path.join(self.get_temp_dir(),
-                            '{}'.format(ops.uid()), 'bckpt')
+      prefix = os.path.join(self.get_temp_dir(), str(uuid.uuid4()), 'bckpt')
       m.save_weights(prefix)
       self.evaluate(v.assign(2.))
       m.load_weights(prefix)

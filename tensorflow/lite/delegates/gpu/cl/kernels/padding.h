@@ -44,8 +44,6 @@ class Padding : public GPUOperation {
   int3 GetGridSize() const;
 
   PadAttributes attributes_;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 Padding CreatePadding(const OperationDef& definition,

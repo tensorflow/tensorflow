@@ -93,21 +93,19 @@ std::string GetMeanKernelCode(const OperationDef& op_def,
 }
 }  // namespace
 
-Mean::Mean(Mean&& operation)
-    : GPUOperation(std::move(operation)),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+Mean::Mean(Mean&& operation) : GPUOperation(std::move(operation)) {}
 
 Mean& Mean::operator=(Mean&& operation) {
   if (this != &operation) {
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
 }
 
 absl::Status Mean::Compile(const CreationContext& creation_context) {
+  // must be: (x * y) % 4 = 0;
+  // must be: z = 1;
+  work_group_size_ = int3(16, 16, 1);
   if (creation_context.device->IsAdreno3xx()) {
     work_group_size_ = int3(16, 8, 1);
   }

@@ -284,11 +284,11 @@ class DenseTest(test.TestCase, parameterized.TestCase):
       weights = _get_variable_dict_from_varstore()
       self.assertEqual(len(weights), 2)
       # Check that the matrix weights got initialized to ones (from scope).
-      self.assertAllClose(weights['scope/dense/kernel'].read_value().eval(),
+      self.assertAllClose(weights['scope/dense/kernel'].read_value(),
                           np.ones((3, 2)))
       # Check that the bias still got initialized to zeros.
-      self.assertAllClose(weights['scope/dense/bias'].read_value().eval(),
-                          np.zeros((2)))
+      self.assertAllClose(weights['scope/dense/bias'].read_value(), np.zeros(
+          (2)))
 
   def testEagerExecution(self):
     with context.eager_mode():

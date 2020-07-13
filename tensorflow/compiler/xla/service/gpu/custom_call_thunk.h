@@ -39,10 +39,9 @@ namespace gpu {
 class CustomCallThunk : public Thunk {
  public:
   CustomCallThunk(
-      void* call_target,
+      ThunkInfo thunk_info, void* call_target,
       std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices,
-      ShapeTree<BufferAllocation::Slice> result_slices, std::string opaque,
-      const HloInstruction* instr);
+      ShapeTree<BufferAllocation::Slice> result_slices, std::string opaque);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 

@@ -89,15 +89,10 @@ std::string GetReshapeCode(const OperationDef& op_def, Arguments* args) {
 }
 }  // namespace
 
-Reshape::Reshape(Reshape&& operation)
-    : GPUOperation(std::move(operation)),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+Reshape::Reshape(Reshape&& operation) : GPUOperation(std::move(operation)) {}
 
 Reshape& Reshape::operator=(Reshape&& operation) {
   if (this != &operation) {
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

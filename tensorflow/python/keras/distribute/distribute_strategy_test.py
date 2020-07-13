@@ -38,6 +38,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
@@ -280,40 +281,40 @@ def strategy_and_optimizer_combinations():
       strategy_minus_tpu_combinations(),
       combinations.combine(
           optimizer=[
-              strategy_combinations.adagrad_optimizer_v1_fn,
-              strategy_combinations.adam_optimizer_v1_fn,
-              strategy_combinations.gradient_descent_optimizer_v1_fn,
-              strategy_combinations.rmsprop_optimizer_v1_fn,
-              strategy_combinations.adadelta_optimizer_keras_v2_fn,
-              strategy_combinations.adagrad_optimizer_keras_v2_fn,
-              strategy_combinations.adam_optimizer_keras_v2_fn,
-              strategy_combinations.adamax_optimizer_keras_v2_fn,
-              strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-              strategy_combinations.nadam_optimizer_keras_v2_fn,
-              strategy_combinations.rmsprop_optimizer_keras_v2_fn,
-              strategy_combinations.ftrl_optimizer_keras_v2_fn
+              optimizer_combinations.adagrad_optimizer_v1_fn,
+              optimizer_combinations.adam_optimizer_v1_fn,
+              optimizer_combinations.gradient_descent_optimizer_v1_fn,
+              optimizer_combinations.rmsprop_optimizer_v1_fn,
+              optimizer_combinations.adadelta_optimizer_keras_v2_fn,
+              optimizer_combinations.adagrad_optimizer_keras_v2_fn,
+              optimizer_combinations.adam_optimizer_keras_v2_fn,
+              optimizer_combinations.adamax_optimizer_keras_v2_fn,
+              optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+              optimizer_combinations.nadam_optimizer_keras_v2_fn,
+              optimizer_combinations.rmsprop_optimizer_keras_v2_fn,
+              optimizer_combinations.ftrl_optimizer_keras_v2_fn
           ]))
   tpu_strategies_graph = combinations.combine(
       distribution=tpu_strategies,
       mode=['graph'],
       optimizer=[
-          strategy_combinations.adagrad_optimizer_v1_fn,
-          strategy_combinations.adam_optimizer_v1_fn,
-          strategy_combinations.gradient_descent_optimizer_v1_fn,
-          strategy_combinations.rmsprop_optimizer_v1_fn,
-          strategy_combinations.adagrad_optimizer_keras_v2_fn,
-          strategy_combinations.adam_optimizer_keras_v2_fn,
-          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-          strategy_combinations.rmsprop_optimizer_keras_v2_fn
+          optimizer_combinations.adagrad_optimizer_v1_fn,
+          optimizer_combinations.adam_optimizer_v1_fn,
+          optimizer_combinations.gradient_descent_optimizer_v1_fn,
+          optimizer_combinations.rmsprop_optimizer_v1_fn,
+          optimizer_combinations.adagrad_optimizer_keras_v2_fn,
+          optimizer_combinations.adam_optimizer_keras_v2_fn,
+          optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+          optimizer_combinations.rmsprop_optimizer_keras_v2_fn
       ])
   tpu_strategies_eager = combinations.combine(
       distribution=tpu_strategies,
       mode=['eager'],
       optimizer=[
-          strategy_combinations.adagrad_optimizer_keras_v2_fn,
-          strategy_combinations.adam_optimizer_keras_v2_fn,
-          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-          strategy_combinations.rmsprop_optimizer_keras_v2_fn
+          optimizer_combinations.adagrad_optimizer_keras_v2_fn,
+          optimizer_combinations.adam_optimizer_keras_v2_fn,
+          optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+          optimizer_combinations.rmsprop_optimizer_keras_v2_fn
       ])
   return non_tpu_strategies + tpu_strategies_eager + tpu_strategies_graph
 

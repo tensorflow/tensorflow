@@ -90,7 +90,7 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
       const std::vector<ShardingAndIndex>& arg_core_mapping,
       const std::vector<std::vector<xla::Shape>>& per_core_arg_shapes,
       const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
-      TpuProgramGroup* tpu_program);
+      TpuProgramGroupInterface* tpu_program_group_interface);
 
   TpuProgramGroup() = default;
   TpuProgramGroup(TpuProgramGroup&& other);
@@ -103,6 +103,9 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   bool LogProgramMemorySummary() override;
 
   void UnloadAndDestroyPrograms() override;
+
+  Status LogCompilationStats(const TpuCompilationCacheKey& key,
+                             absl::Duration duration) override;
 
   const std::vector<bool>& may_modify_variables() const override {
     return may_modify_variables_;

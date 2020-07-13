@@ -62,6 +62,18 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_proto_library_cc(
+    name = "compilation_result_proto",
+    srcs = [
+        "compilation_result.proto",
+    ],
+    protodeps = tf_additional_all_protos() + [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 tf_proto_library_py(
     name = "compilation_result_proto",
     srcs = [

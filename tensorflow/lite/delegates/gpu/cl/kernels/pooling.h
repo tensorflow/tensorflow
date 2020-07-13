@@ -52,9 +52,6 @@ class Pooling : public GPUOperation {
 
   PoolingType type_;
   bool output_indices_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 Pooling CreatePooling(const OperationDef& definition,

@@ -1138,8 +1138,6 @@ class Layer(base_layer.Layer):
       # Insert layers into the Keras Graph Network.
       self._graph_network_add_metric(value, aggregation, name)
 
-  @deprecation.deprecated_args(None, '`inputs` is now automatically inferred',
-                               'inputs')
   @doc_controls.for_subclass_implementers
   def add_update(self, updates, inputs=None):
     """Add update op(s), potentially dependent on layer inputs.
@@ -1165,6 +1163,10 @@ class Layer(base_layer.Layer):
         on this Layer, when executing in Eager mode.
       inputs: Deprecated, will be automatically inferred.
     """
+    if inputs is not None:
+      tf_logging.warning(
+          '`add_update` `inputs` kwarg has been deprecated. You no longer need '
+          'to pass a value to `inputs` as it is being automatically inferred.')
     call_context = base_layer_utils.call_context()
 
     if (ds_context.has_strategy() and

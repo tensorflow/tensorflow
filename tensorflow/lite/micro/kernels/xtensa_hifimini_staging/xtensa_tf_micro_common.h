@@ -38,8 +38,8 @@ limitations under the License.
 #define __XTENSA_TF_MICRO_COMMON__
 
 #if defined HIFI_NNLIB_OPT || defined HIFI_MINI_NNLIB_OPT
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xa_nnlib/include/nnlib/xa_nnlib_api.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xa_nnlib/include/nnlib/xa_nnlib_standards.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini_staging/xa_nnlib/include/nnlib/xa_nnlib_api.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini_staging/xa_nnlib/include/nnlib/xa_nnlib_standards.h"
 
 #define CHECK_ERR_HIFI_NNLIB_KER(ret, err_msg) \
   if (ret != 0) {                              \

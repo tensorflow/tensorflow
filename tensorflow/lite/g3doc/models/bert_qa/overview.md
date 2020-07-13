@@ -7,15 +7,19 @@ passage.
 
 <img src="images/screenshot.gif" class="attempt-right" style="max-width: 300px">
 
-If you are new to TensorFlow Lite and are working with Android, we recommend
-exploring the following example applications that can help you get started.
+If you are new to TensorFlow Lite and are working with Android or iOS, we
+recommend exploring the following example applications that can help you get
+started.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/bert_qa/android">Android
 example</a>
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/bert_qa/ios">iOS
+example</a>
 
-If you are using a platform other than Android, or you are already familiar with
-the [TensorFlow Lite APIs](https://www.tensorflow.org/api_docs/python/tf/lite),
-you can download our starter question and answer model.
+If you are using a platform other than Android/iOS, or you are already familiar
+with the
+[TensorFlow Lite APIs](https://www.tensorflow.org/api_docs/python/tf/lite), you
+can download our starter question and answer model.
 
 <a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/bert_qa/mobilebert_qa_vocab.zip">Download
 starter model and vocab</a>

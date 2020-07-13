@@ -377,6 +377,11 @@ class MultiDeviceIteratorResourceDeleter(object):
   object is part of a reference cycle, the cycle will be collectible.
   """
 
+  __slots__ = [
+      "_deleter", "_multi_device_iterator", "_iterators", "_device",
+      "_eager_mode"
+  ]
+
   def __init__(self, multi_device_iterator, iterators, device, deleter):
     self._deleter = deleter
     self._multi_device_iterator = multi_device_iterator
@@ -584,10 +589,10 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
   def __iter__(self):
     return self
 
-  def __next__(self):
-    return self.next()
-
   def next(self):
+    return self.__next__()
+
+  def __next__(self):
     try:
       return self.get_next()
     except errors.OutOfRangeError:

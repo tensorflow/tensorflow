@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
 
 namespace mlir {
-namespace xla_chlo {
+namespace chlo {
 
 template <typename T>
 static LogicalResult Verify(T op) {
@@ -137,7 +137,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
   auto broadcast_dimensions = op->getAttr("broadcast_dimensions")
                                   .dyn_cast_or_null<DenseIntElementsAttr>();
   if (broadcast_dimensions &&
-      !xla::IsLegalNumpyRankedBroadcast(lhs, rhs, broadcast_dimensions)) {
+      !hlo::IsLegalNumpyRankedBroadcast(lhs, rhs, broadcast_dimensions)) {
     // Note: It is unclear whether the general specification of explicit
     // broadcast_dimensions on binary ops is a feature we want to carry
     // forward. While it can technically be implemented for ranked-dynamic,
@@ -150,7 +150,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
            << "broadcast_dimensions = " << broadcast_dimensions;
   }
 
-  Value computed_shape = xla::ComputeBinaryElementwiseBroadcastingResultExtents(
+  Value computed_shape = hlo::ComputeBinaryElementwiseBroadcastingResultExtents(
       loc, lhs, rhs, builder);
   if (!computed_shape) return failure();
   reifiedReturnShapes.push_back(computed_shape);
@@ -263,10 +263,10 @@ BROADCAST_BINARY_OP_DEFS(BroadcastXorOp);
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
-// xla_chlo Dialect Constructor
+// chlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-XlaHloClientDialect::XlaHloClientDialect(MLIRContext* context)
+HloClientDialect::HloClientDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
@@ -274,5 +274,5 @@ XlaHloClientDialect::XlaHloClientDialect(MLIRContext* context)
       >();
 }
 
-}  // namespace xla_chlo
+}  // namespace chlo
 }  // namespace mlir

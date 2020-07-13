@@ -180,7 +180,7 @@ def set_callback_parameters(callback_list,
 
 def _is_generator_like(data):
   """Checks if data is a generator, Sequence, or Iterator."""
-  return (hasattr(data, 'next') or hasattr(data, '__next__') or isinstance(
+  return (hasattr(data, '__next__') or hasattr(data, 'next') or isinstance(
       data, (Sequence, iterator_ops.Iterator, iterator_ops.OwnedIterator)))
 
 
@@ -1221,6 +1221,16 @@ class ModelCheckpoint(Callback):
       self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
+    # pylint: disable=protected-access
+    if self.model._in_multi_worker_mode:
+      logging.warning(
+          'Automatic model reloading for interrupted job was removed from '
+          'the `ModelCheckpoint` callback in multi-worker mode, please use the '
+          '`keras.callbacks.experimental.BackupAndRestore` callback instead. '
+          'See this tutorial for details: '
+          'https://www.tensorflow.org/tutorials/distribute/'
+          'multi_worker_with_keras#backupandrestore_callback.'
+      )
     if self.load_weights_on_restart:
       filepath_to_load = (
           self._get_most_recently_modified_file_matching_pattern(self.filepath))

@@ -119,7 +119,9 @@ void HloToIrBindings::EmitBasePointersForHlos(
           if (slice.allocation()->is_thread_local()) {
             llvm::Type* pointee_type =
                 llvm_ir::ShapeToIrType(non_io_hlo->shape(), module_);
-            BindHloToIrValue(*non_io_hlo, b_->CreateAlloca(pointee_type),
+            BindHloToIrValue(*non_io_hlo,
+                             llvm_ir::EmitAllocaAtFunctionEntry(
+                                 pointee_type, /*name=*/"", b_),
                              index);
           } else if (slice.allocation()->is_constant()) {
             llvm::Value* global_for_constant = module_->getGlobalVariable(

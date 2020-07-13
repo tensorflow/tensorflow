@@ -46,8 +46,6 @@ class Softmax : public GPUOperation {
  private:
   absl::Status BindArguments();
   int3 GetGridSize() const;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 Softmax CreateSoftmax(const OperationDef& definition);

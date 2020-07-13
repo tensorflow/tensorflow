@@ -45,7 +45,9 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     *status = custom_device->CopyTensorFromDevice(
         this, "/job:localhost/replica:0/task:0/device:CPU:0", &copy);
     if (status->ok()) {
-      return copy->Resolve(status);
+      auto result = copy->Resolve(status);
+      copy->Unref();
+      return result;
     } else {
       return nullptr;
     }

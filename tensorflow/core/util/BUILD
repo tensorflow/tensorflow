@@ -93,6 +93,8 @@ filegroup(
         "port.h",
         "presized_cuckoo_map.h",
         "ptr_util.h",
+        "ragged_to_dense_util.cc",
+        "ragged_to_dense_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.cc",
         "saved_tensor_slice_util.h",
@@ -365,6 +367,35 @@ cc_library(
     copts = tf_copts(),
     visibility = [
         "//tensorflow:internal",
+    ],
+)
+
+cc_library(
+    name = "ragged_to_dense_util",
+    srcs = [
+        "ragged_to_dense_util.cc",
+    ],
+    hdrs = [
+        "ragged_to_dense_util.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_to_dense_util_test",
+    srcs = [
+        "ragged_to_dense_util_test.cc",
+    ],
+    deps = [
+        ":ragged_to_dense_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

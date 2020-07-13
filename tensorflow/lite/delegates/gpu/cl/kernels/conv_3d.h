@@ -113,8 +113,6 @@ class Conv3D : public GPUOperation {
   int3 kernel_size_;
   int3 dilation_;
   ConvParams conv_params_;
-
-  CLKernel kernel_;
 };
 
 template <DataType T>

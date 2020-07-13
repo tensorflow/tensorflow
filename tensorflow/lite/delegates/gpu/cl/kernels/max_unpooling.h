@@ -49,9 +49,6 @@ class MaxUnpooling : public GPUOperation {
   int4 stride_;
   int4 padding_;
   int4 kernel_size_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,

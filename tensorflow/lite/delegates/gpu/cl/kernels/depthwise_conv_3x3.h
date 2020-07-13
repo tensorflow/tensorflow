@@ -71,9 +71,6 @@ class DepthwiseConv3x3 : public GPUOperation {
 
   bool weights_are_buffer_;
   bool local_mem_uploads_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 template <DataType T>

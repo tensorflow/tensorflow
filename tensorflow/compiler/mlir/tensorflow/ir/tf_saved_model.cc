@@ -141,16 +141,27 @@ static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
   return mlir::success();
 }
 
-Type GetBoundInputArgTypeFor(GlobalTensorOp global_tensor) {
-  auto type = global_tensor.type().cast<TensorType>();
-  return RankedTensorType::get(
-      {}, TF::ResourceType::get({type}, type.getContext()));
+Type GetBoundInputArgTypeFor(mlir::Operation *op) {
+  if (auto global_tensor = llvm::dyn_cast<GlobalTensorOp>(op)) {
+    auto type = global_tensor.type().cast<TensorType>();
+    return RankedTensorType::get(
+        {}, TF::ResourceType::get({type}, type.getContext()));
+  }
+
+  if (auto asset = llvm::dyn_cast<AssetOp>(op)) {
+    return RankedTensorType::get({}, TF::StringType::get(asset.getContext()));
+  }
+
+  op->emitError() << "unknown symbol operation";
+  return {};
 }
 
 static LogicalResult VerifyBoundInputArgType(Operation *op_for_diagnostics,
                                              Type arg_type,
-                                             GlobalTensorOp global_tensor) {
-  auto expected_type = GetBoundInputArgTypeFor(global_tensor);
+                                             mlir::Operation *symbol_op) {
+  auto expected_type = GetBoundInputArgTypeFor(symbol_op);
+  if (!expected_type) return failure();
+
   if (arg_type != expected_type) {
     return op_for_diagnostics->emitError()
            << "bound input with type " << arg_type << " expected to have type "
@@ -169,14 +180,14 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     }
     auto symbol_name = named_attr.second.cast<FlatSymbolRefAttr>().getValue();
     auto module = op->getParentOfType<ModuleOp>();
-    auto global_tensor = module.lookupSymbol<GlobalTensorOp>(symbol_name);
-    if (!global_tensor) {
+    mlir::Operation *symbol_op = module.lookupSymbol(symbol_name);
+    if (!symbol_op) {
       return op->emitError() << "'tf_saved_model.bound_input' attribute must "
                                 "reference a valid symbol, got invalid symbol '"
                              << symbol_name << "'";
     }
     auto arg_type = cast<FuncOp>(op).getArgument(arg_index).getType();
-    return VerifyBoundInputArgType(op, arg_type, global_tensor);
+    return VerifyBoundInputArgType(op, arg_type, symbol_op);
   }
   if (named_attr.first == "tf_saved_model.index_path") {
     return VerifyIndexPath(op, named_attr);
@@ -345,7 +356,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
 LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     Operation *op, NamedAttribute named_attr) {
   if (named_attr.first == "tf_saved_model.exported_names") {
-    if (!isa<FuncOp>(op) && !isa<GlobalTensorOp>(op)) {
+    if (!isa<FuncOp, GlobalTensorOp>(op)) {
       return op->emitError() << "'tf_saved_model.exported_names' must be on a "
                                 "'func' or 'tf_saved_model.global_tensor' op";
     }
@@ -404,12 +415,12 @@ bool HasTfSavedModelSemantics(ModuleOp module) {
   return module.getAttr("tf_saved_model.semantics") != nullptr;
 }
 
-GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
-                                const SymbolTable &symbol_table) {
+Operation *LookupBoundInput(FuncOp func, int arg_index,
+                            const SymbolTable &symbol_table) {
   auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
       arg_index, "tf_saved_model.bound_input");
   if (!attr) return nullptr;
-  return symbol_table.lookup<GlobalTensorOp>(attr.getValue());
+  return symbol_table.lookup(attr.getValue());
 }
 
 SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op) {

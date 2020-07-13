@@ -90,14 +90,10 @@ FullyConnected::FullyConnected(const OperationDef& definition)
     : GPUOperation(definition) {}
 
 FullyConnected::FullyConnected(FullyConnected&& kernel)
-    : GPUOperation(std::move(kernel)),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
+    : GPUOperation(std::move(kernel)) {}
 
 FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
   if (this != &kernel) {
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;

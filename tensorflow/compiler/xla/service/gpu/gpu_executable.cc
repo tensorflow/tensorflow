@@ -173,14 +173,12 @@ Status GpuExecutable::ExecuteThunks(
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
   std::vector<std::function<void()>> deferred_host_callbacks;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    CHECK(thunk->hlo_instruction());
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
-    int32 stream_no =
-        thunk_schedule_->StreamNumberForHlo(*thunk->hlo_instruction());
+    int32 stream_no = thunk_schedule_->StreamNumberForThunk(thunk);
     se::Stream* stream =
         (stream_no == 0 ? main_stream : sub_streams[stream_no - 1].get());
 
@@ -188,8 +186,7 @@ Status GpuExecutable::ExecuteThunks(
       stream->ThenWaitFor(FindOrDie(thunk_to_finish_event, dependency).get());
     }
 
-    VLOG(2) << "Executing the thunk for "
-            << thunk->hlo_instruction()->ToString() << " on stream "
+    VLOG(2) << "Executing the thunk for " << thunk->name() << " on stream "
             << stream_no;
     const GpuExecutableRunOptions* gpu_options =
         run_options->run_options().gpu_executable_run_options();
@@ -499,17 +496,15 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
         se::DeviceMemoryBase argument_buffer = owning->Release();
         *maybe_owning_memory = argument_buffer;
         result_buffer = argument_buffer;
-        if (alias->kind == HloInputOutputAliasConfig::kUserAlias) {
-          // This is a user alias, so a must alias. The caller is giving us the
-          // input buffer, but in case of error from the execute call, we should
-          // not be releasing it as it contains valid data (for example, it is a
-          // parameter which the user wants us to alias, in a gradient update
-          // computation). So we store the index into the result in the aliased
-          // vector, which will be fed to the ExecutionOutput, which will use
-          // the indices to drop the addresses from its own ScopedShapedBuffer
-          // result, if the ExecutionOutput is not committed.
-          result.AddAliasedIndex(index);
-        }
+        // The caller is giving us the
+        // input buffer, but in case of error from the execute call, we should
+        // not be releasing it as it contains valid data (for example, it is a
+        // parameter which the user wants us to alias, in a gradient update
+        // computation). So we store the index into the result in the aliased
+        // vector, which will be fed to the ExecutionOutput, which will use
+        // the indices to drop the addresses from its own ScopedShapedBuffer
+        // result, if the ExecutionOutput is not committed.
+        result.AddAliasedIndex(index);
       } else if (src_hlo->opcode() != HloOpcode::kParameter) {
         // The guard is above is not to insert copy-protection when aliasing
         // pass-through params, as we do not need to write into the output

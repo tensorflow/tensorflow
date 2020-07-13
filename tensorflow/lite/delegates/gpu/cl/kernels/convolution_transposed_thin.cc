@@ -145,9 +145,7 @@ ConvolutionTransposedThin::ConvolutionTransposedThin(
     : GPUOperation(std::move(operation)),
       kernel_size_(operation.kernel_size_),
       src_channels_(operation.src_channels_),
-      dst_channels_(operation.dst_channels_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      dst_channels_(operation.dst_channels_) {}
 
 ConvolutionTransposedThin& ConvolutionTransposedThin::operator=(
     ConvolutionTransposedThin&& operation) {
@@ -155,8 +153,6 @@ ConvolutionTransposedThin& ConvolutionTransposedThin::operator=(
     std::swap(kernel_size_, operation.kernel_size_);
     std::swap(src_channels_, operation.src_channels_);
     std::swap(dst_channels_, operation.dst_channels_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

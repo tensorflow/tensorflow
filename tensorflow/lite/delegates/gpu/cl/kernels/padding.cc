@@ -145,16 +145,11 @@ Padding::Padding(const OperationDef& definition, const PadAttributes& attr)
     : GPUOperation(definition), attributes_(attr) {}
 
 Padding::Padding(Padding&& kernel)
-    : GPUOperation(std::move(kernel)),
-      attributes_(kernel.attributes_),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
+    : GPUOperation(std::move(kernel)), attributes_(kernel.attributes_) {}
 
 Padding& Padding::operator=(Padding&& kernel) {
   if (this != &kernel) {
     std::swap(attributes_, kernel.attributes_);
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;

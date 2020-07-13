@@ -47,7 +47,7 @@ typedef char Int8;
 typedef int16_t Int16;
 typedef int Int32;
 typedef int Int24;
-typedef int64_t int Int64;
+typedef int64_t Int64;
 typedef int Bool;
 typedef float Flt32;
 

@@ -983,7 +983,9 @@ def sparse_split(keyword_required=KeywordRequired(),
     keyword_required: Python 2 standin for * (temporary for argument reorder)
     sp_input: The `SparseTensor` to split.
     num_split: A Python integer. The number of ways to split.
-    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
+    axis: A 0-D `int32` `Tensor`. The dimension along which to split. Must be in
+      range [-rank, rank), where rank is the number of dimensions in the input
+      `SparseTensor`.
     name: A name for the operation (optional).
     split_dim: Deprecated old name for axis.
 
@@ -1031,27 +1033,50 @@ def sparse_split_v2(sp_input=None,
 
   If the `sp_input.dense_shape[axis]` is not an integer multiple of `num_split`
   each slice starting from 0:`shape[axis] % num_split` gets extra one
-  dimension. For example, if `axis = 1` and `num_split = 2` and the
-  input is:
+  dimension. For example:
 
-      input_tensor = shape = [2, 7]
-      [    a   d e  ]
-      [b c          ]
+  >>> indices = [[0, 2], [0, 4], [0, 5], [1, 0], [1, 1]]
+  >>> values = [1, 2, 3, 4, 5]
+  >>> t = tf.SparseTensor(indices=indices, values=values, dense_shape=[2, 7])
+  >>> tf.sparse.to_dense(t)
+  <tf.Tensor: shape=(2, 7), dtype=int32, numpy=
+  array([[0, 0, 1, 0, 2, 3, 0],
+         [4, 5, 0, 0, 0, 0, 0]], dtype=int32)>
 
-  Graphically the output tensors are:
+  >>> output = tf.sparse.split(sp_input=t, num_split=2, axis=1)
+  >>> tf.sparse.to_dense(output[0])
+  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
+  array([[0, 0, 1, 0],
+         [4, 5, 0, 0]], dtype=int32)>
+  >>> tf.sparse.to_dense(output[1])
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+  array([[2, 3, 0],
+         [0, 0, 0]], dtype=int32)>
 
-      output_tensor[0] =
-      [    a ]
-      [b c   ]
+  >>> output = tf.sparse.split(sp_input=t, num_split=2, axis=0)
+  >>> tf.sparse.to_dense(output[0])
+  <tf.Tensor: shape=(1, 7), dtype=int32, numpy=array([[0, 0, 1, 0, 2, 3, 0]],
+  dtype=int32)>
+  >>> tf.sparse.to_dense(output[1])
+  <tf.Tensor: shape=(1, 7), dtype=int32, numpy=array([[4, 5, 0, 0, 0, 0, 0]],
+  dtype=int32)>
 
-      output_tensor[1] =
-      [ d e  ]
-      [      ]
+  >>> output = tf.sparse.split(sp_input=t, num_split=2, axis=-1)
+  >>> tf.sparse.to_dense(output[0])
+  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
+  array([[0, 0, 1, 0],
+         [4, 5, 0, 0]], dtype=int32)>
+  >>> tf.sparse.to_dense(output[1])
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+  array([[2, 3, 0],
+         [0, 0, 0]], dtype=int32)>
 
   Args:
     sp_input: The `SparseTensor` to split.
     num_split: A Python integer. The number of ways to split.
-    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
+    axis: A 0-D `int32` `Tensor`. The dimension along which to split. Must be in
+      range [-rank, rank), where rank is the number of dimensions in the input
+      `SparseTensor`.
     name: A name for the operation (optional).
 
   Returns:

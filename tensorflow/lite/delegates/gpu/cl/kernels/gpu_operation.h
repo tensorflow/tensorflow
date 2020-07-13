@@ -42,17 +42,6 @@ struct CreationContext {
   ProgramCache* cache;
 };
 
-struct LinkingContext {
-  // variable(FLT4) name to apply subsequent transformations
-  std::string var_name;
-  // x coordinate name (as it appears in kernel) for variable
-  std::string x_coord;
-  // y coordinate name (as it appears in kernel) for variable
-  std::string y_coord;
-  // s coordinate name (as it appears in kernel) for variable
-  std::string s_coord;
-};
-
 struct OperationDef {
   CalculationsPrecision precision;
   std::vector<TensorDescriptor> src_tensors;
@@ -116,6 +105,8 @@ class GPUOperation {
   std::vector<Tensor*> src_;
   std::vector<Tensor*> dst_;
   Arguments args_;
+  CLKernel kernel_;
+  int3 work_group_size_ = int3(8, 4, 1);
   std::vector<ElementwiseOperation*> linked_operations_;
 };
 
@@ -160,8 +151,6 @@ class ElementwiseOperation : public GPUOperation {
   std::string code_;
   absl::Status BindArguments();
   int3 GetGridSize() const;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 absl::Status MergeOperations(

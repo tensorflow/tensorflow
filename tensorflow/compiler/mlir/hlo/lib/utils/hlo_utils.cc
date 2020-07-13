@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 
 namespace mlir {
-namespace xla {
+namespace hlo {
 
 DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value x, Value y,
                                                 bool allow_empty) {
@@ -66,5 +66,5 @@ DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   return DenseElementsAttr::get(scalar_ty, value);
 }
 
-}  // namespace xla
+}  // namespace hlo
 }  // namespace mlir

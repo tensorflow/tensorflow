@@ -66,15 +66,10 @@ std::string GetSoftmaxKernelCode(
 }
 }  // namespace
 
-Softmax::Softmax(Softmax&& kernel)
-    : GPUOperation(std::move(kernel)),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
+Softmax::Softmax(Softmax&& kernel) : GPUOperation(std::move(kernel)) {}
 
 Softmax& Softmax::operator=(Softmax&& kernel) {
   if (this != &kernel) {
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;

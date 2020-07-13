@@ -48,8 +48,7 @@ Conv3D::Conv3D(Conv3D&& operation)
       padding_(operation.padding_),
       kernel_size_(operation.kernel_size_),
       dilation_(operation.dilation_),
-      conv_params_(operation.conv_params_),
-      kernel_(std::move(operation.kernel_)) {}
+      conv_params_(operation.conv_params_) {}
 
 Conv3D& Conv3D::operator=(Conv3D&& operation) {
   if (this != &operation) {
@@ -58,7 +57,6 @@ Conv3D& Conv3D::operator=(Conv3D&& operation) {
     std::swap(kernel_size_, operation.kernel_size_);
     std::swap(dilation_, operation.dilation_);
     std::swap(conv_params_, operation.conv_params_);
-    kernel_ = std::move(operation.kernel_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

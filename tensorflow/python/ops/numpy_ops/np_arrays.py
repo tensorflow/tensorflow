@@ -31,6 +31,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 
 
 def convert_to_tensor(value, dtype=None, dtype_hint=None):
@@ -94,7 +95,8 @@ class NdarraySpec(type_spec.BatchableTypeSpec):
     return self._hash
 
 
-class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
+@np_export.np_export('ndarray')  # pylint: disable=invalid-name
+class ndarray(composite_tensor.CompositeTensor):
   """Equivalent of numpy.ndarray backed by TensorFlow tensors.
 
   This does not support all features of NumPy ndarrays e.g. strides and
@@ -104,6 +106,8 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
   TODO(srbs): Clearly specify which attributes and methods are not supported
   or if there are any differences in behavior.
   """
+
+  __slots__ = ['_data', '_dtype', '_type_spec_internal']
 
   def __init__(self, shape, dtype=float, buffer=None):  # pylint: disable=redefined-builtin
     """Initializes an ndarray.
@@ -155,12 +159,14 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
       buffer = math_ops.cast(buffer, dtype)
     self._data = buffer
     self._type_spec_internal = None
+    self._dtype = None
 
   @classmethod
   def from_tensor(cls, tensor):
     o = cls.__new__(cls, None)
     # pylint: disable=protected-access
     o._data = tensor
+    o._dtype = None
     o._type_spec_internal = None
     # pylint: enable=protected-access
     return o
@@ -199,7 +205,12 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
 
   @property
   def dtype(self):
-    return np.dtype(self.data.dtype.as_numpy_dtype)
+    if self._dtype is None:
+      self._dtype = np_dtypes._get_cached_dtype(self._data.dtype)  # pylint: disable=protected-access
+    return self._dtype
+
+  def _is_boolean(self):
+    return self._data.dtype == dtypes.bool
 
   @property
   def ndim(self):
@@ -252,11 +263,11 @@ class ndarray(composite_tensor.CompositeTensor):  # pylint: disable=invalid-name
   def __float__(self):
     return float(self.data)
 
-  def __nonzero__(self):
+  def __bool__(self):
     return bool(self.data)
 
-  def __bool__(self):
-    return self.__nonzero__()
+  def __nonzero__(self):
+    return self.__bool__()
 
   def __iter__(self):
     if not isinstance(self.data, ops.EagerTensor):

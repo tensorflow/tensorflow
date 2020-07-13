@@ -192,16 +192,11 @@ std::string GetResize3DCode(const OperationDef& op_def,
 }  // namespace
 
 Resize::Resize(Resize&& operation)
-    : GPUOperation(std::move(operation)),
-      attr_(operation.attr_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
 
 Resize& Resize::operator=(Resize&& operation) {
   if (this != &operation) {
     attr_ = operation.attr_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -259,16 +254,11 @@ Resize CreateResize(const OperationDef& definition,
 }
 
 Resize3D::Resize3D(Resize3D&& operation)
-    : GPUOperation(std::move(operation)),
-      attr_(operation.attr_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
 
 Resize3D& Resize3D::operator=(Resize3D&& operation) {
   if (this != &operation) {
     attr_ = operation.attr_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
