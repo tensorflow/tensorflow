@@ -334,6 +334,7 @@ TfLiteStatus EvalMeanReferenceOps(TfLiteContext* context,
             GetTensorData<int>(temp_sum),
             /*compute_sum=*/false));
   }
+  return kTfLiteOk;
 }
 
 template <KernelType kernel_type>
@@ -463,16 +464,19 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
               GetTensorData<int64_t>(temp_sum)));
       break;
     case kTfLiteInt8: {
-      EvalMeanReferenceOps<int8_t>(context, op_context, num_axis, data,
-                                   temp_index, resolved_axis, temp_sum);
+      TF_LITE_ENSURE_OK(context, EvalMeanReferenceOps<int8_t>(
+                                     context, op_context, num_axis, data,
+                                     temp_index, resolved_axis, temp_sum));
     } break;
     case kTfLiteInt16: {
-      EvalMeanReferenceOps<int16_t>(context, op_context, num_axis, data,
-                                    temp_index, resolved_axis, temp_sum);
+      TF_LITE_ENSURE_OK(context, EvalMeanReferenceOps<int16_t>(
+                                     context, op_context, num_axis, data,
+                                     temp_index, resolved_axis, temp_sum));
     } break;
     case kTfLiteUInt8: {
-      EvalMeanReferenceOps<uint8_t>(context, op_context, num_axis, data,
-                                    temp_index, resolved_axis, temp_sum);
+      TF_LITE_ENSURE_OK(context, EvalMeanReferenceOps<uint8_t>(
+                                     context, op_context, num_axis, data,
+                                     temp_index, resolved_axis, temp_sum));
     } break;
     default:
       return kTfLiteError;
