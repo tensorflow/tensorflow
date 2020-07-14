@@ -332,9 +332,8 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
       ConversionPatternRewriter &rewriter) const override {
     Type dtype = op.element_dtype();
     if (!(dtype.isF16() || dtype.isF32() || dtype.isF64() ||
-          dtype.isInteger(1) || dtype.isSignlessInteger(8) ||
-          dtype.isSignlessInteger(16) || dtype.isSignlessInteger(32) ||
-          dtype.isSignlessInteger(64))) {
+          dtype.isInteger(1) || dtype.isInteger(8) || dtype.isInteger(16) ||
+          dtype.isInteger(32) || dtype.isInteger(64))) {
       op.emitError(
           "requires element_dtype to be 1-bit/8-bit/16-bit/32-bit/64-bit "
           "integer or 16-bit/32-bit/64-bit float type during TF Lite "

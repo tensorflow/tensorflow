@@ -43,11 +43,6 @@ class Mean : public GPUOperation {
  private:
   absl::Status BindArguments();
   int3 GetGridSize() const;
-  CLKernel kernel_;
-
-  // must be: (x * y) % 4 = 0;
-  // must be: z = 1;
-  int3 work_group_size_ = int3(16, 16, 1);
 };
 
 Mean CreateMean(const OperationDef& definition);

@@ -258,7 +258,7 @@ tf_module {
   }
   member {
     name: "Tensor"
-    mtype: "<class \'typing.GenericMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "TensorArray"
@@ -655,6 +655,10 @@ tf_module {
   member {
     name: "truncated_normal_initializer"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "types"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "uint16"

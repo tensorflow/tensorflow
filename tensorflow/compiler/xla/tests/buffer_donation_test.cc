@@ -119,7 +119,8 @@ class BufferDonationTest : public HloTestBase {
             }
           });
 
-      args.emplace_back(ExecutionInput(std::move(owned_buffers)));
+      args.emplace_back(
+          ExecutionInput(std::move(owned_buffers), argument_literal.shape()));
     }
 
     TF_ASSERT_OK_AND_ASSIGN(

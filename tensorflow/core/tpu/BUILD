@@ -136,7 +136,7 @@ cc_library(
         ":tpu_library_init_fns",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_configuration_rewrite_registration",
+        "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_mesh_state_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",

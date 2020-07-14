@@ -75,6 +75,8 @@ TENSORFLOW_API_INIT_FILES = [
     "tpu/__init__.py",
     "train/__init__.py",
     "train/experimental/__init__.py",
+    "types/__init__.py",
+    "types/experimental/__init__.py",
     "version/__init__.py",
     "xla/__init__.py",
     "xla/experimental/__init__.py",

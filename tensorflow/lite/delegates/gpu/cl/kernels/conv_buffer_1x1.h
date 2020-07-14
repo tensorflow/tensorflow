@@ -110,7 +110,6 @@ class ConvBuffer1x1 : public GPUOperation {
   int3 GetGridSize() const;
 
   ConvParams conv_params_;
-  CLKernel kernel_;
 };
 
 template <DataType T>

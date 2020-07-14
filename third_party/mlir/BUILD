@@ -545,6 +545,7 @@ cc_library(
     deps = [
         ":Affine",
         ":AffinePassIncGen",
+        ":AffineUtils",
         ":Analysis",
         ":IR",
         ":Pass",
@@ -2768,6 +2769,7 @@ cc_library(
         "@llvm-project//mlir/test:TestDialect",
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
+        "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",
         "@llvm-project//mlir/test:TestTransforms",
     ],
@@ -2916,6 +2918,7 @@ cc_binary(
         "@llvm-project//mlir/test:TestDialect",
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
+        "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",
         "@llvm-project//mlir/test:TestTransforms",
     ],

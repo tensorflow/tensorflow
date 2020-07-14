@@ -491,6 +491,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   }
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (TF_PREDICT_TRUE(s.ok() && !*end_of_sequence)) {
+    DCHECK_EQ(out_tensors->size(), dataset()->output_dtypes().size());
     RecordElement(ctx, out_tensors);
   }
   if (model && model->collect_resource_usage() && node_) {

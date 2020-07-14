@@ -3540,7 +3540,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
   }];
 }
 
-def TF_FusedBatchNormV3Op : TF_Op<"FusedBatchNormV3", [NoSideEffect, TF_FoldOperandsTransposeInterface, TF_LayoutSensitiveInterface]> {
+class TF_FusedBatchNormOpBase<string Name> : TF_Op<Name, [NoSideEffect, TF_FoldOperandsTransposeInterface, TF_LayoutSensitiveInterface]> {
   let summary = "Batch normalization.";
 
   let description = [{
@@ -3561,15 +3561,6 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
 
-  let results = (outs
-    TensorOf<[BF16, F16, F32]>:$y,
-    F32Tensor:$batch_mean,
-    F32Tensor:$batch_variance,
-    F32Tensor:$reserve_space_1,
-    F32Tensor:$reserve_space_2,
-    F32Tensor:$reserve_space_3
-  );
-
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
 
@@ -3583,6 +3574,27 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
     StringRef GetOptimalLayout(const RuntimeDevices& devices);
     LogicalResult UpdateDataFormat(StringRef data_format);
   }];
+}
+
+def TF_FusedBatchNormV2Op : TF_FusedBatchNormOpBase<"FusedBatchNormV2"> {
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$y,
+    F32Tensor:$batch_mean,
+    F32Tensor:$batch_variance,
+    F32Tensor:$reserve_space_1,
+    F32Tensor:$reserve_space_2
+  );
+}
+
+def TF_FusedBatchNormV3Op : TF_FusedBatchNormOpBase<"FusedBatchNormV3"> {
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$y,
+    F32Tensor:$batch_mean,
+    F32Tensor:$batch_variance,
+    F32Tensor:$reserve_space_1,
+    F32Tensor:$reserve_space_2,
+    F32Tensor:$reserve_space_3
+  );
 }
 
 def TF_GatherOp : TF_Op<"Gather", [NoSideEffect]> {
@@ -7272,6 +7284,7 @@ reshape(t, []) ==> 7
   }];
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def TF_ResizeBilinearOp : TF_Op<"ResizeBilinear", [NoSideEffect]> {

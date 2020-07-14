@@ -160,17 +160,13 @@ MaxUnpooling::MaxUnpooling(MaxUnpooling&& kernel)
     : GPUOperation(std::move(kernel)),
       stride_(kernel.stride_),
       padding_(kernel.padding_),
-      kernel_size_(kernel.kernel_size_),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
+      kernel_size_(kernel.kernel_size_) {}
 
 MaxUnpooling& MaxUnpooling::operator=(MaxUnpooling&& kernel) {
   if (this != &kernel) {
     std::swap(stride_, kernel.stride_);
     std::swap(padding_, kernel.padding_);
     std::swap(kernel_size_, kernel.kernel_size_);
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;

@@ -687,10 +687,12 @@ LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
       auto retval = func.front().getTerminator()->getOperand(result_index);
       assert(result.getType() == retval.getType());
       auto aliasing_arg = retval.dyn_cast<BlockArgument>();
+      if (!aliasing_arg)
+        return op.emitOpError("unsupported output: ")
+               << "resource does not alias input";
       if (common_aliasing_arg_num == kUnassigned)
         common_aliasing_arg_num = aliasing_arg.getArgNumber();
-      if (!aliasing_arg ||
-          aliasing_arg.getArgNumber() != common_aliasing_arg_num)
+      if (aliasing_arg.getArgNumber() != common_aliasing_arg_num)
         return op.emitOpError("unsupported output: ")
                << "resource does not alias a single input";
     }

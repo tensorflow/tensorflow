@@ -136,6 +136,18 @@ class TPUTest(test.TestCase):
 @parameterized.named_parameters([("PackedVar", True), ("", False)])
 class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
+  def test_function_compile_with_xla(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+    with strategy.scope():
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def func():
+      return v.read_value() + 1.0
+
+    with ops.device("/device:TPU:0"):
+      self.assertAllEqual(func(), 2.0)
+
   def test_sequential_experimental_runs(self, enable_packed_var):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)

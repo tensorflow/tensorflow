@@ -267,6 +267,7 @@ std::string GenerateConvolutionTransposedCode(
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
     const OperationDef& definition, const CLDevice& device)
     : GPUOperation(definition) {
+  work_group_size_ = int3(8, 4, 1);
   if (device.IsPowerVR()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
   } else if (device.IsNvidia() || device.IsIntel()) {
@@ -281,16 +282,12 @@ ConvolutionTransposed4x4::ConvolutionTransposed4x4(
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
     ConvolutionTransposed4x4&& operation)
     : GPUOperation(std::move(operation)),
-      weights_upload_type_(operation.weights_upload_type_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      weights_upload_type_(operation.weights_upload_type_) {}
 
 ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
     ConvolutionTransposed4x4&& operation) {
   if (this != &operation) {
     std::swap(weights_upload_type_, operation.weights_upload_type_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

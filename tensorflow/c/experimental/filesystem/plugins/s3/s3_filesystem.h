@@ -12,18 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_S3_S3_FILESYSTEM_H_
+#define TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_S3_S3_FILESYSTEM_H_
 
-#include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_configuration_rewrite_pass.h"
+#include <aws/core/Aws.h>
+#include <aws/core/utils/StringUtils.h>
 
-namespace tensorflow {
-namespace {
+#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/tf_status.h"
 
-// This pass removes the TPUEmbeddingConfiguration in ConfigureDistributedTPU.
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 20,
-                      DistributedTPUConfigurationRewritePass);
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 20,
-                      DistributedTPUShutdownRewritePass);
-
-}  // namespace
-}  // namespace tensorflow
+#endif  // TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_S3_S3_FILESYSTEM_H_
