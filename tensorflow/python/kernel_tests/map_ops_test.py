@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Tests for zero_out ops."""
+"""Tests for TensorMap ops."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-#import numpy as np
 from tensorflow.python.platform import test
 from absl.testing import parameterized
 from tensorflow.python.framework import test_util
@@ -40,7 +39,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testTensorMapSize(self):
     m = map_ops.empty_tensor_map()
     s = map_ops.tensor_map_size(m)
-    self.assertAllClose(s, 0)
+    self.assertAllEqual(s, 0)
 
   def testTensorMapInsert(self):
     m = map_ops.empty_tensor_map()
@@ -48,7 +47,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v = constant_op.constant(2.0)
     m = map_ops.tensor_map_insert(m, k, v)
     s = map_ops.tensor_map_size(m)
-    self.assertAllClose(s, 1)
+    self.assertAllEqual(s, 1)
 
   def testTensorMapLookup(self):
     m = map_ops.empty_tensor_map()
@@ -98,4 +97,4 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  test.main() 
+  test.main()

@@ -44,7 +44,6 @@ void TensorMap::Encode(VariantTensorData* data) const {
   // Metadata format:
   // <element_dtype><element_shape_proto>
   core::PutVarint64(&metadata, static_cast<uint64>(element_dtype));
-  core::PutVarint64(&metadata, static_cast<uint64>(max_num_elements));
   TensorShapeProto element_shape_proto;
   element_shape.AsProto(&element_shape_proto);
   element_shape_proto.AppendToString(&metadata);
@@ -56,17 +55,15 @@ static Status TensorMapDeviceCopy(
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
   to->element_shape = from.element_shape;
   to->element_dtype = from.element_dtype;
-  to->max_num_elements = from.max_num_elements;
   for (const std::pair<TensorKey,Tensor>& p : from.tensors()) {
-    to->tensors().emplace(p); //TODO: check valid dtype
-    //if (t.dtype() != DT_INVALID) {
-      //TF_RETURN_IF_ERROR(copy(p, &to->tensors().back()));
-    //}
+    if (p.first.dtype() != DT_INVALID && p.second.dtype() != DT_INVALID) {
+      to->tensors().emplace(p.first, p.second);
+    }
   }
   return Status::OK();
 }
 
-#define REGISTER_LIST_COPY(DIRECTION)                                         \
+#define REGISTER_LIST_COPY(DIRECTION)                                        \
   INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(TensorMap, DIRECTION, \
                                                        TensorMapDeviceCopy)
 
@@ -89,19 +86,16 @@ bool TensorMap::Decode(const VariantTensorData& data) {
 
   while (tensors_it != data.tensors().end())
   {
-    // should assert that tensors_it + 1 is also not the end
     if (std::next(tensors_it) == data.tensors().end()) {
       return false;
     }
-    TensorKey k = TensorKey(*tensors_it); // copy inefficient?
-    tensors().emplace(k,*++tensors_it);
-    tensors_it++;
+    tensors().emplace(tensors_it[0], tensors_it[1]);
+    tensors_it += 2;
   }
 
   core::GetVarint64(&iter, &scratch);
   element_dtype = static_cast<DataType>(scratch);
   core::GetVarint64(&iter, &scratch);
-  max_num_elements = static_cast<int>(scratch);
   TensorShapeProto element_shape_proto;
   element_shape_proto.ParseFromString(string(iter.data(), iter.size()));
   element_shape = PartialTensorShape(element_shape_proto);

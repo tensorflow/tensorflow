@@ -35,21 +35,21 @@ TEST(TensorMapTest, Empty) {
 TEST(TensorKeyTest, Equal) {
   TensorKey k1 = Tensor(15);
   TensorKey k2 = Tensor(15);
-  EXPECT_EQ(k1,k2);
+  EXPECT_EQ(k1, k2);
 
   TensorKey k3 = Tensor(15);
   TensorKey k4 = Tensor(37);
-  EXPECT_NE(k3,k4);
+  EXPECT_NE(k3, k4);
 }
 
 TEST(TensorMapTest, Insert) {
-  EXPECT_EQ(1,1);
+  EXPECT_EQ(1, 1);
   TensorMap tm;
   TensorKey k = Tensor(11);
   Tensor v = Tensor(22);
-  tm.insert(k,v);
+  tm.insert(k, v);
   absl::flat_hash_map<TensorKey,Tensor> am;
-  am.try_emplace(k,v);
+  am.try_emplace(k, v);
 
   absl::flat_hash_map<TensorKey,Tensor>::iterator map_it = tm.tensors().begin();
   EXPECT_EQ(map_it->first, k);
@@ -62,7 +62,7 @@ TEST(TensorMapTest, Lookup) {
   TensorMap tm;
   TensorKey k = Tensor(11);
   Tensor v = Tensor(22);
-  tm.insert(k,v);
+  tm.insert(k, v);
   absl::flat_hash_map<TensorKey,Tensor>::iterator map_it = tm.find(k);
   Tensor f = map_it->second;
 
@@ -74,7 +74,7 @@ TEST(TensorMapTest, Erase) {
   TensorMap tm;
   TensorKey k = Tensor(11);
   Tensor v = Tensor(22);
-  tm.insert(k,v);
+  tm.insert(k, v);
   tm.erase(k);
   EXPECT_EQ(tm.find(k), tm.tensors().end());
 }
@@ -84,8 +84,8 @@ TEST(TensorMapTest, SameKeyInsert) {
   TensorKey k = Tensor(11);
   Tensor v1 = Tensor(22);
   Tensor v2 = Tensor(23);
-  bool b1 = tm.insert(k,v1);
-  bool b2 = tm.insert(k,v2);
+  bool b1 = tm.insert(k, v1);
+  bool b2 = tm.insert(k, v2);
   EXPECT_EQ(b1, true);
   EXPECT_EQ(b2, false);
   absl::flat_hash_map<TensorKey,Tensor>::iterator map_it = tm.find(k);
@@ -109,7 +109,7 @@ TEST(TensorMapTest, Copy) {
   TensorMap tm;
   TensorKey k = Tensor(11);
   Tensor v = Tensor(22);
-  tm.insert(k,v);
+  tm.insert(k, v);
   TensorMap tmc = tm.Copy();
   EXPECT_EQ(tm.dtype(), tmc.dtype());
   EXPECT_EQ(tm.size(), tmc.size());
@@ -123,7 +123,7 @@ TEST(TensorMapTest, EncodeDecode) {
   TensorMap tm;
   TensorKey k = Tensor(11);
   Tensor v = Tensor(22);
-  tm.insert(k,v);
+  tm.insert(k, v);
   VariantTensorData data;
   tm.Encode(&data);
   TensorMap tmc;

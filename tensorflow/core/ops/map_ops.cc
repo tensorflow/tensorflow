@@ -20,12 +20,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-bool IsValidTensorMapHandleData(
-    const std::vector<shape_inference::ShapeAndType>* handle_data) {
-        std::cout << "is valid tensor map handle data " << handle_data->size() << std::endl;
-  return handle_data != nullptr && handle_data->size() == 1;
-}
-
+//TODO(kttian): Support non-scalar values
 REGISTER_OP("EmptyTensorMap")
     .Output("handle: variant")
     .SetShapeFn([](shape_inference::InferenceContext* c) {

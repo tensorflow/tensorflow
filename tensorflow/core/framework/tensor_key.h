@@ -47,13 +47,13 @@ class TensorKey : public Tensor {
     }
 
     friend bool operator!=(const TensorKey& t1, const TensorKey& t2) {
-      return !(t1==t2);
+      return !(t1 == t2);
     }
 
-    // AbslHashValue() function, needed for absl hashing.
+    // Needed for absl hash function.
     template <typename H>
     friend H AbslHashValue(H h, const TensorKey& k) {
-      uint8* d = (uint8*)(k.data());
+      const uint8* d = static_cast<uint8*>(k.data());
       size_t s = k.AllocatedBytes();
       std::vector<uint8> vec;
       for (int i=0; i < s; i++) {

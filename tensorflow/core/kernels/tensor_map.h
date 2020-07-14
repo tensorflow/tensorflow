@@ -38,11 +38,11 @@ namespace tensorflow {
 //
 // Do not create a true copy of the underlying container - but instead increment
 // a reference count.  Modifying b.tensors() modifies a.tensors().  In this way,
-// TensorList should be considered similar to the tf::Tensor object.
+// TensorMap should be considered similar to the tf::Tensor object.
 //
 // In order to get a copy of the underlying map, use the Copy method:
 //
-//    TensorList b = a.Copy();
+//    TensorMap b = a.Copy();
 //    b.tensors().insert(k, v);  // This does not modify a.tensors().
 //
 // Note that this is not a deep copy: the memory locations of the underlying
@@ -50,8 +50,8 @@ namespace tensorflow {
 // in the original.  To truly perform a deep copy, Device and Type-specific
 // code needs to be applied to the underlying tensors as usual.
 //
-// The most important implication of RefCounted TLs is that OpKernels
-// wishing to reuse TensorList inputs as outputs via context->forward_input()
+// The most important implication of RefCounted TensorMaps is that OpKernels
+// wishing to reuse TensorMap inputs as outputs via context->forward_input()
 // need to perform an additional check on the refcount of the TensorList,
 // to ensure aliasing can be performed safely.  For example:
 //
@@ -72,7 +72,6 @@ class TensorMap {
   TensorMap(const TensorMap& other)
       : element_shape(other.element_shape),
         element_dtype(other.element_dtype),
-        max_num_elements(other.max_num_elements),
         tensors_(other.tensors_) {
     tensors_->Ref();
   }
@@ -80,7 +79,6 @@ class TensorMap {
   TensorMap(TensorMap&& rhs)
       : element_shape(std::move(rhs.element_shape)),
         element_dtype(rhs.element_dtype),
-        max_num_elements(rhs.max_num_elements),
         tensors_(rhs.tensors_) {
     rhs.tensors_ = nullptr;
   }
@@ -89,7 +87,6 @@ class TensorMap {
     if (this == &rhs) return *this;
     element_shape = rhs.element_shape;
     element_dtype = rhs.element_dtype;
-    max_num_elements = rhs.max_num_elements;
     tensors_->Unref();
     tensors_ = rhs.tensors_;
     tensors_->Ref();
@@ -100,7 +97,6 @@ class TensorMap {
     if (this == &rhs) return *this;
     element_shape = rhs.element_shape;
     element_dtype = rhs.element_dtype;
-    max_num_elements = rhs.max_num_elements;
     std::swap(tensors_, rhs.tensors_);
     return *this;
   }
@@ -120,10 +116,6 @@ class TensorMap {
 
   DataType element_dtype;
 
-  // The maximum allowed size of `tensors`. Defaults to -1 meaning that the size
-  // of `tensors` is unbounded.
-  int max_num_elements = -1;
-
   // Access to the underlying tensor container.
   absl::flat_hash_map<TensorKey,Tensor>& tensors() { return tensors_->values_; }
   const absl::flat_hash_map<TensorKey,Tensor>& tensors() const { return tensors_->values_; }
@@ -137,7 +129,6 @@ class TensorMap {
     TensorMap out;
     out.element_shape = element_shape;
     out.element_dtype = element_dtype;
-    out.max_num_elements = max_num_elements;
     // This performs a copy of the absl::hashmap.
     out.tensors_->values_ = tensors_->values_;
     return out;

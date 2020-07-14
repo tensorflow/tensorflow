@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Use zero_out ops in python."""
+"""Ops to manipulate hashmap of tensors."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -26,11 +26,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_map_ops
 from tensorflow.python.ops.gen_map_ops import *
 from tensorflow.python.framework import constant_op
-
-
-#zero_out_ops = load_library.load_op_library(
-#    resource_loader.get_path_to_datafile('_zero_out_ops.so'))
-#zero_out = zero_out_ops.zero_out 
 
 ops.NotDifferentiable("EmptyTensorMap")
 

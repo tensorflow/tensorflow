@@ -147,9 +147,6 @@ cuda_py_test(
     size = "small",
     srcs = ["map_ops_test.py"],
     grpc_enabled = True,
-    tags = [
-        "noasan",  # TODO(b/155406705): flaky
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

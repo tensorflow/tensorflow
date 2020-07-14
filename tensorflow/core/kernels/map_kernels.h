@@ -20,14 +20,13 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_encode_decode.h"
 
 #include <iostream>
-using namespace std;
 
 namespace tensorflow {
 
 
 Status GetInputMap(OpKernelContext* c, int index, const TensorMap** map) {
   if (!TensorShapeUtils::IsScalar(c->input(index).shape())) {
-    return errors::InvalidArgument("Input map must be a scalar saw: ",
+    return errors::InvalidArgument("Input map must be a scalar. Saw: ",
                                    c->input(index).shape().DebugString());
   }
   const TensorMap* m = c->input(index).scalar<Variant>()().get<TensorMap>();
@@ -41,6 +40,7 @@ Status GetInputMap(OpKernelContext* c, int index, const TensorMap** map) {
 }
 
 
+//TODO(kattian): change into templated function
 Status ForwardInputOrCreateNewMap(OpKernelContext* c, int32 input_index,
                                    int32 output_index,
                                    const TensorMap& input_map,
@@ -68,7 +68,7 @@ Status ForwardInputOrCreateNewMap(OpKernelContext* c, int32 input_index,
   }
 
   // If forwarding is not possible allocate a new output tensor and copy
-  // the `input_list` to it.
+  // the `input_map` to it.
   AllocatorAttributes attr;
   attr.set_on_host(true);
   TF_RETURN_IF_ERROR(
@@ -182,6 +182,7 @@ class TensorMapErase : public OpKernel {
  private:
   DataType element_dtype_;
 };
+
 
 class TensorMapReplace : public OpKernel {
  public:
