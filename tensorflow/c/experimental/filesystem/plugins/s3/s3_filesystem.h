@@ -17,8 +17,22 @@ limitations under the License.
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/StringUtils.h>
+#include <aws/core/utils/threading/Executor.h>
+#include <aws/s3/S3Client.h>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/tf_status.h"
+
+namespace tf_s3_filesystem {
+typedef struct S3File {
+  std::shared_ptr<Aws::S3::S3Client> s3_client;
+  std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor;
+  absl::Mutex initialization_lock;
+  S3File();
+} S3File;
+void Init(TF_Filesystem* filesystem, TF_Status* status);
+void Cleanup(TF_Filesystem* filesystem);
+}  // namespace tf_s3_filesystem
 
 #endif  // TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_PLUGINS_S3_S3_FILESYSTEM_H_
