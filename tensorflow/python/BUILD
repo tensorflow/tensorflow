@@ -6332,6 +6332,9 @@ tf_py_test(
     srcs = ["training/server_lib_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
+    tags = [
+        "noasan",  # TODO(b/161236904): flaky timeout in trying to start gRPC server
+    ],
     deps = [
         ":array_ops",
         ":client",
