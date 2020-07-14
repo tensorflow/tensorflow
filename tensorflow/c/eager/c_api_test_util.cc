@@ -18,7 +18,9 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
 
 using tensorflow::string;
 
@@ -295,4 +297,24 @@ bool GetDeviceName(TFE_Context* ctx, string* device_name,
   }
   TF_DeleteDeviceList(devices);
   return false;
+}
+
+tensorflow::ServerDef GetServerDef(const string& job_name, int num_tasks) {
+  tensorflow::ServerDef server_def;
+  server_def.set_protocol("grpc");
+  server_def.set_job_name(job_name);
+  server_def.set_task_index(0);
+  tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
+  tensorflow::JobDef* job_def = cluster_def->add_job();
+  job_def->set_name(job_name);
+  for (int i = 0; i < num_tasks; i++) {
+    int port = tensorflow::testing::PickUnusedPortOrDie();
+    job_def->mutable_tasks()->insert(
+        {i, tensorflow::strings::StrCat("localhost:", port)});
+  }
+  return server_def;
+}
+
+tensorflow::ServerDef GetServerDef(int num_tasks) {
+  return GetServerDef("localhost", num_tasks);
 }

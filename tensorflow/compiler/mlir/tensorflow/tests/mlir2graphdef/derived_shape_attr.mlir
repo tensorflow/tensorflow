@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s --dump-input-on-failure
+// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
 
 // Check that attributes that define derived shapes are exported.
 

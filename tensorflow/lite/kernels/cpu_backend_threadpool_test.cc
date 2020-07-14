@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 

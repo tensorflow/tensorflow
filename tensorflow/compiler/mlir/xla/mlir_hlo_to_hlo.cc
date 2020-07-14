@@ -39,8 +39,8 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -69,11 +69,12 @@ using ::tensorflow::uint32;
 using ::tensorflow::uint64;
 using ::tensorflow::uint8;
 
-constexpr char kPaddingMapAttr[] = "xla_hlo.padding_map";
+constexpr char kPaddingMapAttr[] = "mhlo.padding_map";
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
-constexpr char kShardingAttr[] = "xla_hlo.sharding";
-constexpr char kRepicationAttr[] = "tf_device.is_same_data_across_replicas";
+constexpr char kShardingAttr[] = "mhlo.sharding";
+constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
+constexpr char kRepicationAttr[] = "mhlo.is_same_data_across_replicas";
 
 // Passes through everything except for unique_ptr, on which it calls get().
 // This exists to allow the generated code to call XLA functions that take a raw
@@ -246,7 +247,7 @@ static std::unique_ptr<xla::PrecisionConfig> Convert_precision_config(
 }
 
 static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
-    mlir::xla_hlo::DotDimensionNumbers dot_dimension_numbers_attr) {
+    mlir::mhlo::DotDimensionNumbers dot_dimension_numbers_attr) {
   xla::DotDimensionNumbers dot_dimension_numbers;
 
   auto rhs_contracting_dimensions =
@@ -281,7 +282,7 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
 }
 
 static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
-    mlir::xla_hlo::ConvDimensionNumbers input) {
+    mlir::mhlo::ConvDimensionNumbers input) {
   xla::ConvolutionDimensionNumbers output;
 
   output.set_input_batch_dimension(
@@ -314,7 +315,7 @@ static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
   return output;
 }
 
-xla::ChannelHandle Convert_channel_handle(mlir::xla_hlo::ChannelHandle attr) {
+xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandle attr) {
   xla::ChannelHandle channel_handle;
   channel_handle.set_handle(ConvertAPInt(attr.handle().getValue()));
   channel_handle.set_type(static_cast<xla::ChannelHandle::ChannelType>(
@@ -332,7 +333,7 @@ static xla::ComparisonDirection Convert_comparison_direction(
 }
 
 static xla::GatherDimensionNumbers Convert_dimension_numbers(
-    mlir::xla_hlo::GatherDimensionNumbers input) {
+    mlir::mhlo::GatherDimensionNumbers input) {
   xla::GatherDimensionNumbers output;
 
   auto offset_dims = ConvertDenseIntAttr(input.offset_dims());
@@ -356,7 +357,7 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
 }
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
-    mlir::xla_hlo::ScatterDimensionNumbers input) {
+    mlir::mhlo::ScatterDimensionNumbers input) {
   xla::ScatterDimensionNumbers output;
 
   auto update_window_dims = ConvertDenseIntAttr(input.update_window_dims());
@@ -381,21 +382,41 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
   return output;
 }
 
+// Extracts sharding from attribute string.
+static absl::optional<xla::OpSharding> CreateOpShardingFromStringRef(
+    llvm::StringRef sharding) {
+  xla::OpSharding sharding_proto;
+  if (!sharding_proto.ParseFromString(sharding.str())) return absl::nullopt;
+  return sharding_proto;
+}
+
 // Returns an OpSharding proto from the "sharding" attribute of the op. If the
 // op doesn't have a sharding attribute or the sharding attribute is invalid,
 // returns absl::nullopt.
 static absl::optional<xla::OpSharding> CreateOpShardingFromAttribute(
     mlir::Operation* op) {
   auto sharding = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
-  if (!sharding) {
-    return absl::nullopt;
-  }
-  ::xla::OpSharding sharding_proto;
-  if (!::tensorflow::protobuf::TextFormat::ParseFromString(
-          sharding.getValue().str(), &sharding_proto)) {
-    return absl::nullopt;
-  }
-  return sharding_proto;
+  if (!sharding) return absl::nullopt;
+  return CreateOpShardingFromStringRef(sharding.getValue());
+}
+
+// Returns a FrontendAttributes proto from the "frontend_attributes" attribute
+// of the op. An empty FrontendAttributes proto is returned if an op does not
+// have frontend attributes.
+static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
+    mlir::Operation* op) {
+  xla::FrontendAttributes frontend_attributes;
+  auto frontend_attributes_dict =
+      op->getAttrOfType<mlir::DictionaryAttr>(kFrontendAttributesAttr);
+
+  if (!frontend_attributes_dict) return frontend_attributes;
+
+  for (const auto& attr : frontend_attributes_dict)
+    if (auto value_str_attr = attr.second.dyn_cast<mlir::StringAttr>())
+      frontend_attributes.mutable_map()->insert(
+          {attr.first.str(), value_str_attr.getValue().str()});
+
+  return frontend_attributes;
 }
 
 // Checks if all shardings are set.
@@ -405,14 +426,6 @@ static bool AllOptionalShardingsAreSet(
                       [](const absl::optional<xla::OpSharding>& sharding) {
                         return sharding.has_value();
                       });
-}
-
-// Extracts sharding from attribute string.
-static absl::optional<xla::OpSharding> CreateOpShardingFromStringRef(
-    llvm::StringRef sharding) {
-  xla::OpSharding sharding_proto;
-  if (!sharding_proto.ParseFromString(sharding.str())) return absl::nullopt;
-  return sharding_proto;
 }
 
 // Extracts argument and result shardings from function.
@@ -561,7 +574,7 @@ llvm::SmallVector<xla::XlaOp, 4> GetTuple(mlir::Operation::operand_range values,
 }  // namespace
 
 namespace mlir {
-namespace xla_hlo {
+namespace mhlo {
 namespace {
 
 LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
@@ -602,13 +615,12 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(ScalarsToDimensionTensorOp op,
-                          OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
   // This op has no expression in the legacy export format.
   return failure();
 }
 
-LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
+LogicalResult ExportXlaOp(DynamicIotaOp op, OpLoweringContext ctx) {
   // This op has no expression in the legacy export format.
   return failure();
 }
@@ -817,7 +829,7 @@ LogicalResult ExportXlaOp(ReshapeOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
-  // Failure on purpose because `xla_hlo::ReturnOp` will be handled by
+  // Failure on purpose because `mhlo::ReturnOp` will be handled by
   // special purpose logic in `ConvertToHloModule::Lower`.
   return failure();
 }
@@ -925,8 +937,13 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
+  // TODO(whoever): currently not supported.
+  return failure();
+}
+
 }  // namespace
-}  // namespace xla_hlo
+}  // namespace mhlo
 }  // namespace mlir
 
 #include "tensorflow/compiler/mlir/xla/operator_writers.inc"
@@ -967,10 +984,10 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
       values.reserve(attr.getNumElements());
       for (APFloat val : attr.getValues<APFloat>()) {
         bool loses_info = false;
-        CHECK_EQ(val.convert(llvm::APFloat::IEEEsingle(),
-                             llvm::APFloat::rmTowardZero, &loses_info),
-                 llvm::APFloat::opOK);
-        CHECK(!loses_info);
+        TF_RET_CHECK(val.convert(llvm::APFloat::IEEEsingle(),
+                                 llvm::APFloat::rmTowardZero,
+                                 &loses_info) == llvm::APFloat::opOK);
+        TF_RET_CHECK(!loses_info);
         values.push_back(xla::half(val.convertToFloat()));
       }
       xla::Array<xla::half> source_data(shape.dimensions());
@@ -980,10 +997,15 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
     case xla::PrimitiveType::BF16: {
       xla::Array<double> source_data(shape.dimensions());
       auto attr_values = attr.getValues<APFloat>();
-      std::vector<double> values_double(source_data.num_elements());
-      for (auto index_and_value : llvm::enumerate(attr_values)) {
-        values_double[index_and_value.index()] =
-            index_and_value.value().convertToDouble();
+      std::vector<double> values_double;
+      values_double.reserve(source_data.num_elements());
+      for (APFloat val : attr_values) {
+        bool loses_info = false;
+        TF_RET_CHECK(val.convert(llvm::APFloat::IEEEdouble(),
+                                 llvm::APFloat::rmTowardZero,
+                                 &loses_info) == llvm::APFloat::opOK);
+        TF_RET_CHECK(!loses_info);
+        values_double.push_back(val.convertToDouble());
       }
       source_data.SetValues(values_double);
       return xla::LiteralUtil::ConvertF64ToBF16(
@@ -1038,7 +1060,7 @@ LogicalResult ConvertToHloModule::Lower(
     return success();
   }
 
-  if (isa<xla_hlo::ReturnOp>(inst) || isa<mlir::ReturnOp>(inst)) {
+  if (isa<mhlo::ReturnOp, mlir::ReturnOp>(inst)) {
     // Construct the return value for the function. If there are multiple
     // values returned, then create a tuple, else return value directly.
     xla::XlaOp return_value;
@@ -1126,13 +1148,13 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
 
 LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
   if (lowered_computation_.count(f)) return success();
-  if (f.getBlocks().size() != 1) {
+  if (!llvm::hasSingleElement(f)) {
     return f.emitError("only single block Function supported");
   }
 
   // Create a sub-builder if this is not the main function.
   std::unique_ptr<xla::XlaBuilder> builder_up;
-  bool entry_function = f.getName().str() == "main";
+  bool entry_function = f.getName() == "main";
   if (!entry_function)
     builder_up = module_builder_.CreateSubBuilder(f.getName().str());
   auto& builder = entry_function ? module_builder_ : *builder_up;
@@ -1145,8 +1167,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
     bool any_arg_replicated = false;
     entry_args_same_across_replicas.reserve(f.getNumArguments());
     for (int64_t i = 0; i < f.getNumArguments(); ++i) {
-      auto attr = f.getArgAttrOfType<mlir::BoolAttr>(i, kRepicationAttr);
-      entry_args_same_across_replicas.push_back(attr && attr.getValue());
+      auto attr = f.getArgAttrOfType<mlir::UnitAttr>(i, kRepicationAttr);
+      entry_args_same_across_replicas.push_back(attr != nullptr);
       any_arg_replicated |= entry_args_same_across_replicas.back();
       // Pass the alias info to the builder so that it will build the alias info
       // into the resulting HloModule.
@@ -1383,7 +1405,7 @@ void AddDynamicParameterBindingEntry(xla::DynamicParameterBindingProto* binding,
 }
 
 // Validates and populates dynamic parameter bindings from a module's entry
-// function `xla_hlo.padding_map` argument attributes to a `xla::HloModuleProto`
+// function `mhlo.padding_map` argument attributes to a `xla::HloModuleProto`
 // `DynamicParameterBindingProto`.
 LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
                                           xla::HloModuleProto* hlo_module_proto,

@@ -18,6 +18,7 @@ limitations under the License.
 #include <climits>
 #include <complex>
 #include <cstdint>
+#include <cstring>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -28,7 +29,17 @@ namespace tflite {
 
 namespace {
 
-// Reports error message when the reporter is set.
+const char* NameOrEmptyString(const flatbuffers::String* str) {
+  if (str == nullptr || str->c_str() == nullptr) {
+    return "";
+  }
+  return str->c_str();
+}
+
+bool IsNullOrEmptyString(const flatbuffers::String* str) {
+  return strcmp(NameOrEmptyString(str), "") == 0;
+}
+
 void ReportError(ErrorReporter* error_reporter, const char* format, ...) {
   if (error_reporter) {
     va_list args;
@@ -37,7 +48,6 @@ void ReportError(ErrorReporter* error_reporter, const char* format, ...) {
     va_end(args);
   }
 }
-
 // Returns the int32_t value pointed by ptr.
 const uint32_t* GetIntPtr(const char* ptr) {
   return reinterpret_cast<const uint32_t*>(ptr);
@@ -63,7 +73,7 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
   uint32_t buffer_size = buffer.data()->size();
   if (buffer_size < sizeof(uint32_t)) {
     ReportError(error_reporter, "String tensor %s is invalid (empty)",
-                tensor.name()->c_str());
+                NameOrEmptyString(tensor.name()));
     return false;
   }
   const char* buffer_ptr = reinterpret_cast<const char*>(buffer.data()->data());
@@ -72,7 +82,7 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
   if (num_strings > kMaxNumString) {
     ReportError(error_reporter,
                 "String tensor %s has invalid num of string set: %d",
-                tensor.name()->c_str(), num_strings);
+                NameOrEmptyString(tensor.name()), num_strings);
     return false;
   }
   uint32_t header_offsets =
@@ -82,7 +92,7 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     ReportError(error_reporter,
                 "String tensor %s buffer requires at least %d bytes, but is "
                 "allocated with %d bytes",
-                tensor.name()->c_str(), header_offsets, buffer_size);
+                NameOrEmptyString(tensor.name()), header_offsets, buffer_size);
     return false;
   }
 
@@ -92,7 +102,7 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
   if (*GetIntPtr(buffer_ptr + offset) != header_offsets) {
     ReportError(error_reporter,
                 "String tensor %s buffer initial offset must be: %d",
-                tensor.name()->c_str(), header_offsets);
+                NameOrEmptyString(tensor.name()), header_offsets);
     return false;
   }
   offset += sizeof(int32_t);
@@ -101,14 +111,14 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     if (string_offset < prev_ptr || string_offset > buffer_size) {
       ReportError(error_reporter,
                   "String tensor %s buffer is invalid: index %d",
-                  tensor.name()->c_str(), i);
+                  NameOrEmptyString(tensor.name()), i);
       return false;
     }
   }
   if (*GetIntPtr(buffer_ptr + offset - sizeof(int32_t)) != buffer_size) {
     ReportError(error_reporter,
                 "String tensor %s buffer last offset must be %d",
-                tensor.name()->c_str(), buffer_size);
+                NameOrEmptyString(tensor.name()), buffer_size);
     return false;
   }
   return true;
@@ -323,13 +333,13 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     const auto num_elements = VerifyAndCountSparseElements(tensor);
     if (!num_elements.has_value()) {
       ReportError(error_reporter, "Tensor %s has invalid sparsity parameters",
-                  tensor.name()->c_str());
+                  NameOrEmptyString(tensor.name()));
       return false;
     }
     bytes_required = num_elements.value();
     if (bytes_required > UINT_MAX) {
       ReportError(error_reporter, "Tensor %s dimension overflow",
-                  tensor.name()->c_str());
+                  NameOrEmptyString(tensor.name()));
       return false;
     }
   } else {
@@ -337,7 +347,7 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
       bytes_required *= dim;
       if (bytes_required > UINT_MAX) {
         ReportError(error_reporter, "Tensor %s dimension overflow",
-                    tensor.name()->c_str());
+                    NameOrEmptyString(tensor.name()));
         return false;
       }
     }
@@ -376,12 +386,12 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
       break;
     default:
       ReportError(error_reporter, "Tensor %s invalid type: %d",
-                  tensor.name()->c_str(), tensor.type());
+                  NameOrEmptyString(tensor.name()), tensor.type());
       return false;
   }
   if (bytes_required > UINT_MAX) {
     ReportError(error_reporter, "Tensor %s dimension overflow",
-                tensor.name()->c_str());
+                NameOrEmptyString(tensor.name()));
     return false;
   }
 
@@ -389,7 +399,8 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     ReportError(
         error_reporter,
         "Tensor %s requires %d bytes, but is allocated with %d bytes buffer",
-        tensor.name()->c_str(), bytes_required, buffer.data()->size());
+        NameOrEmptyString(tensor.name()), bytes_required,
+        buffer.data()->size());
     return false;
   }
   return true;
@@ -554,13 +565,13 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
       }
       if (tensor->buffer() >= model.buffers()->size()) {
         ReportError(error_reporter, "Tensor %s invalid buffer index: %d",
-                    tensor->name(), tensor->buffer());
+                    NameOrEmptyString(tensor->name()), tensor->buffer());
         return false;
       }
       auto* buffer = model.buffers()->Get(tensor->buffer());
       if (!buffer) {
         ReportError(error_reporter, "Tensor %s buffer %d not set",
-                    tensor->name(), tensor->buffer());
+                    NameOrEmptyString(tensor->name()), tensor->buffer());
         return false;
       }
 
@@ -596,7 +607,12 @@ bool VerifyOps(const Model& model, const OpResolver& resolver,
     }
 
     if (opcode->builtin_code() == BuiltinOperator_CUSTOM) {
-      if (!resolver.FindOp(opcode->custom_code()->c_str(), opcode->version())) {
+      if (IsNullOrEmptyString(opcode->custom_code())) {
+        ReportError(error_reporter,
+                    "Invalid custom op name, cannot be null/empty.");
+        return false;
+      } else if (!resolver.FindOp(opcode->custom_code()->c_str(),
+                                  opcode->version())) {
         ReportError(error_reporter, "Unsupported custom op: %s, version: %d",
                     opcode->custom_code()->c_str(), opcode->version());
         return false;

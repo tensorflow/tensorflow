@@ -522,8 +522,9 @@ Status SchedulerState::Init(const GrapplerItem* item,
 
     if (IsPersistent(*curr_node)) {
       auto& device_state = device_[curr_node_device];
-      for (int port_num = 0;
-           port_num < curr_node_state.output_properties.size(); ++port_num) {
+      for (int port_num = 0,
+               port_num_iter_limit = curr_node_state.output_properties.size();
+           port_num < port_num_iter_limit; ++port_num) {
         device_state.persistent_nodes.insert(
             std::make_pair(curr_node, port_num));
       }
@@ -795,7 +796,8 @@ void SchedulerState::GetOutputNodes(const NodeDef* node,
       // Execute a node as soon as all its inputs are ready. Merge nodes are
       // special since they run as soon as one of their inputs becomes
       // available.
-      if (output_state.num_inputs_ready == output_state.inputs.size() ||
+      int output_state_inputs_size = output_state.inputs.size();
+      if (output_state.num_inputs_ready == output_state_inputs_size ||
           IsMerge(*output_node)) {
         // This output node is now ready.
         output_state.time_ready = curr_time;
@@ -900,8 +902,8 @@ std::vector<const NodeDef*> SchedulerState::MarkNodeExecuted(
     auto port = input_port.second;
     auto& input_state = node_map_[input];
     input_state.num_outputs_executed[port]++;
-    if (input_state.num_outputs_executed[port] ==
-            input_state.outputs[port].size() &&
+    int input_state_outputs_size_ = input_state.outputs[port].size();
+    if (input_state.num_outputs_executed[port] == input_state_outputs_size_ &&
         !IsPersistent(*input)) {
       // All the outputs are executed; no reference to this output port of
       // input node.
@@ -1119,7 +1121,8 @@ void SchedulerState::GenerateRunMetadata(RunMetadata* metadata) {
       const NodeState& nodestate = node_map_.at(node_def);
       NodeExecStats* node_stats = device_stepstats->add_node_stats();
       uint64 total_output_size = 0;
-      for (int slot = 0; slot < nodestate.output_properties.size(); slot++) {
+      for (int slot = 0, slot_iter_limit = nodestate.output_properties.size();
+           slot < slot_iter_limit; slot++) {
         const auto& properties = nodestate.output_properties[slot];
         NodeOutput* no = node_stats->add_output();
         no->set_slot(slot);

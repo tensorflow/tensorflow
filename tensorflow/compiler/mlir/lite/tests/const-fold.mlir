@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -canonicalize | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -canonicalize | FileCheck %s
 
 // CHECK-LABEL: @add_float
 func @add_float() -> (tensor<f32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) {

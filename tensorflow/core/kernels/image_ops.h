@@ -30,7 +30,7 @@ namespace tensorflow {
 namespace generator {
 
 enum Interpolation { NEAREST, BILINEAR };
-enum Mode { REFLECT, WRAP, CONSTANT };
+enum Mode { FILL_REFLECT, FILL_WRAP, FILL_CONSTANT, FILL_NEAREST };
 
 using Eigen::array;
 using Eigen::DenseIndex;
@@ -41,7 +41,7 @@ struct MapCoordinate {
 };
 
 template <typename Device>
-struct MapCoordinate<Device, Mode::REFLECT> {
+struct MapCoordinate<Device, Mode::FILL_REFLECT> {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
                                                          const DenseIndex len) {
     float in_coord = out_coord;
@@ -64,7 +64,7 @@ struct MapCoordinate<Device, Mode::REFLECT> {
 };
 
 template <typename Device>
-struct MapCoordinate<Device, Mode::WRAP> {
+struct MapCoordinate<Device, Mode::FILL_WRAP> {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
                                                          const DenseIndex len) {
     float in_coord = out_coord;
@@ -82,9 +82,21 @@ struct MapCoordinate<Device, Mode::WRAP> {
 };
 
 template <typename Device>
-struct MapCoordinate<Device, Mode::CONSTANT> {
+struct MapCoordinate<Device, Mode::FILL_CONSTANT> {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
                                                          const DenseIndex len) {
+    return out_coord;
+  }
+};
+
+template <typename Device>
+struct MapCoordinate<Device, Mode::FILL_NEAREST> {
+  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
+                                                         const DenseIndex len) {
+    if (out_coord < 0)
+      return 0;
+    else if (out_coord >= len)
+      return len - 1;
     return out_coord;
   }
 };
@@ -215,19 +227,24 @@ struct FillProjectiveTransform {
                   const InputType& images, const TransformsType& transform,
                   const Mode fill_mode) const {
     switch (fill_mode) {
-      case Mode::REFLECT:
+      case Mode::FILL_REFLECT:
         output->device(device) =
-            output->generate(ProjectiveGenerator<Device, T, Mode::REFLECT>(
+            output->generate(ProjectiveGenerator<Device, T, Mode::FILL_REFLECT>(
                 images, transform, interpolation));
         break;
-      case Mode::WRAP:
+      case Mode::FILL_WRAP:
         output->device(device) =
-            output->generate(ProjectiveGenerator<Device, T, Mode::WRAP>(
+            output->generate(ProjectiveGenerator<Device, T, Mode::FILL_WRAP>(
                 images, transform, interpolation));
         break;
-      case Mode::CONSTANT:
+      case Mode::FILL_CONSTANT:
+        output->device(device) = output->generate(
+            ProjectiveGenerator<Device, T, Mode::FILL_CONSTANT>(
+                images, transform, interpolation));
+        break;
+      case Mode::FILL_NEAREST:
         output->device(device) =
-            output->generate(ProjectiveGenerator<Device, T, Mode::CONSTANT>(
+            output->generate(ProjectiveGenerator<Device, T, Mode::FILL_NEAREST>(
                 images, transform, interpolation));
         break;
     }

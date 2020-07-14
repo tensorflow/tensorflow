@@ -134,7 +134,7 @@ def _sort_or_argsort(values, axis, direction, return_argsort):
   # Axis must be an integer, not a Tensor.
   axis = framework_ops.convert_to_tensor(axis, name='axis')
   axis_static = tensor_util.constant_value(axis)
-  if axis.shape.ndims != 0 or axis_static is None:
+  if axis.shape.ndims not in (None, 0) or axis_static is None:
     raise ValueError('axis must be a constant scalar')
   axis_static = int(axis_static)  # Avoids NumPy casting error
 
@@ -184,18 +184,8 @@ def _descending_sort(values, axis, return_argsort=False):
           name='transposition')
     else:
       # Generate the transposition array from the tensors.
-      transposition = array_ops.concat(
-          [
-              # Axes up to axis are unchanged.
-              math_ops.range(axis),
-              # Swap axis and rank - 1.
-              [rank - 1],
-              # Axes in [axis + 1, rank - 1) are unchanged.
-              math_ops.range(axis + 1, rank - 1),
-              # Swap axis and rank - 1.
-              [axis]
-          ],
-          axis=0)
+      transposition = array_ops.tensor_scatter_update(
+          math_ops.range(rank), [[axis], [rank-1]], [rank-1, axis])
     top_k_input = array_ops.transpose(values, transposition)
 
   values, indices = nn_ops.top_k(top_k_input, k)

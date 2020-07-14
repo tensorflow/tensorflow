@@ -167,21 +167,42 @@ void ConvolutionOpBuilder::TransposeKernelWeights() {
     layer_->mutable_convolution()->set_isdeconvolution(true);
   }
 
-  auto* coreml_weights =
-      layer_->mutable_convolution()->mutable_weights()->mutable_floatvalue();
-  coreml_weights->Resize(NumElements(weights_), 0);
+  if (weights_->type == kTfLiteFloat32) {
+    auto* coreml_weights =
+        layer_->mutable_convolution()->mutable_weights()->mutable_floatvalue();
+    coreml_weights->Resize(NumElements(weights_), 0);
 
-  optimized_ops::Transpose<float>(params, tfl_shape, weights_->data.f,
-                                  coreml_shape, coreml_weights->mutable_data());
+    optimized_ops::Transpose<float>(params, tfl_shape, weights_->data.f,
+                                    coreml_shape,
+                                    coreml_weights->mutable_data());
+  } else if (weights_->type == kTfLiteFloat16) {
+    auto* coreml_weights = layer_->mutable_convolution()
+                               ->mutable_weights()
+                               ->mutable_float16value();
+    // float16value has type of bytes (std::string)
+    coreml_weights->resize(weights_->bytes, 0);
+
+    optimized_ops::Transpose<uint16_t>(
+        params, tfl_shape, reinterpret_cast<uint16_t*>(weights_->data.raw),
+        coreml_shape, reinterpret_cast<uint16_t*>(&coreml_weights->front()));
+  }
 }
 
 void ConvolutionOpBuilder::FillCoreMLBias() {
   if (bias_ != nullptr) {
     layer_->mutable_convolution()->set_hasbias(true);
-    std::copy(bias_->data.f, bias_->data.f + NumElements(bias_->dims),
-              google::protobuf::RepeatedFieldBackInserter(layer_->mutable_convolution()
-                                                    ->mutable_bias()
-                                                    ->mutable_floatvalue()));
+    if (bias_->type == kTfLiteFloat32) {
+      std::copy(bias_->data.f, bias_->data.f + NumElements(bias_->dims),
+                google::protobuf::RepeatedFieldBackInserter(layer_->mutable_convolution()
+                                                      ->mutable_bias()
+                                                      ->mutable_floatvalue()));
+    } else if (bias_->type == kTfLiteFloat16) {
+      // float16value has type of bytes (std::string)
+      layer_->mutable_convolution()
+          ->mutable_bias()
+          ->mutable_float16value()
+          ->assign(bias_->data.raw, bias_->bytes);
+    }
   }
 }
 

@@ -40,7 +40,6 @@ ifeq ($(TARGET), hexagon)
     -fdata-sections \
     -ffunction-sections \
     -fmessage-length=0 \
-    -fno-builtin \
     -fno-delete-null-pointer-checks \
     -fno-exceptions \
     -fno-register-global-dtors-with-atexit \

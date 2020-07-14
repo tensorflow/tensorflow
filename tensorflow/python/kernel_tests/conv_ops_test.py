@@ -456,6 +456,58 @@ class Conv2DTest(test.TestCase):
         self.evaluate(conv2).reshape(conv1.shape))
 
   @test_util.run_in_graph_and_eager_modes
+  def testConvolutionClass2DExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 3]
+    filter_in_sizes = [1, 1, 3, 3]
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    x1 = self._CreateNumpyTensor(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+    convolver1 = nn_ops.Convolution(
+        input_shape=x1.shape,
+        filter_shape=filter_in.shape,
+        strides=[1, 1],
+        padding="VALID")
+    self.assertEqual(convolver1.num_batch_dims, 1)
+    convolver2 = nn_ops.Convolution(
+        input_shape=x2.shape,
+        filter_shape=filter_in.shape,
+        strides=[1, 1],
+        padding="VALID")
+    self.assertEqual(convolver2.num_batch_dims, 2)
+    conv1 = convolver1(x1, filter_in)
+    conv2 = convolver2(x2, filter_in)
+    self.assertEqual(conv1.shape, tensor_in_sizes_batch)
+    self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
+    self.assertAllEqual(
+        conv1,
+        self.evaluate(conv2).reshape(conv1.shape))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConvolutionWith2SpatialDimensionsAndExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 3]
+    filter_in_sizes = [1, 1, 3, 3]
+    filter_in = self._CreateNumpyTensor(filter_in_sizes)
+    x1 = self._CreateNumpyTensor(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+    conv1 = nn_ops.convolution(
+        x1,
+        filter_in,
+        strides=[1, 1],
+        padding="VALID")
+    conv2 = nn_ops.convolution(
+        x2,
+        filter_in,
+        strides=[1, 1],
+        padding="VALID")
+    self.assertEqual(conv1.shape, tensor_in_sizes_batch)
+    self.assertEqual(conv2.shape, tensor_in_sizes_expanded_batch)
+    self.assertAllEqual(
+        conv1,
+        self.evaluate(conv2).reshape(conv1.shape))
+
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Filter2x1Dilation(self):
     self._VerifyDilatedConvValues(
         tensor_in_sizes=[1, 4, 4, 1],
@@ -2474,16 +2526,16 @@ class Conv2DTest(test.TestCase):
   def testOpEdgeCases(self):
     with self.cached_session() as sess:
       # Illegal strides.
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "strides in the batch and depth"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "strides in the batch and depth"):
         sess.run(
             nn_ops.conv2d(
                 array_ops.placeholder(dtypes.float32),
                 array_ops.placeholder(dtypes.float32),
                 strides=[2, 1, 1, 1],
                 padding="SAME"))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "strides in the batch and depth"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "strides in the batch and depth"):
         sess.run(
             nn_ops.conv2d(
                 array_ops.placeholder(dtypes.float32),
@@ -2492,7 +2544,7 @@ class Conv2DTest(test.TestCase):
                 padding="SAME"))
 
       # Filter larger than input.
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
         sess.run(
             nn_ops.conv2d(
                 array_ops.placeholder(
@@ -2501,7 +2553,7 @@ class Conv2DTest(test.TestCase):
                     dtypes.float32, shape=[20, 21, 3, 2]),
                 strides=[1, 1, 1, 1],
                 padding="VALID"))
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
         sess.run(
             nn_ops.conv2d(
                 array_ops.placeholder(
@@ -2512,7 +2564,7 @@ class Conv2DTest(test.TestCase):
                 padding="VALID"))
 
       # Filter larger than input + padding.
-      with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+      with self.assertRaisesRegex(ValueError, "Negative dimension size"):
         sess.run(
             nn_ops.conv2d(
                 array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
@@ -2521,8 +2573,8 @@ class Conv2DTest(test.TestCase):
                 padding=[[0, 0], [2, 2], [2, 2], [0, 0]]))
 
       # Negative padding during backprop.
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "nonnegative"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "nonnegative"):
         sess.run(
             nn_ops.conv2d_backprop_input([32, 20, 20, 3],
                                          array_ops.placeholder(
@@ -2534,8 +2586,8 @@ class Conv2DTest(test.TestCase):
                                          strides=[1, 1, 1, 1],
                                          padding=[[0, 0], [-1, 0], [0, 0],
                                                   [0, 0]]))
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "nonnegative"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "nonnegative"):
         sess.run(
             nn_ops.conv2d_backprop_filter(
                 array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
@@ -2891,7 +2943,7 @@ class Conv2DBenchmark(test.Benchmark):
         x = convolutional.conv2d(x, num_outputs, [1, kernel_w])
       outputs = x
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       num_iterations = 4
       for iter_index in xrange(num_iterations):
         start = time.time()
@@ -2907,7 +2959,7 @@ class Conv2DBenchmark(test.Benchmark):
     config.graph_options.rewrite_options.dependency_optimization = (
         rewriter_config_pb2.RewriterConfig.OFF)
     with session_lib.Session(config=config) as session:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.run_op_benchmark(
           session, op, burn_iters=burn_iters, min_iters=num_iters, name=name)
 

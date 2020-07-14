@@ -68,8 +68,9 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   int output_shift_1 = 0;
   int32_t output_multiplier_2 = 0;
   int output_shift_2 = 0;
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt16) {
-    double real_multiplier_1 = static_cast<double>(input->params.scale) *
+  if (output->type == kTfLiteInt8 || output->type == kTfLiteUInt8 ||
+      output->type == kTfLiteInt16) {
+    double real_multiplier_1 = static_cast<double>(input->params.scale) /
                                static_cast<double>(output->params.scale);
     double real_multiplier_2 = static_cast<double>(input->params.scale) *
                                static_cast<double>(alpha->params.scale) /
@@ -127,16 +128,15 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace activations
 
-TfLiteRegistration* Register_PRELU() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/activations::PreluPrepare,
-                                 /*invoke=*/activations::PreluEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_PRELU() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/activations::PreluPrepare,
+          /*invoke=*/activations::PreluEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

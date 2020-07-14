@@ -239,25 +239,23 @@ class CondV2Test(test.TestCase):
     with ops.Graph().as_default():
       _, cond_op = self._createCond(None)
       self.assertEqual(cond_op.name, "cond")
-      self.assertRegexpMatches(
-          cond_op.get_attr("then_branch").name, r"cond_true_\d*")
-      self.assertRegexpMatches(
-          cond_op.get_attr("else_branch").name, r"cond_false_\d*")
+      self.assertRegex(cond_op.get_attr("then_branch").name, r"cond_true_\d*")
+      self.assertRegex(cond_op.get_attr("else_branch").name, r"cond_false_\d*")
 
     with ops.Graph().as_default():
       with ops.name_scope("foo"):
         _, cond1_op = self._createCond("")
         self.assertEqual(cond1_op.name, "foo/cond")
-        self.assertRegexpMatches(
+        self.assertRegex(
             cond1_op.get_attr("then_branch").name, r"foo_cond_true_\d*")
-        self.assertRegexpMatches(
+        self.assertRegex(
             cond1_op.get_attr("else_branch").name, r"foo_cond_false_\d*")
 
         _, cond2_op = self._createCond(None)
         self.assertEqual(cond2_op.name, "foo/cond_1")
-        self.assertRegexpMatches(
+        self.assertRegex(
             cond2_op.get_attr("then_branch").name, r"foo_cond_1_true_\d*")
-        self.assertRegexpMatches(
+        self.assertRegex(
             cond2_op.get_attr("else_branch").name, r"foo_cond_1_false_\d*")
 
   @test_util.run_v2_only
@@ -1135,7 +1133,7 @@ class CondV2Test(test.TestCase):
     def false_fn():
       return ((x,), y * 3.0)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, "true_fn and false_fn arguments to tf.cond must have the "
         "same number, type, and overall structure of return values."):
       control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
@@ -1254,7 +1252,7 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.add(x_const, y_const)
 
         cnd = cond_v2.cond_v2(constant_op.constant(True), fn, fn)
-        self.assertEquals(cnd.eval(), 7)
+        self.assertEqual(cnd.eval(), 7)
 
   def testCollectionTensorValueAccessInCond(self):
     """Read tensors from collections inside of cond_v2 & use them."""
@@ -1271,7 +1269,7 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.add(x_read, y_read)
 
         cnd = cond_v2.cond_v2(math_ops.less(x, y), fn, fn)
-        self.assertEquals(cnd.eval(), 7)
+        self.assertEqual(cnd.eval(), 7)
 
   def testCollectionIntValueWriteInCond(self):
     """Make sure Int writes to collections work inside of cond_v2."""
@@ -1289,10 +1287,10 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.mul(x, z)
 
         cnd = cond_v2.cond_v2(constant_op.constant(True), true_fn, false_fn)
-        self.assertEquals(cnd.eval(), 14)
+        self.assertEqual(cnd.eval(), 14)
 
         read_z_collection = ops.get_collection("z")
-        self.assertEquals(read_z_collection, [7])
+        self.assertEqual(read_z_collection, [7])
 
 
 class CondV2ContainerTest(test.TestCase):
@@ -1363,11 +1361,11 @@ class CondV2ContainerTest(test.TestCase):
         with ops.container("l1"):
           cnd_true = cond_v2.cond_v2(
               constant_op.constant(True), true_fn, false_fn)
-          self.assertEquals(cnd_true.eval(), 2)
+          self.assertEqual(cnd_true.eval(), 2)
 
           cnd_false = cond_v2.cond_v2(
               constant_op.constant(False), true_fn, false_fn)
-          self.assertEquals(cnd_false.eval(), 6)
+          self.assertEqual(cnd_false.eval(), 6)
 
           v4 = variables.Variable([3])
           q4 = data_flow_ops.FIFOQueue(1, dtypes.float32)
@@ -1395,7 +1393,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
           return c
 
         with ops.colocate_with(a.op):
-          self.assertEquals(
+          self.assertEqual(
               cond_v2.cond_v2(constant_op.constant(True), fn, fn).eval(), 3)
 
         def fn2():
@@ -1405,7 +1403,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
         with ops.colocate_with(a.op):
           with ops.colocate_with(b.op):
-            self.assertEquals(
+            self.assertEqual(
                 cond_v2.cond_v2(constant_op.constant(True), fn2, fn2).eval(), 3)
 
   def testColocateWithInAndOutOfCond(self):
@@ -1422,7 +1420,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
             return c
 
         with ops.colocate_with(a.op):
-          self.assertEquals(
+          self.assertEqual(
               cond_v2.cond_v2(constant_op.constant(True), fn2, fn2).eval(), 3)
 
           d = constant_op.constant([2.0], name="d")
@@ -1495,7 +1493,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
             return c
 
         with ops.device("/device:CPU:0"):
-          self.assertEquals(
+          self.assertEqual(
               cond_v2.cond_v2(constant_op.constant(True), fn2, fn2).eval(), 3)
 
           d = constant_op.constant(4.0)

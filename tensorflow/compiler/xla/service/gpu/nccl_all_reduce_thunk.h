@@ -56,8 +56,8 @@ class NcclAllReduceThunk : public Thunk {
     BufferAllocation::Slice source_buffer;
     BufferAllocation::Slice destination_buffer;
   };
-  NcclAllReduceThunk(int64 replica_count, std::vector<Buffer> buffers,
-                     const HloInstruction* all_reduce);
+  NcclAllReduceThunk(ThunkInfo thunk_info, int64 replica_count,
+                     std::vector<Buffer> buffers);
   ~NcclAllReduceThunk() override;
 
   Status ExecuteOnStream(const ExecuteParams& params) override;

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-executor-tpu-v1-island-inlining | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-executor-tpu-v1-island-inlining | FileCheck %s
 
 // CHECK-NOT: tf.PartitionedCall
 // CHECK-NOT: module @_tpu_v1_compat_outlined

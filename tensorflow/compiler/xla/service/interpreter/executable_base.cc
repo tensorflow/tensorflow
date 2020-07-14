@@ -122,14 +122,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     const double nanoseconds = (end_micros - start_micros) * 1000.0;
     profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
-  for (auto& argument : arguments) {
-    for (auto& index_buffer : *argument.MutableBuffers()) {
-      auto maybe_owning_buffer = index_buffer.second.Release();
-      if (maybe_owning_buffer) {
-        result.AddToBeReleased(std::move(*maybe_owning_buffer));
-      }
-    }
-  }
+  MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);
 }
 

@@ -162,8 +162,7 @@ class GrpcServerTest(test.TestCase):
     sess.run(dequeue_t)
 
     def blocking_dequeue():
-      with self.assertRaisesRegexp(errors_impl.CancelledError,
-                                   "Session::Close"):
+      with self.assertRaisesRegex(errors_impl.CancelledError, "Session::Close"):
         sess.run(dequeue_t)
 
     blocking_thread = self.checkedThread(blocking_dequeue)
@@ -205,7 +204,7 @@ class GrpcServerTest(test.TestCase):
                      per_process_gpu_memory_fraction)
 
   def testInvalidHostname(self):
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError, "port"):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "port"):
       _ = server_lib.Server(
           {
               "local": ["localhost"]
@@ -535,22 +534,15 @@ class ClusterSpecTest(test.TestCase):
     self.assertTrue(server_lib.ClusterSpec({"job": ["host:port"]}))
 
   def testEq(self):
-    self.assertEquals(server_lib.ClusterSpec({}), server_lib.ClusterSpec({}))
-    self.assertEquals(
-        server_lib.ClusterSpec({
-            "job": ["host:2222"]
-        }),
-        server_lib.ClusterSpec({
-            "job": ["host:2222"]
-        }),)
-    self.assertEquals(
-        server_lib.ClusterSpec({
-            "job": {
-                0: "host:2222"
-            }
-        }), server_lib.ClusterSpec({
-            "job": ["host:2222"]
-        }))
+    self.assertEqual(server_lib.ClusterSpec({}), server_lib.ClusterSpec({}))
+    self.assertEqual(
+        server_lib.ClusterSpec({"job": ["host:2222"]}),
+        server_lib.ClusterSpec({"job": ["host:2222"]}),
+    )
+    self.assertEqual(
+        server_lib.ClusterSpec({"job": {
+            0: "host:2222"
+        }}), server_lib.ClusterSpec({"job": ["host:2222"]}))
 
   def testNe(self):
     self.assertNotEquals(

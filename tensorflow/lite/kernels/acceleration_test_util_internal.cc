@@ -14,6 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/acceleration_test_util_internal.h"
 
+#include <ctype.h>
+
+#include <algorithm>
+#include <functional>
+#include <iterator>
+#include <sstream>
+#include <string>
+
 namespace tflite {
 
 void ReadAccelerationConfig(

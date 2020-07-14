@@ -16,11 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 
 #include <iterator>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
@@ -139,6 +142,10 @@ StatusOr<bool> TryRemoveConditional(HloInstruction* conditional) {
   };
   std::function<HloInstruction*(HloInstruction*, HloInstruction*)> select =
       [&](HloInstruction* t, HloInstruction* f) {
+        if (f->shape().IsToken()) {
+          return computation->AddInstruction(
+              HloInstruction::CreateAfterAll({t, f}));
+        }
         if (f->shape().IsArray()) {
           return computation->AddInstruction(HloInstruction::CreateTernary(
               f->shape(), HloOpcode::kSelect, condition_broadcast(f->shape()),
@@ -163,94 +170,92 @@ StatusOr<bool> TryRemoveConditional(HloInstruction* conditional) {
   return true;
 }
 StatusOr<bool> TryRemoveUnusedConditionalOperands(
-    HloInstruction* conditional,
-    std::map<HloComputation*, std::set<int64>>* changed_computations) {
-  // Avoid dealing with sharding.
-  if (conditional->has_sharding()) {
+    HloComputation* computation,
+    const absl::flat_hash_set<HloInstruction*>& calling_conditionals) {
+  HloInstruction* param = computation->parameter_instruction(0);
+  // Do not remove from the root instruction.
+  if (param == computation->root_instruction()) {
     return false;
   }
-  std::vector<std::set<int64>> tuple_indices_to_keep(
-      conditional->branch_count());
-  bool will_change = false;
-  for (int64 i = 0; i < conditional->branch_count(); ++i) {
-    HloComputation* computation = conditional->branch_computation(i);
-    if (changed_computations->count(computation) > 0) {
-      will_change = true;
-      break;
-    }
-    HloInstruction* param = computation->parameter_instruction(0);
-    // Do not remove the root instruction.
-    if (param == computation->root_instruction()) {
-      return false;
-    }
-    // There is nothing to be removed for non-tuple operands.
-    if (!param->shape().IsTuple()) {
-      return false;
-    }
-    for (HloInstruction* user : param->users()) {
-      // If the user is not a get tuple element, assume it is unsafe to remove
-      // elements from the tuple.
-      if (user->opcode() != HloOpcode::kGetTupleElement) {
-        return false;
-      }
-      tuple_indices_to_keep[i].insert(user->tuple_index());
-    }
-    // If not all tuple elements are used in this conditional branch, some can
-    // removed from the computation.
-    if (tuple_indices_to_keep[i].size() !=
-        ShapeUtil::TupleElementCount(param->shape())) {
-      will_change = true;
-    }
+  // There is nothing to be removed for non-tuple operands.
+  if (!param->shape().IsTuple()) {
+    return false;
   }
-
-  if (!will_change) {
+  std::set<int64> tuple_indices_to_keep;
+  for (HloInstruction* user : param->users()) {
+    // If the user is not a get tuple element, assume it is unsafe to remove
+    // elements from the tuple.
+    if (user->opcode() != HloOpcode::kGetTupleElement) {
+      return false;
+    }
+    tuple_indices_to_keep.insert(user->tuple_index());
+  }
+  // If all tuple elements are used in this conditional branch, there is nothing
+  // to be removed.
+  int64 old_tuple_element_count = ShapeUtil::TupleElementCount(param->shape());
+  if (tuple_indices_to_keep.size() == old_tuple_element_count) {
     return false;
   }
 
-  for (int64 branch = 0; branch < conditional->branch_count(); ++branch) {
-    const Shape& old_shape = conditional->operand(branch + 1)->shape();
-    int64 old_tuple_element_count = ShapeUtil::TupleElementCount(old_shape);
-    // Clone the computation in case it is called by another instruction.
-    HloComputation* computation = conditional->branch_computation(branch);
-    if (changed_computations
-            ->insert({computation, tuple_indices_to_keep[branch]})
-            .second) {
-      HloInstruction* param = computation->parameter_instruction(0);
+  // Create a new tuple shape based on the indices actually used by this
+  // computation branch.
+  std::vector<Shape> new_tuple_shapes;
+  new_tuple_shapes.reserve(tuple_indices_to_keep.size());
+  std::vector<int64> map(old_tuple_element_count, -1);
+  for (int64 i : tuple_indices_to_keep) {
+    map[i] = new_tuple_shapes.size();
+    new_tuple_shapes.push_back(param->shape().tuple_shapes(i));
+  }
+  Shape tuple_shape = ShapeUtil::MakeTupleShape(new_tuple_shapes);
+  // Clone the computation in case it is called by another non-conditional
+  // instruction.
+  HloComputation* new_computation =
+      computation->parent()->AddEmbeddedComputation(computation->Clone());
+  param = new_computation->parameter_instruction(0);
+  // Reset the parameter shape of the computation.
+  *param->mutable_shape() = tuple_shape;
 
-      // Create a new tuple shape based on the indices actually used by this
-      // branch.
-      std::vector<Shape> new_tuple_shapes;
-      new_tuple_shapes.reserve(tuple_indices_to_keep[branch].size());
-      std::vector<int64> map(old_tuple_element_count, -1);
-      for (int64 i : tuple_indices_to_keep[branch]) {
-        map[i] = new_tuple_shapes.size();
-        new_tuple_shapes.push_back(old_shape.tuple_shapes(i));
-      }
-      Shape tuple_shape = ShapeUtil::MakeTupleShape(new_tuple_shapes);
-      // Reset the parameter shape of the computation.
-      *param->mutable_shape() = tuple_shape;
+  // Reroute the GTE instructions to new tuple indices.
+  for (HloInstruction* user : param->users()) {
+    user->set_tuple_index(map[user->tuple_index()]);
+  }
 
-      // Reroute the GTE instructions to new tuple indices.
-      for (HloInstruction* user : param->users()) {
-        user->set_tuple_index(map[user->tuple_index()]);
-      }
+  // Adjust the operand shape of all calling conditionals.
+  for (HloInstruction* conditional : calling_conditionals) {
+    // Avoid dealing with sharding.
+    if (conditional->has_sharding()) {
+      continue;
     }
+    for (int64 branch = 0; branch < conditional->branch_count(); ++branch) {
+      if (conditional->branch_computation(branch) != computation) {
+        continue;
+      }
+      conditional->set_branch_computation(branch, new_computation);
+      const Shape& old_shape = conditional->operand(branch + 1)->shape();
 
-    // Reroute the operand tuple through a tuple of gte instructions of the
-    // original operand tuple.
-    const auto& to_keep = (*changed_computations)[computation];
-    std::vector<HloInstruction*> new_tuple_operands;
-    new_tuple_operands.reserve(to_keep.size());
-    for (int64 i : to_keep) {
-      new_tuple_operands.push_back(conditional->parent()->AddInstruction(
-          HloInstruction::CreateGetTupleElement(
-              old_shape.tuple_shapes(i),
-              conditional->mutable_operand(branch + 1), i)));
+      // Reroute the operand tuple through a tuple of gte instructions of the
+      // original operand tuple.
+      std::vector<HloInstruction*> new_tuple_operands;
+      new_tuple_operands.reserve(tuple_indices_to_keep.size());
+      for (int64 i : tuple_indices_to_keep) {
+        new_tuple_operands.push_back(conditional->parent()->AddInstruction(
+            HloInstruction::CreateGetTupleElement(
+                old_shape.tuple_shapes(i),
+                conditional->mutable_operand(branch + 1), i)));
+      }
+      HloInstruction* new_tuple = conditional->parent()->AddInstruction(
+          HloInstruction::CreateTuple(new_tuple_operands));
+      TF_RETURN_IF_ERROR(
+          conditional->ReplaceOperandWithDifferentShape(branch + 1, new_tuple));
+      CHECK(ShapeUtil::Compatible(conditional->operand(branch + 1)->shape(),
+                                  conditional->branch_computation(branch)
+                                      ->parameter_instruction(0)
+                                      ->shape()));
+      CHECK(ShapeUtil::Compatible(
+          conditional->shape(),
+          conditional->branch_computation(branch)->root_instruction()->shape()))
+          << conditional->branch_computation(branch)->ToString();
     }
-    HloInstruction* new_tuple = conditional->parent()->AddInstruction(
-        HloInstruction::CreateTuple(new_tuple_operands));
-    TF_RETURN_IF_ERROR(
-        conditional->ReplaceOperandWithDifferentShape(branch + 1, new_tuple));
   }
   return true;
 }
@@ -333,7 +338,7 @@ bool RemoveUnusedTupleElements(HloInstruction* conditional_op) {
   }
 
   // Compute old-to-new (old-to-new) indices mapping.
-  std::map<int, int> new_to_old_mapping, old_to_new_mapping;
+  absl::flat_hash_map<int, int> new_to_old_mapping, old_to_new_mapping;
   auto old_iter = used_indices.begin();
   for (int new_index = 0; new_index < new_tuple_shapes_size; ++new_index) {
     old_iter = std::find(old_iter, used_indices.end(), true);
@@ -519,7 +524,8 @@ bool MergeDuplicateTupleElements(HloInstruction* conditional) {
   };
 
   bool changed = false;
-  std::map<std::vector<const HloInstruction*>, int64> index_collision_table;
+  absl::flat_hash_map<std::vector<const HloInstruction*>, int64>
+      index_collision_table;
   for (int i = 0; i < conditional->shape().tuple_shapes_size(); ++i) {
     const std::vector<const HloInstruction*> ith_operands_vector =
         vectorize_branches_root_tuple_ith_operand(i);
@@ -551,16 +557,34 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
     }
   }
 
-  std::map<HloComputation*, std::set<int64>> changed_computations;
+  absl::flat_hash_set<HloInstruction*> removed_conditionals;
   for (HloInstruction* conditional_op : conditional_ops) {
     changed |= MergeDuplicateTupleElements(conditional_op);
     changed |= RemoveUnusedTupleElements(conditional_op);
     changed |= ReplaceRootWithEmptyTupleIfNoUsers(conditional_op);
     TF_ASSIGN_OR_RETURN(bool result, TryRemoveConditional(conditional_op));
-    if (!result) {
-      TF_ASSIGN_OR_RETURN(result, TryRemoveUnusedConditionalOperands(
-                                      conditional_op, &changed_computations));
+    if (result) {
+      removed_conditionals.insert(conditional_op);
+      changed = true;
     }
+  }
+  // Try to remove unused conditional operands from branch computations. We need
+  // to be careful to adjust *all* calling conditional ops if we do that, so
+  // lets collect them first.
+  absl::flat_hash_map<HloComputation*, absl::flat_hash_set<HloInstruction*>>
+      calling_conditionals;
+  for (HloInstruction* conditional : conditional_ops) {
+    if (removed_conditionals.contains(conditional)) {
+      continue;
+    }
+    for (int64 branch = 0; branch < conditional->branch_count(); ++branch) {
+      calling_conditionals[conditional->branch_computation(branch)].insert(
+          conditional);
+    }
+  }
+  for (const auto& entry : calling_conditionals) {
+    TF_ASSIGN_OR_RETURN(bool result, TryRemoveUnusedConditionalOperands(
+                                         entry.first, entry.second));
     changed |= result;
   }
 

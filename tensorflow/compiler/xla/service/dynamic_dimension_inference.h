@@ -68,6 +68,11 @@ class DynamicDimensionInference {
     SetDynamicSize(inst, index, dim, size, DimensionConstraint(1, 1));
   }
 
+  // For all tensors whose dynamic dimension is `replace`, replace them with
+  // `with`.
+  void ReplaceAllDynamicDimensionUsesWith(HloInstruction* replace,
+                                          HloInstruction* with);
+
   friend class DynamicDimensionInferenceVisitor;
 
  private:

@@ -18,8 +18,13 @@
 set -e
 set -x
 
-CPU_MAX_WHL_SIZE=190M
-GPU_MAX_WHL_SIZE=510M
+# CPU size
+MAC_CPU_MAX_WHL_SIZE=160M
+LINUX_CPU_MAX_WHL_SIZE=133M
+WIN_CPU_MAX_WHL_SIZE=113M
+# GPU size
+LINUX_GPU_MAX_WHL_SIZE=337M
+WIN_GPU_MAX_WHL_SIZE=252M
 
 function run_smoke_test() {
   VENV_TMP_DIR=$(mktemp -d)
@@ -83,19 +88,37 @@ function test_tf_imports() {
 }
 
 function test_tf_whl_size() {
-  # We do not need a separate check for MacOS regular binaries.
-  # We check for the `_cpu` string in the whl file name.
+  # Check CPU whl size.
   if [[ "$WHL_NAME" == *"_cpu"* ]]; then
-    # Check CPU whl size.
-    if [[ $(find $WHL_NAME -type f -size +${CPU_MAX_WHL_SIZE}) ]]; then
-      echo "The CPU whl size has exceeded ${CPU_MAX_WHL_SIZE}MB. To keep
+    # Check MAC CPU whl size.
+    if [[ "$WHL_NAME" == *"-macos"* ]] && [[ $(find $WHL_NAME -type f -size +${MAC_CPU_MAX_WHL_SIZE}) ]]; then
+        echo "Mac CPU whl size has exceeded ${MAC_CPU_MAX_WHL_SIZE}. To keep
 within pypi's CDN distribution limit, we must not exceed that threshold."
       return 1
     fi
-  else
-    # Check GPU whl size.
-    if [[ $(find $WHL_NAME -type f -size +${GPU_MAX_WHL_SIZE}) ]]; then
-      echo "The GPU whl size has exceeded ${GPU_MAX_WHL_SIZE}MB. To keep
+    # Check Linux CPU whl size.
+    if [[ "$WHL_NAME" == *"-manylinux"* ]] && [[ $(find $WHL_NAME -type f -size +${LINUX_CPU_MAX_WHL_SIZE}) ]]; then
+        echo "Linux CPU whl size has exceeded ${LINUX_CPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+    # Check Windows CPU whl size.
+    if [[ "$WHL_NAME" == *"-win"* ]] && [[ $(find $WHL_NAME -type f -size +${WIN_CPU_MAX_WHL_SIZE}) ]]; then
+        echo "Windows CPU whl size has exceeded ${WIN_CPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+  # Check GPU whl size
+  elif [[ "$WHL_NAME" == *"_gpu"* ]]; then
+    # Check Linux GPU whl size.
+    if [[ "$WHL_NAME" == *"-manylinux"* ]] && [[ $(find $WHL_NAME -type f -size +${LINUX_GPU_MAX_WHL_SIZE}) ]]; then
+        echo "Linux GPU whl size has exceeded ${LINUX_GPU_MAX_WHL_SIZE}. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+    # Check Windows GPU whl size.
+    if [[ "$WHL_NAME" == *"-win"* ]] && [[ $(find $WHL_NAME -type f -size +${WIN_GPU_MAX_WHL_SIZE}) ]]; then
+        echo "Windows GPU whl size has exceeded ${WIN_GPU_MAX_WHL_SIZE}. To keep
 within pypi's CDN distribution limit, we must not exceed that threshold."
       return 1
     fi

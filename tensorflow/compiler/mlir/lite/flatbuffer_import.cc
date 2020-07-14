@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
@@ -150,6 +151,14 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
       is_signed, storage_type.getWidth());
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
+
+  // Rejects if quantized tensors have zero scales.
+  for (float scale : quant_params.scale) {
+    if (scale == 0) {
+      return errors::InvalidArgument(
+          "Quantized tensors must have non-zero scales");
+    }
+  }
 
   // Scale size can't be zero as it is checked before.
   if (quant_params.scale.size() != 1) {
@@ -424,6 +433,10 @@ StatusOr<Operation*> BuildExternalConstOp(const tflite::TensorT& tensor,
 StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                   const std::vector<uint8_t>& buffer,
                                   OpBuilder builder, Location loc) {
+  if (buffer.empty()) {
+    return errors::InvalidArgument("Constant's buffer may not be empty");
+  }
+
   TF_ASSIGN_OR_RETURN(auto type, GetTensorType(tensor, builder,
                                                /*shapeless_are_scalars=*/true,
                                                /*is_constant=*/true));
@@ -438,8 +451,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   if (auto float_type = elem_type.dyn_cast<mlir::FloatType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertFloatBuffer(shaped_type, float_type, buffer));
-  } else if (elem_type.isa<mlir::IntegerType>() ||
-             elem_type.isa<QuantizedType>()) {
+  } else if (elem_type.isa<mlir::IntegerType, QuantizedType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertIntBuffer(shaped_type, elem_type, buffer));
   } else if (elem_type.isa<mlir::TF::StringType>()) {
@@ -451,8 +463,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
       refs.push_back({ref.data(), ref.size()});
 
     value = mlir::DenseStringElementsAttr::get(shaped_type, refs);
-  } else if (elem_type.isa<mlir::ComplexType>() ||
-             elem_type.isa<mlir::TF::TensorFlowType>()) {
+  } else if (elem_type.isa<mlir::ComplexType, mlir::TF::TensorFlowType>()) {
     auto dialect = elem_type.getContext()->getRegisteredDialect("tf");
     tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
     std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
@@ -695,8 +706,6 @@ StatusOr<absl::flat_hash_set<const tflite::OperatorT*>> PruneSubgraph(
   for (int32_t output : output_indices) {
     if (auto& op = defining_op[output]) {
       queue.push_back(op);
-    } else {
-      return errors::InvalidArgument("Output tensor doesn't have defining op");
     }
   }
 
@@ -720,6 +729,65 @@ StatusOr<absl::flat_hash_set<const tflite::OperatorT*>> PruneSubgraph(
   }
 
   return visited;
+}
+
+// We want to adjust the func op according to some cross ops information.
+static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
+  OpBuilder builder(func);
+  // When a quantized constant is imported, its quantization parameter is set
+  // to be narrow range. Here revert to be the fully range if the user doesn't
+  // require narrow range.
+  func.walk([&](tfl::QConstOp cst) {
+    Value value = cst.getResult();
+    Value full_range_const = value;
+    for (auto& use : value.getUses()) {
+      Operation* user = use.getOwner();
+      if (user->isKnownTerminator()) return;
+      auto qtype = mlir::quant::UniformQuantizedType::getQuantizedElementType(
+          value.getType());
+      // Only the 8-bit constants are imported with narrow range.
+      if (!qtype || qtype.getStorageTypeIntegralWidth() != 8) return;
+
+      auto affine_user = llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
+      if (affine_user &&
+          affine_user.GetAffineOperandIndex() == use.getOperandNumber() &&
+          affine_user.RequiredNarrowRangeAffineOperand())
+        return;
+
+      // Create a fully range quantized constant.
+      if (full_range_const == value) {
+        mlir::quant::QuantizedType new_qtype;
+        if (auto per_axis =
+                qtype.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+          new_qtype = mlir::quant::UniformQuantizedPerAxisType::get(
+              per_axis.getFlags(), per_axis.getStorageType(),
+              per_axis.getExpressedType(), per_axis.getScales(),
+              per_axis.getZeroPoints(), per_axis.getQuantizedDimension(),
+              per_axis.getStorageTypeMin() - 1, per_axis.getStorageTypeMax());
+        } else if (auto per_tensor =
+                       qtype.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+          new_qtype = mlir::quant::UniformQuantizedType::get(
+              per_tensor.getFlags(), per_tensor.getStorageType(),
+              per_tensor.getExpressedType(), per_tensor.getScale(),
+              per_tensor.getZeroPoint(), per_tensor.getStorageTypeMin() - 1,
+              per_tensor.getStorageTypeMax());
+        } else {
+          return;
+        }
+        auto new_output_type = new_qtype.castFromExpressedType(
+            mlir::quant::UniformQuantizedType::castToExpressedType(
+                value.getType()));
+        builder.setInsertionPointAfter(cst);
+        auto new_op = builder.create<tfl::QConstOp>(
+            cst.getLoc(), new_output_type, mlir::TypeAttr::get(new_output_type),
+            cst.valueAttr());
+        full_range_const = new_op.output();
+      }
+      use.set(full_range_const);
+    }
+    if (cst.use_empty()) cst.erase();
+  });
+  return func;
 }
 
 // Build a FuncOp from a tflite SubGraph
@@ -801,9 +869,17 @@ StatusOr<FuncOp> ConvertSubgraph(
   }
 
   for (auto output : func_outputs) {
-    bool is_constant = !is_op_output[output];
+    const bool is_func_input = input_index_set.contains(output);
+    bool is_constant = !is_op_output[output] && !is_func_input;
+    // There are 2 cases tensor is scalar when it doesn't have a shape in
+    // flatbuffer:
+    // 1. `is_constant` = true, means this tensor is created from a constant op.
+    // 2. `is_func_input` = true and `is_entry_point` = true, which means this
+    // tensor is function input and function input type is a scalar tensor.
+    const bool shapeless_is_scalar =
+        is_constant || (is_func_input && is_entry_point);
     auto type_or_err = GetTensorType(*subgraph.tensors.at(output), builder,
-                                     /*shapeless_are_scalars=*/is_constant,
+                                     shapeless_is_scalar,
                                      /*is_constant=*/is_constant);
     if (!type_or_err.ok()) {
       emitError(func_loc, "error reading return types")
@@ -858,6 +934,8 @@ StatusOr<FuncOp> ConvertSubgraph(
           subgraph, &builder, "outputs", func_outputs));
     }
     func.setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
+  } else {
+    func.setVisibility(FuncOp::Visibility::Private);
   }
 
   absl::flat_hash_set<const tflite::OperatorT*> pruned_subgraph_ops;
@@ -966,7 +1044,7 @@ StatusOr<FuncOp> ConvertSubgraph(
 
   op_builder.create<mlir::ReturnOp>(base_loc, return_operands);
 
-  return func;
+  return PostProcessFuncOp(func);
 }
 
 // TFLite subgraphs do not necessarily have names, though MLIR functions must
@@ -1047,6 +1125,5 @@ OwningModuleRef tflite::FlatBufferToMlir(
     }
     module.push_back(func_or_error.ConsumeValueOrDie());
   }
-
   return OwningModuleRef(module);
 }

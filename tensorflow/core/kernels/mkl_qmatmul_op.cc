@@ -91,12 +91,15 @@ limitations under the License.
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
 #ifdef INTEL_MKL
 
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/mkl_matmul_ops_common.h"
 #include "tensorflow/core/kernels/mkl_quantized_conv_ops.h"
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/util/mkl_threadpool.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace {
 enum {
@@ -245,8 +248,10 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       Tinput* src_data = nullptr;
       if (IS_SRC_REORDER_NEEDED(src_md, matmul_fwd_pd, matmul_fwd)) {
         src.SetUsrMem(src_md, &src_tensor);
-        src.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-            matmul_fwd_pd.get()->PRIMITIVE_DESC_SRC, this->cpu_engine_));
+        src.CheckReorderToOpMem(
+            MEMORY_PD_WITHOUT_DATA(matmul_fwd_pd.get()->PRIMITIVE_DESC_SRC,
+                                   this->cpu_engine_),
+            context);
         src_data = static_cast<Tinput*>(src.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<Tinput*>(
@@ -279,8 +284,11 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
 
         if (!is_weight_cached) {
           weight.SetUsrMem(weight_md, &weight_tensor);
-          weight.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-              matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS, this->cpu_engine_));
+          weight.CheckReorderToOpMem(
+              MEMORY_PD_WITHOUT_DATA(
+                  matmul_fwd_pd.get()->PRIMITIVE_DESC_WEIGHTS,
+                  this->cpu_engine_),
+              context);
           weight_data =
               static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
         }
@@ -290,10 +298,13 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
             const_cast<Tweight*>(weight_tensor.flat<Tweight>().data()));
       }
 
+      std::shared_ptr<stream> cpu_stream;
+      cpu_stream.reset(CreateStream(context, matmul_fwd->GetEngine()));
       // Execute inner-product
-      Tbias* bias_data = this->GetBiasHandle(context, matmul_fwd_pd,
-                                             bias_tensor, weight_tensor);
-      matmul_fwd->Execute(src_data, weight_data, bias_data, dst_data);
+      Tbias* bias_data = this->GetBiasHandle(
+          context, matmul_fwd_pd, bias_tensor, weight_tensor, cpu_stream);
+      matmul_fwd->Execute(src_data, weight_data, bias_data, dst_data,
+                          cpu_stream);
     } catch (mkldnn::error& e) {
       string error_msg = tensorflow::strings::StrCat(
           "Status: ", e.status, ", message: ", string(e.message), ", in file ",
@@ -393,7 +404,8 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       OpKernelContext* context,
       std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>&
           mkldnn_matmul_fwd_pd,
-      const Tensor& bias_tensor, const Tensor& weight_tensor) {
+      const Tensor& bias_tensor, const Tensor& weight_tensor,
+      std::shared_ptr<stream> reorder_stream) {
     // If the bias is qint32, it means the bias is already converted offline.
     // and it can be added to matmul output directly.
     if (std::is_same<Tbias, qint32>::value) {
@@ -428,6 +440,26 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
                     ((max_input - min_input) *
                      std::max(std::abs(max_weight), std::abs(min_weight)));
 
+#ifdef ENABLE_MKLDNN_THREADPOOL
+        auto parallel_func = [&](int64 start, int64 end) {
+          for (int64 j = start; j < end; j++) {
+            int x = 0;
+            for (int64 i = 0; i < k; ++i) {
+              x += wt_buf[i * n + j];
+            }
+            comp_bias[j] =
+                ((bias_buf[j] * out_scale) + static_cast<float>(x * qa_amin));
+          }
+        };
+
+        const float kArithCost = 2.5f;
+        const float kMovCost = 1.0f;
+        float shard_cost = 4 * kArithCost + kMovCost;
+        const DeviceBase::CpuWorkerThreads& worker_threads =
+            *(context->device()->tensorflow_cpu_worker_threads());
+        Shard(worker_threads.num_threads, worker_threads.workers, n, shard_cost,
+              parallel_func);
+#else
 #pragma omp parallel for schedule(static)
         for (int j = 0; j < n; ++j) {
           int x = 0;
@@ -437,7 +469,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
           comp_bias[j] =
               ((bias_buf[j] * out_scale) + static_cast<float>(x * qa_amin));
         }
-
+#endif  // ENABLE_MKLDNN_THREADPOOL
         return reinterpret_cast<Tbias*>(comp_bias_);
 
       } else if (mode_ == QUANTIZE_MODE_SCALED) {
@@ -449,7 +481,6 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
         std::vector<float> scales;
         scales.push_back(out_scale);
         mkldnn::primitive_attr bias_attr;
-        stream reorder_stream = CPU_STREAM(this->cpu_engine_);
         bias_attr.set_output_scales(0, scales);
 
         void* bias_buf = static_cast<void*>(
@@ -468,14 +499,14 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
             {MKLDNN_ARG_FROM, *input_bias_},
             { MKLDNN_ARG_TO,
               *scaled_bias_ }};
-        net.at(0).execute(reorder_stream, reorder_net_args);
+        net.at(0).execute(*reorder_stream, reorder_net_args);
 #else
         auto reorder_desc = mkldnn::reorder::primitive_desc(
             input_bias_->get_primitive_desc(),
             scaled_bias_->get_primitive_desc(), bias_attr);
         net.push_back(
             mkldnn::reorder(reorder_desc, *input_bias_, *scaled_bias_));
-        reorder_stream.submit(net).wait();
+        reorder_stream->submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1
 
         return reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());

@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/flt_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -41,11 +40,6 @@ class PReLU : public ElementwiseOperation {
   PReLU(const PReLU&) = delete;
   PReLU& operator=(const PReLU&) = delete;
 
-  void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const LinkingContext& context) const override;
-  std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
-
   friend absl::Status CreatePReLU(const CreationContext& creation_context,
                                   const OperationDef& definition,
                                   const PReLUAttributes& attr, PReLU* result);
@@ -57,9 +51,6 @@ class PReLU : public ElementwiseOperation {
   template <DataType T>
   absl::Status UploadParameters(
       const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context);
-
-  FLT clip_;
-  LinearStorage alpha_;
 };
 
 absl::Status CreatePReLU(const CreationContext& creation_context,
@@ -69,12 +60,17 @@ absl::Status CreatePReLU(const CreationContext& creation_context,
 template <DataType T>
 absl::Status PReLU::UploadParameters(
     const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context) {
-  LinearStorageCreateInfo create_info;
-  create_info.storage_type =
+  TensorLinearDescriptor desc;
+  desc.storage_type =
       DeduceLinearStorageType(definition_.GetPrimaryStorageType());
-  create_info.data_type = definition_.GetPrimaryDataType();
-  RETURN_IF_ERROR(
-      CreateLinearStorage(create_info, parameters, context, &alpha_));
+  desc.element_type = definition_.GetPrimaryDataType();
+
+  LinearStorage lt;
+  RETURN_IF_ERROR(CreateLinearStorage(desc, parameters, context, &lt));
+  args_.AddObject("alpha", AccessType::READ,
+                  absl::make_unique<LinearStorage>(std::move(lt)),
+                  absl::make_unique<TensorLinearDescriptor>(desc));
+
   return absl::OkStatus();
 }
 

@@ -1,4 +1,4 @@
-// RUN: tf-opt -verify-diagnostics -tf-saved-model-freeze-global-tensors -split-input-file %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -verify-diagnostics -tf-saved-model-freeze-global-tensors -split-input-file %s | FileCheck %s
 
 module attributes {tf_saved_model.semantics} {
 
@@ -64,7 +64,7 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 
-  func @f_callee(%arg0: tensor<!tf.resource<tensor<f32>>>) {
+  func @f_callee(%arg0: tensor<!tf.resource<tensor<f32>>>) attributes {sym_visibility = "private"} {
     return
   }
 }
@@ -104,3 +104,9 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 }
+
+// -----
+
+// Test running the pass on a module that does not have
+// tf_saved_model.semantics.
+module {}

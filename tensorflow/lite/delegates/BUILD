@@ -21,6 +21,15 @@ package(
 )
 
 cc_library(
+    name = "status",
+    hdrs = ["status.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
@@ -29,6 +38,16 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_library(
+    name = "interpreter_utils",
+    srcs = ["interpreter_utils.cc"],
+    hdrs = ["interpreter_utils.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite:framework",
     ],
 )
 
@@ -53,6 +72,7 @@ cc_test(
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
     deps = [
+        ":interpreter_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/core/api",

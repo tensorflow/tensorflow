@@ -7,9 +7,19 @@ package(
 
 exports_files(["LICENSE"])
 
-exports_files(
-    ["autotune_benchmark.py"],
-    visibility = ["//tensorflow:internal"],
+py_binary(
+    name = "autotune_benchmark_binary",
+    srcs = ["autotune_benchmark.py"],
+    main = "autotune_benchmark.py",
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
 )
 
 tf_py_test(

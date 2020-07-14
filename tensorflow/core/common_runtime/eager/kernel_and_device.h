@@ -93,11 +93,16 @@ class EagerKernelArgs : public FunctionArgsInterface {
 // https://www.tensorflow.org/code/tensorflow/core/kernels/ops_testutil.h
 class KernelAndDevice : public core::RefCounted {
  public:
+  struct Context {
+    bool log_device_placement = false;
+  };
+
   // Populates this with a kernel appropriate for 'ndef'.
   //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
-  virtual Status Init(const NodeDef& ndef, GraphCollector* graph_collector) = 0;
+  virtual Status Init(const Context& ctx, const NodeDef& ndef,
+                      GraphCollector* graph_collector) = 0;
 
   // Non-multi-device functions are run using regular CallOp and look like
   // primitive operations from KernelAndDevice perspective.
@@ -194,7 +199,8 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
   ~KernelAndDeviceOp() override {}
 
-  Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
+  Status Init(const Context& ctx, const NodeDef& ndef,
+              GraphCollector* graph_collector) override;
 
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
@@ -282,9 +288,11 @@ class KernelAndDeviceFunc : public KernelAndDevice {
 
   bool IsFunction() override { return true; };
 
-  Status InstantiateFunc(const NodeDef& ndef, GraphCollector* graph_collector);
+  Status InstantiateFunc(const Context& ctx, const NodeDef& ndef,
+                         GraphCollector* graph_collector);
 
-  Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
+  Status Init(const Context& ctx, const NodeDef& ndef,
+              GraphCollector* graph_collector) override;
 
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,

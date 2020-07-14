@@ -25,6 +25,8 @@ package(
 exports_files([
     "generated_examples_zip_test.cc",
     "tflite_diff_example_test.cc",
+    "init_tensorflow.h",
+    "init_tensorflow.cc",
 ])
 
 [gen_zip_test(

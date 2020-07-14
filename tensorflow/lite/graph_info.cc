@@ -29,6 +29,10 @@ namespace {
 // PartitionGraphIntoIndependentNodeSubsetsImpl partitioner(
 //     info, nodes_to_part, node_subsets);
 // partitioner.Partition();
+//
+// NOTE: Changing the partitioning logic would require a change to
+// FP16GraphPartitionHelper.
+// LINT.IfChange
 class PartitionGraphIntoIndependentNodeSubsetsImpl {
  public:
   PartitionGraphIntoIndependentNodeSubsetsImpl(
@@ -198,6 +202,7 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
   // negative values of kEpochNotReady if not assigned.
   std::vector<int> node_epochs_;
 };
+// LINT.ThenChange(//tensorflow/lite/delegates/utils.h)
 
 }  // namespace
 

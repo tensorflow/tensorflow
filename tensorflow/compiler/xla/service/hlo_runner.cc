@@ -22,9 +22,11 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"
@@ -144,13 +146,13 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
                                      ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+  TF_ASSIGN_OR_RETURN(ExecutionOutput result,
                       ExecuteWithDeviceBuffers(
                           /*module=*/std::move(module),
                           /*arguments=*/argument_buffers,
                           /*run_hlo_passes=*/run_hlo_passes,
                           /*profile=*/profile));
-  return TransferLiteralFromDevice(result);
+  return TransferLiteralFromDevice(result.Result());
 }
 
 StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
@@ -171,72 +173,60 @@ StatusOr<Literal> HloRunner::Execute(std::unique_ptr<HloModule> module,
 }
 
 StatusOr<Literal> HloRunner::Execute(std::unique_ptr<Executable> executable,
-                                     absl::Span<const Literal* const> arguments,
+                                     absl::Span<const Literal> arguments,
                                      ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
                       TransferLiteralsToDevice(arguments));
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+  TF_ASSIGN_OR_RETURN(ExecutionOutput result,
                       ExecuteWithDeviceBuffers(
                           /*executable=*/executable.get(),
                           /*arguments=*/argument_buffers,
                           /*profile=*/profile));
-  return TransferLiteralFromDevice(result);
+  return TransferLiteralFromDevice(result.Result());
 }
 
-StatusOr<Literal> HloRunner::Execute(std::unique_ptr<Executable> executable,
-                                     absl::Span<const Literal> arguments,
-                                     ExecutionProfile* profile) {
-  // Construct a vector of plain pointers for the arguments.
-  std::vector<const Literal*> argument_pointers;
-  argument_pointers.reserve(arguments.size());
-  for (const auto& argument : arguments) {
-    argument_pointers.push_back(&argument);
+// Convert the owning buffer of inputs into a (partially) owning vector of
+// ExecutionInputs, and an owning vector of `OwningDeviceMemory`'s.
+static std::vector<ExecutionInput> ExecutionInputsFromScopedShapedBuffers(
+    absl::Span<ScopedShapedBuffer const> inputs,
+    HloInputOutputAliasConfig alias_config, int device_ordinal,
+    se::DeviceMemoryAllocator* allocator) {
+  std::vector<ExecutionInput> execution_inputs;
+  std::vector<se::OwningDeviceMemory> owned_args;
+
+  for (int param_num = 0; param_num < inputs.size(); param_num++) {
+    const ScopedShapedBuffer& input_buffer = inputs[param_num];
+    ShapeTree<MaybeOwningDeviceMemory> buffer_tree(
+        input_buffer.on_device_shape());
+
+    input_buffer.buffers().ForEachElement(
+        [&](const ShapeIndex& index,
+            const se::DeviceMemoryBase& execution_input_buffer) {
+          if (alias_config.ParameterHasAlias(param_num, index)) {
+            // Store owned.
+            *buffer_tree.mutable_element(index) = se::OwningDeviceMemory{
+                execution_input_buffer, device_ordinal, allocator};
+          } else {
+            // Store unowned.
+            *buffer_tree.mutable_element(index) = execution_input_buffer;
+          }
+        });
+    execution_inputs.emplace_back(std::move(buffer_tree));
   }
-  return Execute(
-      /*module=*/std::move(executable),
-      /*arguments=*/argument_pointers,
-      /*profile=*/profile);
+  return execution_inputs;
 }
 
-StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
+StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
     std::unique_ptr<HloModule> module,
-    absl::Span<const ShapedBuffer* const> arguments, bool run_hlo_passes,
+    absl::Span<ScopedShapedBuffer const> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
-  // Get service run options.
-  se::Stream stream(backend().default_stream_executor());
-  stream.Init();
-  ServiceExecutableRunOptions service_run_options =
-      GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
-                                    nullptr, RunId());
-  service_run_options.mutable_run_options()->set_execution_profile(profile);
-
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
-  TF_ASSIGN_OR_RETURN(
-      ScopedShapedBuffer retval,
-      executable->ExecuteOnStreamWrapper(&service_run_options, arguments));
-  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
-  return std::move(retval);
+  return ExecuteWithDeviceBuffers(executable.get(), arguments, profile);
 }
 
-StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
-    std::unique_ptr<HloModule> module,
-    absl::Span<const ScopedShapedBuffer> arguments, bool run_hlo_passes,
-    ExecutionProfile* profile) {
-  std::vector<const ShapedBuffer*> argument_pointers;
-  argument_pointers.reserve(arguments.size());
-  for (const auto& argument : arguments) {
-    argument_pointers.push_back(&argument);
-  }
-  return ExecuteWithDeviceBuffers(
-      /*module=*/std::move(module),
-      /*arguments=*/argument_pointers,
-      /*run_hlo_passes=*/run_hlo_passes,
-      /*profile=*/profile);
-}
-
-StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
-    Executable* executable, absl::Span<const ShapedBuffer* const> arguments,
+StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
+    Executable* executable, absl::Span<ScopedShapedBuffer const> arguments,
     ExecutionProfile* profile) {
   // Get service run options.
   se::Stream stream(backend().default_stream_executor());
@@ -246,25 +236,17 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
                                     nullptr, RunId());
   service_run_options.mutable_run_options()->set_execution_profile(profile);
 
+  std::vector<ExecutionInput> execution_arguments =
+      ExecutionInputsFromScopedShapedBuffers(
+          arguments, executable->module().input_output_alias_config(),
+          stream.parent()->device_ordinal(), stream.parent()->GetAllocator());
+
   TF_ASSIGN_OR_RETURN(
-      ScopedShapedBuffer retval,
-      executable->ExecuteOnStreamWrapper(&service_run_options, arguments));
+      ExecutionOutput retval,
+      executable->ExecuteOnStreamWrapper(&service_run_options,
+                                         std::move(execution_arguments)));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return std::move(retval);
-}
-
-StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
-    Executable* executable, absl::Span<const ScopedShapedBuffer> arguments,
-    ExecutionProfile* profile) {
-  std::vector<const ShapedBuffer*> argument_pointers;
-  argument_pointers.reserve(arguments.size());
-  for (const auto& argument : arguments) {
-    argument_pointers.push_back(&argument);
-  }
-  return ExecuteWithDeviceBuffers(
-      /*executable=*/std::move(executable),
-      /*arguments=*/argument_pointers,
-      /*profile=*/profile);
 }
 
 StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(

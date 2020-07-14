@@ -216,6 +216,10 @@ class HloDataflowAnalysis {
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
   bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
+  bool UpdateCollectivePermuteStartValueSet(
+      HloInstruction* collective_permute_start);
+  bool UpdateCollectivePermuteDoneValueSet(
+      HloInstruction* collective_permute_done);
 
   // Propagates the dataflow through the module. In particular, it propagates
   // the HloValueSet from its defining instruction to the users of the

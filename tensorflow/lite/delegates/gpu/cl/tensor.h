@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_memory.h"
+#include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -36,7 +37,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Tensor {
+class Tensor : public GPUObject {
  public:
   Tensor()
       : memory_(nullptr), image_buffer_memory_(nullptr), memory_owner_(true) {}
@@ -57,6 +58,9 @@ class Tensor {
 
   virtual ~Tensor() { Release(); }
 
+  absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
+                               GPUResourcesWithValue* resources) const override;
+
   int Width() const { return shape_.w; }
   int Height() const { return shape_.h; }
   int Depth() const { return shape_.d; }
@@ -75,6 +79,7 @@ class Tensor {
   int4 GetWHSB() const { return int4(shape_.w, shape_.h, Slices(), shape_.b); }
   int4 GetWHDS() const { return int4(shape_.w, shape_.h, shape_.d, Slices()); }
 
+  TensorDescriptor GetDescriptor() const { return descriptor_; }
   DataType GetDataType() const { return descriptor_.data_type; }
   TensorStorageType GetStorageType() const { return descriptor_.storage_type; }
 
@@ -88,6 +93,12 @@ class Tensor {
   cl_mem GetMemoryPtrForWriting() const;
 
   absl::Status WriteData(CLCommandQueue* queue, const TensorFloat32& src);
+  absl::Status WriteData(
+      CLCommandQueue* queue,
+      const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src);
+  absl::Status WriteData(
+      CLCommandQueue* queue,
+      const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src);
   absl::Status WriteData(CLCommandQueue* queue, const Tensor5DFloat32& src);
   absl::Status ReadData(CLCommandQueue* queue, TensorFloat32* dst) const;
   absl::Status ReadData(CLCommandQueue* queue, Tensor5DFloat32* dst) const;
@@ -165,14 +176,12 @@ absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
                           const BHWDC& shape,
                           const TensorDescriptor& descriptor, Tensor* result);
 
-absl::Status CreateSharedTensor(const CLContext& context,
-                                const CLDevice& device, cl_mem memory,
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result);
 
-absl::Status CreateSharedTensor(const CLContext& context,
-                                const CLDevice& device, cl_mem memory,
+absl::Status CreateSharedTensor(const CLContext& context, cl_mem memory,
                                 const BHWDC& shape,
                                 const TensorDescriptor& descriptor,
                                 Tensor* result);

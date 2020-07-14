@@ -250,7 +250,7 @@ def spence(x, name=None):
     return gen_special_math_ops.spence(x)
 
 
-@tf_export('math.bessel_i0')
+@tf_export('math.bessel_i0', 'math.special.bessel_i0')
 @dispatch.add_dispatch_support
 def bessel_i0(x, name=None):
   """Computes the Bessel i0 function of `x` element-wise.
@@ -258,6 +258,9 @@ def bessel_i0(x, name=None):
   Modified Bessel function of order 0.
 
   It is preferable to use the numerically stabler function `i0e(x)` instead.
+
+  >>> tf.math.special.bessel_i0([-1., -0.5, 0.5, 1.]).numpy()
+  array([1.26606588, 1.06348337, 1.06348337, 1.26606588], dtype=float32)
 
   Args:
     x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
@@ -272,10 +275,36 @@ def bessel_i0(x, name=None):
   @end_compatibility
   """
   with ops.name_scope(name, 'bessel_i0', [x]):
-    return math_ops.exp(math_ops.abs(x)) * math_ops.bessel_i0e(x)
+    return gen_special_math_ops.bessel_i0(x)
 
 
-@tf_export('math.bessel_i1')
+@tf_export('math.bessel_i0e', 'math.special.bessel_i0e')
+@dispatch.add_dispatch_support
+def bessel_i0e(x, name=None):
+  """Computes the Bessel i0e function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  >>> tf.math.special.bessel_i0e([-1., -0.5, 0.5, 1.]).numpy()
+  array([0.46575961, 0.64503527, 0.64503527, 0.46575961], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i0e
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_i0e', [x]):
+    return gen_special_math_ops.bessel_i0e(x)
+
+
+@tf_export('math.bessel_i1', 'math.special.bessel_i1')
 @dispatch.add_dispatch_support
 def bessel_i1(x, name=None):
   """Computes the Bessel i1 function of `x` element-wise.
@@ -283,6 +312,9 @@ def bessel_i1(x, name=None):
   Modified Bessel function of order 1.
 
   It is preferable to use the numerically stabler function `i1e(x)` instead.
+
+  >>> tf.math.special.bessel_i1([-1., -0.5, 0.5, 1.]).numpy()
+  array([-0.5651591 , -0.25789431,  0.25789431,  0.5651591 ], dtype=float32)
 
   Args:
     x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
@@ -297,7 +329,245 @@ def bessel_i1(x, name=None):
   @end_compatibility
   """
   with ops.name_scope(name, 'bessel_i1', [x]):
-    return math_ops.exp(math_ops.abs(x)) * math_ops.bessel_i1e(x)
+    return gen_special_math_ops.bessel_i1(x)
+
+
+@tf_export('math.bessel_i1e', 'math.special.bessel_i1e')
+@dispatch.add_dispatch_support
+def bessel_i1e(x, name=None):
+  """Computes the Bessel i1e function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  >>> tf.math.special.bessel_i1e([-1., -0.5, 0.5, 1.]).numpy()
+  array([-0.20791042, -0.15642083,  0.15642083,  0.20791042], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i1e
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_i1e', [x]):
+    return gen_special_math_ops.bessel_i1e(x)
+
+
+@tf_export('math.special.bessel_k0')
+@dispatch.add_dispatch_support
+def bessel_k0(x, name=None):
+  """Computes the Bessel k0 function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  It is preferable to use the numerically stabler function `k0e(x)` instead.
+
+  >>> tf.math.special.bessel_k0([0.5, 1., 2., 4.]).numpy()
+  array([0.92441907, 0.42102444, 0.11389387, 0.01115968], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.k0
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_k0', [x]):
+    return gen_special_math_ops.bessel_k0(x)
+
+
+@tf_export('math.special.bessel_k0e')
+@dispatch.add_dispatch_support
+def bessel_k0e(x, name=None):
+  """Computes the Bessel k0e function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  >>> tf.math.special.bessel_k0e([0.5, 1., 2., 4.]).numpy()
+  array([1.52410939, 1.14446308, 0.84156822, 0.60929767], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.k0e
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_k0e', [x]):
+    return gen_special_math_ops.bessel_k0e(x)
+
+
+@tf_export('math.special.bessel_k1')
+@dispatch.add_dispatch_support
+def bessel_k1(x, name=None):
+  """Computes the Bessel k1 function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  It is preferable to use the numerically stabler function `k1e(x)` instead.
+
+  >>> tf.math.special.bessel_k1([0.5, 1., 2., 4.]).numpy()
+  array([1.65644112, 0.60190723, 0.13986588, 0.0124835 ], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.k1
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_k1', [x]):
+    return gen_special_math_ops.bessel_k1(x)
+
+
+@tf_export('math.special.bessel_k1e')
+@dispatch.add_dispatch_support
+def bessel_k1e(x, name=None):
+  """Computes the Bessel k1e function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  >>> tf.math.special.bessel_k1e([0.5, 1., 2., 4.]).numpy()
+  array([2.73100971, 1.63615349, 1.03347685, 0.68157595], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.k1e
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_k1e', [x]):
+    return gen_special_math_ops.bessel_k1e(x)
+
+
+@tf_export('math.special.bessel_j0')
+@dispatch.add_dispatch_support
+def bessel_j0(x, name=None):
+  """Computes the Bessel j0 function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  >>> tf.math.special.bessel_j0([0.5, 1., 2., 4.]).numpy()
+  array([ 0.93846981,  0.76519769,  0.22389078, -0.39714981], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.j0
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_j0', [x]):
+    return gen_special_math_ops.bessel_j0(x)
+
+
+@tf_export('math.special.bessel_j1')
+@dispatch.add_dispatch_support
+def bessel_j1(x, name=None):
+  """Computes the Bessel j1 function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  >>> tf.math.special.bessel_j1([0.5, 1., 2., 4.]).numpy()
+  array([ 0.24226846,  0.44005059,  0.57672481, -0.06604333], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.j1
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_j1', [x]):
+    return gen_special_math_ops.bessel_j1(x)
+
+
+@tf_export('math.special.bessel_y0')
+@dispatch.add_dispatch_support
+def bessel_y0(x, name=None):
+  """Computes the Bessel y0 function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  >>> tf.math.special.bessel_y0([0.5, 1., 2., 4.]).numpy()
+  array([-0.44451873,  0.08825696,  0.51037567, -0.01694074], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.y0
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_y0', [x]):
+    return gen_special_math_ops.bessel_y0(x)
+
+
+@tf_export('math.special.bessel_y1')
+@dispatch.add_dispatch_support
+def bessel_y1(x, name=None):
+  """Computes the Bessel y1 function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  >>> tf.math.special.bessel_y1([0.5, 1., 2., 4.]).numpy()
+  array([-1.47147239, -0.78121282, -0.10703243,  0.39792571], dtype=float32)
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.y1
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_y1', [x]):
+    return gen_special_math_ops.bessel_y1(x)
 
 
 @ops.RegisterGradient('XlaEinsum')

@@ -78,7 +78,7 @@ inline void SetProtobufStringSwapAllowed(std::string* src, std::string* dest) {
 // in core/platform/protobuf.h, so the generation code doesn't need to determine
 // if the type is Cord or string at generation time.
 inline std::string ProtobufStringToString(const absl::Cord& s) {
-  return s.ToString();
+  return std::string(s);
 }
 inline void SetProtobufStringSwapAllowed(std::string* src, absl::Cord* dest) {
   dest->CopyFrom(*src);

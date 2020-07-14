@@ -84,6 +84,8 @@ struct CollImplDetails {
       dependencies;           // collective instances on which this node depends
   string communication_hint;  // user-supplied hint for implementation choice,
                               // e.g. ring or nccl
+  float timeout_seconds;      // If non zero, set a completion timeout for the
+                              // collective op to detect staleness.
 };
 
 // Data common to all members of a collective instance.

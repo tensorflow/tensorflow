@@ -1150,35 +1150,41 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest,
 }
 #endif
 
-REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest,  //
-                            OneByOneConvolution,        //
-                            ImageSizeConvolution,       //
-                            SpatialConvolution,         //
 #ifndef INTEL_MKL
-                            ExplicitPaddingConvolution,  //
-#endif
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest,          //
+                            OneByOneConvolution,                //
+                            ImageSizeConvolution,               //
+                            SpatialConvolution,                 //
+                            ExplicitPaddingConvolution,         //
                             OneByOneConvolutionAndActivation,   //
                             ImageSizeConvolutionAndActivation,  //
-#ifndef INTEL_MKL
-                            SpatialConvolutionAndActivation,  //
+                            SpatialConvolutionAndActivation,    //
                             ExplicitPaddingConvolutionAndActivation);
-#else
-                            SpatialConvolutionAndActivation);
-#endif
 
-REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,  //
-                            OneByOneConvolution,             //
-                            ImageSizeConvolution,            //
-                            SpatialConvolution,              //
-#ifndef INTEL_MKL
-                            ExplicitPaddingConvolution,  //
-#endif
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,     //
+                            OneByOneConvolution,                //
+                            ImageSizeConvolution,               //
+                            SpatialConvolution,                 //
+                            ExplicitPaddingConvolution,         //
                             OneByOneConvolutionAndActivation,   //
                             ImageSizeConvolutionAndActivation,  //
-#ifndef INTEL_MKL
-                            SpatialConvolutionAndActivation,  //
+                            SpatialConvolutionAndActivation,    //
                             ExplicitPaddingConvolutionAndActivation);
 #else
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest,          //
+                            OneByOneConvolution,                //
+                            ImageSizeConvolution,               //
+                            SpatialConvolution,                 //
+                            OneByOneConvolutionAndActivation,   //
+                            ImageSizeConvolutionAndActivation,  //
+                            SpatialConvolutionAndActivation);
+
+REGISTER_TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest,     //
+                            OneByOneConvolution,                //
+                            ImageSizeConvolution,               //
+                            SpatialConvolution,                 //
+                            OneByOneConvolutionAndActivation,   //
+                            ImageSizeConvolutionAndActivation,  //
                             SpatialConvolutionAndActivation);
 #endif
 

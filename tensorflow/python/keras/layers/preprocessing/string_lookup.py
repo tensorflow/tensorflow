@@ -20,8 +20,10 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.layers.preprocessing import index_lookup
 from tensorflow.python.keras.layers.preprocessing import table_utils
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export("keras.layers.experimental.preprocessing.StringLookup", v1=[])
 class StringLookup(index_lookup.IndexLookup):
   """Maps strings from a vocabulary to integer indices.
 
@@ -52,7 +54,7 @@ class StringLookup(index_lookup.IndexLookup):
       will be added and the OOV tokens, if any, will be indexed from
       (0...num_oov_indices) instead of (1...num_oov_indices+1).
     oov_token: The token representing an out-of-vocabulary value. Defaults to
-      "[OOV]".
+      "[UNK]".
     vocabulary: An optional list of vocabulary terms, or a path to a text file
       containing a vocabulary to load into this layer. The file should contain
       one token per line. If the list or file contains the same token multiple
@@ -85,9 +87,9 @@ class StringLookup(index_lookup.IndexLookup):
   >>> layer = StringLookup()
   >>> layer.adapt(data)
   >>> layer.get_vocabulary()
-  ['', '[OOV]', 'd', 'z', 'c', 'b', 'a']
+  ['', '[UNK]', 'd', 'z', 'c', 'b', 'a']
 
-  Note how the mask token '' and the OOV token [OOV] have been added to the
+  Note how the mask token '' and the OOV token [UNK] have been added to the
   vocabulary. The remaining tokens are sorted by frequency ('d', which has
   2 occurrences, is first) then by inverse sort order.
 
@@ -99,6 +101,25 @@ class StringLookup(index_lookup.IndexLookup):
   array([[6, 4, 2],
          [2, 3, 5]])>
 
+  Lookups with multiple OOV tokens.
+
+  This example demonstrates how to use a lookup layer with multiple OOV tokens.
+  When a layer is created with more than one OOV token, any OOV values are
+  hashed into the number of OOV buckets, distributing OOV values in a
+  deterministic fashion across the set.
+
+  >>> vocab = ["a", "b", "c", "d"]
+  >>> data = tf.constant([["a", "c", "d"], ["m", "z", "b"]])
+  >>> layer = StringLookup(vocabulary=vocab, num_oov_indices=2)
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 3), dtype=int64, numpy=
+  array([[3, 5, 6],
+         [1, 2, 4]])>
+
+  Note that the output for OOV value 'm' is 1, while the output for OOV value
+  'z' is 2. The in-vocab terms have their output index increased by 1 from
+  earlier examples (a maps to 3, etc) in order to make space for the extra OOV
+  value.
 
   Inverse lookup
 
@@ -112,7 +133,7 @@ class StringLookup(index_lookup.IndexLookup):
   >>> layer(data)
   <tf.Tensor: shape=(2, 3), dtype=string, numpy=
   array([[b'a', b'c', b'd'],
-         [b'd', b'[OOV]', b'b']], dtype=object)>
+         [b'd', b'[UNK]', b'b']], dtype=object)>
 
   Note that the integer 5, which is out of the vocabulary space, returns an OOV
   token.
@@ -131,9 +152,9 @@ class StringLookup(index_lookup.IndexLookup):
   >>> i_layer(int_data)
   <tf.Tensor: shape=(2, 3), dtype=string, numpy=
   array([[b'a', b'c', b'd'],
-         [b'd', b'[OOV]', b'b']], dtype=object)>
+         [b'd', b'[UNK]', b'b']], dtype=object)>
 
-  In this example, the input value 'z' resulted in an output of '[OOV]', since
+  In this example, the input value 'z' resulted in an output of '[UNK]', since
   1000 was not in the vocabulary - it got represented as an OOV, and all OOV
   values are returned as '[OOV}' in the inverse layer. Also, note that for the
   inverse to work, you must have already set the forward layer vocabulary
@@ -144,9 +165,9 @@ class StringLookup(index_lookup.IndexLookup):
                max_tokens=None,
                num_oov_indices=1,
                mask_token="",
-               oov_token="[OOV]",
+               oov_token="[UNK]",
                vocabulary=None,
-               encoding="utf-8",
+               encoding=None,
                invert=False,
                **kwargs):
     allowed_dtypes = [dtypes.string]
@@ -157,6 +178,9 @@ class StringLookup(index_lookup.IndexLookup):
 
     if "dtype" not in kwargs:
       kwargs["dtype"] = dtypes.string
+
+    if encoding is None:
+      encoding = "utf-8"
 
     if vocabulary is not None:
       if isinstance(vocabulary, str):

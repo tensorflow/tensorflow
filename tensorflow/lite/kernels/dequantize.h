@@ -15,16 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_DEQUANTIZE_H_
 #define TENSORFLOW_LITE_KERNELS_DEQUANTIZE_H_
 
+#include <stdint.h>
+
 #include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 namespace ops {

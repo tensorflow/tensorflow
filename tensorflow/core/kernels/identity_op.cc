@@ -24,6 +24,8 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_KERNEL_BUILDER(Name("Identity").Device(DEVICE_CPU), IdentityOp);
+REGISTER_KERNEL_BUILDER(Name("Identity").Device(DEVICE_TPU_SYSTEM), IdentityOp);
+
 // StopGradient does the same thing as Identity, but has a different
 // gradient registered.
 REGISTER_KERNEL_BUILDER(Name("StopGradient").Device(DEVICE_CPU), IdentityOp);
@@ -122,7 +124,7 @@ REGISTER_SYCL_HOST_KERNEL(bool);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(Variant);
-TF_CALL_uint32(REGISTER_GPU_KERNEL);
+REGISTER_GPU_KERNEL(bool);
 
 #undef REGISTER_GPU_KERNEL
 
@@ -158,7 +160,6 @@ TF_CALL_uint32(REGISTER_GPU_KERNEL);
                           IdentityOp)
 
 REGISTER_GPU_HOST_KERNEL(int32);
-REGISTER_GPU_HOST_KERNEL(bool);
 REGISTER_GPU_HOST_KERNEL(tstring);
 REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 

@@ -384,10 +384,10 @@ class ThreadsafeIter(object):
   def __iter__(self):
     return self
 
-  def __next__(self):
-    return self.next()
-
   def next(self):
+    return self.__next__()
+
+  def __next__(self):
     with self.lock:
       if self._exception:
         raise self._exception  # pylint: disable=raising-bad-type
@@ -886,15 +886,18 @@ class OrderedEnqueuer(SequenceEnqueuer):
         `(inputs, targets)` or
         `(inputs, targets, sample_weights)`.
     """
-    try:
-      while self.is_running():
-        inputs = self.queue.get(block=True).get()
-        self.queue.task_done()
+    while self.is_running():
+      try:
+        inputs = self.queue.get(block=True, timeout=5).get()
+        if self.is_running():
+          self.queue.task_done()
         if inputs is not None:
           yield inputs
-    except Exception:  # pylint: disable=broad-except
-      self.stop()
-      six.reraise(*sys.exc_info())
+      except queue.Empty:
+        pass
+      except Exception:  # pylint: disable=broad-except
+        self.stop()
+        six.reraise(*sys.exc_info())
 
 
 def init_pool_generator(gens, random_seed=None, id_queue=None):

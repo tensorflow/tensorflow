@@ -93,6 +93,8 @@ cc_library(
 alias(
     name = "schema_fbs_version",
     actual = ":version",
+    # avoid_dep tells build_cleaner to not use schema_fbs_version.
+    tags = ["avoid_dep"],
 )
 
 cc_library(
@@ -104,6 +106,7 @@ cc_library(
         ":graph_info",
         ":memory_planner",
         ":simple_memory_arena",
+        ":util",
         "//tensorflow/lite/c:common",
     ],
 )
@@ -244,6 +247,7 @@ cc_library(
         ":graph_info",
         ":memory_planner",
         ":minimal_logging",
+        ":shared_library",
         ":simple_memory_arena",
         ":string",
         ":tflite_with_xnnpack_optional",
@@ -252,6 +256,7 @@ cc_library(
         ":version",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates:status",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -329,8 +334,34 @@ cc_library(
 # Enables applying XNNPACK delegate for float models in TFLite runtime.
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "tflite_with_xnnpack_enabled",
+    name = "tflite_with_xnnpack_explicit_true",
     values = {"define": "tflite_with_xnnpack=true"},
+)
+
+config_setting(
+    name = "tflite_with_xnnpack_explicit_false",
+    values = {"define": "tflite_with_xnnpack=false"},
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_enabled",
+    defines = ["TFLITE_BUILD_WITH_XNNPACK_DELEGATE"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+    ],
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_default",
+    visibility = ["//visibility:private"],
+    # TODO(b/151246885): put ":tflite_with_xnnpack_enabled" to macos/windows
+    # once we have a good testing coverage on these two platforms.
+    deps = select({
+        "//tensorflow:macos": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -341,17 +372,18 @@ cc_library(
         "tflite_with_xnnpack_optional.h",
     ],
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
-    defines = select({
-        ":tflite_with_xnnpack_enabled": ["TFLITE_BUILD_WITH_XNNPACK_DELEGATE"],
-        "//conditions:default": [],
-    }),
     deps = [
         "//tensorflow/lite/c:common",
     ] + select({
-        ":tflite_with_xnnpack_enabled": [
-            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        ":tflite_with_xnnpack_explicit_true": [
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
+            ":tflite_with_xnnpack_enabled",
         ],
-        "//conditions:default": [],
+        ":tflite_with_xnnpack_explicit_false": [],
+        "//conditions:default": [
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
+            ":tflite_with_xnnpack_default",
+        ],
     }),
 )
 
@@ -376,10 +408,13 @@ cc_test(
 cc_test(
     name = "interpreter_test",
     size = "small",
-    srcs = ["interpreter_test.cc"],
+    srcs = [
+        "interpreter_test.cc",
+    ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
+        "tflite_smoke_test",
     ],
     deps = [
         ":external_cpu_backend_context",
@@ -448,6 +483,7 @@ cc_test(
     ],
     tags = [
         "tflite_not_portable",
+        "tflite_smoke_test",
     ],
     deps = [
         ":framework",
@@ -496,6 +532,7 @@ cc_test(
         "no_windows",  # No weak symbols with MSVC.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
+        "tflite_smoke_test",
     ],
     deps = [
         ":framework",
@@ -503,8 +540,7 @@ cc_test(
         ":util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -563,6 +599,9 @@ cc_library(
         "//tensorflow:ios": [
             "minimal_logging_ios.cc",
         ],
+        "//tensorflow:macos": [
+            "minimal_logging_default.cc",
+        ],
         "//conditions:default": [
             "minimal_logging_default.cc",
         ],
@@ -596,6 +635,13 @@ cc_test(
         ":minimal_logging",
         "@com_google_googletest//:gtest",
     ],
+)
+
+cc_library(
+    name = "shared_library",
+    hdrs = ["shared_library.h"],
+    copts = TFLITE_DEFAULT_COPTS,
+    linkopts = if_not_windows(["-ldl"]),
 )
 
 # Shared lib target for convenience, pulls in the core runtime and builtin ops.

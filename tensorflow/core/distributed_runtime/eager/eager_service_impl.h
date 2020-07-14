@@ -96,7 +96,8 @@ class EagerServiceImpl {
   Status WaitQueueDone(const WaitQueueDoneRequest* request,
                        WaitQueueDoneResponse* response);
 
-  void RunComponentFunction(const RunComponentFunctionRequest* request,
+  void RunComponentFunction(CallOptions* call_opts,
+                            const RunComponentFunctionRequest* request,
                             RunComponentFunctionResponse* response,
                             StatusCallback done);
 

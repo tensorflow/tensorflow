@@ -419,7 +419,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
     }
 
-    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt8);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
 
     const auto* input_params =
         reinterpret_cast<TfLiteAffineQuantization*>(input->quantization.params);
@@ -467,7 +467,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     if (bias != nullptr) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
     }
-    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
 
     TFLITE_DCHECK(node->user_data != nullptr);
     OpData* data = static_cast<OpData*>(node->user_data);
@@ -527,16 +527,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace svdf
 
-TfLiteRegistration* Register_SVDF() {
-  static TfLiteRegistration r = {/*init=*/svdf::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/svdf::Prepare,
-                                 /*invoke=*/svdf::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_SVDF() {
+  return {/*init=*/svdf::Init,
+          /*free=*/nullptr,
+          /*prepare=*/svdf::Prepare,
+          /*invoke=*/svdf::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

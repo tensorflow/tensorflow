@@ -64,6 +64,8 @@ class GrpcDataServerBase {
 
  private:
   int bound_port_;
+  bool started_ = false;
+  bool stopped_ = false;
 
   std::unique_ptr<grpc::Server> server_;
 };
@@ -73,8 +75,8 @@ class MasterGrpcDataServer : public GrpcDataServerBase {
   MasterGrpcDataServer(int requested_port, const std::string& protocol);
   ~MasterGrpcDataServer() override;
 
-  // Returns the number of tasks created by the master.
-  Status NumTasks(int* num_tasks);
+  // Returns the number of workers registerd with the master.
+  Status NumWorkers(int* num_workers);
 
  protected:
   void AddServiceToBuilder(grpc::ServerBuilder* builder) override;

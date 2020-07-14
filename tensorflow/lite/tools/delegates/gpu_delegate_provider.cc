@@ -37,10 +37,10 @@ class GpuDelegateProvider : public DelegateProvider {
 #if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
     default_params_.AddParam("gpu_precision_loss_allowed",
                              ToolParam::Create<bool>(true));
-#endif
-#if defined(__ANDROID__)
     default_params_.AddParam("gpu_experimental_enable_quant",
                              ToolParam::Create<bool>(true));
+#endif
+#if defined(__ANDROID__)
     default_params_.AddParam("gpu_backend", ToolParam::Create<std::string>(""));
 #endif
 #if defined(REAL_IPHONE_DEVICE)
@@ -51,7 +51,7 @@ class GpuDelegateProvider : public DelegateProvider {
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -66,11 +66,11 @@ std::vector<Flag> GpuDelegateProvider::CreateFlags(ToolParams* params) const {
     CreateFlag<bool>("gpu_precision_loss_allowed", params,
                      "Allow to process computation in lower precision than "
                      "FP32 in GPU. By default, it's enabled."),
-#endif
-#if defined(__ANDROID__)
     CreateFlag<bool>("gpu_experimental_enable_quant", params,
                      "Whether to enable the GPU delegate to run quantized "
-                     "models or not. By default, it's disabled."),
+                     "models or not. By default, it's enabled."),
+#endif
+#if defined(__ANDROID__)
     CreateFlag<std::string>(
         "gpu_backend", params,
         "Force the GPU delegate to use a particular backend for execution, and "
@@ -86,21 +86,21 @@ std::vector<Flag> GpuDelegateProvider::CreateFlags(ToolParams* params) const {
   return flags;
 }
 
-void GpuDelegateProvider::LogParams(const ToolParams& params) const {
-  TFLITE_LOG(INFO) << "Use gpu : [" << params.Get<bool>("use_gpu") << "]";
+void GpuDelegateProvider::LogParams(const ToolParams& params,
+                                    bool verbose) const {
+  LOG_TOOL_PARAM(params, bool, "use_gpu", "Use gpu", verbose);
 #if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
-  TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
-                   << params.Get<bool>("gpu_precision_loss_allowed") << "]";
+  LOG_TOOL_PARAM(params, bool, "gpu_precision_loss_allowed",
+                 "Allow lower precision in gpu", verbose);
+  LOG_TOOL_PARAM(params, bool, "gpu_experimental_enable_quant",
+                 "Enable running quant models in gpu", verbose);
 #endif
 #if defined(__ANDROID__)
-  TFLITE_LOG(INFO) << "Enable running quant models in gpu : ["
-                   << params.Get<bool>("gpu_experimental_enable_quant") << "]";
-  TFLITE_LOG(INFO) << "GPU backend : ["
-                   << params.Get<std::string>("gpu_backend") << "]";
+  LOG_TOOL_PARAM(params, std::string, "gpu_backend", "GPU backend", verbose);
 #endif
 #if defined(REAL_IPHONE_DEVICE)
-  TFLITE_LOG(INFO) << "GPU delegate wait type : ["
-                   << params.Get<std::string>("gpu_wait_type") << "]";
+  LOG_TOOL_PARAM(params, std::string, "gpu_wait_type", "GPU delegate wait type",
+                 verbose);
 #endif
 }
 
@@ -136,6 +136,8 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
     TFLGpuDelegateOptions gpu_opts = {0};
     gpu_opts.allow_precision_loss =
         params.Get<bool>("gpu_precision_loss_allowed");
+    gpu_opts.enable_quantization =
+        params.Get<bool>("gpu_experimental_enable_quant");
 
     std::string string_gpu_wait_type = params.Get<std::string>("gpu_wait_type");
     if (!string_gpu_wait_type.empty()) {
@@ -154,8 +156,8 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
     delegate = TfLiteDelegatePtr(TFLGpuDelegateCreate(&gpu_opts),
                                  &TFLGpuDelegateDelete);
 #else
-    TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported on"
-                        "Android or iOS platforms.";
+    TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
+                        "on Android or iOS platforms.";
     delegate = evaluation::CreateGPUDelegate();
 #endif
 

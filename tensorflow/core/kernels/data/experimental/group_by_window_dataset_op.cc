@@ -353,7 +353,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name("current_iterator_not_initialized"), ""));
         }
-
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("group_counter"),
+                                               group_counter_ - 1));
         return Status::OK();
       }
 
@@ -364,7 +365,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
         if (reader->Contains(full_name("end_of_input"))) end_of_input_ = true;
 
-        // Restoring groups
+        // Restoring groups_
         if (reader->Contains(full_name("groups_size"))) {
           int64 size;
           TF_RETURN_IF_ERROR(
@@ -381,7 +382,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        // Restoring Windows
+        // Restoring window_sizes_
         if (reader->Contains(full_name("window_sizes_size"))) {
           int64 size;
           TF_RETURN_IF_ERROR(
@@ -396,6 +397,10 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
                 &window_sizes_[key]));
           }
         }
+
+        // Group counter needs to be restored before current group iterator.
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name("group_counter"), &group_counter_));
 
         if (reader->Contains(full_name("current_iterator_not_initialized"))) {
           current_group_iterator_.reset();
@@ -486,11 +491,12 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
         // Create an iterator for the dataset that was returned by `f`.
         return returned_dataset->MakeIterator(
-            ctx, this, strings::StrCat(prefix(), "::Reduce"),
+            ctx, this, strings::StrCat(prefix(), "[", group_counter_++, "]"),
             &current_group_iterator_);
       }
 
       mutex mu_;
+      int64 group_counter_ TF_GUARDED_BY(mu_) = 0;
       std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       // TODO(mrry): Optimize for dense key space if appropriate.
       bool end_of_input_ TF_GUARDED_BY(mu_) = false;

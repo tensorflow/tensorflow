@@ -62,7 +62,7 @@ def GetOptionValue(argv, option):
 
   Args:
     argv: A list of strings, possibly the argv passed to main().
-    option: The option whose value to extract, without the leading '-'.
+    option: The option whose value to extract, with the leading '-'.
 
   Returns:
     A list of values, either directly following the option,
@@ -189,6 +189,8 @@ def InvokeNvcc(argv, log=False):
   nvcc_allowed_std_options = ["c++03", "c++11", "c++14"]
   std_options = ''.join([' -std=' + define
       for define in std_options if define in nvcc_allowed_std_options][-1:])
+  fatbin_options = ''.join([' --fatbin-options=' + option
+      for option in GetOptionValue(argv, '-Xcuda-fatbinary')])
 
   # The list of source files get passed after the -c option. I don't know of
   # any other reliable way to just get the list of source files to be compiled.
@@ -221,14 +223,19 @@ def InvokeNvcc(argv, log=False):
   nvccopts = '-D_FORCE_INLINES '
   for capability in GetOptionValue(argv, "--cuda-gpu-arch"):
     capability = capability[len('sm_'):]
-    nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s,compute_%s\" ' % (
-        capability, capability, capability)
+    nvccopts += r'-gencode=arch=compute_%s,\"code=sm_%s\" ' % (capability,
+                                                               capability)
+  for capability in GetOptionValue(argv, '--cuda-include-ptx'):
+    capability = capability[len('sm_'):]
+    nvccopts += r'-gencode=arch=compute_%s,\"code=compute_%s\" ' % (capability,
+                                                                    capability)
   nvccopts += nvcc_compiler_options
   nvccopts += undefines
   nvccopts += defines
   nvccopts += std_options
   nvccopts += m_options
   nvccopts += warning_options
+  nvccopts += fatbin_options
 
   if depfiles:
     # Generate the dependency file
@@ -265,7 +272,6 @@ def main():
   if args.x and args.x[0] == 'cuda':
     if args.cuda_log: Log('-x cuda')
     leftover = [pipes.quote(s) for s in leftover]
-    args.cuda_log = True
     if args.cuda_log: Log('using nvcc')
     return InvokeNvcc(leftover, log=args.cuda_log)
 

@@ -32,8 +32,8 @@ namespace gpu {
 // require multiple kernel launches or library calls.
 class SequentialThunk : public Thunk {
  public:
-  SequentialThunk(std::vector<std::unique_ptr<Thunk>> thunks,
-                  const HloInstruction* hlo);
+  SequentialThunk(ThunkInfo thunk_info,
+                  std::vector<std::unique_ptr<Thunk>> thunks);
   SequentialThunk(const SequentialThunk&) = delete;
   SequentialThunk& operator=(const SequentialThunk&) = delete;
 

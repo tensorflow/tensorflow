@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
+#include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/api2.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -210,12 +211,14 @@ class DelegateKernel {
 
     const bool is_dequant_required = !quant_conversion_map_.empty();
     if (is_dequant_required) {
-      RETURN_IF_ERROR(DequantizeInputs(context));
+      RETURN_IF_ERROR(
+          DequantizeInputs(context, input_indices_, quant_conversion_map_));
     }
     RETURN_IF_ERROR(SetInputsAndOutputs(context));
     RETURN_IF_ERROR(runner_->Run());
     if (is_dequant_required) {
-      RETURN_IF_ERROR(QuantizeOutputs(context));
+      RETURN_IF_ERROR(
+          QuantizeOutputs(context, output_indices_, quant_conversion_map_));
     }
     return absl::OkStatus();
   }
@@ -272,70 +275,6 @@ class DelegateKernel {
     output_refs->reserve(outputs.size());
     for (const auto& output : outputs) {
       output_refs->push_back(output->tensor.ref);
-    }
-
-    return absl::OkStatus();
-  }
-
-  // TODO(b/150798231): Refactor these two into common utils when generalizing
-  // to other backends.
-
-  // Dequantizes input tensors pre-inference, leaving float tensors intact.
-  absl::Status DequantizeInputs(TfLiteContext* context) {
-    for (auto index : input_indices_) {
-      if (quant_conversion_map_.find(index) == quant_conversion_map_.end()) {
-        continue;
-      }
-      int original_tensor_idx = quant_conversion_map_[index];
-      const TfLiteTensor& dequantized_tflite_tensor = context->tensors[index];
-      const TfLiteTensor& original_tflite_tensor =
-          context->tensors[original_tensor_idx];
-      DequantizationParams op_params;
-      op_params.zero_point = original_tflite_tensor.params.zero_point;
-      op_params.scale = original_tflite_tensor.params.scale;
-      if (original_tflite_tensor.type == kTfLiteInt8) {
-        optimized_ops::Dequantize(op_params,
-                                  GetTensorShape(&original_tflite_tensor),
-                                  original_tflite_tensor.data.int8,
-                                  GetTensorShape(&original_tflite_tensor),
-                                  dequantized_tflite_tensor.data.f);
-      } else if (original_tflite_tensor.type == kTfLiteUInt8) {
-        optimized_ops::Dequantize(op_params,
-                                  GetTensorShape(&original_tflite_tensor),
-                                  original_tflite_tensor.data.uint8,
-                                  GetTensorShape(&original_tflite_tensor),
-                                  dequantized_tflite_tensor.data.f);
-      }
-    }
-    return absl::OkStatus();
-  }
-
-  // Quantizes output tensors post-inference, leaving float tensors intact.
-  absl::Status QuantizeOutputs(TfLiteContext* context) {
-    for (auto index : output_indices_) {
-      if (quant_conversion_map_.find(index) == quant_conversion_map_.end()) {
-        continue;
-      }
-      int original_tensor_idx = quant_conversion_map_[index];
-      const TfLiteTensor& dequantized_tflite_tensor = context->tensors[index];
-      const TfLiteTensor& original_tflite_tensor =
-          context->tensors[original_tensor_idx];
-      tflite::QuantizationParams op_params;
-      op_params.zero_point = original_tflite_tensor.params.zero_point;
-      op_params.scale = original_tflite_tensor.params.scale;
-      if (original_tflite_tensor.type == kTfLiteInt8) {
-        optimized_ops::AffineQuantize(op_params,
-                                      GetTensorShape(&original_tflite_tensor),
-                                      dequantized_tflite_tensor.data.f,
-                                      GetTensorShape(&original_tflite_tensor),
-                                      original_tflite_tensor.data.int8);
-      } else if (original_tflite_tensor.type == kTfLiteUInt8) {
-        optimized_ops::AffineQuantize(op_params,
-                                      GetTensorShape(&original_tflite_tensor),
-                                      dequantized_tflite_tensor.data.f,
-                                      GetTensorShape(&original_tflite_tensor),
-                                      original_tflite_tensor.data.uint8);
-      }
     }
 
     return absl::OkStatus();
@@ -430,8 +369,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
             absl::make_unique<DelegateKernel>(gpu_delegate);
         const auto status = gpu_delegate_kernel->Prepare(context, params);
         if (!status.ok()) {
-          context->ReportError(context, "TfLiteGpuDelegate Init: %s",
-                               std::string(status.message()).c_str());
+          TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Init: %s",
+                             std::string(status.message()).c_str());
           return nullptr;
         }
         return gpu_delegate_kernel.release();
@@ -443,7 +382,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       // .prepare
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
         if (!node->user_data) {
-          context->ReportError(
+          TF_LITE_KERNEL_LOG(
               context,
               "TfLiteGpuDelegate Prepare: delegate is not initialized");
           return kTfLiteError;
@@ -465,8 +404,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
         const auto status = GetDelegateKernel(node)->Invoke(context);
         if (!status.ok()) {
-          context->ReportError(context, "TfLiteGpuDelegate Invoke: %s",
-                               std::string(status.message()).c_str());
+          TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Invoke: %s",
+                             std::string(status.message()).c_str());
           return kTfLiteError;
         }
         return kTfLiteOk;

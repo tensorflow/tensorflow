@@ -30,19 +30,26 @@ namespace profiler {
 
 namespace py = ::pybind11;
 
+struct PythonHooksOptions {
+  bool enable_trace_python_function = false;
+  bool enable_python_traceme = true;
+};
+
 // Singleton for tracing python function calls.
 class PythonHooks {
  public:
   static PythonHooks* GetSingleton();
 
-  void Start();
-  void Stop();
+  void Start(const PythonHooksOptions& option);
+  void Stop(const PythonHooksOptions& option);
   void Finalize();
   void ProfileSlow(const py::object& frame, const string& event,
                    const py::object& arg);
   void ProfileFast(PyFrameObject* frame, int what, PyObject* arg);
 
  private:
+  void EnableTraceMe(bool enable);
+
   void SetProfilerInAllThreads();
   void ClearProfilerInAllThreads();
 

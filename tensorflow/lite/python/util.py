@@ -49,6 +49,7 @@ _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.string: _types_pb2.STRING,
     dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
     dtypes.int8: _types_pb2.INT8,
+    dtypes.int16: _types_pb2.QUANTIZED_INT16,
     dtypes.complex64: _types_pb2.COMPLEX64,
     dtypes.bool: _types_pb2.BOOL,
 }
@@ -117,6 +118,12 @@ def get_tensors_from_tensor_names(graph, tensor_names):
   tensors = []
   invalid_tensors = []
   for name in tensor_names:
+    if not isinstance(name, six.string_types):
+      raise ValueError("Invalid type for a tensor name in the provided graph. "
+                       "Expected type for a tensor name is 'str', instead got "
+                       "type '{}' for tensor name '{}'".format(
+                           type(name), name))
+
     tensor = tensor_name_to_tensor.get(name)
     if tensor is None:
       invalid_tensors.append(name)

@@ -86,14 +86,14 @@ tf_python_pybind_extension(
         "//tensorflow/python/profiler:__subpackages__",
     ],
     deps = [
-        ":traceme_context_manager",
+        ":traceme_wrapper",
         "@pybind11",
     ],
 )
 
 cc_library(
-    name = "traceme_context_manager",
-    hdrs = ["traceme_context_manager.h"],
+    name = "traceme_wrapper",
+    hdrs = ["traceme_wrapper.h"],
     features = ["-layering_check"],
     visibility = [
         "//tensorflow/compiler/xla/python:__pkg__",

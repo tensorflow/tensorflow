@@ -1,0 +1,7 @@
+path: "tensorflow.data.experimental.service"
+tf_module {
+  member_method {
+    name: "distribute"
+    argspec: "args=[\'processing_mode\', \'service\', \'job_name\', \'max_outstanding_requests\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

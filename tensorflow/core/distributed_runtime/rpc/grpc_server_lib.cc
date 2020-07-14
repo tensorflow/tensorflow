@@ -87,23 +87,6 @@ RendezvousMgrInterface* NewRpcRendezvousMgr(const WorkerEnv* env) {
   return new RpcRendezvousMgr(env);
 }
 
-std::unique_ptr<GrpcWorkerEnv> CreateGrpcWorkerEnv() {
-  int num_cpus = port::NumSchedulableCPUs();
-  int64 num_completion_queues;
-  Status status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_QUEUES", 64,
-                                      &num_completion_queues);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_QUEUES: " << status;
-  }
-  int64 num_threads;
-  status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_THREADS", num_cpus,
-                               &num_threads);
-  if (!status.ok()) {
-    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_THREADS: " << status;
-  }
-  return absl::make_unique<GrpcWorkerEnv>(num_completion_queues, num_threads);
-}
-
 }  // namespace
 
 GrpcServer::GrpcServer(const ServerDef& server_def, Env* env)
@@ -275,7 +258,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
     return errors::Unknown("Could not start gRPC server");
   }
   // Create the execution environment for the GRPC workers cache.
-  grpc_worker_env_ = CreateGrpcWorkerEnv();
+  grpc_worker_env_.reset(CreateGrpcWorkerEnv());
 
   WorkerCacheInterface* worker_cache;
   WorkerCacheFactoryOptions worker_cache_factory_options(server_def_);
@@ -401,7 +384,7 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                                    " differs from expected port ", bound_port_);
   }
   *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
-      channel_cache, worker_impl(), name_prefix, grpc_worker_env_.get());
+      channel_cache, grpc_worker_env(), worker_impl(), name_prefix);
   return Status::OK();
 }
 

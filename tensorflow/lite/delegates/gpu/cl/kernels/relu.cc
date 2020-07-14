@@ -25,69 +25,37 @@ namespace cl {
 ReLU::ReLU(const OperationDef& definition, const ReLUAttributes& attr,
            CalculationsPrecision scalar_precision)
     : ElementwiseOperation(definition) {
+  std::string min_func;
   if (attr.alpha != 0.0f) {
-    alpha_ = FLT(scalar_precision, attr.alpha);
+    min_func = "min(in_out_value * args.alpha, (FLT)(0.0f))";
+    if (definition.precision == CalculationsPrecision::F32) {
+      args_.AddFloat("alpha", attr.alpha);
+    } else {
+      args_.AddHalf("alpha", half(attr.alpha));
+    }
+  } else {
+    min_func = "(FLT)(0.0f)";
   }
   if (attr.clip != 0.0f) {
-    clip_ = FLT(scalar_precision, attr.clip);
+    if (definition.precision == CalculationsPrecision::F32) {
+      args_.AddFloat("clip", attr.clip);
+    } else {
+      args_.AddHalf("clip", half(attr.clip));
+    }
+    code_ = absl::StrCat("in_out_value = clamp(in_out_value, " + min_func +
+                         ", args.clip);");
+  } else {
+    code_ = absl::StrCat("in_out_value = max(in_out_value, ", min_func, ");");
   }
 }
 
-ReLU::ReLU(ReLU&& operation)
-    : ElementwiseOperation(std::move(operation)),
-      alpha_(std::move(operation.alpha_)),
-      clip_(std::move(operation.clip_)) {}
+ReLU::ReLU(ReLU&& operation) : ElementwiseOperation(std::move(operation)) {}
 
 ReLU& ReLU::operator=(ReLU&& operation) {
   if (this != &operation) {
-    alpha_ = std::move(operation.alpha_);
-    clip_ = std::move(operation.clip_);
     ElementwiseOperation::operator=(std::move(operation));
   }
   return *this;
-}
-
-void ReLU::SetLinkIndex(int index) {
-  alpha_.SetName(absl::StrCat("relu_alpha", index));
-  clip_.SetName(absl::StrCat("relu_clip", index));
-}
-
-std::string ReLU::GetCoreCode(const LinkingContext& context) const {
-  std::string min_func;
-  if (!alpha_.Active()) {
-    min_func = "(FLT)(0.0f)";
-  } else {
-    min_func = absl::StrCat("min(", context.var_name, " * (FLT)(",
-                            alpha_.GetName(), "), (FLT)(0.0f))");
-  }
-  if (!clip_.Active()) {
-    return absl::StrCat(context.var_name, " = max(", context.var_name, ", ",
-                        min_func, ");\n");
-  } else {
-    return absl::StrCat(context.var_name, " = clamp(", context.var_name,
-                        ", " + min_func + ", (FLT)(", clip_.GetName(), "));\n");
-  }
-}
-
-std::string ReLU::GetArgsDeclaration() const {
-  std::string args;
-  if (alpha_.Active()) {
-    absl::StrAppend(&args, ",\n    ", alpha_.GetDeclaration());
-  }
-  if (clip_.Active()) {
-    absl::StrAppend(&args, ",\n    ", clip_.GetDeclaration());
-  }
-  return args;
-}
-
-absl::Status ReLU::BindArguments(CLKernel* kernel) {
-  if (alpha_.Active()) {
-    RETURN_IF_ERROR(kernel->SetBytesAuto(alpha_));
-  }
-  if (clip_.Active()) {
-    RETURN_IF_ERROR(kernel->SetBytesAuto(clip_));
-  }
-  return absl::OkStatus();
 }
 
 ReLU CreateReLU(const CreationContext& creation_context,
@@ -96,7 +64,6 @@ ReLU CreateReLU(const CreationContext& creation_context,
                                     ? CalculationsPrecision::F32
                                     : definition.precision;
   ReLU operation(definition, attr, scalar_precision);
-  operation.SetLinkIndex(0);
   return operation;
 }
 

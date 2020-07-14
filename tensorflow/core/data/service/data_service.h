@@ -96,6 +96,10 @@ class DataServiceMasterClient : public DataServiceClientBase {
   Status GetTasks(int64 job_id, std::vector<TaskInfo>* tasks,
                   bool* job_finished);
 
+  // Queries the master for its registered workers. The worker info will be
+  // stored in `*workers`.
+  Status GetWorkers(std::vector<WorkerInfo>* workers);
+
  protected:
   Status EnsureInitialized() override;
 

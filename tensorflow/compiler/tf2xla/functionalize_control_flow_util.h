@@ -26,6 +26,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+using NodeFilter = std::function<bool(const Node*)>;
+
 // Information about a loop argument.
 struct WhileLoopArg {
   // Every loop argument has an Enter node.
@@ -60,13 +62,22 @@ struct WhileLoopFrame {
 
   // Set of nodes that belong to the loop frame.
   std::unordered_set<Node*> nodes;
+
+  // After `ExtractWhileLoopFrames` this is true if for all control flow nodes
+  // of this frame `node_filter` returns true, i.e., the frame should be
+  // functionalized, and false otherwise.
+  bool should_be_functionalized = true;
 };
 
 // Extracts v1 while loops within a graph and creates a map of
 // <ControlFLowInfo.name, WhileLoopFrame>.
+// If `node_filter` is defined, then we keep track of frames that should be
+// functionalized according to the filter (see comment for
+// `FunctionalizeControlFlow` for more details about node filters).
 Status ExtractWhileLoopFrames(
     const std::vector<ControlFlowInfo>& cf_info, const Graph* graph,
-    std::unordered_map<string, WhileLoopFrame>* frames);
+    std::unordered_map<string, WhileLoopFrame>* frames,
+    const NodeFilter& node_filter = {});
 
 // Check that the graph has no cycle containing the given node.
 Status CheckNodeNotInCycle(const Node* node, const int num_nodes);

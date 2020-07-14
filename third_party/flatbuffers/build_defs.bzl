@@ -362,7 +362,7 @@ def _concat_flatbuffer_py_srcs_impl(ctx):
             "sed 's/from flatbuffers." +
             "/from flatbuffers.python.flatbuffers./' |" +
             "sed '1s/^/from flatbuffers.python " +
-            "import flatbuffers\\n/' > %s"
+            "import flatbuffers\\'$'\\n/' > %s"
         ) % (
             ctx.attr.deps[0].files.to_list()[0].path,
             ctx.outputs.out.path,

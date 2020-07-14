@@ -336,7 +336,8 @@ Status LoadOpShapeFunction::operator()(
                     });
   std::vector<shape_inference::ShapeHandle> inputs(user_param_count);
   int input_index = 0;
-  for (int i = 0; i < state_variable_specs.size(); ++i) {
+  for (int i = 0, iter_limit = state_variable_specs.size(); i < iter_limit;
+       ++i) {
     if (state_variable_specs[i].has_user_defined() || is_debug_op_) {
       std::vector<shape_inference::ShapeHandle> input_temp;
       TF_RETURN_IF_ERROR(c->input(state_variable_specs[i].name(), &input_temp));
@@ -388,7 +389,8 @@ Status RetrieveOpShapeFunction::operator()(
   TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
   int shard_id;
   TF_RETURN_IF_ERROR(c->GetAttr("shard_id", &shard_id));
-  for (int j = 0; j < state_variable_specs.size(); ++j) {
+  for (int j = 0, iter_limit = state_variable_specs.size(); j < iter_limit;
+       ++j) {
     if (state_variable_specs[j].has_user_defined() || is_debug_op_) {
       auto shape = c->MakeShape(
           std::vector<shape_inference::DimensionHandle>(2, c->UnknownDim()));

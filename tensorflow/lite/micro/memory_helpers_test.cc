@@ -18,6 +18,15 @@ limitations under the License.
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 
+namespace {
+
+TfLiteStatus FakeAllocatePersistentBuffer(TfLiteContext* context, size_t bytes,
+                                          void** ptr) {
+  return kTfLiteOk;
+}
+
+}  // namespace
+
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestAlignPointerUp) {
@@ -100,49 +109,40 @@ TF_LITE_MICRO_TEST(TestAlignSizeUp) {
 
 TF_LITE_MICRO_TEST(TestTypeSizeOf) {
   size_t size;
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      tflite::TfLiteTypeSizeOf(kTfLiteFloat32, &size, micro_test::reporter));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteFloat32, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(float), size);
 
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      tflite::TfLiteTypeSizeOf(kTfLiteInt16, &size, micro_test::reporter));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteInt16, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(int16_t), size);
 
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      tflite::TfLiteTypeSizeOf(kTfLiteInt32, &size, micro_test::reporter));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteInt32, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(int32_t), size);
 
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      tflite::TfLiteTypeSizeOf(kTfLiteUInt8, &size, micro_test::reporter));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteUInt8, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(uint8_t), size);
 
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      tflite::TfLiteTypeSizeOf(kTfLiteInt8, &size, micro_test::reporter));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteInt8, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(int8_t), size);
 
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      tflite::TfLiteTypeSizeOf(kTfLiteInt64, &size, micro_test::reporter));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteInt64, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(int64_t), size);
 
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      tflite::TfLiteTypeSizeOf(kTfLiteBool, &size, micro_test::reporter));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteBool, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(bool), size);
 
-  TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      tflite::TfLiteTypeSizeOf(kTfLiteComplex64, &size, micro_test::reporter));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteComplex64, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(float) * 2, size);
 
   TF_LITE_MICRO_EXPECT_NE(
-      kTfLiteOk, tflite::TfLiteTypeSizeOf(static_cast<TfLiteType>(-1), &size,
-                                          micro_test::reporter));
+      kTfLiteOk, tflite::TfLiteTypeSizeOf(static_cast<TfLiteType>(-1), &size));
 }
 
 TF_LITE_MICRO_TEST(TestBytesRequiredForTensor) {
@@ -165,4 +165,42 @@ TF_LITE_MICRO_TEST(TestBytesRequiredForTensor) {
   TF_LITE_MICRO_EXPECT_EQ(4, type_size);
 }
 
+TF_LITE_MICRO_TEST(TestAllocateOutputDimensionsFromInput) {
+  constexpr int kDimsLen = 4;
+  const int input1_dims[] = {1, 1};
+  const int input2_dims[] = {kDimsLen, 5, 5, 5, 5};
+  int output_dims[] = {0, 0, 0, 0, 0};
+  TfLiteTensor input_tensor1 = tflite::testing::CreateInt32Tensor(
+      nullptr, tflite::testing::IntArrayFromInts(input1_dims));
+  TfLiteTensor input_tensor2 = tflite::testing::CreateInt32Tensor(
+      nullptr, tflite::testing::IntArrayFromInts(input2_dims));
+  TfLiteTensor output_tensor = tflite::testing::CreateInt32Tensor(
+      nullptr, tflite::testing::IntArrayFromInts(output_dims));
+  TfLiteContext context;
+  // Set allocator to no-op to avoid segfault. Memory is already allocated for
+  // output dims.
+  context.AllocatePersistentBuffer = FakeAllocatePersistentBuffer;
+
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, tflite::AllocateOutputDimensionsFromInput(
+                     &context, &input_tensor1, &input_tensor2, &output_tensor));
+
+  TF_LITE_MICRO_EXPECT_EQ(output_tensor.bytes, input_tensor2.bytes);
+  for (int i = 0; i < kDimsLen; i++) {
+    TF_LITE_MICRO_EXPECT_EQ(input_tensor2.dims->data[i],
+                            output_tensor.dims->data[i]);
+    // Reset output dims for next iteration.
+    output_tensor.dims->data[i] = 0;
+  }
+  // Output tensor size must be 0 to allocate output dimensions from input.
+  output_tensor.dims->size = 0;
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, tflite::AllocateOutputDimensionsFromInput(
+                     &context, &input_tensor2, &input_tensor1, &output_tensor));
+  for (int i = 0; i < kDimsLen; i++) {
+    TF_LITE_MICRO_EXPECT_EQ(input_tensor2.dims->data[i],
+                            output_tensor.dims->data[i]);
+  }
+  TF_LITE_MICRO_EXPECT_EQ(output_tensor.bytes, input_tensor2.bytes);
+}
 TF_LITE_MICRO_TESTS_END

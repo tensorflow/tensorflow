@@ -446,7 +446,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
     sp_input = self._SparseTensor_2x5x6()
     new_shape = np.array([3, 7, 5], dtype=np.int64)
 
-    with self.assertRaisesRegexp(ValueError, "should have dimension sizes"):
+    with self.assertRaisesRegex(ValueError, "should have dimension sizes"):
       sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
   @test_util.run_deprecated_v1
@@ -792,7 +792,7 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
       b = sparse_tensor.SparseTensor([[0, 0, 1, 0], [0, 0, 3, 0]], [10, 20],
                                      [1, 1, 4, 2])
       c = a * b
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           "broadcasts dense to sparse only; got incompatible shapes"):
         self.evaluate(c)

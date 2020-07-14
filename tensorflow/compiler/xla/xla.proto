@@ -287,18 +287,19 @@ message DebugOptions {
   // memory, or have bugs.
   bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
 
-  // It is usually preferable to not fallback to the driver; it can consume more
-  // memory, or have bugs.
-  bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_error = 139;
+  // Extra parameters to pass the GPU assembler.
+  string xla_gpu_asm_extra_flags = 141;
 
-  // Next id: 141
+  // Next id: 142
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
 
-  reserved 5, 117, 133;  // were xla_hlo_dump_as_graphdef, xla_dump_to, and
-                         // xla_gpu_use_horizontal_fusion
+  reserved 5, 117, 133,
+      139;  // were xla_hlo_dump_as_graphdef, xla_dump_to,
+            // xla_gpu_use_horizontal_fusion, and
+            // xla_gpu_unsafe_fallback_to_driver_on_ptxas_error
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings

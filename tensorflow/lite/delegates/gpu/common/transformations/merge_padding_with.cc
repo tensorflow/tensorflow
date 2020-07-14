@@ -146,10 +146,11 @@ class MergePaddingWithAddOperation : public NodeTransformation {
 
     AddAttributes add_attr =
         absl::any_cast<AddAttributes>(add_node->operation.attributes);
-    const auto add_broadcast =
-        absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&add_attr.param);
-    const float* add_scalar = absl::get_if<float>(&add_attr.param);
-    if (add_broadcast || add_scalar) {
+    const bool is_add_broadcast =
+        absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+            add_attr.param);
+    const bool is_add_scalar = absl::holds_alternative<float>(add_attr.param);
+    if (is_add_broadcast || is_add_scalar) {
       return {TransformStatus::SKIPPED,
               "Cannot remove padding when this broadcast/scalar ADD"};
     }

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::DataType;
+using ::tflite::gpu::HWC;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::OperationType;
 using ::tflite::gpu::TensorRef;
@@ -160,6 +161,42 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({0.0, -1.0, 2.0, -1.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMaximumWithConstantHWCTensor {
+  OperationType op_type = OperationType::MAXIMUM;
+  const BHWC shape(1, 2, 1, 2);
+  tflite::gpu::ElementwiseAttributes attr;
+  tflite::gpu::Tensor<HWC, DataType::FLOAT32> hwc_tensor;
+  hwc_tensor.shape = HWC(2, 1, 2);
+  hwc_tensor.data = {0.5f, 2.0f, 0.7f, 4.7f};
+  attr.param = hwc_tensor;
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/attr},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {1.0f, -6.2f, -2.0f, 3.0f}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({1.0f, 2.0f, 0.7f, 4.7f}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testMaximumWithConstantHWCTensorBroadcastChannels {
+  OperationType op_type = OperationType::MAXIMUM;
+  const BHWC shape(1, 2, 1, 2);
+  tflite::gpu::ElementwiseAttributes attr;
+  tflite::gpu::Tensor<HWC, DataType::FLOAT32> hwc_tensor;
+  hwc_tensor.shape = HWC(2, 1, 1);
+  hwc_tensor.data = {0.5f, 2.0f};
+  attr.param = hwc_tensor;
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/attr},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {1.0f, -6.2f, -2.0f, 3.0f}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({1.0f, 0.5f, 2.0f, 3.0f}, model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

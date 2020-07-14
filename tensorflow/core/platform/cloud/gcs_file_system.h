@@ -122,7 +122,8 @@ class GcsFileSystem : public FileSystem {
                 size_t matching_paths_cache_max_entries,
                 RetryConfig retry_config, TimeoutConfig timeouts,
                 const std::unordered_set<string>& allowed_locations,
-                std::pair<const string, const string>* additional_header);
+                std::pair<const string, const string>* additional_header,
+                bool compose_append);
 
   Status NewRandomAccessFile(
       const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
@@ -187,6 +188,8 @@ class GcsFileSystem : public FileSystem {
   std::unordered_set<string> allowed_locations() const {
     return allowed_locations_;
   }
+
+  bool compose_append() const { return compose_append_; }
   string additional_header_name() const {
     return additional_header_ ? additional_header_->first : "";
   }
@@ -373,6 +376,7 @@ class GcsFileSystem : public FileSystem {
   using BucketLocationCache = ExpiringLRUCache<string>;
   std::unique_ptr<BucketLocationCache> bucket_location_cache_;
   std::unordered_set<string> allowed_locations_;
+  bool compose_append_;
 
   TimeoutConfig timeouts_;
 

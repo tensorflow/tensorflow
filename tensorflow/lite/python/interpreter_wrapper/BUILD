@@ -28,6 +28,7 @@ cc_library(
         ":python_error_reporter",
         ":python_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:shared_library",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
@@ -61,6 +62,13 @@ cc_library(
     ],
 )
 
+config_setting(
+    name = "tflite_pip_with_flex",
+    define_values = {
+        "tflite_pip_with_flex": "true",
+    },
+)
+
 pybind_extension(
     name = "_pywrap_tensorflow_interpreter_wrapper",
     srcs = [
@@ -71,10 +79,13 @@ pybind_extension(
     module_name = "_pywrap_tensorflow_interpreter_wrapper",
     deps = [
         ":interpreter_wrapper_lib",
+        "@pybind11",
+        "//third_party/python_runtime:headers",
         "//tensorflow/lite:framework_lib",
         "//tensorflow/lite/experimental/tflite_api_dispatcher",
         "//tensorflow/python:pybind11_lib",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ],
+    ] + select({
+        ":tflite_pip_with_flex": ["//tensorflow/lite/delegates/flex:delegate"],
+        "//conditions:default": [],
+    }),
 )

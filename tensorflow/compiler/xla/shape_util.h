@@ -657,7 +657,11 @@ class ShapeUtil {
                                 Shape shape);
 
   // Returns true if `dynamic_shape` has dimensions that are less-equal to the
-  // "bounded_shape".
+  // "bounded_shape". Shapes must be arrays.
+  static bool DynamicArrayShapeIsCompatible(const xla::Shape& dynamic_shape,
+                                            const xla::Shape& bounded_shape);
+
+  // Same as DynamicArrayShapeIsCompatible() but supports tuples.
   static bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
                                        const xla::Shape& bounded_shape);
 

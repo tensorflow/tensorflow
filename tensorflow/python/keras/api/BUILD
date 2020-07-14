@@ -42,6 +42,7 @@ keras_packages = [
     "tensorflow.python.keras.datasets.mnist",
     "tensorflow.python.keras.datasets.reuters",
     "tensorflow.python.keras.engine.base_layer",
+    "tensorflow.python.keras.engine.data_adapter",
     "tensorflow.python.keras.engine.input_layer",
     "tensorflow.python.keras.engine.input_spec",
     "tensorflow.python.keras.engine.sequential",

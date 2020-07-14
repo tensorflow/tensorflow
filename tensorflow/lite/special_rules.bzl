@@ -47,3 +47,7 @@ def if_nnapi(supported, not_supported = [], supported_android = None):
         clean_dep("//tensorflow:android"): supported_android,
         "//conditions:default": supported,
     })
+
+def tflite_hexagon_mobile_test(name):
+    """This is a no-op outside of Google."""
+    pass

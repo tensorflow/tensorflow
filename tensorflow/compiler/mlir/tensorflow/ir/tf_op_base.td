@@ -81,6 +81,26 @@ class TF_AllTypesMatch<list<string> names> :
             !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
 
 //===----------------------------------------------------------------------===//
+// TensorFlow op side effects
+//===----------------------------------------------------------------------===//
+
+class TF_ResourceBase<string resourceKind> :
+  Resource<!strconcat("::mlir::TF::ResourceEffects::", resourceKind)> {
+}
+
+def TF_VariableResource : TF_ResourceBase<"Variable">;
+def TF_StackResource : TF_ResourceBase<"Stack">;
+def TF_TensorArrayResource : TF_ResourceBase<"TensorArray">;
+
+def TF_VariableRead : MemRead<TF_VariableResource>;
+def TF_StackRead : MemRead<TF_StackResource>;
+def TF_TensorArrayRead : MemRead<TF_TensorArrayResource>;
+
+def TF_VariableWrite : MemWrite<TF_VariableResource>;
+def TF_StackWrite : MemWrite<TF_StackResource>;
+def TF_TensorArrayWrite : MemWrite<TF_TensorArrayResource>;
+
+//===----------------------------------------------------------------------===//
 // TensorFlow op definitions
 //===----------------------------------------------------------------------===//
 

@@ -4,6 +4,7 @@
 TENSORFLOW_API_INIT_FILES = [
     # BEGIN GENERATED FILES
     "__init__.py",
+    "__operators__/__init__.py",
     "audio/__init__.py",
     "autograph/__init__.py",
     "autograph/experimental/__init__.py",
@@ -16,6 +17,7 @@ TENSORFLOW_API_INIT_FILES = [
     "config/threading/__init__.py",
     "data/__init__.py",
     "data/experimental/__init__.py",
+    "data/experimental/service/__init__.py",
     "debugging/__init__.py",
     "debugging/experimental/__init__.py",
     "distribute/__init__.py",
@@ -59,6 +61,7 @@ TENSORFLOW_API_INIT_FILES = [
     "random/experimental/__init__.py",
     "raw_ops/__init__.py",
     "saved_model/__init__.py",
+    "saved_model/experimental/__init__.py",
     "sets/__init__.py",
     "signal/__init__.py",
     "sparse/__init__.py",
@@ -99,6 +102,7 @@ KERAS_API_INIT_FILES = [
     "keras/applications/xception/__init__.py",
     "keras/backend/__init__.py",
     "keras/callbacks/__init__.py",
+    "keras/callbacks/experimental/__init__.py",
     "keras/constraints/__init__.py",
     "keras/datasets/__init__.py",
     "keras/datasets/boston_housing/__init__.py",

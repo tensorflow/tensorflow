@@ -1844,7 +1844,7 @@ class TensorTracer(object):
           if len(processed_tensors) != 1:
             raise RuntimeError('Multiple stats are only allowed in compact '
                                'mode.')
-          processed_out_tensor = processed_tensors.values()[0]
+          processed_out_tensor = list(processed_tensors.values())[0]
           # Store the whole tensor in a buffer.
           trace_op = self._snapshot_tensor(processed_out_tensor)
         else:

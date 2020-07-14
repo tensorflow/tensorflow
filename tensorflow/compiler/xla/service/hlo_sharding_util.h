@@ -70,6 +70,12 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                             const Shape& target_shape,
                                             const HloSharding& sharding);
 
+// Returns the HloSharding with the tile dimensions and tile assignment
+// reversed based on the specified dimension numbers. In case of a tile
+// maximal sharding returns the original sharding.
+HloSharding ReverseSharding(const HloSharding& sharding,
+                            absl::Span<const int64> dimensions);
+
 // Returns a sharding tiled on unique dimension dim by reshaping the tile
 // assignment of the sharding argument. Only dimensions in the dims span
 // argument are considered for reshaping, the others are ignored.

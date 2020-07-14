@@ -188,10 +188,6 @@ class Sequential(functional.Functional):
                        ' of a layer in this model. Update the `name` argument '
                        'to pass a unique name.' % (layer.name,))
 
-    # This allows the added layer to broadcast mutations to the current
-    # layer, which is necessary to ensure cache correctness.
-    layer._attribute_sentinel.add_parent(self._attribute_sentinel)
-
     self.built = False
     set_inputs = False
     if not self._layers:
@@ -236,9 +232,6 @@ class Sequential(functional.Functional):
       self._handle_deferred_layer_dependencies([layer])
 
     self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
-    # Different Model types add to `._layers` in different ways, so for safety
-    # we do a cache invalidation to make sure the changes are reflected.
-    self._attribute_sentinel.invalidate_all()
 
   @trackable.no_automatic_dependency_tracking
   def pop(self):
@@ -252,7 +245,6 @@ class Sequential(functional.Functional):
 
     layer = self._layers.pop()
     self._layer_call_argspecs.pop(layer)
-    self._attribute_sentinel.invalidate_all()
     if not self.layers:
       self.outputs = None
       self.inputs = None
@@ -397,7 +389,7 @@ class Sequential(functional.Functional):
         raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
       # `outputs` will be the inputs to the next layer.
       inputs = outputs
-      mask = outputs._keras_mask
+      mask = getattr(outputs, '_keras_mask', None)
     return outputs
 
   def compute_output_shape(self, input_shape):
@@ -411,7 +403,7 @@ class Sequential(functional.Functional):
     # by itself because it will duplicate any updates and losses in graph
     # mode by `call`ing the Layers again.
     outputs = self.call(inputs, mask=mask)
-    return outputs._keras_mask
+    return getattr(outputs, '_keras_mask', None)
 
   @deprecated('2021-01-01', 'Please use `model.predict()` instead.')
   def predict_proba(self, x, batch_size=32, verbose=0):

@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -112,9 +110,8 @@ class NumericsTest(test.TestCase):
     _ = control_flow_ops.cond(predicate,
                               lambda: constant_op.constant([37.]),
                               lambda: constant_op.constant([42.]))
-    with self.assertRaisesRegexp(
-        ValueError,
-        r"`tf\.add_check_numerics_ops\(\) is not compatible with "
+    with self.assertRaisesRegex(
+        ValueError, r"`tf\.add_check_numerics_ops\(\) is not compatible with "
         r"TensorFlow control flow operations such as `tf\.cond\(\)` "
         r"or `tf.while_loop\(\)`\."):
       numerics.add_check_numerics_ops()
@@ -124,17 +121,12 @@ class NumericsTest(test.TestCase):
     _ = control_flow_ops.while_loop(lambda _: predicate,
                                     lambda _: constant_op.constant([37.]),
                                     [constant_op.constant([42.])])
-    with self.assertRaisesRegexp(
-        ValueError,
-        r"`tf\.add_check_numerics_ops\(\) is not compatible with "
+    with self.assertRaisesRegex(
+        ValueError, r"`tf\.add_check_numerics_ops\(\) is not compatible with "
         r"TensorFlow control flow operations such as `tf\.cond\(\)` "
         r"or `tf.while_loop\(\)`\."):
       numerics.add_check_numerics_ops()
 
 
 if __name__ == "__main__":
-  # TODO(b/130689556): XLA CPU does not honor inf/nan which causes problems
-  os.environ[
-      "XLA_FLAGS"] = "--xla_cpu_enable_fast_math=false " + os.environ.get(
-          "XLA_FLAGS", "")
   test.main()

@@ -184,7 +184,7 @@ void LoadQuantizationRecipe::LoadForLSTMOp(LSTMOp lstm, OpBuilder* builder) {
 
   auto new_cell_tanh = builder->create<TanhOp>(loc, int16, new_cell);
   auto hidden_state = builder->create<MulOp>(
-      loc, int16, new_cell_tanh.y(), output_gate->getResult(0), none_af);
+      loc, int16, new_cell_tanh.output(), output_gate->getResult(0), none_af);
   auto act = builder->create<FullyConnectedOp>(
       loc, int8, hidden_state.output(), lstm.projection_weights(),
       lstm.projection_bias(), none_af, fc_format, keep_dims);

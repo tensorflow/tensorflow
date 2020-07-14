@@ -64,7 +64,7 @@ class StringDest : public WritableFile {
   }
 #if defined(PLATFORM_GOOGLE)
   Status Append(const absl::Cord& data) override {
-    contents_->append(data.ToString());
+    contents_->append(std::string(data));
     return Status::OK();
   }
 #endif

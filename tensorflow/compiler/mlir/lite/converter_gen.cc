@@ -446,7 +446,7 @@ static void GenOperandResultVerifier(raw_ostream &os,
     auto desc =
         definit->getDef()->getValueAsString("tflRuntimeTypeDescription");
 
-    // Emit a loop to check all the dynamic values in the pack.
+    // Emit a loop to check all operands.
     os << formatv("    for (Value v : top.getODS{0}{1}s({2})) {{\n",
                   // Capitalize the first letter to match the function name
                   valueKind.substr(0, 1).upper(), valueKind.substr(1),
@@ -455,14 +455,10 @@ static void GenOperandResultVerifier(raw_ostream &os,
     os << "      (void)v;\n"
        << "      if (!("
        << tgfmt(pred.getCondition(), &fctx.withSelf("v.getType()")) << ")) {\n"
-       << "        if (failure_on_operand_type_mismatch) {\n"
        << formatv(
-              "        return op->emitOpError(\"{0} #\") << index "
+              "      return op->emitOpError(\"{0} #\") << index "
               "<< \" must be {1}, but got \" << v.getType();\n",
               valueKind, desc)
-       << "        } else {\n"
-       << "          return ::mlir::LogicalResult::Failure;\n"
-       << "        }\n"
        << "      }\n"  // if
        << "      ++index;\n"
        << "    }\n";  // for
@@ -487,8 +483,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
 
     mlir::tblgen::FmtContext verify_ctx;
     os << "::mlir::LogicalResult " << op.getCppClassName()
-       << "::VerifyTflRuntimeConstraints(::mlir::Operation *op, bool "
-          "failure_on_operand_type_mismatch) {\n";
+       << "::VerifyTflRuntimeConstraints(::mlir::Operation *op) {\n";
     os << "  auto top = cast<" << op.getCppClassName() << ">(op); (void)top;\n";
     verify_ctx.withOp("top");
 
@@ -525,11 +520,13 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
       auto *val = trait.getDef().getValue("tflRuntimePredicate");
       if (!val) continue;
 
+      auto desc = trait.getDef().getValueAsString("tflRuntimeDescription");
+
       mlir::tblgen::Pred pred(dyn_cast<llvm::DefInit>(val->getValue()));
       os << tgfmt(
-          "  if (!($0)) {\n    "
-          "    return ::mlir::LogicalResult::Failure;\n  }\n",
-          &verify_ctx, tgfmt(pred.getCondition(), &verify_ctx));
+          "  if (!($0))\n"
+          "    return top.emitOpError(\"failed to verify that $1\");\n",
+          &verify_ctx, tgfmt(pred.getCondition(), &verify_ctx), desc);
     }
     os << "  return top.verify();\n}\n";
   }

@@ -49,8 +49,6 @@ class Resize : public GPUOperation {
   int3 GetGridSize() const;
 
   Resize2DAttributes attr_;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 Resize CreateResize(const OperationDef& definition,
@@ -80,8 +78,6 @@ class Resize3D : public GPUOperation {
   int3 GetGridSize() const;
 
   Resize3DAttributes attr_;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 Resize3D CreateResize3D(const OperationDef& definition,

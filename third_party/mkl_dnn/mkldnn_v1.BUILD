@@ -71,6 +71,8 @@ cc_library(
         "src/cpu/**/*.cpp",
         "src/cpu/**/*.hpp",
         "src/cpu/xbyak/*.h",
+        "src/cpu/jit_utils/jitprofiling/*.c",
+        "src/cpu/jit_utils/jitprofiling/*.h",
     ]) + [
         ":dnnl_config_h",
         ":dnnl_version_h",
@@ -84,6 +86,9 @@ cc_library(
         "-UUSE_MKL",
         "-UUSE_CBLAS",
     ]) + if_mkl_v1_open_source_only([
+        "-UUSE_MKL",
+        "-UUSE_CBLAS",
+    ]) + if_mkldnn_threadpool([
         "-UUSE_MKL",
         "-UUSE_CBLAS",
     ]) + select({

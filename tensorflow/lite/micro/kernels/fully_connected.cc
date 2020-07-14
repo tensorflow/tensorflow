@@ -93,7 +93,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
                      "Hybrid models are not supported on TFLite Micro.");
 
@@ -216,16 +216,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace fully_connected
 
-TfLiteRegistration* Register_FULLY_CONNECTED() {
-  static TfLiteRegistration r = {/*init=*/fully_connected::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/fully_connected::Prepare,
-                                 /*invoke=*/fully_connected::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_FULLY_CONNECTED() {
+  return {/*init=*/fully_connected::Init,
+          /*free=*/nullptr,
+          /*prepare=*/fully_connected::Prepare,
+          /*invoke=*/fully_connected::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

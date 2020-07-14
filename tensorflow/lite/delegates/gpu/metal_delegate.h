@@ -58,6 +58,8 @@ typedef struct {
   // Allows to quantify tensors, downcast values, process in float16 etc.
   bool allow_precision_loss;
   TFLGpuDelegateWaitType wait_type;
+  // Allows execution of integer quantized models
+  bool enable_quantization;
 } TFLGpuDelegateOptions;
 
 // Creates a new delegate instance that need to be destroyed with

@@ -80,63 +80,56 @@ void PopulateContext(TfLiteTensor* tensors, int tensors_size,
                      ErrorReporter* error_reporter, TfLiteContext* context);
 
 TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
-                               TfLiteIntArray* dims, const char* name,
-                               bool is_variable = false);
+                               TfLiteIntArray* dims, bool is_variable = false);
 
 TfLiteTensor CreateBoolTensor(std::initializer_list<bool> data,
-                              TfLiteIntArray* dims, const char* name,
-                              bool is_variable = false);
+                              TfLiteIntArray* dims, bool is_variable = false);
 
 TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
-                                   const char* name, float min, float max,
+                                   float min, float max,
                                    bool is_variable = false);
 
 TfLiteTensor CreateQuantizedTensor(std::initializer_list<uint8_t> data,
-                                   TfLiteIntArray* dims, const char* name,
-                                   float min, float max,
+                                   TfLiteIntArray* dims, float min, float max,
                                    bool is_variable = false);
 
 TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
-                                   const char* name, float min, float max,
-                                   bool is_variable = false);
-
-TfLiteTensor CreateQuantizedTensor(std::initializer_list<int8_t> data,
-                                   TfLiteIntArray* dims, const char* name,
                                    float min, float max,
                                    bool is_variable = false);
 
+TfLiteTensor CreateQuantizedTensor(std::initializer_list<int8_t> data,
+                                   TfLiteIntArray* dims, float min, float max,
+                                   bool is_variable = false);
+
 TfLiteTensor CreateQuantizedTensor(float* data, uint8_t* quantized_data,
-                                   TfLiteIntArray* dims, const char* name,
+                                   TfLiteIntArray* dims,
                                    bool is_variable = false);
 
 TfLiteTensor CreateQuantizedTensor(float* data, int8_t* quantized_data,
-                                   TfLiteIntArray* dims, const char* name,
+                                   TfLiteIntArray* dims,
                                    bool is_variable = false);
 
 TfLiteTensor CreateQuantizedTensor(float* data, int16_t* quantized_data,
-                                   TfLiteIntArray* dims, const char* name,
+                                   TfLiteIntArray* dims,
                                    bool is_variable = false);
 
 TfLiteTensor CreateQuantized32Tensor(const int32_t* data, TfLiteIntArray* dims,
-                                     const char* name, float scale,
-                                     bool is_variable = false);
+                                     float scale, bool is_variable = false);
 
 TfLiteTensor CreateQuantized32Tensor(std::initializer_list<int32_t> data,
-                                     TfLiteIntArray* dims, const char* name,
-                                     float scale, bool is_variable = false);
+                                     TfLiteIntArray* dims, float scale,
+                                     bool is_variable = false);
 
 template <typename input_type = int32_t,
           TfLiteType tensor_input_type = kTfLiteInt32>
 inline TfLiteTensor CreateTensor(const input_type* data, TfLiteIntArray* dims,
-                                 const char* name, bool is_variable = false) {
+                                 bool is_variable = false) {
   TfLiteTensor result;
   result.type = tensor_input_type;
   result.data.raw = reinterpret_cast<char*>(const_cast<input_type*>(data));
   result.dims = dims;
   result.allocation_type = kTfLiteMemNone;
   result.bytes = ElementCount(*dims) * sizeof(input_type);
-  result.allocation = nullptr;
-  result.name = name;
   result.is_variable = is_variable;
   return result;
 }
@@ -144,9 +137,9 @@ inline TfLiteTensor CreateTensor(const input_type* data, TfLiteIntArray* dims,
 template <typename input_type = int32_t,
           TfLiteType tensor_input_type = kTfLiteInt32>
 inline TfLiteTensor CreateTensor(std::initializer_list<input_type> data,
-                                 TfLiteIntArray* dims, const char* name,
+                                 TfLiteIntArray* dims,
                                  bool is_variable = false) {
-  return CreateTensor<input_type, tensor_input_type>(data.begin(), dims, name,
+  return CreateTensor<input_type, tensor_input_type>(data.begin(), dims,
                                                      is_variable);
 }
 

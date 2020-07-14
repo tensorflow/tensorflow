@@ -348,7 +348,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, activation_state->type, kTfLiteInt16);
 
   // Validate output tensor:
-  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt8);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
 
   // Calculate effective scales.
   auto* input_params =
@@ -416,16 +416,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace svdf
 
-TfLiteRegistration* Register_SVDF() {
-  static TfLiteRegistration r = {/*init=*/svdf::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/svdf::Prepare,
-                                 /*invoke=*/svdf::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_SVDF() {
+  return {/*init=*/svdf::Init,
+          /*free=*/nullptr,
+          /*prepare=*/svdf::Prepare,
+          /*invoke=*/svdf::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

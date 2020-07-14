@@ -651,36 +651,6 @@ void PortableCwiseAdd(const int16_t* input_1, const int16_t* input_2,
   }
 }
 
-void PortableCwiseClipping(int16_t* input, const int16_t clipping_value,
-                           int32_t n_batch, int32_t n_input) {
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int i = 0; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      if (input[index] > clipping_value) {
-        input[index] = clipping_value;
-      }
-      if (input[index] < -clipping_value) {
-        input[index] = -clipping_value;
-      }
-    }
-  }
-}
-
-void PortableCwiseClipping(int8_t* input, const int8_t clipping_value,
-                           int32_t n_batch, int32_t n_input) {
-  for (int batch = 0; batch < n_batch; ++batch) {
-    for (int i = 0; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      if (input[index] > clipping_value) {
-        input[index] = clipping_value;
-      }
-      if (input[index] < -clipping_value) {
-        input[index] = -clipping_value;
-      }
-    }
-  }
-}
-
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
                                      int v_size) {
   float result = 0.0;
@@ -757,13 +727,6 @@ void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
   }
 }
 
-void PortableClipVector(const float* vector, int v_size, float abs_limit,
-                        float* result) {
-  for (int v = 0; v < v_size; v++) {
-    result[v] = std::max(std::min(abs_limit, vector[v]), -abs_limit);
-  }
-}
-
 void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size) {
   const float* input_vector_ptr = input_vector;
@@ -822,14 +785,14 @@ void PortableMeanStddevNormalization(const float* input_vector,
   }
 }
 
-void PortableTwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
-                                   const int8_t* recurrent, int8_t recurrent_zp,
-                                   int32_t input_effective_scale_a,
-                                   int32_t input_effective_scale_b,
-                                   int32_t recurrent_effective_scale_a,
-                                   int32_t recurrent_effective_scale_b,
-                                   int32_t n_batch, int32_t n_cell,
-                                   int16_t* output) {
+void PortableTwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
+                                  const int8_t* recurrent, int8_t recurrent_zp,
+                                  int32_t input_effective_scale_a,
+                                  int32_t input_effective_scale_b,
+                                  int32_t recurrent_effective_scale_a,
+                                  int32_t recurrent_effective_scale_b,
+                                  int32_t n_batch, int32_t n_cell,
+                                  int16_t* output) {
   const int32_t int16_max = std::numeric_limits<int16>::max();
   const int32_t int16_min = std::numeric_limits<int16>::min();
   for (int i = 0; i < n_batch * n_cell; ++i) {

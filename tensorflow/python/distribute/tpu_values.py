@@ -24,12 +24,14 @@ from __future__ import print_function
 
 import contextlib
 
+from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.tpu import tpu
 
 
@@ -45,15 +47,27 @@ def _maybe_enter_graph(tensor):
       yield
 
 
+@contextlib.contextmanager
+def _maybe_on_device(var):
+  # Add a device scope for packed variables.
+  if isinstance(var, packed.PackedVarAndDevice):
+    with ops.device(var.device):
+      yield
+  else:
+    yield
+
+
 def _make_raw_assign_fn(raw_assign_fn):  # pylint: disable=missing-docstring
 
   def assign_fn(var, value, use_locking=False, name=None, read_value=True):  # pylint: disable=missing-docstring
     del use_locking  # Unused.
 
-    with _maybe_enter_graph(var.handle):
+    handle = var.handle
+    with _maybe_enter_graph(handle), _maybe_on_device(var):
       op = raw_assign_fn(
-          var.handle, ops.convert_to_tensor(value, dtype=var.dtype), name=name)
-
+          handle,
+          ops.convert_to_tensor(value, dtype=var.dtype),
+          name=name)
       with ops.control_dependencies([op]):
         return var._read_variable_op() if read_value else op  # pylint: disable=protected-access
 
@@ -90,42 +104,43 @@ class TPUVariableMixin(object):
   def _get_as_operand(self):
     return self.read_value()
 
-  def _get_closest(self):
-    if enclosing_tpu_context() is None:
-      return super(TPUVariableMixin, self)._get_closest()
-    else:
-      return self._primary
-
-  def numpy(self):
-    if context.executing_eagerly():
-      return self.read_value().numpy()
-    else:
-      raise NotImplementedError(
-          "numpy() is only available when eager execution is enabled.")
-
   def _is_mirrored(self):
     raise NotImplementedError(
         "`TPUVariableMixin._is_mirrored()` must be implemented by subclasses.")
 
   @property
   def handle(self):
+    """The handle by which this variable can be accessed."""
     # If we're in a tpu.rewrite(), return the replicated handle.
     tpu_context = enclosing_tpu_context()
     if tpu_context is None or context.executing_eagerly():
-      return self._get_closest().handle
+      return self._get_on_device_or_primary().handle
     else:
-      return tpu_context.get_replicated_var_handle(self._handle_id,
-                                                   self._values,
-                                                   self._is_mirrored())
+      is_packed = self._packed_var is not None
+      val = self._values
+      if is_packed:
+        val = [self._packed_var]
+
+      return tpu_context.get_replicated_var_handle(self._handle_id, val,
+                                                   self._is_mirrored(),
+                                                   is_packed)
 
   @property
   def device(self):
     return self.handle.device
 
   def _read_variable_op(self):
+    """Reads the value of this variable."""
     if self.trainable:
       tape.variable_accessed(self)
-    return gen_resource_variable_ops.read_variable_op(self.handle, self.dtype)
+
+    handle = self.handle
+    if getattr(handle, "is_packed", False):
+      # Add a device scope for a packed variable handle.
+      with ops.device(self._get_on_device_or_primary().device):
+        return gen_resource_variable_ops.read_variable_op(handle, self.dtype)
+    else:
+      return gen_resource_variable_ops.read_variable_op(handle, self.dtype)
 
   def read_value(self):
     if enclosing_tpu_context() is None:
@@ -186,6 +201,16 @@ class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
   """Holds a map from replica to TPU variables whose values are kept in sync."""
 
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
+    if (enclosing_tpu_context() and
+        self.aggregation == variable_scope.VariableAggregation.NONE):
+      return _make_raw_assign_fn(
+          gen_resource_variable_ops.assign_sub_variable_op)(
+              self,
+              value=value,
+              use_locking=use_locking,
+              name=name,
+              read_value=read_value)
+
     assign_sub_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_sub_variable_op)
     return self._update(
@@ -196,6 +221,16 @@ class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
         read_value=read_value)
 
   def assign_add(self, value, use_locking=False, name=None, read_value=True):
+    if (enclosing_tpu_context() and
+        self.aggregation == variable_scope.VariableAggregation.NONE):
+      return _make_raw_assign_fn(
+          gen_resource_variable_ops.assign_add_variable_op)(
+              self,
+              value=value,
+              use_locking=use_locking,
+              name=name,
+              read_value=read_value)
+
     assign_add_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_add_variable_op)
     return self._update(
@@ -206,6 +241,15 @@ class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
         read_value=read_value)
 
   def assign(self, value, use_locking=False, name=None, read_value=True):
+    if (enclosing_tpu_context() and
+        self.aggregation == variable_scope.VariableAggregation.NONE):
+      return _make_raw_assign_fn(gen_resource_variable_ops.assign_variable_op)(
+          self,
+          value=value,
+          use_locking=use_locking,
+          name=name,
+          read_value=read_value)
+
     assign_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_variable_op)
     return self._update(

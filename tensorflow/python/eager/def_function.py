@@ -39,7 +39,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.profiler import traceme
+from tensorflow.python.profiler import trace
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -53,6 +53,8 @@ FREQUENT_TRACING_WARNING_THRESHOLD = 5
 
 class _CallCounter(object):
   """Class keeping track of how many recent calls triggered tracing."""
+
+  __slots__ = ["_max_call_history", "_calls_per_tracings", "call_count"]
 
   def __init__(self, max_call_history):
     self._max_call_history = max_call_history
@@ -83,6 +85,8 @@ class _CallCounter(object):
 
 class _FrequentTracingDetector(object):
   """Class for frequent retracing detection and warning."""
+
+  __slots__ = ["_counters", "_lock"]
 
   def __init__(self):
     self._counters = weakref.WeakKeyDictionary()  # GUARDED_BY(self._lock)
@@ -308,7 +312,8 @@ RUN_FUNCTIONS_EAGERLY = False
 
 @deprecation.deprecated(
     None,
-    "Use tf.config.run_functions_eagerly instead of the experimental version.")
+    "Use `tf.config.run_functions_eagerly` instead of the experimental "
+    "version.")
 @tf_export("config.experimental_run_functions_eagerly")
 def experimental_run_functions_eagerly(run_eagerly):
   """Enables / disables eager execution of `tf.function`s.
@@ -427,6 +432,8 @@ def functions_run_eagerly():
 
 class FunctionDeleter(object):
 
+  __slots__ = ["func_graph"]
+
   def __init__(self, func_graph):
     self.func_graph = func_graph
 
@@ -520,6 +527,10 @@ class Function(object):
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         python_function, input_signature)
     self._implements = experimental_implements
+    # If `True`, the function uses the rendezvous of the parent. This is only
+    # needed to support code where raw send/recv operations are inserted and
+    # when functions are run in graph mode where they may not be inlined.
+    self._shared_rendezvous = None
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
     self._experimental_relax_shapes = experimental_relax_shapes
@@ -628,6 +639,10 @@ class Function(object):
     if self._implements is not None:
       attributes = self._create_implements_attribute()
 
+    share = self._shared_rendezvous
+    if share is not None:
+      attributes[function_lib.SHARED_RENDEZVOUS_ATTRIBUTE_NAME] = share
+
     if self._experimental_compile is not None:
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
@@ -697,7 +712,8 @@ class Function(object):
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
 
   def _clone(self, python_function):
-    return Function(
+    """Clone the function with different python function."""
+    f = Function(
         python_function=(self._python_function
                          if python_function is None else python_function),
         name=self._name,
@@ -707,6 +723,11 @@ class Function(object):
         experimental_autograph_options=self._experimental_autograph_options,
         experimental_relax_shapes=self._experimental_relax_shapes,
         experimental_compile=self._experimental_compile)
+
+    if self._shared_rendezvous:
+      f._shared_rendezvous = self._shared_rendezvous  # pylint: disable=protected-access
+
+    return f
 
   def _decorate(self, decorator):
     """Allows the captured Python function to be decorated in place.
@@ -742,12 +763,11 @@ class Function(object):
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
     if RUN_FUNCTIONS_EAGERLY:
-      with traceme.TraceMe(self._name,
-                           tf_function_call="eager"):
+      with trace.Trace(self._name, tf_function_call="eager"):
         return self._python_function(*args, **kwds)
 
     tracing_count = self._get_tracing_count()
-    with traceme.TraceMe(self._name) as tm:
+    with trace.Trace(self._name) as tm:
       if self._experimental_compile and (
           not control_flow_util.GraphOrParentsInXlaContext(
               ops.get_default_graph())):
@@ -921,8 +941,8 @@ class Function(object):
     @function_lib.defun(autograph=False)
     def initialize_variables():
       op_map = object_identity.ObjectIdentityDictionary()
-      # Stack all the var_is_initialized values into one tensor and interpret the
-      # numpy value. This will reduce the number of RPCs between client and
+      # Stack all the var_is_initialized values into one tensor and interpret
+      # the numpy value. This will reduce the number of RPCs between client and
       # worker in the remote case.
       with ops.init_scope():
         var_is_initialized = []

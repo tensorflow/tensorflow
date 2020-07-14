@@ -299,4 +299,10 @@ REGISTER_OP("FakeParam")
       return Status::OK();
     });
 
+// Returns the device index.
+REGISTER_OP("DeviceIndex")
+    .Output("index: int32")
+    .Attr("device_names: list(string)")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 }  // end namespace tensorflow

@@ -94,6 +94,17 @@ void SymmetricDequantize(const int8_t* values, const int size,
                          const float dequantization_scale,
                          float* dequantized_values);
 
+template <typename T>
+void AsymmetricDequantize(const T* values, const int size,
+                          const float dequantization_scale,
+                          int dequantization_zero_point,
+                          float* dequantized_values) {
+  for (int i = 0; i < size; ++i) {
+    dequantized_values[i] =
+        (values[i] - dequantization_zero_point) * dequantization_scale;
+  }
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_MICRO_MICRO_UTILS_H_

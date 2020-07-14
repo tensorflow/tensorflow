@@ -84,7 +84,6 @@ def squeeze_or_expand_dimensions(y_pred, y_true=None, sample_weight=None):
   if sample_weight is None:
     return y_pred, y_true
 
-  sample_weight = ops.convert_to_tensor(sample_weight)
   weights_shape = sample_weight.shape
   weights_rank = weights_shape.ndims
   if weights_rank == 0:  # If weights is scalar, do nothing.

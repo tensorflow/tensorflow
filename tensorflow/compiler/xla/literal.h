@@ -776,6 +776,10 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
                           const ShapeIndex& view_root);
   MutableBorrowingLiteral(const char* src_buf_ptr, const Shape& shape);
 
+  // Create a literal from a list of buffers and a shape.
+  // Returns a tuple literal if `shape` is a tuple type.
+  MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs, const Shape& shape);
+
  private:
   // Recursively copies the subtree from the `src_piece` at the given child
   // index to the `dest_piece`. For buffers only the pointers are copied, but

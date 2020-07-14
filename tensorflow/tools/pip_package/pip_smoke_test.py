@@ -32,7 +32,7 @@ PIP_PACKAGE_QUERY_EXPRESSION = (
 
 # List of file paths containing BUILD files that should not be included for the
 # pip smoke test.
-BUILD_BLACKLIST = [
+BUILD_DENYLIST = [
     "tensorflow/lite",
     "tensorflow/compiler/mlir/lite",
     "tensorflow/python/kernel_tests/signal",
@@ -46,7 +46,7 @@ def GetBuild(dir_base):
   items = []
   for root, _, files in os.walk(dir_base):
     for name in files:
-      if (name == "BUILD" and not any(x in root for x in BUILD_BLACKLIST)):
+      if (name == "BUILD" and not any(x in root for x in BUILD_DENYLIST)):
         items.append("//" + root + ":all")
   return items
 
@@ -70,11 +70,12 @@ def BuildPyTestDependencies():
 
 PYTHON_TARGETS, PY_TEST_QUERY_EXPRESSION = BuildPyTestDependencies()
 
-# TODO(amitpatankar): Clean up blacklist.
+# TODO(amitpatankar): Clean up denylist.
 # List of dependencies that should not included in the pip package.
-DEPENDENCY_BLACKLIST = [
+DEPENDENCY_DENYLIST = [
     "//tensorflow/python:extra_py_tests_deps",
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    "//tensorflow:enable_mlir_bridge",
     "//tensorflow:no_tensorflow_py_deps",
     "//tensorflow/tools/pip_package:win_pip_package_marker",
     "//tensorflow/python:test_ops_2",
@@ -142,7 +143,7 @@ def main():
   ]
 
   ignored_files_count = 0
-  blacklisted_dependencies_count = len(DEPENDENCY_BLACKLIST)
+  denylisted_dependencies_count = len(DEPENDENCY_DENYLIST)
   # Compare dependencies
   for dependency in tf_py_test_dependencies_list:
     if dependency and dependency.startswith("//tensorflow"):
@@ -152,14 +153,14 @@ def main():
         ignore = True
         ignored_files_count += 1
 
-      # Check if the dependency is in the pip package, the dependency blacklist,
+      # Check if the dependency is in the pip package, the dependency denylist,
       # or should be ignored because of its file extension.
       if not (ignore or dependency in pip_package_dependencies_list or
-              dependency in DEPENDENCY_BLACKLIST):
+              dependency in DEPENDENCY_DENYLIST):
         missing_dependencies.append(dependency)
 
   print("Ignored files count: %d" % ignored_files_count)
-  print("Blacklisted dependencies count: %d" % blacklisted_dependencies_count)
+  print("Denylisted dependencies count: %d" % denylisted_dependencies_count)
   if missing_dependencies:
     print("Missing the following dependencies from pip_packages:")
     for missing_dependency in missing_dependencies:
@@ -174,7 +175,7 @@ def main():
     raise RuntimeError("""
     One or more added test dependencies are not in the pip package.
 If these test dependencies need to be in TensorFlow pip package, please add them to //tensorflow/tools/pip_package/BUILD.
-Else either blacklist the dependencies in //tensorflow/tools/pip_package/pip_smoke_test.py
+Else either denylist the dependencies in //tensorflow/tools/pip_package/pip_smoke_test.py
 or add no_pip tag to the test.""")
 
   else:

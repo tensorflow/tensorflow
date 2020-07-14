@@ -35,9 +35,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 
 // NOLINTNEXTLINE
-static llvm::cl::list<std::string> quantize_whitelist(
-    "tfl-test-quantize-whitelist", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma separated list of whitelisted functions to be "
+static llvm::cl::list<std::string> quantize_allowlist(
+    "tfl-test-quantize-allowlist", llvm::cl::value_desc("list"),
+    llvm::cl::desc("comma separated list of allowlisted functions to be "
                    "quantized. Only used in tests"),
     llvm::cl::CommaSeparated);
 
@@ -108,9 +108,9 @@ class PrepareQuantizePass
 
   // Get the min and max values from the quantization specification for the
   // current function function and argument index. Uses default values if
-  // the function is specified in the `quantize_whitelist`.
-  std::pair<double, double> GetMinMaxValuesForArgument(
-      llvm::StringRef func_name, int index) {
+  // the function is specified in the `quantize_allowlist`.
+  std::pair<llvm::Optional<double>, llvm::Optional<double>>
+  GetMinMaxValuesForArgument(llvm::StringRef func_name, int index) {
     if (func_name == quant_specs_.target_func) {
       return quant_specs_.input_ranges[index];
     } else {
@@ -132,7 +132,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
   // Skip this function because it isn't the target function from the spec or
   // in the function while list.
   if (target_func != func_name &&
-      !llvm::is_contained(quantize_whitelist, func_name)) {
+      !llvm::is_contained(quantize_allowlist, func_name)) {
     return false;
   }
 
@@ -160,10 +160,14 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
         }
 
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
+        // The input min/max or mean/std are not specified, then skip.
+        if (!min_max.first.hasValue() || !min_max.second.hasValue()) return;
+
         TypeAttr params = quant::GetQuantizedTypeAttr(
-            builder, input_type, builder.getF64FloatAttr(min_max.first),
-            builder.getF64FloatAttr(min_max.second), /*quant_dim=*/-1, num_bits,
-            narrow_range, is_signed);
+            builder, input_type,
+            builder.getF64FloatAttr(min_max.first.getValue()),
+            builder.getF64FloatAttr(min_max.second.getValue()),
+            /*quant_dim=*/-1, num_bits, narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
         auto q_op =
             builder.create<quant::QuantizeCastOp>(loc, params.getValue(), arg);
@@ -206,6 +210,7 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
   // one is returned directly, we decide to return the quantized result instead,
   // so this op can be quantized. This is only applied on the returned result
   // because the error will not be accumulated.
+
   func.walk([&](ReturnOp ret) {
     int i = 0;
     for (Value returned : ret.operands()) {
@@ -232,6 +237,51 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
     concat.emitWarning(
         "Missing quantization parameter on the output might introduce "
         "quantization error!");
+  });
+
+  // Check for  (Quant (Dequant $in), $qA) "qdq" pairs that couldn't be
+  // eliminated at this point.  This only occurs for the pattern
+  //      (Quant (Dequant (Quant $in, $qB)), $qA)   $qB != $qA
+  // where the  qdq pair denotes a non-trivial requantiziion of an
+  // alreadyquantized value. Since this makes little sense (directly quantizing
+  // (Quant $in, $qA) would introduce less quantization noise) the likley cause
+  // is an minor error in constructing the original network model that
+  // introduced back-to-back Fake Quantization operations. Hence: emit a
+  // warning. N.b. at this point weŕe (teporarility) in the quantization dialect
+  // (presuambly enalbe re-use in xla etc) quant::*QuantizeCastOp weŕe matching
+  // here.
+  //
+  func.walk([&](quant::QuantizeCastOp q_op) {
+    // If up with end up with
+    auto dq_op = dyn_cast_or_null<quant::DequantizeCastOp>(
+        q_op.getOperand().getDefiningOp());
+    if (!dq_op) {
+      return;
+    }
+    auto dq_arg = dq_op.getOperand();
+
+    if (!dq_arg.hasOneUse()) {
+      // The initial quanization is used sompleace else ... so it might be
+      // reasonable for it to requantized for another purpose.
+      // TODO: ideally would want to still check whether requanization narrows
+      // rather than widens the representation
+      return;
+    }
+
+    // Invariant:
+    // isa<quant::QuantizeCastOp>(dq_arg.getDefiningOp()) -->
+    // getdq_arg.getType() != q_op.getResult().getType()
+    //
+    // as otherwise qdq pair would have been optimized away.
+    auto qd_arg_def_q_op =
+        dyn_cast_or_null<quant::QuantizeCastOp>(dq_arg.getDefiningOp());
+    if (!qd_arg_def_q_op) {
+      return;
+    }
+
+    qd_arg_def_q_op.emitWarning()
+        << " quantizer's output has another quantizer (" << q_op.getLoc()
+        << ") as consumer - intentional?";
   });
 }
 

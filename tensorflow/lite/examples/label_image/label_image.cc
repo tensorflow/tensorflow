@@ -301,7 +301,7 @@ void RunInference(Settings* s) {
     profiler->StopProfiling();
     auto profile_events = profiler->GetProfileEvents();
     for (int i = 0; i < profile_events.size(); i++) {
-      auto subgraph_index = profile_events[i]->event_subgraph_index;
+      auto subgraph_index = profile_events[i]->extra_event_metadata;
       auto op_index = profile_events[i]->event_metadata;
       const auto subgraph = interpreter->subgraph(subgraph_index);
       const auto node_and_registration =
@@ -362,8 +362,8 @@ void display_usage() {
       << "--old_accelerated, -d: [0|1], use old Android NNAPI delegate or not\n"
       << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not\n"
       << "--count, -c: loop interpreter->Invoke() for certain times\n"
-      << "--gl_backend, -g: use GL GPU Delegate on Android\n"
-      << "--hexagon_delegate: use Hexagon Delegate on Android\n"
+      << "--gl_backend, -g: [0|1]: use GL GPU Delegate on Android\n"
+      << "--hexagon_delegate, -j: [0|1]: use Hexagon Delegate on Android\n"
       << "--input_mean, -b: input mean\n"
       << "--input_std, -s: input standard deviation\n"
       << "--image, -i: image_name.bmp\n"
@@ -374,7 +374,7 @@ void display_usage() {
       << "--threads, -t: number of threads\n"
       << "--verbose, -v: [0|1] print more information\n"
       << "--warmup_runs, -w: number of warmup runs\n"
-      << "--xnnpack_delegate, -x: xnnpack delegate\n"
+      << "--xnnpack_delegate, -x [0:1]: xnnpack delegate\n"
       << "\n";
 }
 

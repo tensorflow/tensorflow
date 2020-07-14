@@ -93,6 +93,8 @@ filegroup(
         "port.h",
         "presized_cuckoo_map.h",
         "ptr_util.h",
+        "ragged_to_dense_util.cc",
+        "ragged_to_dense_util.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.cc",
         "saved_tensor_slice_util.h",
@@ -368,6 +370,35 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "ragged_to_dense_util",
+    srcs = [
+        "ragged_to_dense_util.cc",
+    ],
+    hdrs = [
+        "ragged_to_dense_util.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_to_dense_util_test",
+    srcs = [
+        "ragged_to_dense_util_test.cc",
+    ],
+    deps = [
+        ":ragged_to_dense_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:testlib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_cc_test(
     name = "stats_calculator_test",
     srcs = ["stats_calculator_test.cc"],
@@ -505,6 +536,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "incremental_barrier",
+    srcs = ["incremental_barrier.cc"],
+    hdrs = ["incremental_barrier.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/functional:bind_front",
+    ],
+)
+
 # Tests.
 
 tf_cc_test(
@@ -629,6 +670,20 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "incremental_barrier_test",
+    srcs = ["incremental_barrier_test.cc"],
+    deps = [
+        ":incremental_barrier",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/time",
     ],
 )
 

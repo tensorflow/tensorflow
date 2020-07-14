@@ -69,7 +69,7 @@ void SetMicroFeaturesNoiseEstimates(const uint32_t* estimate_presets) {
 
 TfLiteStatus GenerateMicroFeatures(tflite::ErrorReporter* error_reporter,
                                    const int16_t* input, int input_size,
-                                   int output_size, uint8_t* output,
+                                   int output_size, int8_t* output,
                                    size_t* num_samples_read) {
   const int16_t* frontend_input;
   if (g_is_first_time) {
@@ -84,16 +84,30 @@ TfLiteStatus GenerateMicroFeatures(tflite::ErrorReporter* error_reporter,
   for (int i = 0; i < frontend_output.size; ++i) {
     // These scaling values are derived from those used in input_data.py in the
     // training pipeline.
-    constexpr int32_t value_scale = (10 * 255);
-    constexpr int32_t value_div = (256 * 26);
+    // The feature pipeline outputs 16-bit signed integers in roughly a 0 to 670
+    // range. In training, these are then arbitrarily divided by 25.6 to get
+    // float values in the rough range of 0.0 to 26.0. This scaling is performed
+    // for historical reasons, to match up with the output of other feature
+    // generators.
+    // The process is then further complicated when we quantize the model. This
+    // means we have to scale the 0.0 to 26.0 real values to the -128 to 127
+    // signed integer numbers.
+    // All this means that to get matching values from our integer feature
+    // output into the tensor input, we have to perform:
+    // input = (((feature / 25.6) / 26.0) * 256) - 128
+    // To simplify this and perform it in 32-bit integer math, we rearrange to:
+    // input = (feature * 256) / (25.6 * 26.0) - 128
+    constexpr int32_t value_scale = 256;
+    constexpr int32_t value_div = static_cast<int32_t>((25.6f * 26.0f) + 0.5f);
     int32_t value =
         ((frontend_output.values[i] * value_scale) + (value_div / 2)) /
         value_div;
-    if (value < 0) {
-      value = 0;
+    value -= 128;
+    if (value < -128) {
+      value = -128;
     }
-    if (value > 255) {
-      value = 255;
+    if (value > 127) {
+      value = 127;
     }
     output[i] = value;
   }

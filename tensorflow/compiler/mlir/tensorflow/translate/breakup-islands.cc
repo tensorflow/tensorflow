@@ -219,7 +219,7 @@ void BreakUpIslands::BreakUpIsland(
   }
 
   // Skip islands that are already only a single op.
-  if (hasSingleElement(island_body)) return;
+  if (island_op.WrapsSingleOp()) return;
 
   auto control_type = tf_executor::ControlType::get(&getContext());
   auto island_control_inputs = llvm::to_vector<4>(island_op.controlInputs());
@@ -306,9 +306,8 @@ void BreakUpIslands::BreakUpIsland(
               llvm::dyn_cast<tf_executor::IslandOp>(owner->getParentOp())) {
         (*new_control_inputs)[other_island_op].push_back(sink_island_control);
       } else if (owner->getDialect() == island_op.getDialect() &&
-                 !llvm::isa<tf_executor::GraphOp>(owner) &&
-                 !llvm::isa<tf_executor::YieldOp>(owner) &&
-                 !llvm::isa<tf_executor::NextIterationSourceOp>(owner)) {
+                 !llvm::isa<tf_executor::GraphOp, tf_executor::YieldOp,
+                            tf_executor::NextIterationSourceOp>(owner)) {
         (*new_control_inputs)[owner].push_back(sink_island_control);
       } else {
         owner->emitOpError("adding control dependency not supported");

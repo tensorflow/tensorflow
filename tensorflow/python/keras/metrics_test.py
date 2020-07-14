@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import layers
@@ -1391,7 +1392,7 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(m.dtype, dtypes.float32)
       self.assertEmpty(m.variables)
 
-      with self.assertRaisesRegexp(ValueError, 'does not have any result yet'):
+      with self.assertRaisesRegex(ValueError, 'does not have any result yet'):
         m.result()
 
       self.evaluate(m([[3], [5], [3]]))
@@ -1468,7 +1469,7 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
   def test_invalid_value_shape(self):
     m = metrics.MeanTensor(dtype=dtypes.float64)
     m([1])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'MeanTensor input values must always have the same shape'):
       m([1, 5])
 
@@ -2246,6 +2247,23 @@ class ResetStatesTest(keras_parameterized.TestCase):
     model.evaluate(x, y)
     self.assertArrayNear(self.evaluate(m_obj.total_cm)[0], [1, 0], 1e-1)
     self.assertArrayNear(self.evaluate(m_obj.total_cm)[1], [3, 0], 1e-1)
+
+  def test_reset_states_recall_float64(self):
+    # Test case for GitHub issue 36790.
+    try:
+      backend.set_floatx('float64')
+      r_obj = metrics.Recall()
+      model = _get_model([r_obj])
+      x = np.concatenate((np.ones((50, 4)), np.zeros((50, 4))))
+      y = np.concatenate((np.ones((50, 1)), np.ones((50, 1))))
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(r_obj.true_positives), 50.)
+      self.assertEqual(self.evaluate(r_obj.false_negatives), 50.)
+      model.evaluate(x, y)
+      self.assertEqual(self.evaluate(r_obj.true_positives), 50.)
+      self.assertEqual(self.evaluate(r_obj.false_negatives), 50.)
+    finally:
+      backend.set_floatx('float32')
 
 
 if __name__ == '__main__':

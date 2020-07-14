@@ -137,9 +137,8 @@ class ShapedBuffer {
 
 std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer);
 
-// ShapedBuffer derived class which allocates all internal buffers on
-// construction and deallocates the memory when the object is
-// destructed.
+// ScopedShapedBuffer takes allocated buffers as inputs, and deallocates on
+// destruction. This class represents an owning wrapper around `ShapedBuffer`.
 //
 // TODO(timshen): Remove inheritance between ScopedShapedBuffer and
 // ShapedBuffer.  There should never be a need to consider a ScopedShapedBuffer

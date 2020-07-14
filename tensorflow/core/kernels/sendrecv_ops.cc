@@ -123,6 +123,8 @@ string SendOp::TraceString(OpKernelContext* ctx, bool verbose) {
 
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_CPU), SendOp);
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_DEFAULT), SendOp);
+REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_TPU_SYSTEM), SendOp);
+REGISTER_KERNEL_BUILDER(Name("_HostSend").Device(DEVICE_TPU_SYSTEM), SendOp);
 
 // Public alias. Added for use in Lingvo.
 REGISTER_KERNEL_BUILDER(Name("Send").Device(DEVICE_CPU), SendOp);
@@ -193,12 +195,7 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();
   args.alloc_attrs = ctx->output_alloc_attr(0);
-  if (ctx->is_eager()) {
-    // NOTE(fishx): Only set cancellation_manager in eager mode. Because in
-    // Tensorflow 1.x, session (or graph_mgr) will abort the underlying
-    // rendezvous if it encounters any error.
-    args.cancellation_manager = ctx->cancellation_manager();
-  }
+  args.cancellation_manager = ctx->cancellation_manager();
 
   FrameAndIter frame_iter = GetFrameAndIter(ctx, hostmem_sendrecv_);
   if (frame_iter == FrameAndIter(0, 0)) {
@@ -220,6 +217,8 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_CPU), RecvOp);
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_DEFAULT), RecvOp);
+REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_TPU_SYSTEM), RecvOp);
+REGISTER_KERNEL_BUILDER(Name("_HostRecv").Device(DEVICE_TPU_SYSTEM), RecvOp);
 
 // Public alias. Added for use in Lingvo.
 REGISTER_KERNEL_BUILDER(Name("Recv").Device(DEVICE_CPU), RecvOp);

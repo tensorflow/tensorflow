@@ -251,6 +251,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:tf32_utils",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:host_or_device_scalar",
@@ -273,6 +274,9 @@ cc_library(
     textual_hdrs = glob(["cufft_*.inc"]),
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cufft_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
@@ -353,6 +357,7 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:tf32_utils",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",
@@ -371,6 +376,9 @@ cc_library(
     textual_hdrs = ["curand_10_0.inc"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
+        # LINT.IfChange
+        "@local_config_cuda//cuda:curand_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),
@@ -429,6 +437,7 @@ cc_library(
     deps = if_cuda_is_configured([
         # LINT.IfChange
         "@local_config_cuda//cuda:cublas_headers",
+        "@local_config_cuda//cuda:cusolver_headers",
         # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",
@@ -451,6 +460,9 @@ cc_library(
     textual_hdrs = glob(["cusparse_*.inc"]),
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
+        # LINT.IfChange
+        "@local_config_cuda//cuda:cusparse_headers",
+        # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
     ]),

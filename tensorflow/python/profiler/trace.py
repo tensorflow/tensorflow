@@ -21,6 +21,10 @@ from __future__ import print_function
 from tensorflow.python.profiler.internal import _pywrap_traceme
 from tensorflow.python.util.tf_export import tf_export
 
+# This variable is modified by PythonHooks::Start/Stop() in C++. Such
+# arrangement will reduce the number of calls through pybind11.
+enabled = False
+
 
 @tf_export('profiler.experimental.Trace', v1=[])
 class Trace(object):
@@ -72,14 +76,14 @@ class Trace(object):
       The example above uses the keyword argument "step_num" to specify the
       training step being traced.
     """
-    if _pywrap_traceme.TraceMe.IsEnabled():
+    if enabled:
+      # Creating _pywrap_traceme.TraceMe starts the clock.
       self._traceme = _pywrap_traceme.TraceMe(name, **kwargs)
     else:
       self._traceme = None
 
   def __enter__(self):
-    if self._traceme:
-      self._traceme.Enter()
+    # Starting the TraceMe clock here would require an extra Python->C++ call.
     return self
 
   def set_metadata(self, **kwargs):
@@ -118,4 +122,4 @@ class Trace(object):
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     if self._traceme:
-      self._traceme.Exit()
+      self._traceme.Stop()

@@ -10,6 +10,16 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "weighted_quantiles_hdrs",
+    srcs = [
+        "quantile_stream_resource.h",
+        "weighted_quantiles_buffer.h",
+        "weighted_quantiles_stream.h",
+        "weighted_quantiles_summary.h",
+    ],
+)
+
 # Quantiles
 
 cc_library(

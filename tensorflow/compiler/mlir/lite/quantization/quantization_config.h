@@ -69,7 +69,8 @@ struct QuantizationSpecs {
   // arguments. They are only used when `weight_quantization` is set to false,
   // and the model is required to have quantization parameters, either from
   // quantization aware training or calibration, for the remaining tensors.
-  std::vector<std::pair<double, double>> input_ranges;
+  std::vector<std::pair<llvm::Optional<double>, llvm::Optional<double>>>
+      input_ranges;
 
   // The default ranges can be used when a tensor doesn't have quantization
   // parameters and couldn't be quantized. Used only for latency tests.
@@ -130,11 +131,11 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
 // Gets the quantization specification for input arrays. The array names are not
 // stored in the spec, and will be matched by position. The min/max will be
 // ignored if the inference_type isn't a quantized type. Returns true if failed.
-bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
-                            const std::vector<double>& node_mins,
-                            const std::vector<double>& node_maxs,
-                            tensorflow::DataType inference_type,
-                            QuantizationSpecs* quant_specs);
+bool GetInputNodeQuantSpecs(
+    const std::vector<std::string>& node_names,
+    const std::vector<llvm::Optional<double>>& node_mins,
+    const std::vector<llvm::Optional<double>>& node_maxs,
+    tensorflow::DataType inference_type, QuantizationSpecs* quant_specs);
 
 }  // namespace TFL
 }  // namespace mlir

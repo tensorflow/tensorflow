@@ -343,7 +343,7 @@ LogicalResult HandlePartitionedCallOp(
   }
   llvm::SmallDenseMap<Value, Value> callee_map;
   FuncOp lowered_callee = callee;
-  if (callee.getVisibility() != SymbolTable::Visibility::Private) {
+  if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
     lowered_callee.setVisibility(SymbolTable::Visibility::Private);
@@ -488,7 +488,7 @@ LogicalResult DecomposeStackOpsInternal(
     llvm::StringMap<PartitionedCallStackOpsInfo>*
         decomposed_partitioned_call_callees) {
   for (auto& op : llvm::make_early_inc_range(block->getOperations())) {
-    if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+    if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
       // Removes identity nodes in the block. The device computation does not
       // need such nodes to carry information.
       op.replaceAllUsesWith(op.getOperands());

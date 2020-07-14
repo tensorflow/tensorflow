@@ -25,6 +25,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -212,6 +213,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     gather_t = array_ops.gather(params, indices, axis=axis)
     self.assertEqual(None, gather_t.shape)
 
+  def testBadIndicesType(self):
+    with self.assertRaisesRegex(
+        (TypeError, errors.InvalidArgumentError),
+        "float.* not in.* list of allowed values: int32, int64"):
+      self.evaluate(array_ops.gather([0], 0.))
+
   @test_util.disable_xla(
       "Assertion inside an op is not supported in XLA. Instead XLA clamps the "
       "index to be in bounds and returns the indexed value there (Don't rely "
@@ -264,17 +271,17 @@ class GatherTest(test.TestCase, parameterized.TestCase):
             params = np.zeros((7, 0, 0), dtype=dtype.as_numpy_dtype)
             indices = np.array([3, 4], dtype=itype)
             gather = array_ops.gather(params, indices, axis=0)
-            self.assertAllEqual(gather.eval(), np.zeros((2, 0, 0)))
+            self.assertAllEqual(gather, np.zeros((2, 0, 0)))
 
             # Middle axis gather.
             params = np.zeros((0, 7, 0), dtype=dtype.as_numpy_dtype)
             gather = array_ops.gather(params, indices, axis=1)
-            self.assertAllEqual(gather.eval(), np.zeros((0, 2, 0)))
+            self.assertAllEqual(gather, np.zeros((0, 2, 0)))
 
             # Trailing axis gather.
             params = np.zeros((0, 0, 7), dtype=dtype.as_numpy_dtype)
             gather = array_ops.gather(params, indices, axis=2)
-            self.assertAllEqual(gather.eval(), np.zeros((0, 0, 2)))
+            self.assertAllEqual(gather, np.zeros((0, 0, 2)))
 
   @parameterized.parameters([
       # batch_dims=0 (equivalent to tf.gather)

@@ -35,6 +35,9 @@ def tf_additional_plugin_deps():
         "//conditions:default": [],
     })
 
+def tf_additional_profiler_deps():
+    return []
+
 def tf_additional_xla_deps_py():
     return []
 

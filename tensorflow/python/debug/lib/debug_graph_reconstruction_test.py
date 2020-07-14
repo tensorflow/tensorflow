@@ -73,9 +73,9 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
           for attr_key in new_node.attr:
             if attr_key == "parallel_iterations":
               new_node.attr[attr_key].i = 1
-        elif new_node.op == "Switch":
-          # We don't check the inputs to Switch ops as their inputs may be
-          # Send/Recv nodes.
+        elif new_node.op == "Switch" or new_node.op == "Identity":
+          # We don't check the inputs to Switch or Identity ops as their inputs
+          # may be Send/Recv nodes.
           del new_node.input[:]
 
     return output_graph_def

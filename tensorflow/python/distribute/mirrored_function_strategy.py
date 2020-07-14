@@ -22,6 +22,7 @@ import threading
 
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import values
@@ -123,16 +124,18 @@ class MirroredFunctionExtended(distribute_lib.StrategyExtendedV1):
               # use a collective op. This is a particular concern with eager
               # execution.
               with context.execution_mode(context.ASYNC):
-                return_values.append(fn(*values.select_replica(index, args),
-                                        **values.select_replica(index, kwargs)))
+                return_values.append(
+                    fn(*distribute_utils.select_replica(index, args),
+                       **distribute_utils.select_replica(index, kwargs)))
             else:
-              return_values.append(fn(*values.select_replica(index, args),
-                                      **values.select_replica(index, kwargs)))
+              return_values.append(
+                  fn(*distribute_utils.select_replica(index, args),
+                     **distribute_utils.select_replica(index, kwargs)))
     finally:
       _replica_index.graph_outside_run = None
       _replica_index.current = None
 
-    return values.regroup(return_values)
+    return distribute_utils.regroup(return_values)
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):

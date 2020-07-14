@@ -5,11 +5,23 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CategoryEncoding"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CenterCrop"
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Discretization"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Hashing"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "IntegerLookup"
     mtype: "<type \'type\'>"
   }
   member {
@@ -58,6 +70,10 @@ tf_module {
   }
   member {
     name: "Resizing"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StringLookup"
     mtype: "<type \'type\'>"
   }
   member {

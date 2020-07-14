@@ -139,7 +139,8 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
     AddToolData(ToolName(kKernelStats), op_stats.kernel_stats_db(), response);
   }
   if (tools.contains(kMemoryProfile)) {
-    if (const XPlane* host_plane = FindPlaneWithName(xspace, kHostThreads)) {
+    if (const XPlane* host_plane =
+            FindPlaneWithName(xspace, kHostThreadsPlaneName)) {
       MemoryProfile memory_profile = ConvertXPlaneToMemoryProfile(*host_plane);
       std::string json_output;
       TF_RETURN_IF_ERROR(ConvertProtoToJson(memory_profile, &json_output));

@@ -214,7 +214,7 @@ bool Env::FilesExist(const std::vector<string>& files,
     }
     if (fs_status) {
       result &= fs_result;
-      for (int i = 0; i < itr.second.size(); ++i) {
+      for (size_t i = 0; i < itr.second.size(); ++i) {
         per_file_status[itr.second[i]] = fs_status->at(i);
       }
     } else if (!fs_result) {

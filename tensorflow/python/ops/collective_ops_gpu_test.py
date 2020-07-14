@@ -60,7 +60,6 @@ class CollectiveOpGPUTest(test.TestCase):
           len(gpus)))
     context.ensure_initialized()
 
-  @test_util.run_deprecated_v1
   def testBasicNcclAllReduce(self):
     inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]]
@@ -69,7 +68,9 @@ class CollectiveOpGPUTest(test.TestCase):
     instance_key = 1
     devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default(), self.session(
+        config=self._configure()) as sess:
       if not test_util.is_gpu_available(cuda_only=True):
         self.skipTest('No GPU available')
       collectives = []
@@ -82,14 +83,15 @@ class CollectiveOpGPUTest(test.TestCase):
     for result in results:
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testInt32Error(self):
     inputs = [[0, 1], [2, 3]]
     group_key = 1
     instance_key = 50
     devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
+    # Tests that execute collectives need to be enclosed in graph or tf.function
+    with ops.Graph().as_default(), self.session(
+        config=self._configure()) as sess:
       if not test_util.is_gpu_available(cuda_only=True):
         self.skipTest('No GPU available')
       collectives = []
@@ -98,12 +100,11 @@ class CollectiveOpGPUTest(test.TestCase):
           t = constant_op.constant(inputs[i], dtype=dtypes.int32)
           collectives.append(collective_ops.all_reduce(
               t, self._group_size, group_key, instance_key, 'Add', 'Div'))
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InternalError,
           'does not support datatype DT_INT32 on DEVICE_GPU'):
         sess.run(collectives)
 
-  @test_util.run_deprecated_v1
   def testFp16Reduce(self):
     inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]]
@@ -112,7 +113,8 @@ class CollectiveOpGPUTest(test.TestCase):
     instance_key = 100
     devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
+    with ops.Graph().as_default(), self.session(
+        config=self._configure()) as sess:
       if not test_util.is_gpu_available(cuda_only=True):
         self.skipTest('No GPU available')
       collectives = []
@@ -126,7 +128,6 @@ class CollectiveOpGPUTest(test.TestCase):
       logging.info('i {} result {} expected {}'.format(i, results[i], expected))
       self.assertAllClose(result, expected, rtol=1e-3, atol=1e-3)
 
-  @test_util.run_deprecated_v1
   def testNcclHintAllReduce(self):
     inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]]
@@ -135,7 +136,7 @@ class CollectiveOpGPUTest(test.TestCase):
     instance_key = 1
     devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(
+    with ops.Graph().as_default(), self.session(
         config=self._configure(set_config_proto_nccl=False)) as sess:
       if not test_util.is_gpu_available(cuda_only=True):
         self.skipTest('No GPU available')
@@ -150,14 +151,14 @@ class CollectiveOpGPUTest(test.TestCase):
     for result in results:
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testBasicNcclBroadcast(self):
     tensor_value = [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1]
     group_key = 1
     instance_key = 1
     devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
+    with ops.Graph().as_default(), self.session(
+        config=self._configure()) as sess:
       if not test_util.is_gpu_available(cuda_only=True):
         self.skipTest('No GPU available')
       collectives = []
@@ -173,14 +174,14 @@ class CollectiveOpGPUTest(test.TestCase):
     for result in results:
       self.assertAllClose(result, tensor_value, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testNcclBroadcastDoubleRecv(self):
     tensor_value = [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1]
     group_key = 1
     instance_key = 1
     devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
+    with ops.Graph().as_default(), self.session(
+        config=self._configure()) as sess:
       if not test_util.is_gpu_available(cuda_only=True):
         self.skipTest('No GPU available')
       collectives = []
@@ -189,17 +190,17 @@ class CollectiveOpGPUTest(test.TestCase):
           t = constant_op.constant(tensor_value)
           collectives.append(collective_ops.broadcast_recv(
               t.shape, t.dtype, self._group_size, group_key, instance_key))
-      with self.assertRaisesRegexp(errors.InternalError, 'found no source'):
+      with self.assertRaisesRegex(errors.InternalError, 'found no source'):
         sess.run(collectives)
 
-  @test_util.run_deprecated_v1
   def testNcclBroadcastDoubleSend(self):
     tensor_value = [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1]
     group_key = 1
     instance_key = 1
     devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
+    with ops.Graph().as_default(), self.session(
+        config=self._configure()) as sess:
       if not test_util.is_gpu_available(cuda_only=True):
         self.skipTest('No GPU available')
       collectives = []
@@ -208,10 +209,9 @@ class CollectiveOpGPUTest(test.TestCase):
           t = constant_op.constant(tensor_value)
           collectives.append(collective_ops.broadcast_send(
               t, t.shape, t.dtype, self._group_size, group_key, instance_key))
-      with self.assertRaisesRegexp(errors.InternalError, 'already has source'):
+      with self.assertRaisesRegex(errors.InternalError, 'already has source'):
         sess.run(collectives)
 
-  @test_util.run_deprecated_v1
   def testBasicNcclAllGather(self):
     inputs = [[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
               [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]]
@@ -221,7 +221,8 @@ class CollectiveOpGPUTest(test.TestCase):
     instance_key = 1
     devices = ['/GPU:{}'.format(i) for i in range(self._group_size)]
 
-    with self.session(config=self._configure()) as sess:
+    with ops.Graph().as_default(), self.session(
+        config=self._configure()) as sess:
       if not test_util.is_gpu_available(cuda_only=True):
         self.skipTest('No GPU available')
       collectives = []
@@ -234,13 +235,13 @@ class CollectiveOpGPUTest(test.TestCase):
     for result in results:
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testCollectiveDeviceMismatch(self):
     group_key = 10
     instance_key = 20
     t0 = [1, 2, 3, 4]
     t1 = [5, 6, 7, 8]
-    with self.session(
+
+    with ops.Graph().as_default(), self.session(
         config=self._configure(set_config_proto_nccl=False)) as sess:
       if not test_util.is_gpu_available(cuda_only=True):
         self.skipTest('No GPU available')
@@ -254,8 +255,8 @@ class CollectiveOpGPUTest(test.TestCase):
                                        instance_key, 'Add', 'Id')
       run_options = config_pb2.RunOptions()
       run_options.experimental.collective_graph_key = 100
-      with self.assertRaisesRegexp(errors.InternalError,
-                                   'but that group has type'):
+      with self.assertRaisesRegex(errors.InternalError,
+                                  'but that group has type'):
         sess.run([c0, c1], options=run_options)
 
   @test_util.run_v2_only

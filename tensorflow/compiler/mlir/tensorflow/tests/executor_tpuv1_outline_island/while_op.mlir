@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-executor-tpu-v1-island-outlining | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-executor-tpu-v1-island-outlining | FileCheck %s
 
 // CHECK: func @control_input
 // CHECK-NOT: func @

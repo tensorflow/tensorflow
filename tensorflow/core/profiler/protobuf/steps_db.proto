@@ -96,6 +96,8 @@ message PerCoreStepInfo {
 
 // Result proto for a StepDatabase.
 message StepDatabaseResult {
+  // A sequence of PerCoreStepInfo.
+  repeated PerCoreStepInfo step_sequence = 1;
   // Whether the step db uses incomplete step information.
   // This flag is set to true when:
   // 1) no step marker or annotation present.
@@ -105,6 +107,6 @@ message StepDatabaseResult {
   // If this flag is true, we will simply aggregate and breakdown over the total
   // profile as a single step.
   bool use_incomplete_step = 2;
-  // A sequence of PerCoreStepInfo.
-  repeated PerCoreStepInfo step_sequence = 1;
+  // Number of steps dropped during post processing.
+  uint32 num_steps_dropped = 3;
 }

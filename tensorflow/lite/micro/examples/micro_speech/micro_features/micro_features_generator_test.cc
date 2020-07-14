@@ -48,7 +48,7 @@ TF_LITE_MICRO_TEST(TestMicroFeaturesGeneratorYes) {
   };
   SetMicroFeaturesNoiseEstimates(yes_estimate_presets);
 
-  uint8_t yes_calculated_data[g_yes_feature_data_slice_size];
+  int8_t yes_calculated_data[g_yes_feature_data_slice_size];
   size_t num_samples_read;
   TfLiteStatus yes_status = GenerateMicroFeatures(
       error_reporter, g_yes_30ms_sample_data, g_yes_30ms_sample_data_size,
@@ -56,11 +56,12 @@ TF_LITE_MICRO_TEST(TestMicroFeaturesGeneratorYes) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, yes_status);
 
   for (int i = 0; i < g_yes_feature_data_slice_size; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(g_yes_feature_data_slice[i],
-                            yes_calculated_data[i]);
-    if (g_yes_feature_data_slice[i] != yes_calculated_data[i]) {
+    const int expected = g_yes_feature_data_slice[i];
+    const int actual = yes_calculated_data[i];
+    TF_LITE_MICRO_EXPECT_EQ(expected, actual);
+    if (expected != actual) {
       TF_LITE_REPORT_ERROR(error_reporter, "Expected value %d but found %d",
-                           g_yes_feature_data_slice[i], yes_calculated_data[i]);
+                           expected, actual);
     }
   }
 }
@@ -81,7 +82,7 @@ TF_LITE_MICRO_TEST(TestMicroFeaturesGeneratorNo) {
   };
   SetMicroFeaturesNoiseEstimates(no_estimate_presets);
 
-  uint8_t no_calculated_data[g_no_feature_data_slice_size];
+  int8_t no_calculated_data[g_no_feature_data_slice_size];
   size_t num_samples_read;
   TfLiteStatus no_status = GenerateMicroFeatures(
       error_reporter, g_no_30ms_sample_data, g_no_30ms_sample_data_size,
@@ -89,10 +90,12 @@ TF_LITE_MICRO_TEST(TestMicroFeaturesGeneratorNo) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, no_status);
 
   for (int i = 0; i < g_no_feature_data_slice_size; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(g_no_feature_data_slice[i], no_calculated_data[i]);
-    if (g_no_feature_data_slice[i] != no_calculated_data[i]) {
+    const int expected = g_no_feature_data_slice[i];
+    const int actual = no_calculated_data[i];
+    TF_LITE_MICRO_EXPECT_EQ(expected, actual);
+    if (expected != actual) {
       TF_LITE_REPORT_ERROR(error_reporter, "Expected value %d but found %d",
-                           g_no_feature_data_slice[i], no_calculated_data[i]);
+                           expected, actual);
     }
   }
 }

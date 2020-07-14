@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap.h"
@@ -309,7 +310,11 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
     VariantTensorDataProto proto;
     data.ToProto(&proto);
     string elem;
-    proto.SerializeToString(&elem);
+    if (!proto.SerializeToString(&elem)) {
+      return errors::Unknown(
+          "Failed to serialize tensor data of size ", proto.ByteSizeLong(),
+          ". Tensor: ", val.flat<Variant>()(i).DebugString());
+    }
 
     // Write the length of the serialized variant.
     DCHECK_EQ(elem.size(), static_cast<uint64>(elem.size()));

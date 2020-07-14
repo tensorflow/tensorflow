@@ -27,11 +27,14 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/core/framework/op.h"
 
 namespace mlir {
 namespace TFL {
 
 LogicalResult ConvertTFTextAPI(mlir::FuncOp func, llvm::StringRef api);
+
+bool IsTfTextRegistered(const tensorflow::OpRegistry* op_registery);
 
 }  // end namespace TFL
 }  // end namespace mlir

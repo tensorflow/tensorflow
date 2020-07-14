@@ -1393,11 +1393,6 @@ XlaOp NextAfter(XlaOp from, XlaOp to) {
   });
 }
 
-XlaOp Logistic(XlaOp x) {
-  auto half = xla::ScalarLike(x, 0.5);
-  return half + half * xla::Tanh(half * x);
-}
-
 // Computes an approximation to the modified Bessel function of the first kind,
 // zeroth order.
 // The following implementation follows Cephes' F32 and F64 implementation of

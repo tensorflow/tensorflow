@@ -173,9 +173,13 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("shape", &PyTpuBuffer::on_host_shape)
       .def("device", &PyTpuBuffer::device)
       .def("platform", &PyTpuBuffer::platform_name)
-      .def("is_deleted", [](const PyTpuBuffer& buffer) {
-        return buffer.DeviceBuffer() == nullptr;
-      });
+      .def("is_deleted",
+           [](const PyTpuBuffer& buffer) {
+             return buffer.DeviceBuffer() == nullptr;
+           })
+      // TODO(phawkins): implement traceback support.
+      .def_property_readonly("traceback",
+                             [](PyTpuBuffer*) { return py::none(); });
 
   py::class_<PyTpuExecutable>(m, "TpuExecutable")
       .def("local_logical_device_ids",
@@ -193,7 +197,10 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("execute", &PyTpuExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("execute_on_local_devices", &PyTpuExecutable::ExecuteOnLocalDevices,
-           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      // TODO(phawkins): implement traceback support.
+      .def_property_readonly("traceback",
+                             [](PyTpuExecutable*) { return py::none(); });
 
   py::class_<TpuDevice, Device, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
       .def_property_readonly("coords", &TpuDevice::coords)

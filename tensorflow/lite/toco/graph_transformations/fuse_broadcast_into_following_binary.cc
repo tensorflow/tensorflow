@@ -34,7 +34,7 @@ bool IsBroadcastingOp(const Model& model, Operator* op) {
   // Concatenation of identical inputs is usually a broadcast.
   if (op->type == OperatorType::kConcatenation) {
     // Verify that all inputs are the same.
-    for (int i = 1; i < op->inputs.size(); ++i) {
+    for (size_t i = 1; i < op->inputs.size(); ++i) {
       if (op->inputs[i] != op->inputs[0]) {
         return false;
       }

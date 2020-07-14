@@ -45,8 +45,7 @@ class DiscretizationDistributionTest(
 
     with distribution.scope():
       input_data = keras.Input(shape=(None,))
-      layer = discretization.Discretization(
-          bins=[0., 1., 2.], output_mode=discretization.INTEGER)
+      layer = discretization.Discretization(bins=[0., 1., 2.])
       bucket_data = layer(input_data)
       self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())
 

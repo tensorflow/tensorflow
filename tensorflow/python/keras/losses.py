@@ -37,7 +37,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import losses_impl
-from tensorflow.python.ops.losses import util as tf_losses_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -247,7 +246,7 @@ class LossFunctionWrapper(Loss):
       Loss values per sample.
     """
     if tensor_util.is_tensor(y_pred) and tensor_util.is_tensor(y_true):
-      y_pred, y_true = tf_losses_util.squeeze_or_expand_dimensions(
+      y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(
           y_pred, y_true)
     ag_fn = autograph.tf_convert(self.fn, ag_ctx.control_status_ctx())
     return ag_fn(y_true, y_pred, **self._fn_kwargs)
@@ -1238,7 +1237,7 @@ def mean_absolute_error(y_true, y_pred):
 def mean_absolute_percentage_error(y_true, y_pred):
   """Computes the mean absolute percentage error between `y_true` and `y_pred`.
 
-  `loss = 100 * mean(abs(y_true - y_pred) / y_true, axis=-1)`
+  `loss = 100 * mean(abs((y_true - y_pred) / y_true), axis=-1)`
 
   Standalone usage:
 
@@ -1414,7 +1413,8 @@ def categorical_hinge(y_true, y_pred):
   y_true = math_ops.cast(y_true, y_pred.dtype)
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
   neg = math_ops.reduce_max((1. - y_true) * y_pred, axis=-1)
-  return math_ops.maximum(0., neg - pos + 1.)
+  zero = math_ops.cast(0., y_pred.dtype)
+  return math_ops.maximum(neg - pos + 1., zero)
 
 
 @keras_export('keras.losses.huber', v1=[])
@@ -1444,14 +1444,11 @@ def huber(y_true, y_pred, delta=1.0):
   delta = math_ops.cast(delta, dtype=K.floatx())
   error = math_ops.subtract(y_pred, y_true)
   abs_error = math_ops.abs(error)
-  quadratic = math_ops.minimum(abs_error, delta)
-  linear = math_ops.subtract(abs_error, quadratic)
+  half = ops.convert_to_tensor_v2(0.5, dtype=abs_error.dtype)
   return K.mean(
-      math_ops.add(
-          math_ops.multiply(
-              ops.convert_to_tensor_v2(0.5, dtype=quadratic.dtype),
-              math_ops.multiply(quadratic, quadratic)),
-          math_ops.multiply(delta, linear)),
+      array_ops.where_v2(
+          abs_error <= delta, half * math_ops.pow(error, 2),
+          half * math_ops.pow(delta, 2) + delta * (abs_error - delta)),
       axis=-1)
 
 
@@ -1526,7 +1523,7 @@ def categorical_crossentropy(y_true,
   label_smoothing = ops.convert_to_tensor_v2(label_smoothing, dtype=K.floatx())
 
   def _smooth_labels():
-    num_classes = math_ops.cast(array_ops.shape(y_true)[1], y_pred.dtype)
+    num_classes = math_ops.cast(array_ops.shape(y_true)[-1], y_pred.dtype)
     return y_true * (1.0 - label_smoothing) + (label_smoothing / num_classes)
 
   y_true = smart_cond.smart_cond(label_smoothing,

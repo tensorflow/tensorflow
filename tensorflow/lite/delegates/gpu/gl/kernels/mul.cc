@@ -84,6 +84,12 @@ absl::Status GenerateMultiplyScalarCode(
   auto muls = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
   auto scalar = absl::get_if<float>(&attr.param);
 
+  const auto* hwc_tensor =
+      absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.param);
+  if (hwc_tensor) {
+    return absl::UnimplementedError("Mul does not support HWC constant tensor");
+  }
+
   if (scalar) {
     *generated_code = {
         /*parameters=*/{{"scalar", *scalar}},

@@ -240,6 +240,24 @@ REGISTER_OP("ResourceScatterNdSub")
     .Attr("use_locking: bool = true")
     .SetShapeFn(shape_inference::ScatterNdUpdateShape);
 
+REGISTER_OP("ResourceScatterNdMin")
+    .Input("ref: resource")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = true")
+    .SetShapeFn(shape_inference::ScatterNdUpdateShape);
+
+REGISTER_OP("ResourceScatterNdMax")
+    .Input("ref: resource")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = true")
+    .SetShapeFn(shape_inference::ScatterNdUpdateShape);
+
 REGISTER_OP("ScatterNdAdd")
     .Input("ref: Ref(T)")
     .Input("indices: Tindices")
@@ -251,6 +269,26 @@ REGISTER_OP("ScatterNdAdd")
     .SetShapeFn(shape_inference::ScatterNdUpdateShape);
 
 REGISTER_OP("ScatterNdSub")
+    .Input("ref: Ref(T)")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output_ref: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(shape_inference::ScatterNdUpdateShape);
+
+REGISTER_OP("ScatterNdMax")
+    .Input("ref: Ref(T)")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Output("output_ref: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(shape_inference::ScatterNdUpdateShape);
+
+REGISTER_OP("ScatterNdMin")
     .Input("ref: Ref(T)")
     .Input("indices: Tindices")
     .Input("updates: T")

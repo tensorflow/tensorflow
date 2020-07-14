@@ -118,6 +118,20 @@ public final class TensorTest {
   }
 
   @Test
+  public void testCopyToLargerByteBuffer() {
+    // Allocate a ByteBuffer that is larger than the Tensor, and ensure we can copy to it.
+    ByteBuffer parsedOutput =
+        ByteBuffer.allocateDirect(10 * 2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
+    tensor.copyTo(parsedOutput);
+    assertThat(parsedOutput.position()).isEqualTo(2 * 8 * 8 * 3 * 4);
+    float[] outputOneD = {
+      parsedOutput.getFloat(0), parsedOutput.getFloat(4), parsedOutput.getFloat(8)
+    };
+    float[] expected = {3.69f, 19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+  }
+
+  @Test
   public void testCopyToByteBufferAsFloatBuffer() {
     FloatBuffer parsedOutput =
         ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
@@ -203,8 +217,8 @@ public final class TensorTest {
       assertThat(e)
           .hasMessageThat()
           .contains(
-              "Cannot copy between a TensorFlowLite tensor with shape [2, 8, 8, 3] "
-                  + "and a Java object with shape [1, 8, 8, 3].");
+              "Cannot copy from a TensorFlowLite tensor (output) with shape [2, 8, 8, 3] "
+                  + "to a Java object with shape [1, 8, 8, 3].");
     }
   }
 

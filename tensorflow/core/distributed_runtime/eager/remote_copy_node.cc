@@ -58,7 +58,8 @@ Status CreateUncachedKernelAndDeviceOp(
                                       ctx.HostCPU()));
 
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
-  return kernel->get()->Init(ndef, /*graph_collector=*/nullptr);
+  return kernel->get()->Init({ctx.LogDevicePlacement()}, ndef,
+                             /*graph_collector=*/nullptr);
 }
 
 // This gets a unique wire ID. We add a random identifier so that if the
@@ -297,6 +298,7 @@ Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
                              const Device* target_device, EagerContext* ctx,
                              SendPackedHandleOp* op) {
   op->set_op_id(op_id);
+  op->set_device_name(VariantDeviceName(packed_handle->DeviceOrHostCPU(*ctx)));
   for (int i = 0; i < packed_handle->NumPackedHandles(); ++i) {
     TensorHandle* h = nullptr;
     TF_RETURN_IF_ERROR(packed_handle->ExtractPackedHandle(i, &h));

@@ -260,6 +260,13 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
                                                        llvm::Value* value) {
+  // When F64 is being requested, assume performance is less important and use
+  // the more numerically precise tanh function.
+  if (prim_type == F64) {
+    return EmitDeviceMathCall(TargetDeviceFunctionID::kTanh, {value},
+                              {prim_type}, prim_type);
+  }
+
   // Emit a fast approximation of tanh instead of calling __nv_tanh.
   // __nv_tanh is particularly bad because it contains branches, thus
   // preventing LLVM's load-store vectorizer from working its magic across a

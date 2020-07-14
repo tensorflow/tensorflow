@@ -49,6 +49,7 @@ cc_library(
     hdrs = ["batch_scheduler.h"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 
@@ -70,6 +71,7 @@ cc_library(
         ":batch_scheduler_hdrs",
         ":periodic_function_dynamic",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
     ],
 )
@@ -81,6 +83,7 @@ cc_library(
         ":batch_scheduler",
         ":periodic_function_dynamic",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
     ],
     alwayslink = 1,

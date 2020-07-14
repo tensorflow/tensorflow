@@ -51,7 +51,7 @@ using mkldnn::stream;
 namespace tensorflow {
 
 #ifdef ENABLE_MKLDNN_V1
-#define MKLDNN_SIZE_DTYPE long int
+#define MKLDNN_SIZE_DTYPE memory::dim
 #else
 #define MKLDNN_SIZE_DTYPE int
 #endif  // ENABLE_MKLDNN_V1

@@ -27,7 +27,6 @@ from tensorflow.python.keras import metrics as metrics_mod
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.util import nest
 
 
@@ -37,7 +36,7 @@ class Container(object):
   def __init__(self, output_names=None):
     self._output_names = output_names
 
-  def _build(self, y_pred):
+  def build(self, y_pred):
     if self._output_names is None:
       # In Subclass API, output names like 'output_1' are used for
       # `Metric` names.
@@ -131,9 +130,9 @@ class LossesContainer(Container):
     ]
     return [self._loss_metric] + per_output_metrics
 
-  def _build(self, y_pred):
+  def build(self, y_pred):
     """One-time setup of loss objects."""
-    super(LossesContainer, self)._build(y_pred)
+    super(LossesContainer, self).build(y_pred)
 
     self._losses = self._maybe_broadcast_to_outputs(y_pred, self._losses)
     self._losses = self._conform_to_outputs(y_pred, self._losses)
@@ -184,7 +183,7 @@ class LossesContainer(Container):
     sample_weight = self._conform_to_outputs(y_pred, sample_weight)
 
     if not self._built:
-      self._build(y_pred)
+      self.build(y_pred)
 
     y_pred = nest.flatten(y_pred)
     y_true = nest.flatten(y_true)
@@ -200,8 +199,7 @@ class LossesContainer(Container):
         continue
 
       y_t, y_p, sw = match_dtype_and_rank(y_t, y_p, sw)
-      sw = apply_mask(y_p, sw)
-
+      sw = apply_mask(y_p, sw, get_mask(y_p))
       loss_value = loss_obj(y_t, y_p, sample_weight=sw)
 
       loss_metric_value = loss_value
@@ -296,9 +294,9 @@ class MetricsContainer(Container):
       return []
     return self._metrics_in_order
 
-  def _build(self, y_pred, y_true):
+  def build(self, y_pred, y_true):
     """One-time setup of metric objects."""
-    super(MetricsContainer, self)._build(y_pred)
+    super(MetricsContainer, self).build(y_pred)
 
     self._metrics = self._maybe_broadcast_to_outputs(y_pred, self._metrics)
     self._metrics = self._conform_to_outputs(y_pred, self._metrics)
@@ -386,7 +384,7 @@ class MetricsContainer(Container):
     sample_weight = self._conform_to_outputs(y_pred, sample_weight)
 
     if not self._built:
-      self._build(y_pred, y_true)
+      self.build(y_pred, y_true)
 
     y_pred = nest.flatten(y_pred)
     y_true = nest.flatten(y_true) if y_true is not None else []
@@ -401,12 +399,13 @@ class MetricsContainer(Container):
         continue
 
       y_t, y_p, sw = match_dtype_and_rank(y_t, y_p, sw)
-      sw = apply_mask(y_p, sw)
+      mask = get_mask(y_p)
+      sw = apply_mask(y_p, sw, mask)
 
       for metric_obj in metric_objs:
         if metric_obj is None:
           continue
-        metric_obj.update_state(y_t, y_p)
+        metric_obj.update_state(y_t, y_p, sample_weight=mask)
 
       for weighted_metric_obj in weighted_metric_objs:
         if weighted_metric_obj is None:
@@ -460,6 +459,9 @@ class MetricsContainer(Container):
           metric_obj = metrics_mod.sparse_categorical_crossentropy
         else:
           metric_obj = metrics_mod.categorical_crossentropy
+
+    if isinstance(metric_obj, losses_mod.Loss):
+      metric_obj._allow_sum_over_batch_size = True  # pylint: disable=protected-access
 
     if not isinstance(metric_obj, metrics_mod.Metric):
       if isinstance(metric, six.string_types):
@@ -620,15 +622,18 @@ def match_dtype_and_rank(y_t, y_p, sw):
   return y_t, y_p, sw
 
 
-def apply_mask(y_p, sw):
+def get_mask(y_p):
+  """Returns Keras mask from tensor."""
+  return getattr(y_p, '_keras_mask', None)
+
+
+def apply_mask(y_p, sw, mask):
   """Applies any mask on predictions to sample weights."""
-  # Handle Keras mask on outputs.
-  mask = getattr(y_p, '_keras_mask', None)
   if mask is not None:
     mask = math_ops.cast(mask, y_p.dtype)
     if sw is not None:
       mask, _, sw = (
-          tf_losses_utils.squeeze_or_expand_dimensions(mask, sample_weight=sw))
+          losses_utils.squeeze_or_expand_dimensions(mask, sample_weight=sw))
       sw *= mask
     else:
       sw = mask

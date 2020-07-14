@@ -32,6 +32,7 @@ from six.moves import range
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python.convert import ConverterError
+from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
 from tensorflow.python.client import session
@@ -57,16 +58,6 @@ from tensorflow.python.training.training_util import write_graph
 
 class LiteTest(test_util.TensorFlowTestCase):
   """Base class of all the tests in this module."""
-
-  def setUp(self):
-    self._original_use_experimental_new_converter = (
-        lite._USE_EXPERIMENTAL_NEW_CONVERTER)
-    super(LiteTest, self).setUp()
-
-  def tearDown(self):
-    super(LiteTest, self).tearDown()
-    lite._USE_EXPERIMENTAL_NEW_CONVERTER = (
-        self._original_use_experimental_new_converter)
 
 
 class TestModels(LiteTest):
@@ -434,7 +425,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # Test None after 1st dimension.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -665,8 +655,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                                                   [out_tensor])
     log_dir = self.get_temp_dir()
     converter.conversion_summary_dir = log_dir
-    # Conversion logs will only be generated when the mlir converter is enabled.
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -880,9 +868,22 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
   @parameterized.named_parameters(
-      ('EnableMlirConverter', True),  # enable mlir
-      ('DisableMlirConverter', False))  # disable mlir
-  def testCalibrateAndQuantizeBuiltinInt8(self, enable_mlir):
+      # Quantize model to Int8: with enable mlir
+      ('UseTfliteBuiltinsIntEnableMLIR',
+       [lite.OpsSet.TFLITE_BUILTINS_INT8], True),
+      # Quantize model to Int8: with disable mlir
+      ('UseTfliteBuiltinsIntDisableMLIR',
+       [lite.OpsSet.TFLITE_BUILTINS_INT8], False),
+      # Quantize model to Int16: with disable mlir
+      ('UseTfliteBuiltinsInt16DisableMLIR',
+       [lite.OpsSet.\
+       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
+       False),
+      ('UseTfliteBuiltinsInt16EnableMLIR',
+       [lite.OpsSet.\
+       EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8],
+       True))
+  def testCalibrateAndQuantizeBuiltinInt(self, supported_ops, enable_mlir):
     with ops.Graph().as_default():
       inp, output, calibration_gen = self._getCalibrationQuantizeModel()
       sess = session.Session()
@@ -898,9 +899,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.experimental_new_converter = enable_mlir
-    quantized_converter.target_spec.supported_ops = [
-        lite.OpsSet.TFLITE_BUILTINS_INT8
-    ]
+    quantized_converter.target_spec.supported_ops = supported_ops
     quantized_converter.representative_dataset = calibration_gen
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
@@ -1149,6 +1148,47 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     }
     quantized_converter.convert()
 
+  def testTrainingTimeAndPostTrainingCalibrateAndQuantize(self):
+    with ops.Graph().as_default():
+      inp, output, calibration_gen = self._getCalibrationQuantizeModel()
+      sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+
+    # extra flags to trigger training time quantization conversion
+    converter.inference_type = lite_constants.INT8
+    converter.inference_input_type = lite_constants.FLOAT
+    converter.inference_output_type = lite_constants.FLOAT
+    input_arrays = converter.get_input_arrays()
+    converter.quantized_input_stats = {
+        input_arrays[0]: (0., 1.)
+    }
+    # trigger post-training quantization
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    converter.representative_dataset = calibration_gen
+    converter._experimental_new_quantizer = True
+    quantized_tflite = converter.convert()
+    self.assertTrue(quantized_tflite)
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+    # calibration only api
+    converter._experimental_calibrate_only = True
+    calibrated_tflite = converter.convert()
+    quantized_tflite = mlir_quantize(calibrated_tflite, fully_quantize=True)
+    interpreter = Interpreter(model_content=quantized_tflite)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()
+    self.assertEqual(np.int8, input_details[0]['dtype'])
+    self.assertEqual((1., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(np.int8, output_details[0]['dtype'])
+
   def testFloatTocoConverter(self):
     """Tests deprecated test TocoConverter."""
     with ops.Graph().as_default():
@@ -1337,7 +1377,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.
@@ -1725,7 +1764,7 @@ class FromSavedModelTest(TestModels):
     log = io.BytesIO() if six.PY2 else io.StringIO()
     handler = logging.StreamHandler(log)
     logging.root.addHandler(handler)
-    warning_message = 'Please consider switching to use new converter'
+    warning_message = 'Please consider switching to the new converter'
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     converter.experimental_new_converter = False
@@ -1744,7 +1783,6 @@ class FromSavedModelTest(TestModels):
                       'If you encountered a problem')
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
     self.assertIn(optout_message, log.getvalue())
@@ -2332,8 +2370,6 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     # Convert model.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    # Only disable this path in MLIR conversion for toco compatibility.
-    converter.experimental_new_converter = True
     tflite_model = converter.convert()
 
     # Check values from converted model.

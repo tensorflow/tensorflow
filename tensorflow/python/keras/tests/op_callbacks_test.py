@@ -43,6 +43,7 @@ _STATELESS_IF_OP = b"StatelessIf"
 _SWITCH_OP = b"Switch"
 _VAR_HANDLE_OP = b"VarHandleOp"
 _WHILE_OP = b"While"
+_CASE_OP = b"Case"
 
 
 class _NumpyFunctionCallback(object):
@@ -80,8 +81,9 @@ class _NumpyFunctionCallback(object):
       for output in outputs:
         if compat.as_bytes(op_type) in (_ENTER_OP, _EXIT_OP, _IF_OP, _MERGE_OP,
                                         _NEXT_ITERATION_OP, _STATELESS_IF_OP,
-                                        _SWITCH_OP, _WHILE_OP, _IDENTITY_OP,
-                                        _VAR_HANDLE_OP, _PLACEHOLDER_OP):
+                                        _SWITCH_OP, _WHILE_OP, _CASE_OP,
+                                        _IDENTITY_OP, _VAR_HANDLE_OP,
+                                        _PLACEHOLDER_OP):
           # TODO(cais): Overriding the output of StatelessIf, If and While ops
           # currently fails with error. Investigate (b/139668453).
           # Avoid instrumenting Identity ops as well, as they are inserted

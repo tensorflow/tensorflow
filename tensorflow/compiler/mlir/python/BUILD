@@ -11,6 +11,8 @@ cc_library(
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         # (yongtang) The graph_optimization_pass_registration needs to be part
         # of a shared object that will be loaded whenever `import tensorflow`
@@ -29,7 +31,7 @@ cc_library(
         # place for core related components.
         "//tensorflow/compiler/mlir/tensorflow:graph_optimization_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
-        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",

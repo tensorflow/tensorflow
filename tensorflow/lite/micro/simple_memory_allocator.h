@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/micro/compatibility.h"
 
 namespace tflite {
 
@@ -28,46 +29,46 @@ namespace tflite {
 // This makes it pretty wasteful, so we should use a more intelligent method.
 class SimpleMemoryAllocator {
  public:
+  // TODO(b/157615197): Cleanup constructors/destructor and use factory
+  // functions.
   SimpleMemoryAllocator(ErrorReporter* error_reporter, uint8_t* buffer_head,
-                        uint8_t* buffer_tail)
-      : error_reporter_(error_reporter),
-        buffer_head_(buffer_head),
-        buffer_tail_(buffer_tail),
-        head_(buffer_head),
-        tail_(buffer_tail) {}
+                        uint8_t* buffer_tail);
   SimpleMemoryAllocator(ErrorReporter* error_reporter, uint8_t* buffer,
-                        size_t buffer_size)
-      : SimpleMemoryAllocator(error_reporter, buffer, buffer + buffer_size) {}
+                        size_t buffer_size);
+  virtual ~SimpleMemoryAllocator();
+
+  // Creates a new SimpleMemoryAllocator from a given buffer head and size.
+  static SimpleMemoryAllocator* Create(ErrorReporter* error_reporter,
+                                       uint8_t* buffer_head,
+                                       size_t buffer_size);
 
   // Allocates memory starting at the head of the arena (lowest address and
   // moving upwards).
-  uint8_t* AllocateFromHead(size_t size, size_t alignment);
+  virtual uint8_t* AllocateFromHead(size_t size, size_t alignment);
   // Allocates memory starting at the tail of the arena (highest address and
   // moving downwards).
-  uint8_t* AllocateFromTail(size_t size, size_t alignment);
+  virtual uint8_t* AllocateFromTail(size_t size, size_t alignment);
 
-  uint8_t* GetHead() const { return head_; }
-  uint8_t* GetTail() const { return tail_; }
-  size_t GetAvailableMemory() const { return tail_ - head_; }
-  size_t GetUsedBytes() const { return GetBufferSize() - GetAvailableMemory(); }
+  uint8_t* GetHead() const;
+  uint8_t* GetTail() const;
 
-  size_t GetHeadUsedBytes() const { return head_ - buffer_head_; }
-  size_t GetTailUsedBytes() const { return buffer_tail_ - tail_; }
+  size_t GetHeadUsedBytes() const;
+  size_t GetTailUsedBytes() const;
+
+  size_t GetAvailableMemory() const;
+  size_t GetUsedBytes() const;
 
  private:
-  size_t GetBufferSize() const { return buffer_tail_ - buffer_head_; }
+  size_t GetBufferSize() const;
 
   ErrorReporter* error_reporter_;
   uint8_t* buffer_head_;
   uint8_t* buffer_tail_;
   uint8_t* head_;
   uint8_t* tail_;
-};
 
-// Allocate a SimpleMemoryAllocator from the buffer and then return the pointer
-// to this allocator.
-SimpleMemoryAllocator* CreateInPlaceSimpleMemoryAllocator(
-    ErrorReporter* error_reporter, uint8_t* buffer, size_t buffer_size);
+  TF_LITE_REMOVE_VIRTUAL_DELETE
+};
 
 }  // namespace tflite
 

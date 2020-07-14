@@ -139,7 +139,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
     if (x[i] != x[0]) {
       all_equal = false;
     }
-    if (x[i].size() > largest_rank) {
+    if (static_cast<int>(x[i].size()) > largest_rank) {
       largest_rank = x[i].size();
     }
   }
@@ -176,7 +176,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
 
   // 1-extend and align all vectors.
   for (int i = 0; i < N; ++i) {
-    if (copy[i].size() < largest_rank) {
+    if (static_cast<int>(copy[i].size()) < largest_rank) {
       copy[i].resize(largest_rank, 1);
     }
   }

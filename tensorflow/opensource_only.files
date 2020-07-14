@@ -4,6 +4,7 @@ tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
 tensorflow/compiler/mlir/glob_lit_test.bzl
+tensorflow/go/op/wrappers.go
 tensorflow/lite/micro/build_def.bzl
 tensorflow/python/autograph/core/config.py
 tensorflow/python/eager/benchmarks_test_base.py
@@ -12,6 +13,7 @@ tensorflow/python/tpu/profiler/pip_package/README
 tensorflow/python/tpu/profiler/pip_package/build_pip_package.sh
 tensorflow/python/tpu/profiler/pip_package/setup.py
 tensorflow/python/tpu/tpu.bzl
+tensorflow/security/fuzzing/tf_fuzzing.bzl
 tensorflow/stream_executor/build_defs.bzl
 tensorflow/third_party/BUILD
 tensorflow/third_party/__init__.py
@@ -34,6 +36,7 @@ tensorflow/third_party/coremltools.BUILD
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/curl.BUILD
 tensorflow/third_party/cython.BUILD
+tensorflow/third_party/dill.BUILD
 tensorflow/third_party/double_conversion.BUILD
 tensorflow/third_party/eigen.BUILD
 tensorflow/third_party/eigen3/BUILD
@@ -95,6 +98,7 @@ tensorflow/third_party/gpus/cuda/BUILD.windows.tpl
 tensorflow/third_party/gpus/cuda/LICENSE
 tensorflow/third_party/gpus/cuda/build_defs.bzl.tpl
 tensorflow/third_party/gpus/cuda/cuda_config.h.tpl
+tensorflow/third_party/gpus/cuda/cuda_config.py.tpl
 tensorflow/third_party/gpus/cuda_configure.bzl
 tensorflow/third_party/gpus/find_cuda_config.py
 tensorflow/third_party/gpus/find_cuda_config.py.gz.base64
@@ -193,6 +197,7 @@ tensorflow/third_party/systemlibs/swig.BUILD
 tensorflow/third_party/systemlibs/syslibs_configure.bzl
 tensorflow/third_party/systemlibs/termcolor.BUILD
 tensorflow/third_party/systemlibs/zlib.BUILD
+tensorflow/third_party/tblib.BUILD
 tensorflow/third_party/tensorrt/BUILD
 tensorflow/third_party/tensorrt/BUILD.tpl
 tensorflow/third_party/tensorrt/LICENSE
@@ -228,7 +233,6 @@ tensorflow/third_party/toolchains/preconfig/generate/BUILD
 tensorflow/third_party/toolchains/preconfig/generate/archives.bzl
 tensorflow/third_party/toolchains/preconfig/generate/containers.bzl
 tensorflow/third_party/toolchains/preconfig/generate/generate.bzl
-tensorflow/third_party/toolchains/preconfig/generate/workspace.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang/dummy_toolchain.bzl
@@ -247,6 +251,7 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/py/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5/BUILD
 tensorflow/third_party/toolchains/preconfig/win/BUILD
 tensorflow/third_party/toolchains/preconfig/win/bazel_211/BUILD
+tensorflow/third_party/toolchains/preconfig/win/tf_win_08062020/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/py37/BUILD
@@ -262,6 +267,7 @@ tensorflow/third_party/toolchains/remote_config/rbe_config.bzl
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/tools/build_info/BUILD
+tensorflow/tools/ci_build/horovod/gpu/nightly.sh
 tensorflow/tools/ci_build/release/common.sh
 tensorflow/tools/ci_build/release/common_win.bat
 tensorflow/tools/ci_build/release/macos/cpu_libtensorflow/build.sh

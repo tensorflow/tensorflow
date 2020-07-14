@@ -72,6 +72,37 @@ inline void BroadcastPrelu4DSlow(
   }
 }
 
+template <typename T>
+inline void Prelu(const PreluParams& params, const RuntimeShape& input_shape,
+                  const T* input_data, const RuntimeShape& alpha_shape,
+                  const T* alpha_data, const RuntimeShape& output_shape,
+                  T* output_data) {
+  const int32 quantized_min = std::numeric_limits<T>::min();
+  const int32 quantized_max = std::numeric_limits<T>::max();
+
+  const int flat_size =
+      MatchingElementsSize(input_shape, alpha_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const int32 input_value = params.input_offset + input_data[i];
+    int32 output_value;
+    if (input_value >= 0) {
+      output_value = MultiplyByQuantizedMultiplier(
+          input_value, params.output_multiplier_1, params.output_shift_1);
+    } else {
+      const int32 alpha_value = params.alpha_offset + alpha_data[i];
+
+      output_value = MultiplyByQuantizedMultiplier(input_value * alpha_value,
+                                                   params.output_multiplier_2,
+                                                   params.output_shift_2);
+    }
+    output_value += params.output_offset;
+
+    const int32 clamped_output =
+        std::min(quantized_max, std::max(quantized_min, output_value));
+    output_data[i] = static_cast<T>(clamped_output);
+  }
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 

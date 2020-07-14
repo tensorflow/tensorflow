@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-executor-graph-pruning | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-executor-graph-pruning | FileCheck %s
 
 // Two islands chained by data-flow contributing to the graph return are
 // preserved.

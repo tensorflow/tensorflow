@@ -25,6 +25,21 @@ export PACKAGE_VERSION="${TENSORFLOW_VERSION}${VERSION_SUFFIX}"
 BUILD_DIR="${SCRIPT_DIR}/gen/tflite_pip/${PYTHON}"
 TENSORFLOW_TARGET=$1
 
+# Fix container image for cross build.
+if [ ! -z "${CI_BUILD_HOME}" ] && [ `pwd` = "/workspace" ]; then
+  # Fix for curl build problem in 32-bit, see https://stackoverflow.com/questions/35181744/size-of-array-curl-rule-01-is-negative
+  if [ "${TENSORFLOW_TARGET}" = "armhf" ]; then
+    sudo sed -i 's/define CURL_SIZEOF_LONG 8/define CURL_SIZEOF_LONG 4/g' /usr/include/curl/curlbuild.h
+    sudo sed -i 's/define CURL_SIZEOF_CURL_OFF_T 8/define CURL_SIZEOF_CURL_OFF_T 4/g' /usr/include/curl/curlbuild.h
+  fi
+
+  # The system-installed OpenSSL headers get pulled in by the latest BoringSSL
+  # release on this configuration, so move them before we build:
+  if [ -d /usr/include/openssl ]; then
+    sudo mv /usr/include/openssl /usr/include/openssl.original
+  fi
+fi
+
 # Build source tree.
 rm -rf "${BUILD_DIR}" && mkdir -p "${BUILD_DIR}/tflite_runtime"
 cp -r "${TENSORFLOW_LITE_DIR}/tools/pip_package/debian" \
@@ -40,14 +55,16 @@ echo "__git_version__ = '$(git -C "${TENSORFLOW_DIR}" describe)'" >> "${BUILD_DI
 # Build python interpreter_wrapper.
 cd "${BUILD_DIR}"
 case "${TENSORFLOW_TARGET}" in
-  rpi|armhf)
+  armhf)
     BAZEL_FLAGS="--config=elinux_armhf
       --copt=-march=armv7-a --copt=-mfpu=neon-vfpv4
       --copt=-O3 --copt=-fno-tree-pre --copt=-fpermissive
+      --define tensorflow_mkldnn_contraction_kernel=0
       --define=raspberry_pi_with_neon=true"
     ;;
   aarch64)
     BAZEL_FLAGS="--config=elinux_aarch64
+      --define tensorflow_mkldnn_contraction_kernel=0
       --copt=-O3"
     ;;
   *)
@@ -58,14 +75,15 @@ esac
 # include path for Python 3.x builds to work.
 export CROSSTOOL_PYTHON_INCLUDE_PATH
 
-bazel build -c opt -s --config=monolithic ${BAZEL_FLAGS} //tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper
+bazel build -c opt -s --config=monolithic --config=noaws --config=nogcp --config=nohdfs --config=nonccl \
+  ${BAZEL_FLAGS} ${CUSTOM_BAZEL_FLAGS} //tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper
 cp "${TENSORFLOW_DIR}/bazel-bin/tensorflow/lite/python/interpreter_wrapper/_pywrap_tensorflow_interpreter_wrapper.so" \
    "${BUILD_DIR}/tflite_runtime"
 
 # Build python wheel.
 cd "${BUILD_DIR}"
 case "${TENSORFLOW_TARGET}" in
-  rpi|armhf)
+  armhf)
     ${PYTHON} setup_with_bazel.py bdist --plat-name=linux-armv7l \
                        bdist_wheel --plat-name=linux-armv7l
     ;;
@@ -111,7 +129,7 @@ EOF
 fi
 
 case "${TENSORFLOW_TARGET}" in
-  rpi|armhf)
+  armhf)
     dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a armhf
     ;;
   aarch64)

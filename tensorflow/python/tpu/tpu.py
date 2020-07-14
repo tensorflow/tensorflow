@@ -19,9 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl import logging
+import collections
 import enum
 
+from absl import logging
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -298,7 +299,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self, name, vars_, is_mirrored=False):
+  def get_replicated_var_handle(self, name, vars_, is_mirrored=False,
+                                is_packed=False):
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -309,6 +311,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       vars_: The replicated TPU variables.
       is_mirrored: Whether the variables are mirrored, which guarantees the
         values in each replica are always the same.
+      is_packed: Whether the replicated variables are packed into one variable.
 
     Returns:
       The handle of the TPU replicated input node.
@@ -320,7 +323,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if handle is not None:
       return handle
 
-    if device_assignment is not None:
+    if device_assignment is not None and not is_packed:
       # Find a variable copy for each replica in the device assignment.
       # Note that the order of devices for replicas for the variable and the
       # device assignment might not match.
@@ -356,7 +359,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       graph._set_control_flow_context(self.outer_context)
       handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
                                             name=name + "/handle",
-                                            is_mirrored_variable=is_mirrored)
+                                            is_mirrored_variable=is_mirrored,
+                                            is_packed=is_packed)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
     self._replicated_vars[name] = handle
@@ -639,6 +643,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   def GetControlPivot(self):
     return self._pivot
 
+  def RequiresUniqueFunctionRetracing(self):
+    # More context: b/158152827. TPU stack uses the TPUReplicateContext to
+    # create replicated variable handles and cluster TPU computations, thus we
+    # always retrace a tf.function when the wrapped TPUReplicateContext changes.
+    return True
+
 
 class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
   """The context for outside compilation in Tensorflow 2.0.
@@ -803,6 +813,23 @@ class PaddingSpec(enum.IntEnum):
   POWER_OF_TWO = 1
 
 
+@tf_export(v1=["tpu.XLAOptions"])
+class XLAOptions(
+    collections.namedtuple("XLAOptions", [
+        "use_spmd_for_xla_partitioning",
+    ])):
+  """XLA compilation options.
+
+  Attributes:
+    use_spmd_for_xla_partitioning: Boolean. Whether to use XLA's SPMD
+      partitioner instead of MPMD partitioner when compiler partitioning is
+      requested.
+  """
+
+  def __new__(cls, use_spmd_for_xla_partitioning=False):
+    return super(XLAOptions, cls).__new__(cls, use_spmd_for_xla_partitioning)
+
+
 @tf_export(v1=["tpu.replicate"])
 def replicate(computation,
               inputs=None,
@@ -810,7 +837,8 @@ def replicate(computation,
               device_assignment=None,
               name=None,
               maximum_shapes=None,
-              padding_spec=None):
+              padding_spec=None,
+              xla_options=None):
   """Builds a graph operator that runs a replicated TPU computation.
 
   Example for the basic usage that `inputs` has static shape:
@@ -875,6 +903,8 @@ def replicate(computation,
       One usage is to enable automatic bucketizing on the inputs by setting the
       value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
       recompilation in the XLA side.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A list of outputs, indexed by `[replica_num]` each output can be a nested
     structure same as what computation() returns with a few exceptions.
@@ -903,7 +933,8 @@ def replicate(computation,
       device_assignment,
       name,
       maximum_shapes=maximum_shapes,
-      padding_spec=padding_spec)[1]
+      padding_spec=padding_spec,
+      xla_options=xla_options)[1]
 
 
 def _ceil_to_pow_of_n(x, n):
@@ -1095,7 +1126,8 @@ def split_compile_and_replicate(computation,
                                 name=None,
                                 use_tpu=True,
                                 maximum_shapes=None,
-                                padding_spec=None):
+                                padding_spec=None,
+                                xla_options=None):
   """Builds graph operators that runs compilation and replicated computation.
 
   This is a lower level interface than replicate that returns a separate compile
@@ -1137,6 +1169,8 @@ def split_compile_and_replicate(computation,
       One usage is to enable automatic bucketizing on the inputs by setting the
       value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
       recompilation in the XLA side.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
 
   Returns:
     A list of lists with the first list corresponding to the compile op and the
@@ -1152,6 +1186,7 @@ def split_compile_and_replicate(computation,
   """
   del name
   inputs = [[]] if inputs is None else inputs
+  xla_options = xla_options or XLAOptions()
 
   metadata_kwargs = {}
   if device_assignment is not None:
@@ -1275,6 +1310,8 @@ def split_compile_and_replicate(computation,
 
   metadata_kwargs["step_marker_location"] = getattr(
       computation, "step_marker_location", "STEP_MARK_AT_ENTRY")
+  metadata_kwargs["use_spmd_for_xla_partitioning"] = \
+      xla_options.use_spmd_for_xla_partitioning
 
   graph = ops.get_default_graph()
 
@@ -1560,7 +1597,8 @@ def split_compile_and_shard(computation,
                             output_shard_axes=None,
                             infeed_queue=None,
                             device_assignment=None,
-                            name=None):
+                            name=None,
+                            xla_options=None):
   """Shards `computation` for parallel execution.
 
   `inputs` must be a list of Tensors or None (equivalent to an empty list), each
@@ -1610,6 +1648,8 @@ def split_compile_and_shard(computation,
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A tuple of (compile op, [output tensors]).
   Raises:
@@ -1653,7 +1693,8 @@ def split_compile_and_shard(computation,
       transposed_inputs,
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)
+      name=name,
+      xla_options=xla_options)
 
   # There must be at least one shard since num_shards > 0.
   # TODO(b/36647078) remove disable when pylint bug is fixed.
@@ -1711,7 +1752,8 @@ def shard(computation,
           output_shard_axes=None,
           infeed_queue=None,
           device_assignment=None,
-          name=None):
+          name=None,
+          xla_options=None):
   """Shards `computation` for parallel execution.
 
   `inputs` must be a list of Tensors or None (equivalent to an empty list), each
@@ -1764,6 +1806,8 @@ def shard(computation,
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A list of output tensors.
   Raises:
@@ -1780,7 +1824,8 @@ def shard(computation,
       output_shard_axes=output_shard_axes,
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)[1]
+      name=name,
+      xla_options=xla_options)[1]
 
 
 @tf_export(v1=["tpu.batch_parallel"])
@@ -1789,7 +1834,8 @@ def batch_parallel(computation,
                    num_shards=1,
                    infeed_queue=None,
                    device_assignment=None,
-                   name=None):
+                   name=None,
+                   xla_options=None):
   """Shards `computation` along the batch dimension for parallel execution.
 
   Convenience wrapper around shard().
@@ -1826,6 +1872,8 @@ def batch_parallel(computation,
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A list of output tensors.
   Raises:
@@ -1837,7 +1885,8 @@ def batch_parallel(computation,
       num_shards=num_shards,
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)
+      name=name,
+      xla_options=xla_options)
 
 
 @tf_export(v1=["tpu.rewrite"])
@@ -1845,7 +1894,8 @@ def rewrite(computation,
             inputs=None,
             infeed_queue=None,
             device_assignment=None,
-            name=None):
+            name=None,
+            xla_options=None):
   """Rewrites `computation` for execution on a TPU system.
 
   Args:
@@ -1873,6 +1923,8 @@ def rewrite(computation,
       the TPU topology. May be omitted for a single-core computation, in which
       case the core attached to task 0, TPU device 0 is used.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     Same data structure as if computation(*inputs) is called directly with some
     exceptions for correctness. Exceptions include:
@@ -1890,7 +1942,8 @@ def rewrite(computation,
       None if inputs is None else [inputs],
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)[0]
+      name=name,
+      xla_options=xla_options)[0]
   # pylint: enable=indexing-exception
 
   # Operations that indicate some error in the user's inference graph.

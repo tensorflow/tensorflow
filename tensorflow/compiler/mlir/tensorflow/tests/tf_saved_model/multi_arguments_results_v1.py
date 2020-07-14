@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# RUN: %p/multi_arguments_results_v1 | FileCheck -dump-input-on-failure %s
+# RUN: %p/multi_arguments_results_v1 | FileCheck %s
 
 # pylint: disable=missing-docstring,line-too-long
 from __future__ import absolute_import
@@ -84,9 +84,9 @@ def Test():
               'd': tensor_info_s,
           },
           method_name='reverse_arguments'))
-  }
+  }, None, None
 
 
 if __name__ == '__main__':
   common_v1.set_tf_options()
-  common_v1.do_test(Test())
+  common_v1.do_test(Test)

@@ -119,9 +119,6 @@ class DeviceContext : public core::RefCounted {
   }
 };
 
-// map[i] is the DeviceContext* for the node with id i, if i < map.size().
-typedef std::vector<DeviceContext*> DeviceContextMap;
-
 class DeviceBase {
  public:
   explicit DeviceBase(Env* env) : env_(env) {}

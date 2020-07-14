@@ -219,8 +219,7 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
       auto type_from_callee = GetElementTypeFromAccess(
           callee.getArgument(use.getOperandNumber()), module, infer_from_op);
       if (type_from_callee.hasValue()) return type_from_callee;
-    } else if (llvm::isa<TF::IdentityOp>(use.getOwner()) ||
-               llvm::isa<TF::IdentityNOp>(use.getOwner())) {
+    } else if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(use.getOwner())) {
       auto type_from_alias = GetElementTypeFromAccess(
           use.getOwner()->getResult(use.getOperandNumber()), module,
           infer_from_op);

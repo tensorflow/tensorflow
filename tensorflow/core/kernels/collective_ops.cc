@@ -85,6 +85,9 @@ class CollectiveGatherOpKernel : public CollectiveOpKernel {
     OP_REQUIRES_OK(
         c, c->GetAttr("communication_hint",
                       &col_params_.instance.impl_details.communication_hint));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("timeout_seconds",
+                      &col_params_.instance.impl_details.timeout_seconds));
     const NodeDef& real_node = c->def();
     col_params_.name = strings::StrCat(real_node.name(), ": Gather");
     col_params_.group.device_type = c->device_type();
@@ -176,10 +179,14 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
     OP_REQUIRES_OK(
         c, c->GetAttr("communication_hint",
                       &col_params_.instance.impl_details.communication_hint));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("timeout_seconds",
+                      &col_params_.instance.impl_details.timeout_seconds));
     VLOG(2) << "CollectiveReduce instance " << col_params_.instance.instance_key
             << " merge_op " << merge_op_name << " final_op " << final_op_name
             << " communication_hint "
-            << col_params_.instance.impl_details.communication_hint;
+            << col_params_.instance.impl_details.communication_hint
+            << " timeout " << col_params_.instance.impl_details.timeout_seconds;
 
     const NodeDef& real_node = c->def();
     col_params_.name = strings::StrCat(real_node.name(), ": Reduce(",
@@ -284,6 +291,9 @@ class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
     OP_REQUIRES_OK(
         c, c->GetAttr("communication_hint",
                       &col_params_.instance.impl_details.communication_hint));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("timeout_seconds",
+                      &col_params_.instance.impl_details.timeout_seconds));
     col_params_.is_source = true;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 
@@ -363,6 +373,9 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
     OP_REQUIRES_OK(
         c, c->GetAttr("communication_hint",
                       &col_params_.instance.impl_details.communication_hint));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("timeout_seconds",
+                      &col_params_.instance.impl_details.timeout_seconds));
     col_params_.is_source = false;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 

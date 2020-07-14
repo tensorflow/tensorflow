@@ -1,4 +1,4 @@
-// RUN: not flatbuffer_translate -mlir-to-tflite-flatbuffer %s 2>&1 | FileCheck %s --dump-input-on-failure
+// RUN: not flatbuffer_translate -mlir-to-tflite-flatbuffer %s 2>&1 | FileCheck %s
 
 // CHECK: error: 'tf.MyCustomOp' op is neither a custom op nor a flex op
 // CHECK: error: failed while converting: 'main'

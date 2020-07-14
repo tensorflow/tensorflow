@@ -25,7 +25,6 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers",
@@ -49,6 +48,7 @@ cc_test(
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
 )

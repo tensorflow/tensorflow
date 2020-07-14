@@ -597,9 +597,6 @@ class OpKernelContext {
     // The step being executed.
     int64 step_id = 0;
 
-    // True if the op is created by eager runtime.
-    bool is_eager = false;
-
     // The op kernel being computed.
     OpKernel* op_kernel = nullptr;
 
@@ -717,8 +714,6 @@ class OpKernelContext {
   Env* env() const { return params_->device->env(); }
 
   int64 step_id() const { return params_->step_id; }
-
-  bool is_eager() const { return params_->is_eager; }
 
   const OpKernel& op_kernel() const { return *params_->op_kernel; }
 

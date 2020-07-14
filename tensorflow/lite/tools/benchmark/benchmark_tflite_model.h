@@ -85,6 +85,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
 
   std::unique_ptr<tflite::FlatBufferModel> model_;
   std::unique_ptr<tflite::Interpreter> interpreter_;
+  std::unique_ptr<tflite::ExternalCpuBackendContext> external_context_;
 
  private:
   // Implement type erasure with unique_ptr with custom deleter.

@@ -37,7 +37,7 @@ class DerivedXLineBuilder {
                       std::vector<DerivedXLineBuilder*> dependent_lines);
 
   void ExpandOrAddEvents(const std::vector<XEvent>& event_per_level) {
-    for (int level = 0; level < event_per_level.size(); ++level) {
+    for (size_t level = 0; level < event_per_level.size(); ++level) {
       ExpandOrAddLevelEvent(event_per_level[level], level);
     }
   }

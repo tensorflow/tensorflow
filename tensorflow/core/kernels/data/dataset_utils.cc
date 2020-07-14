@@ -51,6 +51,9 @@ constexpr std::array<const char*, 3> kOpsWithSeed = {
 
 constexpr char kSeedInputName[] = "seed";
 constexpr char kSeed2InputName[] = "seed2";
+constexpr char kComponent[] = "component";
+constexpr char kNumElements[] = "num_elements";
+constexpr char kNumComponents[] = "num_components";
 
 template <std::size_t SIZE>
 bool IsNodeOfType(const NodeDef& node,
@@ -428,6 +431,49 @@ Status HashGraph(const GraphDef& graph_def, uint64* hash) {
   return Status::OK();
 }
 
+Status WriteElementsToCheckpoint(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements) {
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(key_prefix, kNumElements, elements.size()));
+  for (int i = 0; i < elements.size(); ++i) {
+    const std::vector<Tensor>& element = elements[i];
+    std::string element_prefix = absl::StrCat(key_prefix, "::", i);
+    TF_RETURN_IF_ERROR(
+        writer->WriteScalar(element_prefix, kNumComponents, element.size()));
+    for (int j = 0; j < elements[i].size(); ++j) {
+      TF_RETURN_IF_ERROR(writer->WriteTensor(
+          element_prefix, absl::StrCat(kComponent, "[", j, "]"), element[j]));
+    }
+  }
+  return Status::OK();
+}
+
+Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
+                                  StringPiece key_prefix,
+                                  std::vector<std::vector<Tensor>>* elements) {
+  int64 num_elements;
+  TF_RETURN_IF_ERROR(
+      reader->ReadScalar(key_prefix, kNumElements, &num_elements));
+  elements->reserve(num_elements);
+  for (int i = 0; i < num_elements; ++i) {
+    std::string element_prefix = absl::StrCat(key_prefix, "::", i);
+    int64 num_components;
+    TF_RETURN_IF_ERROR(
+        reader->ReadScalar(element_prefix, kNumComponents, &num_components));
+    elements->emplace_back();
+    std::vector<Tensor>& element = elements->at(i);
+    element.reserve(num_components);
+    for (int j = 0; j < num_components; ++j) {
+      element.emplace_back();
+      TF_RETURN_IF_ERROR(reader->ReadTensor(
+          element_prefix, absl::StrCat(kComponent, "[", j, "]"),
+          &element.back()));
+    }
+  }
+  return Status::OK();
+}
+
 std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds) {
   if (seeds.first == 0 && seeds.second == 0) {
     return {random::New64(), random::New64()};
@@ -455,6 +501,16 @@ Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
   return Status::OK();
 }
 
+Status VerifyTypeMatch(const DataType& expected, const DataType& received,
+                       int index) {
+  if (expected != received) {
+    return errors::InvalidArgument("Data type mismatch at component ", index,
+                                   ": expected ", DataTypeString(expected),
+                                   " but got ", DataTypeString(received), ".");
+  }
+  return Status::OK();
+}
+
 Status VerifyTypesMatch(const DataTypeVector& expected,
                         const DataTypeVector& received) {
   if (expected.size() != received.size()) {
@@ -463,12 +519,30 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
         " types but got ", received.size(), ".");
   }
   for (size_t i = 0; i < expected.size(); ++i) {
-    if (expected[i] != received[i]) {
-      return errors::InvalidArgument("Data type mismatch at component ", i,
-                                     ": expected ", DataTypeString(expected[i]),
-                                     " but got ", DataTypeString(received[i]),
-                                     ".");
-    }
+    TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i], i));
+  }
+  return Status::OK();
+}
+
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const std::vector<Tensor>& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " types but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i].dtype(), i));
+  }
+  return Status::OK();
+}
+
+Status VerifyShapeCompatible(const PartialTensorShape& expected,
+                             const PartialTensorShape& received, int index) {
+  if (!expected.IsCompatibleWith(received)) {
+    return errors::InvalidArgument("Incompatible shapes at component ", index,
+                                   ": expected ", expected.DebugString(),
+                                   " but got ", received.DebugString(), ".");
   }
   return Status::OK();
 }
@@ -481,12 +555,22 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
         " shapes but got ", received.size(), ".");
   }
   for (size_t i = 0; i < expected.size(); ++i) {
-    if (!expected[i].IsCompatibleWith(received[i])) {
-      return errors::InvalidArgument("Incompatible shapes at component ", i,
-                                     ": expected ", expected[i].DebugString(),
-                                     " but got ", received[i].DebugString(),
-                                     ".");
-    }
+    TF_RETURN_IF_ERROR(VerifyShapeCompatible(expected[i], received[i], i));
+  }
+
+  return Status::OK();
+}
+
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<Tensor>& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " shapes but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    TF_RETURN_IF_ERROR(
+        VerifyShapeCompatible(expected[i], received[i].shape(), i));
   }
 
   return Status::OK();

@@ -432,7 +432,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // EvalIntegerSVDF().
 
     // Validate output tensor:
-    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt8);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
   } else {
     TF_LITE_ENSURE_EQ(context, node->inputs->size, 5);
 
@@ -457,7 +457,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // TODO(b/132070898): Use input tensor as variable until scratch tensor
     // allocation has been implemented.
     // TF_LITE_ENSURE_EQ(context, node->temporaries->size, 1);
-    TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
   }
 
   return kTfLiteOk;
@@ -539,16 +539,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace svdf
 
-TfLiteRegistration* Register_SVDF() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/svdf::Prepare,
-                                 /*invoke=*/svdf::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_SVDF() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/svdf::Prepare,
+          /*invoke=*/svdf::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

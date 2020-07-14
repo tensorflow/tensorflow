@@ -73,7 +73,8 @@ bool HasOpName(const string& node_name, const string& op_name) {
 Status GetOutputDataType(
     const std::vector<OpInfo::TensorProperties>& output_props, int output_index,
     DataType* dtype) {
-  if (output_index >= output_props.size()) {
+  int output_props_size = output_props.size();
+  if (output_index >= output_props_size) {
     return errors::Internal("Invalid output index ", output_index,
                             " size of output_props ", output_props.size());
   }
@@ -520,7 +521,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
 
     // Add control edges from the ScopedAllocatorOp to all of the
     // input nodes and mark them for allocation from backing tensor.
-    for (int i = 0; i < inputs.size(); ++i) {
+    for (int i = 0, iter_limit = inputs.size(); i < iter_limit; ++i) {
       auto& nd = inputs[i];
       if (IsArg(*nd.from_node_def)) {
         return errors::Internal(
@@ -547,7 +548,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       std::vector<InputDesc> inputs_to_first;
       LOG_WARNING_AND_RETURN_IF_ERROR(GetDataInputs(
           graph, sa_opti->node_map(), nd.from_node_def, &inputs_to_first));
-      for (int i = 0; i < inputs_to_first.size(); ++i) {
+      for (int i = 0, iter_limit = inputs_to_first.size(); i < iter_limit;
+           ++i) {
         if (fanout.find(inputs_to_first[i].from_node_def) != fanout.end()) {
           VLOG(2) << "Found node " << inputs_to_first[i].from_node_def->name()
                   << " in the fanout of " << sa_name;
@@ -587,7 +589,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     VLOG(2) << "BuildSAConcatNode " << sac_name;
     // control input: edge name -> source node name
     absl::flat_hash_map<string, string> sac_ctl_inputs;
-    for (int i = 0; i < ops.size(); ++i) {
+    for (int i = 0, iter_limit = ops.size(); i < iter_limit; ++i) {
       NodeDef* old_op = ops[i];
       for (const string& old_op_input : old_op->input()) {
         int position = 0;
@@ -708,7 +710,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                         const std::set<string>& op_instance_names,
                         const string& op_name, const string& sas_name) {
     VLOG(2) << "RewireSubgraph";
-    for (int op_idx = 0; op_idx < ops.size(); ++op_idx) {
+    for (int op_idx = 0, idx_limit = ops.size(); op_idx < idx_limit; ++op_idx) {
       NodeDef* old_op = ops[op_idx];
       // Copy the output node set since we'll be modifying the version
       // maintained by NodeMap in the loop.

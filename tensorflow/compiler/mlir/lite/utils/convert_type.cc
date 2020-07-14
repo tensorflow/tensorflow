@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -109,6 +110,29 @@ StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
     default:
       return errors::InvalidArgument("unsupported tensor data type", type);
   }
+}
+
+mlir::Type GetShapeStrippedType(mlir::TypeAttr type_attr) {
+  auto type = type_attr.getValue();
+  auto shaped_type = type.dyn_cast<mlir::ShapedType>();
+  if (shaped_type) {
+    return shaped_type.getElementType();
+  } else {
+    return type;
+  }
+}
+
+bool NotFromQuantOpOrSameQuantType(mlir::Value val, mlir::TypeAttr qtype_attr) {
+  auto val_defn_op = val.getDefiningOp();
+  mlir::TFL::QuantizeOp q_op =
+      llvm::dyn_cast_or_null<mlir::TFL::QuantizeOp>(val_defn_op);
+  if (!q_op) return true;
+
+  // Ignore shape details - weŕe really only trying to
+  // check if quantization is the same.
+  auto stripped_src_qtype = GetShapeStrippedType(q_op.qtypeAttr());
+  auto stripped_qtype = GetShapeStrippedType(qtype_attr);
+  return stripped_src_qtype == stripped_qtype;
 }
 
 }  // namespace tflite

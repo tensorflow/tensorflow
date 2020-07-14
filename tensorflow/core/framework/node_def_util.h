@@ -58,7 +58,12 @@ extern const char* const kColocationGroupPrefix;
 
 // Produce a human-readable version of a Node or NodeDef that is more concise
 // than a text-format proto.
-string SummarizeNodeDef(const NodeDef& node_def);
+//
+// The parameter `max_inputs_in_summary` specifies how many inputs at most to
+// serialize in the output (in order not to get a string which is overly large).
+// The value `-1` specifies that all inputs will be shown.
+string SummarizeNodeDef(const NodeDef& node_def,
+                        int max_inputs_in_summary = -1);
 string SummarizeAttrs(const NodeDef& node_def);
 string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device);
 

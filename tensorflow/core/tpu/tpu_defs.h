@@ -32,7 +32,7 @@ extern const char* const DEVICE_TPU_NODE;  // "TPU";
 // TPUReplicate computation.
 extern const char* const DEVICE_TPU_REPLICATED_CORE;
 
-extern const char* const DEVICE_TPU_SYSTEM;  // "TPU_SYSTEM";
+// DEVICE_TPU_SYSTEM is now defined in tensorflow/core/framework/types.h/.cc
 
 // Name of the XLA_TPU_JIT compilation device, which is an internal device to
 // compile graphs for TPU. Not registered as a device; no operators can be

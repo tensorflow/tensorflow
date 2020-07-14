@@ -883,7 +883,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
     contrib_tpu_strategy_warning = (
         ast_edits.ERROR,
         "(Manual edit required) tf.contrib.distribute.TPUStrategy has "
-        "been migrated to tf.distribute.experimental.TPUStrategy. Note the "
+        "been migrated to tf.distribute.TPUStrategy. Note the "
         "slight changes in constructor. " + distribute_strategy_api_changes)
 
     contrib_collective_strategy_warning = (

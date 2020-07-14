@@ -45,8 +45,9 @@ class MergeConvolutionWithMul : public SequenceTransformation {
 
     MultiplyAttributes mul_attr =
         absl::any_cast<MultiplyAttributes>(mul_node.operation.attributes);
-    if (!absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param) &&
-        !absl::get_if<float>(&mul_attr.param)) {
+    if (!absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+            mul_attr.param) &&
+        !absl::holds_alternative<float>(mul_attr.param)) {
       return {
           TransformStatus::DECLINED,
           "This fuse applicable only for broadcast or scalar multiplication."};
@@ -108,9 +109,9 @@ class MergeMulWithConvolution : public SequenceTransformation {
 
     MultiplyAttributes mul_attr =
         absl::any_cast<MultiplyAttributes>(mul_node.operation.attributes);
-    if (!absl::get_if<Tensor<Linear, DataType::FLOAT32>>(
-            &mul_attr.param) &&
-        !absl::get_if<float>(&mul_attr.param)) {
+    if (!absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(
+            mul_attr.param) &&
+        !absl::holds_alternative<float>(mul_attr.param)) {
       return {
           TransformStatus::DECLINED,
           "This fuse applicable only for broadcast or scalar multiplication."};

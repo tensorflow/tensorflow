@@ -39,6 +39,31 @@ class KubernetesClusterResolver(ClusterResolver):
   the Kubernetes namespace and label selector for pods, we will retrieve the
   pod IP addresses of all running pods matching the selector, and return a
   ClusterSpec based on that information.
+
+  Note: it cannot retrieve `task_type`, `task_id` or `rpc_layer`. To use it
+  with some distribution strategies like
+  `tf.distribute.experimental.MultiWorkerMirroredStrategy`, you will need to
+  specify `task_type` and `task_id` by setting these attributes.
+
+  Usage example with tf.distribute.Strategy:
+
+    ```Python
+    # On worker 0
+    cluster_resolver = KubernetesClusterResolver(
+        {"worker": ["job-name=worker-cluster-a", "job-name=worker-cluster-b"]})
+    cluster_resolver.task_type = "worker"
+    cluster_resolver.task_id = 0
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=cluster_resolver)
+
+    # On worker 1
+    cluster_resolver = KubernetesClusterResolver(
+        {"worker": ["job-name=worker-cluster-a", "job-name=worker-cluster-b"]})
+    cluster_resolver.task_type = "worker"
+    cluster_resolver.task_id = 1
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=cluster_resolver)
+    ```
   """
 
   def __init__(self,
@@ -100,6 +125,8 @@ class KubernetesClusterResolver(ClusterResolver):
     calling this function, or pass in the `task_type` and `task_id`
     parameters when using this function. If you do both, the function parameters
     will override the object properties.
+
+    Note: this is only useful for TensorFlow 1.x.
 
     Args:
       task_type: (Optional) The type of the TensorFlow task of the master.

@@ -748,13 +748,13 @@ class TestSparseCountFailureModes(test.TestCase):
     x = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
     weights = sparse_ops.from_dense(
         np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesRegexp(ValueError, "must be a tf.Tensor"):
+    with self.assertRaisesRegex(ValueError, "must be a tf.Tensor"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_dense_input_ragged_weights_fails(self):
     x = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
     weights = ragged_factory_ops.constant([[6, 0.5, 2], [14], [10, 0.25, 5, 3]])
-    with self.assertRaisesRegexp(ValueError, "must be a tf.Tensor"):
+    with self.assertRaisesRegex(ValueError, "must be a tf.Tensor"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_dense_input_wrong_shape_fails(self):
@@ -764,25 +764,25 @@ class TestSparseCountFailureModes(test.TestCase):
     # will fail with a ValueError from the shape checking logic, while Eager
     # will fail with an InvalidArgumentError from the kernel itself.
     if context.executing_eagerly():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "must have the same shape"):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "must have the same shape"):
         self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
     else:
-      with self.assertRaisesRegexp(ValueError, "both shapes must be equal"):
+      with self.assertRaisesRegex(ValueError, "both shapes must be equal"):
         self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_sparse_input_dense_weights_fails(self):
     x = sparse_ops.from_dense(
         np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
     weights = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    with self.assertRaisesRegexp(ValueError, "must be a SparseTensor"):
+    with self.assertRaisesRegex(ValueError, "must be a SparseTensor"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_sparse_input_ragged_weights_fails(self):
     x = sparse_ops.from_dense(
         np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
     weights = ragged_factory_ops.constant([[6, 0.5, 2], [14], [10, 0.25, 5, 3]])
-    with self.assertRaisesRegexp(ValueError, "must be a SparseTensor"):
+    with self.assertRaisesRegex(ValueError, "must be a SparseTensor"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_sparse_input_wrong_indices_fails(self):
@@ -790,8 +790,8 @@ class TestSparseCountFailureModes(test.TestCase):
         np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
     weights = sparse_ops.from_dense(
         np.array([[3, 1, 0, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "must have the same indices"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "must have the same indices"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_sparse_input_too_many_indices_fails(self):
@@ -799,8 +799,8 @@ class TestSparseCountFailureModes(test.TestCase):
         np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
     weights = sparse_ops.from_dense(
         np.array([[3, 1, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Incompatible shapes"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Incompatible shapes"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_sparse_input_wrong_shape_fails(self):
@@ -809,28 +809,28 @@ class TestSparseCountFailureModes(test.TestCase):
     weights = sparse_ops.from_dense(
         np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4], [0, 0, 0, 0]],
                  dtype=np.int32))
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "must have the same dense shape"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "must have the same dense shape"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_ragged_input_dense_weights_fails(self):
     x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
     weights = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    with self.assertRaisesRegexp(ValueError, "must be a RaggedTensor"):
+    with self.assertRaisesRegex(ValueError, "must be a RaggedTensor"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_ragged_input_sparse_weights_fails(self):
     x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
     weights = sparse_ops.from_dense(
         np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesRegexp(ValueError, "must be a RaggedTensor"):
+    with self.assertRaisesRegex(ValueError, "must be a RaggedTensor"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
   def test_ragged_input_different_shape_fails(self):
     x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
     weights = ragged_factory_ops.constant([[6, 0.5, 2], [], [10, 0.25, 5, 3]])
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "must have the same row splits"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "must have the same row splits"):
       self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
 
 

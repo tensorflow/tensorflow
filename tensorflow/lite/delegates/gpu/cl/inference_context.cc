@@ -475,7 +475,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(const CLDevice& device,
       const auto& shape = tensor_reserver_.Get(t.first).shape;
       const int buffer_index = buffer_assignment.object_ids[tensor_index];
       RETURN_IF_ERROR(CreateSharedTensor(
-          *context, device, shared_buffers_[buffer_index].GetMemoryPtr(), shape,
+          *context, shared_buffers_[buffer_index].GetMemoryPtr(), shape,
           t.second, &shared_buffer_tensors_[tensor_index]));
       created_tensors[tensor_index] = true;
     }

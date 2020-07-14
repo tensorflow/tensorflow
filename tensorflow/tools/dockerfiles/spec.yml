@@ -50,6 +50,7 @@ releases:
             - "{ubuntu-devel-ppc64le}{jupyter}"
             - "{ubuntu-horovod}{jupyter}"
             - "{ubuntu-devel-horovod}{jupyter}"
+            - "{ubuntu-devel-arm64v8}{jupyter}"
 
 slice_sets:
 
@@ -107,6 +108,22 @@ slice_sets:
               - build-gpu.sh
           test_runtime: nvidia
           args:
+              - CHECKOUT_TF_SRC=1
+
+    ubuntu-devel-arm64v8:
+        - add_to_name: "devel-arm64v8"
+          dockerfile_exclusive_name: "devel-cpu-arm64v8"
+          dockerfile_subdirectory: "arm64v8"
+          partials:
+              - ubuntu/version
+              - ubuntu/devel-cpu
+              - ubuntu/python
+              - ubuntu/bazelbuild-arm64v8
+              - shell
+          tests:
+              - build-cpu.sh
+          args:
+              - UBUNTU_VERSION=18.04
               - CHECKOUT_TF_SRC=1
 
     ubuntu-horovod:

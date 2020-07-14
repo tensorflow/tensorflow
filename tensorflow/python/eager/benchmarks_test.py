@@ -50,6 +50,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -61,6 +62,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
 
@@ -211,6 +213,15 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
         func()  # Warmup.
       self._run(func, 30000)
 
+  def _benchmark_add_operator_overload(self, a, b):
+    def func():
+      return memoryview(a + b)
+
+    with ops.device("GPU:0" if context.num_gpus() else "CPU:0"):
+      for _ in range(1000):
+        func()  # Warmup.
+      self._run(func, 30000)
+
   def benchmark_add_float_scalars(self):
     self._benchmark_add(42.0, 24.0)
 
@@ -221,6 +232,11 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     tensor_a = constant_op.constant(42.0)
     tensor_b = constant_op.constant(24.0)
     self._benchmark_add(tensor_a, tensor_b)
+
+  def benchmark_add_float_scalar_tensor_overloaded_operator(self):
+    tensor_a = constant_op.constant(42.0)
+    tensor_b = constant_op.constant(24.0)
+    self._benchmark_add_operator_overload(tensor_a, tensor_b)
 
   def benchmark_add_int32_scalar_tensor(self):
     tensor_a = constant_op.constant(42)
@@ -460,6 +476,15 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     func = lambda: f(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
 
+  def _benchmark_defun_args_matmul(self, m, num_iters, execution_mode=None):
+
+    @def_function.function
+    def defun_matmul(m):
+      return math_ops.matmul(m, m)
+
+    func = lambda: defun_matmul(m)
+    self._run(func, num_iters, execution_mode=execution_mode)
+
   def _benchmark_nested_defun_matmul(self, m, transpose_b, num_iters):
     inner = function.defun(math_ops.matmul)
 
@@ -627,6 +652,14 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       self._benchmark_defun_matmul(
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
+  def benchmark_defun_args_matmul_2_by_2_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_defun_args_matmul(m, num_iters=self._num_iters_2_by_2)
+
   @test_util.disable_tfrt("async not supported")
   def benchmark_defun_matmul_2_by_2_GPU_async(self):
     if not context.num_gpus():
@@ -687,7 +720,6 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       self._benchmark_tfe_py_execute_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
-  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def benchmark_defun_matmul_100_by_784_CPU(self):
     with context.device(CPU):
       m = self._m_100_by_784.cpu()
@@ -850,11 +882,13 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def _benchmark_tf_reduce_logsumexp(self,
                                      device=CPU,
                                      execution_mode=None,
-                                     defunc=False):
+                                     defunc=False,
+                                     xla_compile=False):
     with context.device(device):
       x = constant_op.constant([[1, 0.], [0., 0.]])
       if defunc:
-        reduce_func = def_function.function(math_ops.reduce_logsumexp)
+        reduce_func = def_function.function(
+            math_ops.reduce_logsumexp, experimental_compile=xla_compile)
         func = lambda: reduce_func(x)
       else:
         func = lambda: math_ops.reduce_logsumexp(x)
@@ -894,6 +928,16 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def benchmark_tf_reduce_logsumexp_GPU_async_defun(self):
     self._benchmark_tf_reduce_logsumexp(
         device=GPU, execution_mode=context.ASYNC, defunc=True)
+
+  @test_util.disable_tfrt("reduce logsumexp not supported")
+  def benchmark_tf_reduce_logsumexp_GPU_defun_compile(self):
+    self._benchmark_tf_reduce_logsumexp(
+        device=GPU, defunc=True, xla_compile=True)
+
+  @test_util.disable_tfrt("reduce logsumexp not supported")
+  def benchmark_tf_reduce_logsumexp_GPU_async_defun_compile(self):
+    self._benchmark_tf_reduce_logsumexp(
+        device=GPU, execution_mode=context.ASYNC, defunc=True, xla_compile=True)
 
   def _benchmark_tf_tensordot(self, device=CPU, execution_mode=None):
     with context.device(device):
@@ -1217,6 +1261,14 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     self._run(fn, 10000)
 
+  def benchmark_convert_tensor(self):
+    value = ops.convert_to_tensor(42)
+
+    def fn():
+      return ops.convert_to_tensor(value)
+
+    self._run(fn, 10000)
+
   def _benchmark_convert_constant(self, value, cached):
     global GLOBAL_TEST_VALUE
     GLOBAL_TEST_VALUE = value
@@ -1355,6 +1407,53 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def benchmarkTenResourceReadsInCondInInnerFunc(self):
     self._benchmarkResourceReadsInCondInInnerFunc(10)
+
+  def benchmark_tf_name_scope(self):
+
+    def fn():
+      with ops.name_scope_v2("name"):
+        pass
+
+    self._run(fn, 10000)
+
+  def benchmark_tf_nest_map_structure(self):
+    nested = {"a": [1, 2, 3], "b": (4, 5, 6)}
+
+    def fn():
+      nest.map_structure(lambda x: x, nested)
+
+    self._run(fn, 10000)
+
+  def benchmark_tf_nest_pack_sequence_as(self):
+    nested = {"a": [1, 2, 3], "b": (4, 5, 6)}
+    flat = nest.flatten(nested)
+
+    def fn():
+      nest.pack_sequence_as(nested, flat)
+
+    self._run(fn, 10000)
+
+  def benchmark_tf_nn_convolution_overhead(self):
+    inputs = array_ops.ones((1, 1, 1, 1))
+    filters = array_ops.ones((1, 1, 1, 1))
+
+    def fn():
+      nn_ops.convolution_v2(inputs, filters)
+
+    self._run(fn, 10000)
+
+  def benchmark_tf_tensor_shape_creation_overhead(self):
+    # A `TensorShape` is created the first time `EagerTensor.shape` is
+    # called, which puts `TensorShape.__init__` on the hotpath. The
+    # `TensorShape` is created from `EagerTensor._shape_tuple`.
+
+    x = array_ops.ones((1, 1))
+    shape_tuple = x._shape_tuple()
+
+    def fn():
+      tensor_shape.TensorShape(shape_tuple)
+
+    self._run(fn, 100000)
 
 
 if __name__ == "__main__":

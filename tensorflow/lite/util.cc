@@ -38,6 +38,14 @@ bool IsFlexOp(const char* custom_name) {
                                 strlen(kFlexCustomCodePrefix)) == 0;
 }
 
+std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
+    const std::vector<int>& data) {
+  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> result(
+      TfLiteIntArrayCreate(data.size()));
+  std::copy(data.begin(), data.end(), result->data);
+  return result;
+}
+
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
   return ConvertArrayToTfLiteIntArray(static_cast<int>(input.size()),
                                       input.data());

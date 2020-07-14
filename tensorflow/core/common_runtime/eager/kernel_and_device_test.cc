@@ -122,7 +122,7 @@ void BM_KernelAndDeviceInit(int iters) {
                       nullptr, env.cpu_device());
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(k.Init(ndef, nullptr));
+    TF_CHECK_OK(k.Init({}, ndef, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceInit);
@@ -143,7 +143,7 @@ void BM_KernelAndDeviceRun(int iters) {
   TestEnv env;
   KernelAndDeviceOp k(nullptr, false, env.function_library_runtime(), nullptr,
                       nullptr, env.cpu_device());
-  TF_CHECK_OK(k.Init(ndef, nullptr));
+  TF_CHECK_OK(k.Init({}, ndef, nullptr));
   const EagerKernelArgs args(std::move(inputs));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {

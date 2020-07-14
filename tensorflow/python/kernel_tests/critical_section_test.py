@@ -179,7 +179,7 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
     def fn(x):
       return cs.execute(lambda: add(x))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"Attempting to lock a CriticalSection in which we are"):
       cs.execute(lambda: fn(1.0))
 
@@ -221,10 +221,10 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
       ex_3 = cs.execute(lambda: fn_captures_dependency(1.0))
 
     # Ensure there's no actual deadlock on to_execute.
-    self.assertEquals(2.0, self.evaluate(ex_0))
-    self.assertEquals(2.0, self.evaluate(ex_1))
-    self.assertEquals(2.0, self.evaluate(ex_2))
-    self.assertEquals(2.0, self.evaluate(ex_3))
+    self.assertEqual(2.0, self.evaluate(ex_0))
+    self.assertEqual(2.0, self.evaluate(ex_1))
+    self.assertEqual(2.0, self.evaluate(ex_2))
+    self.assertEqual(2.0, self.evaluate(ex_3))
 
   def testRecursiveCriticalSectionAccessWithinLoopIsProtected(self):
     cs = critical_section_ops.CriticalSection(shared_name="cs")
@@ -251,7 +251,7 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
         "'testRecursiveCriticalSectionAccessWithinLoopDoesNotDeadlock "
         "body_implicit_capture'\n"
         "==============\n")
-    self.assertEquals((1000, 1000), self.evaluate((i_n, j_n)))
+    self.assertEqual((1000, 1000), self.evaluate((i_n, j_n)))
     logging.warn(
         "\n==============\nSuccessfully finished running "
         "'testRecursiveCriticalSectionAccessWithinLoopDoesNotDeadlock "
@@ -278,7 +278,7 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
         "'testRecursiveCriticalSectionAccessWithinLoopDoesNotDeadlock "
         "body_implicit_capture_protected'\n"
         "==============\n")
-    self.assertEquals((1000, 1000), self.evaluate((i_n, j_n)))
+    self.assertEqual((1000, 1000), self.evaluate((i_n, j_n)))
     logging.warn(
         "\n==============\nSuccessfully finished running "
         "'testRecursiveCriticalSectionAccessWithinLoopDoesNotDeadlock "
@@ -303,7 +303,7 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
         "'testRecursiveCriticalSectionAccessWithinLoopDoesNotDeadlock "
         "body_args_capture'\n"
         "==============\n")
-    self.assertEquals((1000, 1000), self.evaluate((i_n, j_n)))
+    self.assertEqual((1000, 1000), self.evaluate((i_n, j_n)))
     logging.warn(
         "\n==============\nSuccessfully finished running "
         "'testRecursiveCriticalSectionAccessWithinLoopDoesNotDeadlock "
@@ -319,7 +319,8 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
     add = lambda x: x + 1
     def fn(x):
       return cs_same.execute(lambda: add(x))
-    with self.assertRaisesRegexp(
+
+    with self.assertRaisesRegex(
         ValueError, r"Attempting to lock a CriticalSection in which we are"):
       cs.execute(lambda: fn(1.0))
 
@@ -334,12 +335,12 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
     cs0.execute(lambda: v - 1)
     # It's *not* OK for a different CriticalSection to access it by
     # default.
-    with self.assertRaisesRegexp(
-        ValueError, "requested exclusive resource access"):
+    with self.assertRaisesRegex(ValueError,
+                                "requested exclusive resource access"):
       cs1.execute(lambda: v + 1)
     # It's not even OK if the second call doesn't request exclusive access.
-    with self.assertRaisesRegexp(
-        ValueError, "requested exclusive resource access"):
+    with self.assertRaisesRegex(ValueError,
+                                "requested exclusive resource access"):
       cs1.execute(lambda: v + 1, exclusive_resource_access=False)
 
     v2 = resource_variable_ops.ResourceVariable(0.0, name="v2")
@@ -349,8 +350,8 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
 
     # It's not OK if the second request requires exclusive resource
     # access.
-    with self.assertRaisesRegexp(
-        ValueError, "requested exclusive resource access"):
+    with self.assertRaisesRegex(ValueError,
+                                "requested exclusive resource access"):
       cs1.execute(lambda: v2 + 1)
 
   def testControlDependencyFromOutsideWhileLoopMixedWithInsideLoop(self):
