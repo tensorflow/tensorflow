@@ -3023,7 +3023,7 @@ def trace(x, name=None):
   in x. If x is of rank `k` with shape `[I, J, K, ..., L, M, N]`, then output
   is a tensor of rank `k-2` with dimensions `[I, J, K, ..., L]` where
 
-  `output[i, j, k, ..., l] = trace(x[i, j, i, ..., l, :, :])`
+  `output[i, j, k, ..., l] = trace(x[i, j, k, ..., l, :, :])`
 
   For example:
 
