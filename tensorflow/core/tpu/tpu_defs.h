@@ -47,6 +47,9 @@ extern const char* const TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR;
 // variable.
 extern const char* const TPU_FAST_MEM_ATTR;  // "_TPU_FAST_MEM"
 
+extern const char* const kTPUReplicateAttr;
+extern const char* const kOutsideCompilationAttr;
+
 // Supported types for TPUs.
 static constexpr std::array<DataType, 11> kTpuAllTypes = {
     {DT_INT32, DT_UINT32, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_BOOL,
