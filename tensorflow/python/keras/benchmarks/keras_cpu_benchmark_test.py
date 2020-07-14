@@ -95,7 +95,7 @@ class KerasModelCPUBenchmark(
     """Benchmark for MLP model on synthetic mnist data."""
     mlp_x = np.random.random((5000, 784))
     mlp_y = np.random.random((5000, 10))
-    metrics, extras = benchmark_util.measure_performance(
+    metrics, wall_time, extras = benchmark_util.measure_performance(
         self._mnist_mlp,
         x=mlp_x,
         y=mlp_y,
@@ -105,7 +105,7 @@ class KerasModelCPUBenchmark(
         loss=_LOSS)
     self.report_benchmark(
         iters=run_iters,
-        wall_time=extras['wall_time'],
+        wall_time=wall_time,
         metrics=metrics,
         extras=extras)
 
@@ -113,7 +113,7 @@ class KerasModelCPUBenchmark(
     """Benchmark for Convnet model on synthetic mnist data."""
     convnet_x = np.random.random((5000, 28, 28, 1))
     convnet_y = np.random.random((5000, 10))
-    metrics, extras = benchmark_util.measure_performance(
+    metrics, wall_time, extras = benchmark_util.measure_performance(
         self._mnist_convnet,
         x=convnet_x,
         y=convnet_y,
@@ -123,7 +123,7 @@ class KerasModelCPUBenchmark(
         loss=_LOSS)
     self.report_benchmark(
         iters=run_iters,
-        wall_time=extras['wall_time'],
+        wall_time=wall_time,
         metrics=metrics,
         extras=extras)
 
@@ -131,7 +131,7 @@ class KerasModelCPUBenchmark(
     """Benchmark for LSTM model on synthetic imdb review dataset."""
     lstm_x = np.random.randint(0, 1999, size=(2500, 100))
     lstm_y = np.random.random((2500, 1))
-    metrics, extras = benchmark_util.measure_performance(
+    metrics, wall_time, extras = benchmark_util.measure_performance(
         self._imdb_lstm,
         x=lstm_x,
         y=lstm_y,
@@ -141,7 +141,7 @@ class KerasModelCPUBenchmark(
         loss=_LOSS)
     self.report_benchmark(
         iters=run_iters,
-        wall_time=extras['wall_time'],
+        wall_time=wall_time,
         metrics=metrics,
         extras=extras)
 

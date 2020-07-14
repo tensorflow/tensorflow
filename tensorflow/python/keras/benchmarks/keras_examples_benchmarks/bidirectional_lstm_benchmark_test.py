@@ -59,7 +59,7 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
     """Measure performance with batch_size=128 and run_iters=3."""
     batch_size = 128
     run_iters = 3
-    metrics, extras = benchmark_util.measure_performance(
+    metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
         y=self.imdb_y,
@@ -71,7 +71,7 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
 
     self.report_benchmark(
         iters=run_iters,
-        wall_time=extras['wall_time'],
+        wall_time=wall_time,
         metrics=metrics,
         extras=extras)
 
@@ -79,7 +79,7 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
     """Measure performance with batch_size=256 and run_iters=2."""
     batch_size = 256
     run_iters = 2
-    metrics, extras = benchmark_util.measure_performance(
+    metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
         y=self.imdb_y,
@@ -91,7 +91,7 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
 
     self.report_benchmark(
         iters=run_iters,
-        wall_time=extras['wall_time'],
+        wall_time=wall_time,
         metrics=metrics,
         extras=extras)
 
@@ -99,7 +99,7 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
     """Measure performance with batch_size=512 and run_iters=4."""
     batch_size = 512
     run_iters = 4
-    metrics, extras = benchmark_util.measure_performance(
+    metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
         y=self.imdb_y,
@@ -111,7 +111,7 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
 
     self.report_benchmark(
         iters=run_iters,
-        wall_time=extras['wall_time'],
+        wall_time=wall_time,
         metrics=metrics,
         extras=extras)
 

@@ -155,7 +155,7 @@ def measure_performance(model_fn,
   metrics.append({'name': 'epochs',
                   'value': epochs})
 
-  extras = {'distribution_strategy': distribution_strategy,
-            'wall_time': np.mean(wall_time_list)}
+  wall_time = np.mean(wall_time_list)
+  extras = {'distribution_strategy': distribution_strategy}
 
-  return metrics, extras
+  return metrics, wall_time, extras
