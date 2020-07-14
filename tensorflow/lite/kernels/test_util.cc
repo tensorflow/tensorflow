@@ -417,10 +417,11 @@ bool KernelTestDelegateProviders::InitFromCmdlineArgs(int* argc,
 }
 
 std::vector<tools::TfLiteDelegatePtr>
-KernelTestDelegateProviders::CreateAllDelegates() const {
+KernelTestDelegateProviders::CreateAllDelegates(
+    const tools::ToolParams& params) const {
   std::vector<tools::TfLiteDelegatePtr> delegates;
   for (const auto& one : tools::GetRegisteredDelegateProviders()) {
-    auto ptr = one->CreateTfLiteDelegate(params_);
+    auto ptr = one->CreateTfLiteDelegate(params);
     // It's possible that a delegate of certain type won't be created as
     // user-specified benchmark params tells not to.
     if (ptr == nullptr) continue;
