@@ -96,6 +96,8 @@ py_test(
         "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
     ],
     python_version = "PY3",
+    # Increased thread count for reducing timeout failures.
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",

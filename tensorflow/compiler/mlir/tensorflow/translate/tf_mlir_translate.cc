@@ -40,9 +40,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using stream_executor::port::Status;
-using stream_executor::port::StatusOr;
-
 static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
     llvm::StringRef input, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
@@ -98,7 +95,7 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
       context);
 }
 
-mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
+StatusOr<mlir::OwningModuleRef> GraphdefToMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
@@ -112,13 +109,11 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
       enable_shape_inference, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
-    return nullptr;
   }
-
-  return module_or.ConsumeValueOrDie();
+  return module_or;
 }
 
-mlir::OwningModuleRef SavedModelObjectGraphToMlirImport(
+StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
@@ -128,18 +123,17 @@ mlir::OwningModuleRef SavedModelObjectGraphToMlirImport(
   if (!load_status.ok()) {
     LOG(ERROR) << "Failed to load saved model '" << saved_model_dir
                << "': " << load_status;
-    return nullptr;
+    return load_status;
   }
 
   auto module_or = ConvertSavedModelToMlir(&bundle, context, exported_names);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel import failed: " << module_or.status();
-    return nullptr;
   }
-  return module_or.ConsumeValueOrDie();
+  return module_or;
 }
 
-mlir::OwningModuleRef SavedModelSignatureDefsToMlirImport(
+StatusOr<mlir::OwningModuleRef> SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
@@ -154,19 +148,18 @@ mlir::OwningModuleRef SavedModelSignatureDefsToMlirImport(
   if (!load_status.ok()) {
     LOG(ERROR) << "Failed to load saved model v1 '" << saved_model_dir
                << "': " << load_status;
-    return nullptr;
+    return load_status;
   }
 
   auto module_or = ConvertSavedModelV1ToMlir(bundle, exported_names, context,
                                              upgrade_legacy);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel V1 import failed: " << module_or.status();
-    return nullptr;
   }
-  return module_or.ConsumeValueOrDie();
+  return module_or;
 }
 
-mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
+StatusOr<mlir::OwningModuleRef> GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, absl::string_view debug_info_file,
     absl::string_view input_arrays, absl::string_view input_dtypes,
     absl::string_view input_shapes, absl::string_view output_arrays,
@@ -180,7 +173,7 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
       enable_shape_inference, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
-    return nullptr;
+    return module_or.status();
   }
   auto& module = module_or.ValueOrDie();
   std::srand(0);
@@ -215,7 +208,7 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
       }
     }
   }
-  return module_or.ConsumeValueOrDie();
+  return module_or;
 }
 
 }  // namespace tensorflow

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_configuration_rewrite_pass.h"
+#include "tensorflow/core/tpu/graph_rewrite/variable_merger_pass.h"
 
 namespace tensorflow {
 namespace {
@@ -24,6 +25,8 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 20,
                       DistributedTPUConfigurationRewritePass);
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 20,
                       DistributedTPUShutdownRewritePass);
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 0,
+                      VariableMergerPass);
 
 }  // namespace
 }  // namespace tensorflow

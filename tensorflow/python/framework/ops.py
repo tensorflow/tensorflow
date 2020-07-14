@@ -6672,6 +6672,13 @@ class name_scope_v2(object):
     self._exit_fns.pop()(type_arg, value_arg, traceback_arg)
     return False  # False values do not suppress exceptions
 
+  def __getstate__(self):
+    return self._name, self._exit_fns
+
+  def __setstate__(self, state):
+    self._name = state[0]
+    self._exit_fns = state[1]
+
 
 def strip_name_scope(name, export_scope):
   """Removes name scope from a name.

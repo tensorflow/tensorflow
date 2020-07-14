@@ -548,6 +548,8 @@ class IrEmitterUnnested : public IrEmitter,
   // Returns the last generated thunk.
   Thunk* LastThunk() const { return thunk_sequence_.back().get(); }
 
+  Thunk::ThunkInfo GetThunkInfo(const HloInstruction* hlo) const override;
+
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
 

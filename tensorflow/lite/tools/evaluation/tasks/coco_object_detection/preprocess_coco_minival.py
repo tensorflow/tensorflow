@@ -36,6 +36,8 @@ import collections
 import os
 import shutil
 import sys
+
+from absl import logging
 from tensorflow.lite.tools.evaluation.proto import evaluation_stages_pb2
 
 
@@ -68,7 +70,6 @@ def _get_ground_truth_detections(instances_file,
     data_dict = ast.literal_eval(annotation_dump.readline())
 
   image_data = collections.OrderedDict()
-  all_file_names = []
 
   # Read allowlist.
   if allowlist_file is not None:
@@ -85,29 +86,41 @@ def _get_ground_truth_detections(instances_file,
     image_data_dict = {}
     image_data_dict['id'] = image_dict['id']
     image_data_dict['file_name'] = image_dict['file_name']
-    all_file_names.append(image_data_dict['file_name'])
     image_data_dict['height'] = image_dict['height']
     image_data_dict['width'] = image_dict['width']
     image_data_dict['detections'] = []
     image_data[image_id] = image_data_dict
 
+  shared_image_ids = set()
+  for annotation_dict in data_dict['annotations']:
+    image_id = annotation_dict['image_id']
+    if image_id in image_data:
+      shared_image_ids.add(image_id)
+
+  output_image_ids = sorted(shared_image_ids)
   if num_images:
-    all_file_names.sort()
-    all_file_names = all_file_names[:num_images]
-  all_file_names = set(all_file_names)
+    if num_images <= 0:
+      logging.warning(
+          '--num_images is %d, hence outputing all annotated images.',
+          num_images)
+    elif num_images > len(shared_image_ids):
+      logging.warning(
+          '--num_images (%d) is larger than the number of annotated images.',
+          num_images)
+    else:
+      output_image_ids = output_image_ids[:num_images]
+
+  for image_id in list(image_data):
+    if image_id not in output_image_ids:
+      del image_data[image_id]
 
   # Get detected object annotations per image.
   for annotation_dict in data_dict['annotations']:
     image_id = annotation_dict['image_id']
-    if image_id not in image_id_allowlist:
-      continue
-    if image_id not in image_data:
-      continue
-    image_data_dict = image_data[image_id]
-    if image_data_dict['file_name'] not in all_file_names:
-      del image_data[image_id]
+    if image_id not in output_image_ids:
       continue
 
+    image_data_dict = image_data[image_id]
     bbox = annotation_dict['bbox']
     # bbox format is [x, y, width, height]
     # Refer: http://cocodataset.org/#format-data

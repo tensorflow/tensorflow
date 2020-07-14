@@ -1221,12 +1221,6 @@ class StrategyBase(object):
           fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
-  # TODO(b/151224785): Remove deprecated alias.
-  @doc_controls.do_not_doc_inheritable  # DEPRECATED
-  @deprecation.deprecated(None, "renamed to `run`")
-  def experimental_run_v2(self, fn, args=(), kwargs=None, options=None):
-    return self.run(fn, args=args, kwargs=kwargs, options=options)
-
   def reduce(self, reduce_op, value, axis):
     """Reduce `value` across replicas and return result on current device.
 
@@ -3016,7 +3010,23 @@ def _batch_reduce_destination(x):
 _creating_default_strategy_singleton = False
 
 
-class _DefaultDistributionStrategy(StrategyV1):
+class _DefaultDistributionStrategyV1(StrategyV1):
+  """Default `tf.distribute.Strategy` if none is explicitly selected."""
+
+  def __init__(self):
+    if not _creating_default_strategy_singleton:
+      raise RuntimeError("Should only create a single instance of "
+                         "_DefaultDistributionStrategy")
+    super(_DefaultDistributionStrategyV1,
+          self).__init__(_DefaultDistributionExtended(self))
+
+  def __deepcopy__(self, memo):
+    del memo
+    raise RuntimeError("Should only create a single instance of "
+                       "_DefaultDistributionStrategy")
+
+
+class _DefaultDistributionStrategy(Strategy):
   """Default `tf.distribute.Strategy` if none is explicitly selected."""
 
   def __init__(self):

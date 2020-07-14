@@ -752,9 +752,8 @@ class HashedCategoricalColumnTest(test.TestCase):
     with self.cached_session():
       self.assertEqual(dtypes.int64, output.values.dtype)
       self.assertAllEqual(expected_values, output.values)
-      self.assertAllEqual(wire_tensor.indices.eval(), output.indices)
-      self.assertAllEqual(wire_tensor.dense_shape.eval(),
-                          output.dense_shape.eval())
+      self.assertAllEqual(wire_tensor.indices, output.indices)
+      self.assertAllEqual(wire_tensor.dense_shape, output.dense_shape.eval())
 
   def test_tensor_dtype_should_be_string_or_integer(self):
     string_fc = fc._categorical_column_with_hash_bucket(

@@ -211,8 +211,6 @@ class ConvPowerVR : public GPUOperation {
   int4 stride_padding_;
   int4 kernel_dilation_;
   ConvParams conv_params_;
-
-  CLKernel kernel_;
 };
 
 template <DataType T>

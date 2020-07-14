@@ -123,6 +123,8 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       src_(std::move(operation.src_)),
       dst_(std::move(operation.dst_)),
       args_(std::move(operation.args_)),
+      kernel_(std::move(operation.kernel_)),
+      work_group_size_(operation.work_group_size_),
       linked_operations_(std::move(operation.linked_operations_)) {}
 
 GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
@@ -131,6 +133,8 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     src_ = std::move(operation.src_);
     dst_ = std::move(operation.dst_);
     args_ = std::move(operation.args_);
+    kernel_ = std::move(operation.kernel_);
+    std::swap(work_group_size_, operation.work_group_size_);
     linked_operations_ = std::move(operation.linked_operations_);
   }
   return *this;
@@ -143,17 +147,13 @@ void GPUOperation::AddOperation(ElementwiseOperation* operation) {
 ElementwiseOperation::ElementwiseOperation(ElementwiseOperation&& operation)
     : GPUOperation(std::move(operation)),
       check_src_channels_size_(operation.check_src_channels_size_),
-      code_(std::move(operation.code_)),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      code_(std::move(operation.code_)) {}
 
 ElementwiseOperation& ElementwiseOperation::operator=(
     ElementwiseOperation&& operation) {
   if (this != &operation) {
     check_src_channels_size_ = operation.check_src_channels_size_;
     code_ = std::move(operation.code_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

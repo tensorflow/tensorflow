@@ -36,6 +36,7 @@ class ThunkEmitter {
         const HloInstruction& hlo, const ShapeIndex& index) const = 0;
     virtual int64 ByteSizeOf(const Shape& shape) const = 0;
     virtual absl::string_view platform_name() const = 0;
+    virtual Thunk::ThunkInfo GetThunkInfo(const HloInstruction* hlo) const;
 
     virtual ~EmissionContext() = default;
   };

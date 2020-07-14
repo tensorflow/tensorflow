@@ -734,8 +734,8 @@ class OwnedIterator(IteratorBase):
   def __iter__(self):
     return self
 
-  def __next__(self):  # For Python 3 compatibility
-    return self.next()
+  def next(self):  # For Python 2 compatibility
+    return self.__next__()
 
   def _next_internal(self):
     if not context.executing_eagerly():
@@ -769,7 +769,7 @@ class OwnedIterator(IteratorBase):
   def _type_spec(self):
     return IteratorSpec(self.element_spec)
 
-  def next(self):
+  def __next__(self):
     try:
       return self._next_internal()
     except errors.OutOfRangeError:

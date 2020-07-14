@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from typing import Union
+import numpy as np
+
+from tensorflow.python.util.tf_export import tf_export
 
 # TODO(mdan): Consider adding ABC once the dependence on isinstance is reduced.
 # TODO(mdan): Add type annotations.
@@ -58,3 +62,31 @@ class Value(Tensor):
 
   def numpy(self):
     pass
+
+
+# TODO(rahulkamat): Add missing types that are convertible to tensor
+# A `Union` type which can be used to denote "Tensor or other values that
+# TensorFlow implicitly converts to Tensor". For example, it includes
+# `list` and `ndarray`.
+#
+# This union will contain `tf.Tensor` and all types which can be successfully
+# converted to a `tf.Tensor` by `tf.convert_to_tensor`.
+#
+# This definition may be used in user code. Additional types may be added in the
+# future as more input types are supported.
+#
+# Example:
+#
+#   def foo(tensor_like: TensorLike):
+#      pass
+#
+# This definition passes static type verification for:
+#
+#   foo(tf.constant([1, 2, 3]))
+#   foo([1, 2, 3])
+#   foo(np.array([1, 2, 3]))
+#
+TensorLike = Union[Tensor, int, float, bool, str, complex, tuple, list,
+                   np.ndarray]
+tf_export("types.experimental.TensorLike").export_constant(
+    __name__, "TensorLike")

@@ -456,6 +456,12 @@ cc_test(
     name = "test_util_test",
     size = "small",
     srcs = ["test_util_test.cc"],
+    # See details in https://github.com/bazelbuild/bazel/issues/11552 to avoid
+    # lazy symbol binding failure on macOS.
+    linkstatic = select({
+        "//tensorflow:macos": True,
+        "//conditions:default": False,
+    }),
     deps = [
         ":test_util",
         "//tensorflow/lite/testing:util",

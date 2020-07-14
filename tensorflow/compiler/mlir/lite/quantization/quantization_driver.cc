@@ -794,16 +794,18 @@ bool QuantizationDriver::PropagateParams() {
     }
 
     // TODO(fengliuai): make the bit width configurable.
-    auto spec = GetQuantSpec(op);
-    auto key = std::make_pair(8, is_signed_);
-    auto &restricted_outputs = spec->restricted_output_params[key];
-    for (int i = 0, e = restricted_outputs.size(); i != e; ++i) {
-      // The restrict can be nullptr if the result has been quantized.
-      if (auto params = restricted_outputs[i]) {
-        changed |= SetResultParams(op, i, params);
+    if (auto restricted = llvm::dyn_cast<FixedOutputRangeInterface>(op)) {
+      // TODO(fengliuai): different result can have different fixed range.
+      auto params = restricted.GetFixedOutputRange(is_signed_, /*bit_width=*/8);
+      for (auto i = 0; i < op->getNumResults(); ++i) {
+        // The range is null if the result has been quantized.
+        if (params) {
+          changed |= SetResultParams(op, i, params);
+        }
       }
     }
 
+    auto spec = GetQuantSpec(op);
     for (auto &it : spec->biases_params) {
       auto params =
           GetBiasParams(op, it.first, it.second.first, it.second.second);

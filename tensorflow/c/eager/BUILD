@@ -172,6 +172,87 @@ cc_library(
 )
 
 cc_library(
+    name = "gradients",
+    srcs = [
+        "gradients.cc",
+        "gradients_internal.h",
+    ],
+    hdrs = [
+        "gradients.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_context",
+        ":abstract_operation",
+        ":abstract_tensor_handle",
+        ":c_api_unified_internal",
+        ":tape",
+        "//tensorflow/core/common_runtime/eager:attr_builder",
+        "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "gradients_internal",
+    srcs = [
+        "gradients.cc",
+    ],
+    hdrs = [
+        "gradients.h",
+        "gradients_internal.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_context",
+        ":abstract_operation",
+        ":abstract_tensor_handle",
+        ":c_api_unified_internal",
+        ":tape",
+        "//tensorflow/core/common_runtime/eager:attr_builder",
+        "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "gradients_test",
+    size = "small",
+    srcs = [
+        "gradients_test.cc",
+    ],
+    args = ["--heap_check=local"],
+    extra_copts = tfe_xla_copts(),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":abstract_tensor_handle",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        ":c_api_unified_internal",
+        ":gradients_internal",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "abstract_tensor_handle",
     hdrs = ["abstract_tensor_handle.h"],
     visibility = [
@@ -747,6 +828,7 @@ filegroup(
             "c_api_unified_experimental_eager.cc",
             "c_api_unified_experimental_graph.cc",
             "c_api_unified_experimental_internal.h",
+            "gradients.cc",  # Uses RTTI.
             "*test*",
             "*dlpack*",
         ],

@@ -299,6 +299,7 @@ bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
           "RFFT2D",
           "RFFT3D",
           "RaggedRange",
+          "RaggedTensorToTensor",
           "RandomGamma",
           "RandomStandardNormal",
           "RandomUniform",

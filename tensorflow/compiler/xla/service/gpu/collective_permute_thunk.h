@@ -26,13 +26,14 @@ namespace gpu {
 // Thunk that implements the collective-permute HLO.
 class CollectivePermuteThunk : public Thunk {
  public:
-  CollectivePermuteThunk(const BufferAllocation::Slice& src,
-                         const BufferAllocation::Slice& dest,
-                         const HloInstruction* instr);
+  CollectivePermuteThunk(ThunkInfo thunk_info,
+                         const BufferAllocation::Slice& src,
+                         const BufferAllocation::Slice& dest);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   BufferAllocation::Slice src_;
   BufferAllocation::Slice dest_;
 };

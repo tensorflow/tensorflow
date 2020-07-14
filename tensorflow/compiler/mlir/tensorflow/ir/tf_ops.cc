@@ -1977,13 +1977,55 @@ static LogicalResult Verify(FusedBatchNormOp op) {
   return success();
 }
 
-LogicalResult FusedBatchNormV3Op::FoldOperandsPermutation(
-    ArrayRef<int64_t> permutation) {
+//===----------------------------------------------------------------------===//
+// FusedBatchNormV2Op / FusedBatchNormV3Op
+//===----------------------------------------------------------------------===//
+
+template <class Op>
+static LogicalResult InferenceFoldOperandsPermutation(
+    ArrayRef<int64_t> permutation, Op *op) {
   // FusedBatchNorm in training mode is a layout sentitive operation, and should
   // have already assigned an optimal data format.
-  if (is_training()) return failure();
+  if (op->is_training()) return failure();
+  return ::mlir::TF::FoldOperandsPermutation(permutation, op);
+}
 
-  return ::mlir::TF::FoldOperandsPermutation(permutation, this);
+template <class Op>
+static StringRef GetOptimalLayout(const RuntimeDevices &devices, Op *op) {
+  // In inference mode FusedBatchNorm is not sensitive to data layout.
+  if (!op->is_training()) return op->data_format();
+
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(op->getOperation()))
+    return op->data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  auto x_ty = op->x().getType().template cast<TensorType>();
+  const bool is_f16 = x_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // For all other data types prefer NCHW.
+  return "NCHW";
+}
+
+LogicalResult FusedBatchNormV2Op::FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation) {
+  return ::mlir::TF::InferenceFoldOperandsPermutation(permutation, this);
+}
+
+LogicalResult FusedBatchNormV2Op::UpdateDataFormat(StringRef data_format) {
+  return ::mlir::TF::UpdateDataFormat(data_format, this);
+}
+
+StringRef FusedBatchNormV2Op::GetOptimalLayout(const RuntimeDevices &devices) {
+  return ::mlir::TF::GetOptimalLayout(devices, this);
+}
+
+LogicalResult FusedBatchNormV3Op::FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation) {
+  return ::mlir::TF::InferenceFoldOperandsPermutation(permutation, this);
 }
 
 LogicalResult FusedBatchNormV3Op::UpdateDataFormat(StringRef data_format) {
@@ -1991,22 +2033,7 @@ LogicalResult FusedBatchNormV3Op::UpdateDataFormat(StringRef data_format) {
 }
 
 StringRef FusedBatchNormV3Op::GetOptimalLayout(const RuntimeDevices &devices) {
-  // In inference mode FusedBatchNorm is not sensitive to data layout.
-  if (!is_training()) return data_format();
-
-  // Keep current data format if no GPUs are available or if explicit placement
-  // does not allow to use GPU for this operation.
-  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
-    return data_format();
-
-  // For f16 data type on devices with Tensor Cores support NHWC data format
-  // is up to ~2x faster.
-  auto x_ty = x().getType().cast<TensorType>();
-  const bool is_f16 = x_ty.getElementType().isF16();
-  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
-
-  // For all other data types prefer NCHW.
-  return "NCHW";
+  return ::mlir::TF::GetOptimalLayout(devices, this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2156,10 +2183,6 @@ static LogicalResult Verify(IfRegionOp op) {
     return failure();
   if (failed(VerifyRegionResults(op, op.else_branch(), "else")))
     return failure();
-  if (op.then_branch().front().getNumArguments() != 0)
-    return op.emitOpError() << "then region cannot have any arguments";
-  if (op.else_branch().front().getNumArguments() != 0)
-    return op.emitOpError() << "else region cannot have any arguments";
   return success();
 }
 

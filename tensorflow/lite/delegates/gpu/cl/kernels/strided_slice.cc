@@ -143,19 +143,16 @@ int4 GetOffset(const SliceAttributes& attr, int src_width, int src_height,
 
 StridedSlice::StridedSlice(const OperationDef& definition,
                            const SliceAttributes& attr)
-    : GPUOperation(definition), attributes_(attr), work_group_size_(8, 4, 1) {}
+    : GPUOperation(definition), attributes_(attr) {
+  work_group_size_ = int3(8, 4, 1);
+}
 
 StridedSlice::StridedSlice(StridedSlice&& operation)
-    : GPUOperation(std::move(operation)),
-      attributes_(operation.attributes_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : GPUOperation(std::move(operation)), attributes_(operation.attributes_) {}
 
 StridedSlice& StridedSlice::operator=(StridedSlice&& operation) {
   if (this != &operation) {
     attributes_ = operation.attributes_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

@@ -149,6 +149,9 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       if (ftype && ftype.isF32()) {
         return tflite::TensorType_COMPLEX64;
       }
+      if (ftype && ftype.isF64()) {
+        return tflite::TensorType_COMPLEX128;
+      }
       return Status(error::INVALID_ARGUMENT, "Unsupported type");
     }
     case mlir::StandardTypes::Integer: {

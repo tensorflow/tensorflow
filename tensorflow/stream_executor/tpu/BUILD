@@ -114,7 +114,6 @@ cc_library(
         "tpu_stream.h",
         "tpu_timer.h",
     ],
-    visibility = ["//tensorflow/core/tpu:__pkg__"],
     deps = [
         ":device_memory_base_helper",
         ":status_helper",
@@ -165,6 +164,7 @@ cc_library(
         ":tpu_transfer_manager_base",
         "//tensorflow/compiler/xla/service:transfer_manager",
     ],
+    alwayslink = True,
 )
 
 cc_library(

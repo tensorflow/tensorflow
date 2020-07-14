@@ -7,6 +7,10 @@ tf_class {
     mtype: "<type \'member_descriptor\'>"
   }
   member {
+    name: "experimental_variable_policy"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member {
     name: "function_aliases"
     mtype: "<type \'member_descriptor\'>"
   }
@@ -20,6 +24,6 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'namespace_whitelist\', \'save_debug_info\', \'function_aliases\', \'experimental_io_device\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'namespace_whitelist\', \'save_debug_info\', \'function_aliases\', \'experimental_io_device\', \'experimental_variable_policy\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\', \'None\'], "
   }
 }
