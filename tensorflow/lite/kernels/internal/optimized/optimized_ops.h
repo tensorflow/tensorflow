@@ -3815,6 +3815,7 @@ inline void LocalResponseNormalization(
   const int double_range = op_params.range * 2;
   Eigen::VectorXf padded_square(data_in.rows() + double_range);
   padded_square.setZero();
+  const float bias = op_params.bias;
   for (int r = 0; r < data_in.cols(); ++r) {
     // Do local response normalization for data_in(:, r)
     // first, compute the square and store them in buffer for repeated use
@@ -3827,7 +3828,7 @@ inline void LocalResponseNormalization(
     }
     for (int i = 0; i < data_in.rows(); ++i) {
       accumulated_scale += padded_square(i + double_range);
-      data_out(i, r) = op_params.bias + accumulated_scale;
+      data_out(i, r) = bias + accumulated_scale;
       accumulated_scale -= padded_square(i);
     }
   }

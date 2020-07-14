@@ -28,6 +28,12 @@ XLA_TpuProgram* TpuProgram_New();
 // Destroys the `tpu_program`.
 void TpuProgram_Free(XLA_TpuProgram* tpu_program);
 
+// Creates an array of `XLA_TpuProgram*`.
+XLA_TpuProgram** TpuProgram_NewArray(size_t count);
+
+// Destroys an array of `XLA_TpuProgram*`.
+void TpuProgram_FreeArray(XLA_TpuProgram* tpu_program[]);
+
 // Unloads and destroys the `tpu_program`. Once the TPU program is unloaded and
 // destroyed, it is in an unusable state.
 void TpuProgram_UnloadAndDestroy(XLA_TpuProgram* tpu_program,
@@ -50,6 +56,10 @@ void TpuProgram_GetHostTransferInfo(const XLA_TpuProgram* tpu_program,
 // Gets HLO metadata proto.
 void TpuProgram_GetHloMetadata(const XLA_TpuProgram* tpu_program,
                                TpuSerializedProto* hlo_metadata);
+
+// Gets may modify variables boolean value.
+void TpuProgram_GetMayModifyVariables(const XLA_TpuProgram* tpu_program,
+                                      bool* may_modify_variables);
 
 }  // extern "C"
 

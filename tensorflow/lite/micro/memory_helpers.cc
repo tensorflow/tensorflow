@@ -72,6 +72,9 @@ TfLiteStatus TfLiteTypeSizeOf(TfLiteType type, size_t* size) {
     case kTfLiteComplex64:
       *size = sizeof(float) * 2;
       break;
+    case kTfLiteComplex128:
+      *size = sizeof(double) * 2;
+      break;
     default:
       return kTfLiteError;
   }

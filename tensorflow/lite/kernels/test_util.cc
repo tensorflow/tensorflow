@@ -32,6 +32,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/nnapi/acceleration_test_util.h"
@@ -39,12 +40,13 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
@@ -219,14 +221,27 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 }
 
 TfLiteStatus SingleOpModel::ApplyDelegate() {
+  auto* delegate_providers = tflite::KernelTestDelegateProviders::Get();
+
   if (force_use_nnapi) {
     delegate_ = TestNnApiDelegate();
+
+    // As we currently have special handling of nnapi delegate in kernel tests,
+    // we turn off the nnapi delegate provider to avoid re-applying it later.
+    // TODO(b/160764491): remove this special handling for NNAPI delegate test.
+    delegate_providers->MutableParams()->Set<bool>("use_nnapi", false);
   }
 
   if (delegate_) {
+    TFLITE_LOG(WARN) << "Having a manually-set TfLite delegate, and bypassing "
+                        "KernelTestDelegateProviders";
     return interpreter_->ModifyGraphWithDelegate(delegate_);
   }
 
+  for (auto& one : delegate_providers->CreateAllDelegates()) {
+    TF_LITE_ENSURE_STATUS(
+        interpreter_->ModifyGraphWithDelegate(std::move(one)));
+  }
   return kTfLiteOk;
 }
 
@@ -327,7 +342,7 @@ void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
     return;
   }
 
-  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Validating acceleration");
+  TFLITE_LOG(INFO) << "Validating acceleration";
   const NnApi* nnapi = NnApiImplementation();
   if (nnapi && nnapi->nnapi_exists &&
       nnapi->android_sdk_version >=
@@ -379,4 +394,39 @@ void MultiOpModel::AddCustomOp(
       CustomOptionsFormat_FLEXBUFFERS));
 }
 
+/*static*/ KernelTestDelegateProviders* KernelTestDelegateProviders::Get() {
+  static KernelTestDelegateProviders* const providers =
+      new KernelTestDelegateProviders();
+  return providers;
+}
+
+KernelTestDelegateProviders::KernelTestDelegateProviders() {
+  for (const auto& one : tools::GetRegisteredDelegateProviders()) {
+    params_.Merge(one->DefaultParams());
+  }
+}
+
+bool KernelTestDelegateProviders::InitFromCmdlineArgs(int* argc,
+                                                      const char** argv) {
+  std::vector<tflite::Flag> flags;
+  for (const auto& one : tools::GetRegisteredDelegateProviders()) {
+    auto one_flags = one->CreateFlags(&params_);
+    flags.insert(flags.end(), one_flags.begin(), one_flags.end());
+  }
+  return tflite::Flags::Parse(argc, argv, flags);
+}
+
+std::vector<tools::TfLiteDelegatePtr>
+KernelTestDelegateProviders::CreateAllDelegates() const {
+  std::vector<tools::TfLiteDelegatePtr> delegates;
+  for (const auto& one : tools::GetRegisteredDelegateProviders()) {
+    auto ptr = one->CreateTfLiteDelegate(params_);
+    // It's possible that a delegate of certain type won't be created as
+    // user-specified benchmark params tells not to.
+    if (ptr == nullptr) continue;
+    delegates.emplace_back(std::move(ptr));
+    TFLITE_LOG(INFO) << one->GetName() << " delegate is created.";
+  }
+  return delegates;
+}
 }  // namespace tflite

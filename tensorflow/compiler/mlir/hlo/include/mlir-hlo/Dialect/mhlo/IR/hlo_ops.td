@@ -76,6 +76,7 @@ def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
   // TODO(b/130357376): Iota has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def HLO_DynamicIotaOp: HLO_Op<"dynamic_iota", [NoSideEffect]> {

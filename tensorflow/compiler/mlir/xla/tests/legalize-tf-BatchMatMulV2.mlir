@@ -67,9 +67,9 @@ func @batchmatmulv2_dynamic(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) 
 func @batchmatmulv2_adj_real(%arg0: tensor<5x2xf32>, %arg1: tensor<2x4xf32>) -> tensor<5x4xf32> {
 // CHECK-LABEL:   func @batchmatmulv2_adj_real
 // CHECK:           "mhlo.dot_general"({{.*}}, {{.*}}) {dot_dimension_numbers = {
-// CHECK-SAME:        lhs_batching_dimensions = dense<[]> : tensor<0xi64>,
+// CHECK-SAME:        lhs_batching_dimensions = dense<> : tensor<0xi64>,
 // CHECK-SAME:        lhs_contracting_dimensions = dense<0> : tensor<1xi64>,
-// CHECK-SAME:        rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
+// CHECK-SAME:        rhs_batching_dimensions = dense<> : tensor<0xi64>,
 // CHECK-SAME:        rhs_contracting_dimensions = dense<1> : tensor<1xi64>}}
   %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<5x2xf32>, tensor<2x4xf32>) -> tensor<5x4xf32>
   return %0 : tensor<5x4xf32>

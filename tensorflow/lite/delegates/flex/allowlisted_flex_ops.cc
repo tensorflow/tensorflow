@@ -12,14 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
+
 #include <set>
 
-#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
+#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops_internal.h"
 
 namespace tflite {
 namespace flex {
 
-bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
+const std::set<std::string>& GetFlexAllowlist() {
   static const std::set<std::string>* allowlisted_flex_ops =
       new std::set<std::string>({
           // go/keep-sorted start
@@ -82,6 +84,7 @@ bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
           "Cast",
           "Ceil",
           "CheckNumerics",
+          "CombinedNonMaxSuppression",
           "Complex",
           "ComplexAbs",
           "Concat",
@@ -108,7 +111,6 @@ bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
           "DebugGradientIdentity",
           "DebugGradientRefIdentity",
           "DecodeBase64",
-          "DecodeBmp",
           "DecodeWav",
           "DeepCopy",
           "DeleteSessionTensor",
@@ -299,6 +301,7 @@ bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
           "RFFT2D",
           "RFFT3D",
           "RaggedRange",
+          "RaggedTensorToTensor",
           "RandomGamma",
           "RandomStandardNormal",
           "RandomUniform",
@@ -538,11 +541,14 @@ bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
           "_Send",
           // go/keep-sorted end
       });
-  return allowlisted_flex_ops->find(tensorflow_op_name) !=
-         allowlisted_flex_ops->end();
+  return *allowlisted_flex_ops;
   // Prevent lint error about this function being too long. This function
   // is a set of ops, and making it shorter won't help readbility.
   // NOLINTNEXTLINE
+}
+
+bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
+  return GetFlexAllowlist().count(tensorflow_op_name) != 0;
 }
 
 }  // namespace flex

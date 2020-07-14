@@ -390,7 +390,6 @@ tf_py_test(
     tags = [
         "no_windows",
         "nomac",
-        "notap",  # TODO(b/137133525): enable after this is fixed.
     ],
     deps = [
         ":client_testlib",
@@ -791,9 +790,9 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_tf32_execution",
     srcs = ["util/tf32.cc"],
+    hdrs = ["//tensorflow/core/platform:tf32_hdr"],
     module_name = "_pywrap_tf32_execution",
     deps = [
-        "//tensorflow/core/platform:tf32_utils",
         "@pybind11",
     ],
 )
@@ -6075,8 +6074,10 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler/internal:print_model_analysis",
+        "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
+        "//tensorflow/core/platform:tf32_utils",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/core/util/tensor_bundle",
@@ -6088,12 +6089,7 @@ pywrap_tensorflow_macro(
         "@ngraph_tf//:ngraph_tf",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]) + select({
-        "//tensorflow:windows": [],  # TODO(b/159077703): Enable Flex on Windows
-        "//conditions:default": [
-            "//tensorflow/lite/delegates/flex:delegate",
-        ],
-    }) + if_tpu(["//tensorflow/core/tpu:tpu_api_dlsym_initializer"]),
+    ]) + if_tpu(["//tensorflow/core/tpu:tpu_api_dlsym_initializer"]),
 )
 
 # ** Targets for Windows build (start) **
@@ -6146,6 +6142,7 @@ filegroup(
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/grappler/optimizers:meta_optimizer",  # tf_optimizer
         "//tensorflow/core/grappler/utils:topological_sort",  # tf_item
+        "//tensorflow/core/platform:tf32_utils",  # tf32
         "//tensorflow/core/profiler/internal:annotation_stack_impl",  # profiler
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core/profiler/internal:traceme_recorder_impl",  # profiler

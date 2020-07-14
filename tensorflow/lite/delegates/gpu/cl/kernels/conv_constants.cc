@@ -201,9 +201,7 @@ ConvConstants::ConvConstants(ConvConstants&& kernel)
       padding_(kernel.padding_),
       dilation_(kernel.dilation_),
       src_channels_(kernel.src_channels_),
-      dst_channels_(kernel.dst_channels_),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
+      dst_channels_(kernel.dst_channels_) {}
 
 ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
   if (this != &kernel) {
@@ -213,8 +211,6 @@ ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
     std::swap(dilation_, kernel.dilation_);
     std::swap(src_channels_, kernel.src_channels_);
     std::swap(dst_channels_, kernel.dst_channels_);
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;

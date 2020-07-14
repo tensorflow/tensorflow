@@ -37,9 +37,9 @@ limitations under the License.
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/ops/ragged_to_dense_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/core/util/ragged_to_dense_util.h"
 
 namespace tensorflow {
 

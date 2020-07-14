@@ -71,9 +71,6 @@ class ConvolutionTransposedThin : public GPUOperation {
   int2 kernel_size_;
   int src_channels_;
   int dst_channels_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 template <DataType T>

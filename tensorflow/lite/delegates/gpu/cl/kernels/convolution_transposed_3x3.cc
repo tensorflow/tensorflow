@@ -271,6 +271,7 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
     : GPUOperation(definition),
       padding_(padding),
       work_group_launch_order_(2, 0, 1) {
+  work_group_size_ = int3(8, 4, 1);
   if (device.IsPowerVR()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
   } else if (device.IsNvidia() || device.IsIntel()) {
@@ -287,9 +288,7 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
     : GPUOperation(std::move(operation)),
       padding_(operation.padding_),
       work_group_launch_order_(operation.work_group_launch_order_),
-      weights_upload_type_(operation.weights_upload_type_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      weights_upload_type_(operation.weights_upload_type_) {}
 
 ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
     ConvolutionTransposed3x3&& operation) {
@@ -297,8 +296,6 @@ ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
     std::swap(padding_, operation.padding_);
     std::swap(work_group_launch_order_, operation.work_group_launch_order_);
     std::swap(weights_upload_type_, operation.weights_upload_type_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

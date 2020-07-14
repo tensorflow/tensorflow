@@ -33,13 +33,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-GemmThunk::GemmThunk(const BufferAllocation::Slice &lhs_buffer,
+GemmThunk::GemmThunk(ThunkInfo thunk_info,
+                     const BufferAllocation::Slice &lhs_buffer,
                      const BufferAllocation::Slice &rhs_buffer,
                      const BufferAllocation::Slice &output_buffer,
                      bool implements_whole_instruction,
-                     const HloInstruction *hlo_instruction,
                      const GemmBackendConfig &backend_config)
-    : Thunk(Kind::kGemm, hlo_instruction),
+    : Thunk(Kind::kGemm, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
       output_buffer_(output_buffer),
@@ -51,13 +52,13 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
     return params.buffer_allocations->GetDeviceAddress(slice);
   };
 
-  VLOG(3) << "Running GEMM thunk on instruction: " << hlo_instruction();
+  VLOG(3) << "Running GEMM thunk on instruction: " << hlo_instruction_;
   se::DeviceMemoryBase lhs_data = get_device_address(lhs_buffer_);
   se::DeviceMemoryBase rhs_data = get_device_address(rhs_buffer_);
   se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
-  return RunGemm(hlo_instruction(), backend_config_, lhs_data, rhs_data,
+  return RunGemm(hlo_instruction_, backend_config_, lhs_data, rhs_data,
                  output_data, params.stream, implements_whole_instruction_,
-                 params.profiler);
+                 profile_index(), params.profiler);
 }
 
 // This struct contains the metadata of a matrix, e.g., its base address and
@@ -160,6 +161,7 @@ Status RunGemm(const HloInstruction *gemm,
                se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream *stream,
                bool implements_whole_instruction,
+               absl::optional<int64> profile_index,
                HloExecutionProfiler *profiler,
                se::blas::ProfileResult *profile_result,
                absl::optional<se::blas::AlgorithmType> algorithm) {
@@ -240,7 +242,7 @@ Status RunGemm(const HloInstruction *gemm,
       rhs_buffer, rhs_shape, dim_nums.rhs_contracting_dimensions(0) == col_dim);
   std::unique_ptr<ScopedInstructionProfiler> op_profiler =
       profiler ? profiler->MakeScopedInstructionProfiler(
-                     implements_whole_instruction ? gemm : nullptr)
+                     implements_whole_instruction ? profile_index : -1)
                : nullptr;
 
   if (LayoutUtil::Minor(output_shape.layout(), row_dim) != 0) {

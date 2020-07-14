@@ -175,6 +175,11 @@ class AutomaticControlDependencies(object):
   NOT THREAD SAFE
   """
 
+  __slots__ = [
+      "_returned_tensors", "ops_which_must_run", "_graph", "_n_operations",
+      "collective_manager_ids_used"
+  ]
+
   def __init__(self):
     self._returned_tensors = object_identity.ObjectIdentitySet()
     self.ops_which_must_run = set()

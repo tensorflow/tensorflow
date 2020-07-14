@@ -29,7 +29,7 @@ namespace cl {
 class SpaceToDepth : public GPUOperation {
  public:
   SpaceToDepth(const OperationDef& op_def, const SpaceToDepthAttributes& attr)
-      : GPUOperation(op_def), attr_(attr), work_group_size_(8, 4, 1) {}
+      : GPUOperation(op_def), attr_(attr) {}
   absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
   absl::Status Compile(const CreationContext& creation_context) override;
@@ -44,8 +44,6 @@ class SpaceToDepth : public GPUOperation {
   int3 GetGridSize() const;
 
   SpaceToDepthAttributes attr_;
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 SpaceToDepth CreateSpaceToDepth(const OperationDef& op_def,

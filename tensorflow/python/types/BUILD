@@ -31,5 +31,8 @@ py_strict_library(
         "//tensorflow:__subpackages__",
         "//tensorflow:types_whitelist",
     ],
-    deps = [],
+    deps = [
+        "//tensorflow/python:tf_export",
+        "//third_party/py/numpy",
+    ],
 )

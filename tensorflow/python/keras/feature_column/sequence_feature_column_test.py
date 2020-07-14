@@ -241,37 +241,38 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(
             expected_sequence_length, sequence_length.eval(session=sess))
 
-  @test_util.run_deprecated_v1
   def test_shared_embedding_column_with_non_sequence_categorical(self):
     """Tests that error is raised for non-sequence shared embedding column."""
-    vocabulary_size = 3
-    sparse_input_a = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
-    sparse_input_b = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
+    with ops.Graph().as_default():
+      vocabulary_size = 3
+      sparse_input_a = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(2, 0, 1),
+          dense_shape=(2, 2))
+      sparse_input_b = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(2, 0, 1),
+          dense_shape=(2, 2))
 
-    categorical_column_a = fc.categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = fc.categorical_column_with_identity(
-        key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns_v2(
-        [categorical_column_a, categorical_column_b], dimension=2)
+      categorical_column_a = fc.categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      categorical_column_b = fc.categorical_column_with_identity(
+          key='bbb', num_buckets=vocabulary_size)
+      shared_embedding_columns = fc.shared_embedding_columns_v2(
+          [categorical_column_a, categorical_column_b], dimension=2)
 
-    sequence_input_layer = ksfc.SequenceFeatures(shared_embedding_columns)
-    with self.assertRaisesRegex(
-        ValueError,
-        r'In embedding_column: aaa_shared_embedding\. categorical_column must '
-        r'be of type SequenceCategoricalColumn to use SequenceFeatures\.'):
-      _, _ = sequence_input_layer({'aaa': sparse_input_a,
-                                   'bbb': sparse_input_b})
+      sequence_input_layer = ksfc.SequenceFeatures(shared_embedding_columns)
+      with self.assertRaisesRegex(
+          ValueError,
+          r'In embedding_column: aaa_shared_embedding\. '
+          r'categorical_column must '
+          r'be of type SequenceCategoricalColumn to use SequenceFeatures\.'):
+        _, _ = sequence_input_layer({'aaa': sparse_input_a,
+                                     'bbb': sparse_input_b})
 
   @parameterized.named_parameters(
       {'testcase_name': '2D',

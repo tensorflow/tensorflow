@@ -24,12 +24,15 @@ namespace xla {
 namespace gpu {
 
 ConditionalThunk::ConditionalThunk(
+    ThunkInfo thunk_info,
     const BufferAllocation::Slice& branch_index_buffer_index,
     absl::Span<const BufferAllocation::Slice> branch_operand_buffer_indexes,
-    std::vector<ThunkSequence> branch_thunk_sequences,
-    const HloInstruction* hlo)
-    : Thunk(Kind::kConditional, hlo),
-      branch_index_is_bool_(hlo->operand(0)->shape().element_type() == PRED),
+    std::vector<ThunkSequence> branch_thunk_sequences)
+    : Thunk(Kind::kConditional, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
+      branch_index_is_bool_(
+          thunk_info.hlo_instruction->operand(0)->shape().element_type() ==
+          PRED),
       branch_index_buffer_index_(branch_index_buffer_index),
       branch_operand_buffer_indexes_(branch_operand_buffer_indexes.begin(),
                                      branch_operand_buffer_indexes.end()) {
@@ -39,14 +42,7 @@ ConditionalThunk::ConditionalThunk(
   branch_thunks_.reserve(branch_thunk_sequences.size());
   for (auto& branch_thunk_sequence : branch_thunk_sequences) {
     branch_thunks_.emplace_back(
-        new SequentialThunk(std::move(branch_thunk_sequence), nullptr));
-  }
-}
-
-void ConditionalThunk::ComputeAnnotations() {
-  Thunk::ComputeAnnotations();
-  for (auto& branch_thunk : branch_thunks_) {
-    branch_thunk->ComputeAnnotations();
+        new SequentialThunk(ThunkInfo(), std::move(branch_thunk_sequence)));
   }
 }
 
@@ -67,7 +63,7 @@ Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& profiler = *params.profiler;
   auto& stream = *params.stream;
 
-  auto op_profiler = profiler.MakeScopedInstructionProfiler(hlo_instruction());
+  auto op_profiler = profiler.MakeScopedInstructionProfiler(profile_index());
   // Copy the predicate value from device.
   int32 branch_index = -1;
   bool pred = false;
@@ -89,8 +85,8 @@ Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
     branch_index = pred ? 0 : 1;
   } else {
     // Handle default scenario for branch_index not in [0, num_branches).
-    if (branch_index < 0 || branch_index >= hlo_instruction()->branch_count()) {
-      branch_index = hlo_instruction()->branch_count() - 1;
+    if (branch_index < 0 || branch_index >= hlo_instruction_->branch_count()) {
+      branch_index = hlo_instruction_->branch_count() - 1;
     }
   }
 
@@ -98,7 +94,7 @@ Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   profiler.StartHloComputation();
   TF_RETURN_IF_ERROR(branch_thunks_[branch_index]->ExecuteOnStream(params));
   profiler.FinishHloComputation(
-      hlo_instruction()->branch_computation(branch_index));
+      hlo_instruction_->branch_computation(branch_index));
 
   return Status::OK();
 }

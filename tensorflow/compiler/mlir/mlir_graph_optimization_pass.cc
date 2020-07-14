@@ -188,12 +188,12 @@ Status MlirV1CompatGraphOptimizationPass::Run(
 
   if (!is_enabled) {
     VLOG(0) << "None of the MLIR optimization passes are enabled "
-            << "(registered" << registry_->passes().size() << " passes)";
+            << "(registered " << registry_->passes().size() << " passes)";
     return Status::OK();
   }
 
   VLOG(0) << "Running MLIR Graph Optimization V1 Compat Passes "
-          << "(registered" << registry_->passes().size() << " passes)";
+          << "(registered " << registry_->passes().size() << " passes)";
 
   GraphDebugInfo debug_info;
   RegisterDialects();
