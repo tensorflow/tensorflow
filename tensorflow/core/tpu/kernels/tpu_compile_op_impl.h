@@ -51,9 +51,6 @@ class TpuCompileOpKernelImpl : public TpuCompileOpKernelCommon {
             function, metadata, num_computations, return_hlo_protos,
             unload_cache_on_session_close, /*persistent_cache=*/nullptr) {}
 
- private:
-  FRIEND_TEST(TpuCompileOpImplTest, Compile);
-
   Status Compile(
       const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
       const XLA_TpuMeshState* mesh_state,
