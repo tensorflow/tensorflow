@@ -42,8 +42,7 @@
 *   `tf.function`/AutoGraph:
     * <ADD RELEASE NOTES HERE>
 *   `tf.lite`:
-    * `TFLiteConverter`:
-      * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (tf.int8, tf.uint8) instead of defaulting to float type (tf.float32).
+    * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
 *   Math and Linear Algebra:
