@@ -125,6 +125,7 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
       case HIP_API_ID_hipModuleLaunchKernel:
       case HIP_API_ID_hipExtModuleLaunchKernel:
       case HIP_API_ID_hipHccModuleLaunchKernel:
+      case HIP_API_ID_hipLaunchKernel:
         break;
       case HIP_API_ID_hipMemcpyDtoH:
         oss << ", sizeBytes=" << data->args.hipMemcpyDtoH.sizeBytes;
@@ -330,6 +331,7 @@ class RocmApiCallbackImpl {
         case HIP_API_ID_hipModuleLaunchKernel:
         case HIP_API_ID_hipExtModuleLaunchKernel:
         case HIP_API_ID_hipHccModuleLaunchKernel:
+        case HIP_API_ID_hipLaunchKernel:
           AddKernelEventUponApiExit(cbid, data);
           // Add the correlation_ids for these events to the pending set
           // so that we can explicitly wait for their corresponding
@@ -452,6 +454,21 @@ class RocmApiCallbackImpl {
         event.kernel_info.grid_z =
             data->args.hipHccModuleLaunchKernel.globalWorkSizeZ / blockDimZ;
 #endif
+      } break;
+      case HIP_API_ID_hipLaunchKernel: {
+        const void* func_addr = data->args.hipLaunchKernel.function_address;
+        hipStream_t stream = data->args.hipLaunchKernel.stream;
+        if (func_addr != nullptr)
+          event.name = hipKernelNameRefByPtr(func_addr, stream);
+
+        event.kernel_info.dynamic_shared_memory_usage =
+            data->args.hipLaunchKernel.sharedMemBytes;
+        event.kernel_info.block_x = data->args.hipLaunchKernel.dimBlocks.x;
+        event.kernel_info.block_y = data->args.hipLaunchKernel.dimBlocks.y;
+        event.kernel_info.block_z = data->args.hipLaunchKernel.dimBlocks.z;
+        event.kernel_info.grid_x = data->args.hipLaunchKernel.numBlocks.x;
+        event.kernel_info.grid_y = data->args.hipLaunchKernel.numBlocks.y;
+        event.kernel_info.grid_z = data->args.hipLaunchKernel.numBlocks.z;
       } break;
     }
     collector_->AddEvent(std::move(event));
@@ -620,6 +637,7 @@ class RocmActivityCallbackImpl {
             case HIP_API_ID_hipModuleLaunchKernel:
             case HIP_API_ID_hipExtModuleLaunchKernel:
             case HIP_API_ID_hipHccModuleLaunchKernel:
+            case HIP_API_ID_hipLaunchKernel:
               DumpActivityRecord(record);
               AddHipKernelActivityEvent(record);
               break;
@@ -877,8 +895,8 @@ class RocmActivityCallbackImpl {
 void AnnotationMap::Add(uint32 correlation_id, const std::string& annotation) {
   if (annotation.empty()) return;
   VLOG(kRocmTracerVlog) << "Add annotation: "
-                        << " correlation_id: " << correlation_id
-                        << " annotation: " << annotation;
+                        << " correlation_id=" << correlation_id
+                        << ", annotation: " << annotation;
   absl::MutexLock lock(&map_.mutex);
   if (map_.annotations.size() < max_size_) {
     absl::string_view annotation_str =

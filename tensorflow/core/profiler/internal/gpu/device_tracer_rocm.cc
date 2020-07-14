@@ -321,7 +321,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
   bool IsEventTypeWithoutHCCActivityRecordCallback(RocmTracerEventType type) {
     switch (type) {
-      case RocmTracerEventType::MemcpyH2D:
       case RocmTracerEventType::MemoryAlloc:
         return true;
         break;
@@ -683,6 +682,7 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
       HIP_API_ID_hipExtModuleLaunchKernel,
       HIP_API_ID_hipFree,
       HIP_API_ID_hipHccModuleLaunchKernel,
+      HIP_API_ID_hipLaunchKernel,
       HIP_API_ID_hipMalloc,
       HIP_API_ID_hipMemcpyAsync,
       HIP_API_ID_hipMemcpyDtoD,
