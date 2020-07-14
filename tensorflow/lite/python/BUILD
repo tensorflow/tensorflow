@@ -197,7 +197,6 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_mac",  # TODO(b/159077703): Enable Python API Flex support on MacOS.
-        "no_windows",  # TODO(b/159077703): Enable Python API Flex support on Windows.
     ],
     deps = [
         ":lite",

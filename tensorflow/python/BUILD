@@ -6074,6 +6074,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler/internal:print_model_analysis",
+        "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/core/platform:tf32_utils",
@@ -6088,12 +6089,7 @@ pywrap_tensorflow_macro(
         "@ngraph_tf//:ngraph_tf",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]) + select({
-        "//tensorflow:windows": [],  # TODO(b/159077703): Enable Flex on Windows
-        "//conditions:default": [
-            "//tensorflow/lite/delegates/flex:delegate",
-        ],
-    }) + if_tpu(["//tensorflow/core/tpu:tpu_api_dlsym_initializer"]),
+    ]) + if_tpu(["//tensorflow/core/tpu:tpu_api_dlsym_initializer"]),
 )
 
 # ** Targets for Windows build (start) **
