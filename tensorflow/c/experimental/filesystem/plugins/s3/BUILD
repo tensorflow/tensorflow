@@ -30,3 +30,14 @@ cc_library(
         "@aws",
     ],
 )
+
+cc_library(
+    name = "aws_crypto",
+    srcs = ["aws_crypto.cc"],
+    hdrs = ["aws_crypto.h"],
+    deps = [
+        "@aws",
+        "@boringssl//:crypto",
+    ],
+    alwayslink = 1,
+)
