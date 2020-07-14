@@ -36,16 +36,28 @@ from tensorflow.python.autograph.pyct.static_analysis import annos
 
 
 class Resolver(object):
-  """Resolvers allow customizing the process of identifying types."""
+  """Resolver objects handle the process of looking up actual names and types.
 
-  def resolve_external_type(self, type_):
+  All resolve_* methods take:
+    * a first namespace argument, mapping string to actual values
+    * one or more name arguments, as QN objects
+
+  All resolve_* methods must return either:
+    * a set of `type` objects
+    * None
+  """
+
+  def resolve_external_name(self, ns, name):
+    """Resolves the type an external (e.g. closure, global) variable."""
     raise NotImplementedError('subclasses must implement')
 
-  def resolve_external_value(self, value):
+  def resolve_external_call(self, ns, name):
+    """Resolves the return type an external function call."""
+    # TODO(mdan): This must accept argument value/types.
     raise NotImplementedError('subclasses must implement')
 
-  def resolve_external_function_call(self, fn):
-    # TODO(mdan)): This must accept value/types to arguments
+  def resolve_external_arg(self, ns, f_name, arg_name, type_anno):
+    """Resolves the type of a (possibly annotated) function argument."""
     raise NotImplementedError('subclasses must implement')
 
   # TODO(mdan): More resolvers as needed.
@@ -95,13 +107,6 @@ class _SymbolTable(object):
     return 'SymbolTable {}'.format(self.value)
 
 
-# These special names don't normally show up in globals.
-SPECIAL_NAMES = {
-    'int': int,
-    'float': float,
-}
-
-
 class Analyzer(cfg.GraphVisitor):
   """CFG visitor that performs type inference at statement level."""
 
@@ -122,15 +127,6 @@ class Analyzer(cfg.GraphVisitor):
   def init_state(self, _):
     return _SymbolTable()
 
-  def _static_value(self, qn):
-    """Looks up a name in the namespace."""
-    # TODO(mdan): This needs to be updated to work for composite symbols.
-    name = str(qn)
-    value = self.namespace.get(name, None)
-    if value is None:
-      return SPECIAL_NAMES.get(name, None)
-    return value
-
   def _infer_type(self, node, types_in):
     """Infers the return type of an expression."""
     if isinstance(node, gast.Name):
@@ -139,22 +135,15 @@ class Analyzer(cfg.GraphVisitor):
       types = types_in.value.get(name, None)
       if types is not None:
         return types
-      # If type is unknown, attempt to look the symbol up in the namespace.
+      # If type is unknown, resolve it.
       if name not in self.scope.bound:
-        # TODO(mdan): Might still be able to do something for bound symbols.
-        static_value = self._static_value(name)
-        if static_value is not None:
-          return {self.resolver.resolve_external_value(static_value)}
+        return self.resolver.resolve_external_name(self.namespace, name)
       return None
 
     if isinstance(node, gast.Call):
-      # Function calls: infer their return type.
+      # Function calls: resolve their return type.
       f_name = anno.getanno(node.func, anno.Basic.QN)
-      static_value = self._static_value(f_name)
-      # TODO(mdan): This needs to be updated to work for composite symbols.
-      if static_value is None:
-        raise ValueError('cannot infer return type of {}'.format(f_name))
-      return {self.resolver.resolve_external_function_call(static_value)}
+      return self.resolver.resolve_external_call(self.namespace, f_name)
 
     else:
       raise NotImplementedError(node)
@@ -178,15 +167,11 @@ class Analyzer(cfg.GraphVisitor):
     assert isinstance(node, gast.Name)
     name = anno.getanno(node, anno.Basic.QN)
     type_name = anno.getanno(node.annotation, anno.Basic.QN, None)
-    if type_name is None:
-      return ()
 
-    static_value = self._static_value(type_name)
-    if static_value is None:
-      raise ValueError('cannot resolve type {}'.format(type_name))
-
-    type_ = self.resolver.resolve_external_type(static_value)
-    return (name, {type_}),
+    type_ = self.resolver.resolve_external_arg(self.namespace,
+                                               self.scope.function_name, name,
+                                               type_name)
+    return (name, type_),
 
   def _args_types(self, node):
     """Propagates types through argument annotations."""

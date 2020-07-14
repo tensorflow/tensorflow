@@ -29,14 +29,16 @@ from tensorflow.python.platform import test
 
 class TestResolver(type_inference.Resolver):
 
-  def resolve_external_type(self, t):
-    return t
+  def resolve_external_name(self, ns, name):
+    return {type(ns[str(name)])}
 
-  def resolve_external_value(self, value):
-    return type(value)
+  def resolve_external_call(self, ns, f_name):
+    return {ns[str(f_name)].__annotations__['return']}
 
-  def resolve_external_function_call(self, fn):
-    return fn.__annotations__['return']
+  def resolve_external_arg(self, ns, f_name, arg_name, type_anno):
+    if type_anno is not None:
+      return {{'int': int, 'float': float}[str(type_anno)]}
+    return {'{}_{}'.format(f_name, arg_name)}
 
 
 class TestTranspiler(transpiler.GenericTranspiler):
@@ -69,7 +71,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     fn_body = node.body
 
     self.assertTypes(fn_body[0].value.elts[0], int)
-    self.assertTypes(fn_body[0].value.elts[1], ())
+    self.assertTypes(fn_body[0].value.elts[1], 'test_fn_b')
 
   def test_straightline_assignment(self):
 
@@ -84,7 +86,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     self.assertTypes(fn_body[0].value, int)
     self.assertTypes(fn_body[1].value.elts[0], int)
     self.assertTypes(fn_body[1].value.elts[1], int)
-    self.assertTypes(fn_body[1].value.elts[2], ())
+    self.assertTypes(fn_body[1].value.elts[2], 'test_fn_c')
 
   def test_assignment_overwrite(self):
 
