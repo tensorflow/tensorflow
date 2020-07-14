@@ -764,13 +764,14 @@ typedef struct TfLiteContext {
   // Returns a TfLiteTensor struct for a given index in the subgraph.
   // WARNING: This is an experimental interface that is subject to change.
   // WARNING: This method may not be available on all platforms.
-  TfLiteTensor* (*GetTensor)(struct TfLiteContext* context, int subgraph_idx);
+  TfLiteTensor* (*GetTensor)(const struct TfLiteContext* context,
+                             int tensor_idx);
 
   // Returns a TfLiteEvalTensor struct for a given index in the subgraph.
   // WARNING: This is an experimental interface that is subject to change.
   // WARNING: This method may not be available on all platforms.
-  TfLiteEvalTensor* (*GetEvalTensor)(struct TfLiteContext* context,
-                                     int subgraph_idx);
+  TfLiteEvalTensor* (*GetEvalTensor)(const struct TfLiteContext* context,
+                                     int tensor_idx);
 } TfLiteContext;
 
 typedef struct TfLiteRegistration {
