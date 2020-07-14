@@ -47,7 +47,7 @@ class TimerCallBack(tf.keras.callbacks.Callback):
 def measure_performance(model_fn,
                         x=None,
                         y=None,
-                        epoch=2,
+                        epochs=2,
                         batch_size=32,
                         run_iters=4,
                         optimizer=None,
@@ -62,8 +62,8 @@ def measure_performance(model_fn,
     model_fn: Model function to be benchmarked.
     x: Input data. See `x` in the `fit()` method of `keras.Model`.
     y: Target data. See `y` in the `fit()` method of `keras.Model`.
-    epoch: Integer. Number of epochs to train the model. If unspecified, `epoch`
-      will default to 2.
+    epochs: Integer. Number of epochs to train the model.
+      If unspecified, `epoch` will default to 2.
     batch_size: Integer. Number of samples per gradient update. If unspecified,
       `batch_size` will default to 32.
     run_iters: Integer. Number of iterations to run the performance measurement.
@@ -84,8 +84,7 @@ def measure_performance(model_fn,
 
   Returns:
     Performance summary, which contains build_time, compile_time,
-    startup_time, avg_epoch_time, wall_time, exp_per_sec, distribution_strategy,
-    epoch.
+    startup_time, avg_epoch_time, wall_time, exp_per_sec,epochs.
 
   Raise:
     ValueError: If `x` is none or if `optimizer` is not provided or
@@ -106,7 +105,7 @@ def measure_performance(model_fn,
 
   build_time_list, compile_time_list, startup_time_list = [], [], []
   avg_epoch_time_list, wall_time_list, exp_per_sec_list = [], [], []
-  total_num_examples = epoch * num_examples
+  total_num_examples = epochs * num_examples
 
   for _ in range(run_iters):
     timer = timeit.default_timer
@@ -129,7 +128,7 @@ def measure_performance(model_fn,
         x=x,
         y=y,
         batch_size=batch_size,
-        epochs=epoch,
+        epochs=epochs,
         callbacks=[cbk],
         verbose=verbose)
     end_time = timer()
@@ -141,15 +140,20 @@ def measure_performance(model_fn,
     wall_time_list.append(end_time - t0)
     exp_per_sec_list.append(total_num_examples / (end_time - t2))
 
-  results = {
-      'build_time': np.mean(build_time_list),
-      'compile_time': np.mean(compile_time_list),
-      'startup_time': np.mean(startup_time_list),
-      'avg_epoch_time': np.mean(avg_epoch_time_list),
-      'wall_time': np.mean(wall_time_list),
-      'exp_per_sec': np.mean(exp_per_sec_list),
-      'distribution_strategy': distribution_strategy,
-      'epoch': epoch
-  }
+  metrics = []
+  metrics.append({'name': 'build_time',
+                  'value': np.mean(build_time_list)})
+  metrics.append({'name': 'compile_time',
+                  'value': np.mean(compile_time_list)})
+  metrics.append({'name': 'startup_time',
+                  'value': np.mean(startup_time_list)})
+  metrics.append({'name': 'avg_epoch_time',
+                  'value': np.mean(avg_epoch_time_list)})
+  metrics.append({'name': 'exp_per_sec',
+                  'value': np.mean(exp_per_sec_list)})
+  metrics.append({'name': 'epochs',
+                  'value': epochs})
 
-  return results
+  wall_time = np.mean(wall_time_list)
+
+  return metrics, wall_time
