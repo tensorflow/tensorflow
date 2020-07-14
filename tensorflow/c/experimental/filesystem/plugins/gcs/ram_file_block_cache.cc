@@ -39,9 +39,6 @@ std::shared_ptr<RamFileBlockCache::Block> RamFileBlockCache::Lookup(
   auto entry = block_map_.find(key);
   if (entry != block_map_.end()) {
     if (BlockNotStale(entry->second)) {
-      if (cache_stats_ != nullptr) {
-        cache_stats_->RecordCacheHitBlockSize(entry->second->data.size());
-      }
       return entry->second;
     } else {
       // Remove the stale block and continue.
@@ -139,9 +136,6 @@ void RamFileBlockCache::MaybeFetch(const Key& key,
         size_t bytes_transferred;
         block_fetcher_(key.first, key.second, block_size_, block->data.data(),
                        &bytes_transferred, status);
-        if (cache_stats_ != nullptr) {
-          cache_stats_->RecordCacheMissBlockSize(bytes_transferred);
-        }
         block->mu.Lock();  // Reacquire the lock immediately afterwards
         if (TF_GetCode(status) == TF_OK) {
           block->data.resize(bytes_transferred, 0);
