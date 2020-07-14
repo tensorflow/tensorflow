@@ -7284,6 +7284,7 @@ reshape(t, []) ==> 7
   }];
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def TF_ResizeBilinearOp : TF_Op<"ResizeBilinear", [NoSideEffect]> {
