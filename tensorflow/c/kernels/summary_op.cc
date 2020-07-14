@@ -26,18 +26,18 @@ limitations under the License.
 // Struct that stores the status and TF_Tensor inputs to the opkernel. 
 // Used to delete tensor and status in its destructor upon kernel return. 
 namespace {
-  struct Params{ 
+  struct Params { 
     TF_Tensor* tags; 
     TF_Tensor* values; 
     TF_Status* status; 
     Params(TF_OpKernelContext* ctx) {
       status = TF_NewStatus();
       TF_GetInput(ctx, 0, &tags, status);
-      if (TF_GetCode(status) == TF_OK){ 
+      if (TF_GetCode(status) == TF_OK) { 
         TF_GetInput(ctx, 1, &values, status);
       }
     }; 
-    ~Params(){ 
+    ~Params() { 
       TF_DeleteStatus(status); 
       TF_DeleteTensor(tags); 
       TF_DeleteTensor(values);
