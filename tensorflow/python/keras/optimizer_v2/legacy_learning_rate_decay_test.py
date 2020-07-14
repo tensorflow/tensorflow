@@ -59,22 +59,26 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       self.evaluate(step.assign(100))
       self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_in_graph_and_eager_modes
   def testVariables(self):
     step = variables.VariableV1(1)
-    assign_1 = step.assign(1)
-    assign_2 = step.assign(2)
-    assign_100 = step.assign(100)
+
     decayed_lr = learning_rate_decay.exponential_decay(
         .1, step, 3, 0.96, staircase=True)
     self.evaluate(variables.global_variables_initializer())
     # No change to learning rate
-    self.evaluate(assign_1.op)
+    assign_1 = step.assign(1)
+    if not context.executing_eagerly():
+      self.evaluate(assign_1.op)
     self.assertAllClose(self.evaluate(decayed_lr), .1, 1e-6)
-    self.evaluate(assign_2.op)
+    assign_2 = step.assign(2)
+    if not context.executing_eagerly():
+      self.evaluate(assign_2.op)
     self.assertAllClose(self.evaluate(decayed_lr), .1, 1e-6)
     # Decayed learning rate
-    self.evaluate(assign_100.op)
+    assign_100 = step.assign(100)
+    if not context.executing_eagerly():
+      self.evaluate(assign_100.op)
     expected = .1 * 0.96**(100 // 3)
     self.assertAllClose(self.evaluate(decayed_lr), expected, 1e-6)
 
@@ -99,7 +103,6 @@ class LRDecayTest(test_util.TensorFlowTestCase):
     self.assertAllClose(self.evaluate(decayed_lr), 0.001, 1e-6)
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.run_v1_only("b/120545219")
   def testPiecewiseConstantEdgeCases(self):
     x_int = variables.Variable(0, dtype=variables.dtypes.int32)
     boundaries, values = [-1.0, 1.0], [1, 2, 3]
@@ -119,7 +122,7 @@ class LRDecayTest(test_util.TensorFlowTestCase):
 
     # Test that ref types are valid.
     if not context.executing_eagerly():
-      x = variables.VariableV1(0.0)
+      x = variables.VariableV1(0.0, use_resource=False)
       x_ref = x.op.outputs[0]   # float32_ref tensor should be accepted
       boundaries, values = [1.0, 2.0], [1, 2, 3]
       learning_rate_decay.piecewise_constant(x_ref, boundaries, values)
