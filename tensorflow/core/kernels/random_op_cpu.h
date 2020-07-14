@@ -89,7 +89,7 @@ struct FillPhiloxRandomTask<Distribution, false> {
     // Decide skip strides according to different kResultElementCount:
     // * `1 = (4 + 3) / 4` for normal Distribution.
     // * `1 = (2 + 3) / 4` for double/int64 Distribution.
-    // * `4 = (16 + 3) / 4` for vecotorized float/bfloat16 Distribution.
+    // * `4 = (16 + 3) / 4` for vectorized float/bfloat16 Distribution.
     const int skip_strides =
         (kGroupSize + gen.kResultElementCount - 1) / gen.kResultElementCount;
     gen.Skip(start_group * skip_strides);
