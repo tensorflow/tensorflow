@@ -269,6 +269,11 @@ void SortEventList(EventList* event_list) {
   });
 }
 
+// Returns true if it has JAX-related events.
+bool HasJaxEvent(const EventNodeMap& event_node_map) {
+  return event_node_map.contains(HostEventType::kExecuteOnLocalDevices);
+}
+
 }  // namespace
 
 EventNode::EventNode(const XPlaneVisitor* plane, XLine* raw_line,
@@ -492,6 +497,7 @@ void EventForest::ProcessLegacyRootEvents(
   for (int64 root_event_type : root_event_types) {
     if (auto root_events = gtl::FindOrNull(event_node_map_, root_event_type)) {
       for (const auto& root_event : *root_events) {
+        root_event->SetIsRoot(true);
         root_events_.push_back(root_event.get());
       }
     }
@@ -499,17 +505,20 @@ void EventForest::ProcessLegacyRootEvents(
 }
 
 void EventForest::CreateEventGroup() {
-  if (!tf_loop_root_events_.empty()) {
-    // If a TF loop is used, each TF loop iteration becomes a root.
+  // Create a group for each TF loop iteration in non-JAX profiles.
+  if (!HasJaxEvent(event_node_map_) && !tf_loop_root_events_.empty()) {
     for (EventNode* root_event : tf_loop_root_events_) {
       ProcessRootEvent(next_group_id_++, root_event, &group_metadata_map_);
     }
     return;
   }
-
   SortEventList(&root_events_);
+  // Create a group for each top root event while ignoring TF's legacy root
+  // events for JAX profiles.
   for (EventNode* root_event : root_events_) {
-    if (IsTopRoot(root_event)) {
+    if (IsTopRoot(root_event) &&
+        (!HasJaxEvent(event_node_map_) ||
+         !IsLegacyRootEvent(root_event->GetEventVisitor()))) {
       ProcessRootEvent(next_group_id_++, root_event, &group_metadata_map_);
     }
   }
