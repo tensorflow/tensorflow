@@ -3,7 +3,6 @@
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-Fnu
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
@@ -172,11 +171,10 @@ string RewriteWithName(const string& name, string code,
 Status GenArgMethods(const tf2xla::Config& config,
                      const xla::ProgramShapeProto& ps,
                      const CompileResult& compile_result, string* methods) {
-  size_t num_args = ps.parameters_size();
+  const int num_args = ps.parameters_size();
   // feed_size() + variable_size() is the maximum number of args as an
   // implementation may not create an argument for an unused variable.
-  const int num_args_int = num_args;
-  if (config.feed_size() + config.variable_size() < num_args_int) {
+  if (config.feed_size() + config.variable_size() < num_args) {
     return errors::InvalidArgument(
         "mismatch between feed_size(", config.feed_size(), ")+variable_size(",
         config.variable_size(), ") and num_args(", num_args, ")");
