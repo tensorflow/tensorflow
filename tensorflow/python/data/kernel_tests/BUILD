@@ -29,7 +29,7 @@ tf_py_test(
 
 tf_py_test(
     name = "cache_test",
-    size = "small",
+    size = "medium",
     srcs = ["cache_test.py"],
     deps = [
         ":test_base",
