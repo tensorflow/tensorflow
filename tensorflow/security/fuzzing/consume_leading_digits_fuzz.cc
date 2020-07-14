@@ -35,7 +35,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     const bool leading_digits = tensorflow::str_util::ConsumeLeadingDigits(&sp, &val);
     const char lead_char_consume_digits = *(sp.data());
     if (leading_digits) {
-      assert(lead_char_consume_digits < '0' && lead_char_consume_digits > '9');
+      assert(lead_char_consume_digits < '0' || lead_char_consume_digits > '9');
       assert(val >= 0);
     }
   }
