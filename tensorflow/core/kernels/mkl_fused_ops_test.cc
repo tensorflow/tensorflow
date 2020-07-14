@@ -331,7 +331,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
 template <typename T>
 class MklFusedConv2DWithBiasOpTest : public MklFusedConv2DOpTest<T> {};
 
-TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest);
+TYPED_TEST_SUITE_P(MklFusedConv2DWithBiasOpTest);
 
 // -------------------------------------------------------------------------- //
 // Conv2D + BiasAdd + {Activation}                                            //
@@ -437,7 +437,7 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndAddElu) {
   this->VerifyFusedConv2D(kFilterSize, kFilterCount, {"BiasAdd", "Add", "Elu"});
 }
 
-REGISTER_TYPED_TEST_CASE_P(
+REGISTER_TYPED_TEST_SUITE_P(
     MklFusedConv2DWithBiasOpTest, OneByOneConvolution, SpatialConvolution,
     OneByOneConvolutionAndRelu, SpatialConvolutionAndRelu,
     OneByOneConvolutionAndRelu6, SpatialConvolutionAndRelu6,
@@ -448,8 +448,8 @@ REGISTER_TYPED_TEST_CASE_P(
     OneByOneConvolutionAndAddElu, SpatialConvolutionAndAddElu);
 
 using MklFusedBiasAddDataTypes = ::testing::Types<float>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, MklFusedConv2DWithBiasOpTest,
-                              MklFusedBiasAddDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedConv2DWithBiasOpTest,
+                               MklFusedBiasAddDataTypes);
 
 // Testing MKL's fused depthwise convolution ops
 template <typename T>
@@ -747,21 +747,21 @@ class FusedPadConvOpTest : public OpsTestBase {
   }
 };
 
-TYPED_TEST_CASE_P(FusedPadConvOpTest);
+TYPED_TEST_SUITE_P(FusedPadConvOpTest);
 
 TYPED_TEST_P(FusedPadConvOpTest, PaddingConvTest) { this->Run("NHWC"); }
 
 TYPED_TEST_P(FusedPadConvOpTest, PaddingConvTestNchw) { this->Run("NCHW"); }
 
-REGISTER_TYPED_TEST_CASE_P(FusedPadConvOpTest, PaddingConvTest,
-                           PaddingConvTestNchw);
+REGISTER_TYPED_TEST_SUITE_P(FusedPadConvOpTest, PaddingConvTest,
+                            PaddingConvTestNchw);
 
 #ifdef ENABLE_INTEL_MKL_BFLOAT16
 using FusedPadConvDataTypes = ::testing::Types<float, bfloat16>;
 #else
 using FusedPadConvDataTypes = ::testing::Types<float>;
 #endif
-INSTANTIATE_TYPED_TEST_CASE_P(Test, FusedPadConvOpTest, FusedPadConvDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedPadConvOpTest, FusedPadConvDataTypes);
 
 class FilterCacheTest : public OpsTestBase {
  public:
@@ -926,7 +926,7 @@ class MklFusedMatMulOpTest : public OpsTestBase {
   }
 };
 
-TYPED_TEST_CASE_P(MklFusedMatMulOpTest);
+TYPED_TEST_SUITE_P(MklFusedMatMulOpTest);
 
 TYPED_TEST_P(MklFusedMatMulOpTest, WithBias) {
   const int batch = 3;
@@ -963,15 +963,15 @@ TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndElu) {
                           {"BiasAdd", "Elu"});
 }
 
-REGISTER_TYPED_TEST_CASE_P(MklFusedMatMulOpTest,  //
-                           WithBias,              //
-                           WithBiasAndRelu,       //
-                           WithBiasAndRelu6,      //
-                           WithBiasAndElu);
+REGISTER_TYPED_TEST_SUITE_P(MklFusedMatMulOpTest,  //
+                            WithBias,              //
+                            WithBiasAndRelu,       //
+                            WithBiasAndRelu6,      //
+                            WithBiasAndElu);
 
 using MklFusedMatMulDataTypes = ::testing::Types<float>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, MklFusedMatMulOpTest,
-                              MklFusedMatMulDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedMatMulOpTest,
+                               MklFusedMatMulDataTypes);
 
 // Test the performance of MklFusedMatMul weight cache.
 // For the first time B matrix will be reordered and cached which will be
@@ -1361,7 +1361,7 @@ class MklPadWithFusedConv2DOpTest : public OpsTestBase {
   }
 };
 
-TYPED_TEST_CASE_P(MklPadWithFusedConv2DOpTest);
+TYPED_TEST_SUITE_P(MklPadWithFusedConv2DOpTest);
 
 TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasAndRoundPad) {
   const int kFilterSize = 1;
@@ -1391,15 +1391,15 @@ TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasReluAndPartialPad) {
   this->VerifyPadAndConv2DWithBiasRelu(kFilterSize, kFilterCount);
 }
 
-REGISTER_TYPED_TEST_CASE_P(MklPadWithFusedConv2DOpTest,  //
-                           WithBiasAndRoundPad,          //
-                           WithBiasAndPartialPad,        //
-                           WithBiasReluAndRoundPad,      //
-                           WithBiasReluAndPartialPad);
+REGISTER_TYPED_TEST_SUITE_P(MklPadWithFusedConv2DOpTest,  //
+                            WithBiasAndRoundPad,          //
+                            WithBiasAndPartialPad,        //
+                            WithBiasReluAndRoundPad,      //
+                            WithBiasReluAndPartialPad);
 
 using MklPadWithFusedConv2DDataTypes = ::testing::Types<float>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, MklPadWithFusedConv2DOpTest,
-                              MklPadWithFusedConv2DDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklPadWithFusedConv2DOpTest,
+                               MklPadWithFusedConv2DDataTypes);
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL
