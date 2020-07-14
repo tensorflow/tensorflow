@@ -16,7 +16,7 @@
 """Inception-ResNet V2 model for Keras.
 
 
-Reference paper:
+Reference:
   - [Inception-v4, Inception-ResNet and the Impact of
      Residual Connections on Learning](https://arxiv.org/abs/1602.07261)
     (AAAI 2017)
@@ -291,7 +291,7 @@ def conv2d_bn(x,
 
 
 def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
-  """Adds a Inception-ResNet block.
+  """Adds an Inception-ResNet block.
 
   This function builds 3 types of Inception-ResNet blocks mentioned
   in the paper, controlled by the `block_type` argument (which is the
