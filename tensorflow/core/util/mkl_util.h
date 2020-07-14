@@ -2299,9 +2299,5 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 #define REGISTER_TEST_ALL_TYPES(TEST) REGISTER_TEST_FLOAT32(TEST);
 #endif  // ENABLE_INTEL_MKL_BFLOAT16
 
-/////////////////////////////////////////////////////////////////////
-//  Unit tests related to node merge optimization
-/////////////////////////////////////////////////////////////////////
-
 #endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_UTIL_MKL_UTIL_H_

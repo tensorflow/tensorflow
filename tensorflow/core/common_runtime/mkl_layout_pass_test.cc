@@ -189,6 +189,10 @@ REGISTER_OP("BFloat16Output2")
     .SetIsStateful();
 #endif  // ENABLE_INTEL_MKL_BFLOAT16
 
+/////////////////////////////////////////////////////////////////////
+//  Unit tests related to node merge optimization
+/////////////////////////////////////////////////////////////////////
+
 // clang-format off
 TEST_F(MklLayoutPassTest, Basic) {
   InitGraph(
