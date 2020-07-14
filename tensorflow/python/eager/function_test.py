@@ -1360,7 +1360,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       def g(x):
         return f(x) + 1
 
-      self.assertAllEqual(g(constant_op.constant(2.0)).eval(), 5.0)
+      self.assertAllEqual(g(constant_op.constant(2.0)), 5.0)
 
   def testDict(self):
 

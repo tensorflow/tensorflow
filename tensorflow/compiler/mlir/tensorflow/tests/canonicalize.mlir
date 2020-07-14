@@ -377,6 +377,80 @@ func @testRedundantReshape(%arg0: tensor<4x4xi32>) -> tensor<2x8xi32> {
   // CHECK: return %1 : tensor<2x8xi32>
 }
 
+// CHECK-LABEL: func @testReshapeNoOp
+func @testReshapeNoOp(%arg0: tensor<2x4xf32>, %arg1: tensor<2xi32>) -> tensor<2x4xf32> {
+  %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<2x4xf32>, tensor<2xi32>) -> tensor<2x4xf32>
+
+  // CHECK: return %arg0
+  return %0 : tensor<2x4xf32>
+}
+
+// CHECK-LABEL: func @testReshapeNoOpShapeComputation
+func @testReshapeNoOpShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x2xf32>) -> (tensor<?x1xf32>, tensor<?x1x2xf32>,  tensor<?x1x2xf32>, tensor<?x2x1xf32>, tensor<?x1x2xf32>, tensor<?x1x1xf32>) {
+  // Test dimensions sizes.
+  %d1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %d2 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
+
+  // Slice bounds.
+  %0 = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  %1 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %2 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+
+  // Fold reshape if the shape is computed from the input tensor:
+  //
+  //   %shape     = tf.Shape(%arg)                    // [? x ...]
+  //   %dim0      = tf.StridedSlice(%shape, 0, 1, 1)  // get unknown dim value
+  //   %new_shape = tf.Pack(dim0, ...) { axis = 0 }   // [? x ...]
+  //   %reshape   = tf.Reshape(%arg, %new_shape)      // this is no-op
+  //
+  // Where `...` are some statically known dimensions. In this case reshape is
+  // a no-op and can be replaced by %arg (assuming `...` are equal).
+
+  // Test Rank 2
+  %3 = "tf.Shape"(%arg0) : (tensor<?x1xf32>) -> tensor<2xi32>
+  %4 = "tf.StridedSlice"(%3, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+  %5 = "tf.Pack"(%4, %d1) {axis = 0 : i64} : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
+  %6 = "tf.Reshape"(%arg0, %5) : (tensor<?x1xf32>, tensor<2xi32>) -> tensor<?x1xf32>
+
+  // Test Rank 3.
+
+  %7 = "tf.Shape"(%arg1) : (tensor<?x1x2xf32>) -> tensor<3xi32>
+  %8 = "tf.StridedSlice"(%7, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<3xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+  %9 = "tf.Pack"(%8, %d1, %d2) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+  %10 = "tf.Reshape"(%arg1, %9) : (tensor<?x1x2xf32>, tensor<3xi32>) -> tensor<?x1x2xf32>
+
+  // Shape was taken from the op that is not reshaped in the end:
+  //   Reshape(%arg1) vs Shape(%arg0)
+  %11 = "tf.StridedSlice"(%3, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+  %12 = "tf.Pack"(%11, %d1, %d2) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+  // CHECK: %[[RESHAPE0:.*]] = "tf.Reshape"
+  %13 = "tf.Reshape"(%arg1, %12) : (tensor<?x1x2xf32>, tensor<3xi32>) -> tensor<?x1x2xf32>
+
+  // Packed dimensions have different order from the reshape operand:
+  //   [?, 1, 2] vs [?, 2, 1]
+  %14 = "tf.StridedSlice"(%7, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<3xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+  %15 = "tf.Pack"(%14, %d2, %d1) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+  // CHECK: %[[RESHAPE1:.*]] = "tf.Reshape"
+  %16 = "tf.Reshape"(%arg1, %15) : (tensor<?x1x2xf32>, tensor<3xi32>) -> tensor<?x2x1xf32>
+
+  // StridedSlice takes second dimension from the shape:
+  //   begin = [1], end = [2], stride = [1]
+  %17 = "tf.StridedSlice"(%7, %1, %2, %1) {shrink_axis_mask = 1 : i64} : (tensor<3xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+  %18 = "tf.Pack"(%17, %d1, %d2) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+  // CHECK: %[[RESHAPE2:.*]] = "tf.Reshape"
+  %19 = "tf.Reshape"(%arg1, %18) : (tensor<?x1x2xf32>, tensor<3xi32>) -> tensor<?x1x2xf32>
+
+  // Packed dimensions have higher rank than the reshape operand:
+  //   [?, 1] vs [?, 1, 1]
+  %20 = "tf.StridedSlice"(%3, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+  %21 = "tf.Pack"(%20, %d1, %d1) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+  // CHECK: %[[RESHAPE3:.*]] = "tf.Reshape"
+  %22 = "tf.Reshape"(%arg0, %21) : (tensor<?x1xf32>, tensor<3xi32>) -> tensor<?x1x1xf32>
+
+  // CHECK: return %arg0, %arg1, %[[RESHAPE0]], %[[RESHAPE1]], %[[RESHAPE2]], %[[RESHAPE3]]
+  return %6, %10, %13, %16, %19, %22 : tensor<?x1xf32>, tensor<?x1x2xf32>, tensor<?x1x2xf32>, tensor<?x2x1xf32>, tensor<?x1x2xf32>, tensor<?x1x1xf32>
+}
+
 // CHECK-LABEL: testSelectScalarPred
 func @testSelectScalarPred(%arg0: tensor<i1>, %arg1: tensor<4x2xf16>, %arg2: tensor<4x2xf16>) -> tensor<4x2xf16> {
   // CHECK-NEXT: "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<4x2xf16>, tensor<4x2xf16>) -> tensor<4x2xf16>

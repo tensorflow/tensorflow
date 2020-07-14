@@ -190,6 +190,8 @@ class PythonStringStateSaveable(PythonStateSaveable):
 class CheckpointPosition(object):
   """Indicates a position within a `_CheckpointRestoreCoordinator`."""
 
+  __slots__ = ["_checkpoint", "_proto_id"]
+
   def __init__(self, checkpoint, proto_id):
     """Specify an object within a checkpoint.
 
@@ -1029,13 +1031,16 @@ class Trackable(object):
     del serialization_cache
     return dict()
 
-  def _map_resources(self):
+  def _map_resources(self, save_options):  # pylint: disable=unused-argument
     """Makes new resource handle ops corresponding to existing resource tensors.
 
     Internal sub-classes can override this to inform model saving how to add new
     resource handle ops to the main GraphDef of a SavedModel (TF 1.x style
     graph), which allows session based APIs (e.g, C++ loader API) to interact
     with resources owned by this object.
+
+    Args:
+      save_options: A tf.saved_model.SaveOptions instance.
 
     Returns:
       A tuple of (object_map, resource_map):

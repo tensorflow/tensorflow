@@ -167,15 +167,13 @@ ConvPowerVR::ConvPowerVR(ConvPowerVR&& operation)
     : GPUOperation(std::move(operation)),
       stride_padding_(operation.stride_padding_),
       kernel_dilation_(operation.kernel_dilation_),
-      conv_params_(operation.conv_params_),
-      kernel_(std::move(operation.kernel_)) {}
+      conv_params_(operation.conv_params_) {}
 
 ConvPowerVR& ConvPowerVR::operator=(ConvPowerVR&& operation) {
   if (this != &operation) {
     std::swap(stride_padding_, operation.stride_padding_);
     std::swap(kernel_dilation_, operation.kernel_dilation_);
     std::swap(conv_params_, operation.conv_params_);
-    kernel_ = std::move(operation.kernel_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

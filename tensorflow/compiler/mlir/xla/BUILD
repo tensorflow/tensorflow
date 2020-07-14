@@ -345,15 +345,17 @@ gentbl(
     tbl_outs = [("", "operator_writers.inc")],
     tblgen = ":operator_writer_gen",
     td_file = "//tensorflow/compiler/mlir/hlo:include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td",
-    # TODO(aminim): Figure out why td_relative_includes doesn't work here.
-    td_includes = [
-        "tensorflow/compiler/mlir/hlo/include",
+    td_relative_includes = [
+        "../hlo/include",
     ],
     td_srcs = [
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
         "//tensorflow/compiler/mlir/hlo:hlo_ops_td_files",
+        # Any file in this directory is OK: this will force the current path to exist so
+        # that the relative path can be resolved.
+        "BUILD",
     ],
 )
 

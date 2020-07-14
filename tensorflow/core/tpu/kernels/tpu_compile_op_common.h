@@ -19,14 +19,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
+#include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
@@ -38,33 +41,39 @@ class TpuCompileOpKernelCommon {
   TpuCompileOpKernelCommon(const std::string& mlir_module,
                            const tpu::TPUCompileMetadataProto metadata,
                            int num_computations, bool return_hlo_protos,
-                           bool unload_cache_on_session_close,
-                           bool has_persistent_cache)
+                           bool unload_cache_on_session_close)
       : metadata_(metadata),
         use_mlir_(true),
         mlir_module_(mlir_module),
         num_computations_(num_computations),
         return_hlo_protos_(return_hlo_protos),
         unload_cache_entry_on_session_close_(unload_cache_on_session_close),
-        has_persistent_cache_(has_persistent_cache) {}
+        persistent_cache_(nullptr) {}
 
-  TpuCompileOpKernelCommon(const NameAttrList& function,
-                           const tpu::TPUCompileMetadataProto metadata,
-                           int num_computations, bool return_hlo_protos,
-                           bool unload_cache_on_session_close,
-                           bool has_persistent_cache)
+  TpuCompileOpKernelCommon(
+      const NameAttrList& function, const tpu::TPUCompileMetadataProto metadata,
+      int num_computations, bool return_hlo_protos,
+      bool unload_cache_on_session_close,
+      std::unique_ptr<TpuPersistentCompilationCacheInterface> persistent_cache)
       : metadata_(metadata),
         use_mlir_(false),
         function_(function),
         num_computations_(num_computations),
         return_hlo_protos_(return_hlo_protos),
         unload_cache_entry_on_session_close_(unload_cache_on_session_close),
-        has_persistent_cache_(has_persistent_cache) {}
+        persistent_cache_(std::move(persistent_cache)) {}
 
   virtual ~TpuCompileOpKernelCommon() = default;
 
   void Compute(OpKernelContext* ctx);
-  virtual Status ComputeInternal(OpKernelContext* ctx) = 0;
+
+  // Lowers Mlir or TF Function computation into HLO IR and using XLA compiler
+  // compiles into TPU programs ready for execution.
+  virtual Status Compile(
+      const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+      const XLA_TpuMeshState* mesh_state,
+      const std::vector<TensorShape>& arg_shapes,
+      TpuProgramGroupInterface* tpu_program_group) = 0;
 
   // Computes shapes for each argument. Uses both the static shape from the
   // metadata, and the dynamic shapes where the static shape is not
@@ -83,6 +92,32 @@ class TpuCompileOpKernelCommon {
       FunctionLibraryRuntime* flr, GraphShapeInfo* shape_info);
 
  protected:
+  Status ComputeInternal(OpKernelContext* ctx);
+
+  // Compile TPU program locally and populate the host compilation cache.
+  Status CompileLocallyAndFillHostCache(
+      FunctionLibraryRuntime* flib_runtime,
+      const SessionMetadata* session_metadata,
+      const TpuMeshStateInterface* mesh_state,
+      const std::vector<TensorShape>& dynamic_shapes,
+      const OpInputList& guaranteed_constants,
+      const tpu::TpuCompilationCacheKey& key,
+      TpuProgramGroupInterface* tpu_program_group);
+
+  // Lookup from persistent compilation cache and populate both host cache and
+  // persistent cache.
+  virtual Status LookupPersistentCompilationCacheAndFillCaches(
+      FunctionLibraryRuntime* flib_runtime,
+      const SessionMetadata* session_metadata,
+      const TpuMeshStateInterface* mesh_state,
+      const std::vector<TensorShape>& dynamic_shapes,
+      const OpInputList& guaranteed_constants,
+      TpuPersistentCompilationCacheInterface* persistent_cache,
+      const tpu::TpuCompilationCacheKey& key,
+      TpuProgramGroupInterface* tpu_program_group) {
+    LOG(FATAL) << "Lookup from a persistent cache is NOT supported.";
+  }
+
   // Sleeps for `kSleepSeconds` seconds to give time for TPUCompileOp to finish
   // before terminating peacefully.
   static void ExitCountdown(OpKernelContext* ctx,
@@ -119,7 +154,8 @@ class TpuCompileOpKernelCommon {
       const FunctionLibraryDefinition& flib_def, int graph_def_version,
       const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
       const std::vector<TensorShape>& arg_shapes,
-      const OpInputList& guaranteed_constants, const NameAttrList& function,
+      const GuaranteedConsts& guaranteed_constants,
+      const NameAttrList& function,
       std::function<Status(ResourceMgr*)> populate_resource_manager_fn,
       xla::CompileOnlyClient* client,
       std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
@@ -142,7 +178,7 @@ class TpuCompileOpKernelCommon {
   // computation.
   Status BuildComputationArgumentDescriptions(
       const std::vector<TensorShape>& arg_shapes,
-      const OpInputList& guaranteed_constants, const XlaCompiler& compiler,
+      const GuaranteedConsts& guaranteed_constants, const XlaCompiler& compiler,
       std::vector<XlaCompiler::Argument>* args,
       std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
       std::vector<std::vector<xla::Shape>>* per_core_arg_shapes);
@@ -172,8 +208,8 @@ class TpuCompileOpKernelCommon {
   // the lifetime of the session.
   bool unload_cache_entry_on_session_close_;
 
-  // True if persistent caching is enabled.
-  bool has_persistent_cache_;
+  // Persistent cache for compiled TPU program for inference.
+  std::unique_ptr<TpuPersistentCompilationCacheInterface> persistent_cache_;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileOpKernelCommon);

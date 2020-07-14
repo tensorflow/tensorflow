@@ -63,6 +63,8 @@ _api_usage_gauge = monitoring.BoolGauge(
 class _PartitionInfo(object):
   """Holds partition info used by initializer functions."""
 
+  __slots__ = ["_full_shape", "_var_offset"]
+
   def __init__(self, full_shape, var_offset):
     """Constructor.
 
@@ -278,6 +280,8 @@ class _VariableStore(object):
     vars: a dictionary with string names (same as passed in GetVar) as keys and
       the corresponding TensorFlow Variables as values.
   """
+
+  __slots__ = ["_vars", "_partitioned_vars", "_store_eager_variables"]
 
   def __init__(self):
     """Create a variable store."""

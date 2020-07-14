@@ -98,16 +98,12 @@ std::string GetConverterToConvWeightsCode(
 ConverterToConvWeights::ConverterToConvWeights(
     ConverterToConvWeights&& operation)
     : GPUOperation(std::move(operation)),
-      conv_weights_desc_(operation.conv_weights_desc_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      conv_weights_desc_(operation.conv_weights_desc_) {}
 
 ConverterToConvWeights& ConverterToConvWeights::operator=(
     ConverterToConvWeights&& operation) {
   if (this != &operation) {
     conv_weights_desc_ = operation.conv_weights_desc_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

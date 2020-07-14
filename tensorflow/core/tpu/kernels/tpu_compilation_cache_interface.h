@@ -148,7 +148,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // DiscardEntryRef on every element of entries.
   void DiscardEntryRefs(gtl::ArraySlice<CompiledSubgraph*> entries);
 
-  string DebugString() const override { return "TpuCompilationCacheBase"; }
+  std::string DebugString() const override { return "TpuCompilationCacheBase"; }
 
  protected:
   std::string ConstructCompilationCacheKey(const TpuCompilationCacheKey& key) {

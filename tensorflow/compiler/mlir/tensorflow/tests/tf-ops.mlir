@@ -1055,7 +1055,7 @@ func @testIfRegionThenConsumingElse(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> 
 // The regions for IfRegion themselves cannot have any arguments
 func @testInvalidIfRegionThenArg(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   %neg = "tf.Neg"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
-  // expected-error @+1 {{then region cannot have any arguments}}
+  // expected-error @+1 {{'tf.IfRegion' op region #0 should have no arguments}}
   %0 = "tf.IfRegion"(%arg0) ({
      ^bb(%arg_bb: tensor<2xf32>):
      %t = "tf.Abs"(%arg_bb) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1072,7 +1072,7 @@ func @testInvalidIfRegionThenArg(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> ten
 
 func @testInvalidIfRegionElseArg(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   %neg = "tf.Neg"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
-  // expected-error @+1 {{else region cannot have any arguments}}
+  // expected-error @+1 {{'tf.IfRegion' op region #1 should have no arguments}}
   %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%neg) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()

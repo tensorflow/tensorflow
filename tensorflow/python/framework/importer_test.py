@@ -945,7 +945,7 @@ class ImportGraphDefTest(test.TestCase):
 
     with self.cached_session():
       pack, = importer.import_graph_def(gdef, return_elements=["pack"])
-      self.assertAllEqual(pack.outputs[0].eval(), [5.0, 5.0])
+      self.assertAllEqual(pack.outputs[0], [5.0, 5.0])
 
   def testWithDevice(self):
     with ops.Graph().as_default() as g:

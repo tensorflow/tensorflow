@@ -648,7 +648,7 @@ tf_py_test(
 
 tf_py_test(
     name = "shuffle_test",
-    size = "small",
+    size = "medium",
     srcs = ["shuffle_test.py"],
     deps = [
         ":test_base",

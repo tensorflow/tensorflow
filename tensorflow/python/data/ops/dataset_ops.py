@@ -3770,17 +3770,19 @@ class BatchDataset(UnaryDataset):
 class _NumpyIterator(object):
   """Iterator over a dataset with elements converted to numpy."""
 
+  __slots__ = ["_iterator"]
+
   def __init__(self, dataset):
     self._iterator = iter(dataset)
 
   def __iter__(self):
     return self
 
-  def next(self):
+  def __next__(self):
     return nest.map_structure(lambda x: x.numpy(), next(self._iterator))
 
-  def __next__(self):
-    return self.next()
+  def next(self):
+    return self.__next__()
 
 
 class _VariantTracker(tracking.CapturableResource):

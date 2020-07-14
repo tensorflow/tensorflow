@@ -250,6 +250,8 @@ def get_update_replica_id():
 class UpdateContext(object):
   """Context manager when you are in `update()` or `update_non_slot()`."""
 
+  __slots__ = ["_replica_id", "_old_replica_id"]
+
   def __init__(self, replica_id):
     self._replica_id = replica_id
     self._old_replica_id = None
@@ -454,6 +456,10 @@ class InputContext(object):
   source etc).
   """
 
+  __slots__ = [
+      "_num_input_pipelines", "_input_pipeline_id", "_num_replicas_in_sync"
+  ]
+
   def __init__(self,
                num_input_pipelines=1,
                input_pipeline_id=0,
@@ -544,6 +550,8 @@ class ValueContext(object):
   (2, 2)
 
   """
+
+  __slots__ = ["_replica_id_in_sync_group", "_num_replicas_in_sync"]
 
   def __init__(self,
                replica_id_in_sync_group=0,
@@ -1213,12 +1221,6 @@ class StrategyBase(object):
           fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
-  # TODO(b/151224785): Remove deprecated alias.
-  @doc_controls.do_not_doc_inheritable  # DEPRECATED
-  @deprecation.deprecated(None, "renamed to `run`")
-  def experimental_run_v2(self, fn, args=(), kwargs=None, options=None):
-    return self.run(fn, args=args, kwargs=kwargs, options=options)
-
   def reduce(self, reduce_op, value, axis):
     """Reduce `value` across replicas and return result on current device.
 
@@ -1313,7 +1315,7 @@ class StrategyBase(object):
       reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
         be combined. Allows using string representation of the enum such as
         "SUM", "MEAN".
-      value: a `tf.distribute.DistributeValues` instance, e.g. returned by
+      value: a `tf.distribute.DistributedValues` instance, e.g. returned by
         `Strategy.run`, to be combined into a single tensor. It can also be a
         regular tensor when used with `OneDeviceStrategy` or default strategy.
       axis: specifies the dimension to reduce along within each
@@ -3008,7 +3010,23 @@ def _batch_reduce_destination(x):
 _creating_default_strategy_singleton = False
 
 
-class _DefaultDistributionStrategy(StrategyV1):
+class _DefaultDistributionStrategyV1(StrategyV1):
+  """Default `tf.distribute.Strategy` if none is explicitly selected."""
+
+  def __init__(self):
+    if not _creating_default_strategy_singleton:
+      raise RuntimeError("Should only create a single instance of "
+                         "_DefaultDistributionStrategy")
+    super(_DefaultDistributionStrategyV1,
+          self).__init__(_DefaultDistributionExtended(self))
+
+  def __deepcopy__(self, memo):
+    del memo
+    raise RuntimeError("Should only create a single instance of "
+                       "_DefaultDistributionStrategy")
+
+
+class _DefaultDistributionStrategy(Strategy):
   """Default `tf.distribute.Strategy` if none is explicitly selected."""
 
   def __init__(self):
@@ -3026,6 +3044,8 @@ class _DefaultDistributionStrategy(StrategyV1):
 
 class _DefaultDistributionContext(object):
   """Context manager setting the default `tf.distribute.Strategy`."""
+
+  __slots__ = ["_var_creator_scope", "_strategy", "_nested_count"]
 
   def __init__(self, strategy):
 

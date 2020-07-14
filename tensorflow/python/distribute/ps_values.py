@@ -166,11 +166,11 @@ class AggregatingVariable(variables_lib.Variable, core.Tensor):
   def _gather_saveables_for_checkpoint(self):
     return {trackable.VARIABLE_VALUE_KEY: self._v}
 
-  def _map_resources(self):
+  def _map_resources(self, save_options):
     """For implementing `Trackable`."""
     # By delegating this method to the wrapped variable, SavedModel with
     # AggregatingVariable are identical to SavedModel with normal variables.
-    obj_map, resource_map = self._v._map_resources()  # pylint:disable=protected-access
+    obj_map, resource_map = self._v._map_resources(save_options)  # pylint:disable=protected-access
     obj_map[self] = obj_map[self._v]
     return obj_map, resource_map
 

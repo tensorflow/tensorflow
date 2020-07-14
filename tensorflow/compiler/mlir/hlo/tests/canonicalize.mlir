@@ -432,6 +432,33 @@ func @dynamic_iota_broadcast_second(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> 
   return %0 : tensor<5x?xi32>
 }
 
+// CHECK-LABEL: @dynamic_iota_constant
+func @dynamic_iota_constant(%arg0 : tensor<2xindex>) -> tensor<1x?xi32> {
+  // CHECK: [[IOTA:%.+]] = mhlo.constant dense<0> : tensor<1xi32>
+  // CHECK: [[BROADCAST:%.+]] = "mhlo.dynamic_broadcast_in_dim"([[IOTA]], %arg0) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xi32>, tensor<2xindex>) -> tensor<1x?xi32>
+  %0 = "mhlo.dynamic_iota"(%arg0) {iota_dimension = 0 : i64} : (tensor<2xindex>) -> tensor<1x?xi32>
+
+  // CHECK: return [[BROADCAST]]
+  return %0 : tensor<1x?xi32>
+}
+
+// CHECK-LABEL: @iota_constant
+func @iota_constant() -> tensor<1xi32> {
+  // CHECK: [[CONST:%.+]] = mhlo.constant dense<0> : tensor<1xi32>
+  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<1xi32>
+
+  // CHECK: return [[CONST]] : tensor<1xi32>
+  return %0 : tensor<1xi32>
+}
+
+// CHECK-LABEL: @iota_constant_multi
+func @iota_constant_multi() -> tensor<1x4xi32> {
+  // CHECK: [[CONST:%.+]] = mhlo.constant dense<0> : tensor<1x4xi32>
+  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<1x4xi32>
+
+  // CHECK: return [[CONST]] : tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+}
 
 // CHECK-LABEL: @iota_not_lowered_to_constant
 func @iota_not_lowered_to_constant() -> tensor<4xi32> {

@@ -48,9 +48,6 @@ class ConcatZ : public GPUOperation {
   int3 GetGridSize() const;
 
   std::vector<int> channels_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 ConcatZ CreateConcatZ(const OperationDef& definition,

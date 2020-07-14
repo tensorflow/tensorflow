@@ -171,7 +171,6 @@ std::string GetWinograd4x4To36Code(
     }
     c += "  }\n";
   }
-  const LinkingContext context{"r0", "DST_X", "DST_Y", "DST_Z"};
   c += "  {\n";
   c += "    FLT4 r0 = TO_FLT4(I0 + Bt[2] * I2 + Bt[4] * I4);\n";
   c += "    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);\n";
@@ -326,16 +325,11 @@ std::string GetWinograd36To4x4Code(const OperationDef& op_def,
 }  // namespace
 
 Winograd4x4To36::Winograd4x4To36(Winograd4x4To36&& operation)
-    : GPUOperation(std::move(operation)),
-      padding_(operation.padding_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : GPUOperation(std::move(operation)), padding_(operation.padding_) {}
 
 Winograd4x4To36& Winograd4x4To36::operator=(Winograd4x4To36&& operation) {
   if (this != &operation) {
     std::swap(padding_, operation.padding_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -447,14 +441,10 @@ absl::Status CreateWinograd4x4To36(const CreationContext& creation_context,
 }
 
 Winograd36To4x4::Winograd36To4x4(Winograd36To4x4&& operation)
-    : GPUOperation(std::move(operation)),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : GPUOperation(std::move(operation)) {}
 
 Winograd36To4x4& Winograd36To4x4::operator=(Winograd36To4x4&& operation) {
   if (this != &operation) {
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

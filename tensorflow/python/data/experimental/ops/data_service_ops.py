@@ -365,7 +365,7 @@ def distribute(processing_mode,
       processed by tf.data workers. Currently, the only supported value is
       "parallel_epochs".
     service: A string indicating how to connect to the tf.data service. The
-      string should be in the format <protocol>://<address>, e.g.
+      string should be in the format protocol://address, e.g.
       grpc://localhost:5000.
     job_name: (Optional.) The name of the job. This argument makes it possible
       for multiple datasets to share the same job. The default behavior is that

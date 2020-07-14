@@ -226,8 +226,9 @@ DepthwiseConvolution::DepthwiseConvolution(
       stride_(attr.strides.w, attr.strides.h, 0, 0),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h, 0, 0),
       dilation_(attr.dilations.w, attr.dilations.h, 0, 0),
-      channel_multiplier_(attr.weights.shape.o),
-      work_group_size_(8, 8, 1) {}
+      channel_multiplier_(attr.weights.shape.o) {
+  work_group_size_ = int3(8, 8, 1);
+}
 
 DepthwiseConvolution::DepthwiseConvolution(
     const OperationDef& definition,
@@ -240,8 +241,9 @@ DepthwiseConvolution::DepthwiseConvolution(
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h,
                -attr.padding.prepended.d, 0),
       dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d, 0),
-      channel_multiplier_(attr.weights.shape.o),
-      work_group_size_(8, 8, 1) {}
+      channel_multiplier_(attr.weights.shape.o) {
+  work_group_size_ = int3(8, 8, 1);
+}
 
 DepthwiseConvolution::DepthwiseConvolution(DepthwiseConvolution&& operation)
     : GPUOperation(std::move(operation)),
@@ -250,9 +252,7 @@ DepthwiseConvolution::DepthwiseConvolution(DepthwiseConvolution&& operation)
       stride_(operation.stride_),
       padding_(operation.padding_),
       dilation_(operation.dilation_),
-      channel_multiplier_(operation.channel_multiplier_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      channel_multiplier_(operation.channel_multiplier_) {}
 
 DepthwiseConvolution& DepthwiseConvolution::operator=(
     DepthwiseConvolution&& operation) {
@@ -263,8 +263,6 @@ DepthwiseConvolution& DepthwiseConvolution::operator=(
     std::swap(padding_, operation.padding_);
     std::swap(dilation_, operation.dilation_);
     std::swap(channel_multiplier_, operation.channel_multiplier_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

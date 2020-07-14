@@ -51,6 +51,9 @@ constexpr std::array<const char*, 3> kOpsWithSeed = {
 
 constexpr char kSeedInputName[] = "seed";
 constexpr char kSeed2InputName[] = "seed2";
+constexpr char kComponent[] = "component";
+constexpr char kNumElements[] = "num_elements";
+constexpr char kNumComponents[] = "num_components";
 
 template <std::size_t SIZE>
 bool IsNodeOfType(const NodeDef& node,
@@ -425,6 +428,49 @@ Status HashGraph(const GraphDef& graph_def, uint64* hash) {
                                            graph_def.library());
   GraphHasher graph_hasher(&graph_def, sink, &flib_def);
   TF_RETURN_IF_ERROR(graph_hasher.ComputeHash(hash));
+  return Status::OK();
+}
+
+Status WriteElementsToCheckpoint(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements) {
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(key_prefix, kNumElements, elements.size()));
+  for (int i = 0; i < elements.size(); ++i) {
+    const std::vector<Tensor>& element = elements[i];
+    std::string element_prefix = absl::StrCat(key_prefix, "::", i);
+    TF_RETURN_IF_ERROR(
+        writer->WriteScalar(element_prefix, kNumComponents, element.size()));
+    for (int j = 0; j < elements[i].size(); ++j) {
+      TF_RETURN_IF_ERROR(writer->WriteTensor(
+          element_prefix, absl::StrCat(kComponent, "[", j, "]"), element[j]));
+    }
+  }
+  return Status::OK();
+}
+
+Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
+                                  StringPiece key_prefix,
+                                  std::vector<std::vector<Tensor>>* elements) {
+  int64 num_elements;
+  TF_RETURN_IF_ERROR(
+      reader->ReadScalar(key_prefix, kNumElements, &num_elements));
+  elements->reserve(num_elements);
+  for (int i = 0; i < num_elements; ++i) {
+    std::string element_prefix = absl::StrCat(key_prefix, "::", i);
+    int64 num_components;
+    TF_RETURN_IF_ERROR(
+        reader->ReadScalar(element_prefix, kNumComponents, &num_components));
+    elements->emplace_back();
+    std::vector<Tensor>& element = elements->at(i);
+    element.reserve(num_components);
+    for (int j = 0; j < num_components; ++j) {
+      element.emplace_back();
+      TF_RETURN_IF_ERROR(reader->ReadTensor(
+          element_prefix, absl::StrCat(kComponent, "[", j, "]"),
+          &element.back()));
+    }
+  }
   return Status::OK();
 }
 

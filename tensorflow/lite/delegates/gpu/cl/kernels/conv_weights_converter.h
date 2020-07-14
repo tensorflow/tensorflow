@@ -31,9 +31,7 @@ class ConverterToConvWeights : public GPUOperation {
  public:
   ConverterToConvWeights(const OperationDef& definition,
                          const ConvWeightsDescription& conv_weights_desc)
-      : GPUOperation(definition),
-        conv_weights_desc_(conv_weights_desc),
-        work_group_size_(8, 4, 1) {}
+      : GPUOperation(definition), conv_weights_desc_(conv_weights_desc) {}
   absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
 
@@ -50,8 +48,6 @@ class ConverterToConvWeights : public GPUOperation {
   int3 GetGridSize() const;
 
   ConvWeightsDescription conv_weights_desc_;
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 // We expect src BHWC tensor and we assume that B is O, H = H, W = W, C is I

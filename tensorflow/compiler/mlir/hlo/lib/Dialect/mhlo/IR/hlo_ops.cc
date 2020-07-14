@@ -248,6 +248,17 @@ void IotaOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
   results.insert<IotaBroadcast>(context);
 }
 
+OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
+  auto dimension = iota_dimension().getLimitedValue();
+  auto result_ty = getResult().getType().cast<ShapedType>();
+  if (result_ty.hasRank() && result_ty.getDimSize(dimension) == 1) {
+    Builder builder(getContext());
+    return builder.getZeroAttr(result_ty);
+  }
+
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // DynamicIotaOp
 //===----------------------------------------------------------------------===//

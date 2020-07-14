@@ -30,9 +30,13 @@ limitations under the License.
 namespace tflite {
 
 // Corresponding weak declaration found in lite/interpreter_builder.cc.
+#if !defined(_WIN32)
+// If weak symbol is not supported (Windows), it can use
+// TF_AcquireFlexDelegate() path instead.
 TfLiteDelegateUniquePtr AcquireFlexDelegate() {
   return tflite::FlexDelegate::Create();
 }
+#endif
 
 TfLiteDelegateUniquePtr FlexDelegate::Create(
     std::unique_ptr<FlexDelegate> base_delegate) {
@@ -140,6 +144,11 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
 // Exported C interface function which is used by AcquireFlexDelegate() at
 // interpreter_build.cc. To export the function name globally, the function name
 // must be matched with patterns in tf_version_script.lds
-extern "C" tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
-  return tflite::AcquireFlexDelegate();
+extern "C" {
+#if defined(_WIN32)
+__declspec(dllexport)
+#endif
+    tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
+  return tflite::FlexDelegate::Create();
 }
+}  // extern "C"

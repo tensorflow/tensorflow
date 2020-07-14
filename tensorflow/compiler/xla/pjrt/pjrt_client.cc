@@ -1383,7 +1383,7 @@ StatusOr<TupleHandle> MakeTupleHelper(
         local_device->compute_stream()->parent(), root_table_memory.cref()));
   }
 
-  ExecutionInput execution_input(on_device_shape);
+  ExecutionInput execution_input(on_device_shape, on_host_shape);
   ShapeTree<MaybeOwningDeviceMemory>::iterator input_iterator =
       execution_input.MutableBuffers()->begin();
   ShapeTree<MaybeOwningDeviceMemory>::iterator iterator_end =
@@ -1521,7 +1521,6 @@ StatusOr<ScopedShapedBuffer> PjRtExecutable::EnqueueExecution(
           << " mapped to device ordinal for execution: " << device_ordinal;
 
   absl::flat_hash_set<BufferSequencingEvent*> events;
-  std::vector<const Shape*> argument_host_shapes;
   std::vector<ExecutionInput> execution_inputs;
   device_buffers->reserve(argument_handles.size());
   const absl::flat_hash_set<int>& parameters_that_must_be_donated =
@@ -1570,24 +1569,22 @@ StatusOr<ScopedShapedBuffer> PjRtExecutable::EnqueueExecution(
   }
 
   LocalDeviceState* device_state = &client_->device_state(device_ordinal);
-  TupleHandle tuple_handle;
+  absl::optional<TupleHandle> tuple_handle;
   if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
     TF_ASSIGN_OR_RETURN(tuple_handle,
                         MakeTupleHelper(client_, device_state, argument_handles,
                                         *device_buffers, device_ordinal));
-    events.insert(tuple_handle.event.get());
-    execution_inputs.emplace_back(std::move(tuple_handle.execution_input));
-    argument_host_shapes.push_back(&tuple_handle.on_host_shape);
+    events.insert(tuple_handle->event.get());
+    execution_inputs.emplace_back(std::move(tuple_handle->execution_input));
   } else {
-    argument_host_shapes.reserve(argument_handles.size());
     execution_inputs.reserve(argument_handles.size());
     for (int i = 0; i < argument_handles.size(); ++i) {
       PjRtBuffer* handle = argument_handles[i];
-      argument_host_shapes.push_back(&handle->on_host_shape());
 
       const PjRtBuffer::ScopedHold& device_buffer = (*device_buffers)[i];
       // Make an ExecutionInput from the device buffer.
-      execution_inputs.emplace_back(handle->on_device_shape());
+      execution_inputs.emplace_back(handle->on_device_shape(),
+                                    handle->on_host_shape());
       ExecutionInput& execution_input = execution_inputs.back();
       ShapeTree<MaybeOwningDeviceMemory>::iterator input_iterator =
           execution_input.MutableBuffers()->begin();
@@ -1623,8 +1620,8 @@ StatusOr<ScopedShapedBuffer> PjRtExecutable::EnqueueExecution(
       device_state->compute_semaphore().ScopedAcquire(1));
 
   StatusOr<ExecutionOutput> result_buffer_or_status =
-      executables_[executable_idx]->RunAsync(
-          argument_host_shapes, std::move(execution_inputs), run_options);
+      executables_[executable_idx]->RunAsync(std::move(execution_inputs),
+                                             run_options);
 
   VLOG(1) << "Replica " << replica << " partition " << partition
           << " completed; ok=" << result_buffer_or_status.ok();

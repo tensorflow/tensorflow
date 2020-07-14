@@ -950,12 +950,12 @@ TfLiteStatus QuantizeWeightsInputOutput(
           !allow_float) {
         TF_LITE_REPORT_ERROR(
             error_reporter,
-            "Quantization to 16x8-bit not yet supported for op: %",
+            "Quantization to 16x8-bit not yet supported for op: '%s'.\n",
             EnumNameBuiltinOperator(op_code));
         return kTfLiteError;
       } else if (!property.quantizable && !allow_float) {
         TF_LITE_REPORT_ERROR(error_reporter,
-                             "Quantization not yet supported for op: %",
+                             "Quantization not yet supported for op: '%s'.\n",
                              EnumNameBuiltinOperator(op_code));
         return kTfLiteError;
       }
