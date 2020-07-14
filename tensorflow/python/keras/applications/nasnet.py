@@ -33,9 +33,9 @@ The below table describes the performance on ImageNet 2012:
 |   NASNet-A (6 @ 4032)  |   82.7 %  |   96.2 %  |      23.8 B    |    88.9    |
 --------------------------------------------------------------------------------
 
-Reference paper:
-  - [Learning Transferable Architectures for Scalable Image Recognition]
-    (https://arxiv.org/abs/1707.07012) (CVPR 2018)
+Reference:
+  - [Learning Transferable Architectures for Scalable Image Recognition](
+      https://arxiv.org/abs/1707.07012) (CVPR 2018)
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -335,6 +335,9 @@ def NASNetMobile(input_shape=None,
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+  
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.nasnet.preprocess_input` for an example.
 
   Arguments:
       input_shape: Optional shape tuple, only to be specified
@@ -403,6 +406,9 @@ def NASNetLarge(input_shape=None,
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+  
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.nasnet.preprocess_input` for an example.
 
   Arguments:
       input_shape: Optional shape tuple, only to be specified
