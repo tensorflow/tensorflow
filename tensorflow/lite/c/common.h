@@ -238,6 +238,11 @@ typedef struct TfLiteComplex64 {
   float re, im;  // real and imaginary parts, respectively.
 } TfLiteComplex64;
 
+// Double-precision complex data type compatible with the C99 definition.
+typedef struct TfLiteComplex128 {
+  double re, im;  // real and imaginary parts, respectively.
+} TfLiteComplex128;
+
 // Half precision data type compatible with the C99 definition.
 typedef struct TfLiteFloat16 {
   uint16_t data;
@@ -257,6 +262,7 @@ typedef enum {
   kTfLiteInt8 = 9,
   kTfLiteFloat16 = 10,
   kTfLiteFloat64 = 11,
+  kTfLiteComplex128 = 12,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
@@ -313,12 +319,14 @@ typedef union TfLitePtrUnion {
   int64_t* i64;
   float* f;
   TfLiteFloat16* f16;
+  double* f64;
   char* raw;
   const char* raw_const;
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
   TfLiteComplex64* c64;
+  TfLiteComplex128* c128;
   int8_t* int8;
   /* Only use this member. */
   void* data;
