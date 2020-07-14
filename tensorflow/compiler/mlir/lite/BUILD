@@ -622,7 +622,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
+        "//tensorflow/lite/delegates/flex:allowlisted_flex_ops_lib",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/versioning",
