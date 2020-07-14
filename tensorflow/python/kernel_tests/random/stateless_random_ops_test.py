@@ -22,6 +22,7 @@ import functools
 
 from absl.testing import parameterized
 import numpy as np
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -64,22 +65,33 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
       random_seed.set_random_seed(seed[0])
       with test_util.use_gpu():
         for stateless_op, stateful_op in cases:
+          if context.executing_eagerly():
+            # Call set_random_seed in order to clear kernel cache, to prevent
+            # kernel reusing for the stateful op
+            random_seed.set_random_seed(seed[0])
           stateful = stateful_op(seed=seed[1])
           pure = stateless_op(seed=preseed)
-          self.assertAllEqual(self.evaluate(stateful), self.evaluate(pure))
+          self.assertAllEqual(stateful, pure)
 
   def _test_determinism(self, cases):
     # Stateless values should be equal iff the seeds are equal (roughly)
     cases = tuple(cases)
-    with self.test_session(use_gpu=True):
+    seeds = [(x, y) for x in range(5) for y in range(5)] * 3
+    with self.test_session(use_gpu=True), test_util.use_gpu():
       for seed_type in [dtypes.int32, dtypes.int64]:
-        seed_t = array_ops.placeholder(seed_type, shape=[2])
-        seeds = [(x, y) for x in range(5) for y in range(5)] * 3
         for stateless_op, _ in cases:
-          pure = stateless_op(seed=seed_t)
-          values = [
-              (seed, pure.eval(feed_dict={seed_t: seed})) for seed in seeds
-          ]
+          if context.executing_eagerly():
+            values = [
+                (seed, stateless_op(seed=constant_op.constant(seed, seed_type)))
+                for seed in seeds]
+          else:
+            # Have this branch because the above branch is too slow in graph
+            # mode
+            seed_t = array_ops.placeholder(seed_type, shape=[2])
+            pure = stateless_op(seed=seed_t)
+            values = [
+                (seed, pure.eval(feed_dict={seed_t: seed})) for seed in seeds
+            ]
           for s0, v0 in values:
             for s1, v1 in values:
               self.assertEqual(s0 == s1, np.all(v0 == v1))
@@ -155,54 +167,44 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
               functools.partial(random_ops.random_poisson, shape=(10,), **kwds))
 
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
-  @test_util.run_deprecated_v1
   def testMatchFloat(self):
     self._test_match(self._float_cases())
 
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
-  @test_util.run_deprecated_v1
   def testMatchInt(self):
     self._test_match(self._int_cases())
 
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
-  @test_util.run_deprecated_v1
   def testMatchMultinomial(self):
     self._test_match(self._multinomial_cases())
 
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
-  @test_util.run_deprecated_v1
   def testMatchGamma(self):
     self._test_match(self._gamma_cases())
 
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
-  @test_util.run_deprecated_v1
   def testMatchPoisson(self):
     self._test_match(self._poisson_cases())
 
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
-  @test_util.run_deprecated_v1
   def testDeterminismFloat(self):
     self._test_determinism(
         self._float_cases(shape_dtypes=(dtypes.int32, dtypes.int64)))
 
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
-  @test_util.run_deprecated_v1
   def testDeterminismInt(self):
     self._test_determinism(
         self._int_cases(shape_dtypes=(dtypes.int32, dtypes.int64)))
 
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
-  @test_util.run_deprecated_v1
   def testDeterminismMultinomial(self):
     self._test_determinism(self._multinomial_cases())
 
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
-  @test_util.run_deprecated_v1
   def testDeterminismGamma(self):
     self._test_determinism(self._gamma_cases())
 
   @test_util.disable_tfrt('tensorflow::DirectSession::Run crashes. b/156187396')
-  @test_util.run_deprecated_v1
   def testDeterminismPoisson(self):
     self._test_determinism(self._poisson_cases())
 
