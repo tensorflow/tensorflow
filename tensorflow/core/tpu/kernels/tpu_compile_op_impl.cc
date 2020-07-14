@@ -24,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 Status TpuCompileOpKernelImpl::Compile(
-    const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+    const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
     const XLA_TpuMeshState* mesh_state,
     const std::vector<TensorShape>& arg_shapes,
     TpuProgramGroupInterface* tpu_program_group) {
