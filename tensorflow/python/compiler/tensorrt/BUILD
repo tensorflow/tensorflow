@@ -138,6 +138,7 @@ cuda_py_tests(
         "test/rank_two_test.py",
         "test/reshape_transpose_test.py",
         "test/topk_test.py",
+        "test/trt_engine_op_shape_test.py",
         "test/trt_mode_test.py",
         "test/unary_test.py",
         "test/vgg_block_nchw_test.py",
