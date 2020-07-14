@@ -38,6 +38,12 @@ releases:
     versioned:
         tag_specs:
             - "{_TAG_PREFIX}{ubuntu}{jupyter}"
+    onednn:
+        tag_specs:
+            - "{_TAG_PREFIX}{ubuntu-onednn}"
+            - "{_TAG_PREFIX}{ubuntu-onednn}{onednn-jupyter}"
+            - "{_TAG_PREFIX}{ubuntu-devel-onednn}"
+            - "{_TAG_PREFIX}{ubuntu-devel-onednn}{onednn-jupyter}"
 
     # Dockerfiles stored in the TF repo; not pushed anywhere
     dockerfiles:
@@ -50,6 +56,10 @@ releases:
             - "{ubuntu-devel-ppc64le}{jupyter}"
             - "{ubuntu-horovod}{jupyter}"
             - "{ubuntu-devel-horovod}{jupyter}"
+            - "{ubuntu-onednn}"
+            - "{ubuntu-onednn}{onednn-jupyter}"
+            - "{ubuntu-devel-onednn}"
+            - "{ubuntu-devel-onednn}{onednn-jupyter}"
             - "{ubuntu-devel-arm64v8}{jupyter}"
 
 slice_sets:
@@ -59,6 +69,12 @@ slice_sets:
         - add_to_name: "-jupyter"
           partials:
               - jupyter
+
+    onednn-jupyter:
+        - add_to_name: ""
+        - add_to_name: "-jupyter"
+          partials:
+              - onednn/ubuntu/jupyter
 
     ubuntu:
         - add_to_name: ""
@@ -160,6 +176,100 @@ slice_sets:
           args:
               - CHECKOUT_TF_SRC=1
               - CHECKOUT_HOROVOD_SRC=1
+
+
+    ubuntu-onednn:
+        - add_to_name: "-16.04-onednn"
+          dockerfile_exclusive_name: "ubuntu-16.04-onednn"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/ubuntu/version
+              - onednn/ubuntu/cpu
+              - onednn/ubuntu/python
+              - tensorflow
+              - shell
+          tests:
+              - import-onednn.sh
+          args:
+              - TF_PACKAGE=intel-tensorflow
+              - UBUNTU_VERSION=16.04
+        - add_to_name: "-18.04-onednn"
+          dockerfile_exclusive_name: "ubuntu-18.04-onednn"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/ubuntu/version
+              - onednn/ubuntu/cpu
+              - onednn/ubuntu/python
+              - tensorflow
+              - shell
+          tests:
+              - import-onednn.sh
+          args:
+              - TF_PACKAGE=intel-tensorflow
+              - UBUNTU_VERSION=18.04
+        - add_to_name: "-20.04-onednn"
+          dockerfile_exclusive_name: "ubuntu-20.04-onednn"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/ubuntu/version
+              - onednn/ubuntu/cpu
+              - onednn/ubuntu/python3
+              - tensorflow
+              - shell
+          tests:
+              - import-onednn.sh
+          args:
+              - TF_PACKAGE=intel-tensorflow
+              - UBUNTU_VERSION=20.04
+              - PYTHON=python3.7
+
+    ubuntu-devel-onednn:
+        - add_to_name: "-16.04-devel-onednn"
+          dockerfile_exclusive_name: "ubuntu-16.04-devel-onednn"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/ubuntu/version
+              - onednn/ubuntu/devel
+              - onednn/ubuntu/python
+              - onednn/ubuntu/bazel
+              - shell
+          tests:
+              - ""
+          args:
+              - UBUNTU_VERSION=16.04
+              - CHECKOUT_TF_SRC=1
+              - TF_BRANCH=master
+        - add_to_name: "-18.04-devel-onednn"
+          dockerfile_exclusive_name: "ubuntu-18.04-devel-onednn"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/ubuntu/version
+              - onednn/ubuntu/devel
+              - onednn/ubuntu/python
+              - onednn/ubuntu/bazel
+              - shell
+          tests:
+              - ""
+          args:
+              - UBUNTU_VERSION=18.04
+              - CHECKOUT_TF_SRC=1
+              - TF_BRANCH=master
+        - add_to_name: "-20.04-devel-onednn"
+          dockerfile_exclusive_name: "ubuntu-20.04-devel-onednn"
+          dockerfile_subdirectory: "onednn"
+          partials:
+              - onednn/ubuntu/version
+              - onednn/ubuntu/devel
+              - onednn/ubuntu/python3
+              - onednn/ubuntu/bazel
+              - shell
+          tests:
+              - ""
+          args:
+              - UBUNTU_VERSION=20.04
+              - PYTHON=python3.7
+              - CHECKOUT_TF_SRC=1
+              - TF_BRANCH=master
 
     ubuntu-ppc64le:
         - add_to_name: "-ppc64le"
