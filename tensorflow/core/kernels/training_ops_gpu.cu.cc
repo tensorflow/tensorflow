@@ -208,6 +208,19 @@ __global__ __launch_bounds__(1024) void ApplyAdagradV2Kernel(
 }
 
 template <typename T>
+__global__ __launch_bounds__(1024) void ApplyProximalAdagradKernel(
+    GpuLaunchConfig cfg, T* var, T* accum, const T* lr, const T* l1,
+    const T* l2, const T* grad) {
+  GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
+    accum[i] += grad[i] * grad[i];
+    T prox_var = var[i] - grad[i] * lr[0];
+    var[i] -= (prox_var < T(0.f) ? -T(1.f) : T(1.f)) *
+              max(fabs(prox_var) - lr[0] * max(l1[0], T(0.f)), T(0.f)) /
+              (T(1.f) + l2[0] * lr[0]);
+  }
+}
+
+template <typename T>
 __global__ __launch_bounds__(1024) void ApplyAdadeltaKernel(
     GpuLaunchConfig cfg, T* var, T* accum, T* accum_update, const T* plr,
     const T* prho, const T* peps, const T* grad) {
@@ -326,6 +339,43 @@ struct ApplyAdagradV2<GPUDevice, T> {
 #endif
   }
 };
+
+template <typename T>
+struct ApplyProximalAdagrad<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstFlat grad) {
+#if TENSORFLOW_USE_ROCM
+    wrap_kernel_call(ApplyProximalAdagradKernel<T>, d, var, accum, lr, l1, l2,
+                     grad);
+#else
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+    // Fobos update per paper with Adagrad learning rate.
+    accum.device(d) += grad.square();
+    // Adagrad learning rate.
+    // The following is the GPU equivalent of the CPU version:
+    // auto learning_rate = accum.constant(lr()) * accum.rsqrt();
+    auto lr_bcast = lr.reshape(single).broadcast(bcast);
+    auto l1_bcast = l1.reshape(single).broadcast(bcast);
+    auto l2_bcast = l2.reshape(single).broadcast(bcast);
+    auto learning_rate = lr_bcast * accum.rsqrt();
+    auto prox_var = var;
+    // compute v = w - lr * grad.
+    prox_var.device(d) -= grad * learning_rate;
+    // compute sign(v) * max(|v| - lr * max(l1, 0), 0)
+    var.device(d) = prox_var.sign() *
+                    (prox_var.abs() - learning_rate * l1_bcast.cwiseMax(T(0.f)))
+                        .cwiseMax(T(0.f)) /
+                    (var.constant(T(1.f)) + l2_bcast * learning_rate);
+#endif
+  }
+};
+
 template <typename T>
 struct ApplyAdadelta<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
@@ -810,6 +860,10 @@ template struct functor::ApplyAdagradV2<GPUDevice, double>;
 template struct functor::ApplyAdagradV2<GPUDevice, complex64>;
 template struct functor::ApplyAdagradV2<GPUDevice, complex128>;
 #endif
+
+template struct functor::ApplyProximalAdagrad<GPUDevice, Eigen::half>;
+template struct functor::ApplyProximalAdagrad<GPUDevice, float>;
+template struct functor::ApplyProximalAdagrad<GPUDevice, double>;
 
 template struct functor::ApplyAdadelta<GPUDevice, Eigen::half>;
 template struct functor::ApplyAdadelta<GPUDevice, float>;

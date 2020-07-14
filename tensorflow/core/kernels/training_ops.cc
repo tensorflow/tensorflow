@@ -1459,25 +1459,19 @@ class ApplyProximalAdagradOp : public OpKernel {
                                 var.shape().DebugString(), " ",
                                 accum.shape().DebugString()));
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(lr.shape()) &&
-                    lr.scalar<T>()() > static_cast<T>(0),
-                errors::InvalidArgument("lr is not a positive scalar: ",
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
+                errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(3);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(l1.shape()) &&
-                    l1.scalar<T>()() >= static_cast<T>(0),
-                errors::InvalidArgument("l1 regularization strength is not a "
-                                        "non-negative scalar: ",
-                                        l1.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(l1.shape()),
+        errors::InvalidArgument("l1 regularization strength is not a scalar: ",
+                                l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(4);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(l2.shape()) &&
-                    l2.scalar<T>()() >= static_cast<T>(0),
-                errors::InvalidArgument("l2 regularization strength is not a "
-                                        "non-negative scalar: ",
-                                        l2.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(l2.shape()),
+        errors::InvalidArgument("l2 regularization strength is not a scalar: ",
+                                l2.shape().DebugString()));
     const Tensor& grad = ctx->input(5);
     OP_REQUIRES(
         ctx, var.shape().IsSameSize(grad.shape()),
@@ -1510,6 +1504,29 @@ class ApplyProximalAdagradOp : public OpKernel {
 
 REGISTER_KERNELS(CPU, float);
 REGISTER_KERNELS(CPU, double);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T)                                                   \
+  template <>                                                                 \
+  void ApplyProximalAdagrad<GPUDevice, T>::operator()(                        \
+      const GPUDevice& d, typename TTypes<T>::Flat var,                       \
+      typename TTypes<T>::Flat accum, typename TTypes<T>::ConstScalar lr,     \
+      typename TTypes<T>::ConstScalar l1, typename TTypes<T>::ConstScalar l2, \
+      typename TTypes<T>::ConstFlat grad);                                    \
+  extern template struct ApplyProximalAdagrad<GPUDevice, T>;
+DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half);
+REGISTER_KERNELS(GPU, float);
+REGISTER_KERNELS(GPU, double);
+#endif
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
 namespace {
