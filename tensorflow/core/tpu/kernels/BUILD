@@ -508,3 +508,29 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
+
+cc_library(
+    name = "tpu_compile_op_impl",
+    srcs = ["tpu_compile_op_impl.cc"],
+    hdrs = ["tpu_compile_op_impl.h"],
+    deps = [
+        "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/tpu/kernels:tpu_compilation_cache_key",
+        "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_compile_op_common",
+        "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "//tensorflow/core/tpu/kernels:tpu_compile_proto_cc",
+        "//tensorflow/core/tpu/kernels:tpu_mesh_state_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_program_group",
+        "//tensorflow/core/tpu/kernels:tpu_program_group_interface",
+        "//tensorflow/core/tpu/kernels:tpu_util",
+        "//tensorflow/stream_executor/tpu:tpu_executor",
+        "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "@com_google_absl//absl/types:variant",
+    ],
+    alwayslink = 1,
+)
