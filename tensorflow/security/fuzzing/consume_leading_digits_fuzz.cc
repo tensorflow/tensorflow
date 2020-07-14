@@ -18,21 +18,26 @@ limitations under the License.
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
+#include <fuzzer/FuzzedDataProvider.h>
+
 // This is a fuzzer for tensorflow::str_util::ConsumeLeadingDigits
 
 namespace {
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  uint8_t *byte_data = const_cast<uint8_t *>(data);
-  char *char_data = reinterpret_cast<char *>(byte_data);
+  FuzzedDataProvider fuzzed_data(data, size);
 
-  tensorflow::StringPiece sp(char_data, size);
-  tensorflow::uint64 val;
+  while (fuzzed_data.remaining_bytes() > 0) {
+    std::string s = fuzzed_data.ConsumeRandomLengthString(5);
+    tensorflow::StringPiece sp(s);
+    tensorflow::uint64 val;
 
-  const bool leading_digits =
-      tensorflow::str_util::ConsumeLeadingDigits(&sp, &val);
-  if (leading_digits) {
-    assert(val >= 0);
+    const bool leading_digits = tensorflow::str_util::ConsumeLeadingDigits(&sp, &val);
+    const char lead_char_consume_digits = *(sp.data());
+    if (leading_digits) {
+      assert(lead_char_consume_digits < '0' && lead_char_consume_digits > '9');
+      assert(val >= 0);
+    }
   }
 
   return 0;
