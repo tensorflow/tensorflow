@@ -872,29 +872,5 @@ class RangeTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(values, self.evaluate(tensor))
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class ExpTest(test_util.TensorFlowTestCase):
-
-  def testExp(self):
-    x = np.random.randn(1000, 1000)
-    for dtype in [np.float32, np.float64, np.float16]:
-      x_np = np.array(x, dtype=dtype)
-      x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y_tf = math_ops.exp(x_tf)
-      y_tf_np = self.evaluate(y_tf)
-      y_np = np.exp(x_np)
-      self.assertAllClose(y_tf_np, y_np, atol=1e-5)
-
-  def testExpExtendType(self):
-    in_bf16 = np.random.randn(1000, 1000).astype(dtypes.bfloat16.as_numpy_dtype)
-    out_bf16 = self.evaluate(math_ops.exp(in_bf16))
-
-    in_f32 = math_ops.cast(in_bf16, dtypes.float32)
-    out_f32 = self.evaluate(math_ops.exp(in_f32))
-    expected = math_ops.cast(out_f32, dtypes.bfloat16)
-
-    self.assertAllClose(out_bf16, expected, rtol=1e-5)
-
-
 if __name__ == "__main__":
   googletest.main()
