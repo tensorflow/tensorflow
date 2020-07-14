@@ -28,7 +28,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   FuzzedDataProvider fuzzed_data(data, size);
 
   while (fuzzed_data.remaining_bytes() > 0) {
-    std::string s = fuzzed_data.ConsumeRandomLengthString(5);
+    std::string s = fuzzed_data.ConsumeRandomLengthString(25);
     tensorflow::StringPiece sp(s);
     tensorflow::uint64 val;
 
