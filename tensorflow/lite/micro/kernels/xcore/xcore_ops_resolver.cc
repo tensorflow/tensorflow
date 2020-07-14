@@ -8,12 +8,12 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-void add_builtin_ops(MicroMutableOpResolver *resolver) {
-  resolver->AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(), 1, 2);
-  resolver->AddBuiltin(BuiltinOperator_PAD, Register_PAD(), 1, 2);
+void add_builtin_ops(MicroMutableOpResolver<num_xcore_ops> *resolver) {
+  resolver->AddSoftmax();
+  resolver->AddPad();
 }
 
-void add_custom_ops(MicroMutableOpResolver *resolver) {
+void add_custom_ops(MicroMutableOpResolver<num_xcore_ops> *resolver) {
   resolver->AddCustom("XC_argmax_16", Register_ArgMax_16());
   resolver->AddCustom("XC_maxpool2d", Register_MaxPool2D());
   resolver->AddCustom("XC_avgpool2d", Register_AvgPool2D());

@@ -1,8 +1,8 @@
 #ifndef TENSORFLOW_LITE_MICRO_KERNELS_XCORE_OPS_RESOLVER_H_
 #define TENSORFLOW_LITE_MICRO_KERNELS_XCORE_OPS_RESOLVER_H_
 
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/compatibility.h"
-#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 
 namespace tflite {
@@ -10,9 +10,11 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-void add_custom_ops(MicroMutableOpResolver *resolver);
+constexpr int num_xcore_ops = 13;
 
-class XcoreOpsResolver : public MicroMutableOpResolver {
+void add_custom_ops(MicroMutableOpResolver<num_xcore_ops> *resolver);
+
+class XcoreOpsResolver : public MicroMutableOpResolver<num_xcore_ops> {
  public:
   XcoreOpsResolver();
 
