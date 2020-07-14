@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ extern "C" {
 // Allocator Attributes used for tensor allocation. 
 typedef struct TF_AllocatorAttributes { 
   size_t struct_size; 
-  // Set flag to 0 for CPU allocation, else 1. 
+  // Set boolean to 0 for CPU allocation, else 1. 
   unsigned char on_host; 
 } TF_AllocatorAttributes; 
 
