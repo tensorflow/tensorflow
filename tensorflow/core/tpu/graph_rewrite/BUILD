@@ -18,6 +18,7 @@ cc_library(
     srcs = ["tpu_rewrite_pass_registration.cc"],
     deps = [
         ":distributed_tpu_configuration_rewrite_pass",
+        ":encapsulate_tpu_computations_pass",
         ":variable_merger_pass",
         "//tensorflow/core:core_cpu",
     ],
@@ -91,5 +92,58 @@ tf_cc_test(
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "encapsulate_tpu_computations_pass",
+    srcs = [
+        "encapsulate_tpu_computations_pass.cc",
+    ],
+    hdrs = [
+        "encapsulate_tpu_computations_pass.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/jit:compilation_passes",
+        "//tensorflow/compiler/jit:encapsulate_util",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core/tpu:tpu_compile_interface",
+        "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "encapsulate_tpu_computations_pass_test",
+    srcs = ["encapsulate_tpu_computations_pass_test.cc"],
+    deps = [
+        ":encapsulate_tpu_computations_pass",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/cc:tpu_ops",
+        "//tensorflow/compiler/jit:compilation_passes",
+        "//tensorflow/compiler/tf2xla:test_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_impl",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/tpu:tpu_defs",
     ],
 )

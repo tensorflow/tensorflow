@@ -44,8 +44,7 @@ struct TPUUpdateEmbeddingEnqueueOpInputs
 LogicalResult ExtractEmbeddingAttribute(
     Operation* op, llvm::StringMap<Operation*>* embedding_op_map) {
   auto embedding_attr = op->getAttrOfType<StringAttr>(kTPUEmbeddingAttr);
-  if (!embedding_attr)
-    return op->emitOpError("requires attribute '_tpu_embedding_layer'");
+  if (!embedding_attr) return mlir::success();
 
   if (!embedding_op_map->insert({embedding_attr.getValue(), op}).second)
     return op->emitOpError(

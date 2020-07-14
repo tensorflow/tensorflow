@@ -24,14 +24,14 @@ namespace tflite {
 namespace flex {
 
 // Get all cpu kernels registered in Tensorflow.
-std::set<string> GetAllCpuKernels() {
+std::set<std::string> GetAllCpuKernels() {
   auto is_cpu_kernel = [](const tensorflow::KernelDef& def) {
     return (def.device_type() == "CPU" || def.device_type() == "DEFAULT");
   };
 
   tensorflow::KernelList kernel_list =
       tensorflow::GetFilteredRegisteredKernels(is_cpu_kernel);
-  std::set<string> result;
+  std::set<std::string> result;
 
   for (int i = 0; i < kernel_list.kernel_size(); ++i) {
     tensorflow::KernelDef kernel_def = kernel_list.kernel(i);
@@ -44,7 +44,7 @@ std::set<string> GetAllCpuKernels() {
 // This test must be run on both Linux and Android.
 TEST(AllowlistedFlexOpsTest, EveryOpHasKernel) {
   const std::set<std::string>& allowlist = GetFlexAllowlist();
-  std::set<string> all_kernels = GetAllCpuKernels();
+  std::set<std::string> all_kernels = GetAllCpuKernels();
 
   for (const std::string& op_name : allowlist) {
     EXPECT_EQ(all_kernels.count(op_name), 1)

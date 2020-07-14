@@ -74,6 +74,17 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_compile_interface",
+    srcs = ["tpu_compile_interface.cc"],
+    hdrs = ["tpu_compile_interface.h"],
+    deps = [
+        "//tensorflow/core/platform:fingerprint",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "tpu_defs",
     srcs = ["tpu_defs.cc"],
     hdrs = ["tpu_defs.h"],
