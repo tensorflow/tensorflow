@@ -20,10 +20,10 @@ from __future__ import print_function
 
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
 
-import numpy as np
-import tensorflow as tf
+from tensorflow.python import saved_model
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 
@@ -36,7 +36,6 @@ class TRTEngineOpInputOutputShapeTest(trt_test.TfTrtIntegrationTestBase):
   """Testing conversion of Conv2D (data_format=NCHW) in TF-TRT conversion."""
 
   def GraphFn(self, inp):
-    np.random.seed(1234)
     b = array_ops.squeeze(inp, axis=[2])
     c = nn.relu(b)
     d1 = c + c
@@ -57,7 +56,7 @@ class TRTEngineOpInputOutputShapeTest(trt_test.TfTrtIntegrationTestBase):
       )._GetInferGraph(*args, **kwargs)
 
       def get_func_from_saved_model(saved_model_dir):
-          saved_model_loaded = tf.saved_model.load(
+          saved_model_loaded = saved_model.load.load(
               saved_model_dir, tags=[tag_constants.SERVING])
           graph_func = saved_model_loaded.signatures[
               signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
@@ -66,19 +65,19 @@ class TRTEngineOpInputOutputShapeTest(trt_test.TfTrtIntegrationTestBase):
       func, loaded_model = get_func_from_saved_model(trt_saved_model_dir)
 
       input_shape = func.inputs[0].shape
-      if isinstance(input_shape, tf.TensorShape):
+      if isinstance(input_shape, tensor_shape.TensorShape):
           input_shape = input_shape.as_list()
 
       output_shapes = [
           out_shape.shape.as_list()
-          if isinstance(out_shape.shape, tf.TensorShape) else
+          if isinstance(out_shape.shape, tensor_shape.TensorShape) else
           out_shape.shape
           for out_shape in func.outputs
       ]
 
-      assert (func.inputs[0].dtype == tf.float32)
-      assert (func.outputs[0].dtype == tf.float32)
-      assert (func.outputs[1].dtype == tf.float32)
+      assert (func.inputs[0].dtype == dtypes.float32)
+      assert (func.outputs[0].dtype == dtypes.float32)
+      assert (func.outputs[1].dtype == dtypes.float32)
 
       assert (input_shape == [None, 2, 1, 4])
       assert (output_shapes[0] == [None, 2, 4])
