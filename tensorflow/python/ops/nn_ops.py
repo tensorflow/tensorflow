@@ -3506,11 +3506,11 @@ def gelu(features, approximate=True, name=None):
   For example:
 
   >>> x = tf.constant([-3.0, -1.0, 0.0, 1.0, 3.0], dtype=tf.float32)
-  >>> y = tf.keras.activations.gelu(x)
+  >>> y = tf.nn.gelu(x)
   >>> y.numpy()
   array([-0.00363752, -0.158808  ,  0.        ,  0.841192  ,  2.9963627 ],
       dtype=float32)
-  >>> y = tf.keras.activations.gelu(x, approximate=False)
+  >>> y = tf.nn.gelu(x, approximate=False)
   >>> y.numpy()
   array([-0.00404951, -0.15865529,  0.        ,  0.8413447 ,  2.9959507 ],
       dtype=float32)
