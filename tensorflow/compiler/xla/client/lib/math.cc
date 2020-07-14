@@ -1112,10 +1112,26 @@ XlaOp RoundToEven(XlaOp x) {
 // acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x)) if x != -1
 //           pi                                if x == -1
 XlaOp Acos(XlaOp x) {
-  return Select(Ne(x, FullLike(x, -1)),
-                ScalarLike(x, 2.0) * Atan2(Sqrt(ScalarLike(x, 1.0) - x * x),
-                                           ScalarLike(x, 1.0) + x),
-                FullLike(x, M_PI));
+  XlaBuilder* b = x.builder();
+  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
+
+    // complex: acos(x) = -i * log(x + sqrt(-(x+1)*(x-1)))
+    if (primitive_util::IsComplexType(shape.element_type())) {
+      auto one = ScalarLike(x, 1);
+      auto imag_one = Complex(
+          Zero(b, primitive_util::ComplexComponentType(shape.element_type())),
+          One(b, primitive_util::ComplexComponentType(shape.element_type())));
+
+      auto result = Neg(
+          imag_one * Log(x + imag_one * Sqrt((one + x) * (one - x))));
+      return result;
+    }
+    return Select(Ne(x, FullLike(x, -1)),
+                  ScalarLike(x, 2.0) * Atan2(Sqrt(ScalarLike(x, 1.0) - x * x),
+                                             ScalarLike(x, 1.0) + x),
+                  FullLike(x, M_PI));
+  });
 }
 
 // asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
