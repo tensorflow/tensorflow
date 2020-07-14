@@ -52,6 +52,14 @@ static void ParseS3Path(const Aws::String& fname, bool object_empty_ok,
   }
 }
 
+static void ShutdownClient(Aws::S3::S3Client* s3_client) {
+  if (s3_client != nullptr) {
+    delete s3_client;
+    Aws::SDKOptions options;
+    Aws::ShutdownAPI(options);
+  }
+}
+
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
@@ -79,6 +87,19 @@ namespace tf_read_only_memory_region {
 // SECTION 4. Implementation for `TF_Filesystem`, the actual filesystem
 // ----------------------------------------------------------------------------
 namespace tf_s3_filesystem {
+S3File::S3File()
+    : s3_client(nullptr, ShutdownClient),
+      executor(nullptr),
+      initialization_lock() {}
+void Init(TF_Filesystem* filesystem, TF_Status* status) {
+  filesystem->plugin_filesystem = new S3File();
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void Cleanup(TF_Filesystem* filesystem) {
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  delete s3_file;
+}
 
 // TODO(vnvo2409): Implement later
 

@@ -25,8 +25,21 @@ cc_library(
         "//tensorflow:windows": get_win_copts(),
     }),
     deps = [
+        ":aws_crypto",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@aws",
+        "@com_google_absl//absl/synchronization",
     ],
+)
+
+cc_library(
+    name = "aws_crypto",
+    srcs = ["aws_crypto.cc"],
+    hdrs = ["aws_crypto.h"],
+    deps = [
+        "@aws",
+        "@boringssl//:crypto",
+    ],
+    alwayslink = 1,
 )
