@@ -30,6 +30,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_tensor",
+        "//tensorflow/c:tensor_shape_utils",
         "//tensorflow/core:framework",
     ],
 )

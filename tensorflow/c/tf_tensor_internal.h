@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 
 #include <memory>
-#include <string>
 
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/c/tf_datatype.h"
@@ -105,7 +104,6 @@ class TensorInterface : public AbstractTensorInterface {
   void* Data() const override;
   bool IsAligned() const override;
   bool CanMove() const override;
-  std::string ShapeDebugString() const;
 
   Status ToTensor(tensorflow::Tensor* dst) const;
   Status BitcastFrom(const TensorInterface& from, DataType type,

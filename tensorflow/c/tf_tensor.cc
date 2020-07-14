@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <vector>
-#include <string>
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -181,11 +180,6 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
   Set_TF_Status_from_Status(status, cc_status);
 }
 
-std::string TF_ShapeDebugString(const TF_Tensor* t){ 
-  return tensorflow::down_cast<tensorflow::TensorInterface*>(t->tensor)
-      ->ShapeDebugString(); 
-}
-
 namespace tensorflow {
 
 void TensorInterface::Release() { delete this; }
@@ -229,10 +223,6 @@ Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
     s.AddDim(new_dims[i]);
   }
   return tensor_.BitcastFrom(from.tensor_, type, s);
-}
-
-std::string TensorInterface::ShapeDebugString() const {
-  return tensor_.shape().DebugString();
 }
 
 }  // namespace tensorflow

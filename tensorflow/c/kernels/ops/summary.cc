@@ -19,20 +19,14 @@ limitations under the License.
 
 static void scalar_summary_shape_inference_fn(TF_ShapeInferenceContext* ctx,
                                               TF_Status* status) {
+  TF_SetStatus(status, TF_OK, ""); 
   TF_ShapeHandle* result = TF_NewShapeHandle();
-  if (TF_GetCode(status) == TF_OK &&
-      !TF_ShapeInferenceContextRankKnown(ctx, result)) {
-    TF_ShapeInferenceContextSetUnknownShape(ctx, status);
-    CHECK_EQ(TF_OK, TF_GetCode(status))
-        << "Error while setting unknown shape function";
-    TF_DeleteShapeHandle(result);
-    return;
-  }
   // Make shape handle a scalar value (empty shape)
-  if (TF_GetCode(status) == TF_OK) {
-    TF_ShapeInferenceContextSetOutput(ctx, 0, result, status);
-    CHECK_EQ(TF_OK, TF_GetCode(status)) 
-        << "Error while setting shape function";
+  TF_ShapeInferenceContextSetOutput(ctx, 0, result, status);
+  if (TF_GetCode(status) != TF_OK) {
+    std::ostringstream err;
+    err << "Error in setting output shape inference"; 
+    TF_SetStatus(status, TF_INVALID_ARGUMENT, err.str().c_str());
   }
   TF_DeleteShapeHandle(result);
 }

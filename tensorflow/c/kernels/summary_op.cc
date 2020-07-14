@@ -18,36 +18,39 @@ limitations under the License.
 
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/c/tensor_shape_utils.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
 
 // Struct that stores the status and TF_Tensor inputs to the opkernel. 
 // Used to delete tensor and status in its destructor upon kernel return. 
-typedef struct Params{ 
-  TF_Tensor* tags; 
-  TF_Tensor* values; 
-  TF_Status* status; 
-  Params(TF_OpKernelContext* ctx) {
-    status = TF_NewStatus();
-    TF_GetInput(ctx, 0, &tags, status);
-    if (TF_GetCode(status) == TF_OK){ 
-      TF_GetInput(ctx, 1, &values, status);
+namespace {
+  struct Params{ 
+    TF_Tensor* tags; 
+    TF_Tensor* values; 
+    TF_Status* status; 
+    Params(TF_OpKernelContext* ctx) {
+      status = TF_NewStatus();
+      TF_GetInput(ctx, 0, &tags, status);
+      if (TF_GetCode(status) == TF_OK){ 
+        TF_GetInput(ctx, 1, &values, status);
+      }
+    }; 
+    ~Params(){ 
+      TF_DeleteStatus(status); 
+      TF_DeleteTensor(tags); 
+      TF_DeleteTensor(values);
     }
   }; 
-  ~Params(){ 
-    TF_DeleteStatus(status); 
-    TF_DeleteTensor(tags); 
-    TF_DeleteTensor(values);
-  }
-}; 
+} 
 
 // dummy functions used for kernel registration 
-static void* SummaryScalarOp_Create(TF_OpKernelConstruction* ctx) {
+static void* ScalarSummaryOp_Create(TF_OpKernelConstruction* ctx) {
   return nullptr; 
 }
 
-static void SummaryScalarOp_Delete(void* kernel) {
+static void ScalarSummaryOp_Delete(void* kernel) {
   return;
 }
 
@@ -56,7 +59,7 @@ bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2);
 static tensorflow::string SingleTag(TF_Tensor* tags); 
 
 template<typename T>
-static void SummaryScalarOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
+static void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   Params params(ctx);
   if (TF_GetCode(params.status) != TF_OK){ 
     TF_OpKernelContext_Failure(ctx, params.status);
@@ -125,41 +128,41 @@ static tensorflow::string SingleTag(TF_Tensor* tags){
 }
 
 template <typename T>
-void RegisterSummaryScalarOpKernel() {
+void RegisterScalarSummaryOpKernel() {
   TF_Status* status = TF_NewStatus();
   {
     auto* builder = TF_NewKernelBuilder("ScalarSummary", 
                                         tensorflow::DEVICE_CPU,
-                                        &SummaryScalarOp_Create, 
-                                        &SummaryScalarOp_Compute<T>,
-                                        &SummaryScalarOp_Delete);
+                                        &ScalarSummaryOp_Create, 
+                                        &ScalarSummaryOp_Compute<T>,
+                                        &ScalarSummaryOp_Delete);
     TF_KernelBuilder_TypeConstraint(builder, "T", 
         static_cast<TF_DataType>(tensorflow::DataTypeToEnum<T>::v()), status); 
     CHECK_EQ(TF_OK, TF_GetCode(status))
         << "Error while adding type constraint";
     TF_RegisterKernelBuilder("ScalarSummary", builder, status);
     CHECK_EQ(TF_OK, TF_GetCode(status))
-        << "Error while registering Summary Scalar kernel";
+        << "Error while registering Scalar Summmary kernel";
   }
   TF_DeleteStatus(status);
 }
 
 // A dummy static variable initialized by a lambda whose side-effect is to
 // register the bitcast kernel.                                                          
-TF_ATTRIBUTE_UNUSED static bool  IsSummaryScalarOpKernelRegistered = []() {                  
-  if (SHOULD_REGISTER_OP_KERNEL("SummaryScalar")) {                                                                           
-    RegisterSummaryScalarOpKernel<tensorflow::int64>();    
-    RegisterSummaryScalarOpKernel<tensorflow::uint64>();       
-    RegisterSummaryScalarOpKernel<tensorflow::int32>();   
-    RegisterSummaryScalarOpKernel<tensorflow::uint32>(); 
-    RegisterSummaryScalarOpKernel<tensorflow::uint16>();   
-    RegisterSummaryScalarOpKernel<tensorflow::int16>();   
-    RegisterSummaryScalarOpKernel<tensorflow::int8>();  
-    RegisterSummaryScalarOpKernel<tensorflow::uint8>();   
-    RegisterSummaryScalarOpKernel<Eigen::half>();   
-    RegisterSummaryScalarOpKernel<tensorflow::bfloat16>();   
-    RegisterSummaryScalarOpKernel<float>();   
-    RegisterSummaryScalarOpKernel<double>();                                  
+TF_ATTRIBUTE_UNUSED static bool  IsScalarSummaryOpKernelRegistered = []() {                  
+  if (SHOULD_REGISTER_OP_KERNEL("ScalarSummary")) {                                                                           
+    RegisterScalarSummaryOpKernel<tensorflow::int64>();    
+    RegisterScalarSummaryOpKernel<tensorflow::uint64>();       
+    RegisterScalarSummaryOpKernel<tensorflow::int32>();   
+    RegisterScalarSummaryOpKernel<tensorflow::uint32>(); 
+    RegisterScalarSummaryOpKernel<tensorflow::uint16>();   
+    RegisterScalarSummaryOpKernel<tensorflow::int16>();   
+    RegisterScalarSummaryOpKernel<tensorflow::int8>();  
+    RegisterScalarSummaryOpKernel<tensorflow::uint8>();   
+    RegisterScalarSummaryOpKernel<Eigen::half>();   
+    RegisterScalarSummaryOpKernel<tensorflow::bfloat16>();   
+    RegisterScalarSummaryOpKernel<float>();   
+    RegisterScalarSummaryOpKernel<double>();                                  
   }                                                                           
   return true;                                                                
 }();                                                                          

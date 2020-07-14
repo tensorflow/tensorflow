@@ -513,6 +513,32 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+tf_cuda_library(
+    name = "tensor_shape_utils",
+    srcs = [
+        "tensor_shape_utils.cc",
+    ],
+    hdrs = [
+        "tensor_shape_utils.h",
+    ],
+    deps = [ 
+        ":tf_tensor", 
+    ], 
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+)
+
+tf_cc_test(
+    name = "tensor_shape_utils_test",
+    srcs = ["tensor_shape_utils_test.cc"],
+    deps = [
+        ":tensor_shape_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Tests
 
