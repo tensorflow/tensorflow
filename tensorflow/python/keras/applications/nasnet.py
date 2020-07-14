@@ -331,6 +331,10 @@ def NASNetMobile(input_shape=None,
                  pooling=None,
                  classes=1000):
   """Instantiates a Mobile NASNet model in ImageNet mode.
+  
+  Reference:
+  - [Learning Transferable Architectures for Scalable Image Recognition](
+      https://arxiv.org/abs/1707.07012) (CVPR 2018)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
@@ -402,6 +406,10 @@ def NASNetLarge(input_shape=None,
                 pooling=None,
                 classes=1000):
   """Instantiates a NASNet model in ImageNet mode.
+  
+  Reference:
+  - [Learning Transferable Architectures for Scalable Image Recognition](
+      https://arxiv.org/abs/1707.07012) (CVPR 2018)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
