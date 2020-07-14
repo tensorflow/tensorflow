@@ -1221,12 +1221,6 @@ class StrategyBase(object):
           fn, autograph_ctx.control_status_ctx(), convert_by_default=False)
       return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
-  # TODO(b/151224785): Remove deprecated alias.
-  @doc_controls.do_not_doc_inheritable  # DEPRECATED
-  @deprecation.deprecated(None, "renamed to `run`")
-  def experimental_run_v2(self, fn, args=(), kwargs=None, options=None):
-    return self.run(fn, args=args, kwargs=kwargs, options=options)
-
   def reduce(self, reduce_op, value, axis):
     """Reduce `value` across replicas and return result on current device.
 
