@@ -3493,7 +3493,7 @@ def leaky_relu(features, alpha=0.2, name=None):
     return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
 
 
-@tf_export("nn.gelu")
+@tf_export("nn.gelu", v1=[])
 @dispatch.add_dispatch_support
 def gelu(features, approximate=True, name=None):
   """Compute the Gaussian Error Linear Unit (GELU) activation function.

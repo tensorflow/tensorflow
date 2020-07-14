@@ -302,7 +302,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
 
-@keras_export('keras.activations.gelu')
+@keras_export('keras.activations.gelu', v1=[])
 @dispatch.add_dispatch_support
 def gelu(x, approximate=True):
   """Applies the Gaussian error linear unit (GELU) activation function.
