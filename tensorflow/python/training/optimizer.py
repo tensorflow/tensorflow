@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import dynamic_embedding_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -176,6 +177,49 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
       return update_op
 
 
+class _DenseDynamicEmbeddingTrainableProcessor(_OptimizableVariable):
+  """Processor for dense DynamiceEmbedding."""
+
+  def __init__(self, v):
+    self._v = v
+
+  def target(self):
+    return self._v
+
+  def update_op(self, optimizer, g):
+    # pylint: disable=protected-access
+    # for better convergence:
+
+    with ops.colocate_with(None,  ignore_existing=True):
+      _slots = [
+          optimizer.get_slot(self._v, _s) for _s in optimizer.get_slot_names()
+      ]
+      with ops.control_dependencies([g]):
+        _before = [self._v.read_value()] + [_s.read_value() for _s in _slots]
+      if isinstance(g, ops.IndexedSlices):
+        if self._v.constraint is not None:
+          raise RuntimeError(
+              "Cannot use a constraint function on a sparse variable.")
+
+        with ops.control_dependencies(_before):
+          _apply_op = optimizer._resource_apply_sparse_duplicate_indices(
+              g.values, self._v, g.indices)
+        with ops.control_dependencies([_apply_op]):
+          _after = control_flow_ops.group([self._v.update_op()] +
+                                          [_s.update_op() for _s in _slots])
+          return _after
+      with ops.control_dependencies(_before):
+        _apply_op = optimizer._resource_apply_dense(g, self._v)
+      if self._v.constraint is not None:
+        with ops.control_dependencies([_apply_op]):
+          return self._v.assign(self._v.constraint(self._v))
+      else:
+        with ops.control_dependencies([_apply_op]):
+          _after = control_flow_ops.group([self._v.update_op()] +
+                                          [_s.update_op() for _s in _slots])
+        return _after
+
+
 class _TensorProcessor(_OptimizableVariable):
   """Processor for ordinary Tensors.
 
@@ -201,6 +245,8 @@ def _get_processor(v):
       return _TensorProcessor(v)
     else:
       return _DenseResourceVariableProcessor(v)
+  if isinstance(v, resource_variable_ops.TrainableWrapper):
+    return _DenseDynamicEmbeddingTrainableProcessor(v)
   if resource_variable_ops.is_resource_variable(v) and not v._in_graph_mode:  # pylint: disable=protected-access
     # True if and only if `v` was initialized eagerly.
     return _DenseResourceVariableProcessor(v)
@@ -813,6 +859,14 @@ class Optimizer(
   def _create_non_slot_variable(self, initial_value, name, colocate_with):
     """Add an extra variable, not associated with a slot."""
     # Recommendation: Use OptimizerV2 if your optimizer uses non-slot variables.
+
+    # The non slot variables should be treated as global variables but
+    # the TrainableWrapper is local variables, so we redirect the colocation
+    # requests to `TrainableWrapper.params.table._resource_handle` which is
+    # global VarHandleOp.
+    if isinstance(colocate_with, resource_variable_ops.TrainableWrapper):
+      colocate_with = colocate_with.params.tables[0]._resource_handle
+
     eager = context.executing_eagerly()
     graph = None if eager else colocate_with.graph
 
@@ -1108,7 +1162,11 @@ class Optimizer(
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      new_slot_variable = slot_creator.create_slot(var, val, op_name)
+      if isinstance(var, resource_variable_ops.TrainableWrapper):
+        new_slot_variable = dynamic_embedding_ops.create_slots(
+          var, val, slot_name, op_name)
+      else:
+        new_slot_variable = slot_creator.create_slot(var, val, op_name)
       self._restore_slot_variable(
           slot_name=slot_name, variable=var,
           slot_variable=new_slot_variable)
@@ -1133,8 +1191,12 @@ class Optimizer(
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      new_slot_variable = slot_creator.create_slot_with_initializer(
-          var, initializer, shape, dtype, op_name)
+      if isinstance(var, resource_variable_ops.TrainableWrapper):
+        new_slot_variable = dynamic_embedding_ops.create_slots(
+          var, initializer, slot_name, op_name)
+      else:
+        new_slot_variable = slot_creator.create_slot_with_initializer(
+            var, initializer, shape, dtype, op_name)
       self._restore_slot_variable(
           slot_name=slot_name, variable=var,
           slot_variable=new_slot_variable)
@@ -1155,7 +1217,11 @@ class Optimizer(
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
+      if isinstance(var, resource_variable_ops.TrainableWrapper):
+        new_slot_variable = dynamic_embedding_ops.create_slots(
+          var, 0.0, slot_name, op_name)
+      else:
+        new_slot_variable = slot_creator.create_zeros_slot(var, op_name)
       self._restore_slot_variable(
           slot_name=slot_name, variable=var,
           slot_variable=new_slot_variable)

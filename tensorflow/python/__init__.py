@@ -52,6 +52,7 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import dynamic_embedding_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip

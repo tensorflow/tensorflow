@@ -24,6 +24,7 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "distribute/experimental/__init__.py",
     "distributions/__init__.py",
     "dtypes/__init__.py",
+    "dynamic_embedding/__init__.py",
     "errors/__init__.py",
     "experimental/__init__.py",
     "feature_column/__init__.py",

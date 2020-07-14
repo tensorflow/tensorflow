@@ -56,14 +56,19 @@ class MutableHashTableOfScalars final : public LookupInterface {
 
   Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
               const Tensor& default_value) override {
-    const V default_val = default_value.flat<V>()(0);
     const auto key_values = key.flat<K>();
     auto value_values = value->flat<V>();
+    const auto default_flat = default_value.flat<V>();
+
+    int64 total = value_values.size();
+    int64 default_total = default_flat.size();
+    bool is_full_default = (total == default_total);
 
     tf_shared_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
       value_values(i) = gtl::FindWithDefault(
-          table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
+          table_, SubtleMustCopyIfIntegral(key_values(i)),
+          is_full_default ? default_flat(i) : default_flat(0));
     }
 
     return Status::OK();
@@ -173,10 +178,14 @@ class MutableHashTableOfTensors final : public LookupInterface {
 
   Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
               const Tensor& default_value) override {
-    const auto default_flat = default_value.flat<V>();
+    const auto default_flat = default_value.flat_inner_dims<V, 2>();
     const auto key_values = key.flat<K>();
     auto value_values = value->flat_inner_dims<V, 2>();
     int64 value_dim = value_shape_.dim_size(0);
+
+    int64 total = value_values.size();
+    int64 default_total = default_flat.size();
+    bool is_full_default = (total == default_total);
 
     tf_shared_lock l(mu_);
     for (int64 i = 0; i < key_values.size(); ++i) {
@@ -188,7 +197,8 @@ class MutableHashTableOfTensors final : public LookupInterface {
         }
       } else {
         for (int64 j = 0; j < value_dim; j++) {
-          value_values(i, j) = default_flat(j);
+          value_values(i, j) =
+              is_full_default ? default_flat(i, j) : default_flat(0, j);
         }
       }
     }
@@ -816,7 +826,6 @@ class LookupTableFindOp : public LookupTableOpKernel {
 
     const Tensor& key = ctx->input(1);
     const Tensor& default_value = ctx->input(2);
-    OP_REQUIRES_OK(ctx, table->CheckFindArguments(key, default_value));
 
     TensorShape output_shape = key.shape();
     output_shape.RemoveLastDims(table->key_shape().dims());

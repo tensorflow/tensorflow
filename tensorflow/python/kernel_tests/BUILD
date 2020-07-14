@@ -3468,6 +3468,23 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "dynamic_embedding_ops_test",
+    size = "medium",
+    srcs = ["dynamic_embedding_ops_test.py"],
+    shard_count = 20,
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+    ],
+)
+
+cuda_py_test(
     name = "embedding_ops_test",
     size = "medium",
     srcs = ["embedding_ops_test.py"],

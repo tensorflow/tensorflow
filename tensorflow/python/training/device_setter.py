@@ -118,7 +118,12 @@ class _ReplicaDeviceChooser(object):
     # set (using ps_strategy) if there is a job field in ps_device that won't be
     # changed by the job field (if present) in current_device.
     node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
-    if self._ps_tasks and self._ps_device and node_def.op in self._ps_ops:
+
+    # TODO(rhdong): a less bad way of avoiding handle of `TrainableWrapper` be
+    #  placed on the PS devices for node_def carries too little information to
+    #  know if it was created by `TrainableWrapper` or not.
+    if "TrainableWrapper" not in node_def.name \
+        and self._ps_tasks and self._ps_device and node_def.op in self._ps_ops:
       ps_device = pydev.DeviceSpec.from_string(self._ps_device)
 
       current_job, ps_job = current_device.job, ps_device.job
