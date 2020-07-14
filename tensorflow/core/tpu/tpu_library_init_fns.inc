@@ -37,6 +37,24 @@ tensorflow::Status SetCompileStructFn(void* library_handle) {
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status SetTpuProgramStructFn(void* library_handle) {
+  auto* tpu_program_fn = tensorflow::tpu::TpuProgramApiFn();
+
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_New);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_Free);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_NewArray);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_FreeArray);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_UnloadAndDestroy);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetProgramSize);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_LogProgramMemorySummary);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetExecutableInfo);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetHostTransferInfo);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetHloMetadata);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetMayModifyVariables);
+
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status SetExecutorStructFn(void* library_handle) {
   auto* executor_fn = tensorflow::tpu::ExecutorApiFn();
 
@@ -162,6 +180,7 @@ tensorflow::Status InitializeTpuStructFns(void* library_handle) {
   TF_RETURN_IF_ERROR(SetTpuConfigStructFns(library_handle));
   TF_RETURN_IF_ERROR(SetTpuMeshStateStructFns(library_handle));
   TF_RETURN_IF_ERROR(SetCompileStructFn(library_handle));
+  TF_RETURN_IF_ERROR(SetTpuProgramStructFn(library_handle));
   TF_RETURN_IF_ERROR(SetExecutorStructFn(library_handle));
   TF_RETURN_IF_ERROR(SetTpuNodeContextStructFns(library_handle));
   TF_RETURN_IF_ERROR(SetTpuUtilStructFns(library_handle));
