@@ -366,8 +366,8 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
 
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
   `float32` or `float64` that is the absolute value of each element in `x`. For
-  a complex number \\(a + bj\\), its absolute value is computed as \\(\sqrt{a^2
-  + b^2}\\).  For example:
+  a complex number \\(a + bj\\), its absolute value is computed as
+  \\(\sqrt{a^2 + b^2}\\).  For example:
 
   >>> x = tf.constant([[-2.25 + 4.75j], [-3.25 + 5.75j]])
   >>> tf.abs(x)
