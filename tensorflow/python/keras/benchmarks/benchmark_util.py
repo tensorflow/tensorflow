@@ -63,7 +63,7 @@ def measure_performance(model_fn,
     x: Input data. See `x` in the `fit()` method of `keras.Model`.
     y: Target data. See `y` in the `fit()` method of `keras.Model`.
     epochs: Integer. Number of epochs to train the model.
-      If unspecified, `epoch` will default to 2.
+      If unspecified, `epochs` will default to 2.
     batch_size: Integer. Number of samples per gradient update. If unspecified,
       `batch_size` will default to 32.
     run_iters: Integer. Number of iterations to run the performance measurement.
@@ -84,7 +84,8 @@ def measure_performance(model_fn,
 
   Returns:
     Performance summary, which contains build_time, compile_time,
-    startup_time, avg_epoch_time, wall_time, exp_per_sec,epochs.
+    startup_time, avg_epoch_time, wall_time, exp_per_sec, epochs,
+    distribution_strategy.
 
   Raise:
     ValueError: If `x` is none or if `optimizer` is not provided or
@@ -154,6 +155,7 @@ def measure_performance(model_fn,
   metrics.append({'name': 'epochs',
                   'value': epochs})
 
-  wall_time = np.mean(wall_time_list)
+  extras = {'distribution_strategy': distribution_strategy,
+            'wall_time': np.mean(wall_time_list)}
 
-  return metrics, wall_time
+  return metrics, extras

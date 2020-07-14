@@ -73,7 +73,7 @@ class TextWithTransformerBenchmark(tf.test.Benchmark):
     """Measure performance with batch_size=128 and run_iters=3."""
     batch_size = 128
     run_iters = 3
-    metrics, wall_time = benchmark_util.measure_performance(
+    metrics, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
         y=self.imdb_y,
@@ -84,13 +84,16 @@ class TextWithTransformerBenchmark(tf.test.Benchmark):
         metrics=['accuracy'])
 
     self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics)
+        iters=run_iters,
+        wall_time=extras['wall_time'],
+        metrics=metrics,
+        extras=extras)
 
   def benchmark_text_classification_bs_512(self):
     """Measure performance with batch_size=512 and run_iters=4."""
     batch_size = 512
     run_iters = 4
-    metrics, wall_time = benchmark_util.measure_performance(
+    metrics, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
         y=self.imdb_y,
@@ -101,13 +104,16 @@ class TextWithTransformerBenchmark(tf.test.Benchmark):
         metrics=['accuracy'])
 
     self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics)
+        iters=run_iters,
+        wall_time=extras['wall_time'],
+        metrics=metrics,
+        extras=extras)
 
   def benchmark_text_classification_bs_256(self):
     """Measure performance with batch_size=256 and run_iters=3."""
     batch_size = 256
     run_iters = 3
-    metrics, wall_time = benchmark_util.measure_performance(
+    metrics, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
         y=self.imdb_y,
@@ -118,7 +124,10 @@ class TextWithTransformerBenchmark(tf.test.Benchmark):
         metrics=['accuracy'])
 
     self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics)
+        iters=run_iters,
+        wall_time=extras['wall_time'],
+        metrics=metrics,
+        extras=extras)
 
 class MultiHeadSelfAttention(tf.keras.layers.Layer):
   """Implement multi head self attention as a Keras layer."""
