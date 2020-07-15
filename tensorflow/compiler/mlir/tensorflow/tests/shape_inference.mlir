@@ -499,4 +499,16 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
    %outputs_2 = "tf.TensorSliceDataset"(%outputs_0) {device = "", output_shapes = [#tf.shape<>]} : (tensor<*xf32>) -> tensor<!tf.variant>
    return
   }
+
+  // Test resource result subtypes are propagated to call op results.
+  // CHECK-LABEL: func @pcall_resource_result
+  func @pcall_resource_result(%arg0: tensor<*x!tf.resource<tensor<f32>>>) {
+    // CHECK: "tf.StatefulPartitionedCall"
+    // CHECK-SAME: (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>>
+    %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_resource_result_func} : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource>
+    return
+  }
+  func @pcall_resource_result_func(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource<tensor<f32>>> {
+    return %arg0 : tensor<*x!tf.resource<tensor<f32>>>
+  }
 }
