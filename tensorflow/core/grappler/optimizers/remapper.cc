@@ -87,7 +87,7 @@ struct FusedBatchNorm {
   int fused_batch_norm = kMissingIndex;
 };
 
-// Comparison op with cast
+// Comparison op followed by a cast, e.g., GreaterEqual + Cast.
 struct ComparisonWithCast {
   ComparisonWithCast() = default;
 
