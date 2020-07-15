@@ -3,6 +3,7 @@
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
@@ -228,7 +229,7 @@ Status GenResultMethods(const tf2xla::Config& config,
   int readonly_variables = absl::c_count_if(
       config.variable(),
       [](const tf2xla::Variable& var) { return var.readonly(); });
-  const size_t actual_num_results = config.fetch_size()
+  const int actual_num_results = config.fetch_size()
                                  + config.variable_size() - readonly_variables;
   if (actual_num_results != num_results) {
     return errors::InvalidArgument("mismatch between fetch_size(",
