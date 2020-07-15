@@ -274,8 +274,8 @@ Status GenResultMethods(const tf2xla::Config& config,
 // Generate methods for variables.
 Status GenVariableMethods(const tf2xla::Config& config,
                           const xla::ProgramShapeProto& ps, string* methods) {
-  size_t num_args = ps.parameters_size();
-  for (int i = config.feed_size(), end = num_args; i < end; ++i) {
+  const int num_args = ps.parameters_size();
+  for (int i = config.feed_size(); i < num_args; ++i) {
     std::vector<std::pair<string, string>> rewrites;
     TF_RETURN_IF_ERROR(
         AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
