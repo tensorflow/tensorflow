@@ -54,11 +54,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/c:kernels",
         "//tensorflow/c:ops",
-        "//tensorflow/c:tf_datatype",
-        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -66,10 +63,18 @@ tf_gen_op_libs(
     op_lib_names = ["histogram"],
     deps = [
         "//tensorflow/c:ops",
-        "//tensorflow/c:tf_datatype",
-        "//tensorflow/c:tf_status",
-        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "histogram_summary_op_test",
+    srcs = ["histogram_summary_op_test.cc"],
+    deps = [
+        ":histogram_op_lib",
+        ":histogram_summary_op",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib"
     ],
 )
 

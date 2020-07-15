@@ -3887,7 +3887,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "summary_op",
     prefix = "summary_op",
-    deps = LOGGING_DEPS,
+    deps = LOGGING_DEPS + 
+           [
+            "//tensorflow/c/kernels:histogram_summary_op",
+            "//tensorflow/c/kernels:histogram_op_lib", 
+           ],
 )
 
 tf_kernel_library(

@@ -72,54 +72,54 @@ class SummaryScalarOp : public OpKernel {
   }
 };
 
-template <typename T>
-class SummaryHistoOp : public OpKernel {
- public:
-  // SummaryHistoOp could be extended to take a list of custom bucket
-  // boundaries as an option.
-  explicit SummaryHistoOp(OpKernelConstruction* context) : OpKernel(context) {}
+// template <typename T>
+// class SummaryHistoOp : public OpKernel {
+//  public:
+//   // SummaryHistoOp could be extended to take a list of custom bucket
+//   // boundaries as an option.
+//   explicit SummaryHistoOp(OpKernelConstruction* context) : OpKernel(context) {}
 
-  void Compute(OpKernelContext* c) override {
-    const Tensor& tags = c->input(0);
-    const Tensor& values = c->input(1);
-    const auto flat = values.flat<T>();
-    OP_REQUIRES(c, TensorShapeUtils::IsScalar(tags.shape()),
-                errors::InvalidArgument("tags must be scalar"));
-    // Build histogram of values in "values" tensor
-    histogram::Histogram histo;
-    for (int64 i = 0; i < flat.size(); i++) {
-      const double double_val = static_cast<double>(flat(i));
-      if (Eigen::numext::isnan(double_val)) {
-        c->SetStatus(
-            errors::InvalidArgument("Nan in summary histogram for: ", name()));
-        break;
-      } else if (Eigen::numext::isinf(double_val)) {
-        c->SetStatus(errors::InvalidArgument(
-            "Infinity in summary histogram for: ", name()));
-        break;
-      }
-      histo.Add(double_val);
-    }
+//   void Compute(OpKernelContext* c) override {
+//     const Tensor& tags = c->input(0);
+//     const Tensor& values = c->input(1);
+//     const auto flat = values.flat<T>();
+//     OP_REQUIRES(c, TensorShapeUtils::IsScalar(tags.shape()),
+//                 errors::InvalidArgument("tags must be scalar"));
+//     // Build histogram of values in "values" tensor
+//     histogram::Histogram histo;
+//     for (int64 i = 0; i < flat.size(); i++) {
+//       const double double_val = static_cast<double>(flat(i));
+//       if (Eigen::numext::isnan(double_val)) {
+//         c->SetStatus(
+//             errors::InvalidArgument("Nan in summary histogram for: ", name()));
+//         break;
+//       } else if (Eigen::numext::isinf(double_val)) {
+//         c->SetStatus(errors::InvalidArgument(
+//             "Infinity in summary histogram for: ", name()));
+//         break;
+//       }
+//       histo.Add(double_val);
+//     }
 
-    Summary s;
-    Summary::Value* v = s.add_value();
-    const tstring& tags0 = tags.scalar<tstring>()();
-    v->set_tag(tags0.data(), tags0.size());
-    histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */);
+//     Summary s;
+//     Summary::Value* v = s.add_value();
+//     const tstring& tags0 = tags.scalar<tstring>()();
+//     v->set_tag(tags0.data(), tags0.size());
+//     histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */);
 
-    Tensor* summary_tensor = nullptr;
-    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
-  }
-};
+//     Tensor* summary_tensor = nullptr;
+//     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
+//     CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
+//   }
+// };
 
 #define REGISTER(T)                                                       \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("ScalarSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"),    \
-      SummaryScalarOp<T>);                                                \
-  REGISTER_KERNEL_BUILDER(                                                \
-      Name("HistogramSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      SummaryHistoOp<T>);
+      SummaryScalarOp<T>);                                                
+  // REGISTER_KERNEL_BUILDER(                                                \
+  //     Name("HistogramSummary").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+  //     SummaryHistoOp<T>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER)
 #undef REGISTER
 
