@@ -181,6 +181,25 @@ static void GetExecutor(tf_s3_filesystem::S3File* s3_file) {
   }
 }
 
+static void GetTransferManager(
+    const Aws::Transfer::TransferDirection& direction,
+    tf_s3_filesystem::S3File* s3_file) {
+  absl::MutexLock l(&s3_file->initialization_lock);
+
+  if (s3_file->transfer_managers[direction].get() == nullptr) {
+    GetS3Client(s3_file);
+    GetExecutor(s3_file);
+    Aws::Transfer::TransferManagerConfiguration config(s3_file->executor.get());
+    config.s3Client = s3_file->s3_client;
+    config.bufferSize = s3_file->multi_part_chunk_sizes[direction];
+    // must be larger than pool size * multi part chunk size
+    config.transferBufferMaxHeapSize =
+        (kExecutorPoolSize + 1) * s3_file->multi_part_chunk_sizes[direction];
+    s3_file->transfer_managers[direction] =
+        Aws::Transfer::TransferManager::Create(config);
+  }
+}
+
 static void ShutdownClient(Aws::S3::S3Client* s3_client) {
   if (s3_client != nullptr) {
     delete s3_client;
