@@ -714,7 +714,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.work_group_launch_order = int3(1, 0, 2);
       conv_params.fixed_work_group_size = true;
     }
-    conv_params.block_size = int3(1, 1, 4);
+    conv_params.block_size = int3(2, 1, 4);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
     if (dst_depth % 4 == 0 || dst_depth >= 8) {
@@ -723,6 +723,24 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.block_size.z = 2;
     } else {
       conv_params.block_size.z = dst_depth;
+    }
+    if (dst_shape) {
+      int task_size = dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
+      float task_size_per_cu =
+          static_cast<float>(task_size) / device.GetInfo().compute_units_count;
+      int block_size = conv_params.block_size.x * conv_params.block_size.y *
+                       conv_params.block_size.z;
+      float threads_per_cu = task_size_per_cu / block_size;
+      float warps_per_cu = threads_per_cu / 32 /*warp_size*/;
+      if (warps_per_cu < 8.0f) {
+        conv_params.block_size.x = 1;
+      }
+      if (warps_per_cu < 4.0f && conv_params.block_size.z >= 4) {
+        conv_params.block_size.z /= 2;
+      }
+      if (warps_per_cu < 2.0f && conv_params.block_size.z >= 2) {
+        conv_params.block_size.z /= 2;
+      }
     }
     if (src_depth % 2 == 0) {
       conv_params.src_depth_loop_size = 2;
