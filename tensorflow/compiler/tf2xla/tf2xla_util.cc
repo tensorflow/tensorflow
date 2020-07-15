@@ -158,7 +158,7 @@ Status ReplaceArgUsageWithConstNode(
 
       // Later entries in `usages` might have `usage_node` as dst node, but
       // `usage_node` is removed. Replace such entries with `replace_node`.
-      for (int j = i + 1, iter_limt = usages.size(); j < end; j++) {
+      for (int j = i + 1, end = usages.size(); j < end; j++) {
         if (usages[j].dst_node_id == usages[i].dst_node_id) {
           usages[j].dst_node_id = replace_node->id();
         }
