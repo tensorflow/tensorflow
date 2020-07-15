@@ -701,7 +701,7 @@ typedef struct TF_FilesystemOps {
   /// Plugins:
   ///   * Must set `status` to `TF_OK` if transaction successfuly started.
   ///   * Must set `status` to `TF_FAILED_PRECONDITION` if multiple transactions
-  ///   are not supported
+  ///     are not supported
   ///   * Might use any other error value for `status` to signal other errors.
   int (*start_transaction)(const TF_Filesystem* filesystem,
                            TF_TransactionToken** token, TF_Status* status);
