@@ -1493,21 +1493,21 @@ Status SqueezeTransposer::UpdateSqueezeDims(TransposeContext* context,
   if (squeeze_dims_attr == nullptr) {
     return errors::InvalidArgument("Missing attribute ", kAttrSqueezeDims);
   }
-  const int max_num_squeeze_dim = context->src_format.length() - 1;
-  const int min_squeeze_dim = -(max_num_squeeze_dim + 1);
+  const int num_input_dims = context->src_format.length();
+  const int min_squeeze_dim = -num_input_dims;
   std::vector<int> squeeze_dims_mapped;
   const int squeeze_dims_size = squeeze_dims_attr->list().i_size();
   squeeze_dims_mapped.reserve(squeeze_dims_size);
   for (int i = 0; i < squeeze_dims_size; ++i) {
     int dim = squeeze_dims_attr->list().i(i);
-    if (dim < min_squeeze_dim || dim >= max_num_squeeze_dim) {
+    if (dim < min_squeeze_dim || dim >= num_input_dims) {
       return errors::InvalidArgument(
           "Attribute '", kAttrSqueezeDims, "' contains out of range index '",
           dim, "', index must be between [", min_squeeze_dim, ", ",
-          max_num_squeeze_dim, ")");
+          num_input_dims, ")");
     }
     if (dim < 0) {
-      dim += max_num_squeeze_dim;
+      dim += num_input_dims;
     }
     squeeze_dims_mapped.push_back(context->dst_to_src[dim]);
   }
