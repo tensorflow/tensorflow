@@ -5,11 +5,6 @@ load(
     "tf_kernel_library",
 )
 
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library"
-)
-
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -86,15 +81,9 @@ tf_cc_test(
 
 cc_library(
     name = "tensor_shape_utils",
-    srcs = [
-        "tensor_shape_utils.cc",
-    ],
-    hdrs = [
-        "tensor_shape_utils.h",
-    ],
-    deps = [ 
-        "//tensorflow/c:tf_tensor", 
-    ], 
+    srcs = ["tensor_shape_utils.cc",],
+    hdrs = ["tensor_shape_utils.h",],
+    deps = [ "//tensorflow/c:tf_tensor",], 
     visibility = ["//visibility:public"],
 )
 
