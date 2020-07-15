@@ -402,7 +402,7 @@ tf_module {
   }
   member_method {
     name: "swish"
-    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "tanh"

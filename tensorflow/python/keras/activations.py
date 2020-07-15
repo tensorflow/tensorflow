@@ -26,6 +26,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.framework import ops
 
 # b/123041942
 # In TF 2.x, if the `tf.nn.softmax` is used as an activation function in Keras
@@ -232,7 +233,7 @@ def softsign(x):
 
 @keras_export('keras.activations.swish')
 @dispatch.add_dispatch_support
-def swish(x):
+def swish(x, name=None):
   """Swish activation function, `swish(x) = x * sigmoid(x)`.
 
   Swish activation function which returns `x*sigmoid(x)`.
@@ -251,6 +252,7 @@ def swish(x):
 
   Arguments:
       x: Input tensor.
+      name: A name for the operation (optional).
 
   Returns:
       The swish activation applied to `x` (see reference paper for details).
@@ -258,7 +260,8 @@ def swish(x):
   Reference:
     - [Ramachandran et al., 2017](https://arxiv.org/abs/1710.05941)
   """
-  return nn.swish(x)
+  with ops.name_from_scope_name(name, "swish",[x]):
+    return nn.swish(x)
 
 
 @keras_export('keras.activations.relu')

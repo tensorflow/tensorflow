@@ -54,7 +54,7 @@ tf_module {
   }
   member_method {
     name: "swish"
-    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=defaults=[\'None\'], "
   }
   member_method {
     name: "tanh"
