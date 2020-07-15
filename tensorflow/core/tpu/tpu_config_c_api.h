@@ -35,8 +35,8 @@ extern "C" {
 
 TFTPU_CAPI_EXPORT void ConfigureDistributedTpuOp_DoWork(
     const size_t num_cores_per_host_size, const int32_t* num_cores_per_host,
-    void* tpu_compilation_cache_interface, size_t* host_config_output_size,
-    char** host_config_output, TF_Status* status);
+    size_t* host_config_output_size, char** host_config_output,
+    TF_Status* status);
 
 TFTPU_CAPI_EXPORT void WaitForDistributedTpuOp_DoWork(
     const size_t num_hosts, const size_t num_cores_per_host,

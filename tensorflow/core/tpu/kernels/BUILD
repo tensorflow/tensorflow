@@ -79,10 +79,7 @@ tf_kernel_library(
     srcs = ["tpu_configuration_ops.cc"],
     hdrs = ["tpu_configuration_ops.h"],
     deps = [
-        ":tpu_compilation_cache_factory",
-        ":tpu_compilation_cache_interface",
         ":tpu_mesh_state_interface",
-        ":tpu_op_consts",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
@@ -133,20 +130,6 @@ tf_proto_library_cc(
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:protos_all",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto",
-    ],
-)
-
-cc_library(
-    name = "tpu_compilation_cache_factory",
-    srcs = ["tpu_compilation_cache_factory.cc"],
-    hdrs = ["tpu_compilation_cache_factory.h"],
-    deps = [
-        ":tpu_compilation_cache_external",
-        ":tpu_compilation_cache_interface",
-        ":tpu_op_consts",
-        "//tensorflow/core:framework",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:types",
     ],
 )
 
