@@ -53,9 +53,6 @@ class ContextHelper {
   static void ReportOpError(struct TfLiteContext* context, const char* format,
                             ...);
 
-  static TfLiteTensor* GetTensor(const struct TfLiteContext* context,
-                                 int tensor_idx);
-
   void SetNodeIndex(int idx) { current_node_idx_ = idx; }
 
  private:

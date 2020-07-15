@@ -70,12 +70,6 @@ void ContextHelper::ReportOpError(struct TfLiteContext* context,
   va_end(args);
 }
 
-TfLiteTensor* ContextHelper::GetTensor(const struct TfLiteContext* context,
-                                       int tensor_idx) {
-  // TODO(b/160894903): Return this value from temp allocated memory.
-  return &context->tensors[tensor_idx];
-}
-
 }  // namespace internal
 
 MicroInterpreter::MicroInterpreter(const Model* model,
@@ -138,7 +132,6 @@ void MicroInterpreter::Init(tflite::Profiler* profiler) {
 
   context_.impl_ = static_cast<void*>(&context_helper_);
   context_.ReportError = context_helper_.ReportOpError;
-  context_.GetTensor = context_helper_.GetTensor;
   context_.recommended_num_threads = 1;
   context_.profiler = profiler;
 

@@ -30,32 +30,19 @@ inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
 }
 inline const TfLiteTensor* GetInput(const TfLiteContext* context,
                                     const TfLiteNode* node, int index) {
-  if (context->GetTensor != nullptr) {
-    return context->GetTensor(context, node->inputs->data[index]);
-  } else {
-    return &context->tensors[node->inputs->data[index]];
-  }
+  return &context->tensors[node->inputs->data[index]];
 }
 // Note: You must check if result is not null:
 // TfLiteTensor* my_tensor = GetVariableInput(context, node, kMyTensorIdx);
 // TF_LITE_ENSURE(context, my_tensor != nullptr);
 inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
                                       const TfLiteNode* node, int index) {
-  TfLiteTensor* tensor = nullptr;
-  if (context->GetTensor != nullptr) {
-    tensor = context->GetTensor(context, node->inputs->data[index]);
-  } else {
-    tensor = &context->tensors[node->inputs->data[index]];
-  }
-  return (tensor != nullptr && tensor->is_variable) ? tensor : nullptr;
+  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
+  return (tensor->is_variable) ? tensor : nullptr;
 }
 inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                                int index) {
-  if (context->GetTensor != nullptr) {
-    return context->GetTensor(context, node->outputs->data[index]);
-  } else {
-    return &context->tensors[node->outputs->data[index]];
-  }
+  return &context->tensors[node->outputs->data[index]];
 }
 #ifndef TF_LITE_STATIC_MEMORY
 inline TfLiteTensor* GetTemporary(TfLiteContext* context,
@@ -91,11 +78,7 @@ inline const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
   const bool use_tensor = index < node->inputs->size &&
                           node->inputs->data[index] != kTfLiteOptionalTensor;
   if (use_tensor) {
-    if (context->GetTensor != nullptr) {
-      return context->GetTensor(context, node->inputs->data[index]);
-    } else {
-      return &context->tensors[node->inputs->data[index]];
-    }
+    return &context->tensors[node->inputs->data[index]];
   }
   return nullptr;
 }

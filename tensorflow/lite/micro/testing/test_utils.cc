@@ -87,11 +87,6 @@ void* GetScratchBuffer(TfLiteContext* context, int buffer_index) {
   return scratch_buffers_[buffer_index];
 }
 
-TfLiteTensor* GetTensor(const struct TfLiteContext* context, int subgraph_idx) {
-  // TODO(b/160894903): Return this value from temp allocated memory.
-  return &context->tensors[subgraph_idx];
-}
-
 }  // namespace
 
 uint8_t F2Q(float value, float min, float max) {
@@ -141,9 +136,6 @@ void PopulateContext(TfLiteTensor* tensors, int tensors_size,
   context->recommended_num_threads = 1;
   context->GetExternalContext = nullptr;
   context->SetExternalContext = nullptr;
-
-  context->GetTensor = GetTensor;
-  context->GetEvalTensor = nullptr;
 
   context->AllocatePersistentBuffer = AllocatePersistentBuffer;
   context->RequestScratchBufferInArena = RequestScratchBufferInArena;
