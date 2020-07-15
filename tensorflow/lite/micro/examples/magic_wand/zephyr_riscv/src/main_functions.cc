@@ -64,12 +64,17 @@ void setup() {
   // An easier approach is to just use the AllOpsResolver, but this will
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
-  static tflite::MicroMutableOpResolver<5> micro_op_resolver;  // NOLINT
+  static tflite::MicroMutableOpResolver<8> micro_op_resolver;  // NOLINT
   micro_op_resolver.AddConv2D();
   micro_op_resolver.AddDepthwiseConv2D();
   micro_op_resolver.AddFullyConnected();
   micro_op_resolver.AddMaxPool2D();
   micro_op_resolver.AddSoftmax();
+
+  // For fully quantized models
+  micro_op_resolver.AddDequantize();
+  micro_op_resolver.AddQuantize();
+  micro_op_resolver.AddReshape();
 
   // Build an interpreter to run the model with.
   static tflite::MicroInterpreter static_interpreter(
