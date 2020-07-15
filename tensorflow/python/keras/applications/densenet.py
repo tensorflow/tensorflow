@@ -15,7 +15,7 @@
 # pylint: disable=invalid-name
 """DenseNet models for Keras.
 
-  Reference:
+Reference:
   - [Densely Connected Convolutional Networks](
       https://arxiv.org/abs/1608.06993) (CVPR 2017)
 """
