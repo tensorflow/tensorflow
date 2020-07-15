@@ -29,6 +29,9 @@ limitations under the License.
 constexpr char kS3ClientAllocationTag[] = "S3ClientAllocation";
 constexpr int64_t kS3TimeoutMsec = 300000;  // 5 min
 
+constexpr char kExecutorTag[] = "TransferManagerExecutorAllocation";
+constexpr int kExecutorPoolSize = 25;
+
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
 
@@ -164,6 +167,18 @@ static void GetS3Client(TF_Filesystem* filesystem) {
     s3_file->s3_client = Aws::MakeShared<Aws::S3::S3Client>(
         kS3ClientAllocationTag, GetDefaultClientConfig(),
         Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false);
+  }
+}
+
+static void GetExecutor(TF_Filesystem* filesystem) {
+  auto s3_file =
+      static_cast<tf_s3_filesystem::S3File*>(filesystem->plugin_filesystem);
+  absl::MutexLock l(&s3_file->initialization_lock);
+
+  if (s3_file->executor.get() == nullptr) {
+    s3_file->executor =
+        Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(
+            kExecutorTag, kExecutorPoolSize);
   }
 }
 
