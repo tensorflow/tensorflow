@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/env.h"
-#include "tensorflow/c/experimental/filesystem/plugins/gcs/file_block_cache.h"
 #include "tensorflow/c/tf_status.h"
 
 namespace tf_gcs_filesystem {
@@ -37,7 +36,7 @@ namespace tf_gcs_filesystem {
 ///
 /// This class should be shared by read-only random access files on a remote
 /// filesystem (e.g. GCS).
-class RamFileBlockCache : public FileBlockCache {
+class RamFileBlockCache {
  public:
   /// The callback executed when a block is not found in the cache, and needs to
   /// be fetched from the backing filesystem. This callback is provided when the
@@ -69,7 +68,7 @@ class RamFileBlockCache : public FileBlockCache {
               << (IsCacheEnabled() ? "enabled" : "disabled");
   }
 
-  ~RamFileBlockCache() override {
+  ~RamFileBlockCache() {
     if (pruning_thread_) {
       stop_pruning_thread_.Notify();
       // Destroying pruning_thread_ will block until Prune() receives the above
@@ -98,36 +97,33 @@ class RamFileBlockCache : public FileBlockCache {
   /// Caller is responsible for allocating memory for `buffer`.
   /// `buffer` will be left unchanged in case of errors.
   void Read(const std::string& filename, size_t offset, size_t n, char* buffer,
-            size_t* bytes_transferred, TF_Status* status) override;
+            size_t* bytes_transferred, TF_Status* status);
 
   // Validate the given file signature with the existing file signature in the
   // cache. Returns true if the signature doesn't change or the file doesn't
   // exist before. If the signature changes, update the existing signature with
   // the new one and remove the file from cache.
   bool ValidateAndUpdateFileSignature(const std::string& filename,
-                                      int64_t file_signature) override
+                                      int64_t file_signature)
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Remove all cached blocks for `filename`.
-  void RemoveFile(const std::string& filename) override
-      ABSL_LOCKS_EXCLUDED(mu_);
+  void RemoveFile(const std::string& filename) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Remove all cached data.
-  void Flush() override ABSL_LOCKS_EXCLUDED(mu_);
+  void Flush() ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Accessors for cache parameters.
-  size_t block_size() const override { return block_size_; }
-  size_t max_bytes() const override { return max_bytes_; }
-  uint64_t max_staleness() const override { return max_staleness_; }
+  size_t block_size() const { return block_size_; }
+  size_t max_bytes() const { return max_bytes_; }
+  uint64_t max_staleness() const { return max_staleness_; }
 
   /// The current size (in bytes) of the cache.
-  size_t CacheSize() const override ABSL_LOCKS_EXCLUDED(mu_);
+  size_t CacheSize() const ABSL_LOCKS_EXCLUDED(mu_);
 
   // Returns true if the cache is enabled. If false, the BlockFetcher callback
   // is always executed during Read.
-  bool IsCacheEnabled() const override {
-    return block_size_ > 0 && max_bytes_ > 0;
-  }
+  bool IsCacheEnabled() const { return block_size_ > 0 && max_bytes_ > 0; }
 
   // We can not pass a lambda with capture as a function pointer to
   // `TF_StartThread`, so we have to wrap `Prune` inside a static function.

@@ -32,10 +32,9 @@ class ConverterToConvWeights : public GPUOperation {
   ConverterToConvWeights(const OperationDef& definition,
                          const ConvWeightsDescription& conv_weights_desc)
       : GPUOperation(definition), conv_weights_desc_(conv_weights_desc) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
   absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   ConverterToConvWeights(ConverterToConvWeights&& operation);
@@ -44,9 +43,6 @@ class ConverterToConvWeights : public GPUOperation {
   ConverterToConvWeights& operator=(const ConverterToConvWeights&) = delete;
 
  private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
   ConvWeightsDescription conv_weights_desc_;
 };
 

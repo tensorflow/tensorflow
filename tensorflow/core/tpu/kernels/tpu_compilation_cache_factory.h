@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,21 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_FACTORY_H_
+#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_FACTORY_H_
 
-#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_STRONG_HASH_H_
-#define TENSORFLOW_CORE_PLATFORM_DEFAULT_STRONG_HASH_H_
+#include <functional>
 
-#include "highwayhash/sip_hash.h"  // from @highwayhash
-#include "highwayhash/state_helpers.h"  // from @highwayhash
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 
 namespace tensorflow {
+namespace tpu {
 
-inline uint64 StrongKeyedHash(const tensorflow::uint64 (&key)[2],
-                              const string& s) {
-  return highwayhash::StringHasher<highwayhash::SipHashState>()(
-      {key[0], key[1]}, s);
-}
+std::function<TpuCompilationCacheInterface*()> GetCompilationCacheCreateFn();
 
+void SetCompilationCacheCreateFn(
+    std::function<TpuCompilationCacheInterface*()> fn);
+
+}  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_STRONG_HASH_H_
+#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_FACTORY_H_

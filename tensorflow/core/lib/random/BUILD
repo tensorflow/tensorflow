@@ -40,6 +40,7 @@ cc_library(
     deps = [
         ":exact_uniform_int",
         ":philox_random",
+        "//tensorflow/core/framework:numeric_types",
         "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:logging",

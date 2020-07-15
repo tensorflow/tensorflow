@@ -125,7 +125,7 @@ absl::Status LSTM::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("prev_state", src_[1]));
   RETURN_IF_ERROR(args_.SetObjectRef("new_state", dst_[0]));
   RETURN_IF_ERROR(args_.SetObjectRef("activation", dst_[1]));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 LSTM::GetGridSize() const {
@@ -133,16 +133,6 @@ int3 LSTM::GetGridSize() const {
   const int grid_y = dst_[0]->Slices();
   const int grid_z = 1;
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status LSTM::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status LSTM::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 LSTM CreateLSTM(const OperationDef& definition) { return LSTM(definition); }
