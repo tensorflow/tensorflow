@@ -15,7 +15,7 @@ TinyML 번역서의 한국 독자들을 위한 한글 소스코드 저장소를 
 
     ![](./images/sinewave.png)
 
-- __Ch08: 음성 인식 모델 만들기__ [train_speech_model.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite/micro/examples/micro_speech/train_speech_model.ipynb)
+- __Ch08: 음성 인식 모델 만들기__ [train_speech_model.ipynb](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite/micro/examples/micro_speech/train_speech_model_ko.ipynb)
 
     ![](./images/training_audio.gif)
     ![](./images/cross_entropy.gif)
