@@ -783,7 +783,7 @@ typedef struct TF_FilesystemOps {
   ///
   /// Plugins:
   ///   * Must set `status` to `TF_OK` if transaction found or successfuly
-  ///   started.
+  ///     started.
   ///   * Must set `status` to `TF_NOT_FOUND` if `path` doesn't point to this
   ///     filesystem
   ///   * Must set `status` to `TF_FAILED_PRECONDITION` if file/directory is
