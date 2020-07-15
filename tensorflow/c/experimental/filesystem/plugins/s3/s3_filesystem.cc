@@ -21,10 +21,12 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/experimental/filesystem/plugins/s3/aws_crypto.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for S3 environments.
 // This filesystem will support `s3://` URI schemes.
+constexpr char kS3ClientAllocationTag[] = "S3ClientAllocation";
 constexpr int64_t kS3TimeoutMsec = 300000;  // 5 min
 
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
@@ -130,6 +132,40 @@ static Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
   }
   return cfg;
 };
+
+static void GetS3Client(TF_Filesystem* filesystem) {
+  auto s3_file =
+      static_cast<tf_s3_filesystem::S3File*>(filesystem->plugin_filesystem);
+  absl::MutexLock l(&s3_file->initialization_lock);
+
+  if (s3_file->s3_client.get() == nullptr) {
+    Aws::SDKOptions options;
+    options.cryptoOptions.sha256Factory_create_fn = []() {
+      return Aws::MakeShared<tf_s3_filesystem::AWSSHA256Factory>(
+          tf_s3_filesystem::AWSCryptoAllocationTag);
+    };
+    options.cryptoOptions.sha256HMACFactory_create_fn = []() {
+      return Aws::MakeShared<tf_s3_filesystem::AWSSHA256HmacFactory>(
+          tf_s3_filesystem::AWSCryptoAllocationTag);
+    };
+    options.cryptoOptions.secureRandomFactory_create_fn = []() {
+      return Aws::MakeShared<tf_s3_filesystem::AWSSecureRandomFactory>(
+          tf_s3_filesystem::AWSCryptoAllocationTag);
+    };
+    Aws::InitAPI(options);
+
+    // The creation of S3Client disables virtual addressing:
+    //   S3Client(clientConfiguration, signPayloads, useVirtualAddressing =
+    //   true)
+    // The purpose is to address the issue encountered when there is an `.`
+    // in the bucket name. Due to TLS hostname validation or DNS rules,
+    // the bucket may not be resolved. Disabling of virtual addressing
+    // should address the issue. See GitHub issue 16397 for details.
+    s3_file->s3_client = Aws::MakeShared<Aws::S3::S3Client>(
+        kS3ClientAllocationTag, GetDefaultClientConfig(),
+        Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false);
+  }
+}
 
 static void ShutdownClient(Aws::S3::S3Client* s3_client) {
   if (s3_client != nullptr) {
