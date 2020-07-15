@@ -211,6 +211,7 @@ class TensorMapReplace : public OpKernel {
   DataType element_dtype_;
 };
 
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_MAP_KERNELS_H_

@@ -33,10 +33,10 @@ void TensorMap::Encode(VariantTensorData* data) const {
     Tensor k = map_it->first;
     Tensor v = map_it->second;
     // TODO: k should also not be DT_RESOURCE or DT_VARIANT
-    if(k.dtype() != DT_INVALID && v.dtype() != DT_INVALID) {
-      *data->add_tensors() = k;
-      *data->add_tensors() = v;
-    }
+    CHECK_NE(k.dtype(), DT_INVALID);
+    CHECK_NE(v.dtype(), DT_INVALID);
+    *data->add_tensors() = k;
+    *data->add_tensors() = v;
     map_it++;
   }
   string metadata;
@@ -56,9 +56,11 @@ static Status TensorMapDeviceCopy(
   to->element_shape = from.element_shape;
   to->element_dtype = from.element_dtype;
   for (const std::pair<TensorKey,Tensor>& p : from.tensors()) {
-    if (p.first.dtype() != DT_INVALID && p.second.dtype() != DT_INVALID) {
-      to->tensors().emplace(p.first, p.second);
-    }
+    TensorKey to_key(p.first.dtype());
+    Tensor to_val(p.second.dtype());
+    copy(p.first, &to_key);
+    copy(p.second, &to_val);
+    to->tensors().emplace(to_key, to_val);
   }
   return Status::OK();
 }
