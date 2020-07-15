@@ -645,8 +645,7 @@ Status CapturedFunction::Instantiate(
       inst_opts.composite_devices[it.first] = &it.second;
     }
 
-    for (int i = 0, end = fdef->signature().output_arg_size();
-         i < end; ++i) {
+    for (int i = 0, end = fdef->signature().output_arg_size(); i < end; ++i) {
       inst_opts.output_devices.push_back(inst_opts.target);
     }
 
