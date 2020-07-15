@@ -1111,7 +1111,7 @@ class DataHandler(object):
 
     strategy = ds_context.get_strategy()
     dataset = self._adapter.get_dataset()
-    if class_weight.all():
+    if class_weight.any():
       dataset = dataset.map(_make_class_weight_map_fn(class_weight))
     self._inferred_steps = self._infer_steps(steps_per_epoch, dataset)
 
