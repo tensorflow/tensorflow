@@ -3,7 +3,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_tpu", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cc_test", "tf_cuda_library", "tf_gen_op_wrapper_py")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_tpu", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cc_test", "tf_cuda_library", "tf_enable_mlir_bridge", "tf_gen_op_wrapper_py")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_monitoring_python_deps")
@@ -5671,6 +5671,12 @@ cc_library(
 )
 
 py_library(
+    name = "global_test_configuration",
+    deps = if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]) +
+           tf_enable_mlir_bridge(),
+)
+
+py_library(
     name = "util",
     srcs = glob(
         ["util/**/*.py"],
@@ -5693,6 +5699,10 @@ py_library(
     ],
     deps = [
         ":_pywrap_tf32_execution",
+        # global_test_configuration is added here because all major tests depend on this
+        # library. It isn't possible to add these test dependencies via tensorflow.bzl's
+        # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
+        ":global_test_configuration",
         ":tf_decorator",
         ":tf_export",
         ":tf_stack",
@@ -5702,7 +5712,7 @@ py_library(
         "@six_archive//:six",
         "@wrapt",
         "//tensorflow/tools/compatibility:all_renames_v2",
-    ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]),
+    ],
 )
 
 tf_py_test(
