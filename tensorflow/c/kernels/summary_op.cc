@@ -68,8 +68,8 @@ static void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   if (!IsSameSize(params.tags, params.values)) {
     std::ostringstream err;
     err << "tags and values not the same shape: " 
-        << ShapeDebugString(params.tags) << " != " 
-        << ShapeDebugString(params.values)
+        << tensorflow::ShapeDebugString(params.tags) << " != " 
+        << tensorflow::ShapeDebugString(params.values)
         << SingleTag(params.tags); 
     TF_SetStatus(params.status, TF_INVALID_ARGUMENT, err.str().c_str());
   }

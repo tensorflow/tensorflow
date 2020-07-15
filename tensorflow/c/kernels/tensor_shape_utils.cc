@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
+namespace tensorflow { 
+
 std::string ShapeDebugString(TF_Tensor* tensor) { 
 	// A TF_Tensor cannot have an unknown rank 
 	CHECK_GE(TF_NumDims(tensor), 0); 
@@ -36,3 +38,4 @@ std::string ShapeDebugString(TF_Tensor* tensor) {
 	tensorflow::strings::StrAppend(&s, "]");
 	return s; 
 }
+} // namespace tensorflow
