@@ -56,6 +56,8 @@ static void ScalarSummaryOp_Delete(void* kernel) {
 
 // Helper functions for compute method 
 bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2);
+// Returns a string representation of a single tag or empty string if there 
+// are multiple tags 
 static tensorflow::string SingleTag(TF_Tensor* tags); 
 
 template<typename T>
@@ -72,12 +74,9 @@ static void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
         << tensorflow::ShapeDebugString(params.values)
         << SingleTag(params.tags); 
     TF_SetStatus(params.status, TF_INVALID_ARGUMENT, err.str().c_str());
-  }
-  if (TF_GetCode(params.status) != TF_OK){ 
     TF_OpKernelContext_Failure(ctx, params.status);
     return; 
   }
-
   // Convert tags and values tensor to array to access elements by index 
   tensorflow::Summary s; 
   auto tags_array = static_cast<tensorflow::tstring*>(
@@ -148,7 +147,7 @@ void RegisterScalarSummaryOpKernel() {
 }
 
 // A dummy static variable initialized by a lambda whose side-effect is to
-// register the bitcast kernel.                                                          
+// register the ScalarSummary kernel.                                                          
 TF_ATTRIBUTE_UNUSED static bool  IsScalarSummaryOpKernelRegistered = []() {                  
   if (SHOULD_REGISTER_OP_KERNEL("ScalarSummary")) {                                                                           
     RegisterScalarSummaryOpKernel<tensorflow::int64>();    

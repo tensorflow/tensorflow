@@ -27,9 +27,9 @@ namespace tensorflow {
 	
 // The following are utils for the shape of a TF_Tensor type. 
 // These functions may later be subsumed by the methods for a
-// TF_TensorShape type 
+// TF_TensorShape type. 
 
-// Returns a string representation of the TF_Tensor
+// Returns a string representation of the TF_Tensor shape. 
 std::string ShapeDebugString(TF_Tensor* tensor); 
 
 } // namespace tensorflow
