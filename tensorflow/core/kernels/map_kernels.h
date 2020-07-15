@@ -167,9 +167,6 @@ class TensorMapErase : public OpKernel {
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
     const TensorKey& key = c->input(1);
 
-    OP_REQUIRES(c, !m->tensors().empty(),
-                errors::InvalidArgument("Trying to erase from an empty map."));
-
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
                 errors::InvalidArgument("Trying to erase non-existent item."));
 
@@ -204,7 +201,7 @@ class TensorMapReplace : public OpKernel {
 
     TensorMap* output_map = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
-    output_map->replace(key,value);
+    output_map->replace(key, value);
   }
 
  private:
