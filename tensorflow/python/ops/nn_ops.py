@@ -3494,7 +3494,7 @@ def leaky_relu(features, alpha=0.2, name=None):
 
 @tf_export("nn.gelu", v1=[])
 @dispatch.add_dispatch_support
-def gelu(features, approximate=True, name=None):
+def gelu(features, approximate=False, name=None):
   """Compute the Gaussian Error Linear Unit (GELU) activation function.
 
   Gaussian error linear unit (GELU) computes
@@ -3507,16 +3507,16 @@ def gelu(features, approximate=True, name=None):
   >>> x = tf.constant([-3.0, -1.0, 0.0, 1.0, 3.0], dtype=tf.float32)
   >>> y = tf.nn.gelu(x)
   >>> y.numpy()
-  array([-0.00363752, -0.158808  ,  0.        ,  0.841192  ,  2.9963627 ],
-      dtype=float32)
-  >>> y = tf.nn.gelu(x, approximate=False)
-  >>> y.numpy()
   array([-0.00404951, -0.15865529,  0.        ,  0.8413447 ,  2.9959507 ],
+      dtype=float32)
+  >>> y = tf.nn.gelu(x, approximate=True)
+  >>> y.numpy()
+  array([-0.00363752, -0.15880796,  0.        ,  0.841192  ,  2.9963627 ],
       dtype=float32)
 
   Args:
     features: A `Tensor` representing preactivation values.
-    approximate: An optional `bool`. Defaults to `True`.
+    approximate: An optional `bool`. Defaults to `False`.
       Whether to enable approximation.
     name: A name for the operation (optional).
 

@@ -304,7 +304,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
 @keras_export('keras.activations.gelu', v1=[])
 @dispatch.add_dispatch_support
-def gelu(x, approximate=True):
+def gelu(x, approximate=False):
   """Applies the Gaussian error linear unit (GELU) activation function.
 
   Gaussian error linear unit (GELU) computes
@@ -317,11 +317,11 @@ def gelu(x, approximate=True):
   >>> x = tf.constant([-3.0, -1.0, 0.0, 1.0, 3.0], dtype=tf.float32)
   >>> y = tf.keras.activations.gelu(x)
   >>> y.numpy()
-  array([-0.00363752, -0.158808  ,  0.        ,  0.841192  ,  2.9963627 ],
-      dtype=float32)
-  >>> y = tf.keras.activations.gelu(x, approximate=False)
-  >>> y.numpy()
   array([-0.00404951, -0.15865529,  0.        ,  0.8413447 ,  2.9959507 ],
+      dtype=float32)
+  >>> y = tf.keras.activations.gelu(x, approximate=True)
+  >>> y.numpy()
+  array([-0.00363752, -0.15880796,  0.        ,  0.841192  ,  2.9963627 ],
       dtype=float32)
 
   Arguments:
