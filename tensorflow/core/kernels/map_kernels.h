@@ -144,6 +144,10 @@ class TensorMapLookup : public OpKernel {
     const TensorKey& key = c->input(1);
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
+
+    OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
+                errors::InvalidArgument("Trying to lookup non-existent key."));
+    
     c->set_output(0, m->tensors().find(key)->second);
   }
 
@@ -159,11 +163,9 @@ class TensorMapErase : public OpKernel {
   }
 
   void Compute(OpKernelContext* c) override {
-    std::cout << "hello TensorMapErase op" << std::endl;
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
-    const Tensor& temp_key = c->input(1);
-    const TensorKey key = TensorKey(temp_key);
+    const TensorKey& key = c->input(1);
 
     OP_REQUIRES(c, !m->tensors().empty(),
                 errors::InvalidArgument("Trying to erase from an empty map."));

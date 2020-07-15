@@ -1,4 +1,4 @@
-# Copyright 2018 The Sonnet Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import map_ops
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -56,7 +57,17 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m = map_ops.tensor_map_insert(m, k, v)
     l = map_ops.tensor_map_lookup(m, k)
     self.assertAllClose(l, v)
-  
+
+  def testTensorMapLookupMissingKeyFails(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    v = constant_op.constant(2.0)
+    
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Trying to lookup non-existent key."):
+      l = map_ops.tensor_map_lookup(m, k)
+      self.evaluate(l)
+    
   def testTensorMapReplace(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
@@ -76,12 +87,34 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v = constant_op.constant(2.0)
     m = map_ops.tensor_map_insert(m, k, v)
     s = map_ops.tensor_map_size(m)
-    self.assertAllClose(s, 1)
+    self.assertAllEqual(s, 1)
 
     m, e = map_ops.tensor_map_erase(m, k)
     s = map_ops.tensor_map_size(m)
-    self.assertAllClose(s, 0)
+    self.assertAllEqual(s, 0)
     self.assertAllClose(e, v)
+
+  def testTensorMapEraseFromEmptyMapFails(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    v = constant_op.constant(2.0)
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Trying to erase from an empty map."):
+      m, e = map_ops.tensor_map_erase(m, k)
+      self.evaluate(e)
+  
+  def testTensorMapEraseMissingKeyFails(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    k2 = constant_op.constant(2.0)
+    v = constant_op.constant(2.0)
+    m = map_ops.tensor_map_insert(m, k2, v)
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Trying to erase non-existent item."):
+      m, e = map_ops.tensor_map_erase(m, k)
+      self.evaluate(e)
 
   def testInsertLookupGrad(self):
     with backprop.GradientTape() as tape:

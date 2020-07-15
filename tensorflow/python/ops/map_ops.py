@@ -1,4 +1,4 @@
-# Copyright 2018 The Sonnet Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,14 +52,13 @@ def LookupGrad(op, dval):
   m, k = op.inputs
   map_grad = empty_tensor_map()
   map_grad = tensor_map_insert(map_grad, k, dval)
-  key = op.inputs[1]
   key_grad = None
   return map_grad, key_grad
 
 @ops.RegisterGradient("TensorMapInsert")
 def InsertGrad(op, dmap):
   _, key, val = op.inputs
-  map_grad, _ = gen_map_ops.tensor_map_erase(dmap, key)
+  map_grad = None
   key_grad = None
   value_grad = tensor_map_lookup(dmap, key)
   return map_grad, key_grad, value_grad
