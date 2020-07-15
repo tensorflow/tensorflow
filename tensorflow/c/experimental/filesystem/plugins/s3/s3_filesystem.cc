@@ -38,6 +38,25 @@ constexpr uint64_t kS3MultiPartDownloadChunkSize = 50 * 1024 * 1024;  // 50 MB
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
 
+static inline void TF_SetStatusFromAWSError(
+    const Aws::Client::AWSError<Aws::S3::S3Errors>& error, TF_Status* status) {
+  switch (error.GetResponseCode()) {
+    case Aws::Http::HttpResponseCode::FORBIDDEN:
+      TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                   "AWS Credentials have not been set properly. "
+                   "Unable to access the specified S3 location");
+      break;
+    case Aws::Http::HttpResponseCode::REQUESTED_RANGE_NOT_SATISFIABLE:
+      TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
+      break;
+    default:
+      TF_SetStatus(
+          status, TF_UNKNOWN,
+          (error.GetExceptionName() + ": " + error.GetMessage()).c_str());
+      break;
+  }
+}
+
 static void ParseS3Path(const Aws::String& fname, bool object_empty_ok,
                         Aws::String* bucket, Aws::String* object,
                         TF_Status* status) {
