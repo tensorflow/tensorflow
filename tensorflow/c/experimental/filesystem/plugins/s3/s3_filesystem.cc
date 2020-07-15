@@ -136,9 +136,7 @@ static Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
   return cfg;
 };
 
-static void GetS3Client(TF_Filesystem* filesystem) {
-  auto s3_file =
-      static_cast<tf_s3_filesystem::S3File*>(filesystem->plugin_filesystem);
+static void GetS3Client(tf_s3_filesystem::S3File* s3_file) {
   absl::MutexLock l(&s3_file->initialization_lock);
 
   if (s3_file->s3_client.get() == nullptr) {
@@ -170,9 +168,7 @@ static void GetS3Client(TF_Filesystem* filesystem) {
   }
 }
 
-static void GetExecutor(TF_Filesystem* filesystem) {
-  auto s3_file =
-      static_cast<tf_s3_filesystem::S3File*>(filesystem->plugin_filesystem);
+static void GetExecutor(tf_s3_filesystem::S3File* s3_file) {
   absl::MutexLock l(&s3_file->initialization_lock);
 
   if (s3_file->executor.get() == nullptr) {
