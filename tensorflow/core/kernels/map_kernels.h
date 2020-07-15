@@ -199,6 +199,9 @@ class TensorMapReplace : public OpKernel {
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
 
+    OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
+                errors::InvalidArgument("Trying to replace non-existent key."));
+
     TensorMap* output_map = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
     output_map->replace(key,value);

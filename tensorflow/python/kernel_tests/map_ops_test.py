@@ -81,6 +81,18 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     l = map_ops.tensor_map_lookup(m, k)
     self.assertAllClose(l, v2)
 
+  def testTensorMapReplaceMissingKeyFails(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    k2 = constant_op.constant(2.0)
+    v = constant_op.constant(2.0)
+    m = map_ops.tensor_map_insert(m, k2, v)
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Trying to replace non-existent key."):
+      m = map_ops.tensor_map_replace(m, k, v)
+      self.evaluate(m)
+
   def testTensorMapErase(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
