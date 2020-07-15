@@ -522,13 +522,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     text += ")";
     return text;
   }
-  string result = StrCat(
-      primitive_util::LowercasePrimitiveTypeName(shape.element_type()), "[");
-  for (int i = 0; i < shape.dimensions().size(); i++) {
-    StrAppend(&result, (i > 0) ? "," : "",
-              shape.is_dynamic_dimension(i) ? "<=" : "", shape.dimensions(i));
-  }
-  result += "]";
+  string result = HumanString(shape);
   if (IsScalar(shape)) {
     string layout_str = LayoutUtil::HumanString(shape.layout());
     // Don't print "{}" as layout for scalars.
