@@ -334,8 +334,7 @@ TEST_P(CppGradients, TestMatMulGrad) {
   AbstractContextPtr ctx;
   {
     AbstractContext* ctx_raw = nullptr;
-    Status s =
-        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    Status s = BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     ctx.reset(ctx_raw);
   }
