@@ -50,7 +50,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         v.assign(2 * v)
         val = v.read_value()
         val = c.mark_as_return(val)
-      self.assertAllEqual(val.eval(), 4.0)
+      self.assertAllEqual(val, 4.0)
 
   def testNoControlDepsBetweenVariableReads(self):
     with context.graph_mode(), self.cached_session():
@@ -607,9 +607,9 @@ class AutomaticControlDependenciesTest(test.TestCase):
         one = constant_op.constant(1.0)
         one = c.mark_as_return(one)
       one.eval(feed_dict={p: False})
-      self.assertAllEqual(v.read_value().eval(), 5.0)
+      self.assertAllEqual(v.read_value(), 5.0)
       one.eval(feed_dict={p: True})
-      self.assertAllEqual(v.read_value().eval(), 6.0)
+      self.assertAllEqual(v.read_value(), 6.0)
 
   @test_util.run_v1_only("b/120545219")
   def testCondNested(self):
@@ -737,7 +737,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         v.assign(2 * v)
         return v.read_value()
 
-      self.assertAllEqual(f().eval(), 4.0)
+      self.assertAllEqual(f(), 4.0)
 
   def testOptimizerInDefun(self):
     def loss(v):
@@ -761,8 +761,8 @@ class AutomaticControlDependenciesTest(test.TestCase):
     v = resource_variable_ops.ResourceVariable(1.0)
     grad = backprop.implicit_grad(lambda v: v**2)(v)
 
-    with self.assertRaisesRegexp(TypeError,
-                                 ".*must return zero or more Tensors.*"):
+    with self.assertRaisesRegex(TypeError,
+                                ".*must return zero or more Tensors.*"):
       # TODO(akshayka): We might want to allow defun-ing Python functions
       # that return operations (and just execute the op instead of running it).
       optimizer.apply_gradients(grad)

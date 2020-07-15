@@ -301,6 +301,24 @@ struct RestoreOp {
       TF_RETURN_IF_ERROR(
           reader->LookupSlice(tensor_name, parsed_slice, restored_tensor));
     }
+    if (VLOG_IS_ON(5)) {
+      if (restored_tensor->dtype() == DT_FLOAT) {
+        const float* t_data = restored_tensor->flat<float>().data();
+        float min = std::numeric_limits<float>::infinity();
+        float max = -std::numeric_limits<float>::infinity();
+        double avg = 0.0;
+        for (int i = 0; i < restored_tensor->NumElements(); ++i) {
+          if (t_data[i] < min) min = t_data[i];
+          if (t_data[i] > max) max = t_data[i];
+          avg += t_data[i];
+        }
+        VLOG(5) << " min " << min << " max " << max << " avg "
+                << avg / restored_tensor->NumElements() << " total elts "
+                << restored_tensor->NumElements();
+      }
+    }
+    VLOG(1) << "Done restoring tensor " << idx << " : " << tensor_name << " : "
+            << restored_full_shape.num_elements();
     return Status::OK();
   }
 

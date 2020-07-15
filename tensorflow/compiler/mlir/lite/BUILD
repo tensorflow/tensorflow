@@ -273,10 +273,24 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/core:framework",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "tftext_utils_test",
+    size = "small",
+    srcs = ["utils/tftext_utils_test.cc"],
+    deps = [
+        ":tftext_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -347,6 +361,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:unroll_batch_matmul_pass",
         "//tensorflow/compiler/xla:status",
@@ -459,23 +474,17 @@ filegroup(
     ],
 )
 
-genrule(
+gentbl(
     name = "op_quant_spec_getters_inc",
-    srcs = [
-        "ir/tfl_ops.td",
-        "ir/tfl_op_interfaces.td",
-        "experimental/tfl_hardware_interfaces.td",
+    tbl_outs = [("", "utils/generated_op_quant_spec_getters.inc")],
+    tblgen = "//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen",
+    td_file = "ir/tfl_ops.td",
+    td_srcs = [
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
+        "experimental/tfl_hardware_interfaces.td",
+        "ir/tfl_op_interfaces.td",
     ],
-    outs = [
-        "utils/generated_op_quant_spec_getters.inc",
-    ],
-    cmd = ("$(location //tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen) " +
-           "-I external/llvm-project/mlir/include " +
-           "-I external/org_tensorflow " +
-           "$(location //tensorflow/compiler/mlir/lite:ir/tfl_ops.td) " + " -o $@"),
-    tools = ["//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen"],
 )
 
 # Library with tensorflow Lite dialect static initialization.
@@ -613,7 +622,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
+        "//tensorflow/lite/delegates/flex:allowlisted_flex_ops_lib",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/versioning",
@@ -644,6 +653,7 @@ cc_library(
         ":flatbuffer_tflite_operator_lib",
         ":tensorflow_lite",
         ":tensorflow_lite_dialect_registration",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",

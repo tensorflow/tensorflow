@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
@@ -76,191 +76,185 @@ class SparseSplitOpTest(test.TestCase):
     return sparse_tensor.SparseTensor.from_value(self._SparseTensorValue_3x4x2(
     ))
 
-  @test_util.run_deprecated_v1
   def testSplitMatrixRows(self):
-    with self.session(use_gpu=False):
-      sp_tensors = sparse_ops.sparse_split(
-          sp_input=self._SparseTensor_4x6(), num_split=2, axis=0)
+    for axis in (0, -2):
+      sp_tensors = self.evaluate(
+          sparse_ops.sparse_split(
+              sp_input=self._SparseTensor_4x6(), num_split=2, axis=axis))
       self.assertAllEqual(len(sp_tensors), 2)
-      self.assertAllEqual(sp_tensors[0].indices.eval(), [[0, 0], [0, 2], [0, 4],
-                                                         [0, 5], [1, 1], [1, 3],
-                                                         [1, 4]])
-      self.assertAllEqual(sp_tensors[0].values.eval(), [0, 2, 4, 5, 11, 13, 14])
-      self.assertAllEqual(sp_tensors[0].dense_shape.eval(), [2, 6])
-      self.assertAllEqual(sp_tensors[1].indices.eval(), [[0, 0], [0, 3], [0, 5],
-                                                         [1, 0], [1, 2], [1, 3],
-                                                         [1, 5]])
-      self.assertAllEqual(sp_tensors[1].values.eval(),
-                          [20, 23, 25, 30, 32, 33, 35])
-      self.assertAllEqual(sp_tensors[1].dense_shape.eval(), [2, 6])
+      self.assertAllEqual(
+          sp_tensors[0].indices,
+          [[0, 0], [0, 2], [0, 4], [0, 5], [1, 1], [1, 3], [1, 4]])
+      self.assertAllEqual(sp_tensors[0].values, [0, 2, 4, 5, 11, 13, 14])
+      self.assertAllEqual(sp_tensors[0].dense_shape, [2, 6])
+      self.assertAllEqual(
+          sp_tensors[1].indices,
+          [[0, 0], [0, 3], [0, 5], [1, 0], [1, 2], [1, 3], [1, 5]])
+      self.assertAllEqual(sp_tensors[1].values, [20, 23, 25, 30, 32, 33, 35])
+      self.assertAllEqual(sp_tensors[1].dense_shape, [2, 6])
 
-  @test_util.run_deprecated_v1
   def testSplitMatrixUnevenCols(self):
-    with self.session(use_gpu=False):
-      sp_tensors_3 = sparse_ops.sparse_split(
-          sp_input=self._SparseTensor_5x7(), num_split=3, axis=1)
+    for axis in (1, -1):
+      sp_tensors_3 = self.evaluate(
+          sparse_ops.sparse_split(
+              sp_input=self._SparseTensor_5x7(), num_split=3, axis=axis))
       self.assertAllEqual(len(sp_tensors_3), 3)
-      self.assertAllEqual(sp_tensors_3[0].indices.eval(),
-                          [[0, 0], [0, 2], [1, 1], [2, 0], [3, 0], [3, 2],
-                           [4, 1]])
-      self.assertAllEqual(sp_tensors_3[0].values.eval(),
-                          [0, 2, 11, 20, 30, 32, 41])
-      self.assertAllEqual(sp_tensors_3[0].dense_shape.eval(), [5, 3])
-      self.assertAllEqual(sp_tensors_3[1].indices.eval(),
+      self.assertAllEqual(
+          sp_tensors_3[0].indices,
+          [[0, 0], [0, 2], [1, 1], [2, 0], [3, 0], [3, 2], [4, 1]])
+      self.assertAllEqual(sp_tensors_3[0].values, [0, 2, 11, 20, 30, 32, 41])
+      self.assertAllEqual(sp_tensors_3[0].dense_shape, [5, 3])
+      self.assertAllEqual(sp_tensors_3[1].indices,
                           [[0, 1], [1, 0], [1, 1], [2, 0], [3, 0], [4, 1]])
-      self.assertAllEqual(sp_tensors_3[1].values.eval(),
-                          [4, 13, 14, 23, 33, 44])
-      self.assertAllEqual(sp_tensors_3[1].dense_shape.eval(), [5, 2])
-      self.assertAllEqual(sp_tensors_3[2].indices.eval(),
+      self.assertAllEqual(sp_tensors_3[1].values, [4, 13, 14, 23, 33, 44])
+      self.assertAllEqual(sp_tensors_3[1].dense_shape, [5, 2])
+      self.assertAllEqual(sp_tensors_3[2].indices,
                           [[0, 0], [1, 1], [2, 0], [3, 0], [4, 1]])
-      self.assertAllEqual(sp_tensors_3[2].values.eval(), [5, 16, 25, 35, 46])
-      self.assertAllEqual(sp_tensors_3[2].dense_shape.eval(), [5, 2])
+      self.assertAllEqual(sp_tensors_3[2].values, [5, 16, 25, 35, 46])
+      self.assertAllEqual(sp_tensors_3[2].dense_shape, [5, 2])
       sp_tensors_4 = sparse_ops.sparse_split(
-          sp_input=self._SparseTensor_5x7(), num_split=4, axis=1)
+          sp_input=self._SparseTensor_5x7(), num_split=4, axis=axis)
       self.assertAllEqual(len(sp_tensors_4), 4)
-      self.assertAllEqual(sp_tensors_4[0].indices.eval(),
+      self.assertAllEqual(sp_tensors_4[0].indices,
                           [[0, 0], [1, 1], [2, 0], [3, 0], [4, 1]])
-      self.assertAllEqual(sp_tensors_4[0].values.eval(), [0, 11, 20, 30, 41])
-      self.assertAllEqual(sp_tensors_4[0].dense_shape.eval(), [5, 2])
-      self.assertAllEqual(sp_tensors_4[1].indices.eval(),
+      self.assertAllEqual(sp_tensors_4[0].values, [0, 11, 20, 30, 41])
+      self.assertAllEqual(sp_tensors_4[0].dense_shape, [5, 2])
+      self.assertAllEqual(sp_tensors_4[1].indices,
                           [[0, 0], [1, 1], [2, 1], [3, 0], [3, 1]])
-      self.assertAllEqual(sp_tensors_4[1].values.eval(), [2, 13, 23, 32, 33])
-      self.assertAllEqual(sp_tensors_4[1].dense_shape.eval(), [5, 2])
-      self.assertAllEqual(sp_tensors_4[2].indices.eval(),
+      self.assertAllEqual(sp_tensors_4[1].values, [2, 13, 23, 32, 33])
+      self.assertAllEqual(sp_tensors_4[1].dense_shape, [5, 2])
+      self.assertAllEqual(sp_tensors_4[2].indices,
                           [[0, 0], [0, 1], [1, 0], [2, 1], [3, 1], [4, 0]])
-      self.assertAllEqual(sp_tensors_4[2].values.eval(), [4, 5, 14, 25, 35, 44])
-      self.assertAllEqual(sp_tensors_4[2].dense_shape.eval(), [5, 2])
-      self.assertAllEqual(sp_tensors_4[3].indices.eval(), [[1, 0], [4, 0]])
-      self.assertAllEqual(sp_tensors_4[3].values.eval(), [16, 46])
-      self.assertAllEqual(sp_tensors_4[3].dense_shape.eval(), [5, 1])
+      self.assertAllEqual(sp_tensors_4[2].values, [4, 5, 14, 25, 35, 44])
+      self.assertAllEqual(sp_tensors_4[2].dense_shape, [5, 2])
+      self.assertAllEqual(sp_tensors_4[3].indices, [[1, 0], [4, 0]])
+      self.assertAllEqual(sp_tensors_4[3].values, [16, 46])
+      self.assertAllEqual(sp_tensors_4[3].dense_shape, [5, 1])
 
-  @test_util.run_deprecated_v1
   def testSplitMatrixUnevenRows(self):
-    with self.session(use_gpu=False):
-      sp_tensors_2 = sparse_ops.sparse_split(
-          sp_input=self._SparseTensor_5x7(), num_split=2, axis=0)
-      self.assertAllEqual(sp_tensors_2[0].indices.eval(),
+    for axis in (0, -2):
+      sp_tensors_2 = self.evaluate(
+          sparse_ops.sparse_split(
+              sp_input=self._SparseTensor_5x7(), num_split=2, axis=axis))
+      self.assertAllEqual(sp_tensors_2[0].indices,
                           [[0, 0], [0, 2], [0, 4], [0, 5], [1, 1], [1, 3],
                            [1, 4], [1, 6], [2, 0], [2, 3], [2, 5]])
-      self.assertAllEqual(sp_tensors_2[0].values.eval(),
+      self.assertAllEqual(sp_tensors_2[0].values,
                           [0, 2, 4, 5, 11, 13, 14, 16, 20, 23, 25])
-      self.assertAllEqual(sp_tensors_2[0].dense_shape.eval(), [3, 7])
-      self.assertAllEqual(sp_tensors_2[1].indices.eval(),
-                          [[0, 0], [0, 2], [0, 3], [0, 5], [1, 1], [1, 4],
-                           [1, 6]])
-      self.assertAllEqual(sp_tensors_2[1].values.eval(),
-                          [30, 32, 33, 35, 41, 44, 46])
-      self.assertAllEqual(sp_tensors_2[1].dense_shape.eval(), [2, 7])
+      self.assertAllEqual(sp_tensors_2[0].dense_shape, [3, 7])
+      self.assertAllEqual(
+          sp_tensors_2[1].indices,
+          [[0, 0], [0, 2], [0, 3], [0, 5], [1, 1], [1, 4], [1, 6]])
+      self.assertAllEqual(sp_tensors_2[1].values, [30, 32, 33, 35, 41, 44, 46])
+      self.assertAllEqual(sp_tensors_2[1].dense_shape, [2, 7])
       self.assertAllEqual(len(sp_tensors_2), 2)
       sp_tensors_3 = sparse_ops.sparse_split(
-          sp_input=self._SparseTensor_5x7(), num_split=3, axis=0)
+          sp_input=self._SparseTensor_5x7(), num_split=3, axis=axis)
       self.assertAllEqual(len(sp_tensors_3), 3)
-      self.assertAllEqual(sp_tensors_3[0].indices.eval(),
-                          [[0, 0], [0, 2], [0, 4], [0, 5], [1, 1], [1, 3],
-                           [1, 4], [1, 6]])
-      self.assertAllEqual(sp_tensors_3[0].values.eval(),
-                          [0, 2, 4, 5, 11, 13, 14, 16])
-      self.assertAllEqual(sp_tensors_3[0].dense_shape.eval(), [2, 7])
+      self.assertAllEqual(
+          sp_tensors_3[0].indices,
+          [[0, 0], [0, 2], [0, 4], [0, 5], [1, 1], [1, 3], [1, 4], [1, 6]])
+      self.assertAllEqual(sp_tensors_3[0].values, [0, 2, 4, 5, 11, 13, 14, 16])
+      self.assertAllEqual(sp_tensors_3[0].dense_shape, [2, 7])
 
-      self.assertAllEqual(sp_tensors_3[1].values.eval(),
-                          [20, 23, 25, 30, 32, 33, 35])
-      self.assertAllEqual(sp_tensors_3[1].dense_shape.eval(), [2, 7])
-      self.assertAllEqual(sp_tensors_3[2].indices.eval(), [[0, 1], [0, 4],
-                                                           [0, 6]])
-      self.assertAllEqual(sp_tensors_3[2].values.eval(), [41, 44, 46])
-      self.assertAllEqual(sp_tensors_3[2].dense_shape.eval(), [1, 7])
-    return
+      self.assertAllEqual(sp_tensors_3[1].values, [20, 23, 25, 30, 32, 33, 35])
+      self.assertAllEqual(sp_tensors_3[1].dense_shape, [2, 7])
+      self.assertAllEqual(sp_tensors_3[2].indices, [[0, 1], [0, 4], [0, 6]])
+      self.assertAllEqual(sp_tensors_3[2].values, [41, 44, 46])
+      self.assertAllEqual(sp_tensors_3[2].dense_shape, [1, 7])
 
-  @test_util.run_deprecated_v1
   def testSplitAllRows(self):
-    with self.session(use_gpu=False):
-      sp_tensors = sparse_ops.sparse_split(
-          sp_input=self._SparseTensor_4x6(), num_split=4, axis=0)
+    for axis in (0, -2):
+      sp_tensors = self.evaluate(
+          sparse_ops.sparse_split(
+              sp_input=self._SparseTensor_4x6(), num_split=4, axis=axis))
       self.assertAllEqual(len(sp_tensors), 4)
-      self.assertAllEqual(sp_tensors[0].indices.eval(), [[0, 0], [0, 2], [0, 4],
-                                                         [0, 5]])
-      self.assertAllEqual(sp_tensors[0].values.eval(), [0, 2, 4, 5])
-      self.assertAllEqual(sp_tensors[0].dense_shape.eval(), [1, 6])
-      self.assertAllEqual(sp_tensors[1].indices.eval(), [[0, 1], [0, 3], [0,
-                                                                          4]])
-      self.assertAllEqual(sp_tensors[1].values.eval(), [11, 13, 14])
-      self.assertAllEqual(sp_tensors[1].dense_shape.eval(), [1, 6])
-      self.assertAllEqual(sp_tensors[2].indices.eval(), [[0, 0], [0, 3], [0,
-                                                                          5]])
-      self.assertAllEqual(sp_tensors[2].values.eval(), [20, 23, 25])
-      self.assertAllEqual(sp_tensors[2].dense_shape.eval(), [1, 6])
-      self.assertAllEqual(sp_tensors[3].indices.eval(), [[0, 0], [0, 2], [0, 3],
-                                                         [0, 5]])
-      self.assertAllEqual(sp_tensors[3].values.eval(), [30, 32, 33, 35])
-      self.assertAllEqual(sp_tensors[3].dense_shape.eval(), [1, 6])
+      self.assertAllEqual(sp_tensors[0].indices,
+                          [[0, 0], [0, 2], [0, 4], [0, 5]])
+      self.assertAllEqual(sp_tensors[0].values, [0, 2, 4, 5])
+      self.assertAllEqual(sp_tensors[0].dense_shape, [1, 6])
+      self.assertAllEqual(sp_tensors[1].indices, [[0, 1], [0, 3], [0, 4]])
+      self.assertAllEqual(sp_tensors[1].values, [11, 13, 14])
+      self.assertAllEqual(sp_tensors[1].dense_shape, [1, 6])
+      self.assertAllEqual(sp_tensors[2].indices, [[0, 0], [0, 3], [0, 5]])
+      self.assertAllEqual(sp_tensors[2].values, [20, 23, 25])
+      self.assertAllEqual(sp_tensors[2].dense_shape, [1, 6])
+      self.assertAllEqual(sp_tensors[3].indices,
+                          [[0, 0], [0, 2], [0, 3], [0, 5]])
+      self.assertAllEqual(sp_tensors[3].values, [30, 32, 33, 35])
+      self.assertAllEqual(sp_tensors[3].dense_shape, [1, 6])
 
-  @test_util.run_deprecated_v1
   def testSplitColumns(self):
-    with self.session(use_gpu=False):
-      sparse_tensors = sparse_ops.sparse_split(
-          sp_input=self._SparseTensor_4x6(), num_split=3, axis=1)
+    for axis in (1, -1):
+      sparse_tensors = self.evaluate(
+          sparse_ops.sparse_split(
+              sp_input=self._SparseTensor_4x6(), num_split=3, axis=axis))
       self.assertAllEqual(len(sparse_tensors), 3)
-      self.assertAllEqual(sparse_tensors[0].indices.eval(), [[0, 0], [1, 1],
-                                                             [2, 0], [3, 0]])
-      self.assertAllEqual(sparse_tensors[0].values.eval(), [0, 11, 20, 30])
-      self.assertAllEqual(sparse_tensors[0].dense_shape.eval(), [4, 2])
-      self.assertAllEqual(sparse_tensors[1].indices.eval(),
+      self.assertAllEqual(sparse_tensors[0].indices,
+                          [[0, 0], [1, 1], [2, 0], [3, 0]])
+      self.assertAllEqual(sparse_tensors[0].values, [0, 11, 20, 30])
+      self.assertAllEqual(sparse_tensors[0].dense_shape, [4, 2])
+      self.assertAllEqual(sparse_tensors[1].indices,
                           [[0, 0], [1, 1], [2, 1], [3, 0], [3, 1]])
-      self.assertAllEqual(sparse_tensors[1].values.eval(), [2, 13, 23, 32, 33])
-      self.assertAllEqual(sparse_tensors[1].dense_shape.eval(), [4, 2])
-      self.assertAllEqual(sparse_tensors[2].indices.eval(),
+      self.assertAllEqual(sparse_tensors[1].values, [2, 13, 23, 32, 33])
+      self.assertAllEqual(sparse_tensors[1].dense_shape, [4, 2])
+      self.assertAllEqual(sparse_tensors[2].indices,
                           [[0, 0], [0, 1], [1, 0], [2, 1], [3, 1]])
-      self.assertAllEqual(sparse_tensors[2].values.eval(), [4, 5, 14, 25, 35])
-      self.assertAllEqual(sparse_tensors[2].dense_shape.eval(), [4, 2])
+      self.assertAllEqual(sparse_tensors[2].values, [4, 5, 14, 25, 35])
+      self.assertAllEqual(sparse_tensors[2].dense_shape, [4, 2])
 
-  @test_util.run_deprecated_v1
   def testSplitAllColumns(self):
-    with self.session(use_gpu=False):
-      sparse_tensors = sparse_ops.sparse_split(
-          sp_input=self._SparseTensor_4x6(), num_split=6, axis=1)
+    for axis in (1, -1):
+      sparse_tensors = self.evaluate(
+          sparse_ops.sparse_split(
+              sp_input=self._SparseTensor_4x6(), num_split=6, axis=axis))
       self.assertAllEqual(len(sparse_tensors), 6)
-      self.assertAllEqual(sparse_tensors[0].indices.eval(), [[0, 0], [2, 0],
-                                                             [3, 0]])
-      self.assertAllEqual(sparse_tensors[0].values.eval(), [0, 20, 30])
-      self.assertAllEqual(sparse_tensors[0].dense_shape.eval(), [4, 1])
-      self.assertAllEqual(sparse_tensors[1].indices.eval(), [[1, 0]])
-      self.assertAllEqual(sparse_tensors[1].values.eval(), [11])
-      self.assertAllEqual(sparse_tensors[1].dense_shape.eval(), [4, 1])
-      self.assertAllEqual(sparse_tensors[2].indices.eval(), [[0, 0], [3, 0]])
-      self.assertAllEqual(sparse_tensors[2].values.eval(), [2, 32])
-      self.assertAllEqual(sparse_tensors[2].dense_shape.eval(), [4, 1])
-      self.assertAllEqual(sparse_tensors[3].indices.eval(), [[1, 0], [2, 0],
-                                                             [3, 0]])
-      self.assertAllEqual(sparse_tensors[3].dense_shape.eval(), [4, 1])
-      self.assertAllEqual(sparse_tensors[3].values.eval(), [13, 23, 33])
-      self.assertAllEqual(sparse_tensors[4].indices.eval(), [[0, 0], [1, 0]])
-      self.assertAllEqual(sparse_tensors[4].values.eval(), [4, 14])
-      self.assertAllEqual(sparse_tensors[4].dense_shape.eval(), [4, 1])
-      self.assertAllEqual(sparse_tensors[5].indices.eval(), [[0, 0], [2, 0],
-                                                             [3, 0]])
-      self.assertAllEqual(sparse_tensors[5].values.eval(), [5, 25, 35])
-      self.assertAllEqual(sparse_tensors[5].dense_shape.eval(), [4, 1])
+      self.assertAllEqual(sparse_tensors[0].indices, [[0, 0], [2, 0], [3, 0]])
+      self.assertAllEqual(sparse_tensors[0].values, [0, 20, 30])
+      self.assertAllEqual(sparse_tensors[0].dense_shape, [4, 1])
+      self.assertAllEqual(sparse_tensors[1].indices, [[1, 0]])
+      self.assertAllEqual(sparse_tensors[1].values, [11])
+      self.assertAllEqual(sparse_tensors[1].dense_shape, [4, 1])
+      self.assertAllEqual(sparse_tensors[2].indices, [[0, 0], [3, 0]])
+      self.assertAllEqual(sparse_tensors[2].values, [2, 32])
+      self.assertAllEqual(sparse_tensors[2].dense_shape, [4, 1])
+      self.assertAllEqual(sparse_tensors[3].indices, [[1, 0], [2, 0], [3, 0]])
+      self.assertAllEqual(sparse_tensors[3].dense_shape, [4, 1])
+      self.assertAllEqual(sparse_tensors[3].values, [13, 23, 33])
+      self.assertAllEqual(sparse_tensors[4].indices, [[0, 0], [1, 0]])
+      self.assertAllEqual(sparse_tensors[4].values, [4, 14])
+      self.assertAllEqual(sparse_tensors[4].dense_shape, [4, 1])
+      self.assertAllEqual(sparse_tensors[5].indices, [[0, 0], [2, 0], [3, 0]])
+      self.assertAllEqual(sparse_tensors[5].values, [5, 25, 35])
+      self.assertAllEqual(sparse_tensors[5].dense_shape, [4, 1])
 
-  @test_util.run_deprecated_v1
   def testSliceConcat(self):
     for sp_input in (self._SparseTensorValue_3x4x2(),
                      self._SparseTensor_3x4x2()):
-      with self.cached_session(use_gpu=False):
+      for axis in (1, -2):
         sparse_tensors = sparse_ops.sparse_split(
-            sp_input=sp_input, num_split=2, axis=1)
-        concat_tensor = sparse_ops.sparse_concat(1, sparse_tensors)
+            sp_input=sp_input, num_split=2, axis=axis)
+        concat_tensor = self.evaluate(
+            sparse_ops.sparse_concat(1, sparse_tensors))
         expected_output = self._SparseTensor_3x4x2()
-        self.assertAllEqual(concat_tensor.indices.eval(),
-                            expected_output.indices.eval())
+        self.assertAllEqual(concat_tensor.indices, expected_output.indices)
+
+  def testInvalidAxis(self):
+    for axis in (-3, 2):
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   r'axis should be in range \[-2, 2\)'):
+        self.evaluate(
+            sparse_ops.sparse_split(
+                sp_input=self._SparseTensor_4x6(), num_split=3, axis=axis))
 
   def testArgumentErrors(self):
-    with self.assertRaisesRegexp(ValueError, 'Keyword arguments are required'):
+    with self.assertRaisesRegex(ValueError, 'Keyword arguments are required'):
       sparse_ops.sparse_split(3, 2, 1)
-    with self.assertRaisesRegexp(ValueError, 'sp_input is required'):
+    with self.assertRaisesRegex(ValueError, 'sp_input is required'):
       sparse_ops.sparse_split()
-    with self.assertRaisesRegexp(ValueError, 'num_split is required'):
+    with self.assertRaisesRegex(ValueError, 'num_split is required'):
       sparse_ops.sparse_split(sp_input=1)
-    with self.assertRaisesRegexp(ValueError, 'axis is required'):
+    with self.assertRaisesRegex(ValueError, 'axis is required'):
       sparse_ops.sparse_split(num_split=2, sp_input=1)
 
 

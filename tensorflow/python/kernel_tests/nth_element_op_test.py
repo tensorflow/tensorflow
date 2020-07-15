@@ -114,8 +114,7 @@ class NthElementTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testInvalidInput(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "at least rank 1 but is rank 0"):
+    with self.assertRaisesRegex(ValueError, "at least rank 1 but is rank 0"):
       nn_ops.nth_element(5, 0)
 
   @test_util.run_deprecated_v1
@@ -127,11 +126,9 @@ class NthElementTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testInvalidN(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "non-negative but is -1"):
+    with self.assertRaisesRegex(ValueError, "non-negative but is -1"):
       nn_ops.nth_element([5], -1)
-    with self.assertRaisesRegexp(ValueError,
-                                 "scalar but has rank 1"):
+    with self.assertRaisesRegex(ValueError, "scalar but has rank 1"):
       nn_ops.nth_element([5, 6, 3], [1])
 
   @test_util.run_deprecated_v1
@@ -146,8 +143,7 @@ class NthElementTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testNTooLarge(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.assertRaisesRegexp(ValueError,
-                                 "must have last dimension > n = 2"):
+    with self.assertRaisesRegex(ValueError, "must have last dimension > n = 2"):
       nn_ops.nth_element(inputs, 2)
 
   @test_util.run_deprecated_v1

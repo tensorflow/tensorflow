@@ -77,7 +77,7 @@ class CheckpointingTests(test.TestCase):
     self.assertEqual(12., self.evaluate(new_root.var))
     new_root.optimizer = adam.AdamOptimizer(0.1)
     slot_status.assert_existing_objects_matched()
-    with self.assertRaisesRegexp(AssertionError, "beta1_power"):
+    with self.assertRaisesRegex(AssertionError, "beta1_power"):
       slot_status.assert_consumed()
     self.assertEqual(12., self.evaluate(new_root.var))
     if context.executing_eagerly():

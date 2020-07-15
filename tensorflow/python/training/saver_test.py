@@ -259,8 +259,8 @@ class SaverTest(test.TestCase):
         graph_saver = saver_module.Saver([w3, w4])
         self.evaluate(variables.global_variables_initializer())
         graph_saver.restore(sess, eager_ckpt_prefix)
-        self.assertAllEqual(w3.eval(), 3.0)
-        self.assertAllEqual(w4.eval(), 4.0)
+        self.assertAllEqual(w3, 3.0)
+        self.assertAllEqual(w4, 4.0)
 
   @test_util.run_in_graph_and_eager_modes
   def testResourceSaveRestoreCachingDevice(self):
@@ -277,7 +277,7 @@ class SaverTest(test.TestCase):
 
       save2 = saver_module.Saver([v])
       save2.restore(sess, save_path)
-      self.assertEquals(self.evaluate(v), [1])
+      self.assertEqual(self.evaluate(v), [1])
 
   def testNoAdditionalOpsAddedBySaverForResourceVariablesOutsideSaveScope(self):
     with ops_lib.Graph().as_default() as g:
@@ -382,7 +382,7 @@ class SaverTest(test.TestCase):
     for ver in (saver_pb2.SaverDef.V1, saver_pb2.SaverDef.V2):
       with self.cached_session() as sess:
         save = saver_module.Saver({"v0": v0}, write_version=ver)
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError, "The passed save_path is not a valid checkpoint:"):
           save.restore(sess, "invalid path")
 
@@ -423,7 +423,7 @@ class SaverTest(test.TestCase):
           variables.Variable.SaveSliceInfo("v1", [1], [0], [1]))
 
       # By default the name used for "v2" will be "v1" and raise an error.
-      with self.assertRaisesRegexp(ValueError, "same name: v1"):
+      with self.assertRaisesRegex(ValueError, "same name: v1"):
         saver_module.Saver([v0, v1, v2])
 
       # The names are different and will work.
@@ -441,7 +441,7 @@ class SaverTest(test.TestCase):
           partitioner=partitioned_variables.fixed_size_partitioner(
               num_shards=2))
       p_v2._name = "p_v1"
-      with self.assertRaisesRegexp(ValueError, "same name: p_v1"):
+      with self.assertRaisesRegex(ValueError, "same name: p_v1"):
         saver_module.Saver([p_v1, p_v2])
 
   def testSameName(self):
@@ -450,12 +450,12 @@ class SaverTest(test.TestCase):
       v2 = saver_test_utils.CheckpointedOp(name="v2")
 
       # Saving one variable under two names raises an error.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "The same saveable will be restored with two names: v0"):
         saver_module.Saver({"v0": v0, "v0too": v0})
 
       # Ditto for custom saveables.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "The same saveable will be restored with two names: v2"):
         saver_module.Saver({"v2": v2.saveable, "v2too": v2.saveable})
 
@@ -631,7 +631,7 @@ class SaverTest(test.TestCase):
   def testVarListShouldBeEmptyInDeferredBuild(self):
     with ops_lib.Graph().as_default():
       v = variables.VariableV1(1.0)
-      with self.assertRaisesRegexp(ValueError, "defer_build"):
+      with self.assertRaisesRegex(ValueError, "defer_build"):
         saver_module.Saver([v], defer_build=True)
 
   def testBuildShouldBeCalledBeforeSaveInCaseOfDeferBuild(self):
@@ -639,7 +639,7 @@ class SaverTest(test.TestCase):
     with ops_lib.Graph().as_default(), session.Session() as sess:
       variables.VariableV1(1.0)
       saver = saver_module.Saver(defer_build=True)
-      with self.assertRaisesRegexp(RuntimeError, "build"):
+      with self.assertRaisesRegex(RuntimeError, "build"):
         saver.save(sess, save_path)
 
   def testDeferredBuild(self):
@@ -677,7 +677,7 @@ class SaverTest(test.TestCase):
     with session.Session("", graph=ops_lib.Graph()) as sess:
       var = variables.VariableV1([[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]])
       save = saver_module.Saver()
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Assign requires shapes of both tensors to match."):
         save.restore(sess, save_path)
@@ -810,8 +810,8 @@ class SaverTest(test.TestCase):
         # Restore the saved value with different dtype
         # in the parameter nodes.
         save = saver_module.Saver({"v0": v0_wrong_dtype})
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     "original dtype"):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "original dtype"):
           save.restore(sess, save_path)
 
   # Test restoring large tensors (triggers a thread pool)
@@ -2609,16 +2609,16 @@ class CheckpointReaderTest(test.TestCase):
       # Verifies get_tensor() returns the tensor value.
       v0_tensor = reader.get_tensor("v0")
       v1_tensor = reader.get_tensor("v1")
-      self.assertAllEqual(v0.eval(), v0_tensor)
-      self.assertAllEqual(v1.eval(), v1_tensor)
+      self.assertAllEqual(v0, v0_tensor)
+      self.assertAllEqual(v1, v1_tensor)
       # Verifies get_tensor() fails for non-existent tensors.
-      with self.assertRaisesRegexp(errors.NotFoundError,
-                                   "v3 not found in checkpoint"):
+      with self.assertRaisesRegex(errors.NotFoundError,
+                                  "v3 not found in checkpoint"):
         reader.get_tensor("v3")
 
   def testNonexistentPath(self):
-    with self.assertRaisesRegexp(errors.NotFoundError,
-                                 "Unsuccessful TensorSliceReader"):
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                "Unsuccessful TensorSliceReader"):
       py_checkpoint_reader.NewCheckpointReader("non-existent")
 
 
@@ -3097,8 +3097,8 @@ class TrackableCompatibilityTests(test.TestCase):
     with self.cached_session() as sess:
       self.evaluate(a.initializer)
       save_path = a_saver.save(sess=sess, save_path=checkpoint_prefix)
-      with self.assertRaisesRegexp(
-          errors.NotFoundError, "Key b not found in checkpoint"):
+      with self.assertRaisesRegex(errors.NotFoundError,
+                                  "Key b not found in checkpoint"):
         b_saver.restore(sess=sess, save_path=save_path)
 
       with self.assertRaises(errors.NotFoundError) as cs:
@@ -3125,7 +3125,7 @@ class TrackableCompatibilityTests(test.TestCase):
       a = variables.VariableV1([1.], name="a")
       a_saver = saver_module.Saver([a])
       with self.session(graph=g) as sess:
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors.InvalidArgumentError,
             "a mismatch between the current graph and the graph"):
           a_saver.restore(sess=sess, save_path=save_path)

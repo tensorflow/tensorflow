@@ -164,24 +164,29 @@ REGISTER_KERNEL_BUILDER(
     Name("InitializeTableFromTextFileV2").Device(DEVICE_CPU),
     InitializeTableFromTextFileOp);
 
-class InitializeTableFromDatasetOp : public OpKernel {
+class InitializeTableFromDatasetOp : public AsyncOpKernel {
  public:
   explicit InitializeTableFromDatasetOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+      : AsyncOpKernel(ctx),
+        background_worker_(ctx->env(), "initialize_table_from_dataset") {}
 
-  void Compute(OpKernelContext* ctx) override {
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     lookup::InitializableLookupTable* table;
-    OP_REQUIRES_OK(ctx,
-                   GetInitializableLookupTable("table_handle", ctx, &table));
+    OP_REQUIRES_OK_ASYNC(
+        ctx, GetInitializableLookupTable("table_handle", ctx, &table), done);
     core::ScopedUnref unref_me(table);
     DatasetBase* dataset;
-    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(1), &dataset));
-    OP_REQUIRES_OK(ctx,
-                   lookup::InitializeTableFromDataset(ctx, dataset, table));
+    OP_REQUIRES_OK_ASYNC(
+        ctx, GetDatasetFromVariantTensor(ctx->input(1), &dataset), done);
+    background_worker_.Schedule([ctx, dataset, table, done]() {
+      lookup::InitializeTableFromDataset(ctx, dataset, table, done);
+    });
   }
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(InitializeTableFromDatasetOp);
+
+  data::BackgroundWorker background_worker_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("InitializeTableFromDataset").Device(DEVICE_CPU),

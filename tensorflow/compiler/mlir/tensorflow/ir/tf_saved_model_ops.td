@@ -19,6 +19,7 @@ limitations under the License.
 #define SAVED_MODEL_DIALECT
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // Dialect definition
@@ -152,6 +153,26 @@ def TfSavedModel_SessionInitializerOp: TfSavedModel_Op<"session_initializer"> {
   let verifier = [{ return Verify(*this); }];
 
   let hasCanonicalizer = 1;
+}
+
+def TfSavedModel_AssetOp: TfSavedModel_Op<"asset", [Symbol]> {
+  let summary = "Represents an asset in saved model.";
+  let description = [{
+    Represents an asset in the saved model that points to an external file. It
+    is a scalar string tensor and it is passed as an argument to the session
+    initializer function.
+
+    The `sym_name` represents the symbol table name used for internal IR
+    references.
+
+    The `filename` attribute contains the file path to the asset file and it is
+    relative to saved model directory.
+  }];
+
+  let arguments = (ins
+    StrAttr:$sym_name,
+    StrAttr:$filename
+  );
 }
 
 #endif // SAVED_MODEL_DIALECT

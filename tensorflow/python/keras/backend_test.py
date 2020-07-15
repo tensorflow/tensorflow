@@ -2134,8 +2134,8 @@ class ControlOpsTests(test.TestCase):
     def false_func():
       return y
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'Rank of `condition` should be less than'):
+    with self.assertRaisesRegex(ValueError,
+                                'Rank of `condition` should be less than'):
       backend.switch(backend.equal(x, x), false_func, true_func)
 
 

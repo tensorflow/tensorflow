@@ -56,7 +56,7 @@ Graph.
 
 Note: Performance numbers were benchmarked on Pixel-3 (Android 10).
 Accuracy numbers were computed using the
-[TFLite accuracy tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/accuracy/ilsvrc).
+[TFLite image classification evaluation tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification).
 
 ### Floating point models
 
@@ -118,7 +118,7 @@ MnasNet_1.3_224  | [paper](https://arxiv.org/abs/1807.11626), [tflite&pb](https:
 
 Note: Performance numbers were benchmarked on Pixel-3 (Android 10).
 Accuracy numbers were computed using the
-[TFLite accuracy tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/accuracy/ilsvrc).
+[TFLite image classification evaluation tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification).
 
 ## Object detection
 

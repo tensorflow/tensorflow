@@ -868,17 +868,22 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
     SetOpAttrs(ctx, op, attrs, 0, out_status);
   }
   Py_BEGIN_ALLOW_THREADS;
+
+  int num_outputs = outputs->size();
+
   if (out_status->status.ok()) {
-    int num_outputs = outputs->size();
     TFE_Execute(op, outputs->data(), &num_outputs, out_status);
-    outputs->resize(num_outputs);
   }
-  if (!out_status->status.ok()) {
+
+  if (out_status->status.ok()) {
+    outputs->resize(num_outputs);
+  } else {
     TF_SetStatus(out_status, TF_GetCode(out_status),
                  tensorflow::strings::StrCat(TF_Message(out_status),
                                              " [Op:", op_name, "]")
                      .c_str());
   }
+
   Py_END_ALLOW_THREADS;
 }
 

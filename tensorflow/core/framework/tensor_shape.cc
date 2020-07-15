@@ -495,28 +495,6 @@ void TensorShapeBase<Shape>::AsProto(TensorShapeProto* proto) const {
   }
 }
 
-void TensorShapeRep::DumpRep() const {
-#if 0
-  fprintf(stderr, "Rep: %d %d dims\n", tag(), dims());
-  if (tag() == REP16) {
-    fprintf(stderr, "REP16 NDIMS: %d\n", ndims_byte());
-    for (int i = 0; i < ndims_byte(); i++) {
-      fprintf(stderr, "dim %d: %d\n", i, as16()->dims_[i]);
-    }
-  } else if (tag_ == REP32) {
-    fprintf(stderr, "REP32 NDIMS: %d\n", ndims_);
-    for (int i = 0; i < ndims_byte(); i++) {
-      fprintf(stderr, "dim %d: %d\n", i, as32()->dims_[i]);
-    }
-  } else if (tag_ == REP_OUT_OF_LINE) {
-    fprintf(stderr, "REP_OUT_OF_LINE NDIMS: %d %p\n", ndims_, as16()->dims_);
-    for (int i = 0; i < ndims_byte(); i++) {
-      fprintf(stderr, "dim %d: %lld\n", i, (*as64()->dims_)[i]);
-    }
-  }
-#endif
-}
-
 template <class Shape>
 TensorShapeIter<Shape> TensorShapeBase<Shape>::begin() const {
   return TensorShapeIter<Shape>(static_cast<const Shape*>(this), 0);

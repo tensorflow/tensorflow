@@ -31,9 +31,9 @@ class MaxUnpooling : public GPUOperation {
                const MaxUnpooling2DAttributes& attr);
   MaxUnpooling(const OperationDef& definition,
                const MaxUnpooling3DAttributes& attr);
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
 
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
@@ -43,15 +43,9 @@ class MaxUnpooling : public GPUOperation {
   MaxUnpooling& operator=(const MaxUnpooling&) = delete;
 
  private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
   int4 stride_;
   int4 padding_;
   int4 kernel_size_;
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,

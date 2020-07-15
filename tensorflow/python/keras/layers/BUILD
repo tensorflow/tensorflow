@@ -519,6 +519,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
+        "no_cuda11",
         "no_windows_gpu",
     ],
     deps = [
@@ -784,6 +785,8 @@ cuda_py_test(
     srcs = ["lstm_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tags = ["no_cuda11"],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -798,6 +801,8 @@ cuda_py_test(
     srcs = ["gru_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tags = ["no_cuda11"],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
