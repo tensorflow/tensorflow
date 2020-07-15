@@ -70,10 +70,10 @@ constexpr int kNumSupportedEquationVariables = 5;  // A - E for now.
 bool tokenizeEquation(const llvm::StringRef& equation,
                       std::vector<EquationToken>* tokens) {
   std::map<char, EquationToken> label_axis_mapping;
-  int index = 0;
+  size_t index = 0;
   int variable_count = 0;
   llvm::Regex r("[[:alpha:]]");
-  while (static_cast<size_t>(index) < equation.size()) {
+  while (index < equation.size()) {
     if (r.match(equation.substr(index, 1))) {
       const char ltr = equation[index];
       auto itr = label_axis_mapping.find(ltr);
