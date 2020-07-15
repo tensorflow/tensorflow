@@ -243,8 +243,10 @@ TFE_TensorHandle* CopyTensorFromParallelDevice(TFE_Context* context,
                                                const char* target_device_name,
                                                TF_Status* status,
                                                void* device_info) {
-  TF_SetStatus(status, TF_INTERNAL,
-               "Trying to copy a tensor out of a parallel device.");
+  TF_SetStatus(status, TF_UNIMPLEMENTED,
+               "Trying to copy a tensor out of a parallel device. Since there "
+               "are multiple components to parallel tensors, they must be "
+               "unpacked explicitly.");
   return nullptr;
 }
 

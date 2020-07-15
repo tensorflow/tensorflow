@@ -29,7 +29,6 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 
@@ -175,13 +174,11 @@ class Node(object):
       json.dumps(kwargs, default=serialization.get_json_type)
     except TypeError:
       kwarg_types = nest.map_structure(type, kwargs)
-      logging.warning('Layer ' + self.layer.name +
+      raise TypeError('Layer ' + self.layer.name +
                       ' was passed non-JSON-serializable arguments. ' +
                       'Arguments had types: ' +
-                      str(kwarg_types) + '. They will not be included '
-                      'in the serialized model (and thus will be missing '
-                      'at deserialization time).')
-      kwargs = {}
+                      str(kwarg_types) + '. They cannot be serialized out '
+                      'when saving the model.')
 
     # `kwargs` is added to each Tensor in the first arg. This should be
     # changed in a future version of the serialization format.

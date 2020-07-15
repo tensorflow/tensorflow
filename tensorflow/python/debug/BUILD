@@ -1274,6 +1274,7 @@ cuda_py_test(
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
+        "notap",  # TODO(b/160925973): Test flaky due to port collisions.
         "notsan",
         "oss_serial",
     ],
@@ -1333,6 +1334,7 @@ cuda_py_test(
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
         "no_windows",
+        "notap",  # TODO(b/160822489) flaky timeouts
         "notsan",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit

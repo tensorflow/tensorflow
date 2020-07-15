@@ -71,6 +71,38 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_executor",
+    srcs = [
+        "tpu_platform_registration.cc",
+    ],
+    hdrs = [
+        "tpu_executor.h",
+        "tpu_platform.h",
+        "tpu_stream.h",
+        "tpu_timer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":device_memory_base_helper",
+        ":status_helper",
+        ":tpu_executor_base",
+        ":tpu_executor_c_api_hdrs",
+        ":tpu_executor_interface",
+        ":tpu_platform_interface",
+        ":tpu_stream_interface",
+        "//tensorflow/core/platform:casts",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "tpu_executor_base",
     srcs = [
         "tpu_executor.cc",
@@ -90,24 +122,15 @@ cc_library(
         ":tpu_platform_interface",
         ":tpu_stream_interface",
         "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
-    alwayslink = True,
-)
-
-cc_library(
-    name = "tpu_executor",
-    srcs = ["tpu_platform_registration.cc"],
-    deps = [
-        ":tpu_executor_base",
-        "//tensorflow/stream_executor/platform",
-    ],
-    alwayslink = True,
 )
 
 cc_library(
@@ -119,7 +142,7 @@ cc_library(
         ":tpu_executor_c_api_hdrs",
         ":tpu_node_context_c_api_hdrs",
         ":tpu_platform_interface",
-        ":tpu_transfer_manager",
+        ":tpu_transfer_manager_base",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:platform_util",
@@ -138,10 +161,10 @@ cc_library(
     srcs = ["tpu_transfer_manager_registration.cc"],
     deps = [
         ":tpu_executor",
-        ":tpu_executor_base",
         ":tpu_transfer_manager_base",
         "//tensorflow/compiler/xla/service:transfer_manager",
     ],
+    alwayslink = True,
 )
 
 cc_library(

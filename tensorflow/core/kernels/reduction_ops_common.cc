@@ -69,6 +69,11 @@ Status SimplifyHelper(const Tensor& data, const Tensor& axis,
                                      " dimension(s)");
     }
     index = (index + data.dims()) % data.dims();
+    if (bitmap[index]) {
+      return errors::InvalidArgument(
+          "Invalid reduction arguments: Axes contains duplicate dimension: ",
+          index);
+    }
     bitmap[index] = true;
   }
   return Status::OK();

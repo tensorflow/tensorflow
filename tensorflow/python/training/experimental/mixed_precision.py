@@ -122,7 +122,7 @@ def enable_mixed_precision_graph_rewrite(opt, loss_scale='dynamic'):
 
   * `ClearList`: Ops that do not have numerically significant adverse effects.
   E.g. `ArgMax` and `Floor`.
-  * `WhiteList`: Ops that are considered numerically safe for execution in
+  * `AllowList`: Ops that are considered numerically safe for execution in
   float16, and thus are always converted. E.g. `Conv2D`.
   * `BlackList`: Ops that are numerically unsafe to execute in float16 and
   can negatively affect downstream nodes. E.g. `Softmax`.
@@ -267,7 +267,7 @@ def enable_mixed_precision_graph_rewrite_v1(opt, loss_scale='dynamic'):
 
   * `ClearList`: Ops that do not have numerically significant adverse effects.
   E.g. `ArgMax` and `Floor`.
-  * `WhiteList`: Ops that are considered numerically safe for execution in
+  * `AllowList`: Ops that are considered numerically safe for execution in
   float16, and thus are always converted. E.g. `Conv2D`.
   * `BlackList`: Ops that are numerically unsafe to execute in float16 and
   can negatively affect downstream nodes. E.g. `Softmax`.

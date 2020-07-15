@@ -42,17 +42,6 @@ struct CreationContext {
   ProgramCache* cache;
 };
 
-struct LinkingContext {
-  // variable(FLT4) name to apply subsequent transformations
-  std::string var_name;
-  // x coordinate name (as it appears in kernel) for variable
-  std::string x_coord;
-  // y coordinate name (as it appears in kernel) for variable
-  std::string y_coord;
-  // s coordinate name (as it appears in kernel) for variable
-  std::string s_coord;
-};
-
 struct OperationDef {
   CalculationsPrecision precision;
   std::vector<TensorDescriptor> src_tensors;
@@ -116,6 +105,8 @@ class GPUOperation {
   std::vector<Tensor*> src_;
   std::vector<Tensor*> dst_;
   Arguments args_;
+  CLKernel kernel_;
+  int3 work_group_size_ = int3(8, 4, 1);
   std::vector<ElementwiseOperation*> linked_operations_;
 };
 
@@ -144,21 +135,6 @@ class ElementwiseOperation : public GPUOperation {
   ElementwiseOperation(const ElementwiseOperation&) = delete;
   ElementwiseOperation& operator=(const ElementwiseOperation&) = delete;
 
-  // We need this function for resolving naming conflicts.
-  // Unfortunately we don't know upfront(at creation time) will be the operation
-  // linked or not. Operation should be created and SetLinkIndex(0) must be
-  // called to initialize specific for this op linked info, and this is mean
-  // that operation is not linked. But if we decided to link it, we need update
-  // operation linked info and use names for kernel arguments according to this
-  // index(this is responsibility of particular implementation of
-  // ElementwiseOperation to generate right names).
-  virtual void SetLinkIndex(int index) {}
-
-  virtual std::string GetCoreCode(const LinkingContext& context) const = 0;
-  virtual std::string GetArgsDeclaration() const { return ""; }
-  virtual absl::Status BindArguments(CLKernel* kernel) {
-    return absl::OkStatus();
-  }
   virtual absl::Status SetArgs(const std::string& unique_postfix,
                                Arguments* args) {
     return absl::OkStatus();
@@ -175,24 +151,7 @@ class ElementwiseOperation : public GPUOperation {
   std::string code_;
   absl::Status BindArguments();
   int3 GetGridSize() const;
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
-
-// Generates arguments declarations string for elementwise
-// operations in linked_ops.
-// Every ElementwiseOperation can generate arguments declarations.
-std::string GetArgsDeclaration(
-    const std::vector<ElementwiseOperation*>& linked_ops);
-
-std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
-                        const LinkingContext& context);
-
-// Binds arguments to given kernel for elementwise operations in
-// linked_ops.
-// Every ElementwiseOperation can bind her arguments.
-absl::Status BindArgs(CLKernel* kernel,
-                      const std::vector<ElementwiseOperation*>& linked_ops);
 
 absl::Status MergeOperations(
     const std::vector<ElementwiseOperation*>& linked_ops,

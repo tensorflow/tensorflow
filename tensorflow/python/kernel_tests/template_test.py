@@ -195,13 +195,13 @@ class TemplateTest(test.TestCase):
     tmpl1()
     tmpl2 = template.make_template(
         "_", variable_scoped_function, unique_name_="s1")
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Variable s1/dummy already exists, disallowed.*"):
       tmpl2()
 
   def test_unique_name_raise_error_in_eager(self):
     with context.eager_mode():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           "unique_name_ cannot be used when eager execution is enabled."):
         template.make_template(
@@ -258,8 +258,7 @@ class TemplateTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_template_without_name(self):
-    with self.assertRaisesRegexp(
-        ValueError, "name cannot be None."):
+    with self.assertRaisesRegex(ValueError, "name cannot be None."):
       template.make_template(None, variable_scoped_function)
 
   @test_util.run_in_graph_and_eager_modes
@@ -591,31 +590,36 @@ class TemplateTest(test.TestCase):
     linear1 = make_linear_module(output_size=2, name="foo")
     outputs_a, w1 = linear1(inputs)
     outputs_b, _ = linear1(inputs)
-    self.assertEquals("foo", linear1.variable_scope.name)
-    self.assertEquals("foo/w:0", w1.name)
+    self.assertEqual("foo", linear1.variable_scope.name)
+    self.assertEqual("foo/w:0", w1.name)
     if not context.executing_eagerly():
-      self.assertEquals("foo/add:0", outputs_a.name,
-                        "First application of template should get "
-                        "same name scope as variables.")
-      self.assertEquals("foo_1/add:0", outputs_b.name,
-                        "Second application of template should get "
-                        "a freshly uniquified name scope.")
+      self.assertEqual(
+          "foo/add:0", outputs_a.name,
+          "First application of template should get "
+          "same name scope as variables.")
+      self.assertEqual(
+          "foo_1/add:0", outputs_b.name,
+          "Second application of template should get "
+          "a freshly uniquified name scope.")
 
     linear2 = make_linear_module(output_size=2, name="foo")
     outputs_c, w2 = linear2(inputs)
     outputs_d, _ = linear2(inputs)
-    self.assertEquals("foo_1", linear2.variable_scope.name,
-                      "New template gets a freshly uniquified variable scope "
-                      "because 'foo' is already taken.")
-    self.assertEquals("foo_1/w:0", w2.name)
+    self.assertEqual(
+        "foo_1", linear2.variable_scope.name,
+        "New template gets a freshly uniquified variable scope "
+        "because 'foo' is already taken.")
+    self.assertEqual("foo_1/w:0", w2.name)
     if not context.executing_eagerly():
-      self.assertEquals("foo_1_1/add:0", outputs_c.name,
-                        "First application of template would get "
-                        "same name scope as variables, but 'foo_1' is already "
-                        "a name scope.")
-      self.assertEquals("foo_1_2/add:0", outputs_d.name,
-                        "Second application of template should also get "
-                        "a freshly uniquified name scope.")
+      self.assertEqual(
+          "foo_1_1/add:0", outputs_c.name,
+          "First application of template would get "
+          "same name scope as variables, but 'foo_1' is already "
+          "a name scope.")
+      self.assertEqual(
+          "foo_1_2/add:0", outputs_d.name,
+          "Second application of template should also get "
+          "a freshly uniquified name scope.")
 
   @test_util.run_in_graph_and_eager_modes
   def test_global_variables(self):

@@ -69,6 +69,10 @@ void FillNumericTensorBuffer(DataType dtype, size_t num_elements, void* buffer,
 void CheckBufferDataIsEqual(DataType dtype, int64 num_elements, void* a,
                             void* b);
 
+// Converts a TensorHandle to a Tensor, and dies if unsuccessful. This should
+// only be used for testing purposes.
+AbstractTensorPtr TensorHandleToTensor(ImmediateExecutionTensorHandle* handle);
+
 }  // namespace testing
 }  // namespace tensorflow
 

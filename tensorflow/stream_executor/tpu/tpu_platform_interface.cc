@@ -23,22 +23,13 @@ namespace tensorflow {
 namespace tpu {
 
 namespace {
-TpuPlatformInterface* tpu_registered_platform = nullptr;
-}  // namespace
-
-/* static */
-TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform() {
-  if (tpu_registered_platform != nullptr) {
-    return tpu_registered_platform;
-  }
-
+TpuPlatformInterface* GetRegisteredPlatformStatic() {
   // Prefer TpuPlatform if it's registered.
   auto status_or_tpu_platform =
       stream_executor::MultiPlatformManager::PlatformWithName("TPU");
   if (status_or_tpu_platform.ok()) {
-    tpu_registered_platform =
-        static_cast<TpuPlatformInterface*>(status_or_tpu_platform.ValueOrDie());
-    return tpu_registered_platform;
+    return static_cast<TpuPlatformInterface*>(
+        status_or_tpu_platform.ValueOrDie());
   }
   if (status_or_tpu_platform.status().code() != error::NOT_FOUND) {
     LOG(WARNING) << "Error when getting the TPU platform: "
@@ -63,13 +54,20 @@ TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform() {
     LOG(WARNING) << other_tpu_platforms.size()
                  << " TPU platforms registered, selecting "
                  << other_tpu_platforms[0]->Name();
-    tpu_registered_platform =
-        static_cast<TpuPlatformInterface*>(other_tpu_platforms[0]);
-    return tpu_registered_platform;
+    return static_cast<TpuPlatformInterface*>(other_tpu_platforms[0]);
   }
 
   LOG(WARNING) << "No TPU platform registered";
   return nullptr;
+}
+}  // namespace
+
+/* static */
+TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform() {
+  // Use a local static variable to avoid data races during initialization.
+  static TpuPlatformInterface* tpu_registered_platform =
+      GetRegisteredPlatformStatic();
+  return tpu_registered_platform;
 }
 
 }  // namespace tpu

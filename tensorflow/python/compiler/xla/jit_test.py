@@ -57,7 +57,7 @@ class JITTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v2_only
   def testJITInEager(self):
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         RuntimeError, "xla.experimental.jit_scope is not supported when eager "
         "execution is enabled. Try use it inside tf.function."):
       with jit.experimental_jit_scope(True):
@@ -204,11 +204,11 @@ class CompilationEnabledInGradientTest(test.TestCase, parameterized.TestCase):
       for cg in c_grad_ops:
         self.assertTrue(cg.get_attr("_XlaCompile"))
       for ncg in nc_grad_ops:
-        with self.assertRaisesRegexp(ValueError, "[Nn]o attr named"):
+        with self.assertRaisesRegex(ValueError, "[Nn]o attr named"):
           ncg.get_attr("_XlaCompile")
 
       # d/dx (x ** 4) = 4 * (x ** 3)
-      self.assertAllClose([[108]], x_grads.eval())
+      self.assertAllClose([[108]], x_grads)
 
   @test_util.build_as_function_and_v1_graph
   def testCompilationGradientScopeNames(self):

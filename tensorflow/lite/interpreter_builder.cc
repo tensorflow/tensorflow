@@ -14,9 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/interpreter_builder.h"
 
-#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(_WIN32)
-#include <dlfcn.h>
-#endif
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -31,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/shared_library.h"
 #include "tensorflow/lite/tflite_with_xnnpack_optional.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
@@ -117,15 +115,22 @@ const char* kEmptyTensorName = "";
 // For flex delegate, see also the strong override in
 // lite/delegates/flex/delegate.cc.
 TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
-#if !defined(__ANDROID__) && !defined(__APPLE__) && !defined(_WIN32)
+#if !defined(__ANDROID__)
   // If _pywrap_tensorflow_internal.so is available, use
   // TF_AcquireFlexDelegate() to initialize flex delegate.
+  const char* filename_pywrap_tensorflow_internal =
+#if defined(_WIN32)
+      "_pywrap_tensorflow_internal.pyd";
+#else
+      "_pywrap_tensorflow_internal.so";
+#endif
   void* lib_tf_internal =
-      dlopen("_pywrap_tensorflow_internal.so", RTLD_NOW | RTLD_LOCAL);
+      SharedLibrary::LoadLibrary(filename_pywrap_tensorflow_internal);
   if (lib_tf_internal) {
     auto TF_AcquireFlexDelegate =
         reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
-            dlsym(lib_tf_internal, "TF_AcquireFlexDelegate"));
+            SharedLibrary::GetLibrarySymbol(lib_tf_internal,
+                                            "TF_AcquireFlexDelegate"));
     if (TF_AcquireFlexDelegate) {
       return TF_AcquireFlexDelegate();
     }

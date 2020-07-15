@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -50,7 +51,7 @@ TEST(CalibratorTest, CalibrationStatsAreCollected) {
 
   ASSERT_TRUE(interpreter);
   ASSERT_TRUE(reader);
-  std::unordered_map<int, CalibrationReader::CalibrationStats> stats;
+  absl::flat_hash_map<int, CalibrationReader::CalibrationStats> stats;
   status = reader->GetTensorStatsAsMap(&stats);
   EXPECT_EQ(kTfLiteOk, status);
   EXPECT_TRUE(stats.empty());
@@ -147,7 +148,7 @@ TEST(CalibratorTest, MultipleInvokes) {
   ASSERT_EQ(kTfLiteOk, status);
   const float eps = 1e-6f;
   // Verify that min max of tensors.
-  std::unordered_map<int, CalibrationReader::CalibrationStats> stats;
+  absl::flat_hash_map<int, CalibrationReader::CalibrationStats> stats;
   status = reader->GetTensorStatsAsMap(&stats);
   EXPECT_EQ(kTfLiteOk, status);
   EXPECT_EQ(7, stats.size());
@@ -308,7 +309,7 @@ TEST(CalibratorTest, LSTM) {
   status = interpreter->Invoke();
   ASSERT_EQ(kTfLiteOk, status);
 
-  std::unordered_map<int, CalibrationReader::CalibrationStats> stats;
+  absl::flat_hash_map<int, CalibrationReader::CalibrationStats> stats;
   status = reader->GetTensorStatsAsMap(&stats);
   EXPECT_EQ(kTfLiteOk, status);
 

@@ -68,8 +68,8 @@ class DenseTest(test.TestCase, parameterized.TestCase):
       v = variable_scope.get_variable(
           'X', initializer=init_ops.zeros_initializer(), shape=(1, 1))
       x = core_layers.Dense(1)(v)
-      variables.global_variables_initializer().run()
-      self.assertAllEqual(x.eval(), [[0.0]])
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllEqual(x, [[0.0]])
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testCall(self):
@@ -280,15 +280,15 @@ class DenseTest(test.TestCase, parameterized.TestCase):
         initializer=init_ops.ones_initializer()), self.cached_session():
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       weights = _get_variable_dict_from_varstore()
       self.assertEqual(len(weights), 2)
       # Check that the matrix weights got initialized to ones (from scope).
-      self.assertAllClose(weights['scope/dense/kernel'].read_value().eval(),
+      self.assertAllClose(weights['scope/dense/kernel'].read_value(),
                           np.ones((3, 2)))
       # Check that the bias still got initialized to zeros.
-      self.assertAllClose(weights['scope/dense/bias'].read_value().eval(),
-                          np.zeros((2)))
+      self.assertAllClose(weights['scope/dense/bias'].read_value(), np.zeros(
+          (2)))
 
   def testEagerExecution(self):
     with context.eager_mode():
@@ -445,7 +445,7 @@ class DropoutTest(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       inputs = array_ops.ones((5, 5))
       dropped = core_layers.dropout(inputs, 0.5, training=True, seed=1)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       np_output = self.evaluate(dropped)
       self.assertAlmostEqual(0., np_output.min())
       dropped = core_layers.dropout(inputs, 0.5, training=False, seed=1)

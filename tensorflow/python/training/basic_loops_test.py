@@ -71,7 +71,7 @@ class BasicTrainLoopTest(test.TestCase):
     train_fn.counter = 0
 
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(RuntimeError, "Failed"):
+      with self.assertRaisesRegex(RuntimeError, "Failed"):
         basic_loops.basic_train_loop(sv, train_fn)
 
   @test_util.run_deprecated_v1
@@ -96,9 +96,9 @@ class BasicTrainLoopTest(test.TestCase):
 
     with ops.Graph().as_default():
       aar = AbortAndRetry()
-      with self.assertRaisesRegexp(RuntimeError, "Failed Again"):
+      with self.assertRaisesRegex(RuntimeError, "Failed Again"):
         basic_loops.basic_train_loop(sv, aar.train_fn)
-      self.assertEquals(0, aar.retries_left)
+      self.assertEqual(0, aar.retries_left)
 
 
 if __name__ == "__main__":

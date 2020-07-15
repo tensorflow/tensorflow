@@ -104,8 +104,8 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # assert_equal_graph_def doesn't care about order
     test_util.assert_equal_graph_def(def_57, def_75)
     # Compare two unequal graphs
-    with self.assertRaisesRegexp(AssertionError,
-                                 r"^Found unexpected node '{{node seven}}"):
+    with self.assertRaisesRegex(AssertionError,
+                                r"^Found unexpected node '{{node seven}}"):
       test_util.assert_equal_graph_def(def_57, def_empty)
 
   def testIsGoogleCudaEnabled(self):
@@ -162,8 +162,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Check if the assertion failure message contains the content of
     # the inner proto.
-    with self.assertRaisesRegexp(AssertionError,
-                                 r'meta_graph_version: "inner"'):
+    with self.assertRaisesRegex(AssertionError, r'meta_graph_version: "inner"'):
       self.assertProtoEquals("", meta_graph_def_outer)
 
   @test_util.run_in_graph_and_eager_modes
@@ -270,19 +269,19 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testAllCloseScalars(self):
     self.assertAllClose(7, 7 + 1e-8)
-    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+    with self.assertRaisesRegex(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(7, 7 + 1e-5)
 
   @test_util.run_in_graph_and_eager_modes
   def testAllCloseList(self):
-    with self.assertRaisesRegexp(AssertionError, r"not close dif"):
+    with self.assertRaisesRegex(AssertionError, r"not close dif"):
       self.assertAllClose([0], [1])
 
   @test_util.run_in_graph_and_eager_modes
   def testAllCloseDictToNonDict(self):
-    with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
+    with self.assertRaisesRegex(ValueError, r"Can't compare dict to non-dict"):
       self.assertAllClose(1, {"a": 1})
-    with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
+    with self.assertRaisesRegex(ValueError, r"Can't compare dict to non-dict"):
       self.assertAllClose({"a": 1}, 1)
 
   @test_util.run_in_graph_and_eager_modes
@@ -313,17 +312,17 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     for k in expected:
       actual = dict(expected)
       del actual[k]
-      with self.assertRaisesRegexp(AssertionError, r"mismatched keys"):
+      with self.assertRaisesRegex(AssertionError, r"mismatched keys"):
         self.assertAllClose(expected, actual)
 
     # With each item changed.
-    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+    with self.assertRaisesRegex(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(expected, {"a": a + 1e-5, "b": b, "c": c})
-    with self.assertRaisesRegexp(AssertionError, r"Shape mismatch"):
+    with self.assertRaisesRegex(AssertionError, r"Shape mismatch"):
       self.assertAllClose(expected, {"a": a, "b": b + (4.,), "c": c})
     c_copy = np.array(c)
     c_copy[1, 1, 1] += 1e-5
-    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+    with self.assertRaisesRegex(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(expected, {"a": a, "b": b, "c": c_copy})
 
   @test_util.run_in_graph_and_eager_modes
@@ -349,8 +348,8 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Test mismatched values
     b["y"][1][0]["nested"]["n"] = 4.2
-    with self.assertRaisesRegexp(AssertionError,
-                                 r"\[y\]\[1\]\[0\]\[nested\]\[n\]"):
+    with self.assertRaisesRegex(AssertionError,
+                                r"\[y\]\[1\]\[0\]\[nested\]\[n\]"):
       self.assertAllClose(a, b)
 
   @test_util.run_in_graph_and_eager_modes
@@ -465,7 +464,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual([120] * 3, k)
     self.assertAllEqual([20] * 3, j)
 
-    with self.assertRaisesRegexp(AssertionError, r"not equal lhs"):
+    with self.assertRaisesRegex(AssertionError, r"not equal lhs"):
       self.assertAllEqual([0] * 3, k)
 
   @test_util.run_in_graph_and_eager_modes
@@ -479,7 +478,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertNotAllEqual([120] * 3, k)
     self.assertNotAllEqual([20] * 3, j)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         AssertionError, r"two values are equal at all elements.*extra message"):
       self.assertNotAllEqual([120], k, msg="extra message")
 
@@ -705,7 +704,8 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def test_run_in_eager_and_graph_modes_test_class(self):
     msg = "`run_in_graph_and_eager_modes` only supports test methods.*"
-    with self.assertRaisesRegexp(ValueError, msg):
+    with self.assertRaisesRegex(ValueError, msg):
+
       @test_util.run_in_graph_and_eager_modes()
       class Foo(object):
         pass
@@ -817,7 +817,7 @@ class SkipTestTest(test_util.TensorFlowTestCase):
                                    ["foo bar", "test message"]):
         raise ValueError("test message")
     try:
-      with self.assertRaisesRegexp(ValueError, "foo bar"):
+      with self.assertRaisesRegex(ValueError, "foo bar"):
         with test_util.skip_if_error(self, ValueError, "test message"):
           raise ValueError("foo bar")
     except unittest.SkipTest:
@@ -854,7 +854,7 @@ class SkipTestTest(test_util.TensorFlowTestCase):
 
   def test_skip_if_error_should_raise_message_mismatch(self):
     try:
-      with self.assertRaisesRegexp(ValueError, "foo bar"):
+      with self.assertRaisesRegex(ValueError, "foo bar"):
         with test_util.skip_if_error(self, ValueError, "test message"):
           raise ValueError("foo bar")
     except unittest.SkipTest:
@@ -862,7 +862,7 @@ class SkipTestTest(test_util.TensorFlowTestCase):
 
   def test_skip_if_error_should_raise_no_message(self):
     try:
-      with self.assertRaisesRegexp(ValueError, ""):
+      with self.assertRaisesRegex(ValueError, ""):
         with test_util.skip_if_error(self, ValueError, "test message"):
           raise ValueError()
     except unittest.SkipTest:
@@ -924,7 +924,7 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
       def test_has_no_leak(self):
         constant_op.constant([3.], name="no-leak")
 
-    with self.assertRaisesRegexp(AssertionError, "Tensors not deallocated"):
+    with self.assertRaisesRegex(AssertionError, "Tensors not deallocated"):
       LeakedTensorTest().test_has_leak()
 
     LeakedTensorTest().test_has_no_leak()

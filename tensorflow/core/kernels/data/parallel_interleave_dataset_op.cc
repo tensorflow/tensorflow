@@ -42,6 +42,8 @@ limitations under the License.
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 namespace data {
@@ -364,6 +366,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         *end_of_sequence = true;
         return Status::OK();
       }
+      profiler::TraceMe traceme([&] {
+        return profiler::TraceMeEncode("ParallelInterleaveConsume",
+                                       {{"element_id", result->id}});
+      });
       if (result->status.ok()) {
         *out_tensors = std::move(result->return_values);
         RecordBufferDequeue(ctx, *out_tensors);
@@ -487,6 +493,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // Represents the result of fetching an element from a dataset.
     struct Result {
       Status status;
+      int64 id = -1;
       std::vector<Tensor> return_values;
     };
 
@@ -899,12 +906,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         TF_LOCKS_EXCLUDED(mu_) {
       DCHECK(element != nullptr);
       IteratorBase* iterator;
+      int64 input_element_id;
       // Initialize the inputs and iterator if necessary.
       {
         mutex_lock l(*mu_);
         DCHECK(element->active);
+        input_element_id = element->id;
         if (!element->iterator) {
-          InitializeInputs(element->id);
+          InitializeInputs(input_element_id);
           if (!element->iterator) {
             return;
           }
@@ -918,6 +927,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // Process until the results queue is full or we reach end of input.
       while (true) {
         auto result = std::make_shared<Result>();
+        profiler::TraceMe traceme([&] {
+          result->id = profiler::TraceMe::NewActivityId();
+          return profiler::TraceMeEncode(
+              "ParallelInterleaveProduce",
+              {{"input_element_id", input_element_id},
+               {"element_id", result->id}});
+        });
         bool end_of_input = false;
         result->status = iterator->GetNext(ctx_.get(), &result->return_values,
                                            &end_of_input);
@@ -952,6 +968,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           NotifyElementUpdate(element);
           continue;
         }
+        profiler::TraceMe traceme([input_element_id = element->id] {
+          return profiler::TraceMeEncode(
+              "ParallelInterleaveInitializeInput",
+              {{"input_element_id", input_element_id}});
+        });
         std::vector<Tensor> inputs;
         Status status;
         {

@@ -503,7 +503,7 @@ class DataFrameIterator(image.DataFrameIterator, Iterator):
           - `"raw"`: numpy array of values in `y_col` column(s),
           - `"sparse"`: 1D numpy array of integer labels, - `None`, no targets
             are returned (the generator will only yield batches of image data,
-            which is useful to use in `model.predict_generator()`).
+            which is useful to use in `model.predict()`).
       batch_size: Integer, size of a batch.
       shuffle: Boolean, whether to shuffle the data between epochs.
       seed: Random seed for data shuffling.
@@ -743,7 +743,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
       seed=seed)
   # combine generators into one which yields image and masks
   train_generator = zip(image_generator, mask_generator)
-  model.fit_generator(
+  model.fit(
       train_generator,
       steps_per_epoch=2000,
       epochs=50)
@@ -909,7 +909,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
               will be images identical to input images (mainly used to work with
               autoencoders). - If None, no labels are returned (the generator
               will only yield batches of image data, which is useful to use with
-              `model.predict_generator()`). Please note that in case of
+              `model.predict()`). Please note that in case of
               class_mode None, the data still needs to reside in a subdirectory
               of `directory` for it to work correctly.
         batch_size: Size of the batches of data (default: 32).
@@ -1027,7 +1027,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
             - `"raw"`: numpy array of values in `y_col` column(s),
             - `"sparse"`: 1D numpy array of integer labels, - `None`, no targets
               are returned (the generator will only yield batches of image data,
-              which is useful to use in `model.predict_generator()`).
+              which is useful to use in `model.predict()`).
         batch_size: size of the batches of data (default: 32).
         shuffle: whether to shuffle the data (default: True)
         seed: optional random seed for shuffling and transformations.

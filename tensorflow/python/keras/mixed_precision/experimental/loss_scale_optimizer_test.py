@@ -37,7 +37,6 @@ from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
@@ -158,8 +157,8 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
   def testDynamicLossScale(self, strategy_fn):
     strategy = strategy_fn()
     learning_rate = 2.
-    expected_gradient = resource_variable_ops.ResourceVariable(
-        learning_rate / strategy.num_replicas_in_sync)
+    expected_gradient = variables.Variable(learning_rate /
+                                           strategy.num_replicas_in_sync)
     with strategy.scope():
       var = variables.Variable([5.0])
       opt = gradient_descent.SGD(learning_rate)
@@ -331,7 +330,7 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
 
   def testPassingNoneToLossScale(self):
     opt = gradient_descent.SGD()
-    with self.assertRaisesRegexp(ValueError, r'loss_scale cannot be None'):
+    with self.assertRaisesRegex(ValueError, r'loss_scale cannot be None'):
       loss_scale_optimizer.LossScaleOptimizer(opt, None)
 
   @parameterized.named_parameters(*TESTCASES)
@@ -367,11 +366,11 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=10.)
     # Test that attributes defined by OptimizerV2 subclasses are not exposed in
     # LossScaleOptimizer, and that the error message is sensible.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         AttributeError,
         "'LossScaleOptimizer' object has no attribute 'epsilon'"):
       opt.epsilon  # pylint: disable=pointless-statement
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         AttributeError,
         "'LossScaleOptimizer' object has no attribute 'beta_1'"):
       opt.beta_1  # pylint: disable=pointless-statement
@@ -607,14 +606,14 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
         'Loss scaling is not supported with the tf.distribute.Strategy: '
         'CentralStorageStrategy. Try using a different Strategy, e.g. a '
         'MirroredStrategy')
-    with strategy.scope(), self.assertRaisesRegexp(ValueError, expected_error):
+    with strategy.scope(), self.assertRaisesRegex(ValueError, expected_error):
       loss_scale_optimizer.LossScaleOptimizer(gradient_descent.SGD(), 1.)
     opt = loss_scale_optimizer.LossScaleOptimizer(gradient_descent.SGD(), 1.)
     with strategy.scope():
       var = variables.Variable(1.0)
       loss = lambda: var * 2.0
       run_fn = lambda: opt.minimize(loss, [var])
-      with self.assertRaisesRegexp(ValueError, expected_error):
+      with self.assertRaisesRegex(ValueError, expected_error):
         strategy.experimental_run(run_fn)
 
 

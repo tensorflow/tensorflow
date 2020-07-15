@@ -344,6 +344,8 @@ _same_namedtuples = _pywrap_utils.SameNamedtuples
 
 class _DotString(object):
 
+  __slots__ = []
+
   def __str__(self):
     return "."
 

@@ -320,9 +320,7 @@ ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
       kernel_size_(operation.kernel_size_),
       stride_(operation.stride_),
       padding_(operation.padding_),
-      block_size_(operation.block_size_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      block_size_(operation.block_size_) {}
 
 ConvolutionTransposed& ConvolutionTransposed::operator=(
     ConvolutionTransposed&& operation) {
@@ -332,8 +330,6 @@ ConvolutionTransposed& ConvolutionTransposed::operator=(
     std::swap(stride_, operation.stride_);
     std::swap(padding_, operation.padding_);
     std::swap(block_size_, operation.block_size_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

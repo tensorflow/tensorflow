@@ -29,6 +29,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_config as model_config_lib
 from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables as variables_module
@@ -173,7 +174,7 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
     model_config = f.attrs.get('model_config')
     if model_config is None:
       raise ValueError('No model found in config file.')
-    model_config = json.loads(model_config.decode('utf-8'))
+    model_config = json_utils.decode(model_config.decode('utf-8'))
     model = model_config_lib.model_from_config(model_config,
                                                custom_objects=custom_objects)
 
@@ -187,7 +188,7 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
         logging.warning('No training configuration found in the save file, so '
                         'the model was *not* compiled. Compile it manually.')
         return model
-      training_config = json.loads(training_config.decode('utf-8'))
+      training_config = json_utils.decode(training_config.decode('utf-8'))
 
       # Compile model.
       model.compile(**saving_utils.compile_args_from_training_config(

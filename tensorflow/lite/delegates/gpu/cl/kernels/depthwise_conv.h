@@ -91,9 +91,6 @@ class DepthwiseConvolution : public GPUOperation {
   int4 padding_;
   int4 dilation_;
   int channel_multiplier_;
-
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 template <DataType T>

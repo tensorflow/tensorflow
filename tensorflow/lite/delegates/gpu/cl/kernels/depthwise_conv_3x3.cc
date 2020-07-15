@@ -261,21 +261,19 @@ DepthwiseConv3x3::DepthwiseConv3x3(const OperationDef& definition,
                                    bool local_mem_uploads)
     : GPUOperation(definition),
       weights_are_buffer_(weights_are_buffer),
-      local_mem_uploads_(local_mem_uploads) {}
+      local_mem_uploads_(local_mem_uploads) {
+  work_group_size_ = int3(8, 4, 1);
+}
 
 DepthwiseConv3x3::DepthwiseConv3x3(DepthwiseConv3x3&& operation)
     : GPUOperation(std::move(operation)),
       weights_are_buffer_(operation.weights_are_buffer_),
-      local_mem_uploads_(operation.local_mem_uploads_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      local_mem_uploads_(operation.local_mem_uploads_) {}
 
 DepthwiseConv3x3& DepthwiseConv3x3::operator=(DepthwiseConv3x3&& operation) {
   if (this != &operation) {
     std::swap(weights_are_buffer_, operation.weights_are_buffer_);
     std::swap(local_mem_uploads_, operation.local_mem_uploads_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

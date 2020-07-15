@@ -76,7 +76,7 @@ class ConcatenateContextInputTest(test.TestCase, parameterized.TestCase):
     context_input = ops.convert_to_tensor(np.arange(100).reshape(10, 10))
     seq_input = math_ops.cast(seq_input, dtype=dtypes.float32)
     context_input = math_ops.cast(context_input, dtype=dtypes.float32)
-    with self.assertRaisesRegexp(ValueError, 'sequence_input must have rank 3'):
+    with self.assertRaisesRegex(ValueError, 'sequence_input must have rank 3'):
       sfc.concatenate_context_input(context_input, seq_input)
 
   @parameterized.named_parameters(
@@ -90,23 +90,23 @@ class ConcatenateContextInputTest(test.TestCase, parameterized.TestCase):
     seq_input = ops.convert_to_tensor(np.arange(100).reshape(5, 5, 4))
     seq_input = math_ops.cast(seq_input, dtype=dtypes.float32)
     context_input = math_ops.cast(context_input, dtype=dtypes.float32)
-    with self.assertRaisesRegexp(ValueError, 'context_input must have rank 2'):
+    with self.assertRaisesRegex(ValueError, 'context_input must have rank 2'):
       sfc.concatenate_context_input(context_input, seq_input)
 
   def test_integer_seq_input_throws_error(self):
     seq_input = ops.convert_to_tensor(np.arange(100).reshape(5, 5, 4))
     context_input = ops.convert_to_tensor(np.arange(100).reshape(10, 10))
     context_input = math_ops.cast(context_input, dtype=dtypes.float32)
-    with self.assertRaisesRegexp(
-        TypeError, 'sequence_input must have dtype float32'):
+    with self.assertRaisesRegex(TypeError,
+                                'sequence_input must have dtype float32'):
       sfc.concatenate_context_input(context_input, seq_input)
 
   def test_integer_context_input_throws_error(self):
     seq_input = ops.convert_to_tensor(np.arange(100).reshape(5, 5, 4))
     context_input = ops.convert_to_tensor(np.arange(100).reshape(10, 10))
     seq_input = math_ops.cast(seq_input, dtype=dtypes.float32)
-    with self.assertRaisesRegexp(
-        TypeError, 'context_input must have dtype float32'):
+    with self.assertRaisesRegex(TypeError,
+                                'context_input must have dtype float32'):
       sfc.concatenate_context_input(context_input, seq_input)
 
 
@@ -811,20 +811,20 @@ class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
     self.assertEqual((1, 2), a.shape)
 
   def test_shape_must_be_positive_integer(self):
-    with self.assertRaisesRegexp(TypeError, 'shape dimensions must be integer'):
+    with self.assertRaisesRegex(TypeError, 'shape dimensions must be integer'):
       sfc.sequence_numeric_column('aaa', shape=[1.0])
 
-    with self.assertRaisesRegexp(
-        ValueError, 'shape dimensions must be greater than 0'):
+    with self.assertRaisesRegex(ValueError,
+                                'shape dimensions must be greater than 0'):
       sfc.sequence_numeric_column('aaa', shape=[0])
 
   def test_dtype_is_convertible_to_float(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'dtype must be convertible to float'):
+    with self.assertRaisesRegex(ValueError,
+                                'dtype must be convertible to float'):
       sfc.sequence_numeric_column('aaa', dtype=dtypes.string)
 
   def test_normalizer_fn_must_be_callable(self):
-    with self.assertRaisesRegexp(TypeError, 'must be a callable'):
+    with self.assertRaisesRegex(TypeError, 'must be a callable'):
       sfc.sequence_numeric_column('aaa', normalizer_fn='NotACallable')
 
   @parameterized.named_parameters(

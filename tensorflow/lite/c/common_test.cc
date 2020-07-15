@@ -78,6 +78,7 @@ TEST(Types, TestTypeNames) {
     return std::string(TfLiteTypeGetName(t));
   };
   EXPECT_EQ(type_name(kTfLiteNoType), "NOTYPE");
+  EXPECT_EQ(type_name(kTfLiteFloat64), "FLOAT64");
   EXPECT_EQ(type_name(kTfLiteFloat32), "FLOAT32");
   EXPECT_EQ(type_name(kTfLiteFloat16), "FLOAT16");
   EXPECT_EQ(type_name(kTfLiteInt16), "INT16");
@@ -87,6 +88,7 @@ TEST(Types, TestTypeNames) {
   EXPECT_EQ(type_name(kTfLiteInt64), "INT64");
   EXPECT_EQ(type_name(kTfLiteBool), "BOOL");
   EXPECT_EQ(type_name(kTfLiteComplex64), "COMPLEX64");
+  EXPECT_EQ(type_name(kTfLiteComplex128), "COMPLEX128");
   EXPECT_EQ(type_name(kTfLiteString), "STRING");
 }
 

@@ -44,7 +44,7 @@ Status DebugStripper::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (IsAssert(node) || node.op() == "PrintV2") {
       // Convert this node into a no-op.
       node.set_op("NoOp");
-      node.clear_attr();
+      EraseRegularNodeAttributes(&node);
       // Convert all its inputs into control dependency, which will then
       // be optimized away by dependency optimizer.
       for (string& inp : *node.mutable_input()) {

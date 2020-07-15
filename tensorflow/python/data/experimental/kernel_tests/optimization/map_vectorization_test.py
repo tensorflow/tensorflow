@@ -466,8 +466,8 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       # x has leading dimension 5, this will raise an error
       return array_ops.gather(x, 10)
 
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 r"indices = 10 is not in \[0, 5\)"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r"indices = 10 is not in \[0, 5\)"):
       base_dataset = dataset_ops.Dataset.range(5).repeat(5).batch(
           5, drop_remainder=True)
       _, optimized = self._get_test_datasets(base_dataset, map_fn)
