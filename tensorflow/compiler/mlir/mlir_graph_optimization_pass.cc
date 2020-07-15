@@ -115,13 +115,15 @@ Status MlirFunctionOptimizationPass::Run(
       });
 
   if (!is_enabled) {
-    VLOG(0) << "None of the MLIR optimization passes are enabled "
-            << "(registered " << registry_->passes().size() << ")";
+    LOG_FIRST_N(INFO, 1)
+        << "None of the MLIR optimization passes are enabled "
+        << "(registered " << registry_->passes().size() << ")";
     return Status::OK();
   }
 
-  VLOG(0) << "Running MLIR Graph Optimization Passes "
-          << "(registered " << registry_->passes().size() << " passes)";
+  LOG_FIRST_N(INFO, 1) << "Running MLIR Graph Optimization Passes "
+                          << "(registered " << registry_->passes().size()
+                          << " passes)";
 
   GraphDebugInfo debug_info;
   RegisterDialects();
@@ -187,13 +189,15 @@ Status MlirV1CompatGraphOptimizationPass::Run(
       });
 
   if (!is_enabled) {
-    VLOG(0) << "None of the MLIR optimization passes are enabled "
-            << "(registered " << registry_->passes().size() << " passes)";
+    LOG_FIRST_N(INFO, 1)
+        << "None of the MLIR optimization passes are enabled "
+        << "(registered " << registry_->passes().size() << " passes)";
     return Status::OK();
   }
 
-  VLOG(0) << "Running MLIR Graph Optimization V1 Compat Passes "
-          << "(registered " << registry_->passes().size() << " passes)";
+  LOG_FIRST_N(INFO, 1) << "Running MLIR Graph Optimization V1 Compat Passes "
+                          << "(registered " << registry_->passes().size()
+                          << " passes)";
 
   GraphDebugInfo debug_info;
   RegisterDialects();
