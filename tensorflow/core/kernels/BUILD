@@ -1508,7 +1508,7 @@ tf_kernel_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:ragged_to_dense_util",
+        "//tensorflow/core/util:ragged_to_dense_util",
     ],
 )
 
@@ -6909,6 +6909,7 @@ filegroup(
         "queue_op.cc",
         "queue_ops.cc",
         "ragged_range_op.cc",
+        "ragged_tensor_to_tensor_op.cc",
         "random_op.cc",
         "random_op_cpu.h",
         "random_poisson_op.cc",

@@ -103,8 +103,8 @@ llvm::SmallVector<tf_executor::IslandOp, 8> ExpandReplicateIntoReplicas(
     // Map block arg to replica arg.
     mapping.clear();
     for (auto& block_arg : replicate_op.GetBody().getArguments())
-      mapping.map(block_arg, replicate_op.getOperand(
-                                 block_arg.getArgNumber() * num_replicas + i));
+      mapping.map(block_arg,
+                  replicate_op.GetReplicaOperandForBlockArgument(block_arg, i));
 
     // Copy over replicate region into replica island.
     replicate_op.body().cloneInto(&replica.body(), mapping);

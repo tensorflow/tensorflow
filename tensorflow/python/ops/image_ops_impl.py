@@ -4727,7 +4727,6 @@ def non_max_suppression_padded_v2(boxes,
       overlap too much with respect to IoU (intersection over union).
     score_threshold: a float representing the threshold for box scores. Boxes
       with a score that is not larger than this threshold will be suppressed.
-    name: name of operation.
     sorted_input: a boolean indicating whether the input boxes and scores
       are sorted in descending order by the score.
     canonicalized_coordinates: if box coordinates are given as

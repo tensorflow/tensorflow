@@ -62,10 +62,15 @@ void TestConcatenateTwoInputs(std::initializer_list<int> input1_dims_data,
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
+  void* user_data = nullptr;
+  if (registration->init) {
+    user_data = registration->init(&context, /*buffer=*/nullptr, /*length=*/0);
+  }
+
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.user_data = nullptr;
+  node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
@@ -120,10 +125,15 @@ void TestConcatenateQuantizedTwoInputs(
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
+  void* user_data = nullptr;
+  if (registration->init) {
+    user_data = registration->init(&context, /*buffer=*/nullptr, /*length=*/0);
+  }
+
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  node.user_data = nullptr;
+  node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&builtin_data);
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;

@@ -842,6 +842,27 @@ TfLiteStatus MicroAllocator::PrepareNodeAndRegistrationDataFromFlatbuffer(
   return kTfLiteOk;
 }
 
+TfLiteTensor* MicroAllocator::AllocateTfLiteTensor(const Model* model,
+                                                   int subgraph_idx) {
+  const SubGraph* subgraph = GetSubGraphFromModel(model);
+  TFLITE_DCHECK(subgraph != nullptr);
+
+  // This value is allocated from temporary arena space. It is guaranteed to be
+  // around for at least the scope of the calling function. Since this struct
+  // allocation takes place in temp space, no need to own or cleanup.
+  TfLiteTensor* tensor =
+      reinterpret_cast<TfLiteTensor*>(memory_allocator_->AllocateTemp(
+          sizeof(TfLiteTensor), alignof(TfLiteTensor)));
+  internal::InitializeTfLiteTensorFromFlatbuffer(
+      memory_allocator_, *subgraph->tensors()->Get(subgraph_idx),
+      model->buffers(), error_reporter_, tensor);
+  return tensor;
+}
+
+void MicroAllocator::ResetTempAllocations() {
+  memory_allocator_->ResetTempAllocations();
+}
+
 TfLiteStatus MicroAllocator::AllocateVariables(TfLiteContext* context,
                                                const SubGraph* subgraph) {
   for (size_t i = 0; i < context->tensors_size; ++i) {

@@ -506,28 +506,52 @@ LogicalResult FoldOperandsPermutation(
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Folder that returns LHS of an Arithmetic Op if the RHS is a constant
-// known to be Identity (e.g X+0)
+// Fold Arithmetic Op if one of the operands is a constant known to be an
+// Identity (e.g. X+0, X*1, etc...). For commutative operations fold if
+// known identity value is either lhs or rhs.
 template <
     typename OpT,
     typename std::enable_if<llvm::is_one_of<
         OpT, AddV2Op, SubOp, MulOp, DivOp, RealDivOp>::value>::type * = nullptr>
 OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
                                         ArrayRef<Attribute> operands) {
-  auto result_op_type = arithmetic_op.getResult().getType();
   auto lhs_type = arithmetic_op.x().getType().template cast<ShapedType>();
-  if (!result_op_type.template cast<ShapedType>().hasStaticShape()) return {};
+  auto rhs_type = arithmetic_op.y().getType().template cast<ShapedType>();
+  auto result_type =
+      arithmetic_op.getResult().getType().template cast<ShapedType>();
 
-  // We only handle non-broadcastable case.
-  if (result_op_type != lhs_type) {
-    return {};
-  }
+  // We can fold arithmetic operation only of we can prove that we will not
+  // accidentally hide a broadcasting error.
+  auto is_valid_broadcasting = [](ShapedType operand_ty, ShapedType identity_ty,
+                                  ShapedType result_ty) -> bool {
+    // Scalar identity is broadcastable to any operand shape, we only need to
+    // check that operand has the same shape as a result.
+    bool scalar_identity = identity_ty.hasRank() && identity_ty.getRank() == 0;
+    if (scalar_identity) return operand_ty == result_ty;
+
+    // If identity is not a scalar, we must verify that all shapes are equal
+    // and statically known.
+    //
+    // TODO(ezhulenev): Fold if identity shape is statically know to be
+    // broadcastable to the operand shape.
+    return operand_ty == result_ty && identity_ty == result_ty &&
+           result_ty.hasStaticShape();
+  };
+
+  // Check that we have a constant operand on one side (candidate for identity).
+  const bool is_commutative =
+      (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
+  auto lhs_attr = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhs_attr = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+  if (!rhs_attr && !(is_commutative && lhs_attr)) return {};
 
   // Mul and Div ops have identity value one while AddV2 and SubOp have identity
   // value zero.
-  int identity =
+  const int identity =
       (std::is_same<OpT, MulOp>::value || std::is_same<OpT, DivOp>::value ||
-       std::is_same<OpT, RealDivOp>::value);
+       std::is_same<OpT, RealDivOp>::value)
+          ? 1
+          : 0;
 
   Type element_ty = lhs_type.getElementType();
   Attribute identity_attr;
@@ -539,23 +563,19 @@ OpFoldResult IdentityArithmeticOpFolder(OpT arithmetic_op,
     return {};
   }
 
-  if (auto attr = operands[1].dyn_cast_or_null<DenseElementsAttr>()) {
-    if (attr.isSplat() && attr.getSplatValue() == identity_attr)
+  // Fold: Op(Operand, Identity) -> Operand.
+  if (rhs_attr && is_valid_broadcasting(lhs_type, rhs_type, result_type)) {
+    if (rhs_attr.isSplat() && rhs_attr.getSplatValue() == identity_attr)
       return arithmetic_op.x();
   }
 
-  auto rhs_type = arithmetic_op.y().getType().template cast<ShapedType>();
-  // TODO(chhe): we could fold and add an identity to force the broadcast.
-  if (result_op_type != rhs_type) {
-    return {};
-  }
-
-  bool is_symmetric =
-      (std::is_same<OpT, AddV2Op>::value || std::is_same<OpT, MulOp>::value);
-  if (auto attr = operands[0].dyn_cast_or_null<DenseElementsAttr>()) {
-    if (is_symmetric && attr.isSplat() && attr.getSplatValue() == identity_attr)
+  // Fold: Op(Identity, Operand) -> Operand for commutative operations.
+  if (lhs_attr && is_commutative &&
+      is_valid_broadcasting(rhs_type, lhs_type, result_type)) {
+    if (lhs_attr.isSplat() && lhs_attr.getSplatValue() == identity_attr)
       return arithmetic_op.y();
   }
+
   return {};
 }
 }  // namespace
@@ -1168,8 +1188,7 @@ void ConstOp::build(OpBuilder &builder, OperationState &result,
   ShapedType type;
   if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
     return ConstOp::build(builder, result, elem_attr);
-  } else if (value.isa<BoolAttr>() || value.isa<FloatAttr>() ||
-             value.isa<IntegerAttr>()) {
+  } else if (value.isa<BoolAttr, FloatAttr, IntegerAttr>()) {
     // All TensorFlow types must be tensor types. In the build() method,
     // we want to provide more flexibility by allowing attributes of scalar
     // types. But we need to wrap it up with ElementsAttr to construct
@@ -1958,13 +1977,55 @@ static LogicalResult Verify(FusedBatchNormOp op) {
   return success();
 }
 
-LogicalResult FusedBatchNormV3Op::FoldOperandsPermutation(
-    ArrayRef<int64_t> permutation) {
+//===----------------------------------------------------------------------===//
+// FusedBatchNormV2Op / FusedBatchNormV3Op
+//===----------------------------------------------------------------------===//
+
+template <class Op>
+static LogicalResult InferenceFoldOperandsPermutation(
+    ArrayRef<int64_t> permutation, Op *op) {
   // FusedBatchNorm in training mode is a layout sentitive operation, and should
   // have already assigned an optimal data format.
-  if (is_training()) return failure();
+  if (op->is_training()) return failure();
+  return ::mlir::TF::FoldOperandsPermutation(permutation, op);
+}
 
-  return ::mlir::TF::FoldOperandsPermutation(permutation, this);
+template <class Op>
+static StringRef GetOptimalLayout(const RuntimeDevices &devices, Op *op) {
+  // In inference mode FusedBatchNorm is not sensitive to data layout.
+  if (!op->is_training()) return op->data_format();
+
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(op->getOperation()))
+    return op->data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  auto x_ty = op->x().getType().template cast<TensorType>();
+  const bool is_f16 = x_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // For all other data types prefer NCHW.
+  return "NCHW";
+}
+
+LogicalResult FusedBatchNormV2Op::FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation) {
+  return ::mlir::TF::InferenceFoldOperandsPermutation(permutation, this);
+}
+
+LogicalResult FusedBatchNormV2Op::UpdateDataFormat(StringRef data_format) {
+  return ::mlir::TF::UpdateDataFormat(data_format, this);
+}
+
+StringRef FusedBatchNormV2Op::GetOptimalLayout(const RuntimeDevices &devices) {
+  return ::mlir::TF::GetOptimalLayout(devices, this);
+}
+
+LogicalResult FusedBatchNormV3Op::FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation) {
+  return ::mlir::TF::InferenceFoldOperandsPermutation(permutation, this);
 }
 
 LogicalResult FusedBatchNormV3Op::UpdateDataFormat(StringRef data_format) {
@@ -1972,22 +2033,7 @@ LogicalResult FusedBatchNormV3Op::UpdateDataFormat(StringRef data_format) {
 }
 
 StringRef FusedBatchNormV3Op::GetOptimalLayout(const RuntimeDevices &devices) {
-  // In inference mode FusedBatchNorm is not sensitive to data layout.
-  if (!is_training()) return data_format();
-
-  // Keep current data format if no GPUs are available or if explicit placement
-  // does not allow to use GPU for this operation.
-  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
-    return data_format();
-
-  // For f16 data type on devices with Tensor Cores support NHWC data format
-  // is up to ~2x faster.
-  auto x_ty = x().getType().cast<TensorType>();
-  const bool is_f16 = x_ty.getElementType().isF16();
-  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
-
-  // For all other data types prefer NCHW.
-  return "NCHW";
+  return ::mlir::TF::GetOptimalLayout(devices, this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2137,10 +2183,6 @@ static LogicalResult Verify(IfRegionOp op) {
     return failure();
   if (failed(VerifyRegionResults(op, op.else_branch(), "else")))
     return failure();
-  if (op.then_branch().front().getNumArguments() != 0)
-    return op.emitOpError() << "then region cannot have any arguments";
-  if (op.else_branch().front().getNumArguments() != 0)
-    return op.emitOpError() << "else region cannot have any arguments";
   return success();
 }
 
@@ -2732,7 +2774,7 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 
 void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  results.insert<RealDivWithSqrtDivisor>(context);
+  results.insert<RealDivWithSqrtDivisor, RealDivWithConstDivisor>(context);
 }
 
 OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
@@ -2868,6 +2910,109 @@ void ReshapeOp::build(OpBuilder &builder, OperationState &result, Value tensor,
                             shape);
   }
   return unranked();
+}
+
+void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                            MLIRContext *context) {
+  results.insert<RedundantReshape>(context);
+}
+
+OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
+  Value tensor = this->tensor();
+  Value shape = this->shape();
+
+  // Fold reshape if operand and result types are the same and all dimensions
+  // are statically known (no-op reshape).
+  // TODO(ezhulenev): Add the same folding for BroadcastToOp.
+  auto result_ty = getType().dyn_cast<ShapedType>();
+  if (result_ty && result_ty.hasStaticShape() &&
+      result_ty == tensor.getType()) {
+    return tensor;
+  }
+
+  // Fold reshape if the shape is computed from the input tensor:
+  //
+  //   %shape     = tf.Shape(%arg)                    // [? x ...]
+  //   %dim0      = tf.StridedSlice(%shape, 0, 1, 1)  // get unknown dim value
+  //   %new_shape = tf.Pack(dim0, ...) { axis = 0 }   // [? x ...]
+  //   %reshape   = tf.Reshape(%arg, %new_shape)      // this is no-op
+  //
+  // Where `...` are some statically known dimensions. In this case reshape is
+  // a no-op and can be replaced by %arg (assuming `...` are equal).
+  auto pack_op = dyn_cast_or_null<PackOp>(shape.getDefiningOp());
+  if (!pack_op || pack_op.values().size() < 2) return {};
+
+  // Dimensions packed along axis = 0 (pack scalars into vector).
+  if (pack_op.axis().getSExtValue() != 0) return {};
+
+  // First packed value is defined by a strided slice operation.
+  auto slice_op =
+      dyn_cast_or_null<StridedSliceOp>(pack_op.values()[0].getDefiningOp());
+  if (!slice_op) return {};
+
+  // Input to the slice op is defined by shape operation.
+  auto shape_op = dyn_cast_or_null<ShapeOp>(slice_op.input().getDefiningOp());
+  if (!shape_op || shape_op.input() != tensor) return {};
+
+  // All masks are `0` except `shrink_axis_mask` which is equal to `1` (slicing
+  // scalar value from input vector).
+  if (slice_op.begin_mask().getSExtValue() != 0 ||
+      slice_op.ellipsis_mask().getSExtValue() != 0 ||
+      slice_op.end_mask().getSExtValue() != 0 ||
+      slice_op.new_axis_mask().getSExtValue() != 0 ||
+      slice_op.shrink_axis_mask().getSExtValue() != 1)
+    return {};
+
+  // Returns a value if the `value` is defined by a ConstOp with a single
+  // integer element in it and has an expected rank.
+  auto get_value = [](Value value, int expected_rank) -> Optional<int64_t> {
+    auto const_op = dyn_cast_or_null<ConstOp>(value.getDefiningOp());
+    if (!const_op) return None;
+
+    auto value_attr = const_op.value().dyn_cast<DenseIntElementsAttr>();
+    if (!value_attr || value_attr.getNumElements() != 1) return None;
+
+    auto value_ty = value_attr.getType();
+    if (!value_ty.hasRank() || value_ty.getRank() != expected_rank) return None;
+
+    auto splat = value_attr.getSplatValue<IntegerAttr>();
+    return splat.getValue().getSExtValue();
+  };
+
+  // All other packed values are scalar constants.
+  SmallVector<int64_t, 4> packed_dims;
+  packed_dims.reserve(pack_op.values().size() - 1);
+  for (Value operand : llvm::drop_begin(pack_op.values(), 1)) {
+    if (auto dim = get_value(operand, /*expected_rank=*/0)) {
+      packed_dims.push_back(*dim);
+    } else {
+      return {};
+    }
+  }
+
+  // Slice exactly the first shape dimension:
+  //   begin = [0] end = [1], strides = [1]
+  auto begin = get_value(slice_op.begin(), /*expected_rank=*/1);
+  auto end = get_value(slice_op.end(), /*expected_rank=*/1);
+  auto strides = get_value(slice_op.strides(), /*expected_rank=*/1);
+  if (!begin.hasValue() || !end.hasValue() || !strides.hasValue() ||
+      *begin != 0 || *end != 1 || *strides != 1)
+    return {};
+
+  // First tensor dimension is dynamic.
+  auto arg_ty = tensor.getType().dyn_cast<ShapedType>();
+  if (!arg_ty || arg_ty.getNumDynamicDims() != 1 || !arg_ty.isDynamicDim(0))
+    return {};
+
+  // Argument tensor rank is equal to the number of packed dimensions.
+  if (arg_ty.getRank() != pack_op.values().size()) return {};
+
+  // All other dimensions are statically known and equal to packed dims.
+  auto arg_dims = llvm::drop_begin(arg_ty.getShape(), 1);
+  if (!std::equal(arg_dims.begin(), arg_dims.end(), packed_dims.begin()))
+    return {};
+
+  return tensor;
 }
 
 //===----------------------------------------------------------------------===//

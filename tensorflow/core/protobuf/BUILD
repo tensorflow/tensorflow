@@ -80,6 +80,7 @@ tf_proto_library_cc(
     has_services = 1,
     cc_api_version = 2,
     cc_stubby_versions = ["2"],
+    create_service = True,
     protodeps = [":worker_proto"],
 )
 
@@ -97,6 +98,7 @@ tf_proto_library_cc(
     has_services = 1,
     cc_api_version = 2,
     cc_stubby_versions = ["2"],
+    create_service = True,
     protodeps = [":master_proto"],
 )
 
@@ -107,6 +109,7 @@ tf_proto_library_cc(
     cc_api_version = 2,
     cc_grpc_version = 1,
     cc_stubby_versions = ["2"],
+    create_service = True,
     protodeps = tf_additional_all_protos(),
 )
 

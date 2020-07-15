@@ -162,6 +162,9 @@ void MicroInterpreter::CorrectTensorEndianness(TfLiteTensor* tensorCorr) {
     case TfLiteType::kTfLiteComplex64:
       CorrectTensorDataEndianness(tensorCorr->data.c64, tensorSize);
       break;
+    case TfLiteType::kTfLiteComplex128:
+      CorrectTensorDataEndianness(tensorCorr->data.c128, tensorSize);
+      break;
     default:
       // Do nothing for other data types.
       break;

@@ -281,13 +281,11 @@ ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition,
 
 ConvBuffer1x1::ConvBuffer1x1(ConvBuffer1x1&& operation)
     : GPUOperation(std::move(operation)),
-      conv_params_(std::move(operation.conv_params_)),
-      kernel_(std::move(operation.kernel_)) {}
+      conv_params_(std::move(operation.conv_params_)) {}
 
 ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
   if (this != &operation) {
     std::swap(conv_params_, operation.conv_params_);
-    kernel_ = std::move(operation.kernel_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

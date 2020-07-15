@@ -108,7 +108,7 @@ string InferSourceFileName(const char* argv_zero) {
 void PrintAllPythonOps(const std::vector<string>& op_list,
                        const std::vector<string>& api_def_dirs,
                        const string& source_file_name,
-                       bool op_list_is_whitelist,
+                       bool op_list_is_allowlist,
                        const std::unordered_set<string> type_annotate_ops) {
   OpList ops;
   OpRegistry::Global()->Export(false, &ops);
@@ -126,11 +126,11 @@ void PrintAllPythonOps(const std::vector<string>& op_list,
     api_def_map.UpdateDocs();
   }
 
-  if (op_list_is_whitelist) {
-    std::unordered_set<string> whitelist(op_list.begin(), op_list.end());
+  if (op_list_is_allowlist) {
+    std::unordered_set<string> allowlist(op_list.begin(), op_list.end());
     OpList pruned_ops;
     for (const auto& op_def : ops.op()) {
-      if (whitelist.find(op_def.name()) != whitelist.end()) {
+      if (allowlist.find(op_def.name()) != allowlist.end()) {
         *pruned_ops.mutable_op()->Add() = op_def;
       }
     }
@@ -165,13 +165,13 @@ int main(int argc, char* argv[]) {
 
   if (argc == 2) {
     tensorflow::PrintAllPythonOps({}, api_def_dirs, source_file_name,
-                                  false /* op_list_is_whitelist */,
+                                  false /* op_list_is_allowlist */,
                                   type_annotate_ops);
   } else if (argc == 3) {
     std::vector<tensorflow::string> hidden_ops;
     TF_CHECK_OK(tensorflow::ParseOpListCommandLine(argv[2], &hidden_ops));
     tensorflow::PrintAllPythonOps(hidden_ops, api_def_dirs, source_file_name,
-                                  false /* op_list_is_whitelist */,
+                                  false /* op_list_is_allowlist */,
                                   type_annotate_ops);
   } else if (argc == 4) {
     std::vector<tensorflow::string> op_list;

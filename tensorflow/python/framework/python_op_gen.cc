@@ -351,7 +351,7 @@ string GenEagerPythonOp::Code() {
   }
 
   std::unordered_map<string, string> type_annotations;
-  // Only populate map for whitelisted ops
+  // Only populate map for allowlisted ops
   if (add_type_annotations_) {
     type_annotations = GetTypeAnnotations();
   }

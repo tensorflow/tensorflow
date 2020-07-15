@@ -1934,7 +1934,7 @@ def py_strict_library(name, **kwargs):
 
 # Placeholder to use until bazel supports py_strict_test.
 def py_strict_test(name, **kwargs):
-    native.py_test(name = name, **kwargs)
+    py_test(name = name, **kwargs)
 
 def tf_custom_op_py_library(
         name,
@@ -2894,6 +2894,11 @@ def tf_monitoring_python_deps():
         "//conditions:default": [],
     })
 
+# Teams sharing the same repo can provide their own ops_to_register.h file using
+# this function, and pass in -Ipath/to/repo flag when building the target.
+def tf_selective_registration_deps():
+    return []
+
 def tf_jit_compilation_passes_extra_deps():
     return []
 
@@ -2901,6 +2906,14 @@ def if_mlir(if_true, if_false = []):
     return select({
         str(Label("//tensorflow:with_mlir_support")): if_true,
         "//conditions:default": if_false,
+    })
+
+def tf_enable_mlir_bridge():
+    return select({
+        str(Label("//tensorflow:enable_mlir_bridge")): [
+            "//tensorflow/python:is_mlir_bridge_test_true",
+        ],
+        "//conditions:default": [],
     })
 
 def if_tpu(if_true, if_false = []):

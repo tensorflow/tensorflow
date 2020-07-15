@@ -356,7 +356,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
 LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     Operation *op, NamedAttribute named_attr) {
   if (named_attr.first == "tf_saved_model.exported_names") {
-    if (!isa<FuncOp>(op) && !isa<GlobalTensorOp>(op)) {
+    if (!isa<FuncOp, GlobalTensorOp>(op)) {
       return op->emitError() << "'tf_saved_model.exported_names' must be on a "
                                 "'func' or 'tf_saved_model.global_tensor' op";
     }

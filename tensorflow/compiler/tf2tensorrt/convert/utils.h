@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -133,6 +134,26 @@ bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
 // input bindings, because the number of total input bindings equals the number
 // of profiles times the number of engine inputs.
 int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine);
+
+// Returns the string representation for the assigned device or the requested
+// device of the given node.
+absl::string_view GetDeviceName(const Node* node);
+
+// Returns the ParsedName representation for the assigned device or the
+// requested device string of the given node. If the device string is invalid,
+// returns absl::nullopt.
+absl::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
+    const Node* node);
+
+// If the given two device assignments as compatible, returns the merge of the
+// two assignments. Otherwise, returns absl::nullopt.
+absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+    const DeviceNameUtils::ParsedName& a, const DeviceNameUtils::ParsedName& b);
+// Similar to the above, except that the second device assignment is represented
+// by a string_view.
+absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+    const DeviceNameUtils::ParsedName& a, absl::string_view b);
+
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 }  // namespace tensorrt

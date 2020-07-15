@@ -11,6 +11,7 @@
 * C-API functions `TF_StringDecode`, `TF_StringEncode`, and
   `TF_StringEncodedSize` are no longer relevant and have been removed; see
   core/platform/ctstring.h for string access/modification in C.
+* Removed `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
 
 ## Known Caveats
 
@@ -27,7 +28,10 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 * TF Core:
-    * <ADD RELEASE NOTES HERE>
+  * <ADD RELEASE NOTES HERE>
+  * `tf.types.experimental.TensorLike` is a new `Union` type that can be used as
+    type annotation for variables representing a Tensor or a value that can be
+    converted to Tensor by `tf.convert_to_tensor`.
 * `tf.data`:
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
   the complement of `select_cols`; at most one of these should be specified.
@@ -50,6 +54,9 @@
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>
 *   Other:
+    * We have replaced uses of "whitelist" with "allowlist" where possible.
+  Please see https://developers.google.com/style/word-list#blacklist for more
+  context.
     * <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors

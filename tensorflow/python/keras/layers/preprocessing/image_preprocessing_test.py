@@ -816,6 +816,61 @@ class RandomTransformTest(keras_parameterized.TestCase):
     self._run_random_transform_with_mock(transform_matrix, expected_output,
                                          'wrap')
 
+  def test_random_translation_nearest(self):
+    # nearest output is (aaaa|abcd|dddd)
+
+    # Test down shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[0., 1., 2.],
+         [0., 1., 2.],
+         [3., 4., 5.],
+         [6., 7., 8],
+         [9., 10., 11]]).reshape((1, 5, 3, 1)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., 0., 0., 1., -1., 0., 0.]])
+    self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                         'nearest')
+
+    # Test up shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[3., 4., 5.],
+         [6., 7., 8],
+         [9., 10., 11.],
+         [12., 13., 14.],
+         [12., 13., 14.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., 0., 0., 1., 1., 0., 0.]])
+    self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                         'nearest')
+
+    # Test left shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[1., 2., 2.],
+         [4., 5., 5.],
+         [7., 8., 8.],
+         [10., 11., 11.],
+         [13., 14., 14.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., 1., 0., 1., 0., 0., 0.]])
+    self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                         'nearest')
+
+    # Test right shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[0., 0., 1.],
+         [3., 3., 4],
+         [6., 6., 7.],
+         [9., 9., 10.],
+         [12., 12., 13.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., -1., 0., 1., 0., 0., 0.]])
+    self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                         'nearest')
+
   def test_random_translation_constant(self):
     # constant output is (0000|abcd|0000)
 

@@ -4526,7 +4526,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
     } else {
       // If no accelerator is specified, only use NNAPI if an accelerator is
       // available. Any available accelerator will make the device_count larger
-      // than 1. More sophisticated check and whitelisting can be added later.
+      // than 1. More sophisticated check and allowlisting can be added later.
       uint32_t device_count = 0;
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
           context, nnapi->ANeuralNetworks_getDeviceCount(&device_count),

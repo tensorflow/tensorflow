@@ -7,6 +7,6 @@ ENTRY %Exp (x: f32[2,2]) -> f32[2,2] {
 }
 
 // CHECK: func @exponential(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-// CHECK:   "xla_lhlo.exponential"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+// CHECK:   "lmhlo.exponential"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 // CHECK: }
 

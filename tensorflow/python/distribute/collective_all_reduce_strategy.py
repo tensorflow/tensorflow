@@ -190,6 +190,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._communication = communication
     self._initialize_strategy(self._cluster_resolver)
     self._cfer_fn_cache = weakref.WeakKeyDictionary()
+    self.experimental_enable_get_next_as_optional = True
     assert isinstance(self._cross_device_ops,
                       cross_device_ops_lib.CollectiveAllReduce)
 

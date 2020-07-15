@@ -32,16 +32,16 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
-def whitelist(f):
+def allowlist(f):
   """Helper that marks a callable as whtelitisted."""
-  if 'whitelisted_module_for_testing' not in sys.modules:
-    whitelisted_mod = imp.new_module('whitelisted_module_for_testing')
-    sys.modules['whitelisted_module_for_testing'] = whitelisted_mod
+  if 'allowlisted_module_for_testing' not in sys.modules:
+    allowlisted_mod = imp.new_module('allowlisted_module_for_testing')
+    sys.modules['allowlisted_module_for_testing'] = allowlisted_mod
     config.CONVERSION_RULES = (
-        (config.DoNotConvert('whitelisted_module_for_testing'),) +
+        (config.DoNotConvert('allowlisted_module_for_testing'),) +
         config.CONVERSION_RULES)
 
-  f.__module__ = 'whitelisted_module_for_testing'
+  f.__module__ = 'allowlisted_module_for_testing'
 
 
 def is_inside_generated_code():

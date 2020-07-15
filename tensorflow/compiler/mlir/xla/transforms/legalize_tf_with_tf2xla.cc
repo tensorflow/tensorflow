@@ -75,10 +75,10 @@ namespace {
 template <typename T, size_t N>
 using InlinedVector = tensorflow::gtl::InlinedVector<T, N>;  // non-absl ok
 
-static bool IsOpWhitelisted(Operation* op) {
-  // White-listed TensorFlow ops are known to have well behaved tf2xla kernels
+static bool IsOpAllowlisted(Operation* op) {
+  // Allowlisted TensorFlow ops are known to have well behaved tf2xla kernels
   // building valid MLIR using MlirHloBuilder.
-  // TODO(hinsu): Drop explicit whitelist when MLIR based bridge is enabled for
+  // TODO(hinsu): Drop explicit allowlist when MLIR based bridge is enabled for
   // all tf2xla kernels.
   // clang-format off
   static llvm::SmallDenseSet<mlir::TypeID, 512> ops = {
@@ -342,7 +342,7 @@ LogicalResult FuncLegalizer::Legalize() {
 }
 
 LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
-  if (!IsOpWhitelisted(op)) return success();
+  if (!IsOpAllowlisted(op)) return success();
 
   // Only static shaped operands are supported in XLA builders for now.
   for (Type ty : op->getOperandTypes()) {

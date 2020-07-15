@@ -35,6 +35,8 @@ TfTpu_MeshStateApiFn* MeshStateApiFn();
 
 TfTpu_CompileApiFn* CompileApiFn();
 
+TfTpu_TpuProgramApiFn* TpuProgramApiFn();
+
 TfTpu_ExecutorApiFn* ExecutorApiFn();
 
 TfTpu_NodeContextApiFn* NodeContextApiFn();

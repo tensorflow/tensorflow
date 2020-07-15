@@ -43,6 +43,9 @@ class HloInputOutputAliasConfig {
     ShapeIndex parameter_index;
 
     std::string ToString() {
+      if (parameter_index.empty()) {
+        return absl::StrCat(parameter_number);
+      }
       return absl::StrFormat("(%lld, %s)", parameter_number,
                              parameter_index.ToString());
     }

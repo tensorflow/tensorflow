@@ -542,8 +542,8 @@ bool IsNumericType(const DataType dtype) {
   return kRealNumberTypes->find(dtype) != kRealNumberTypes->end();
 }
 
-bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
-  static const gtl::FlatSet<string>* const kOpTpeWhitelist =
+bool IsAllowListedOpTypeForEvaluateNode(const string& op_type) {
+  static const gtl::FlatSet<string>* const kOpTpeAllowlist =
       CHECK_NOTNULL((new gtl::FlatSet<string>{
           // Unary arithmetic ops
           "Floor",
@@ -589,7 +589,7 @@ bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
           "Fill",
           "Cast",
       }));
-  return kOpTpeWhitelist->find(op_type) != kOpTpeWhitelist->end();
+  return kOpTpeAllowlist->find(op_type) != kOpTpeAllowlist->end();
 }
 
 // Negative shape size of '-1' represents unknown, while negative shape sizes
@@ -1441,7 +1441,7 @@ class SymbolicShapeRefiner {
 
     // Due to the cost of running EvaluateNode(), we limit only to white listed
     // op types.
-    if (!IsWhiteListedOpTypeForEvaluateNode(c->op_data->op_def.name())) {
+    if (!IsAllowListedOpTypeForEvaluateNode(c->op_data->op_def.name())) {
       return false;
     }
 

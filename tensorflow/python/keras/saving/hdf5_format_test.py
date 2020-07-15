@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import shutil
 import tempfile
+import uuid
 
 from absl.testing import parameterized
 import numpy as np
@@ -31,7 +32,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import optimizers
@@ -450,7 +450,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
       eval_out2 = loaded_model.evaluate(x, y)
       self.assertArrayNear(eval_out, eval_out2, 0.001)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_sequential_model_saving_without_input_shape(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
@@ -485,7 +485,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_sequential_model_saving_without_compile(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
@@ -1192,8 +1192,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       self.evaluate(v.assign(42.))
-      prefix = os.path.join(self.get_temp_dir(),
-                            '{}'.format(ops.uid()), 'ckpt/')
+      prefix = os.path.join(self.get_temp_dir(), str(uuid.uuid4()), 'ckpt/')
       m.save_weights(prefix)
       self.evaluate(v.assign(2.))
       m.load_weights(prefix)
@@ -1236,8 +1235,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       m = DummySubclassModel()
       v = m.add_weight(name='v', shape=[])
       self.evaluate(v.assign(42.))
-      prefix = os.path.join(self.get_temp_dir(),
-                            '{}'.format(ops.uid()), 'bckpt')
+      prefix = os.path.join(self.get_temp_dir(), str(uuid.uuid4()), 'bckpt')
       m.save_weights(prefix)
       self.evaluate(v.assign(2.))
       m.load_weights(prefix)

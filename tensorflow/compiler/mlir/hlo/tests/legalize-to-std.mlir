@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt -xla-legalize-to-std %s -o - | FileCheck %s
+// RUN: mlir-hlo-opt -mhlo-legalize-to-std %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @binary_ops_float(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
 func @binary_ops_float(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {

@@ -20,13 +20,13 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import step_fn
+from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.layers import normalization
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util import tf_inspect
 
 
 def single_loss_example(optimizer_fn, distribution, use_bias=False,
@@ -69,7 +69,7 @@ def minimize_loss_example(optimizer, use_bias=False, use_callable_loss=True):
       y = array_ops.reshape(layer(x), []) - constant_op.constant(1.)
       return y * y
 
-    if _is_optimizer_v2_instance(optimizer):
+    if strategy_test_lib.is_optimizer_v2_instance(optimizer):
       return optimizer.minimize(loss_fn, lambda: layer.trainable_variables)
     elif use_callable_loss:
       return optimizer.minimize(loss_fn)
@@ -112,17 +112,10 @@ def batchnorm_example(optimizer_fn,
       # `x` and `y` will be fetched by the gradient computation, but not `loss`.
       return loss
 
-    if _is_optimizer_v2_instance(optimizer):
+    if strategy_test_lib.is_optimizer_v2_instance(optimizer):
       return optimizer.minimize(loss_fn, lambda: layer.trainable_variables)
 
     # Callable loss.
     return optimizer.minimize(loss_fn)
 
   return model_fn, dataset_fn, batchnorm
-
-
-def _is_optimizer_v2_instance(optimizer):
-  # For a optimizer instance, the v2 implementation has var_list as a required
-  # argument.
-  arg_spec = tf_inspect.getfullargspec(optimizer.minimize)
-  return 'var_list' in arg_spec.args[:-len(arg_spec.defaults)]

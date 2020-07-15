@@ -3,6 +3,10 @@
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
@@ -87,7 +91,6 @@ py_test(
     main = "tf_doctest.py",
     python_version = "PY3",
     tags = [
-        "gpu",
         "no_oss_py2",
         "no_pip",
         "no_rocm",
@@ -95,8 +98,7 @@ py_test(
         "noasan",
         "nomsan",
         "notsan",
-        "requires-gpu-nvidia",
-    ],
+    ] + tf_gpu_tests_tags(),
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",

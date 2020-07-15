@@ -22,6 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.proto_ops import decode_proto
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -187,6 +188,10 @@ class DispatchTest(test_util.TensorFlowTestCase):
       self.assertEqual(
           str(trace),
           "math.reduce_sum(math.add(name=None, x=math.abs(x), y=y), axis=3)")
+
+      proto_val = TensorTracer("proto")
+      trace = decode_proto(proto_val, "message_type", ["field"], ["float32"])
+      self.assertIn("io.decode_proto(bytes=proto,", str(trace))
 
     finally:
       # Clean up.

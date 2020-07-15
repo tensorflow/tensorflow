@@ -58,7 +58,7 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   tensorflow::Status HandleSort(::xla::HloInstruction* instr) final;
 
   // Helper function that recursively visits the tuple structure in
-  // `current_shape`, and reconstruct a matching xla_lhlo::TupleOp.
+  // `current_shape`, and reconstruct a matching lmhlo::TupleOp.
   // Each leaf node is converted to an std.view op with corresponding offsets.
   // If no tuple presents, it simply returns a view of the buffer.
   tensorflow::Status CreateView(const ::xla::HloInstruction* instr,

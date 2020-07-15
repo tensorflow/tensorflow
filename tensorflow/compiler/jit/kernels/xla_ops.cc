@@ -350,7 +350,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   const XlaCompiler::CompilationResult* compilation_result;
   xla::LocalExecutable* executable;
 
-  ResourceVarsSnapshot variables;
+  ResourceVarsSnapshot variables_snapshot;
   {
     std::vector<VariableInfo> variable_infos;
     OP_REQUIRES_OK(
@@ -361,8 +361,9 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
         variable_infos, constants_, /*lazy=*/false, &client,
         &compilation_result, &executable);
     OP_REQUIRES_OK(ctx, s);
-    OP_REQUIRES_OK(ctx, SnapshotResourceVariables(ctx, resources_,
-                                                  variable_infos, &variables));
+    OP_REQUIRES_OK(ctx,
+                   SnapshotResourceVariables(ctx, resources_, variable_infos,
+                                             &variables_snapshot));
   }
 
   se::Stream* stream =
@@ -377,7 +378,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
       client, allocator,
       /*allocate_xla_tensors=*/platform_info_.is_on_xla_device(),
       platform_info_.UseMultipleStreams());
-  launch_context.PopulateInputs(ctx, compilation_result, variables,
+  launch_context.PopulateInputs(ctx, compilation_result, variables_snapshot,
                                 /*missing_ctx_input_prefix=*/0);
 
   // Execute the computation.
@@ -415,10 +416,11 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   const xla::HloInputOutputAliasConfig& input_output_alias =
       executable->executable()->module().input_output_alias_config();
-  OP_REQUIRES_OK(
-      ctx, launch_context.PopulateOutputs(
-               ctx, compilation_result, run_result.ConsumeValueOrDie(),
-               /*missing_ctx_input_prefix=*/0, input_output_alias, variables));
+  OP_REQUIRES_OK(ctx,
+                 launch_context.PopulateOutputs(
+                     ctx, compilation_result, run_result.ConsumeValueOrDie(),
+                     /*missing_ctx_input_prefix=*/0, input_output_alias,
+                     variables_snapshot));
   VLOG(1) << "Done";
 }
 

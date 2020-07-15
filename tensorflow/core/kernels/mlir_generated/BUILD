@@ -57,27 +57,29 @@ tf_cuda_cc_test(
     ],
 )
 
-gen_kernel_library(
-    name = "bias_add",
-    same_shape = "0,2",
-    tile_size = "16x16",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-)
+# TODO(b/160731748): Re-enable when it works again.
+# gen_kernel_library(
+#     name = "bias_add",
+#     same_shape = "0,2",
+#     tile_size = "16x16",
+#     types = [
+#         "f16",
+#         "f32",
+#         "f64",
+#     ],
+# )
 
-gen_kernel_library(
-    name = "relu",
-    same_shape = "0,1",
-    tile_size = "256",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-    ],
-)
+# TODO(b/160190568): Re-enable when it works again.
+# gen_kernel_library(
+#     name = "relu",
+#     same_shape = "0,1",
+#     tile_size = "256",
+#     types = [
+#         "f16",
+#         "f32",
+#         "f64",
+#     ],
+# )
 
 gen_kernel_library(
     name = "tanh",

@@ -342,16 +342,16 @@ def converted_call(f,
       raise ValueError('either caller_fn_scope or options must have a value')
     options = caller_fn_scope.callopts
 
-  if conversion.is_in_whitelist_cache(f, options):
-    logging.log(2, 'Whitelisted %s: from cache', f)
+  if conversion.is_in_allowlist_cache(f, options):
+    logging.log(2, 'Allowlisted %s: from cache', f)
     return _call_unconverted(f, args, kwargs, options, False)
 
   if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
-    logging.log(2, 'Whitelisted: %s: AutoGraph is disabled in context', f)
+    logging.log(2, 'Allowlisted: %s: AutoGraph is disabled in context', f)
     return _call_unconverted(f, args, kwargs, options, False)
 
   if is_autograph_artifact(f):
-    logging.log(2, 'Permanently whitelisted: %s: AutoGraph artifact', f)
+    logging.log(2, 'Permanently allowed: %s: AutoGraph artifact', f)
     return _call_unconverted(f, args, kwargs, options)
 
   # If this is a partial, unwrap it and redo all the checks.
@@ -377,6 +377,10 @@ def converted_call(f,
       return py_builtins.eval_in_original_context(f, args, caller_fn_scope)
     if f is super:
       return py_builtins.super_in_original_context(f, args, caller_fn_scope)
+    if f is globals:
+      return py_builtins.globals_in_original_context(caller_fn_scope)
+    if f is locals:
+      return py_builtins.locals_in_original_context(caller_fn_scope)
     if kwargs:
       return py_builtins.overload_of(f)(*args, **kwargs)
     else:
@@ -385,7 +389,7 @@ def converted_call(f,
   if conversion.is_unsupported(f):
     return _call_unconverted(f, args, kwargs, options)
 
-  if not options.user_requested and conversion.is_whitelisted(f):
+  if not options.user_requested and conversion.is_allowlisted(f):
     return _call_unconverted(f, args, kwargs, options)
 
   # internal_convert_user_code is for example turned off when issuing a dynamic
@@ -425,13 +429,13 @@ def converted_call(f,
     return _fall_back_unconverted(f, args, kwargs, options, e)
 
   if not hasattr(target_entity, '__code__'):
-    logging.log(2, 'Permanently whitelisted: %s: native binding',
+    logging.log(2, 'Permanently allowed: %s: native binding',
                 target_entity)
     return _call_unconverted(f, args, kwargs, options)
   elif (hasattr(target_entity.__code__, 'co_filename') and
         target_entity.__code__.co_filename == '<string>'):
     # TODO(mdan): __globals__['txt'] might work in Py3.
-    logging.log(2, 'Permanently whitelisted: %s: dynamic code (exec?)',
+    logging.log(2, 'Permanently allowed: %s: dynamic code (exec?)',
                 target_entity)
     return _call_unconverted(f, args, kwargs, options)
 
@@ -462,7 +466,7 @@ def converted_call(f,
 def _call_unconverted(f, args, kwargs, options, update_cache=True):
   """Calls the original function without converting with AutoGraph."""
   if update_cache:
-    conversion.cache_whitelisted(f, options)
+    conversion.cache_allowlisted(f, options)
 
   if inspect.ismethod(f) and isinstance(f.__self__, function.TfMethodTarget):
     return f.__self__.call(args, kwargs)
@@ -482,7 +486,7 @@ def _fall_back_unconverted(f, args, kwargs, options, exc):
       'To silence this warning, decorate the function with'
       ' @tf.autograph.experimental.do_not_convert')
   if isinstance(exc, errors.UnsupportedLanguageElementError):
-    if not conversion.is_in_whitelist_cache(f, options):
+    if not conversion.is_in_allowlist_cache(f, options):
       logging.warn(warning_template, f, '', exc)
   else:
     file_bug_message = (
@@ -516,7 +520,7 @@ def tf_convert(f, ctx, convert_by_default=True, user_requested=False):
     ctx: ag_ctx.ControlStatusCtx, the Autograph context in which `f` is used.
     convert_by_default: bool, whether to use AutoGraph when the context doesn't
       specify.
-    user_requested: bool, whether to ignore the conversion whitelist. See
+    user_requested: bool, whether to ignore the conversion allowlist. See
       ConversionOptions.user_requested.
 
   Returns:

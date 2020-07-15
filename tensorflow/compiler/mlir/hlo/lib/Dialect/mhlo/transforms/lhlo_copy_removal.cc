@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 
 namespace mlir {
-namespace xla_lhlo {
+namespace lmhlo {
 namespace {
 
 // Removes LHLO copy operations that copy from allocated buffers to block
@@ -34,7 +34,7 @@ struct LhloCopyRemoval : mlir::PassWrapper<LhloCopyRemoval, OperationPass<>> {
   void runOnOperation() override {
     llvm::SmallVector<mlir::Operation*, 2> eraseList;
     auto operation = getOperation();
-    operation->walk([&](mlir::xla_lhlo::CopyOp copyOp) {
+    operation->walk([&](mlir::lmhlo::CopyOp copyOp) {
       // If this region contains more than one block, then ignore this copy
       // operation.
       if (copyOp.getParentRegion()->getBlocks().size() > 1) {
@@ -101,5 +101,5 @@ std::unique_ptr<Pass> createLhloCopyRemovalPass() {
 static PassRegistration<LhloCopyRemoval> copy_removal_pass(
     "lhlo-copy-removal", "Removes redundant LHLO copy operations");
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir

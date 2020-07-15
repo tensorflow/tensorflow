@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 
 namespace mlir {
-namespace xla {
+namespace hlo {
 namespace {
 
 /// Emits the fast tanh approximation that is also used by XLA.
@@ -149,8 +149,8 @@ void PopulateTanhToApproximationPatterns(mlir::MLIRContext *context,
 }
 
 static PassRegistration<LegalizeTanhToApproximation> legalize_pass(
-    "xla-legalize-tanh-to-approximation",
+    "mhlo-legalize-tanh-to-approximation",
     "Legalize tanh from standard dialect to an approximation");
 
-}  // namespace xla
+}  // namespace hlo
 }  // namespace mlir
