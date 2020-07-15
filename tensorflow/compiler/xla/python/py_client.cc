@@ -83,7 +83,7 @@ PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
   return result;
 }
 
-StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyal(
+StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
     const pybind11::object& argument, Device* device, bool force_copy,
     PjRtBuffer::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
