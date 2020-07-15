@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/c/tensor_shape_utils.h"
+#include "tensorflow/c/kernels/tensor_shape_utils.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -68,8 +68,8 @@ static void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   if (!IsSameSize(params.tags, params.values)) {
     std::ostringstream err;
     err << "tags and values not the same shape: " 
-        << TF_ShapeDebugString(params.tags) << " != " 
-        << TF_ShapeDebugString(params.values)
+        << ShapeDebugString(params.tags) << " != " 
+        << ShapeDebugString(params.values)
         << SingleTag(params.tags); 
     TF_SetStatus(params.status, TF_INVALID_ARGUMENT, err.str().c_str());
   }

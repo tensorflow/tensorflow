@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This file contains shape utilities to be used by kernels and is not part of 
+// the C API. As such, it is subject to change at any time.
+
 #ifndef TENSORFLOW_C_TENSOR_SHAPE_UTILS_H_
 #define TENSORFLOW_C_TENSOR_SHAPE_UTILS_H_
 
@@ -20,12 +23,16 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 
+namespace tensorflow { 
+	
 // The following are utils for the shape of a TF_Tensor type. 
 // These functions may later be subsumed by the methods for a
 // TF_TensorShape type 
 
 // Returns a string representation of the TF_Tensor
-std::string TF_ShapeDebugString(TF_Tensor* tensor); 
+std::string ShapeDebugString(TF_Tensor* tensor); 
+
+} // namespace tensorflow
 
 #endif  // TENSORFLOW_C_TENSOR_SHAPE_UTILS_H_
 

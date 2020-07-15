@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/tensor_shape_utils.h"
+#include "tensorflow/c/kernels/tensor_shape_utils.h"
 
 #include <string>
 
@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
-std::string TF_ShapeDebugString(TF_Tensor* tensor) { 
+std::string ShapeDebugString(TF_Tensor* tensor) { 
 	// A TF_Tensor cannot have an unknown rank 
 	CHECK_GE(TF_NumDims(tensor), 0); 
 	tensorflow::string s = "["; 

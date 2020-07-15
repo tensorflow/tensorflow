@@ -5,6 +5,11 @@ load(
     "tf_kernel_library",
 )
 
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library"
+)
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -28,10 +33,10 @@ tf_kernel_library(
     name = "summary_op",
     prefix = "summary_op",
     deps = [
+        "//tensorflow/c/kernels:tensor_shape_utils",
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_tensor",
-        "//tensorflow/c:tensor_shape_utils",
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework"
     ],
 )
 
@@ -76,6 +81,31 @@ tf_cc_test(
         ":summary_op_lib",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib"
+    ],
+)
+
+cc_library(
+    name = "tensor_shape_utils",
+    srcs = [
+        "tensor_shape_utils.cc",
+    ],
+    hdrs = [
+        "tensor_shape_utils.h",
+    ],
+    deps = [ 
+        "//tensorflow/c:tf_tensor", 
+    ], 
+    visibility = ["//visibility:public"],
+)
+
+tf_cc_test(
+    name = "tensor_shape_utils_test",
+    srcs = ["tensor_shape_utils_test.cc"],
+    deps = [
+        ":tensor_shape_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

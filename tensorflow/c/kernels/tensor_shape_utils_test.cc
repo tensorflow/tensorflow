@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/tensor_shape_utils.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/c/kernels/tensor_shape_utils.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -23,21 +23,21 @@ limitations under the License.
 
 namespace tensorflow { 
 
-void TestShapeMatch(TensorShape shape) {
+template <typename T> 
+void TestShapeMatch(T shape) {
 	Tensor tensor(DT_FLOAT, shape); 
 	Status status; 
-	TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor. &status);
-	ASSERT_EQ(status) 
-	ASSERT_EQ(tensor.shape.DebugString(), TF_ShapeDebugString(tf_tensor)); 
+	TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, &status); 
+	ASSERT_TRUE(status.ok()) << status.ToString();
+	ASSERT_EQ(tensor.shape().DebugString(), ShapeDebugString(tf_tensor)); 
 }
 
 TEST(ShapeDebugString, RegularShape) { 
 	TestShapeMatch(TensorShape({5, 4, 7})); 
 } 
 
-TEST(ShapeDebugString, ShapeWithUnknownDimension) { 
-	TestShapeMatch(TensorShape({5, -1, 7})); 
+TEST(ShapeDebugString, ScalarShape) { 
+	TestShapeMatch(TensorShape({})); 
 }
-
 
 } // namespace tensorflow
