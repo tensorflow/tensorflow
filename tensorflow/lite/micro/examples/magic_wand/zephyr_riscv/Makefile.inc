@@ -8,7 +8,8 @@ tensorflow/lite/micro/examples/magic_wand/zephyr_riscv/src/assert.cc \
 tensorflow/lite/micro/examples/magic_wand/zephyr_riscv/src/accelerometer_handler.cc \
 tensorflow/lite/micro/examples/magic_wand/zephyr_riscv/src/accelerometer_handler.h \
 tensorflow/lite/micro/examples/magic_wand/main.cc \
-tensorflow/lite/micro/examples/magic_wand/main_functions.cc \
+tensorflow/lite/micro/examples/magic_wand/zephyr_riscv/src/main_functions.cc \
+tensorflow/lite/micro/examples/magic_wand/zephyr_riscv/src/main_functions.h \
 tensorflow/lite/micro/examples/magic_wand/magic_wand_model_data.cc \
 tensorflow/lite/micro/examples/magic_wand/gesture_predictor.cc \
 tensorflow/lite/micro/examples/magic_wand/output_handler.cc \
