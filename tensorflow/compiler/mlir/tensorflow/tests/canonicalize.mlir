@@ -586,6 +586,18 @@ func @testRealDivWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32
 // CHECK: return %1
 }
 
+// CHECK-LABEL: testRealDivWithConstDivisor
+func @testRealDivWithConstDivisor(%arg0: tensor<8x2xf32>) -> tensor<8x2xf32> {
+  %0 = "tf.Const"() {value = dense<[2.0, 4.0]> : tensor<2xf32>} : () -> tensor<2xf32>
+  %1 = "tf.RealDiv"(%arg0, %0) : (tensor<8x2xf32>, tensor<2xf32>) -> tensor<8x2xf32>
+  return %1: tensor<8x2xf32>
+
+  // CHECK: %0 = "tf.Const"
+  // CHECK-SAME: value = dense<[5.000000e-01, 2.500000e-01]
+  // CHECK: %1 = "tf.Mul"(%arg0, %0)
+  // CHECK: return %1
+}
+
 // CHECK-LABEL: testTruncateDivWithSqrtDivisor
 func @testTruncateDivWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Sqrt"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>

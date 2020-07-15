@@ -2774,7 +2774,7 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
 
 void RealDivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  results.insert<RealDivWithSqrtDivisor>(context);
+  results.insert<RealDivWithSqrtDivisor, RealDivWithConstDivisor>(context);
 }
 
 OpFoldResult RealDivOp::fold(ArrayRef<Attribute> operands) {
