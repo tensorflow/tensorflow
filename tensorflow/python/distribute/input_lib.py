@@ -216,6 +216,7 @@ class DistributedIteratorInterface(collections_abc.Iterator,
         "DistributedIterator.element_spec() must be implemented in descendants")
 
   def get_next_as_optional(self):
+    # pylint: disable=line-too-long
     """Returns a `tf.experimental.Optional` that contains the next value for all replicas.
 
     If the `tf.distribute.DistributedIterator` has reached the end of the
@@ -230,6 +231,7 @@ class DistributedIteratorInterface(collections_abc.Iterator,
     >>> distributed_iterator = iter(
     ...     strategy.experimental_distribute_dataset(dataset))
     >>> def step_fn(x):
+    ...   # train the model with inputs
     ...   return x
     >>> @tf.function
     ... def train_fn(distributed_iterator):
@@ -237,15 +239,17 @@ class DistributedIteratorInterface(collections_abc.Iterator,
     ...     optional_data = distributed_iterator.get_next_as_optional()
     ...     if not optional_data.has_value():
     ...       break
-    ...     tf.print(strategy.run(step_fn, args=(optional_data.get_value(),)))
+    ...     per_replica_results = strategy.run(step_fn, args=(optional_data.get_value(),))
+    ...     tf.print(strategy.experimental_local_results(per_replica_results))
     >>> train_fn(distributed_iterator)
-    ... # ([0 1],)
-    ... # ([2 3],)
+    ... # ([0 1], [2 3])
+    ... # ([4], [])
 
     Returns:
       An `tf.experimental.Optional` object representing the next value from the
       `tf.distribute.DistributedIterator` (if it has one) or no value.
     """
+    # pylint: enable=line-too-long
     raise NotImplementedError(
         "get_next_as_optional() not implemented in descendants")
 
