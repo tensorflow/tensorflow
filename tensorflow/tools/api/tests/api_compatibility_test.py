@@ -298,8 +298,9 @@ class ApiCompatibilityTest(test.TestCase):
               filepath, text_format.MessageToString(actual_dict[key]))
       else:
         # Include the actual differences to help debugging.
-        for d in diffs:
+        for d, verbose_d in zip(diffs, verbose_diffs):
           logging.error('    %s', d)
+          logging.error('    %s', verbose_d)
         # Fail if we cannot fix the test by updating goldens.
         self.fail('%d differences found between API and golden.' % diff_count)
 

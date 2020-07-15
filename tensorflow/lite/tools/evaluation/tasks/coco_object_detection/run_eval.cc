@@ -67,7 +67,6 @@ class CocoObjectDetection : public TaskExecutor {
   bool debug_mode_;
   std::string delegate_;
   int num_interpreter_threads_;
-  DelegateProviders delegate_providers_;
 };
 
 std::vector<Flag> CocoObjectDetection::GetFlags() {

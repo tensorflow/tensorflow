@@ -75,9 +75,6 @@ class ConvolutionTransposed : public GPUOperation {
   int2 padding_;
 
   int3 block_size_ = int3(1, 1, 1);
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 template <DataType T>

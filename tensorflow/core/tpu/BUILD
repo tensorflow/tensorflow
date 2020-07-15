@@ -74,6 +74,17 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_compile_interface",
+    srcs = ["tpu_compile_interface.cc"],
+    hdrs = ["tpu_compile_interface.h"],
+    deps = [
+        "//tensorflow/core/platform:fingerprint",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "tpu_defs",
     srcs = ["tpu_defs.cc"],
     hdrs = ["tpu_defs.h"],
@@ -136,7 +147,7 @@ cc_library(
         ":tpu_library_init_fns",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/tpu/graph_rewrite:distributed_tpu_configuration_rewrite_registration",
+        "//tensorflow/core/tpu/graph_rewrite:tpu_rewrite_pass_registration",
         "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_mesh_state_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",

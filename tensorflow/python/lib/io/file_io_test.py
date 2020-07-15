@@ -39,6 +39,9 @@ class PathLike(object):
   def __fspath__(self):
     return self.name
 
+  def __str__(self):
+    return self.name
+
 
 run_all_path_types = parameterized.named_parameters(
     ("str", os.path.join),
@@ -197,7 +200,7 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     dir_path = join(self._base_dir, "temp_dir/temp_dir1/temp_dir2")
     file_io.recursive_create_dir(dir_path)
     file_io.recursive_create_dir(dir_path)  # repeat creation
-    file_path = os.path.join(dir_path, "temp_file")
+    file_path = os.path.join(str(dir_path), "temp_file")
     file_io.FileIO(file_path, mode="w").write("testing")
     self.assertTrue(file_io.file_exists(file_path))
     file_io.delete_recursively(os.path.join(self._base_dir, "temp_dir"))
@@ -271,7 +274,7 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(file_io.is_directory(dir_path))
     file_io.create_dir(dir_path)
     self.assertTrue(file_io.is_directory(dir_path))
-    file_path = join(dir_path, "test_file")
+    file_path = join(str(dir_path), "test_file")
     file_io.FileIO(file_path, mode="w").write("test")
     # False for a file.
     self.assertFalse(file_io.is_directory(file_path))
@@ -285,11 +288,11 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     file_io.create_dir(dir_path)
     files = ["file1.txt", "file2.txt", "file3.txt"]
     for name in files:
-      file_path = join(dir_path, name)
+      file_path = join(str(dir_path), name)
       file_io.FileIO(file_path, mode="w").write("testing")
-    subdir_path = join(dir_path, "sub_dir")
+    subdir_path = join(str(dir_path), "sub_dir")
     file_io.create_dir(subdir_path)
-    subdir_file_path = join(subdir_path, "file4.txt")
+    subdir_file_path = join(str(subdir_path), "file4.txt")
     file_io.FileIO(subdir_file_path, mode="w").write("testing")
     dir_list = file_io.list_directory(dir_path)
     self.assertItemsEqual(files + ["sub_dir"], dir_list)
@@ -319,7 +322,7 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
   def testWalkInOrder(self, join):
     dir_path_str = os.path.join(self._base_dir, "test_dir")
     dir_path = join(self._base_dir, "test_dir")
-    self._setupWalkDirectories(dir_path)
+    self._setupWalkDirectories(dir_path_str)
     # Now test the walk (in_order = True)
     all_dirs = []
     all_subdirs = []
@@ -389,7 +392,7 @@ class FileIoTest(test.TestCase, parameterized.TestCase):
     file_path = join(self._base_dir, "temp_file")
     file_io.FileIO(file_path, mode="w").write("testing")
     file_statistics = file_io.stat(file_path)
-    os_statistics = os.stat(file_path)
+    os_statistics = os.stat(str(file_path))
     self.assertEqual(7, file_statistics.length)
     self.assertEqual(
         int(os_statistics.st_mtime), int(file_statistics.mtime_nsec / 1e9))

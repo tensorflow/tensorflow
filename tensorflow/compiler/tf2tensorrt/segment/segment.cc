@@ -1031,7 +1031,8 @@ Status SegmentGraph(const Graph* tf_graph,
         });
 
     // Don't use segments whose number of effective nodes is small.
-    if (num_effective_nodes < options.minimum_segment_size) {
+    if (num_effective_nodes == 0 ||
+        num_effective_nodes < options.minimum_segment_size) {
       VLOG(1) << "Segment " << segments->size() << " has only "
               << num_effective_nodes << " effective nodes, dropping";
       continue;

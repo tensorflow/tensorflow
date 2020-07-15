@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections as collections_lib
 import copy
 import enum  # pylint: disable=g-bad-import-order
 import functools
@@ -47,6 +46,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
@@ -79,13 +79,13 @@ class _PartitionInfo(object):
       ValueError: If `full_shape` or `var_offset` differ in length. If
         `var_offset` exceeds `full_shape` in any dimension.
     """
-    if not isinstance(full_shape, collections_lib.Sequence) or isinstance(
+    if not isinstance(full_shape, collections_abc.Sequence) or isinstance(
         full_shape, six.string_types):
       raise TypeError(
           "`full_shape` must be a sequence (like tuple or list) instead of " +
           type(full_shape).__name__)
 
-    if not isinstance(var_offset, collections_lib.Sequence) or isinstance(
+    if not isinstance(var_offset, collections_abc.Sequence) or isinstance(
         var_offset, six.string_types):
       raise TypeError(
           "`var_offset` must be a sequence (like tuple or list) instead of " +
@@ -153,7 +153,7 @@ class _PartitionInfo(object):
       ValueError: If `shape` is not the same length as `self.full_shape`. If
         the variable is partitioned in more than one dimension.
     """
-    if not isinstance(shape, collections_lib.Sequence) or isinstance(
+    if not isinstance(shape, collections_abc.Sequence) or isinstance(
         shape, six.string_types):
       raise TypeError(
           "`shape` must be a sequence (like tuple or list) instead of " +
@@ -455,7 +455,7 @@ class _VariableStore(object):
         synchronization=VariableSynchronization.AUTO,
         aggregation=VariableAggregation.NONE):
       is_scalar = (
-          shape is not None and isinstance(shape, collections_lib.Sequence) and
+          shape is not None and isinstance(shape, collections_abc.Sequence) and
           not shape)
       # Partitioned variable case
       if partitioner is not None and not is_scalar:
@@ -2515,7 +2515,7 @@ def _call_partitioner(partitioner, shape, dtype):
                      "shape: %s" % shape)
 
   slicing = partitioner(shape=shape, dtype=dtype)
-  if not isinstance(slicing, collections_lib.Sequence):
+  if not isinstance(slicing, collections_abc.Sequence):
     raise ValueError("Partitioner must return a sequence, but saw: %s" %
                      slicing)
   if len(slicing) != shape.ndims:

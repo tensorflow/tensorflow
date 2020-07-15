@@ -213,7 +213,7 @@ TEST(RamFileBlockCacheTest, OutOfRange) {
   const size_t file_size = 24;
   bool first_block = false;
   bool second_block = false;
-  auto fetcher = [block_size, &first_block, &second_block](
+  auto fetcher = [block_size, file_size, &first_block, &second_block](
                      const string& filename, size_t offset, size_t n,
                      char* buffer, size_t* bytes_transferred,
                      TF_Status* status) {
@@ -525,9 +525,10 @@ TEST(RamFileBlockCacheTest, ParallelReads) {
   tf_gcs_filesystem::RamFileBlockCache cache(
       block_size, 2 * callers * block_size, 0, fetcher);
   std::vector<std::unique_ptr<Thread>> threads;
+  threads.reserve(callers);
   for (int i = 0; i < callers; i++) {
     threads.emplace_back(
-        Env::Default()->StartThread({}, "caller", [&cache, i]() {
+        Env::Default()->StartThread({}, "caller", [block_size, &cache, i]() {
           std::vector<char> out;
           TF_EXPECT_OK(
               ReadCache(&cache, "a", i * block_size, block_size, &out));
@@ -563,7 +564,7 @@ TEST(RamFileBlockCacheTest, CoalesceConcurrentReads) {
                                              fetcher);
   // Fork off thread for parallel read.
   std::unique_ptr<Thread> concurrent(
-      Env::Default()->StartThread({}, "concurrent", [&cache] {
+      Env::Default()->StartThread({}, "concurrent", [block_size, &cache] {
         std::vector<char> out;
         TF_EXPECT_OK(ReadCache(&cache, "", 0, block_size / 2, &out));
         EXPECT_EQ(out.size(), block_size / 2);

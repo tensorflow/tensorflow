@@ -252,6 +252,9 @@ class Layer(base_layer.Layer):
     # might want to turn it off, like Sequential model.
     self._auto_track_sub_layers = True
 
+    # Mark this layer as having been originally built as a tf1 layer/model
+    self._originally_built_as_v1 = True
+
   @trackable.no_automatic_dependency_tracking
   @generic_utils.default
   def build(self, input_shape):
@@ -651,6 +654,8 @@ class Layer(base_layer.Layer):
       ValueError: if the layer's `call` method returns None (an invalid value).
       RuntimeError: if `super().__init__()` was not called in the constructor.
     """
+    self._assert_built_as_v1()
+
     if not hasattr(self, '_thread_local'):
       raise RuntimeError(
           'You must call `super().__init__()` in the layer constructor.')
@@ -817,6 +822,20 @@ class Layer(base_layer.Layer):
           self._set_mask_metadata(inputs, outputs, input_masks)
 
     return outputs
+
+  def _assert_built_as_v1(self):
+    if not hasattr(self, '_originally_built_as_v1'):
+      raise ValueError(
+          'Your Layer or Model is in an invalid state. This can happen if you '
+          'are interleaving estimator/non-estimator models or '
+          'interleaving models/layers made in tf.compat.v1.Graph.as_default() '
+          'with models/layers created outside of it. '
+          'Converting a model to an estimator (via model_to_estimator) '
+          'invalidates all models/layers made before the conversion (even '
+          'if they were not the model converted to an estimator). '
+          'Similarly, making a layer or a model inside a '
+          'a tf.compat.v1.Graph invalidates all layers/models you previously '
+          'made outside of the graph.')
 
   @property
   def dtype(self):

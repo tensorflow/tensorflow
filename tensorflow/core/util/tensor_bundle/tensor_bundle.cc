@@ -925,7 +925,8 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
   }
   if (crc32c::Unmask(entry.crc32c()) != actual_crc32c) {
     return errors::DataLoss(
-        "Checksum does not match: stored ",
+        "TensorBundle at ", prefix_, " shard ", entry.shard_id(), " (",
+        entry.size(), " bytes): Checksum does not match: stored ",
         strings::Printf("%08u", crc32c::Unmask(entry.crc32c())),
         " vs. calculated on the restored bytes ", actual_crc32c);
   }

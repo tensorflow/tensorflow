@@ -66,7 +66,7 @@ tf_module {
   }
   member {
     name: "Tensor"
-    mtype: "<class \'typing.GenericMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "TensorArray"
@@ -390,6 +390,10 @@ tf_module {
   }
   member {
     name: "train"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "types"
     mtype: "<type \'module\'>"
   }
   member {

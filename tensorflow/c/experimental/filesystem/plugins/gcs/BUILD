@@ -45,14 +45,6 @@ cc_library(
 )
 
 cc_library(
-    name = "file_block_cache",
-    hdrs = ["file_block_cache.h"],
-    deps = [
-        "//tensorflow/c:tf_status",
-    ],
-)
-
-cc_library(
     name = "cleanup",
     hdrs = ["cleanup.h"],
 )
@@ -63,7 +55,6 @@ cc_library(
     hdrs = ["ram_file_block_cache.h"],
     deps = [
         ":cleanup",
-        ":file_block_cache",
         "//tensorflow/c:env",
         "//tensorflow/c:tf_status",
         "@com_google_absl//absl/base:core_headers",

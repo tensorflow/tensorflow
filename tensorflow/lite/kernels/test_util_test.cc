@@ -67,6 +67,11 @@ TEST(KernelTestDelegateProvidersTest, CreateTfLiteDelegates) {
   KernelTestDelegateProviders providers;
   providers.MutableParams()->Set<bool>("use_xnnpack", true);
   EXPECT_GE(providers.CreateAllDelegates().size(), 1);
+
+  tools::ToolParams local_params;
+  local_params.Merge(providers.ConstParams());
+  local_params.Set<bool>("use_xnnpack", false);
+  EXPECT_TRUE(providers.CreateAllDelegates(local_params).empty());
 #endif
 }
 }  // namespace

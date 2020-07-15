@@ -132,6 +132,26 @@ inline std::vector<std::complex<float>> Split(const string& s,
   return fields;
 }
 
+template <>
+inline std::vector<std::complex<double>> Split(const string& s,
+                                               const string& delimiter) {
+  std::vector<std::complex<double>> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    std::string sc = s.substr(p.first, p.second - p.first);
+    std::string::size_type sz_real, sz_img;
+    double real = std::stod(sc, &sz_real);
+    double img = std::stod(sc.substr(sz_real), &sz_img);
+    if (sz_real + sz_img + 1 != sc.length()) {
+      std::cerr << "There were errors in parsing string, " << sc
+                << ", to complex value." << std::endl;
+      return fields;
+    }
+    std::complex<double> c(real, img);
+    fields.push_back(c);
+  }
+  return fields;
+}
+
 }  // namespace testing
 }  // namespace tflite
 

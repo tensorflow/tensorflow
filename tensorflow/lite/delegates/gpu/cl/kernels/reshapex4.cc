@@ -74,14 +74,10 @@ std::string GetReshapeCode(const OperationDef& op_def, Arguments* args) {
 }  // namespace
 
 Reshapex4::Reshapex4(Reshapex4&& operation)
-    : GPUOperation(std::move(operation)),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : GPUOperation(std::move(operation)) {}
 
 Reshapex4& Reshapex4::operator=(Reshapex4&& operation) {
   if (this != &operation) {
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;

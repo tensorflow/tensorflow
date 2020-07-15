@@ -226,8 +226,7 @@ Status BasicBatchScheduler<TaskType>::Create(
 
   typename SharedBatchScheduler<TaskType>::QueueOptions
       shared_scheduler_queue_options;
-  shared_scheduler_queue_options.input_batch_size_limit =
-      options.max_batch_size;
+  shared_scheduler_queue_options.max_batch_size = options.max_batch_size;
   shared_scheduler_queue_options.batch_timeout_micros =
       options.batch_timeout_micros;
   shared_scheduler_queue_options.max_enqueued_batches =

@@ -11,10 +11,7 @@
 * C-API functions `TF_StringDecode`, `TF_StringEncode`, and
   `TF_StringEncodedSize` are no longer relevant and have been removed; see
   core/platform/ctstring.h for string access/modification in C.
-* In batching library, rename parameter
-  SharedBatchScheduler::QueueOptions::max_batch_size to a more accurate name
-  (input_batch_size_limit) for a recent feature to enable split of large batch
-  sizes.
+* Removed `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
 
 ## Known Caveats
 
@@ -32,10 +29,9 @@
 * <NOTES SHOULD BE GROUPED PER AREA>
 * TF Core:
   * <ADD RELEASE NOTES HERE>
-  * `tf.Tensor` is now a subclass of `typing.Generic`, allowing type annotations
-    to be parameterized by dtype: `tf.Tensor[tf.Int32]`. This requires Python 3,
-    and will become fully compatible with static type checkers in the future.
-
+  * `tf.types.experimental.TensorLike` is a new `Union` type that can be used as
+    type annotation for variables representing a Tensor or a value that can be
+    converted to Tensor by `tf.convert_to_tensor`.
 * `tf.data`:
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
   the complement of `select_cols`; at most one of these should be specified.

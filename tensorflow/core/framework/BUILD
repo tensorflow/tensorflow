@@ -20,6 +20,9 @@ load(
     "cc_library",
 )
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
+
 package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
@@ -618,7 +621,7 @@ cc_library(
 cc_library(
     name = "bounds_check",
     hdrs = ["bounds_check.h"],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core/platform:macros",
         "//third_party/eigen3",
@@ -937,6 +940,7 @@ cc_library(
 cc_library(
     name = "selective_registration",
     hdrs = ["selective_registration.h"],
+    deps = tf_selective_registration_deps(),
 )
 
 cc_library(
