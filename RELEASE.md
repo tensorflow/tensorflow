@@ -9,13 +9,13 @@
 
   * [`tf.distribute.TPUStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/TPUStrategy) is now a stable API and no longer considered experimental for TensorFlow. (earlier `tf.distribute.experimental.TPUStrategy`).
 
-  * [TF Profiler](https://www.tensorflow.org/guide/profiler) introduces two new tools: a memory profiler to visualize your model’s memory usage over time and a python tracer which allows you to trace python function calls in your model. Usability improvements include better diagnostic messages and [profile options](https://tensorflow.org/guide/profiler#collect_performance_data) to customize the host and device trace verbosity level.
+  * [TF Profiler](https://www.tensorflow.org/guide/profiler) introduces two new tools: a memory profiler to visualize your model’s memory usage over time and a [python tracer](https://www.tensorflow.org/guide/profiler#events) which allows you to trace python function calls in your model. Usability improvements include better diagnostic messages and [profile options](https://tensorflow.org/guide/profiler#collect_performance_data) to customize the host and device trace verbosity level.
 
   * Introduces experimental support for Keras Preprocessing Layers API ([`tf.keras.layers.experimental.preprocessing.*`](https://www.tensorflow.org/api_docs/python/tf/keras/layers/experimental/preprocessing?version=nightly)) to handle data preprocessing operations, with support for composite tensor inputs. Please see below for additional details on these layers.
   
   * TFLite now properly supports dynamic shapes during conversion and inference. We’ve also added opt-in support on Android and iOS for [XNNPACK](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/xnnpack), a highly optimized set of CPU kernels, as well as opt-in support for [executing quantized models on the GPU](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/gpu_advanced.md#running-quantized-models-experimental). 
 
-  * Libtensorflow packages are available in GCS starting this release. We have also started to release a nightly version of these packages. 
+  * Libtensorflow packages are available in GCS starting this release. We have also started to [release a nightly version of these packages](https://github.com/tensorflow/tensorflow#official-builds). 
   
   * The experimental Python API [`tf.debugging.experimental.enable_dump_debug_info()`](https://www.tensorflow.org/api_docs/python/tf/debugging/experimental/enable_dump_debug_info) now allows you to instrument a TensorFlow program and dump debugging information to a directory on the file system. The directory can be read and visualized by a new interactive dashboard in TensorBoard 2.3 called [Debugger V2](https://www.tensorflow.org/tensorboard/debugger_v2), which reveals the details of the TensorFlow program including graph structures, history of op executions at the Python (eager) and intra-graph levels, the runtime dtype, shape, and numerical composistion of tensors, as well as their code locations.
   
@@ -42,7 +42,7 @@
 
 ### TF Core:
   * Set `tf2_behavior` to 1 to enable V2 for early loading cases.
-  * Add a function to dynamically choose the implementation based on underlying device placement.
+  * Add execute_fn_for_device function to dynamically choose the implementation based on underlying device placement.
   * Eager:
     * Add `reduce_logsumexp` benchmark with experiment compile.
     * Give `EagerTensor`s a meaningful `__array__` implementation.
@@ -77,8 +77,6 @@
      * Update `tf.saved_model.SaveOptions` with [`experimental_io_device`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/saved_model/SaveOptions?hl=en) as arg with default value `None` to choose the I/O device for saving models and weights.
   * GPU
     * No longer includes PTX kernels for GPU except for sm_70 to reduce binary size.
-  * Profiler
-    * Fix a subtle use-after-free issue in `XStatVisitor::RefValue()`.
   * Others
     * Retain parent namescope for ops added inside `tf.while_loop`/`tf.cond`/`tf.switch_case`.
     * Update `tf.vectorized_map` to support vectorizing `tf.while_loop` and TensorList operations.
@@ -99,8 +97,8 @@
 ### `tf.distribute`: 
   * Expose experimental [`tf.distribute.DistributedDataset`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/distribute/DistributedDataset?hl=en) and [`tf.distribute.DistributedIterator`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/distribute/DistributedIterator) to distribute input data when using `tf.distribute` to scale training on multiple devices. 
     * Added a [`get_next_as_optional`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/distribute/DistributedIterator?hl=en#get_next_as_optional) method for [`tf.distribute.DistributedIterator`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/distribute/DistributedIterator?hl=en) class to return a `tf.experimental.Optional` instance that contains the next value for all replicas or none instead of raising an out of range error. Also see *new* [guide on input distribution](https://www.tensorflow.org/tutorials/distribute/input).
-  * Allow `var.assign` on `MirroredVariables` with `aggregation=NONE` in replica context. Previously this would raise an error since there was no way to confirm that the values being assigned to the `MirroredVariables` were in fact identical.
-  * `tf.distribute.experimental.MultiWorkerMirroredStrategy` adds support for partial batches. Workers running out of data now continue to participate in the training with empty inputs, instead of raising an error.
+  * Allow var.assign on MirroredVariables with aggregation=NONE in replica context. Previously this would raise an error. We now allow this because many users and library writers find using `.assign` in replica context to be more convenient, instead of having to use `Strategy.extended.update` which was the previous way of updating variables in this situation.
+  * `tf.distribute.experimental.MultiWorkerMirroredStrategy` adds support for partial batches. Workers running out of data now continue to participate in the training with empty inputs, instead of raising an error. Learn more about [partial batches here](https://www.tensorflow.org/tutorials/distribute/input#partial_batches).
   * Improve the performance of reading metrics eagerly under `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
   * Fix the issue that `strategy.reduce()` inside `tf.function` may raise exceptions when the values to reduce are from loops or if-clauses.
   * Fix the issue that `tf.distribute.MirroredStrategy` cannot be used together with `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
@@ -129,13 +127,14 @@
   * Functional models now get constructed if *any* tensor in a layer call's arguments/keyword arguments comes from a keras input. Previously the functional api would only work if all of the elements in the first argument to the layer came from a keras input.
   * Clean up `BatchNormalization` layer's `trainable` property to act like standard python state when it's used inside `tf.functions` (frozen at tracing time), instead of acting like a pseudo-variable whose updates *kind of sometimes* get reflected in already-traced `tf.function` traces.
   * Add the `Conv1DTranspose` layer.
-  * Fix bug in `SensitivitySpecificityBase` derived metrics.
+  * Refine the semantics of `SensitivitySpecificityBase` derived metrics. See the updated API docstrings for [`tf.keras.metrics.SensitivityAtSpecificity`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/keras/metrics/SensitivityAtSpecificity) and [`tf.keras.metrics.SpecificityAtSensitivty`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/keras/metrics/SpecificityAtSensitivity). 
   * Blacklist Case op from callback
 
 ### `tf.lite`:
   * Converter
       * Restored `inference_input_type` and `inference_output_type` flags in TF 2.x TFLiteConverter (backward compatible with TF 1.x) to support integer (tf.int8, tf.uint8) input and output types in post training full integer quantized models.
       * Added support for converting and resizing models with dynamic (placeholder) dimensions. Previously, there was only limited support for dynamic batch size, and even that did not guarantee that the model could be properly resized at runtime.
+       * Enabled experimental support for a new quantization mode with 16-bit activations and 8-bit weights. See `lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8`.
   * CPU
       * Fix an issue w/ dynamic weights and `Conv2D` on x86.
       * Add a runtime Android flag for enabling `XNNPACK` for optimized CPU performance.
@@ -172,23 +171,26 @@
       * Add missing kernels for flex delegate whitelisted ops.
       * Fix issue when using direct `ByteBuffer` inputs with graphs that have dynamic shapes.
       * Fix error checking supported operations in a model containing `HardSwish`. 
- 
+
+### Packaging Support 
+  * Added `tf.sysconfig.get_build_info()`. Returns a dict that describes the currently installed TensorFlow package, e.g. the NVIDIA CUDA and NVIDIA CuDNN versions that the package was built to support.
+  
+### Profiler
+    * Fix a subtle use-after-free issue in `XStatVisitor::RefValue()`.
+  
 ### TPU Enhancements
-  * 3D mesh support
+  * Adds 3D mesh support in TPU configurations ops.
   * Added TPU code for `FTRL` with `multiply_linear_by_lr`.
   * Silently adds a new file system registry at `gstpu`.
   * Support `restartType` in cloud tpu client.
   * Depend on a specific version of google-api-python-client.
   * Fixes apiclient import.
 
-### XLA Support
-  * Implement stable `argmin` and `argmax`
-
 ### Tracing and Debugging
   * Add a `TFE_Py_Execute` traceme.
-  
-### Packaging Support 
-  * Added `tf.sysconfig.get_build_info()`. Returns a dict that describes the currently installed TensorFlow package, e.g. the NVIDIA CUDA and NVIDIA CuDNN versions that the package was built to support.
+
+### XLA Support
+  * Implement stable `argmin` and `argmax`
   
 ## Thanks to our Contributors
 
