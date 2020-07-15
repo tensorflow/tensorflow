@@ -171,7 +171,7 @@ class KerasActivationsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(result, expected, rtol=1e-05)
 
   def test_gelu(self):
-    def gelu(x, approximate=True):
+    def gelu(x, approximate=False):
       if approximate:
         return 0.5 * x * (1.0 + np.tanh(np.sqrt(2.0 / np.pi) *
                                         (x + 0.044715 * np.power(x, 3))))
@@ -185,10 +185,10 @@ class KerasActivationsTest(test.TestCase, parameterized.TestCase):
     expected = gelu(test_values)
     self.assertAllClose(result, expected, rtol=1e-05)
 
-    f = backend.function([x], [activations.gelu(x, False)])
+    f = backend.function([x], [activations.gelu(x, True)])
     test_values = np.random.random((2, 5))
     result = f([test_values])[0]
-    expected = gelu(test_values, False)
+    expected = gelu(test_values, True)
     self.assertAllClose(result, expected, rtol=1e-05)
 
   def test_elu(self):

@@ -1063,7 +1063,7 @@ class GeluTest(test_lib.TestCase):
 
   def test(self):
 
-    def gelu(x, approximate=True):
+    def gelu(x, approximate=False):
       if approximate:
         return 0.5 * x * (1.0 + np.tanh(np.sqrt(2.0 / np.pi) *
                                         (x + 0.044715 * np.power(x, 3))))
@@ -1077,8 +1077,8 @@ class GeluTest(test_lib.TestCase):
     z = self.evaluate(nn_ops.gelu(x))
     self.assertAllClose(y, z)
 
-    y = gelu(x, False)
-    z = self.evaluate(nn_ops.gelu(x, False))
+    y = gelu(x, True)
+    z = self.evaluate(nn_ops.gelu(x, True))
     self.assertAllClose(y, z)
 
 
