@@ -37,41 +37,41 @@ Tensor VecShape(int64 v) {
   }
 }
 
-Graph* RandomUniform(int64 n, DataType dtype) {
+Graph* RandomUniform(int64 n) {
   Graph* g = new Graph(OpRegistry::Global());
-  test::graph::RandomUniform(g, test::graph::Constant(g, VecShape(n)), dtype);
+  test::graph::RandomUniform(g, test::graph::Constant(g, VecShape(n)),
+                             DT_FLOAT);
   return g;
 }
 
-Graph* RandomNormal(int64 n, DataType dtype) {
+Graph* RandomNormal(int64 n) {
   Graph* g = new Graph(OpRegistry::Global());
-  test::graph::RandomGaussian(g, test::graph::Constant(g, VecShape(n)), dtype);
+  test::graph::RandomGaussian(g, test::graph::Constant(g, VecShape(n)),
+                              DT_FLOAT);
   return g;
 }
 
-Graph* TruncatedNormal(int64 n, DataType dtype) {
+Graph* TruncatedNormal(int64 n) {
   Graph* g = new Graph(OpRegistry::Global());
-  test::graph::TruncatedNormal(g, test::graph::Constant(g, VecShape(n)), dtype);
+  test::graph::TruncatedNormal(g, test::graph::Constant(g, VecShape(n)),
+                               DT_FLOAT);
   return g;
 }
 
-#define BM_RNG(DEVICE, RNG, DTYPE)                            \
-  void BM_##DEVICE##_##RNG##_##DTYPE(int iters, int arg) {    \
+#define BM_RNG(DEVICE, RNG)                                   \
+  void BM_##DEVICE##_##RNG(int iters, int arg) {              \
     testing::ItemsProcessed(static_cast<int64>(iters) * arg); \
-    test::Benchmark(#DEVICE, RNG(arg, DTYPE)).Run(iters);     \
+    test::Benchmark(#DEVICE, RNG(arg)).Run(iters);            \
   }                                                           \
-  BENCHMARK(BM_##DEVICE##_##RNG##_##DTYPE)->Range(1 << 20, 8 << 20);
+  BENCHMARK(BM_##DEVICE##_##RNG)->Range(1 << 20, 8 << 20);
 
-BM_RNG(cpu, RandomUniform, DT_FLOAT);
-BM_RNG(cpu, RandomUniform, DT_BFLOAT16);
-BM_RNG(cpu, RandomNormal, DT_FLOAT);
-BM_RNG(cpu, TruncatedNormal, DT_FLOAT);
+BM_RNG(cpu, RandomUniform);
+BM_RNG(cpu, RandomNormal);
+BM_RNG(cpu, TruncatedNormal);
 
-#ifdef GOOGLE_CUDA
-BM_RNG(gpu, RandomUniform, DT_FLOAT);
-BM_RNG(gpu, RandomNormal, DT_FLOAT);
-BM_RNG(gpu, TruncatedNormal, DT_FLOAT);
-#endif
+BM_RNG(gpu, RandomUniform);
+BM_RNG(gpu, RandomNormal);
+BM_RNG(gpu, TruncatedNormal);
 
 Tensor VecAlphas(int64 n) {
   Tensor alphas(DT_DOUBLE, TensorShape({n}));

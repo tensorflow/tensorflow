@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <string.h>
 
-#include <algorithm>
 #include <cmath>
+
+#include <algorithm>
 #include <type_traits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 
@@ -32,55 +32,12 @@ namespace random {
 
 // Helper function to convert a 16-bit integer to a half between [0..1).
 PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x);
-// Helper function to convert a 16-bit integer to a bfloat16 between [1..2).
-PHILOX_DEVICE_INLINE bfloat16 InternalUint16ToBfloat16(uint16 x);
 // Helper function to convert a 16-bit integer to a bfloat16 between [0..1).
-PHILOX_DEVICE_INLINE bfloat16 Uint16ToBfloat16(uint16 x);
-// Helper function to convert a 32-bit integer to a float between [1..2).
-PHILOX_DEVICE_INLINE float InternalUint32ToFloat(uint32 x);
+PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x);
 // Helper function to convert a 32-bit integer to a float between [0..1).
 PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x);
 // Helper function to convert two 32-bit integers to a double between [0..1).
 PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1);
-
-// Helper function to format distribution result in vectorization path,
-// it creates Eigen::Tensor and reuses packet feature with SIMD.
-// This function can only work on CPU
-template <class Distribution, class Generator>
-PHILOX_DEVICE_INLINE typename Distribution::ResultType VectorizedFormat(
-    Generator* gen, typename Distribution::FormatFunc functor) {
-  typename Generator::ResultType sample;
-  typename Distribution::ResultType result;
-  const int kResultElementCount = Distribution::kResultElementCount;
-  const int inner_count = Generator::kResultElementCount;
-  const int outer_count = kResultElementCount / inner_count;
-  int offset = 0;
-
-  for (int k = 0; k < outer_count; k++) {
-    sample = (*gen)();
-    for (int i = 0; i < inner_count; i++, offset++) {
-      result[offset] = (*functor)(sample[i]);
-    }
-  }
-  // Tail processing if any.
-  // Put the tail condition out of above loop to improve performance:
-  // it will be executed only once and save time on CPU.
-  if (offset < kResultElementCount) {
-    sample = (*gen)();
-    for (int i = 0; offset < kResultElementCount; i++, offset++) {
-      result[offset] = (*functor)(sample[i]);
-    }
-  }
-
-  typedef Eigen::TensorMap<
-      Eigen::Tensor<typename Distribution::ResultElementType, 1,
-                    Eigen::RowMajor, Eigen::DenseIndex>,
-      Eigen::Aligned>
-      Tensor;
-  auto tensor_result = Tensor(&result[0], kResultElementCount);
-  tensor_result = tensor_result - typename Distribution::ResultElementType(1.0);
-  return result;
-}
 
 // Computes a + b. Requires that the result is representable in the destination
 // type and that b is not maximal (i.e. b + 1 is not 0). Notably, the addend b
@@ -105,15 +62,13 @@ PHILOX_DEVICE_INLINE Int SignedAdd(Int a,
 //              actual returned sample type.
 //   RealType: the data type of the real numbers that will be returned by the
 //             distribution. This could be either float or double for now.
-//   IsVec: mark this UniformDistribution can be vectorized or not by SIMD on
-//          CPU. Note this should always be false on GPU.
 // This class is meant to be implemented through specialization. The default
 // is not defined by design.
-template <class Generator, typename RealType, bool IsVec = false>
+template <class Generator, typename RealType>
 class UniformDistribution;
 
-template <class Generator, bool IsVec>
-class UniformDistribution<Generator, Eigen::half, IsVec> {
+template <class Generator>
+class UniformDistribution<Generator, Eigen::half> {
  public:
   // The number of elements that will be returned.
   static constexpr int kResultElementCount = Generator::kResultElementCount;
@@ -136,17 +91,11 @@ class UniformDistribution<Generator, Eigen::half, IsVec> {
   }
 };
 
-template <class Generator, bool IsVec>
-class UniformDistribution<Generator, bfloat16, IsVec> {
+template <class Generator>
+class UniformDistribution<Generator, bfloat16> {
  public:
   // The number of elements that will be returned.
-  // Set the number to be Eigen packet size of type at least, so computations
-  // can be vectorized using SIMD on CPU.
-  static constexpr int kVectorLength = std::max(
-      static_cast<const int>(Eigen::internal::packet_traits<bfloat16>::size),
-      Generator::kResultElementCount);
-  static constexpr int kResultElementCount =
-      IsVec ? kVectorLength : Generator::kResultElementCount;
+  static constexpr int kResultElementCount = Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
   static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
@@ -154,37 +103,23 @@ class UniformDistribution<Generator, bfloat16, IsVec> {
   static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<bfloat16, kResultElementCount> ResultType;
   typedef bfloat16 ResultElementType;
-  // Helper definition for the format function.
-  typedef bfloat16 (*FormatFunc)(uint16);
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
-#ifdef __CUDA_ARCH__
-    static_assert(!IsVec, "Can't vectorize Distribution on GPU");
     typename Generator::ResultType sample = (*gen)();
     ResultType result;
     for (int i = 0; i < kResultElementCount; ++i) {
-      result[i] = Uint16ToBfloat16(sample[i]);
+      result[i] = Uint16ToGfloat16(sample[i]);
     }
     return result;
-#else
-    return VectorizedFormat<UniformDistribution<Generator, bfloat16, IsVec>,
-                            Generator>(gen, InternalUint16ToBfloat16);
-#endif  // __CUDA_ARCH__
   }
 };
 
-template <class Generator, bool IsVec>
-class UniformDistribution<Generator, float, IsVec> {
+template <class Generator>
+class UniformDistribution<Generator, float> {
  public:
   // The number of elements that will be returned.
-  // Set the number to be Eigen packet size of type at least, so computations
-  // can be vectorized using SIMD on CPU.
-  static constexpr int kVectorLength = std::max(
-      static_cast<const int>(Eigen::internal::packet_traits<float>::size),
-      Generator::kResultElementCount);
-  static constexpr int kResultElementCount =
-      IsVec ? kVectorLength : Generator::kResultElementCount;
+  static constexpr int kResultElementCount = Generator::kResultElementCount;
   // Cost of generation of a single element (in cycles).
   static constexpr int kElementCost = 3;
   // Indicate that this distribution may take variable number of samples
@@ -192,28 +127,20 @@ class UniformDistribution<Generator, float, IsVec> {
   static constexpr bool kVariableSamplesPerOutput = false;
   typedef Array<float, kResultElementCount> ResultType;
   typedef float ResultElementType;
-  // Helper definition for the format function.
-  typedef float (*FormatFunc)(uint32);
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
-#ifdef __CUDA_ARCH__
-    static_assert(!IsVec, "Can't vectorize Distribution on GPU");
     typename Generator::ResultType sample = (*gen)();
     ResultType result;
     for (int i = 0; i < kResultElementCount; ++i) {
       result[i] = Uint32ToFloat(sample[i]);
     }
     return result;
-#else
-    return VectorizedFormat<UniformDistribution<Generator, float, IsVec>,
-                            Generator>(gen, InternalUint32ToFloat);
-#endif  // __CUDA_ARCH__
   }
 };
 
-template <class Generator, bool IsVec>
-class UniformDistribution<Generator, double, IsVec> {
+template <class Generator>
+class UniformDistribution<Generator, double> {
  public:
   // The number of elements that will be returned.
   static constexpr int kResultElementCount = Generator::kResultElementCount / 2;
@@ -236,8 +163,8 @@ class UniformDistribution<Generator, double, IsVec> {
   }
 };
 
-template <class Generator, bool IsVec>
-class UniformDistribution<Generator, int32, IsVec> {
+template <class Generator>
+class UniformDistribution<Generator, int32> {
  public:
   // The number of elements that will be returned.
   static constexpr int kResultElementCount = Generator::kResultElementCount;
@@ -271,8 +198,8 @@ class UniformDistribution<Generator, int32, IsVec> {
   uint32 range_;
 };
 
-template <class Generator, bool IsVec>
-class UniformDistribution<Generator, int64, IsVec> {
+template <class Generator>
+class UniformDistribution<Generator, int64> {
  public:
   // The number of elements that will be returned.
   static constexpr int kResultElementCount = Generator::kResultElementCount / 2;
@@ -837,9 +764,9 @@ PHILOX_DEVICE_INLINE Eigen::half Uint16ToHalf(uint16 x) {
   return result - Eigen::half(1.0);
 }
 
-// Helper function to convert an 16-bit integer to a bfloat16 between [1..2).
-// This can create a uniform distribution of values between [1..2).
-PHILOX_DEVICE_INLINE bfloat16 InternalUint16ToBfloat16(uint16 x) {
+// Helper function to convert an 16-bit integer to a bfloat16 between [0..1).
+// This can create a uniform distribution of values between [0..1).
+PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x) {
   // bfloat are formatted as follows (MSB first):
   //    sign(1) exponent(8) mantissa(7)
   // Conceptually construct the following:
@@ -853,20 +780,13 @@ PHILOX_DEVICE_INLINE bfloat16 InternalUint16ToBfloat16(uint16 x) {
   bfloat16 result;
   memcpy(&result, &val, sizeof(val));
   // The mantissa has an implicit leading 1, so the above code creates a value
-  // in [1, 2).
-  return result;
-}
-
-// Helper function to convert an 16-bit integer to a bfloat16 between [0..1).
-// This can create a uniform distribution of values between [0..1).
-PHILOX_DEVICE_INLINE bfloat16 Uint16ToBfloat16(uint16 x) {
-  // The minus will not cause a rounding that makes the result 1.
+  // in [1, 2). The minus will not cause a rounding that makes the result 1.
   // Instead it will just be close to 1.
-  return InternalUint16ToBfloat16(x) - bfloat16(1.0);
+  return result - bfloat16(1.0);
 }
 
-// Helper function to convert an 32-bit integer to a float between [1..2).
-PHILOX_DEVICE_INLINE float InternalUint32ToFloat(uint32 x) {
+// Helper function to convert an 32-bit integer to a float between [0..1).
+PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x) {
   // IEEE754 floats are formatted as follows (MSB first):
   //    sign(1) exponent(8) mantissa(23)
   // Conceptually construct the following:
@@ -880,12 +800,7 @@ PHILOX_DEVICE_INLINE float InternalUint32ToFloat(uint32 x) {
   // Assumes that endian-ness is same for float and uint32.
   float result;
   memcpy(&result, &val, sizeof(val));
-  return result;
-}
-
-// Helper function to convert an 32-bit integer to a float between [0..1).
-PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x) {
-  return InternalUint32ToFloat(x) - 1.0f;
+  return result - 1.0f;
 }
 
 // Helper function to convert two 32-bit integers to a double between [0..1).
