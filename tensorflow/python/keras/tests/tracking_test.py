@@ -27,7 +27,6 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import sequential
@@ -78,7 +77,6 @@ class HasList(training.Model):
 class ListTests(keras_parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
-  @test_util.run_v1_only("b/120545219")
   def testTracking(self):
     with self.test_session():
       model = HasList()
@@ -109,11 +107,11 @@ class ListTests(keras_parameterized.TestCase):
                           self.evaluate(model.variables[0]))
       v = variables.Variable(1.)
       model.var_list = [v]
-      self.assertIn(v, model.variables)
-      self.assertIn(v, model.trainable_variables)
-      self.assertNotIn(v, model.non_trainable_variables)
-      self.assertIn(model.layer_list[0].trainable_weights[0],
-                    model.trainable_weights)
+    self.assertTrue(any(v is t for t in model.variables))
+    self.assertTrue(any(v is t for t in model.trainable_variables))
+    self.assertFalse(any(v is t for t in model.non_trainable_variables))
+    self.assertTrue(any(model.layer_list[0].trainable_weights[0]
+                        is t for t in model.trainable_weights))
 
   def testSubModelTracking(self):
     model = training.Model()
@@ -180,7 +178,6 @@ class ListTests(keras_parameterized.TestCase):
     m2(m2.null_input())
     self.assertLen(m2.trainable_variables, 6)
 
-  @test_util.run_v1_only("b/120545219")
   def testUpdatesForwarded(self):
     with context.graph_mode():
       model = HasList()
@@ -197,7 +194,6 @@ class ListTests(keras_parameterized.TestCase):
       self.assertEqual(0, len(model.updates))
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
-  @test_util.run_v1_only("b/120545219")
   def testLossesForwarded(self):
     model = HasList()
     model_input = array_ops.ones([32, 2])
