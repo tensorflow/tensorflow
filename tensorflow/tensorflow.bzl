@@ -2907,6 +2907,11 @@ def tf_monitoring_python_deps():
         "//conditions:default": [],
     })
 
+# Teams sharing the same repo can provide their own ops_to_register.h file using
+# this function, and pass in -Ipath/to/repo flag when building the target.
+def tf_selective_registration_deps():
+    return []
+
 def tf_jit_compilation_passes_extra_deps():
     return []
 
