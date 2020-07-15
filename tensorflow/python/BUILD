@@ -7275,6 +7275,7 @@ py_tests(
     size = "small",
     srcs = [
         "summary/plugin_asset_test.py",
+        "summary/summary_iterator_test.py",
         "summary/summary_test.py",
         "summary/writer/writer_test.py",
     ],
