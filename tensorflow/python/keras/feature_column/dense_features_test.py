@@ -1015,7 +1015,7 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
     self._test_dense_features(trainable=False)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class DenseFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
@@ -1080,7 +1080,7 @@ class DenseFeaturesSerializationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(new_layer._feature_columns[0].name, 'a_X_b_indicator')
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class SequenceFeatureColumnsTest(test.TestCase):
   """Tests DenseFeatures with sequence feature columns."""
 
