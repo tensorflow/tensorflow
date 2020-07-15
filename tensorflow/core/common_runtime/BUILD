@@ -58,6 +58,7 @@ tf_cuda_library(
         "composite_device.h",
         "device.h",
         "device_factory.h",
+        "device_mgr.h",
         "function.h",
         "function_optimization_registry.h",
         "gradients.h",
