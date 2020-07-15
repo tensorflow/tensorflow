@@ -243,6 +243,32 @@ Status Relu(AbstractContext* ctx, Tape* tape,
                  registry);
 }
 
+// Computes `SoftmaxLoss(scores, labels)` for matrices and records it on the tape.
+Status SparseSoftmaxCrossEntropyLoss(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry) {
+  
+  AbstractTensorHandle* scores = inputs[0];
+  AbstractTensorHandle* labels = inputs[1];
+
+  AbstractOperationPtr sm_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(sm_op.get(), "SparseSoftmaxCrossEntropyWithLogits", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<tracing::TracingOperation>(sm_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(sm_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(AddInput(sm_op.get(), scores, &forward_op));
+  TF_RETURN_IF_ERROR(AddInput(sm_op.get(), labels, &forward_op));
+
+  int num_retvals = 2; // returns loss values and backprop
+  return Execute(sm_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
 
 // Computes
 // y = inputs[0] + inputs[1]
@@ -277,21 +303,29 @@ Status AddGradModel(AbstractContext* ctx,
   return Status::OK();
 }
 
-
 Status MNISTForwardModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs,
                     const GradientRegistry& registry) {
-  
-  /* Use this convention for inputs:
-   * 
-   * inputs = [X, W1, W2, y_labels]
-   *
-   */ 
+  /**
+    * We will trace a 2-layer fully connected network for an MNIST model:
+    *
+    *   def mnist_forward(X, W1, W2, y_labels):
+    *     mm_out_1 = tf.matmul(X,W1)
+    *     hidden_layer = tf.ReLu(mm_out_1)
+    *     scores = tf.matmul(hidden_layer,W2)
+    *     softmax = tf.softmaxLoss(scores,y_labels)
+    *     return scores, softmax 
+    *
+    * Use this convention for inputs:
+    * 
+    *   inputs = [X, W1, W2, y_labels]
+    *
+    */ 
   AbstractTensorHandle* X = inputs[0];
   AbstractTensorHandle* W1 = inputs[1];
   AbstractTensorHandle* W2 = inputs[2];
-  //AbstractTensorHandle* y_labels = inputs[3];
+  AbstractTensorHandle* y_labels = inputs[3];
 
   TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
@@ -299,29 +333,23 @@ Status MNISTForwardModel(AbstractContext* ctx,
   tape->Watch(ToId(W2));  // Watch W2.
   std::vector<AbstractTensorHandle*> temp_outputs(1);
 
-  
-  TF_RETURN_IF_ERROR(MatMul(ctx, tape, {X,W1}, absl::MakeSpan(temp_outputs),
+  TF_RETURN_IF_ERROR(MatMul(ctx, tape, {X, W1}, absl::MakeSpan(temp_outputs),
                      "matmul0",/*transpose_a=*/false,/*transpose_b=*/false, registry));  // Compute X*W1
-                      
-  TF_RETURN_IF_ERROR(Relu(ctx, tape, {temp_outputs[0]}, absl::MakeSpan(temp_outputs),
-                     "relu",registry)); // Compute Relu(X*W1)
 
-  TF_RETURN_IF_ERROR(MatMul(ctx, tape, {temp_outputs[0],W2}, absl::MakeSpan(temp_outputs),
+  TF_RETURN_IF_ERROR(Relu(ctx, tape, {temp_outputs[0]}, absl::MakeSpan(temp_outputs),
+                     "relu", registry)); // Compute Relu(X*W1)
+
+  TF_RETURN_IF_ERROR(MatMul(ctx, tape, {temp_outputs[0], W2}, absl::MakeSpan(temp_outputs),
                      "matmul1",/*transpose_a=*/false,/*transpose_b=*/false, registry));  // Compute W2*Relu(X*W1)
   
-  // std::unordered_map<tensorflow::int64, TapeTensor>
-  //     source_tensors_that_are_targets;
+  AbstractTensorHandle* scores = temp_outputs[0];
 
-  // std::vector<AbstractTensorHandle*> out_grads;
-  // TF_RETURN_IF_ERROR(tape->ComputeGradient(
-  //     vspace, /*target_tensor_ids=*/{ToId(temp_outputs[0])},
-  //     /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-  //     source_tensors_that_are_targets,
-  //     /*output_gradients=*/{}, &out_grads));
-  // for (auto add_output : temp_outputs) {
-  //   add_output->Release();
-  // }
-  outputs[0] = temp_outputs[0];
+  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx, tape, {scores, y_labels}, absl::MakeSpan(temp_outputs),
+                     "softmax_loss", registry));  // Compute Softmax(Scores,labels)
+  
+  AbstractTensorHandle* loss_vals  = temp_outputs[0];
+  outputs[0] = scores;
+  outputs[1] = loss_vals;
   delete tape;
   return Status::OK();
 }
@@ -407,6 +435,8 @@ Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
   return Status::OK();
 }
 
+
+// Get a scalar TensorHandle woth given value
 Status TestScalarTensorHandle(AbstractContext* ctx, float value,
                               AbstractTensorHandle** tensor) {
   
@@ -421,8 +451,10 @@ Status TestScalarTensorHandle(AbstractContext* ctx, float value,
   return Status::OK();
 }
 
+
+// Get a Matrix TensorHandle with given float values and dimensions
 Status TestMatrixTensorHandleFloat(AbstractContext* ctx, float data[], int64_t dims[], 
-                              int num_dims, AbstractTensorHandle** tensor) {
+                                   int num_dims, AbstractTensorHandle** tensor) {
   
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -436,8 +468,9 @@ Status TestMatrixTensorHandleFloat(AbstractContext* ctx, float data[], int64_t d
   return Status::OK();
 }
 
+// Get a Matrix TensorHandle with given int values and dimensions
 Status TestMatrixTensorHandleInt(AbstractContext* ctx, int data[], int64_t dims[], 
-                              int num_dims, AbstractTensorHandle** tensor) {
+                                 int num_dims, AbstractTensorHandle** tensor) {
   
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -450,7 +483,7 @@ Status TestMatrixTensorHandleInt(AbstractContext* ctx, int data[], int64_t dims[
       unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
   return Status::OK();
 }
-
+ 
 Status getValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -522,99 +555,90 @@ TEST_P(CppGradients, TestAddGrad) {
   TF_DeleteTensor(result_tensor);
 }
 
-AbstractTensorHandlePtr getMatrixTensorHandleUtil(AbstractContextPtr ctx, float vals[], int64_t dims[], int num_dims){
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
+AbstractTensorHandlePtr getMatrixTensorHandleUtilFloat(AbstractContext* ctx, float vals[], int64_t dims[], int num_dims){
+
   AbstractTensorHandlePtr A;
   AbstractTensorHandle* a_raw = nullptr;
-  Status s = TestMatrixTensorHandleFloat(ctx.get(), vals, dims, num_dims, &a_raw);
-  //ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  Status s = TestMatrixTensorHandleFloat(ctx, vals, dims, num_dims, &a_raw);
+  A.reset(a_raw);
+  return A;
+}
+
+AbstractTensorHandlePtr getMatrixTensorHandleUtilInt(AbstractContext* ctx, int vals[], int64_t dims[], int num_dims){
+
+  AbstractTensorHandlePtr A;
+  AbstractTensorHandle* a_raw = nullptr;
+  Status s = TestMatrixTensorHandleInt(ctx, vals, dims, num_dims, &a_raw);
   A.reset(a_raw);
   return A;
 }
 
 TEST_P(CppGradients, TestMNISTForward) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(TF_NewStatus(), TF_DeleteStatus);
+  //std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(TF_NewStatus(), TF_DeleteStatus);
   
   AbstractContextPtr ctx;
   {
     AbstractContext* ctx_raw = nullptr;
-    Status s =
-        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    Status s = BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     ctx.reset(ctx_raw);
   }
 
+  // X = data
   float X_vals [] = {1.0f,2.0f,3.0f,4.0f};
   int64_t dims [] = {2,2};
   int num_dims = 2;
-
-  AbstractTensorHandlePtr X;
-  {
-    AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestMatrixTensorHandleFloat(ctx.get(), X_vals, dims, num_dims, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    X.reset(x_raw);
-  }
-
+  AbstractTensorHandlePtr X = getMatrixTensorHandleUtilFloat(ctx.get(), X_vals, dims, num_dims);
+ 
+  // W1 = first weights
   float W1_vals [] = {-1.0f,10.0f,.5f,1.0f};
-  AbstractTensorHandlePtr W1;
-  {
-    AbstractTensorHandle* w1_raw = nullptr;
-    Status s = TestMatrixTensorHandleFloat(ctx.get(), W1_vals, dims, num_dims, &w1_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    W1.reset(w1_raw);
-  }
-
+  AbstractTensorHandlePtr W1 = getMatrixTensorHandleUtilFloat(ctx.get(), W1_vals, dims, num_dims);
+ 
+  // W2 = second weights
   float W2_vals [] = {.1f,.2f,.3f,-.5f};
-  AbstractTensorHandlePtr W2;
-  {
-    AbstractTensorHandle* w2_raw = nullptr;
-    Status s = TestMatrixTensorHandleFloat(ctx.get(), W2_vals, dims, num_dims, &w2_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    W2.reset(w2_raw);
-  }
+  AbstractTensorHandlePtr W2 = getMatrixTensorHandleUtilFloat(ctx.get(), W2_vals, dims, num_dims);
 
-  
+  // y = labels
+  int y_vals [] = {1,1};
+  int64_t dims_y [] = {2};
+  num_dims = sizeof(dims_y)/sizeof(dims_y[0]);
+  AbstractTensorHandlePtr y = getMatrixTensorHandleUtilInt(ctx.get(), y_vals, dims, num_dims);
+
   GradientRegistry registry;
-  //Status s = RegisterGradientAdd(&registry);
-  //ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  std::vector<AbstractTensorHandle*> outputs(1);
-  // Status s = RunModel(MNISTForwardModel, ctx.get(), {X.get(), W1.get(), W2.get()},
-  //              absl::MakeSpan(outputs),
-  //              /*use_function=*/!std::get<2>(GetParam()), registry);
-  Status s = MNISTForwardModel(ctx.get(), {X.get(), W1.get(), W2.get()}, absl::MakeSpan(outputs), registry);
+ 
+  // Run the Forward Pass
+  std::vector<AbstractTensorHandle*> outputs(2);
+  Status s = MNISTForwardModel(ctx.get(), {X.get(), W1.get(), W2.get(), y.get()}, absl::MakeSpan(outputs), registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
+  // Verify the Results
   TF_Tensor* scores_tensor;
   s = getValue(outputs[0], &scores_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
-
   float result_data[4] = {0};
   memcpy(&result_data[0], TF_TensorData(scores_tensor), TF_TensorByteSize(scores_tensor));
   
-
-  float expected_scores [4] = {3.6f,-6.0f,10.2f,-17.0f}; // {0.0f,12.0f,0.0f,34.0f}; 
+  float expected_scores [4] = {3.6f, -6.0f, 10.2f, -17.0f};
   float tolerance = 1e-3;
-
   for(int j = 0; j < 4; j++){
-    ASSERT_NEAR(result_data[j], expected_scores[j],tolerance);
+    ASSERT_NEAR(result_data[j], expected_scores[j], tolerance);
   }
 
-  // auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
-  // EXPECT_EQ(*result_value, 1.0);
-  // outputs[0]->Release();
-  // TF_DeleteTensor(result_tensor);
-  // result_tensor = nullptr;
-
-  // s = getValue(outputs[1], &result_tensor);
-  // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-  // result_value = static_cast<float*>(TF_TensorData(result_tensor));
-  // EXPECT_EQ(*result_value, 1.0);
-  // outputs[1]->Release();
-  // TF_DeleteTensor(result_tensor);
+  TF_Tensor* loss_vals_tensor;
+  s = getValue(outputs[1], &loss_vals_tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  
+  memcpy(&result_data[0], TF_TensorData(loss_vals_tensor), TF_TensorByteSize(loss_vals_tensor));
+  float expected_losses [2] = {9.6f, 27.2f};
+  for(int j = 0; j < 2; j++){
+    ASSERT_NEAR(result_data[j], expected_losses[j], tolerance);
+  }
+  
+  outputs[0]->Release();
+  outputs[1]->Release();
+  TF_DeleteTensor(scores_tensor);
+  TF_DeleteTensor(loss_vals_tensor);
 }
 
 // TODO(b/160888630): Enable this test with mlir after AddInputList is
