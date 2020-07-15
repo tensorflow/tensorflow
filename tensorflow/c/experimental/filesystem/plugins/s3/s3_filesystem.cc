@@ -15,17 +15,20 @@ limitations under the License.
 #include "tensorflow/c/experimental/filesystem/plugins/s3/s3_filesystem.h"
 
 #include <aws/core/config/AWSProfileConfigLoader.h>
+#include <aws/s3/model/GetObjectRequest.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/experimental/filesystem/plugins/s3/aws_crypto.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for S3 environments.
 // This filesystem will support `s3://` URI schemes.
+constexpr char kS3FileSystemAllocationTag[] = "S3FileSystemAllocation";
 constexpr char kS3ClientAllocationTag[] = "S3ClientAllocation";
 constexpr int64_t kS3TimeoutMsec = 300000;  // 5 min
 
@@ -230,8 +233,58 @@ static void ShutdownClient(Aws::S3::S3Client* s3_client) {
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
+typedef struct S3File {
+  Aws::String bucket;
+  Aws::String object;
+  std::shared_ptr<Aws::S3::S3Client> s3_client;
+  std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager;
+  bool use_multi_part_download;
+} S3File;
 
-// TODO(vnvo2409): Implement later
+void Cleanup(TF_RandomAccessFile* file) {
+  auto s3_file = static_cast<S3File*>(file->plugin_file);
+  delete s3_file;
+}
+
+static int64_t ReadS3Client(S3File* s3_file, uint64_t offset, size_t n,
+                            char* buffer, TF_Status* status) {
+  Aws::S3::Model::GetObjectRequest get_object_request;
+  get_object_request.WithBucket(s3_file->bucket).WithKey(s3_file->bucket);
+  Aws::String bytes =
+      absl::StrCat("bytes=", offset, "-", offset + n - 1).c_str();
+  get_object_request.SetRange(bytes);
+  get_object_request.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
+
+  auto get_object_outcome = s3_file->s3_client->GetObject(get_object_request);
+  if (!get_object_outcome.IsSuccess())
+    TF_SetStatusFromAWSError(get_object_outcome.GetError(), status);
+  else
+    TF_SetStatus(status, TF_OK, "");
+  if (TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_OUT_OF_RANGE)
+    return -1;
+
+  int64_t read = get_object_outcome.GetResult().GetContentLength();
+  if (read < n)
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
+  get_object_outcome.GetResult().GetBody().read(buffer, read);
+  return read;
+}
+
+static int64_t ReadS3TransferManager(S3File* s3_file, uint64_t offset, size_t n,
+                                     char* buffer, TF_Status* status) {
+  // TODO(vnvo2409): Implement this function.
+  return -1;
+}
+
+int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
+             char* buffer, TF_Status* status) {
+  auto s3_file = static_cast<S3File*>(file->plugin_file);
+  if (s3_file->use_multi_part_download)
+    return ReadS3TransferManager(s3_file, offset, n, buffer, status);
+  else
+    return ReadS3Client(s3_file, offset, n, buffer, status);
+}
 
 }  // namespace tf_random_access_file
 
@@ -286,6 +339,22 @@ void Init(TF_Filesystem* filesystem, TF_Status* status) {
 void Cleanup(TF_Filesystem* filesystem) {
   auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
   delete s3_file;
+}
+
+void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
+                         TF_RandomAccessFile* file, TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+  GetTransferManager(Aws::Transfer::TransferDirection::DOWNLOAD, s3_file);
+  file->plugin_file = new tf_random_access_file::S3File(
+      {bucket, object, s3_file->s3_client,
+       s3_file->transfer_managers[Aws::Transfer::TransferDirection::DOWNLOAD],
+       s3_file->use_multi_part_download});
+  TF_SetStatus(status, TF_OK, "");
 }
 
 // TODO(vnvo2409): Implement later
