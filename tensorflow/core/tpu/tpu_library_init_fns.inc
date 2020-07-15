@@ -144,6 +144,9 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuTransferManager_GetByteSizeRequirement);
   TFTPU_SET_FN(executor_fn, TpuTransferManager_WriteSingleTupleIndexTable);
 
+  TFTPU_SET_FN(executor_fn, HardwareLayout_HostShapeToDeviceShape);
+  TFTPU_SET_FN(executor_fn, HardwareLayout_ShapeSize);
+
   TFTPU_SET_FN(executor_fn, TpuComputationPlacer_New);
   TFTPU_SET_FN(executor_fn, TpuComputationPlacer_Free);
 
