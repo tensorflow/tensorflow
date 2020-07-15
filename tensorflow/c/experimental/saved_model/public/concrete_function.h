@@ -41,7 +41,7 @@ TF_CAPI_EXPORT extern const TF_TensorHandleList* TF_ConcreteFunctionGetCaptures(
 
 // Returns a TFE_Op suitable for executing this function.
 TF_CAPI_EXPORT extern TFE_Op* TF_ConcreteFunctionGetCallOp(
-    TF_ConcreteFunction* func);
+    TF_ConcreteFunction* func, TF_Status* status);
 
 #ifdef __cplusplus
 }  // end extern "C"

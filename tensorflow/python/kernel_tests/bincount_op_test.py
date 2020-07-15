@@ -122,11 +122,11 @@ class BincountTest(test_util.TensorFlowTestCase):
   @test_util.run_deprecated_v1
   def test_shape_function(self):
     # size must be scalar.
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Shape must be rank 0 but is rank 1 for .*Bincount"):
       gen_math_ops.bincount([1, 2, 3, -1, 6, 8], [1], [])
     # size must be positive.
-    with self.assertRaisesRegexp(ValueError, "must be non-negative"):
+    with self.assertRaisesRegex(ValueError, "must be non-negative"):
       gen_math_ops.bincount([1, 2, 3, -1, 6, 8], -5, [])
     # if size is a constant then the shape is known.
     v1 = gen_math_ops.bincount([1, 2, 3, -1, 6, 8], 5, [])
@@ -324,7 +324,7 @@ class BincountOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def test_invalid_rank(self):
-    with self.assertRaisesRegexp(ValueError, "at most rank 2"):
+    with self.assertRaisesRegex(ValueError, "at most rank 2"):
       with test_util.use_gpu():
         self.evaluate(
             gen_math_ops.dense_bincount(

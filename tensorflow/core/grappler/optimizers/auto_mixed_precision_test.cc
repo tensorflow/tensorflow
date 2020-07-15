@@ -169,10 +169,10 @@ class AutoMixedPrecisionTest : public GrapplerTest {
     Output eye = ops::Const(s.WithOpName("eye"),
                             GenerateIdentityMatrix<DT_FLOAT>(size, size));
     Output input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, eye);
-    Output gry1 = test_op_factory(s.WithOpName("gry1"), wht1);
-    Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, eye);
-    Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht2);
+    Output allow1 = ops::MatMul(s.WithOpName("allow1"), input, eye);
+    Output gry1 = test_op_factory(s.WithOpName("gry1"), allow1);
+    Output allow2 = ops::MatMul(s.WithOpName("allow2"), gry1, eye);
+    Output fetch1 = ops::Identity(s.WithOpName("fetch1"), allow2);
     GrapplerItem item;
     item.fetch = {"fetch1"};
     TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -190,9 +190,9 @@ class AutoMixedPrecisionTest : public GrapplerTest {
     GraphView output_view(&output);
     EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(),
               DT_FLOAT);
-    EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+    EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
     EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
-    EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+    EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_HALF);
 
     auto tensors = EvaluateNodes(output, item.fetch, feed);
     EXPECT_EQ(tensors.size(), tensors_expected.size());
@@ -247,8 +247,8 @@ TEST_F(AutoMixedPrecisionTest, AlreadyFp16) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input = ops::Const(s.WithOpName("input"), 1.f, {32, 32});
   Output cst1 = ops::Cast(s.WithOpName("cst1"), input, DT_HALF);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), cst1, cst1);
-  Output clr1 = ops::Relu(s.WithOpName("clr1"), wht1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), cst1, cst1);
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), allow1);
   Output cst2 = ops::Cast(s.WithOpName("cst2"), clr1, DT_FLOAT);
   Output clr2 = ops::Relu(s.WithOpName("clr2"), cst2);
   Output fetch = ops::Identity(s.WithOpName("fetch"), clr2);
@@ -267,7 +267,7 @@ TEST_F(AutoMixedPrecisionTest, AlreadyFp16) {
   GraphView output_view(&output);
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("cst1")->attr().at("DstT").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("cst2")->attr().at("SrcT").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("cst2")->attr().at("DstT").type(), DT_FLOAT);
@@ -288,8 +288,8 @@ TEST_F(AutoMixedPrecisionTest, Simple) {
   Output clr1 = ops::Relu(s.WithOpName("clr1"), blk1);
   Output gry1 = ops::Sqrt(s.WithOpName("gry1"), clr1);
   Output clr2 = ops::Relu(s.WithOpName("clr2"), gry1);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), clr2, clr2);
-  Output clr3 = ops::Relu(s.WithOpName("clr3"), wht1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), clr2, clr2);
+  Output clr3 = ops::Relu(s.WithOpName("clr3"), allow1);
   Output gry2 = ops::Log(s.WithOpName("gry2"), clr3);
   Output clr4 = ops::Relu(s.WithOpName("clr4"), gry2);
   Output blk2 = ops::SparseMatMul(s.WithOpName("blk2"), clr4, clr4);
@@ -314,7 +314,7 @@ TEST_F(AutoMixedPrecisionTest, Simple) {
   EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("gry2")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_FLOAT);
@@ -335,10 +335,10 @@ TEST_F(AutoMixedPrecisionTest, BidirectionalClearChain) {
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
   Output clr1 = ops::Relu(s.WithOpName("clr1"), input);
   Output clr2 = ops::Relu(s.WithOpName("clr2"), input);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), clr1, clr1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), clr1, clr1);
   auto clr3 = ops::ShapeN(s.WithOpName("clr3"), {clr1, clr2});
   Output clr4 = ops::Relu(s.WithOpName("clr4"), clr2);
-  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht1);
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), allow1);
   Output fetch2 = ops::Identity(s.WithOpName("fetch2"), clr4);
 
   GrapplerItem item;
@@ -357,7 +357,7 @@ TEST_F(AutoMixedPrecisionTest, BidirectionalClearChain) {
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_HALF);
 
@@ -372,18 +372,18 @@ TEST_F(AutoMixedPrecisionTest, BidirectionalClearChain) {
 TEST_F(AutoMixedPrecisionTest, PreserveFetches) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
-  Output clr1 = ops::Relu(s.WithOpName("clr1"), wht1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), input, input);
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), allow1);
   Output gry1 = ops::Sqrt(s.WithOpName("gry1"), clr1);
   Output blk1 = ops::Exp(s.WithOpName("blk1"), gry1);
   Output clr2 = ops::Relu(s.WithOpName("clr2"), blk1);
-  Output wht2 = ops::MatMul(s.WithOpName("wht2"), clr2, clr2);
-  Output clr3 = ops::Relu(s.WithOpName("clr3"), wht2);
+  Output allow2 = ops::MatMul(s.WithOpName("allow2"), clr2, clr2);
+  Output clr3 = ops::Relu(s.WithOpName("clr3"), allow2);
   Output blk2 = ops::Exp(s.WithOpName("blk2"), clr3);
   Output clr4 = ops::Relu(s.WithOpName("clr4"), blk2);
 
   GrapplerItem item;
-  item.fetch = {"wht1", "clr2", "clr3"};
+  item.fetch = {"allow1", "clr2", "clr3"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
 
@@ -396,12 +396,12 @@ TEST_F(AutoMixedPrecisionTest, PreserveFetches) {
   GraphView output_view(&output);
   EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("blk1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("blk2")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_FLOAT);
@@ -418,12 +418,13 @@ TEST_F(AutoMixedPrecisionTest, PreserveCPUNodes) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
   Output clr1 = ops::Relu(s.WithOpName("clr1"), input);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), clr1, clr1);
-  Output gry1 = ops::Tanh(s.WithOpName("gry1"), wht1);
-  Output wht2 = ops::MatMul(s.WithOpName("wht2").WithDevice(
-                                "/job:localhost/replica:0/task:0/device:CPU:0"),
-                            gry1, gry1);
-  Output clr2 = ops::Relu(s.WithOpName("clr2"), wht2);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), clr1, clr1);
+  Output gry1 = ops::Tanh(s.WithOpName("gry1"), allow1);
+  Output allow2 =
+      ops::MatMul(s.WithOpName("allow2").WithDevice(
+                      "/job:localhost/replica:0/task:0/device:CPU:0"),
+                  gry1, gry1);
+  Output clr2 = ops::Relu(s.WithOpName("clr2"), allow2);
   Output fetch = ops::Identity(s.WithOpName("fetch"), clr2);
 
   GrapplerItem item;
@@ -441,9 +442,9 @@ TEST_F(AutoMixedPrecisionTest, PreserveCPUNodes) {
   EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_FLOAT);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_FLOAT);
 
   auto tensors = EvaluateNodes(output, item.fetch);
@@ -459,12 +460,12 @@ TEST_F(AutoMixedPrecisionTest, PreserveIdentityAfterVariable) {
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
   Output var1 = ops::Variable(s.WithOpName("var1"), {32, 32}, DT_FLOAT);
   Output clr1 = ops::Identity(s.WithOpName("clr1"), var1);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, clr1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), input, clr1);
   Output input2 = ops::Const(s.WithOpName("input2"), 1.f / 32, {32, 32});
   Output clr2 = ops::Identity(s.WithOpName("clr2"), input2);
-  Output wht2 = ops::MatMul(s.WithOpName("wht2"), input, clr2);
-  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht1);
-  Output fetch2 = ops::Identity(s.WithOpName("fetch2"), wht2);
+  Output allow2 = ops::MatMul(s.WithOpName("allow2"), input, clr2);
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), allow1);
+  Output fetch2 = ops::Identity(s.WithOpName("fetch2"), allow2);
 
   GrapplerItem item;
   item.fetch = {"fetch1", "fetch2"};
@@ -485,10 +486,10 @@ TEST_F(AutoMixedPrecisionTest, PreserveIdentityAfterVariable) {
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("var1")->attr().at("dtype").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("input2")->attr().at("dtype").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_HALF);
 
   auto tensors = EvaluateNodes(output, item.fetch, feed);
   EXPECT_EQ(tensors.size(), tensors_expected.size());
@@ -507,22 +508,24 @@ TEST_F(AutoMixedPrecisionTest, FusedBatchNorm) {
   Output offset = ops::Const(s.WithOpName("offset"), 4.f, {16});
   Output mean = ops::Const(s.WithOpName("mean"), 5.f, {0});
   Output variance = ops::Const(s.WithOpName("variance"), 6.f, {0});
-  Output wht1 = ops::Conv2D(s.WithOpName("wht1"), input, weight, {1, 1, 1, 1},
-                            "SAME", ops::Conv2D::DataFormat("NHWC"));
+  Output allow1 =
+      ops::Conv2D(s.WithOpName("allow1"), input, weight, {1, 1, 1, 1}, "SAME",
+                  ops::Conv2D::DataFormat("NHWC"));
   auto fbn1_op =
-      ops::FusedBatchNorm(s.WithOpName("fbn1"), wht1, scale, offset, mean,
+      ops::FusedBatchNorm(s.WithOpName("fbn1"), allow1, scale, offset, mean,
                           variance, ops::FusedBatchNorm::DataFormat("NHWC"));
   Output fbn1 = fbn1_op.y;
   Output fbn1_rs1 = fbn1_op.reserve_space_1;
   Output fbn1_rs2 = fbn1_op.reserve_space_2;
   Output bng1 = ops::FusedBatchNormGrad(
-                    s.WithOpName("bng1"), fbn1, wht1, scale, fbn1_rs1, fbn1_rs2,
-                    ops::FusedBatchNormGrad::DataFormat("NHWC"))
+                    s.WithOpName("bng1"), fbn1, allow1, scale, fbn1_rs1,
+                    fbn1_rs2, ops::FusedBatchNormGrad::DataFormat("NHWC"))
                     .x_backprop;
   Output gry1 = ops::Add(s.WithOpName("gry1"), fbn1, bng1);
-  Output wht2 = ops::Conv2D(s.WithOpName("wht2"), gry1, weight, {1, 1, 1, 1},
-                            "SAME", ops::Conv2D::DataFormat("NHWC"));
-  Output fetch = ops::Identity(s.WithOpName("fetch"), wht2);
+  Output allow2 =
+      ops::Conv2D(s.WithOpName("allow2"), gry1, weight, {1, 1, 1, 1}, "SAME",
+                  ops::Conv2D::DataFormat("NHWC"));
+  Output fetch = ops::Identity(s.WithOpName("fetch"), allow2);
 
   GrapplerItem item;
   item.fetch = {"fetch"};
@@ -537,7 +540,7 @@ TEST_F(AutoMixedPrecisionTest, FusedBatchNorm) {
 
   GraphView output_view(&output);
   EXPECT_EQ(output.node_size(), item.graph.node_size() + 3);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("fbn1")->op(), "FusedBatchNormV2");
   EXPECT_EQ(output_view.GetNode("fbn1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("fbn1")->attr().at("U").type(), DT_FLOAT);
@@ -545,7 +548,7 @@ TEST_F(AutoMixedPrecisionTest, FusedBatchNorm) {
   EXPECT_EQ(output_view.GetNode("bng1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("bng1")->attr().at("U").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_HALF);
 
   auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(tensors.size(), tensors_expected.size());
@@ -558,13 +561,13 @@ TEST_F(AutoMixedPrecisionTest, FusedBatchNorm) {
 TEST_F(AutoMixedPrecisionTest, RepeatedAndListTypeAttrs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
-  auto clr1_op = ops::IdentityN(s.WithOpName("clr1"), {wht1, wht1, wht1});
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), input, input);
+  auto clr1_op = ops::IdentityN(s.WithOpName("clr1"), {allow1, allow1, allow1});
   Output gry1 =
       ops::AddN(s.WithOpName("gry1"),
                 {clr1_op.output[0], clr1_op.output[1], clr1_op.output[2]});
-  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
-  Output fetch = ops::Identity(s.WithOpName("fetch"), wht2);
+  Output allow2 = ops::MatMul(s.WithOpName("allow2"), gry1, gry1);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), allow2);
 
   GrapplerItem item;
   item.fetch = {"fetch"};
@@ -580,12 +583,12 @@ TEST_F(AutoMixedPrecisionTest, RepeatedAndListTypeAttrs) {
   GraphView output_view(&output);
   EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   for (auto type : output_view.GetNode("clr1")->attr().at("T").list().type()) {
     EXPECT_EQ(type, DT_HALF);
   }
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_HALF);
 
   auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(tensors.size(), tensors_expected.size());
@@ -599,8 +602,8 @@ TEST_F(AutoMixedPrecisionTest, ExistingCast) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input = ops::Const(s.WithOpName("input"), true, {32, 32});
   Output cst1 = ops::Cast(s.WithOpName("cst1"), input, DT_FLOAT);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), cst1, cst1);
-  Output fetch = ops::Identity(s.WithOpName("fetch"), wht1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), cst1, cst1);
+  Output fetch = ops::Identity(s.WithOpName("fetch"), allow1);
 
   GrapplerItem item;
   item.fetch = {"fetch"};
@@ -617,7 +620,7 @@ TEST_F(AutoMixedPrecisionTest, ExistingCast) {
   EXPECT_EQ(output.node_size(), item.graph.node_size() + 1);
   EXPECT_EQ(output_view.GetNode("cst1")->attr().at("SrcT").type(), DT_BOOL);
   EXPECT_EQ(output_view.GetNode("cst1")->attr().at("DstT").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
 
   auto tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(tensors.size(), tensors_expected.size());
@@ -640,8 +643,8 @@ TEST_F(AutoMixedPrecisionTest, RecurrentEdgeColorMismatch) {
   Output lpc1 = ops::LoopCond(s.WithOpName("lpc1"), con1).output;
   auto swt1 = ops::Switch(s.WithOpName("swt1"), mrg1, lpc1);
   Output gry1 = ops::Sqrt(s.WithOpName("gry1"), swt1.output_true);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), gry1, gry1);
-  Output nxt1 = ops::NextIteration(s.WithOpName("nxt1"), wht1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), gry1, gry1);
+  Output nxt1 = ops::NextIteration(s.WithOpName("nxt1"), allow1);
   Output ext1 = ops::internal::Exit(s.WithOpName("ext1"), swt1.output_false);
   Output fetch = ops::Identity(s.WithOpName("fetch"), ext1);
   // Add a second merge node from the same NextIteration node. This case arises
@@ -670,13 +673,13 @@ TEST_F(AutoMixedPrecisionTest, RecurrentEdgeColorMismatch) {
   EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
   // Note that mrg1 gets painted black because it is between blk1 and gry1. This
   // forces nxt1 and mrg2 to be painted black as well (they would otherwise be
-  // painted white because they are clear and have a direct path to wht1).
+  // painted allow because they are clear and have a direct path to allow1).
   EXPECT_EQ(output_view.GetNode("blk1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("ent1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("mrg1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("swt1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_FLOAT);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("nxt1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("ext1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("mrg2")->attr().at("T").type(), DT_FLOAT);
@@ -699,9 +702,9 @@ TEST_F(AutoMixedPrecisionTest, TensorListSetGet) {
   Output idx3 = ops::Const(s.WithOpName("idx3"), 3);
   auto tl1w1 =
       ops::TensorListSetItem(s.WithOpName("tl1w1"), tl1.handle, idx1, input);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), input, input);
   auto tl1w2 =
-      ops::TensorListSetItem(s.WithOpName("tl1w2"), tl1.handle, idx2, wht1);
+      ops::TensorListSetItem(s.WithOpName("tl1w2"), tl1.handle, idx2, allow1);
   // Ensure that TensorListResize doesn't cause any problems.
   Output tl1rs =
       ops::TensorListResize(s.WithOpName("tl1rs"), tl1w2.output_handle, 6);
@@ -709,9 +712,9 @@ TEST_F(AutoMixedPrecisionTest, TensorListSetGet) {
                                         shape, DT_FLOAT)
                      .item;
   Output gry1 = ops::Tanh(s.WithOpName("gry1"), tl1r1);
-  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
+  Output allow2 = ops::MatMul(s.WithOpName("allow2"), gry1, gry1);
   auto tl1w3 =
-      ops::TensorListSetItem(s.WithOpName("tl1w3"), tl1.handle, idx3, wht2);
+      ops::TensorListSetItem(s.WithOpName("tl1w3"), tl1.handle, idx3, allow2);
   Output tl1r2 =
       ops::TensorListGetItem(s.WithOpName("tl1r2"), tl1w3.output_handle, idx3,
                              shape, DT_FLOAT)
@@ -742,11 +745,11 @@ TEST_F(AutoMixedPrecisionTest, TensorListSetGet) {
   const char* type_key = "element_dtype";
   EXPECT_EQ(output_view.GetNode("tl1")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl1w1")->attr().at(type_key).type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl1w2")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl1r1")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl1w3")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl2")->attr().at(type_key).type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("tl2w1")->attr().at(type_key).type(), DT_FLOAT);
@@ -767,15 +770,16 @@ TEST_F(AutoMixedPrecisionTest, TensorListPushPop) {
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
   auto tl1w1 =
       ops::TensorListPushBack(s.WithOpName("tl1w1"), tl1.handle, input);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
-  auto tl1w2 =
-      ops::TensorListPushBack(s.WithOpName("tl1w2"), tl1w1.output_handle, wht1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), input, input);
+  auto tl1w2 = ops::TensorListPushBack(s.WithOpName("tl1w2"),
+                                       tl1w1.output_handle, allow1);
   Output tl1r1 = ops::TensorListPopBack(s.WithOpName("tl1r1"),
                                         tl1w2.output_handle, shape, DT_FLOAT)
                      .tensor;
   Output gry1 = ops::Tanh(s.WithOpName("gry1"), tl1r1);
-  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
-  auto tl1w3 = ops::TensorListPushBack(s.WithOpName("tl1w3"), tl1.handle, wht2);
+  Output allow2 = ops::MatMul(s.WithOpName("allow2"), gry1, gry1);
+  auto tl1w3 =
+      ops::TensorListPushBack(s.WithOpName("tl1w3"), tl1.handle, allow2);
   Output tl1r2 = ops::TensorListPopBack(s.WithOpName("tl1r2"),
                                         tl1w3.output_handle, shape, DT_FLOAT)
                      .tensor;
@@ -804,11 +808,11 @@ TEST_F(AutoMixedPrecisionTest, TensorListPushPop) {
   const char* type_key = "element_dtype";
   EXPECT_EQ(output_view.GetNode("tl1")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl1w1")->attr().at(type_key).type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl1w2")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl1r1")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl1w3")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl2")->attr().at(type_key).type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("tl2w1")->attr().at(type_key).type(), DT_FLOAT);
@@ -826,19 +830,19 @@ TEST_F(AutoMixedPrecisionTest, TensorListFromTensor) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   tensorflow::Input shape = {32};
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
-  auto tl1 = ops::TensorListFromTensor(s.WithOpName("tl1"), wht1, shape);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), input, input);
+  auto tl1 = ops::TensorListFromTensor(s.WithOpName("tl1"), allow1, shape);
   Output tl1r1 = ops::TensorListStack(s.WithOpName("tl1r1"), tl1.output_handle,
                                       shape, DT_FLOAT)
                      .tensor;
   Output gry1 = ops::Tanh(s.WithOpName("gry1"), tl1r1);
-  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
-  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht2);
+  Output allow2 = ops::MatMul(s.WithOpName("allow2"), gry1, gry1);
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), allow2);
 
-  // This tests that a white-painted object node (tl2) will force an unpainted
-  // client node (tl2w1) to be painted white as well. (Without the force, tl2w1
+  // This tests that a allow-painted object node (tl2) will force an unpainted
+  // client node (tl2w1) to be painted allow as well. (Without the force, tl2w1
   // would remain unpainted, producing an invalid graph).
-  auto tl2 = ops::TensorListFromTensor(s.WithOpName("tl2"), wht1, shape);
+  auto tl2 = ops::TensorListFromTensor(s.WithOpName("tl2"), allow1, shape);
   auto tl2w1 =
       ops::TensorListPushBack(s.WithOpName("tl2w1"), tl2.output_handle, input);
 
@@ -856,11 +860,11 @@ TEST_F(AutoMixedPrecisionTest, TensorListFromTensor) {
   GraphView output_view(&output);
   EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
   const char* type_key = "element_dtype";
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl1")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl1r1")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl2")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl2w1")->attr().at(type_key).type(), DT_HALF);
 
@@ -878,12 +882,13 @@ TEST_F(AutoMixedPrecisionTest, TensorListPushBackBatchAndConcatLists) {
   auto tl1 = ops::EmptyTensorList(s.WithOpName("tl1"), {32, 32}, 8, DT_FLOAT);
   auto tl2 = ops::EmptyTensorList(s.WithOpName("tl2"), {32, 32}, 8, DT_FLOAT);
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), input, input);
   Output tl1_tl2 =
       ops::Stack(s.WithOpName("tl1_tl2"), {tl1.handle, tl2.handle});
-  Output wht1_wht1 = ops::Stack(s.WithOpName("wht1_wht1"), {wht1, wht1});
-  auto tl12w1 =
-      ops::TensorListPushBackBatch(s.WithOpName("tl12w1"), tl1_tl2, wht1_wht1);
+  Output allow1_allow1 =
+      ops::Stack(s.WithOpName("allow1_allow1"), {allow1, allow1});
+  auto tl12w1 = ops::TensorListPushBackBatch(s.WithOpName("tl12w1"), tl1_tl2,
+                                             allow1_allow1);
   OutputList tl12w1_outputs =
       ops::Split(s.WithOpName("tl12w1_outputs"), 0, tl12w1.output_handles, 2)
           .output;
@@ -898,8 +903,8 @@ TEST_F(AutoMixedPrecisionTest, TensorListPushBackBatchAndConcatLists) {
       ops::TensorListPopBack(s.WithOpName("tl3r1"), tl3, shape, DT_FLOAT)
           .tensor;
   Output gry1 = ops::Tanh(s.WithOpName("gry1"), tl3r1);
-  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
-  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht2);
+  Output allow2 = ops::MatMul(s.WithOpName("allow2"), gry1, gry1);
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), allow2);
 
   GrapplerItem item;
   item.fetch = {"fetch1"};
@@ -915,8 +920,8 @@ TEST_F(AutoMixedPrecisionTest, TensorListPushBackBatchAndConcatLists) {
   GraphView output_view(&output);
   EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
   const char* type_key = "element_dtype";
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl1")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl2")->attr().at(type_key).type(), DT_HALF);
@@ -961,8 +966,8 @@ TEST_F(AutoMixedPrecisionTest, TensorListThroughFunction) {
   TF_CHECK_OK(s.graph()->AddFunctionLibrary(function_lib));
   tensorflow::Input shape = {32, 32};
   Output input = ops::Const(s.WithOpName("input"), 1.f / 32, {32, 32});
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
-  Output gry1 = ops::Tanh(s.WithOpName("gry1"), wht1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), input, input);
+  Output gry1 = ops::Tanh(s.WithOpName("gry1"), allow1);
   auto tl1 = ops::EmptyTensorList(s.WithOpName("tl1"), {32, 32}, 8, DT_FLOAT);
   auto tl1w1 = ops::TensorListPushBack(s.WithOpName("tl1w1"), tl1.handle, gry1);
   auto _gry1 = tensorflow::ops::AsNodeOut(s, gry1);
@@ -981,8 +986,8 @@ TEST_F(AutoMixedPrecisionTest, TensorListThroughFunction) {
   Output tl2r1 = ops::TensorListPopBack(s.WithOpName("tl2r1"),
                                         tl2w1.output_handle, shape, DT_FLOAT)
                      .tensor;
-  Output wht2 = ops::MatMul(s.WithOpName("wht2"), tl1r1, tl2r1);
-  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht2);
+  Output allow2 = ops::MatMul(s.WithOpName("allow2"), tl1r1, tl2r1);
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), allow2);
 
   GrapplerItem item;
   item.fetch = {"fetch1"};
@@ -997,8 +1002,8 @@ TEST_F(AutoMixedPrecisionTest, TensorListThroughFunction) {
 
   GraphView output_view(&output);
   const char* type_key = "element_dtype";
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl2")->attr().at(type_key).type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("tl2w1")->attr().at(type_key).type(), DT_HALF);
@@ -1031,8 +1036,8 @@ int GetCudaVersion(const Cluster& cluster) {
 TEST_F(AutoMixedPrecisionTest, BatchMatMul) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input = ops::Const(s.WithOpName("input"), 1.f / 33, {64, 32, 32});
-  Output wht1 = ops::BatchMatMul(s.WithOpName("wht1"), input, input);
-  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), wht1);
+  Output allow1 = ops::BatchMatMul(s.WithOpName("allow1"), input, input);
+  Output fetch1 = ops::Identity(s.WithOpName("fetch1"), allow1);
 
   GrapplerItem item;
   item.fetch = {"fetch1"};
@@ -1049,10 +1054,10 @@ TEST_F(AutoMixedPrecisionTest, BatchMatMul) {
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
   if (GetCudaVersion(*virtual_cluster_.get()) >= 9010) {
     EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
-    EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
+    EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
   } else {
     EXPECT_EQ(output.node_size(), item.graph.node_size());
-    EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_FLOAT);
+    EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_FLOAT);
   }
 
   auto tensors = EvaluateNodes(output, item.fetch);
@@ -1187,8 +1192,8 @@ TEST_F(AutoMixedPrecisionMklTest, AlreadyBf16) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output input = ops::Const(s.WithOpName("input"), 1.f, {32, 32});
   Output cst1 = ops::Cast(s.WithOpName("cst1"), input, DT_BFLOAT16);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), cst1, cst1);
-  Output clr1 = ops::Relu(s.WithOpName("clr1"), wht1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), cst1, cst1);
+  Output clr1 = ops::Relu(s.WithOpName("clr1"), allow1);
   Output cst2 = ops::Cast(s.WithOpName("cst2"), clr1, DT_FLOAT);
   Output clr2 = ops::Relu(s.WithOpName("clr2"), cst2);
   Output fetch = ops::Identity(s.WithOpName("fetch"), clr2);
@@ -1207,7 +1212,7 @@ TEST_F(AutoMixedPrecisionMklTest, AlreadyBf16) {
   GraphView output_view(&output);
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("cst1")->attr().at("DstT").type(), DT_BFLOAT16);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_BFLOAT16);
   EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_BFLOAT16);
   EXPECT_EQ(output_view.GetNode("cst2")->attr().at("SrcT").type(), DT_BFLOAT16);
   EXPECT_EQ(output_view.GetNode("cst2")->attr().at("DstT").type(), DT_FLOAT);
@@ -1228,8 +1233,8 @@ TEST_F(AutoMixedPrecisionMklTest, Simple) {
   Output clr1 = ops::Relu(s.WithOpName("clr1"), blk1);
   Output gry1 = ops::Sqrt(s.WithOpName("gry1"), clr1);
   Output clr2 = ops::Relu(s.WithOpName("clr2"), gry1);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), clr2, clr2);
-  Output clr3 = ops::Relu(s.WithOpName("clr3"), wht1);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), clr2, clr2);
+  Output clr3 = ops::Relu(s.WithOpName("clr3"), allow1);
   Output blk2 = ops::Log(s.WithOpName("blk2"), clr3);
   Output clr4 = ops::Relu(s.WithOpName("clr4"), blk2);
   Output blk3 = ops::SparseMatMul(s.WithOpName("blk3"), clr4, clr4);
@@ -1254,7 +1259,7 @@ TEST_F(AutoMixedPrecisionMklTest, Simple) {
   EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_BFLOAT16);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_BFLOAT16);
   EXPECT_EQ(output_view.GetNode("clr3")->attr().at("T").type(), DT_BFLOAT16);
   EXPECT_EQ(output_view.GetNode("blk2")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr4")->attr().at("T").type(), DT_FLOAT);
@@ -1280,9 +1285,9 @@ TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
   Output idx3 = ops::Const(s.WithOpName("idx3"), 3);
   auto tl1w1 =
       ops::TensorListSetItem(s.WithOpName("tl1w1"), tl1.handle, idx1, input);
-  Output wht1 = ops::MatMul(s.WithOpName("wht1"), input, input);
+  Output allow1 = ops::MatMul(s.WithOpName("allow1"), input, input);
   auto tl1w2 =
-      ops::TensorListSetItem(s.WithOpName("tl1w2"), tl1.handle, idx2, wht1);
+      ops::TensorListSetItem(s.WithOpName("tl1w2"), tl1.handle, idx2, allow1);
   // Ensure that TensorListResize doesn't cause any problems.
   Output tl1rs =
       ops::TensorListResize(s.WithOpName("tl1rs"), tl1w2.output_handle, 6);
@@ -1290,9 +1295,9 @@ TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
                                         shape, DT_FLOAT)
                      .item;
   Output gry1 = ops::Mul(s.WithOpName("gry1"), tl1r1, tl1r1);
-  Output wht2 = ops::MatMul(s.WithOpName("wht2"), gry1, gry1);
+  Output allow2 = ops::MatMul(s.WithOpName("allow2"), gry1, gry1);
   auto tl1w3 =
-      ops::TensorListSetItem(s.WithOpName("tl1w3"), tl1.handle, idx3, wht2);
+      ops::TensorListSetItem(s.WithOpName("tl1w3"), tl1.handle, idx3, allow2);
   Output tl1r2 =
       ops::TensorListGetItem(s.WithOpName("tl1r2"), tl1w3.output_handle, idx3,
                              shape, DT_FLOAT)
@@ -1325,13 +1330,13 @@ TEST_F(AutoMixedPrecisionMklTest, TensorListSetGet) {
             DT_BFLOAT16);
   EXPECT_EQ(output_view.GetNode("tl1w1")->attr().at(type_key).type(),
             DT_BFLOAT16);
-  EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_BFLOAT16);
   EXPECT_EQ(output_view.GetNode("tl1w2")->attr().at(type_key).type(),
             DT_BFLOAT16);
   EXPECT_EQ(output_view.GetNode("tl1r1")->attr().at(type_key).type(),
             DT_BFLOAT16);
   EXPECT_EQ(output_view.GetNode("gry1")->attr().at("T").type(), DT_BFLOAT16);
-  EXPECT_EQ(output_view.GetNode("wht2")->attr().at("T").type(), DT_BFLOAT16);
+  EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_BFLOAT16);
   EXPECT_EQ(output_view.GetNode("tl1w3")->attr().at(type_key).type(),
             DT_BFLOAT16);
   EXPECT_EQ(output_view.GetNode("tl2")->attr().at(type_key).type(), DT_FLOAT);

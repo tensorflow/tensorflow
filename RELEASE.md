@@ -6,6 +6,12 @@
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* The byte layout for string tensors across the C-API has been updated to match
+  TF Core/C++; i.e., a contiguous array of `tensorflow::tstring`/`TF_TString`s.
+* C-API functions `TF_StringDecode`, `TF_StringEncode`, and
+  `TF_StringEncodedSize` are no longer relevant and have been removed; see
+  core/platform/ctstring.h for string access/modification in C.
+* Removed `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
 
 ## Known Caveats
 
@@ -22,9 +28,13 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 * TF Core:
-    * <ADD RELEASE NOTES HERE>
+  * <ADD RELEASE NOTES HERE>
+  * `tf.types.experimental.TensorLike` is a new `Union` type that can be used as
+    type annotation for variables representing a Tensor or a value that can be
+    converted to Tensor by `tf.convert_to_tensor`.
 * `tf.data`:
-    * <ADD RELEASE NOTES HERE>
+    * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
+  the complement of `select_cols`; at most one of these should be specified.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:
@@ -44,13 +54,16 @@
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>
 *   Other:
+    * We have replaced uses of "whitelist" with "allowlist" where possible.
+  Please see https://developers.google.com/style/word-list#blacklist for more
+  context.
     * <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
 
 # Release 2.3.0
 
@@ -66,12 +79,6 @@ This release contains contributions from many people at Google, as well as:
     models will not be impacted.
 
 ## Bug Fixes and Other Changes
-
-*   `tf.keras`:
-    *   Deprecated the `tf.keras.experimental.PeepholeLSTMCell` layer, which was
-        moved to `tensorflow_addons` as
-        `tensorflow_addons.rnn.PeepholeLSTMCell`. This experimental API is
-        expected to be removed from TF in the next public release (2.4).
 * Mutable tables now restore checkpointed values when loaded from SavedModel.
 
 # Release 2.1.1

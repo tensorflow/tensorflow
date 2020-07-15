@@ -48,7 +48,7 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
       assert len(v) == len(v0), ("len(v) == %d, len(v0) == %d, v: %s, v0: %s" %
                                  (len(v), len(v0), v, v0))
     return [
-        regroup(tuple(v[i] for v in values), wrap_class)
+        regroup(tuple(v[i] for v in values), wrap_class, always_wrap)
         for i in range(len(v0))
     ]
 
@@ -57,7 +57,7 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
       assert isinstance(v, tuple)
       assert len(v) == len(v0)
     regrouped_tuple = tuple(
-        regroup(tuple(v[i] for v in values), wrap_class)
+        regroup(tuple(v[i] for v in values), wrap_class, always_wrap)
         for i in range(len(v0)))
     if hasattr(v0, "_fields"):
       # This tuple is in fact a namedtuple! Create a new namedtuple instance
@@ -75,7 +75,8 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
                                             (set(v0keys), set(v.keys())))
     # Use the actual type in case it is a class inherited from a dict.
     return type(v0)({
-        key: regroup(tuple(v[key] for v in values), wrap_class)
+        key: regroup(tuple(v[key] for v in values),
+                     wrap_class, always_wrap)
         for key in v0keys
     })
 

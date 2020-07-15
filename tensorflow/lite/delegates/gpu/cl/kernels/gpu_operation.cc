@@ -123,6 +123,8 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       src_(std::move(operation.src_)),
       dst_(std::move(operation.dst_)),
       args_(std::move(operation.args_)),
+      kernel_(std::move(operation.kernel_)),
+      work_group_size_(operation.work_group_size_),
       linked_operations_(std::move(operation.linked_operations_)) {}
 
 GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
@@ -131,6 +133,8 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     src_ = std::move(operation.src_);
     dst_ = std::move(operation.dst_);
     args_ = std::move(operation.args_);
+    kernel_ = std::move(operation.kernel_);
+    std::swap(work_group_size_, operation.work_group_size_);
     linked_operations_ = std::move(operation.linked_operations_);
   }
   return *this;
@@ -138,23 +142,18 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
 
 void GPUOperation::AddOperation(ElementwiseOperation* operation) {
   linked_operations_.push_back(operation);
-  operation->SetLinkIndex(linked_operations_.size());
 }
 
 ElementwiseOperation::ElementwiseOperation(ElementwiseOperation&& operation)
     : GPUOperation(std::move(operation)),
       check_src_channels_size_(operation.check_src_channels_size_),
-      code_(std::move(operation.code_)),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      code_(std::move(operation.code_)) {}
 
 ElementwiseOperation& ElementwiseOperation::operator=(
     ElementwiseOperation&& operation) {
   if (this != &operation) {
     check_src_channels_size_ = operation.check_src_channels_size_;
     code_ = std::move(operation.code_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -201,34 +200,6 @@ absl::Status ElementwiseOperation::AddToQueue(CLCommandQueue* queue) {
 absl::Status ElementwiseOperation::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-std::string GetArgsDeclaration(
-    const std::vector<ElementwiseOperation*>& linked_ops) {
-  std::string code;
-  for (auto linked_op : linked_ops) {
-    code += linked_op->GetArgsDeclaration();
-  }
-  code += ",\n";
-
-  return code;
-}
-
-std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
-                        const LinkingContext& context) {
-  std::string code;
-  for (auto linked_op : linked_ops) {
-    code += "{" + linked_op->GetCoreCode(context) + "}";
-  }
-  return code;
-}
-
-absl::Status BindArgs(CLKernel* kernel,
-                      const std::vector<ElementwiseOperation*>& linked_ops) {
-  for (auto linked_op : linked_ops) {
-    RETURN_IF_ERROR(linked_op->BindArguments(kernel));
-  }
-  return absl::OkStatus();
 }
 
 absl::Status MergeOperations(

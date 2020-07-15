@@ -134,16 +134,11 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
 }  // namespace
 
 ConcatZ::ConcatZ(ConcatZ&& kernel)
-    : GPUOperation(std::move(kernel)),
-      channels_(std::move(kernel.channels_)),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
+    : GPUOperation(std::move(kernel)), channels_(std::move(kernel.channels_)) {}
 
 ConcatZ& ConcatZ::operator=(ConcatZ&& kernel) {
   if (this != &kernel) {
     channels_ = std::move(kernel.channels_);
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;

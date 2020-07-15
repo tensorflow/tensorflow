@@ -90,8 +90,7 @@ class TensorFlowType : public Type {
 
 // Returns true if the specified type is a valid TensorFlow element type.
 static inline bool IsValidTFElementType(Type type) {
-  return type.isa<ComplexType>() || type.isa<FloatType>() ||
-         type.isa<IntegerType>() || type.isa<TensorFlowType>();
+  return type.isa<ComplexType, FloatType, IntegerType, TensorFlowType>();
 }
 
 // Returns true if this is a valid TensorFlow tensor type.
@@ -110,9 +109,10 @@ namespace detail {
 //   - `static unsigned getTypeKind()` that returns the (fixed) kind of the
 //     type.
 template <typename Derived>
-class TensorFlowTypeImpl : public Type::TypeBase<Derived, TensorFlowType> {
+class TensorFlowTypeImpl
+    : public Type::TypeBase<Derived, TensorFlowType, TypeStorage> {
  public:
-  using Base = typename Type::TypeBase<Derived, TensorFlowType>;
+  using Base = typename Type::TypeBase<Derived, TensorFlowType, TypeStorage>;
   using TFBase = TensorFlowTypeImpl<Derived>;
   using Base::Base;
 

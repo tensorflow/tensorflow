@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/flt_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -53,11 +52,6 @@ class QuantizeAndDequantize : public ElementwiseOperation {
   QuantizeAndDequantize(const QuantizeAndDequantize&) = delete;
   QuantizeAndDequantize& operator=(const QuantizeAndDequantize&) = delete;
 
-  void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const LinkingContext& context) const override;
-  std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
-
   friend absl::Status CreateQuantizeAndDequantize(
       const CreationContext& creation_context, const OperationDef& definition,
       const QuantizeAndDequantizeAttributes& attr,
@@ -71,10 +65,6 @@ class QuantizeAndDequantize : public ElementwiseOperation {
   template <DataType T>
   absl::Status UploadParameters(
       const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context);
-
-  FLT min_;
-  FLT max_;
-  FLT scale_;
 };
 
 absl::Status CreateQuantizeAndDequantize(

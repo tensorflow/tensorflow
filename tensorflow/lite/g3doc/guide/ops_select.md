@@ -39,8 +39,8 @@ for `target_spec.supported_ops`:
 
 *   `TFLITE_BUILTINS` - Converts models using TensorFlow Lite builtin ops.
 *   `SELECT_TF_OPS` - Converts models using TensorFlow ops. The exact subset of
-    supported ops can be found in the whitelist at
-    `lite/delegates/flex/whitelisted_flex_ops.cc`.
+    supported ops can be found in the allowlist at
+    `lite/delegates/flex/allowlisted_flex_ops.cc`.
 
 Note: `target_spec.supported_ops` was previously `target_ops` in the Python API.
 
@@ -250,7 +250,18 @@ as is typically required with other delegate types.
 
 ### Python pip package
 
-Python support is actively under development.
+Flex ops are included in the nightly build of the TensorFlow Python package. You
+can use TFLite models containing Flex ops by the same Python API as normal
+TFLite models. The nightly TensorFlow build can be installed with this command:
+
+```sh
+pip install tf-nightly
+```
+
+Flex ops will be added to the TensorFlow Python package's and the
+`tflite_runtime`
+[package](https://www.tensorflow.org/lite/guide/python#install_just_the_tensorflow_lite_interpreter)
+from version 2.3 for Linux and 2.4 for other environments.
 
 ## Metrics
 

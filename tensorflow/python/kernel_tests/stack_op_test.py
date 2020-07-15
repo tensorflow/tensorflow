@@ -62,7 +62,7 @@ class StackOpTest(test.TestCase):
             # Stack back into a single tensorflow tensor
             with self.subTest(shape=shape, axis=axis, dtype=dtype):
               c = array_ops.stack(xs, axis=axis)
-              self.assertAllEqual(c.eval(), data)
+              self.assertAllEqual(c, data)
 
   @test_util.run_deprecated_v1
   def testSimpleParallelCPU(self):
@@ -73,7 +73,7 @@ class StackOpTest(test.TestCase):
           data = self.randn(shape, np.float32)
           xs = list(map(constant_op.constant, data))
           c = array_ops.parallel_stack(xs)
-          self.assertAllEqual(c.eval(), data)
+          self.assertAllEqual(c, data)
 
   @test_util.run_deprecated_v1
   def testSimpleParallelGPU(self):
@@ -84,7 +84,7 @@ class StackOpTest(test.TestCase):
           data = self.randn(shape, np.float32)
           xs = list(map(constant_op.constant, data))
           c = array_ops.parallel_stack(xs)
-          self.assertAllEqual(c.eval(), data)
+          self.assertAllEqual(c, data)
 
   @test_util.run_deprecated_v1
   def testConst(self):
@@ -104,14 +104,14 @@ class StackOpTest(test.TestCase):
             c = array_ops.stack(data)
             # This is implemented via a Const:
             self.assertEqual(c.op.type, "Const")
-            self.assertAllEqual(c.eval(), data)
+            self.assertAllEqual(c, data)
 
             # Python lists also work for 1-D case:
             if len(shape) == 1:
               data_list = list(data)
               cl = array_ops.stack(data_list)
               self.assertEqual(cl.op.type, "Const")
-              self.assertAllEqual(cl.eval(), data)
+              self.assertAllEqual(cl, data)
 
   @test_util.run_deprecated_v1
   def testConstParallelCPU(self):
@@ -123,11 +123,11 @@ class StackOpTest(test.TestCase):
           if len(shape) == 1:
             data_list = list(data)
             cl = array_ops.parallel_stack(data_list)
-            self.assertAllEqual(cl.eval(), data)
+            self.assertAllEqual(cl, data)
 
           data = self.randn(shape, np.float32)
           c = array_ops.parallel_stack(data)
-          self.assertAllEqual(c.eval(), data)
+          self.assertAllEqual(c, data)
 
   @test_util.run_deprecated_v1
   def testConstParallelGPU(self):
@@ -139,11 +139,11 @@ class StackOpTest(test.TestCase):
           if len(shape) == 1:
             data_list = list(data)
             cl = array_ops.parallel_stack(data_list)
-            self.assertAllEqual(cl.eval(), data)
+            self.assertAllEqual(cl, data)
 
           data = self.randn(shape, np.float32)
           c = array_ops.parallel_stack(data)
-          self.assertAllEqual(c.eval(), data)
+          self.assertAllEqual(c, data)
 
   @test_util.run_deprecated_v1
   def testGradientsAxis0(self):
@@ -248,12 +248,12 @@ class StackOpTest(test.TestCase):
 
   def testDimOutOfRange(self):
     t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
-    with self.assertRaisesRegexp(ValueError, r"axis = 2 not in \[-2, 2\)"):
+    with self.assertRaisesRegex(ValueError, r"axis = 2 not in \[-2, 2\)"):
       array_ops.stack(t, axis=2)
 
   def testDimOutOfNegativeRange(self):
     t = [constant_op.constant([1, 2, 3]), constant_op.constant([4, 5, 6])]
-    with self.assertRaisesRegexp(ValueError, r"axis = -3 not in \[-2, 2\)"):
+    with self.assertRaisesRegex(ValueError, r"axis = -3 not in \[-2, 2\)"):
       array_ops.stack(t, axis=-3)
 
   def testComplex(self):

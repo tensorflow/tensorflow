@@ -72,7 +72,7 @@ inline int64_t NumElements(const TfLiteTensor* t) {
   return NumElements(t->dims);
 }
 
-inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
+inline const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
                                                   const TfLiteNode* node,
                                                   int index) {
   const bool use_tensor = index < node->inputs->size &&

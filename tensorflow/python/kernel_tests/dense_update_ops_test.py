@@ -93,13 +93,13 @@ class AssignOpTest(test.TestCase):
       p = variables.VariableV1([1])
       a = state_ops.assign(p, data, validate_shape=False)
       a.op.run()
-      self.assertAllEqual(p.eval(), self.evaluate(data))
+      self.assertAllEqual(p, self.evaluate(data))
 
       # Assign to yet another shape
       data2 = array_ops.fill([10, 10], 1)
       a2 = state_ops.assign(p, data2, validate_shape=False)
       a2.op.run()
-      self.assertAllEqual(p.eval(), self.evaluate(data2))
+      self.assertAllEqual(p, self.evaluate(data2))
 
   @test_util.run_v1_only("b/120545219")
   def testInitRequiredAssignAdd(self):

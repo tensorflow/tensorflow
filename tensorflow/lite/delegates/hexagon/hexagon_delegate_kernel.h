@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_implementation.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_nn/hexagon_nn.h"
+#include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -38,18 +39,22 @@ namespace tflite {
 // Represents an abstraction of a Hexagon NNLib graph with functionality to
 // initialize, prepare and invoke it based on the TFLite subgraph to be
 // delegated.
-class HexagonDelegateKernel {
+class HexagonDelegateKernel : public SimpleDelegateKernelInterface {
  public:
+  explicit HexagonDelegateKernel(const ::TfLiteHexagonDelegateOptions& params)
+      : params_(params) {}
+
   // Initialize the Hexagon graph and add required nodes.
-  TfLiteStatus Init(TfLiteContext* context, const TfLiteDelegateParams* params);
+  TfLiteStatus Init(TfLiteContext* context,
+                    const TfLiteDelegateParams* params) override;
 
   // Prepare the Hexagon graph with hexagon_nn_prepare.
-  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
+  TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) override;
 
   // Allocate Hexagon tensordefs for graph I/O & execute it.
-  TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node);
+  TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) override;
 
-  ~HexagonDelegateKernel();
+  ~HexagonDelegateKernel() override;
 
   // Sets the environment required for Hexagon execution: DSP attributes,
   // rpcmem, etc.

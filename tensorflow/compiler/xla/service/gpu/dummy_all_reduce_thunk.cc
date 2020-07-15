@@ -42,9 +42,9 @@ NcclAllReduceThunk::DevicesWithOpenNcclChannels() {
 struct NcclAllReduceThunk::AuxData {};
 
 NcclAllReduceThunk::NcclAllReduceThunk(
-    int64 replica_count, std::vector<NcclAllReduceThunk::Buffer> buffers,
-    const HloInstruction* all_reduce)
-    : Thunk(Thunk::kNcclAllReduce, all_reduce),
+    ThunkInfo thunk_info, int64 replica_count,
+    std::vector<NcclAllReduceThunk::Buffer> buffers)
+    : Thunk(Thunk::kNcclAllReduce, thunk_info),
       replica_count_(replica_count),
       buffers_(std::move(buffers)) {}
 

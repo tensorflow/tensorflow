@@ -301,7 +301,7 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase,
                            exception=None,
                            message=None):
     """Tests that `ragged_const()` raises an expected exception."""
-    self.assertRaisesRegexp(
+    self.assertRaisesRegex(
         exception,
         message,
         ragged_factory_ops.constant,
@@ -341,9 +341,9 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase,
                                   message=None):
     """Tests for the _find_scalar_and_max_depth helper function."""
     if exception is not None:
-      self.assertRaisesRegexp(exception, message,
-                              ragged_factory_ops._find_scalar_and_max_depth,
-                              pylist)
+      self.assertRaisesRegex(exception, message,
+                             ragged_factory_ops._find_scalar_and_max_depth,
+                             pylist)
     else:
       self.assertEqual(
           ragged_factory_ops._find_scalar_and_max_depth(pylist),
@@ -391,7 +391,7 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase,
                                            message=None):
     """Tests for the _default_inner_shape_for_pylist helper function."""
     if exception is not None:
-      self.assertRaisesRegexp(
+      self.assertRaisesRegex(
           exception, message,
           ragged.ragged_factory_ops._default_inner_shape_for_pylist, pylist,
           ragged_rank)

@@ -58,3 +58,24 @@ cc_library(
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
     ],
 )
+
+cc_library(
+    name = "tf_concrete_function",
+    srcs = [
+        "tf_concrete_function.cc",
+    ],
+    hdrs = [
+        "tf_concrete_function.h",
+    ],
+    deps = [
+        ":tensorhandle_convertible",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_operation",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/experimental/saved_model/core:concrete_function",
+        "//tensorflow/c/experimental/saved_model/core:function_metadata",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:context",
+    ],
+)

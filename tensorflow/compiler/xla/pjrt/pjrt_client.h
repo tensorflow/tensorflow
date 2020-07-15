@@ -406,6 +406,10 @@ class PjRtBuffer {
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or_;
   };
 
+  // Returns a buffer with uninitialized contents.
+  static StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitialized(
+      const Shape& shape, PjRtClient* client, Device* device);
+
   // Describes the semantics the caller to FromHostBuffer expects from the
   // runtime, in a total order from most restrictive to least restrictive.
   enum class HostBufferSemantics {

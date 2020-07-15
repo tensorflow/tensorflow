@@ -192,7 +192,7 @@ class MatrixExponentialBenchmark(test.Benchmark):
           ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
         expm = linalg_impl.matrix_exponential(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(expm),
@@ -205,7 +205,7 @@ class MatrixExponentialBenchmark(test.Benchmark):
             ops.device("/gpu:0"):
           matrix = self._GenerateMatrix(shape)
           expm = linalg_impl.matrix_exponential(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(expm),

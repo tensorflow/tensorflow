@@ -43,9 +43,6 @@ class StridedSlice : public GPUOperation {
   int3 GetGridSize() const;
 
   SliceAttributes attributes_;
-
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 StridedSlice CreateStridedSlice(const OperationDef& definition,

@@ -51,7 +51,8 @@ xla::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
 
 Status ExtractWhileLoopFrames(
     const std::vector<ControlFlowInfo>& cf_info, const Graph* graph,
-    std::unordered_map<string, WhileLoopFrame>* frames) {
+    std::unordered_map<string, WhileLoopFrame>* frames,
+    const NodeFilter& node_filter) {
   for (Node* node : graph->op_nodes()) {
     const ControlFlowInfo& cf = cf_info[node->id()];
 
@@ -81,6 +82,9 @@ Status ExtractWhileLoopFrames(
       frame.loop_cond = node;
     }
     frame.nodes.insert(node);
+    if (node->IsControlFlow() && node_filter && !node_filter(node)) {
+      frame.should_be_functionalized = false;
+    }
   }
 
   return Status::OK();
