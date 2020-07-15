@@ -107,6 +107,25 @@ gentbl(
 )
 
 gentbl(
+    name = "hlo_ops_pattern_gen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "include/mlir-hlo/Dialect/mhlo/IR/hlo_patterns.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "lib/Dialect/mhlo/IR/hlo_patterns.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
+        "@llvm-project//mlir:StdOpsTdFiles",
+        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeBase.td",
+        "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeOps.td",
+    ],
+)
+
+gentbl(
     name = "lhlo_ops_inc_gen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -203,6 +222,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        "hlo_ops_pattern_gen",
         ":canonicalize_inc_gen",
         ":chlo_ops_inc_gen",
         ":convert_op_folder",
