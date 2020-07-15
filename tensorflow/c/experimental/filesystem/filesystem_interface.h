@@ -720,7 +720,6 @@ typedef struct TF_FilesystemOps {
   ///   * Must set `status` to `TF_OK` if transaction successfuly finalized.
   ///   * Must set `status` to `TF_NOT_FOUND` if token is invalid/not found
   ///   * Might use any other error value for `status` to signal other errors.
-
   int (*end_transaction)(const TF_Filesystem* filesystem,
                          TF_TransactionToken* token, TF_Status* status);
 
