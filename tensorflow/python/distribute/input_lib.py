@@ -517,7 +517,7 @@ def _get_next_as_optional(iterator, strategy, name=None):
       # Collective all-reduce requires explicit devices for inputs.
       with ops.device("/cpu:0"):
         # Converting to integers for all-reduce.
-        worker_has_value = math_ops.cast(worker_has_value, dtypes.int32)
+        worker_has_value = math_ops.cast(worker_has_value, dtypes.int64)
         worker_devices.append(worker_has_value.device)
         worker_has_values.append(worker_has_value)
       # Make `replicas` a flat list of values across all replicas.
@@ -592,16 +592,12 @@ class DistributedIteratorBase(DistributedIteratorInterface):
     # get_next_as_optional(). And we only enable get_next_as_optional when the
     # output shapes are not static.
     #
-    # TODO(yuefengz): Currently `experimental_enable_get_next_as_optional` is
-    # always set to False in CollectiveAllReduceStrategy. We want to have a way
-    # to distinguish multi workers/single worker between graph, so we can enable
-    # the behavior in single worker case.
-    #
     # TODO(rxsang): We want to always enable the get_next_as_optional behavior
     # when user passed input_fn instead of dataset.
     if getattr(
         strategy.extended, "experimental_enable_get_next_as_optional", False):
-      self._enable_get_next_as_optional = not static_shape
+      self._enable_get_next_as_optional = (
+          not static_shape) or strategy.extended._in_multi_worker_mode()
     else:
       self._enable_get_next_as_optional = False
 
@@ -872,9 +868,10 @@ class DistributedIterator(DistributedIteratorBase,
       self._iterators = components
       static_shape = _get_static_shape(self._iterators)
       self._strategy = strategy
-      if getattr(
-          strategy.extended, "experimental_enable_get_next_as_optional", False):
-        self._enable_get_next_as_optional = not static_shape
+      if getattr(strategy.extended,
+                 "experimental_enable_get_next_as_optional", False):
+        self._enable_get_next_as_optional = (
+            not static_shape) or strategy.extended._in_multi_worker_mode()
       else:
         self._enable_get_next_as_optional = False
     else:
@@ -1273,6 +1270,7 @@ class InputFunctionIterator(DistributedIteratorV1):
 
     super(InputFunctionIterator, self).__init__(input_workers, iterators,
                                                 strategy)
+    self._enable_get_next_as_optional = False
 
 
 # TODO(anjalisridhar): This class will soon be removed and users should move
