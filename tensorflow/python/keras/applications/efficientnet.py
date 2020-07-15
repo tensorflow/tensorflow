@@ -16,7 +16,7 @@
 # pylint: disable=missing-docstring
 """EfficientNet models for Keras.
 
-  Reference:
+Reference:
   - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks](
       https://arxiv.org/abs/1905.11946) (ICML 2019)
 """
