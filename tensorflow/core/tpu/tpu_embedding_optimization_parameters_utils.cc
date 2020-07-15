@@ -389,8 +389,7 @@ Status RetrieveOpShapeFunction::operator()(
   TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
   int shard_id;
   TF_RETURN_IF_ERROR(c->GetAttr("shard_id", &shard_id));
-  for (int j = 0, end = state_variable_specs.size(); j < end;
-       ++j) {
+  for (int j = 0, end = state_variable_specs.size(); j < end; ++j) {
     if (state_variable_specs[j].has_user_defined() || is_debug_op_) {
       auto shape = c->MakeShape(
           std::vector<shape_inference::DimensionHandle>(2, c->UnknownDim()));
