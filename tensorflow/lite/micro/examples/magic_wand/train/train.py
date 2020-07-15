@@ -117,7 +117,8 @@ def train_net(
     valid_data,  # pylint: disable=unused-argument
     test_len,
     test_data,
-    kind):
+    kind,
+    fully_quantized=False):
   """Trains the model."""
   calculate_model_size(model)
   epochs = 50
@@ -130,6 +131,12 @@ def train_net(
     train_data = train_data.map(reshape_function)
     test_data = test_data.map(reshape_function)
     valid_data = valid_data.map(reshape_function)
+
+  # Representative dataset (batchsize = 1): Used in fully quantized model
+  rep_dataset = None
+  if fully_quantized:
+    rep_dataset = train_data.batch(1)
+
   test_labels = np.zeros(test_len)
   idx = 0
   for data, label in test_data:  # pylint: disable=unused-variable
@@ -163,6 +170,20 @@ def train_net(
   # Convert the model to the TensorFlow Lite format with quantization
   converter = tf.lite.TFLiteConverter.from_keras_model(model)
   converter.optimizations = [tf.lite.Optimize.OPTIMIZE_FOR_SIZE]
+
+  # Fully quantized the model to int8
+  def representative_data_gen():
+    # Require numpy array size: [batch, 128, 3, 1] (float32)
+    for input_value, _ in rep_dataset.take(100):
+      yield [input_value.numpy().astype(np.float32)]
+
+  if fully_quantized:
+    converter.representative_dataset = representative_data_gen
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    converter.inference_input_type = tf.uint8
+    converter.inference_output_type = tf.uint8
+
   tflite_model = converter.convert()
 
   # Save the model to disk
@@ -180,6 +201,9 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument("--model", "-m")
   parser.add_argument("--person", "-p")
+  parser.add_argument("--fully-quantized",
+                      action="store_true",
+                      help="Fully quantized the model when converting to *.tflite")
   args = parser.parse_args()
 
   seq_length = 128
@@ -198,6 +222,6 @@ if __name__ == "__main__":
 
   print("Start training...")
   train_net(model, model_path, train_len, train_data, valid_len, valid_data,
-            test_len, test_data, args.model)
+            test_len, test_data, args.model, args.fully_quantized)
 
   print("Training finished!")
