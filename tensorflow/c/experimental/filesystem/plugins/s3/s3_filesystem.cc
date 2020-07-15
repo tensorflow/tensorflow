@@ -32,6 +32,9 @@ constexpr int64_t kS3TimeoutMsec = 300000;  // 5 min
 constexpr char kExecutorTag[] = "TransferManagerExecutorAllocation";
 constexpr int kExecutorPoolSize = 25;
 
+constexpr uint64_t kS3MultiPartUploadChunkSize = 50 * 1024 * 1024;    // 50 MB
+constexpr uint64_t kS3MultiPartDownloadChunkSize = 50 * 1024 * 1024;  // 50 MB
+
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
 
@@ -216,7 +219,27 @@ namespace tf_s3_filesystem {
 S3File::S3File()
     : s3_client(nullptr, ShutdownClient),
       executor(nullptr),
-      initialization_lock() {}
+      transfer_managers(),
+      multi_part_chunk_sizes(),
+      use_multi_part_download(true),
+      initialization_lock() {
+  uint64_t temp_value;
+  multi_part_chunk_sizes[Aws::Transfer::TransferDirection::UPLOAD] =
+      absl::SimpleAtoi(getenv("S3_MULTI_PART_UPLOAD_CHUNK_SIZE"), &temp_value)
+          ? temp_value
+          : kS3MultiPartUploadChunkSize;
+  multi_part_chunk_sizes[Aws::Transfer::TransferDirection::DOWNLOAD] =
+      absl::SimpleAtoi(getenv("S3_MULTI_PART_DOWNLOAD_CHUNK_SIZE"), &temp_value)
+          ? temp_value
+          : kS3MultiPartDownloadChunkSize;
+  use_multi_part_download =
+      absl::SimpleAtoi(getenv("S3_DISABLE_MULTI_PART_DOWNLOAD"), &temp_value)
+          ? (temp_value != 1)
+          : use_multi_part_download;
+  transfer_managers.emplace(Aws::Transfer::TransferDirection::UPLOAD, nullptr);
+  transfer_managers.emplace(Aws::Transfer::TransferDirection::DOWNLOAD,
+                            nullptr);
+}
 void Init(TF_Filesystem* filesystem, TF_Status* status) {
   filesystem->plugin_filesystem = new S3File();
   TF_SetStatus(status, TF_OK, "");
