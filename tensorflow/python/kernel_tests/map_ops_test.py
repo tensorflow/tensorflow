@@ -105,6 +105,16 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 0)
     self.assertAllClose(e, v)
+
+  def testTensorMapEraseFromEmptyMapFails(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant(1.0)
+    v = constant_op.constant(2.0)
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Trying to erase non-existent item."):
+      m, e = map_ops.tensor_map_erase(m, k)
+      self.evaluate(e)
   
   def testTensorMapEraseMissingKeyFails(self):
     m = map_ops.empty_tensor_map()
