@@ -516,7 +516,8 @@ TfLiteStatus EvalLogic(TfLiteContext* context, TfLiteNode* node,
                       ResizeTempAxis(context, op_context, resolved_axis));
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, op_context));
   }
-  if (op_context->input->type == kTfLiteUInt8) {
+  if (op_context->input->type == kTfLiteUInt8 ||
+      op_context->input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, op_context->input->params.scale,
                       op_context->output->params.scale);
     TF_LITE_ENSURE_EQ(context, op_context->input->params.zero_point,
