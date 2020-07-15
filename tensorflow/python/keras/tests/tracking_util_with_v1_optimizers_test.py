@@ -35,6 +35,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.module import module
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import adam
@@ -42,11 +43,10 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 from tensorflow.python.training.tracking import graph_view
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 
 
-class NonLayerTrackable(tracking.AutoTrackable):
+class NonLayerTrackable(module.Module):
 
   def __init__(self):
     super(NonLayerTrackable, self).__init__()
@@ -460,7 +460,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
   # pylint: enable=cell-var-from-loop
 
   def _get_checkpoint_name(self, name):
-    root = tracking.AutoTrackable()
+    root = module.Module()
     trackable_utils.add_variable(
         root, name=name, shape=[1, 2], dtype=dtypes.float64)
     (named_variable,), _, _ = trackable_utils._serialize_object_graph(
