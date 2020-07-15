@@ -184,6 +184,7 @@ absl::Status ConvPowerVR::Compile(const CreationContext& creation_context) {
       definition_.IsBatchSupported() && stride_padding_.x != 1;
   std::string code = GenerateConv(*creation_context.device, definition_,
                                   stride_correction, conv_params_, &args_);
+  work_group_size_ = conv_params_.work_group_size;
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -226,8 +227,6 @@ absl::Status ConvPowerVR::BindArguments() {
                                      conv_params_.block_size.x);
     RETURN_IF_ERROR(args_.SetInt("task_size_x", grid_x));
   }
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
   return absl::OkStatus();
 }
 
@@ -272,17 +271,12 @@ absl::Status ConvPowerVR::Tune(const TuningParameters& params) {
   if (conv_params_.work_group_launch_order[0] == 0 &&
       conv_params_.work_group_launch_order[1] == 1 &&
       conv_params_.work_group_launch_order[2] == 2) {
-    RETURN_IF_ERROR(BindArguments());
-    return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                                &conv_params_.work_group_size);
+    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+    RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
+                                         &conv_params_.work_group_size));
+    work_group_size_ = conv_params_.work_group_size;
   }
   return absl::OkStatus();
-}
-
-absl::Status ConvPowerVR::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(),
-                                 conv_params_.work_group_size);
 }
 
 std::string GenerateConv(const CLDevice& device, const OperationDef& op_def,

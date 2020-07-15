@@ -303,9 +303,7 @@ absl::Status DepthwiseConv3x3::Compile(
 
 absl::Status DepthwiseConv3x3::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetObjectRef("dst_tensor", dst_[0]);
 }
 
 int3 DepthwiseConv3x3::GetGridSize() const {
@@ -319,13 +317,8 @@ absl::Status DepthwiseConv3x3::Tune(const TuningParameters& params) {
   if (local_mem_uploads_) {
     return absl::OkStatus();
   }
-  RETURN_IF_ERROR(BindArguments());
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status DepthwiseConv3x3::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr) {

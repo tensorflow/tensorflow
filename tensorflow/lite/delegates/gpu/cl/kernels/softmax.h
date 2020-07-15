@@ -30,9 +30,9 @@ class Softmax : public GPUOperation {
  public:
   Softmax() = default;
   explicit Softmax(const OperationDef& definition) : GPUOperation(definition) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
 
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
@@ -42,10 +42,6 @@ class Softmax : public GPUOperation {
   Softmax& operator=(const Softmax&) = delete;
 
   friend Softmax CreateSoftmax();
-
- private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
 };
 
 Softmax CreateSoftmax(const OperationDef& definition);

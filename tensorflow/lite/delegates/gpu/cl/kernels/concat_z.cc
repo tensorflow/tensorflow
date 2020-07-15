@@ -176,9 +176,7 @@ absl::Status ConcatZ::BindArguments() {
     RETURN_IF_ERROR(
         args_.SetObjectRef("src_tensor_" + std::to_string(i), src_[i]));
   }
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetObjectRef("dst_tensor", dst_[0]);
 }
 
 int3 ConcatZ::GetGridSize() const {
@@ -186,16 +184,6 @@ int3 ConcatZ::GetGridSize() const {
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Depth();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status ConcatZ::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status ConcatZ::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 ConcatZ CreateConcatZ(const OperationDef& definition,

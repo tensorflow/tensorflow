@@ -129,8 +129,7 @@ absl::Status Mean::BindArguments() {
   const double size_1 = total_size / size_0;
   RETURN_IF_ERROR(args_.SetFloat("inv_multiplier_1", 1.0 / size_1));
   RETURN_IF_ERROR(args_.SetFloat("inv_multiplier_2", 1.0 / size_0));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 Mean::GetGridSize() const {
@@ -138,11 +137,6 @@ int3 Mean::GetGridSize() const {
   const int grid_y = work_group_size_.y;
   const int grid_z = dst_[0]->Slices() * dst_[0]->Batch();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status Mean::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 Mean CreateMean(const OperationDef& definition) { return Mean(definition); }
