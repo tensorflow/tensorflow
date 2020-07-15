@@ -33,7 +33,6 @@ import types
 import numpy as np
 import six
 
-from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import converter_testing
@@ -47,15 +46,15 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
-tf = utils.fake_tf()
 
 global_n = 2
 
@@ -90,6 +89,52 @@ class ApiTest(test.TestCase):
     self.assertEmpty(
         tuple(o for o in objects_after if isinstance(o, TestResource)))
 
+  def test_converted_call_kwonly_args(self):
+
+    def test_fn(*, a):
+      return a
+
+    x = api.converted_call(
+        test_fn, (), {'a': constant_op.constant(-1)}, options=DEFAULT_RECURSIVE)
+    self.assertEqual(-1, self.evaluate(x))
+
+  def test_super_with_no_arg(self):
+    test_case_self = self
+
+    class TestBase:
+
+      def plus_three(self, x):
+        return x + 3
+
+    class TestSubclass(TestBase):
+
+      def plus_three(self, x):
+        test_case_self.fail('This should never be called.')
+
+      def no_arg(self, x):
+        return super().plus_three(x)
+
+    tc = api.converted_call(TestSubclass, (), None, options=DEFAULT_RECURSIVE)
+
+    self.assertEqual(5, tc.no_arg(2))
+
+  def test_converted_call_avoids_triggering_operators(self):
+
+    test_self = self
+
+    class Pair(collections.namedtuple('Pair', ['a', 'b'])):
+
+      def __call__(self):
+        return self.a + self.b
+
+      def __eq__(self, other):
+        test_self.fail('Triggered operator')
+
+    p = Pair(constant_op.constant(1), constant_op.constant(2))
+
+    x = api.converted_call(p, (), {}, options=DEFAULT_RECURSIVE)
+    self.assertIsNotNone(self.evaluate(x), 3)
+
   @test_util.run_deprecated_v1
   def test_decorator_recursive(self):
 
@@ -102,16 +147,15 @@ class ApiTest(test.TestCase):
 
       @api.convert(recursive=True)
       def test_method(self, x, s, a):
-        while tf.reduce_sum(x) > s:
+        while math_ops.reduce_sum(x) > s:
           x //= self.called_member(a)
         return x
 
     tc = TestClass()
-    with self.cached_session() as sess:
-      x = tc.test_method(
-          constant_op.constant([2, 4]), constant_op.constant(1),
-          constant_op.constant(-2))
-      self.assertListEqual([0, 1], self.evaluate(x).tolist())
+    x = tc.test_method(
+        constant_op.constant([2, 4]), constant_op.constant(1),
+        constant_op.constant(-2))
+    self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   @test_util.run_deprecated_v1
   def test_decorator_not_recursive(self):
@@ -119,20 +163,19 @@ class ApiTest(test.TestCase):
     class TestClass(object):
 
       def called_member(self, a):
-        return tf.negative(a)
+        return math_ops.negative(a)
 
       @api.convert(recursive=False)
       def test_method(self, x, s, a):
-        while tf.reduce_sum(x) > s:
+        while math_ops.reduce_sum(x) > s:
           x //= self.called_member(a)
         return x
 
     tc = TestClass()
-    with self.cached_session() as sess:
-      x = tc.test_method(
-          constant_op.constant([2, 4]), constant_op.constant(1),
-          constant_op.constant(-2))
-      self.assertListEqual([0, 1], self.evaluate(x).tolist())
+    x = tc.test_method(
+        constant_op.constant([2, 4]), constant_op.constant(1),
+        constant_op.constant(-2))
+    self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   @test_util.run_deprecated_v1
   def test_convert_then_do_not_convert(self):
@@ -141,11 +184,11 @@ class ApiTest(test.TestCase):
 
       @api.do_not_convert
       def called_member(self, a):
-        return tf.negative(a)
+        return math_ops.negative(a)
 
       @api.convert(recursive=True)
       def test_method(self, x, s, a):
-        while tf.reduce_sum(x) > s:
+        while math_ops.reduce_sum(x) > s:
           x //= self.called_member(a)
         return x
 
@@ -168,16 +211,15 @@ class ApiTest(test.TestCase):
 
       @api.convert(recursive=True)
       def test_method(self, x, s, a):
-        while tf.reduce_sum(x) > s:
+        while math_ops.reduce_sum(x) > s:
           x //= self.called_member(a)
         return x
 
     tc = TestClass()
-    with self.cached_session() as sess:
-      x = tc.test_method(
-          constant_op.constant([2, 4]), constant_op.constant(1),
-          constant_op.constant(-2))
-      self.assertListEqual([0, 1], self.evaluate(x).tolist())
+    x = tc.test_method(
+        constant_op.constant([2, 4]), constant_op.constant(1),
+        constant_op.constant(-2))
+    self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   def test_decorator_preserves_argspec(self):
 
@@ -234,7 +276,7 @@ class ApiTest(test.TestCase):
 
       @api.convert(recursive=True)
       def test_method(self, x, s, a):
-        while tf.reduce_sum(x) > s:
+        while math_ops.reduce_sum(x) > s:
           x //= api.converted_call(
               self.called_member, (a,), None, options=DEFAULT_RECURSIVE)
         return x
@@ -644,7 +686,7 @@ class ApiTest(test.TestCase):
     opts = converter.ConversionOptions(
         user_requested=True, optional_features=None)
 
-    x = api.converted_call(gen_math_ops.add, (1, 1), None, options=opts)
+    x = api.converted_call(math_ops.add, (1, 1), None, options=opts)
 
     self.assertAllEqual(self.evaluate(x), 2)
 
@@ -685,7 +727,7 @@ class ApiTest(test.TestCase):
     class TestClass(collections.namedtuple('TestNamedtuple', ('a', 'b'))):
 
       def test_method(self, x):
-        while tf.reduce_sum(x) > self.a:
+        while math_ops.reduce_sum(x) > self.a:
           x //= self.b
         return x
 
@@ -713,7 +755,7 @@ class ApiTest(test.TestCase):
     class TestClass(collections.namedtuple('TestNamedtuple', ('a', 'b'))):
 
       def test_method(self, x):
-        while tf.reduce_sum(x) > self.a:
+        while math_ops.reduce_sum(x) > self.a:
           x //= self.b
         return x
 
@@ -786,7 +828,7 @@ class ApiTest(test.TestCase):
     def f():
       return dataset_ops.Dataset.range(-3, 3).map(other_fn)
 
-    # Dataset iteration only works inside tf.
+    # Dataset iteration only works inside math_ops.
     @def_function.function
     def graph_fn():
       ds = api.converted_call(f, (), None, options=DEFAULT_RECURSIVE)
@@ -912,13 +954,13 @@ class ApiTest(test.TestCase):
   def test_to_graph_basic(self):
 
     def test_fn(x, s):
-      while tf.reduce_sum(x) > s:
+      while math_ops.reduce_sum(x) > s:
         x //= 2
       return x
 
     compiled_fn = api.to_graph(test_fn)
 
-    with tf.Graph().as_default():
+    with ops.Graph().as_default():
       x = compiled_fn(constant_op.constant((4, 8)), 4)
       self.assertAllEqual(self.evaluate(x), (1, 2))
 
@@ -928,15 +970,14 @@ class ApiTest(test.TestCase):
     foo = 4
 
     def test_fn(x, s=foo):
-      while tf.reduce_sum(x) > s:
+      while math_ops.reduce_sum(x) > s:
         x //= 2
       return x
 
     compiled_fn = api.to_graph(test_fn)
 
-    with self.cached_session() as sess:
-      x = compiled_fn(constant_op.constant([4, 8]))
-      self.assertListEqual([1, 2], self.evaluate(x).tolist())
+    x = compiled_fn(constant_op.constant([4, 8]))
+    self.assertListEqual([1, 2], self.evaluate(x).tolist())
 
   def test_to_graph_with_globals(self):
 
@@ -1056,7 +1097,7 @@ class ApiTest(test.TestCase):
   def test_to_code_basic(self):
 
     def test_fn(x, s):
-      while tf.reduce_sum(x) > s:
+      while math_ops.reduce_sum(x) > s:
         x /= 2
       return x
 
@@ -1067,7 +1108,7 @@ class ApiTest(test.TestCase):
 
     @def_function.function
     def test_fn(x, s):
-      while tf.reduce_sum(x) > s:
+      while math_ops.reduce_sum(x) > s:
         x /= 2
       return x
 
