@@ -30,7 +30,9 @@ namespace {
     TF_Tensor* tags; 
     TF_Tensor* values; 
     TF_Status* status; 
-    Params(TF_OpKernelContext* ctx) {
+    Params(TF_OpKernelContext* ctx) : tags(nullptr), 
+                                      values(nullptr), 
+                                      status(nullptr) {
       status = TF_NewStatus();
       TF_GetInput(ctx, 0, &tags, status);
       if (TF_GetCode(status) == TF_OK) { 
@@ -99,7 +101,7 @@ static void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   }
   tensorflow::tstring* output_tstring = reinterpret_cast<tensorflow::tstring*>(
       TF_TensorData(summary_tensor)); 
-  SerializeToTString(s, output_tstring);
+  CHECK(SerializeToTString(s, output_tstring));
   TF_DeleteTensor(summary_tensor);
 }
 
