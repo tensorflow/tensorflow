@@ -522,4 +522,61 @@ TF_LITE_MICRO_TEST(OfflinePlannerOfflineOnline) {
   TF_LITE_MICRO_EXPECT_EQ(0, context.tensors[3].data.uint8 - start);
 }
 
+TF_LITE_MICRO_TEST(TestAllocateSingleTfLiteTensor) {
+  const tflite::Model* model = tflite::testing::GetSimpleMockModel();
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_NE(allocator, nullptr);
+
+  TfLiteTensor* tensor1 =
+      allocator->AllocateTfLiteTensor(model, /*subgraph_idx=*/1);
+  TF_LITE_MICRO_EXPECT_NE(tensor1, nullptr);
+}
+
+TF_LITE_MICRO_TEST(TestAllocateChainOfTfLiteTensor) {
+  const tflite::Model* model = tflite::testing::GetSimpleMockModel();
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_NE(allocator, nullptr);
+
+  TfLiteTensor* tensor1 =
+      allocator->AllocateTfLiteTensor(model, /*subgraph_idx=*/1);
+  TF_LITE_MICRO_EXPECT_NE(tensor1, nullptr);
+
+  TfLiteTensor* tensor2 =
+      allocator->AllocateTfLiteTensor(model, /*subgraph_idx=*/2);
+  TF_LITE_MICRO_EXPECT_NE(tensor1, nullptr);
+
+  // The address of tensor2 should be higher than the address of tensor1
+  // (chained allocations):
+  TF_LITE_MICRO_EXPECT_GT(tensor2, tensor1);
+}
+
+TF_LITE_MICRO_TEST(TestAllocateTfLiteTensorWithReset) {
+  const tflite::Model* model = tflite::testing::GetSimpleMockModel();
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_NE(allocator, nullptr);
+
+  TfLiteTensor* tensor1 =
+      allocator->AllocateTfLiteTensor(model, /*subgraph_idx=*/1);
+  TF_LITE_MICRO_EXPECT_NE(tensor1, nullptr);
+
+  allocator->ResetTempAllocations();
+
+  TfLiteTensor* tensor2 =
+      allocator->AllocateTfLiteTensor(model, /*subgraph_idx=*/2);
+  TF_LITE_MICRO_EXPECT_NE(tensor1, nullptr);
+
+  // The address of tensor2 should be equal than the address of tensor1 since
+  // allocations were not chained:
+  TF_LITE_MICRO_EXPECT_EQ(tensor2, tensor1);
+}
+
 TF_LITE_MICRO_TESTS_END

@@ -2917,6 +2917,104 @@ void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.insert<RedundantReshape>(context);
 }
 
+OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
+  Value tensor = this->tensor();
+  Value shape = this->shape();
+
+  // Fold reshape if operand and result types are the same and all dimensions
+  // are statically known (no-op reshape).
+  // TODO(ezhulenev): Add the same folding for BroadcastToOp.
+  auto result_ty = getType().dyn_cast<ShapedType>();
+  if (result_ty && result_ty.hasStaticShape() &&
+      result_ty == tensor.getType()) {
+    return tensor;
+  }
+
+  // Fold reshape if the shape is computed from the input tensor:
+  //
+  //   %shape     = tf.Shape(%arg)                    // [? x ...]
+  //   %dim0      = tf.StridedSlice(%shape, 0, 1, 1)  // get unknown dim value
+  //   %new_shape = tf.Pack(dim0, ...) { axis = 0 }   // [? x ...]
+  //   %reshape   = tf.Reshape(%arg, %new_shape)      // this is no-op
+  //
+  // Where `...` are some statically known dimensions. In this case reshape is
+  // a no-op and can be replaced by %arg (assuming `...` are equal).
+  auto pack_op = dyn_cast_or_null<PackOp>(shape.getDefiningOp());
+  if (!pack_op || pack_op.values().size() < 2) return {};
+
+  // Dimensions packed along axis = 0 (pack scalars into vector).
+  if (pack_op.axis().getSExtValue() != 0) return {};
+
+  // First packed value is defined by a strided slice operation.
+  auto slice_op =
+      dyn_cast_or_null<StridedSliceOp>(pack_op.values()[0].getDefiningOp());
+  if (!slice_op) return {};
+
+  // Input to the slice op is defined by shape operation.
+  auto shape_op = dyn_cast_or_null<ShapeOp>(slice_op.input().getDefiningOp());
+  if (!shape_op || shape_op.input() != tensor) return {};
+
+  // All masks are `0` except `shrink_axis_mask` which is equal to `1` (slicing
+  // scalar value from input vector).
+  if (slice_op.begin_mask().getSExtValue() != 0 ||
+      slice_op.ellipsis_mask().getSExtValue() != 0 ||
+      slice_op.end_mask().getSExtValue() != 0 ||
+      slice_op.new_axis_mask().getSExtValue() != 0 ||
+      slice_op.shrink_axis_mask().getSExtValue() != 1)
+    return {};
+
+  // Returns a value if the `value` is defined by a ConstOp with a single
+  // integer element in it and has an expected rank.
+  auto get_value = [](Value value, int expected_rank) -> Optional<int64_t> {
+    auto const_op = dyn_cast_or_null<ConstOp>(value.getDefiningOp());
+    if (!const_op) return None;
+
+    auto value_attr = const_op.value().dyn_cast<DenseIntElementsAttr>();
+    if (!value_attr || value_attr.getNumElements() != 1) return None;
+
+    auto value_ty = value_attr.getType();
+    if (!value_ty.hasRank() || value_ty.getRank() != expected_rank) return None;
+
+    auto splat = value_attr.getSplatValue<IntegerAttr>();
+    return splat.getValue().getSExtValue();
+  };
+
+  // All other packed values are scalar constants.
+  SmallVector<int64_t, 4> packed_dims;
+  packed_dims.reserve(pack_op.values().size() - 1);
+  for (Value operand : llvm::drop_begin(pack_op.values(), 1)) {
+    if (auto dim = get_value(operand, /*expected_rank=*/0)) {
+      packed_dims.push_back(*dim);
+    } else {
+      return {};
+    }
+  }
+
+  // Slice exactly the first shape dimension:
+  //   begin = [0] end = [1], strides = [1]
+  auto begin = get_value(slice_op.begin(), /*expected_rank=*/1);
+  auto end = get_value(slice_op.end(), /*expected_rank=*/1);
+  auto strides = get_value(slice_op.strides(), /*expected_rank=*/1);
+  if (!begin.hasValue() || !end.hasValue() || !strides.hasValue() ||
+      *begin != 0 || *end != 1 || *strides != 1)
+    return {};
+
+  // First tensor dimension is dynamic.
+  auto arg_ty = tensor.getType().dyn_cast<ShapedType>();
+  if (!arg_ty || arg_ty.getNumDynamicDims() != 1 || !arg_ty.isDynamicDim(0))
+    return {};
+
+  // Argument tensor rank is equal to the number of packed dimensions.
+  if (arg_ty.getRank() != pack_op.values().size()) return {};
+
+  // All other dimensions are statically known and equal to packed dims.
+  auto arg_dims = llvm::drop_begin(arg_ty.getShape(), 1);
+  if (!std::equal(arg_dims.begin(), arg_dims.end(), packed_dims.begin()))
+    return {};
+
+  return tensor;
+}
+
 //===----------------------------------------------------------------------===//
 // SelectOp
 //===----------------------------------------------------------------------===//

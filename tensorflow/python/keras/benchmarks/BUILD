@@ -37,6 +37,10 @@ py_test(
     size = "large",
     srcs = ["keras_cpu_benchmark_test.py"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # b/161253163
+        "no_windows",  # b/160628318
+    ],
     deps = [
         ":benchmark_util",
         "//tensorflow:tensorflow_py",
@@ -73,6 +77,7 @@ py_test(
     srcs = ["keras_examples_benchmark_test.py"],
     python_version = "PY3",
     tags = [
+        "no_pip",  # b/161253163
         "no_windows",  # b/160628318
     ],
     deps = [

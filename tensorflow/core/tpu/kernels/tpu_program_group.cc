@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 
@@ -71,7 +72,7 @@ StatusOr<std::vector<XLA_TpuProgram*>> CompileAheadOfTime(
   for (size_t i = 0; i < count; ++i) {
     tpu_programs[i] = xla_tpu_programs[i];
   }
-  TpuProgram_FreeArray(xla_tpu_programs);
+  TpuProgramApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);
   return tpu_programs;
 }
 
@@ -109,13 +110,14 @@ Status CreateTpuProgramGroup(
 
   // TODO(jiawenhao): Handle the case of xla_tpu_programs.size() > 1.
   bool may_modify_variables;
-  TpuProgram_GetMayModifyVariables(xla_tpu_programs[0], &may_modify_variables);
+  TpuProgramApiFn()->TpuProgram_GetMayModifyVariablesFn(xla_tpu_programs[0],
+                                                        &may_modify_variables);
   tpu_program_group->set_may_modify_variables(
       std::vector<bool>(1, may_modify_variables));
 
   TpuSerializedProto serialized_executable_info;
-  TpuProgram_GetExecutableInfo(xla_tpu_programs[0],
-                               &serialized_executable_info);
+  TpuProgramApiFn()->TpuProgram_GetExecutableInfoFn(
+      xla_tpu_programs[0], &serialized_executable_info);
   TPUExecutableInfoProto executable_info =
       se_tpu::DeserializeProto<TPUExecutableInfoProto>(
           serialized_executable_info);
@@ -124,8 +126,8 @@ Status CreateTpuProgramGroup(
 
   TPUHostTransferInfoProto host_transfer_info;
   TpuSerializedProto serialized_host_transfer_info;
-  TpuProgram_GetHostTransferInfo(xla_tpu_programs[0],
-                                 &serialized_host_transfer_info);
+  TpuProgramApiFn()->TpuProgram_GetHostTransferInfoFn(
+      xla_tpu_programs[0], &serialized_host_transfer_info);
   if (serialized_host_transfer_info.size > 0) {
     host_transfer_info = se_tpu::DeserializeProto<TPUHostTransferInfoProto>(
         serialized_host_transfer_info);
@@ -134,7 +136,8 @@ Status CreateTpuProgramGroup(
   tpu_program_group->set_host_transfer_info(host_transfer_info);
 
   TpuSerializedProto serialized_hlo_metadata;
-  TpuProgram_GetHloMetadata(xla_tpu_programs[0], &serialized_hlo_metadata);
+  TpuProgramApiFn()->TpuProgram_GetHloMetadataFn(xla_tpu_programs[0],
+                                                 &serialized_hlo_metadata);
   xla::HloProto hlo_metadata =
       se_tpu::DeserializeProto<xla::HloProto>(serialized_hlo_metadata);
   tpu_program_group->set_hlo_metadata(hlo_metadata);
@@ -148,7 +151,7 @@ Status CreateTpuProgramGroup(
 int64_t TpuProgramGroup::program_size() const {
   int64_t total_size = 0;
   for (const XLA_TpuProgram* tpu_program : tpu_programs_) {
-    total_size += TpuProgram_GetProgramSize(tpu_program);
+    total_size += TpuProgramApiFn()->TpuProgram_GetProgramSizeFn(tpu_program);
   }
   return total_size;
 }
@@ -287,7 +290,7 @@ Status TpuProgramGroup::CompileAndBuild(
                             tpu_program_group_interface);
   VLOG(1) << absl::StrCat("Run CreateTpuProgramGroup completed. StatusCode: ",
                           serialize_status.code());
-  TpuProgram_FreeArray(xla_tpu_programs);
+  TpuProgramApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);
   return serialize_status;
 }
 

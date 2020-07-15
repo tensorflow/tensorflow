@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,17 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_INTERNAL_H_
+#define TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_INTERNAL_H_
 
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include <set>
+#include <string>
 
-#include "third_party/eigen3/Eigen/Core"
+namespace tflite {
+namespace flex {
 
-namespace tensorflow {
+// Return the list of allowlisted flex ops.
+const std::set<std::string>& GetFlexAllowlist();
 
-const uint16_t bfloat16::NAN_VALUE;
-const uint16_t bfloat16::ZERO_VALUE;
+}  // namespace flex
+}  // namespace tflite
 
-B16_DEVICE_FUNC bfloat16::operator Eigen::half() const {
-  return static_cast<Eigen::half>(float(*this));
-}
-}  // end namespace tensorflow
+#endif  // TENSORFLOW_LITE_DELEGATES_FLEX_ALLOWLISTED_FLEX_OPS_INTERNAL_H_

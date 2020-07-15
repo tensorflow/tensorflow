@@ -426,10 +426,10 @@ int NPyBfloat16_Compare(const void* a, const void* b, void* arr) {
     return 1;
   }
   // NaNs sort to the end.
-  if (!std::isnan(x) && std::isnan(y)) {
+  if (!Eigen::numext::isnan(x) && Eigen::numext::isnan(y)) {
     return -1;
   }
-  if (std::isnan(x) && !std::isnan(y)) {
+  if (Eigen::numext::isnan(x) && !Eigen::numext::isnan(y)) {
     return 1;
   }
   return 0;
