@@ -395,8 +395,6 @@ MATCH_TYPE_AND_ENUM(int8, DT_INT8);
 MATCH_TYPE_AND_ENUM(tstring, DT_STRING);
 MATCH_TYPE_AND_ENUM(complex64, DT_COMPLEX64);
 MATCH_TYPE_AND_ENUM(complex128, DT_COMPLEX128);
-MATCH_TYPE_AND_ENUM(int64, DT_INT64);
-MATCH_TYPE_AND_ENUM(uint64, DT_UINT64);
 MATCH_TYPE_AND_ENUM(bool, DT_BOOL);
 MATCH_TYPE_AND_ENUM(qint8, DT_QINT8);
 MATCH_TYPE_AND_ENUM(quint8, DT_QUINT8);
@@ -407,6 +405,59 @@ MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
 MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
 MATCH_TYPE_AND_ENUM(Variant, DT_VARIANT);
+
+template <>
+struct DataTypeToEnum<long> {
+  static DataType v() { return value; }
+  static DataType ref() { return MakeRefType(value); }
+  static constexpr DataType value = sizeof(long) == 4 ? DT_INT32 : DT_INT64;
+};
+template <>
+struct IsValidDataType<long> {
+  static constexpr bool value = true;
+};
+template <>
+struct EnumToDataType<DT_INT64> {
+  typedef tensorflow::int64 Type;
+};
+
+template <>
+struct DataTypeToEnum<unsigned long> {
+  static DataType v() { return value; }
+  static DataType ref() { return MakeRefType(value); }
+  static constexpr DataType value =
+      sizeof(unsigned long) == 4 ? DT_UINT32 : DT_UINT64;
+};
+template <>
+struct IsValidDataType<unsigned long> {
+  static constexpr bool value = true;
+};
+template <>
+struct EnumToDataType<DT_UINT64> {
+  typedef tensorflow::uint64 Type;
+};
+
+template <>
+struct DataTypeToEnum<long long> {
+  static DataType v() { return DT_INT64; }
+  static DataType ref() { return MakeRefType(DT_INT64); }
+  static constexpr DataType value = DT_INT64;
+};
+template <>
+struct IsValidDataType<long long> {
+  static constexpr bool value = true;
+};
+
+template <>
+struct DataTypeToEnum<unsigned long long> {
+  static DataType v() { return DT_UINT64; }
+  static DataType ref() { return MakeRefType(DT_UINT64); }
+  static constexpr DataType value = DT_UINT64;
+};
+template <>
+struct IsValidDataType<unsigned long long> {
+  static constexpr bool value = true;
+};
 
 #undef MATCH_TYPE_AND_ENUM
 

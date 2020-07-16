@@ -201,6 +201,38 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_executable",
+    srcs = ["tpu_executable.cc"],
+    hdrs = ["tpu_executable.h"],
+    deps = [
+        ":c_api_conversions",
+        ":proto_helper",
+        ":status_helper",
+        ":tpu_executor_base",
+        ":tpu_executor_c_api_hdrs",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_execution_profile",
+        "//tensorflow/compiler/xla/service:transfer_manager",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu/kernels:tpu_compile_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_execute_c_api_hdrs",
+        "//tensorflow/core/tpu/kernels:tpu_program_c_api_hdrs",
+        "//tensorflow/stream_executor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "tpu_platform_interface",
     srcs = ["tpu_platform_interface.cc"],
     hdrs = ["tpu_platform_interface.h"],

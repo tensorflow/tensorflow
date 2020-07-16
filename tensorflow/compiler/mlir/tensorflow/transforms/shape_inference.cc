@@ -210,6 +210,21 @@ bool CanBeRefined(Type type) {
           shape_type.getElementType().isa<TF::ResourceType, TF::VariantType>());
 }
 
+// Returns whether `original_type` type can be refined with
+// `potential_refined_type` type.
+bool CanRefineTypeWith(Type original_type, Type potential_refined_type) {
+  if (!CanBeRefined(original_type)) return false;
+
+  auto shape_type = potential_refined_type.dyn_cast<ShapedType>();
+  if (!shape_type) return false;
+  if (shape_type.hasRank()) return true;
+
+  auto element_type_with_subtype =
+      shape_type.getElementType().dyn_cast<TF::TensorFlowTypeWithSubtype>();
+  return element_type_with_subtype &&
+         !element_type_with_subtype.GetSubtypes().empty();
+}
+
 // Infers the shape from a (Stateful)PartionedCall operation by looking up the
 // called function and propagating the return type.
 bool InferShapeForCall(Operation* op) {
@@ -224,20 +239,18 @@ bool InferShapeForCall(Operation* op) {
   // Map each of the results of the call to the returned type of the
   // function.
   for (auto result : zip(op->getResults(), func.getType().getResults())) {
-    if (std::get<0>(result).getType() == std::get<1>(result)) continue;
-    // Skip already statically shaped results.
-    if (!CanBeRefined(std::get<0>(result).getType())) continue;
-
-    auto shaped_type = std::get<0>(result).getType().cast<ShapedType>();
-    auto new_type = std::get<1>(result).dyn_cast<RankedTensorType>();
-    if (!new_type) continue;
+    auto call_op_result = std::get<0>(result);
+    auto func_result_type = std::get<1>(result);
+    if (call_op_result.getType() == func_result_type) continue;
+    if (!CanRefineTypeWith(call_op_result.getType(), func_result_type))
+      continue;
 
     // Inserts a cast back to the original type if any user is not in the
     // TF dialect.
-    AddCastBackForUnsupportedNonTFUses(op, std::get<0>(result),
-                                       op->getDialect(), shaped_type);
+    AddCastBackForUnsupportedNonTFUses(op, call_op_result, op->getDialect(),
+                                       call_op_result.getType());
     // Finally we inferred the shape and replace the type for this result.
-    std::get<0>(result).setType(new_type);
+    call_op_result.setType(func_result_type);
     changed = true;
   }
   return changed;

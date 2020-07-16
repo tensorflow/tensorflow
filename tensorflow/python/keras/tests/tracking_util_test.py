@@ -35,6 +35,7 @@ from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
+from tensorflow.python.module import module
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -48,7 +49,6 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 from tensorflow.python.training.tracking import graph_view
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 
 
@@ -68,7 +68,7 @@ class MyModel(training.Model):
     return ret
 
 
-class NonLayerTrackable(tracking.AutoTrackable):
+class NonLayerTrackable(module.Module):
 
   def __init__(self):
     super(NonLayerTrackable, self).__init__()
@@ -709,7 +709,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
         self.assertEqual(42., self.evaluate(optimizer.beta_1))
 
 
-class _ManualScope(tracking.AutoTrackable):
+class _ManualScope(module.Module):
 
   def __call__(self):
     with variable_scope.variable_scope("ManualScope") as vs:

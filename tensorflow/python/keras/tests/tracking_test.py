@@ -39,7 +39,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 
 
@@ -290,7 +289,7 @@ class MappingTests(keras_parameterized.TestCase):
 
   def testLayerCollectionWithExternalMutation(self):
     d = {}
-    root = tracking.AutoTrackable()
+    root = module.Module()
     root.wrapper = d
     self.assertEqual([], root.wrapper.layers)
     self.assertEqual([], root.wrapper.trainable_weights)
@@ -303,7 +302,7 @@ class MappingTests(keras_parameterized.TestCase):
     self.assertEqual([], root.wrapper.trainable_weights)
 
   def testDictWrapperBadKeys(self):
-    a = tracking.AutoTrackable()
+    a = module.Module()
     a.d = {}
     a.d[1] = data_structures.List()
     model = training.Model()
@@ -313,7 +312,7 @@ class MappingTests(keras_parameterized.TestCase):
       model.save_weights(save_path)
 
   def testDictWrapperNoDependency(self):
-    a = tracking.AutoTrackable()
+    a = module.Module()
     a.d = data_structures.NoDependency({})
     a.d[1] = [3]
     self.assertEqual([a], util.list_objects(a))
@@ -324,7 +323,7 @@ class MappingTests(keras_parameterized.TestCase):
     model.load_weights(save_path)
 
   def testNonStringKeyNotTrackableValue(self):
-    a = tracking.AutoTrackable()
+    a = module.Module()
     a.d = {}
     a.d["a"] = [3]
     a.d[1] = data_structures.NoDependency([3])
@@ -338,15 +337,15 @@ class MappingTests(keras_parameterized.TestCase):
   def testNonAppendNotTrackable(self):
     # Non-append mutations (deleting or overwriting values) are OK when the
     # values aren't tracked.
-    a = tracking.AutoTrackable()
+    a = module.Module()
     a.d = {}
     a.d["a"] = [3]
     a.d[1] = 3
     a.d[1] = 2
     self.assertEqual(2, a.d[1])
     del a.d[1]
-    a.d[2] = data_structures.NoDependency(tracking.AutoTrackable())
-    second = tracking.AutoTrackable()
+    a.d[2] = data_structures.NoDependency(module.Module())
+    second = module.Module()
     a.d[2] = data_structures.NoDependency(second)
     self.assertIs(second, a.d[2])
     self.assertEqual([a, a.d, a.d["a"]], util.list_objects(a))
@@ -550,10 +549,10 @@ class TupleTests(keras_parameterized.TestCase):
 class InterfaceTests(keras_parameterized.TestCase):
 
   def testNoDependency(self):
-    root = tracking.AutoTrackable()
-    hasdep = tracking.AutoTrackable()
+    root = module.Module()
+    hasdep = module.Module()
     root.hasdep = hasdep
-    nodep = tracking.AutoTrackable()
+    nodep = module.Module()
     root.nodep = data_structures.NoDependency(nodep)
     self.assertEqual(1, len(root._checkpoint_dependencies))
     self.assertIs(root._checkpoint_dependencies[0].ref, root.hasdep)
@@ -566,7 +565,7 @@ class InterfaceTests(keras_parameterized.TestCase):
       def __init__(self):
         super(NoDependencyModel, self).__init__()
         self.a = []
-        self.b = tracking.AutoTrackable()
+        self.b = module.Module()
 
     nodeps = NoDependencyModel()
     self.assertEqual([nodeps], util.list_objects(nodeps))

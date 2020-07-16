@@ -198,6 +198,19 @@ std::vector<TensorStorageType> Environment::GetSupportedStorages() const {
   return storage_types;
 }
 
+std::vector<TensorStorageType>
+Environment::GetSupportedStoragesWithHWZeroClampSupport() const {
+  std::vector<TensorStorageType> storage_types;
+  for (auto storage_type :
+       {TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_ARRAY,
+        TensorStorageType::TEXTURE_3D}) {
+    if (IsSupported(storage_type)) {
+      storage_types.push_back(storage_type);
+    }
+  }
+  return storage_types;
+}
+
 bool Environment::IsSupported(TensorStorageType storage_type) const {
   switch (storage_type) {
     case TensorStorageType::TEXTURE_2D:

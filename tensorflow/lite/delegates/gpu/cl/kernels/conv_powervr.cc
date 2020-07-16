@@ -184,6 +184,7 @@ absl::Status ConvPowerVR::Compile(const CreationContext& creation_context) {
       definition_.IsBatchSupported() && stride_padding_.x != 1;
   std::string code = GenerateConv(*creation_context.device, definition_,
                                   stride_correction, conv_params_, &args_);
+  work_group_size_ = conv_params_.work_group_size;
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -226,8 +227,6 @@ absl::Status ConvPowerVR::BindArguments() {
                                      conv_params_.block_size.x);
     RETURN_IF_ERROR(args_.SetInt("task_size_x", grid_x));
   }
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
   return absl::OkStatus();
 }
 
@@ -272,17 +271,12 @@ absl::Status ConvPowerVR::Tune(const TuningParameters& params) {
   if (conv_params_.work_group_launch_order[0] == 0 &&
       conv_params_.work_group_launch_order[1] == 1 &&
       conv_params_.work_group_launch_order[2] == 2) {
-    RETURN_IF_ERROR(BindArguments());
-    return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                                &conv_params_.work_group_size);
+    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+    RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
+                                         &conv_params_.work_group_size));
+    work_group_size_ = conv_params_.work_group_size;
   }
   return absl::OkStatus();
-}
-
-absl::Status ConvPowerVR::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(),
-                                 conv_params_.work_group_size);
 }
 
 std::string GenerateConv(const CLDevice& device, const OperationDef& op_def,
@@ -720,7 +714,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.work_group_launch_order = int3(1, 0, 2);
       conv_params.fixed_work_group_size = true;
     }
-    conv_params.block_size = int3(1, 1, 4);
+    conv_params.block_size = int3(2, 1, 4);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
     if (dst_depth % 4 == 0 || dst_depth >= 8) {
@@ -729,6 +723,24 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.block_size.z = 2;
     } else {
       conv_params.block_size.z = dst_depth;
+    }
+    if (dst_shape) {
+      int task_size = dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
+      float task_size_per_cu =
+          static_cast<float>(task_size) / device.GetInfo().compute_units_count;
+      int block_size = conv_params.block_size.x * conv_params.block_size.y *
+                       conv_params.block_size.z;
+      float threads_per_cu = task_size_per_cu / block_size;
+      float warps_per_cu = threads_per_cu / 32 /*warp_size*/;
+      if (warps_per_cu < 8.0f) {
+        conv_params.block_size.x = 1;
+      }
+      if (warps_per_cu < 4.0f && conv_params.block_size.z >= 4) {
+        conv_params.block_size.z /= 2;
+      }
+      if (warps_per_cu < 2.0f && conv_params.block_size.z >= 2) {
+        conv_params.block_size.z /= 2;
+      }
     }
     if (src_depth % 2 == 0) {
       conv_params.src_depth_loop_size = 2;

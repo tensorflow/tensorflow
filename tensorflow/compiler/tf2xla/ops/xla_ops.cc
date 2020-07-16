@@ -441,7 +441,8 @@ REGISTER_OP("XlaReduce")
         auto dim_in_range = [rank](int64 dim) {
           return dim >= 0 && dim < rank;
         };
-        if (rank < dimensions_to_reduce.size() ||
+        const int dimensions_to_reduce_size = dimensions_to_reduce.size();
+        if (rank < dimensions_to_reduce_size ||
             dims_set.size() != dimensions_to_reduce.size() ||
             !absl::c_all_of(dimensions_to_reduce, dim_in_range)) {
           return errors::InvalidArgument(

@@ -197,6 +197,7 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(AllocateMemory(env->device(), creation_context.context));
   BindMemoryToOperations();
   RETURN_IF_ERROR(Compile(creation_context));
+  RETURN_IF_ERROR(UpdateParams());
 
   TuningParameters tuning_parameters;
   tuning_parameters.queue = env->profiling_queue();
@@ -550,6 +551,13 @@ absl::Status InferenceContext::Compile(
 absl::Status InferenceContext::Tune(const TuningParameters& tuning_parameters) {
   for (auto& node : nodes_) {
     RETURN_IF_ERROR(node.operations[0]->Tune(tuning_parameters));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status InferenceContext::UpdateParams() {
+  for (auto& node : nodes_) {
+    RETURN_IF_ERROR(node.operations[0]->UpdateParams());
   }
   return absl::OkStatus();
 }

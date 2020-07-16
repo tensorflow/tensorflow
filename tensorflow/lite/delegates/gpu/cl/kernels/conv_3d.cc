@@ -67,6 +67,7 @@ absl::Status Conv3D::Compile(const CreationContext& creation_context) {
       definition_.IsBatchSupported() && stride_.x != 1;
   std::string code =
       GenerateConv3D(definition_, stride_correction, conv_params_, &args_);
+  work_group_size_ = conv_params_.work_group_size;
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -105,11 +106,8 @@ absl::Status Conv3D::BindArguments() {
     RETURN_IF_ERROR(args_.SetInt("kernel_size_z", kernel_size_.z));
     RETURN_IF_ERROR(args_.SetInt("dilation_z", dilation_.z));
   }
-  RETURN_IF_ERROR(args_.SetInt(
-      "grid_size_s",
-      DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.w)));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetInt("grid_size_s", DivideRoundUp(dst_[0]->Slices(),
+                                                   conv_params_.block_size.w));
 }
 
 int3 Conv3D::GetGridSize() const {
@@ -142,17 +140,12 @@ absl::Status Conv3D::Tune(const TuningParameters& params) {
   if (conv_params_.work_group_launch_order[0] == 0 &&
       conv_params_.work_group_launch_order[1] == 1 &&
       conv_params_.work_group_launch_order[2] == 2) {
-    RETURN_IF_ERROR(BindArguments());
-    return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                                &conv_params_.work_group_size);
+    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+    RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
+                                         &conv_params_.work_group_size));
+    work_group_size_ = conv_params_.work_group_size;
   }
   return absl::OkStatus();
-}
-
-absl::Status Conv3D::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(),
-                                 conv_params_.work_group_size);
 }
 
 namespace {

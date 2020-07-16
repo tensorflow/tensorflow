@@ -78,7 +78,7 @@ doc_typealias.document(
       This definition may be used in user code. Additional types may be added
       in the future as more input types are supported.
 
-      # Example:
+      Example:
 
       ```
       def foo(x: TensorLike):

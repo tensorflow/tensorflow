@@ -38,10 +38,10 @@ namespace cl {
 class DepthwiseConv3x3 : public GPUOperation {
  public:
   DepthwiseConv3x3() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
-
   absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   DepthwiseConv3x3(DepthwiseConv3x3&& operation);
@@ -65,9 +65,6 @@ class DepthwiseConv3x3 : public GPUOperation {
   void RearrangeWeightsAndBiasesData(
       const tflite::gpu::Tensor<OHWI, S>& weights,
       const tflite::gpu::Tensor<Linear, S>& biases, absl::Span<T> dst);
-
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
 
   bool weights_are_buffer_;
   bool local_mem_uploads_;

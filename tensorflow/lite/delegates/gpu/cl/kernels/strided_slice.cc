@@ -185,8 +185,7 @@ absl::Status StridedSlice::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("stride_y", attributes_.strides.h));
   RETURN_IF_ERROR(args_.SetInt("stride_z", attributes_.strides.c));
   RETURN_IF_ERROR(args_.SetInt("stride_b", attributes_.strides.b));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 StridedSlice::GetGridSize() const {
@@ -194,16 +193,6 @@ int3 StridedSlice::GetGridSize() const {
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status StridedSlice::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status StridedSlice::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 StridedSlice CreateStridedSlice(const OperationDef& definition,

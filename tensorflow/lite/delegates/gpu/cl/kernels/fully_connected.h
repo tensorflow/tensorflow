@@ -37,8 +37,11 @@ namespace cl {
 class FullyConnected : public GPUOperation {
  public:
   FullyConnected() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-
+  absl::Status Tune(const TuningParameters& params) override {
+    return absl::OkStatus();
+  }
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only

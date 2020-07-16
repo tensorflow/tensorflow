@@ -1871,6 +1871,27 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "triangular_solve_expander_test",
+    size = "medium",
+    srcs = ["triangular_solve_expander_test.cc"],
+    shard_count = 3,
+    deps = [
+        ":hlo",
+        ":triangular_solve_expander",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:reference_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
 cc_library(
     name = "cholesky_expander",
     srcs = ["cholesky_expander.cc"],
