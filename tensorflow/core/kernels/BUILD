@@ -2937,6 +2937,7 @@ tf_kernel_library(
         "//third_party/eigen3",
     ],
 )
+
 cc_library(
     name = "tensor_map",
     srcs = ["tensor_map.cc"],
@@ -2968,13 +2969,13 @@ tf_cc_tests(
     name = "tensor_map_test",
     size = "small",
     srcs = [
-        "tensor_map_test.cc"
+        "tensor_map_test.cc",
     ],
     deps = [
         ":tensor_map",
-        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
         "@com_google_absl//absl/strings",
     ],
 )
