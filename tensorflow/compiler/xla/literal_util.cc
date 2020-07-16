@@ -229,9 +229,13 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<double>(
           -std::numeric_limits<double>::infinity());
     case C64:
-      return LiteralUtil::CreateR0<complex64>(complex64(-std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity()));
+      return LiteralUtil::CreateR0<complex64>(
+          complex64(-std::numeric_limits<float>::infinity(),
+                    -std::numeric_limits<float>::infinity()));
     case C128:
-      return LiteralUtil::CreateR0<complex128>(complex128(-std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity()));
+      return LiteralUtil::CreateR0<complex128>(
+          complex128(-std::numeric_limits<double>::infinity(),
+                     -std::numeric_limits<double>::infinity()));
     case PRED:
       return LiteralUtil::CreateR0<bool>(false);
     case F16:
@@ -282,9 +286,13 @@ Literal ConvertType(LiteralSlice literal) {
       return LiteralUtil::CreateR0<bfloat16>(
           static_cast<bfloat16>(std::numeric_limits<float>::infinity()));
     case C64:
-      return LiteralUtil::CreateR0<complex64>(complex64(std::numeric_limits<float>::infinity(), std::numeric_limits<float>::infinity()));
+      return LiteralUtil::CreateR0<complex64>(
+          complex64(std::numeric_limits<float>::infinity(),
+                    std::numeric_limits<float>::infinity()));
     case C128:
-      return LiteralUtil::CreateR0<complex128>(complex128(std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()));
+      return LiteralUtil::CreateR0<complex128>(
+          complex128(std::numeric_limits<double>::infinity(),
+                     std::numeric_limits<double>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no maximum value";
     case OPAQUE_TYPE:
