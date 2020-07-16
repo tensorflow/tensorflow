@@ -110,11 +110,11 @@ message GetWorkersResponse {
   repeated WorkerInfo workers = 1;
 }
 
-service MasterService {
-  // Registers a worker with the master.
+service DispatcherService {
+  // Registers a worker with the dispatcher.
   rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
 
-  // Updates the master with information about the worker's state.
+  // Updates the dispatcher with information about the worker's state.
   rpc WorkerUpdate(WorkerUpdateRequest) returns (WorkerUpdateResponse);
 
   // Registers a dataset with the server, or returns its id if it is already
@@ -134,6 +134,6 @@ service MasterService {
   // Reports a list of all tasks for a job.
   rpc GetTasks(GetTasksRequest) returns (GetTasksResponse);
 
-  // Reports a list of all workers registered with the master.
+  // Reports a list of all workers registered with the dispatcher.
   rpc GetWorkers(GetWorkersRequest) returns (GetWorkersResponse);
 }

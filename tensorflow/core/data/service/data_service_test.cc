@@ -19,9 +19,9 @@ limitations under the License.
 #include "grpcpp/security/credentials.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/data/compression_utils.h"
+#include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
+#include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
-#include "tensorflow/core/data/service/master.grpc.pb.h"
-#include "tensorflow/core/data/service/master.pb.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
@@ -66,9 +66,10 @@ TEST(DataService, ProcessingModeToString) {
 TEST(DataService, GetWorkers) {
   TestCluster cluster(1);
   TF_ASSERT_OK(cluster.Initialize());
-  DataServiceMasterClient master(cluster.MasterAddress(), kProtocol);
+  DataServiceDispatcherClient dispatcher(cluster.DispatcherAddress(),
+                                         kProtocol);
   std::vector<WorkerInfo> workers;
-  TF_EXPECT_OK(master.GetWorkers(&workers));
+  TF_EXPECT_OK(dispatcher.GetWorkers(&workers));
   EXPECT_EQ(1, workers.size());
 }
 
