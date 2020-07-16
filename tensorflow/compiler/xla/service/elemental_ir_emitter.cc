@@ -1293,17 +1293,33 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
                                             EmitExtractImag(lhs_value),
                                             EmitExtractImag(rhs_value), b_));
         case ComparisonDirection::kLt:
-          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, EmitExtractReal(lhs_value),
-                                         EmitExtractReal(rhs_value), b_);
+          return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, EmitExtractReal(lhs_value), EmitExtractReal(rhs_value), b_),
+            And(
+              llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, EmitExtractReal(lhs_value), EmitExtractReal(rhs_value), b_),
+              llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, EmitExtractImag(lhs_value), EmitExtractImag(rhs_value), b_)
+            )
+          );
         case ComparisonDirection::kGt:
-          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT, EmitExtractReal(lhs_value),
-                                         EmitExtractReal(rhs_value), b_);
+          return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT, EmitExtractReal(lhs_value), EmitExtractReal(rhs_value), b_),
+            And(
+              llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, EmitExtractReal(lhs_value), EmitExtractReal(rhs_value), b_),
+              llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT, EmitExtractImag(lhs_value), EmitExtractImag(rhs_value), b_)
+            )
+          );
         case ComparisonDirection::kLe:
-          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLE, EmitExtractReal(lhs_value),
-                                         EmitExtractReal(rhs_value), b_);
+          return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, EmitExtractReal(lhs_value), EmitExtractReal(rhs_value), b_),
+            And(
+              llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, EmitExtractReal(lhs_value), EmitExtractReal(rhs_value), b_),
+              llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLE, EmitExtractImag(lhs_value), EmitExtractImag(rhs_value), b_)
+            )
+          );
         case ComparisonDirection::kGe:
-          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGE, EmitExtractReal(lhs_value),
-                                         EmitExtractReal(rhs_value), b_);
+          return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT, EmitExtractReal(lhs_value), EmitExtractReal(rhs_value), b_),
+            And(
+              llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, EmitExtractReal(lhs_value), EmitExtractReal(rhs_value), b_),
+              llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGE, EmitExtractImag(lhs_value), EmitExtractImag(rhs_value), b_)
+            )
+          );
         default:
           return Unimplemented(
               "complex comparison '%s'",
