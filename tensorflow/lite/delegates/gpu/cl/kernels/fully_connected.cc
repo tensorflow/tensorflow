@@ -129,13 +129,13 @@ absl::Status FullyConnected::Compile(const CreationContext& creation_context) {
   return absl::OkStatus();
 }
 
-absl::Status FullyConnected::AddToQueue(CLCommandQueue* queue) {
+absl::Status FullyConnected::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return queue->DispatchImplicit(kernel_, {dst_[0]->Slices(), 1, 1},
-                                 work_group_size_);
+  return args_.SetObjectRef("dst_tensor", dst_[0]);
+}
+
+int3 FullyConnected::GetGridSize() const {
+  return int3(dst_[0]->Slices(), 1, 1);
 }
 
 absl::Status CreateFullyConnected(const CreationContext& creation_context,

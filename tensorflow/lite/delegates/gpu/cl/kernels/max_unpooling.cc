@@ -205,8 +205,7 @@ absl::Status MaxUnpooling::BindArguments() {
     RETURN_IF_ERROR(args_.SetInt("padding_z", padding_.z));
     RETURN_IF_ERROR(args_.SetInt("kernel_size_z", kernel_size_.z));
   }
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 MaxUnpooling::GetGridSize() const {
@@ -214,16 +213,6 @@ int3 MaxUnpooling::GetGridSize() const {
   const int grid_y = dst_[0]->Height() * dst_[0]->Depth();
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status MaxUnpooling::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status MaxUnpooling::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,

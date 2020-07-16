@@ -207,9 +207,7 @@ absl::Status ConvolutionTransposed3x3Thin::Compile(
 
 absl::Status ConvolutionTransposed3x3Thin::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetObjectRef("dst_tensor", dst_[0]);
 }
 
 int3 ConvolutionTransposed3x3Thin::GetGridSize() const {
@@ -217,17 +215,6 @@ int3 ConvolutionTransposed3x3Thin::GetGridSize() const {
   const int grid_y = src_[0]->Height();
   const int grid_z = 1;
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status ConvolutionTransposed3x3Thin::Tune(
-    const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status ConvolutionTransposed3x3Thin::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 bool IsConvolutionTransposed3x3ThinSupported(

@@ -125,6 +125,7 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       args_(std::move(operation.args_)),
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_),
+      grid_size_(operation.grid_size_),
       linked_operations_(std::move(operation.linked_operations_)) {}
 
 GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
@@ -135,6 +136,7 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     args_ = std::move(operation.args_);
     kernel_ = std::move(operation.kernel_);
     std::swap(work_group_size_, operation.work_group_size_);
+    std::swap(grid_size_, operation.grid_size_);
     linked_operations_ = std::move(operation.linked_operations_);
   }
   return *this;
@@ -162,10 +164,7 @@ ElementwiseOperation& ElementwiseOperation::operator=(
 absl::Status ElementwiseOperation::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
   RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArgs("", &args_));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return absl::OkStatus();
+  return SetArgs("", &args_);
 }
 
 int3 ElementwiseOperation::GetGridSize() const {
@@ -190,16 +189,6 @@ absl::Status ElementwiseOperation::Compile(
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
-}
-
-absl::Status ElementwiseOperation::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
-}
-
-absl::Status ElementwiseOperation::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
 absl::Status MergeOperations(

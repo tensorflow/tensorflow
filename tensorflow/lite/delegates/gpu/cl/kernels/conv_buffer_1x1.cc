@@ -293,6 +293,7 @@ ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
 
 absl::Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
   std::string code = GenerateConvBuffer1x1(definition_, conv_params_, &args_);
+  work_group_size_ = conv_params_.work_group_size;
   std::string element_wise_code;
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
@@ -310,9 +311,7 @@ absl::Status ConvBuffer1x1::BindArguments() {
     RETURN_IF_ERROR(args_.SetObjectRef("weights", src_[1]));
   }
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetObjectRef("dst_tensor", dst_[0]);
 }
 
 int3 ConvBuffer1x1::GetGridSize() const {
@@ -328,15 +327,11 @@ int3 ConvBuffer1x1::GetGridSize() const {
 }
 
 absl::Status ConvBuffer1x1::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                              &conv_params_.work_group_size);
-}
-
-absl::Status ConvBuffer1x1::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(),
-                                 conv_params_.work_group_size);
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+  RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
+                                       &conv_params_.work_group_size));
+  work_group_size_ = conv_params_.work_group_size;
+  return absl::OkStatus();
 }
 
 bool IsConvBuffer1x1Supported(const OperationDef& definition,

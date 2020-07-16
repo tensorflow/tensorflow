@@ -32,10 +32,9 @@ class ConcatZ : public GPUOperation {
  public:
   ConcatZ(const OperationDef& definition, const std::vector<int>& channels)
       : GPUOperation(definition), channels_(channels) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
   absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   ConcatZ(ConcatZ&& kernel);
@@ -44,9 +43,6 @@ class ConcatZ : public GPUOperation {
   ConcatZ& operator=(const ConcatZ&) = delete;
 
  private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
   std::vector<int> channels_;
 };
 

@@ -199,6 +199,12 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
 }
 
 float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsed(
+    const HloInstruction& instruction) const {
+  return std::max(GetInstructionElapsedDueToCompute(instruction),
+                  GetInstructionElapsedDueToMemory(instruction));
+}
+
+float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedInAlternateMemory(
     const HloInstruction& instruction,
     absl::optional<int64> operand_in_alternate_mem,
     bool output_in_alternate_mem) const {
@@ -258,12 +264,15 @@ std::string InstructionCountPrefetchIntervalPicker::ToNoCopyDebugString(
 CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
     const MemorySpaceAssignmentCostAnalysis& cost_analysis,
     float min_async_copy_to_overlap_ratio,
-    float max_async_copy_to_overlap_ratio)
+    float max_async_copy_to_overlap_ratio,
+    float preferred_async_copy_to_overlap_ratio)
     : while_nest_level_(
           cost_analysis.hlo_live_range().instruction_schedule().size(), 0),
       cost_analysis_(cost_analysis),
       min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
-      max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio) {
+      max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio),
+      preferred_async_copy_to_overlap_ratio_(
+          preferred_async_copy_to_overlap_ratio) {
   instruction_schedule_ =
       &cost_analysis_.hlo_live_range().instruction_schedule();
 
@@ -281,7 +290,7 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
         instruction->opcode() == HloOpcode::kConditional) {
       continue;
     }
-    float elapsed_time = cost_analysis_.cost_analysis().optimal_seconds(
+    float elapsed_time = cost_analysis_.GetInstructionElapsed(
         *instruction_and_logical_time.first);
     int64 logical_time = instruction_and_logical_time.second;
     if (logical_time >= instructions_elapsed_time.size()) {
@@ -355,52 +364,107 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
   async_copy_elapsed_ = cost_analysis_.GetAsyncCopyElapsed(shape);
   // Estimate the time we would save by having this op in alternate memory.
   float elapsed_time = cost_analysis_.GetInstructionElapsed(*use.instruction);
-  float elapsed_time_in_alternate_mem = cost_analysis_.GetInstructionElapsed(
-      *use.instruction, use.operand_number);
+  float elapsed_time_in_alternate_mem =
+      cost_analysis_.GetInstructionElapsedInAlternateMemory(
+          *use.instruction, use.operand_number,
+          /*output_in_alternate_mem=*/false);
   inst_elapsed_reduction_ = elapsed_time - elapsed_time_in_alternate_mem;
   end_logical_time_ = end_time;
-  earliest_start_logical_time_ = start_time;
-  int end_nest_level = while_nest_level_[end_time];
-  // Find the latest time we're allowed to start prefetching. If the start and
-  // end nest levels differe look for an earlier prefetch start.
-  for (current_logical_prefetch_time_ = end_time - 1;
-       current_logical_prefetch_time_ > start_time &&
-       (while_nest_level_[current_logical_prefetch_time_] != end_nest_level ||
-        min_async_copy_to_overlap_ratio_ * async_copy_elapsed_ >
-            GetLogicalIntervalElapsed(current_logical_prefetch_time_,
-                                      end_logical_time_) +
-                inst_elapsed_reduction_);
-       --current_logical_prefetch_time_) {
+  int end_nest_level = while_nest_level_[end_logical_time_];
+
+  // Find the latest time we're allowed to start prefetching.
+  float min_interval = min_async_copy_to_overlap_ratio_ * async_copy_elapsed_;
+  for (latest_prefetch_time_ = end_logical_time_ - 1;
+       latest_prefetch_time_ >= start_time &&
+       (while_nest_level_[latest_prefetch_time_] != end_nest_level ||
+        min_interval > GetLogicalIntervalElapsed(latest_prefetch_time_,
+                                                 end_logical_time_) +
+                           inst_elapsed_reduction_);
+       --latest_prefetch_time_) {
   }
+
+  // Find the earliest time we're allowed to start prefetching.
+  float max_interval = max_async_copy_to_overlap_ratio_ *
+                       max_overlap_multiplier_ * async_copy_elapsed_;
+  for (earliest_prefetch_time_ = start_time;
+       earliest_prefetch_time_ <= end_logical_time_ &&
+       (while_nest_level_[earliest_prefetch_time_] != end_nest_level ||
+        max_interval < GetLogicalIntervalElapsed(earliest_prefetch_time_,
+                                                 end_logical_time_));
+       ++earliest_prefetch_time_) {
+  }
+  if (earliest_prefetch_time_ > latest_prefetch_time_) {
+    // There is no available prefetch interval for the given start and end
+    // times. Set the iterators accordingly to ensure Done() returns true.
+    increasing_prefetch_time_iterator_ = earliest_prefetch_time_;
+    decreasing_prefetch_time_iterator_ = latest_prefetch_time_;
+    CHECK(Done());
+    return;
+  }
+
+  // Between the earliest and latest prefetch interval, find the interval
+  // closest to the preferred interval and start iterating from there.
+  int64 starting_prefetch_time = earliest_prefetch_time_;
+  float preferred_interval =
+      preferred_async_copy_to_overlap_ratio_ * async_copy_elapsed_;
+  float best_interval =
+      GetLogicalIntervalElapsed(earliest_prefetch_time_, end_logical_time_);
+  for (int64 prefetch_time = earliest_prefetch_time_ + 1;
+       prefetch_time <= latest_prefetch_time_; ++prefetch_time) {
+    float interval =
+        GetLogicalIntervalElapsed(prefetch_time, end_logical_time_);
+    if (while_nest_level_[prefetch_time] == end_nest_level &&
+        std::abs(preferred_interval - interval) <
+            std::abs(preferred_interval - best_interval)) {
+      best_interval = interval;
+      starting_prefetch_time = prefetch_time;
+    }
+  }
+  VLOG(4) << "Interval min/max/preferred = " << min_interval << " "
+          << max_interval << " " << preferred_interval
+          << " prefetch time earliest/latest/starting = "
+          << earliest_prefetch_time_ << " " << latest_prefetch_time_ << " "
+          << starting_prefetch_time;
+
+  increasing_prefetch_time_iterator_ = starting_prefetch_time;
+  decreasing_prefetch_time_iterator_ = starting_prefetch_time;
+  using_increasing_prefetch_time_iterator_ = true;
+  // Since both iterators start at the same position, call Next() once to
+  // advance one of the iterators.
+  Next();
 }
 
 int64 CostAnalysisPrefetchIntervalPicker::Next() {
   CHECK(!Done()) << "Prefetch interval picker's Next() is called even though "
                     "Done() is false";
-  int64 prefetch_time = current_logical_prefetch_time_;
-  if (!Done()) {
-    --current_logical_prefetch_time_;
+  if (using_increasing_prefetch_time_iterator_) {
+    int64 prefetch_time = increasing_prefetch_time_iterator_++;
+    while (increasing_prefetch_time_iterator_ <= latest_prefetch_time_ &&
+           while_nest_level_[increasing_prefetch_time_iterator_] !=
+               while_nest_level_[end_logical_time_]) {
+      ++increasing_prefetch_time_iterator_;
+    }
+    if (decreasing_prefetch_time_iterator_ >= earliest_prefetch_time_) {
+      using_increasing_prefetch_time_iterator_ = false;
+    }
+    return prefetch_time;
+  } else {
+    int64 prefetch_time = decreasing_prefetch_time_iterator_--;
+    while (decreasing_prefetch_time_iterator_ >= earliest_prefetch_time_ &&
+           while_nest_level_[decreasing_prefetch_time_iterator_] !=
+               while_nest_level_[end_logical_time_]) {
+      --decreasing_prefetch_time_iterator_;
+    }
+    if (increasing_prefetch_time_iterator_ <= latest_prefetch_time_) {
+      using_increasing_prefetch_time_iterator_ = true;
+    }
+    return prefetch_time;
   }
-  // If the prefetch start and end times differ, look for an earlier prefetch
-  // start.
-  while (!Done() && while_nest_level_[current_logical_prefetch_time_] !=
-                        while_nest_level_[end_logical_time_]) {
-    --current_logical_prefetch_time_;
-  }
-  return prefetch_time;
 }
 
 bool CostAnalysisPrefetchIntervalPicker::Done() const {
-  if (current_logical_prefetch_time_ < earliest_start_logical_time_) {
-    return true;
-  }
-  float logical_interval_elapsed = GetLogicalIntervalElapsed(
-      current_logical_prefetch_time_, end_logical_time_);
-  return (max_async_copy_to_overlap_ratio_ * max_overlap_multiplier_ *
-              async_copy_elapsed_ <
-          logical_interval_elapsed) ||
-         (min_async_copy_to_overlap_ratio_ * async_copy_elapsed_ >
-          logical_interval_elapsed + inst_elapsed_reduction_);
+  return increasing_prefetch_time_iterator_ > latest_prefetch_time_ &&
+         decreasing_prefetch_time_iterator_ < earliest_prefetch_time_;
 }
 
 void CostAnalysisPrefetchIntervalPicker::SetRetryNumber(int retry_number) {
@@ -440,13 +504,16 @@ float CostAnalysisPrefetchIntervalPicker::GetLogicalIntervalElapsed(
 }
 
 std::string CostAnalysisPrefetchIntervalPicker::ToDebugString() const {
+  int current_logical_prefetch_time = using_increasing_prefetch_time_iterator_
+                                          ? increasing_prefetch_time_iterator_
+                                          : decreasing_prefetch_time_iterator_;
   float logical_interval_elapsed = GetLogicalIntervalElapsed(
-      current_logical_prefetch_time_, end_logical_time_);
+      current_logical_prefetch_time, end_logical_time_);
   return absl::StrCat(
       "Async copy elapsed (s) = ", async_copy_elapsed_,
       ", inst elapsed reduction (s) = ", inst_elapsed_reduction_,
       ", logical interval elapsed (s) = ", logical_interval_elapsed,
-      ", interval = (", current_logical_prefetch_time_, ", ", end_logical_time_,
+      ", interval = (", current_logical_prefetch_time, ", ", end_logical_time_,
       ")");
 }
 

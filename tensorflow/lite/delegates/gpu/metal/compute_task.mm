@@ -39,22 +39,28 @@ using ::tflite::gpu::metal::UniformsFunction;
 using ::tflite::gpu::uint3;
 using ::tflite::gpu::ValueId;
 
-@implementation TFLComputeTask {
-  struct InputBuffer {
-    ValueId uid;
-    id<MTLBuffer> metalHandle;
-  };
-  struct OutputBuffer {
-    ValueId uid;
-    id<MTLBuffer> metalHandle;
-    OutputDimensions dimensionsFunction;
-    std::vector<ValueId> alias;
-  };
-  struct UniformBuffer {
-    std::vector<uint8_t> data;
-    UniformsFunction dataFunction;
-  };
+namespace {
 
+struct InputBuffer {
+  ValueId uid;
+  id<MTLBuffer> metalHandle;
+};
+
+struct OutputBuffer {
+  ValueId uid;
+  id<MTLBuffer> metalHandle;
+  OutputDimensions dimensionsFunction;
+  std::vector<ValueId> alias;
+};
+
+struct UniformBuffer {
+  std::vector<uint8_t> data;
+  UniformsFunction dataFunction;
+};
+
+}  // namespace
+
+@implementation TFLComputeTask {
   id<MTLComputePipelineState> _program;
   std::vector<InputBuffer> _inputBuffers;
   std::vector<OutputBuffer> _outputBuffers;

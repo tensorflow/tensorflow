@@ -120,8 +120,7 @@ class TpuCompileOpKernelCommon {
 
   // Sleeps for `kSleepSeconds` seconds to give time for TPUCompileOp to finish
   // before terminating peacefully.
-  static void ExitCountdown(OpKernelContext* ctx,
-                            std::shared_ptr<std::atomic<bool>> done);
+  static void ExitCountdown(Env* env, std::shared_ptr<std::atomic<bool>> done);
 
   // Converts the `dynamic_shapes` arguments to the compile operator into
   // TensorShapes.

@@ -227,8 +227,7 @@ absl::Status Resize::BindArguments() {
   RETURN_IF_ERROR(args_.SetFloat(
       "scale_factor_y",
       CalculateResizeScale(src_[0]->Height(), dst_[0]->Height(), attr_)));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 Resize::GetGridSize() const {
@@ -236,16 +235,6 @@ int3 Resize::GetGridSize() const {
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status Resize::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
-}
-
-absl::Status Resize::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
 Resize CreateResize(const OperationDef& definition,
@@ -292,8 +281,7 @@ absl::Status Resize3D::BindArguments() {
   RETURN_IF_ERROR(args_.SetFloat(
       "scale_factor_z",
       CalculateResizeScale(src_[0]->Depth(), dst_[0]->Depth(), attr_)));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 Resize3D::GetGridSize() const {
@@ -301,16 +289,6 @@ int3 Resize3D::GetGridSize() const {
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices() * dst_[0]->Depth();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status Resize3D::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
-}
-
-absl::Status Resize3D::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
 Resize3D CreateResize3D(const OperationDef& definition,

@@ -86,13 +86,7 @@ struct FillPhiloxRandomTask<Distribution, false> {
                   int64 start_group, int64 limit_group, Distribution dist) {
     const int kGroupSize = Distribution::kResultElementCount;
 
-    // Decide skip strides according to different kResultElementCount:
-    // * `1 = (4 + 3) / 4` for normal Distribution.
-    // * `1 = (2 + 3) / 4` for double/int64 Distribution.
-    // * `4 = (16 + 3) / 4` for vectorized float/bfloat16 Distribution.
-    const int skip_strides =
-        (kGroupSize + gen.kResultElementCount - 1) / gen.kResultElementCount;
-    gen.Skip(start_group * skip_strides);
+    gen.Skip(start_group);
     int64 offset = start_group * kGroupSize;
 
     // First fill all the full-size groups
@@ -172,8 +166,9 @@ void FillPhiloxRandom<CPUDevice, Distribution>::operator()(
 
   int64 total_group_count = (size + kGroupSize - 1) / kGroupSize;
 
-  const int kGroupCost = kGroupSize * (random::PhiloxRandom::kElementCost +
-                                       Distribution::kElementCost);
+  const int kGroupCost =
+      random::PhiloxRandom::kResultElementCount *
+      (random::PhiloxRandom::kElementCost + Distribution::kElementCost);
   Shard(worker_threads.num_threads, worker_threads.workers, total_group_count,
         kGroupCost,
         [&gen, data, size, dist](int64 start_group, int64 limit_group) {
