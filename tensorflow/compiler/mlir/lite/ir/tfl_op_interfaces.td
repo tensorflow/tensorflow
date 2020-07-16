@@ -19,7 +19,6 @@ limitations under the License.
 #define TFL_OP_INTERFACES
 
 include "mlir/IR/OpBase.td"
-include "tensorflow/compiler/mlir/lite/experimental/tfl_hardware_interfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TFL op interface for stateful operands.
@@ -36,22 +35,6 @@ def TFL_StatefulOp : OpInterface<"StatefulOpInterface"> {
     InterfaceMethod<
       [{Returns the indices of stateful operands.}],
       "std::vector<int>", "GetStatefulOperands", (ins)
-    >,
-  ];
-}
-
-//===----------------------------------------------------------------------===//
-// TFL op interface for output channel index.
-
-def TFL_ChannelDimIndexInterface : OpInterface<"ChannelDimIndexInterface"> {
-  let description = [{
-    Interface for defining the index of out channel index.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      [{Returns the dimension index of the output channels.}],
-      "int", "GetChannelDimIndex", (ins)
     >,
   ];
 }

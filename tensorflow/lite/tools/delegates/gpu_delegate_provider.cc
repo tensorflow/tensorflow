@@ -51,7 +51,7 @@ class GpuDelegateProvider : public DelegateProvider {
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -86,21 +86,21 @@ std::vector<Flag> GpuDelegateProvider::CreateFlags(ToolParams* params) const {
   return flags;
 }
 
-void GpuDelegateProvider::LogParams(const ToolParams& params) const {
-  TFLITE_LOG(INFO) << "Use gpu : [" << params.Get<bool>("use_gpu") << "]";
+void GpuDelegateProvider::LogParams(const ToolParams& params,
+                                    bool verbose) const {
+  LOG_TOOL_PARAM(params, bool, "use_gpu", "Use gpu", verbose);
 #if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
-  TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
-                   << params.Get<bool>("gpu_precision_loss_allowed") << "]";
-  TFLITE_LOG(INFO) << "Enable running quant models in gpu : ["
-                   << params.Get<bool>("gpu_experimental_enable_quant") << "]";
+  LOG_TOOL_PARAM(params, bool, "gpu_precision_loss_allowed",
+                 "Allow lower precision in gpu", verbose);
+  LOG_TOOL_PARAM(params, bool, "gpu_experimental_enable_quant",
+                 "Enable running quant models in gpu", verbose);
 #endif
 #if defined(__ANDROID__)
-  TFLITE_LOG(INFO) << "GPU backend : ["
-                   << params.Get<std::string>("gpu_backend") << "]";
+  LOG_TOOL_PARAM(params, std::string, "gpu_backend", "GPU backend", verbose);
 #endif
 #if defined(REAL_IPHONE_DEVICE)
-  TFLITE_LOG(INFO) << "GPU delegate wait type : ["
-                   << params.Get<std::string>("gpu_wait_type") << "]";
+  LOG_TOOL_PARAM(params, std::string, "gpu_wait_type", "GPU delegate wait type",
+                 verbose);
 #endif
 }
 

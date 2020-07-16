@@ -22,7 +22,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
@@ -84,18 +84,17 @@ class Discretization(Layer):
   def call(self, inputs):
     if ragged_tensor.is_ragged(inputs):
       integer_buckets = ragged_functional_ops.map_flat_values(
-          math_ops._bucketize, inputs, boundaries=self.bins)  # pylint: disable=protected-access
+          gen_math_ops.Bucketize, input=inputs, boundaries=self.bins)
       # Ragged map_flat_values doesn't touch the non-values tensors in the
       # ragged composite tensor. If this op is the only op a Keras model,
       # this can cause errors in Graph mode, so wrap the tensor in an identity.
       return array_ops.identity(integer_buckets)
     elif isinstance(inputs, sparse_tensor.SparseTensor):
-      integer_buckets = math_ops._bucketize(  # pylint: disable=protected-access
-          inputs.values,
-          boundaries=self.bins)
+      integer_buckets = gen_math_ops.Bucketize(
+          input=inputs.values, boundaries=self.bins)
       return sparse_tensor.SparseTensor(
           indices=array_ops.identity(inputs.indices),
           values=integer_buckets,
           dense_shape=array_ops.identity(inputs.dense_shape))
     else:
-      return math_ops._bucketize(inputs, boundaries=self.bins)  # pylint: disable=protected-access
+      return gen_math_ops.Bucketize(input=inputs, boundaries=self.bins)

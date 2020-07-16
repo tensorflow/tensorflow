@@ -341,7 +341,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
         math_ops.reduce_min,
         math_ops.reduce_mean,
     ]:
-      for axis in ([1], None, [0, 2]):
+      for axis in ([1], None, [0, 2], constant_op.constant([1], dtypes.int64)):
         for keepdims in (True, False):
 
           # pylint: disable=cell-var-from-loop
@@ -356,7 +356,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
   def test_boolean_reduction(self):
     x = random_ops.random_uniform([2, 3, 4, 5]) > 0.5
     for op in [math_ops.reduce_any, math_ops.reduce_all]:
-      for axis in ([1], None, [0, 2]):
+      for axis in ([1], None, [0, 2], constant_op.constant([1], dtypes.int64)):
         for keepdims in (True, False):
 
           # pylint: disable=cell-var-from-loop
@@ -402,7 +402,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
   def test_cum_sum(self):
     x = random_ops.random_uniform([2, 3, 4, 5])
-    for axis in (1, -2):
+    for axis in (1, -2, constant_op.constant(1, dtypes.int64)):
       for exclusive in (True, False):
         for reverse in (True, False):
 
@@ -418,7 +418,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
   def test_cum_prod(self):
     x = random_ops.random_uniform([2, 3, 4, 5])
-    for axis in (1, -2):
+    for axis in (1, -2, constant_op.constant(1, dtypes.int64)):
       for exclusive in (True, False):
         for reverse in (True, False):
 

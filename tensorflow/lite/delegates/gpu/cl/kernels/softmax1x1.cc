@@ -100,12 +100,10 @@ std::string GetSoftmaxKernelCode(const OperationDef& op_def, Arguments* args) {
 }
 }  // namespace
 
-Softmax1x1::Softmax1x1(Softmax1x1&& kernel)
-    : GPUOperation(std::move(kernel)), kernel_(std::move(kernel.kernel_)) {}
+Softmax1x1::Softmax1x1(Softmax1x1&& kernel) : GPUOperation(std::move(kernel)) {}
 
 Softmax1x1& Softmax1x1::operator=(Softmax1x1&& kernel) {
   if (this != &kernel) {
-    kernel_ = std::move(kernel.kernel_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;
@@ -114,6 +112,7 @@ Softmax1x1& Softmax1x1::operator=(Softmax1x1&& kernel) {
 absl::Status Softmax1x1::Compile(const CreationContext& creation_context) {
   std::string code = GetSoftmaxKernelCode(definition_, &args_);
   std::string element_wise_code;
+  work_group_size_ = int3(32, 1, 1);
   RETURN_IF_ERROR(
       MergeOperations(linked_operations_, &args_, &element_wise_code));
   RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
@@ -124,7 +123,7 @@ absl::Status Softmax1x1::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-absl::Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
+absl::Status Softmax1x1::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
   RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   float4 mask = GetMaskForLastPlane(src_[0]->Channels());
@@ -134,11 +133,10 @@ absl::Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(args_.SetFloat("mask_w", mask.w));
   RETURN_IF_ERROR(
       args_.SetInt("slices_x32", DivideRoundUp(src_[0]->Slices(), 32)));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return queue->DispatchImplicit(kernel_, {32, dst_[0]->Batch(), 1},
-                                 {32, 1, 1});
+  return absl::OkStatus();
 }
+
+int3 Softmax1x1::GetGridSize() const { return int3(32, dst_[0]->Batch(), 1); }
 
 Softmax1x1 CreateSoftmax1x1(const OperationDef& definition) {
   return Softmax1x1(definition);

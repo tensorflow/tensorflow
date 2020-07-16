@@ -1,24 +1,3 @@
-/*******************************************************************************
- * Copyright (c) 2020 Cadence Design Systems, Inc.
- *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to use this Software with Cadence processor cores only and
- * not with any other processors and platforms, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- ******************************************************************************/
-
 /* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xtensa_tf_micro_common.h"
 
 namespace tflite {
 namespace ops {
@@ -52,11 +30,79 @@ namespace activations {
 namespace {
 
 struct OpData {
-  int32_t input_multiplier;
-  int32_t input_left_shift;
-  int32_t diff_min;
-  int scratch_tensor_index;
+  uint16_t* exp_lut;
 };
+
+// Number of unique int8 and int16 values.  Used in exponent lookup table
+// conputation.
+constexpr int kInt8Range =
+    std::numeric_limits<int8_t>::max() - std::numeric_limits<int8>::min() + 1;
+constexpr int kInt16Range =
+    std::numeric_limits<int16_t>::max() - std::numeric_limits<int16>::min() + 1;
+// Each 16-bit precalculated exponent is expressed as a Q0.16 fixedpoint
+// value. We special-case e^0 since 1.0 requires 1 integer bit to
+// express.
+constexpr int kExpFractionalBits = 16;
+// e^0 expressed as Q1.15 exceeds the int16_t range, so it must be handled
+// specially.
+constexpr int kMaxExponentValue = (1 << kExpFractionalBits);
+
+// Quantized softmax with int8 input and int16 output.
+// Passing OpData by value does not have much savings in this op, but following
+// that as a best practice, at least for the xtensa kernels. See b/155656675 for
+// more details.
+TfLiteStatus Softmax(OpData op_data, const RuntimeShape& input_shape,
+                     const int8_t* input_data, const RuntimeShape& output_shape,
+                     int16_t* output_data) {
+  // The last dimension is depth.  Outer size is the the total input size
+  // divided by depth.
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+
+  for (int i = 0; i < outer_size; ++i) {
+    int8_t max_in_row = std::numeric_limits<int8_t>::min();
+    for (int c = 0; c < depth; ++c) {
+      max_in_row = std::max(max_in_row, input_data[i * depth + c]);
+    }
+
+    uint32_t sum_of_exps = 0;
+    for (int c = 0; c < depth; ++c) {
+      TFLITE_DCHECK(max_in_row >= input_data[i * depth + c]);
+      uint8_t input_diff = max_in_row - input_data[i * depth + c];
+
+      sum_of_exps +=
+          input_diff == 0 ? kMaxExponentValue : op_data.exp_lut[input_diff];
+    }
+
+    // Ensure we cannnot overflow the full_range_output value.  We need to
+    // guarantee that kInt16Range * max(input_data) / sum_of_exps < kInt16Range.
+    TFLITE_DCHECK(sum_of_exps >= kMaxExponentValue);
+
+    for (int c = 0; c < depth; ++c) {
+      uint8_t input_diff = max_in_row - input_data[i * depth + c];
+      // Special case for diff == 0
+      uint32_t unscaled_output =
+          input_diff == 0 ? kMaxExponentValue : op_data.exp_lut[input_diff];
+      int64_t scaled_output = static_cast<int64_t>(unscaled_output) *
+                              static_cast<int64_t>(kInt16Range);
+      int32_t full_range_output =
+          scaled_output / sum_of_exps + std::numeric_limits<int16_t>::min();
+      // Round up if remainder exceeds half of the divider value.
+      uint32_t remainder = scaled_output % sum_of_exps;
+      if (remainder * 2 >= sum_of_exps) {
+        full_range_output++;
+      }
+      output_data[i * depth + c] = static_cast<int16_t>(std::max(
+          std::min(full_range_output,
+                   static_cast<int32>(std::numeric_limits<int16_t>::max())),
+          static_cast<int32_t>(std::numeric_limits<int16_t>::min())));
+    }
+  }
+  return kTfLiteOk;
+}
 
 }  // namespace
 
@@ -81,17 +127,21 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
       }
     }
 
-    static const int kScaledDiffIntegerBits = 5;
+    // Precompute e^(-x * input_scale * beta) for every possible int8 input.
+    // This computation is used for every iteration of Softmax.  We must compute
+    // using pre-scaled inputs to avoid introducing additional error, while
+    // restricting our input range to the int8 range. This is valid since beta
+    // and input scale are constant for a given op in the graph. Skip index 0
+    // since that is a special case which requires 1 integer bit instead of 0.
+    for (int i = 1; i <= kInt8Range; i++) {
+      float scaled_input = i * input->params.scale;
+      float exp_value =
+          std::exp((-scaled_input) * static_cast<float>(params->beta));
 
-    int input_left_shift;
-    tflite::PreprocessSoftmaxScaling(
-        static_cast<double>(params->beta),
-        static_cast<double>(input->params.scale), kScaledDiffIntegerBits,
-        &op_data->input_multiplier, &input_left_shift);
-    op_data->input_left_shift = input_left_shift;
-    op_data->diff_min =
-        -1.0 * tflite::CalculateInputRadius(kScaledDiffIntegerBits,
-                                            op_data->input_left_shift);
+      float exponent_scaled =
+          std::round(exp_value * static_cast<float>(1 << kExpFractionalBits));
+      op_data->exp_lut[i] = static_cast<uint16_t>(exponent_scaled);
+    }
   }
   return kTfLiteOk;
 }
@@ -118,21 +168,14 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* op_data = static_cast<OpData*>(node->user_data);
 
-  const RuntimeShape& input_shape = GetTensorShape(input);
-  const RuntimeShape& output_shape = GetTensorShape(output);
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
-  int scratch_size =
-      xa_nn_get_softmax_scratch_size(PREC_SYM8S, PREC_SYM8S, depth);
-
-  const TfLiteStatus scratch_status = context->RequestScratchBufferInArena(
-      context, scratch_size, &(op_data->scratch_tensor_index));
-  TF_LITE_ENSURE_OK(context, scratch_status);
   // Allocate an array to precompute exponents over all int8 inputs, applying
   // the scale and beta before calculating exp. It is mandatory to apply beta
   // and scale here, since each softmax op may have different beta and scale
   // values. Beta and scale will remain constant for a given softmax op.
+  void* allocated_ptr;
+  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
+      context, kInt8Range * sizeof(int16_t), &allocated_ptr));
+  op_data->exp_lut = static_cast<uint16_t*>(allocated_ptr);
 
   TF_LITE_ENSURE_STATUS(
       CalculateSoftmaxOpData(context, input, output, params, op_data));
@@ -147,28 +190,9 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
 
   if (input->type == kTfLiteInt8 && output->type == kTfLiteInt16) {
-    const RuntimeShape& input_shape = GetTensorShape(input);
-    const int8_t* input_data = GetTensorData<int8_t>(input);
-    const RuntimeShape& output_shape = GetTensorShape(output);
-    int16* output_data = GetTensorData<int16>(output);
-    const int trailing_dim = input_shape.DimensionsCount() - 1;
-    const int outer_size =
-        MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-    const int depth =
-        MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
-
-    void* p_scratch = static_cast<void*>(
-        context->GetScratchBuffer(context, op_data->scratch_tensor_index));
-    TFLITE_DCHECK(p_scratch != nullptr);
-
-    for (int i = 0; i < outer_size; ++i) {
-      int err = xa_nn_vec_softmax_asym8s_16(
-          &output_data[i * depth], &input_data[i * depth], op_data->diff_min,
-          op_data->input_left_shift, op_data->input_multiplier, depth,
-          p_scratch);
-      CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_vec_softmax_asym8s_16 failed");
-    }
-    return kTfLiteOk;
+    return Softmax(*op_data, GetTensorShape(input),
+                   GetTensorData<int8_t>(input), GetTensorShape(output),
+                   GetTensorData<int16_t>(output));
   } else {
     TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
                        TfLiteTypeGetName(input->type), input->type);
@@ -177,16 +201,15 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }
 }  // namespace activations
 
-TfLiteRegistration* Register_SOFTMAX() {
-  static TfLiteRegistration r = {/*init=*/activations::SoftmaxInit,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/activations::SoftmaxPrepare,
-                                 /*invoke=*/activations::SoftmaxEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_SOFTMAX() {
+  return {/*init=*/activations::SoftmaxInit,
+          /*free=*/nullptr,
+          /*prepare=*/activations::SoftmaxPrepare,
+          /*invoke=*/activations::SoftmaxEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

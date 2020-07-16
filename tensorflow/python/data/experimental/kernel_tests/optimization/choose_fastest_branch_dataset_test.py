@@ -150,8 +150,8 @@ class ChooseFastestBranchDatasetTest(test_base.DatasetTestBase,
     expected_error_msg = ("`num_elements_per_branch` must be divisible by "
                           "`ratio_denominator`")
     if context.executing_eagerly():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   expected_error_msg):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  expected_error_msg):
         make_dataset()
     else:
       choose_fastest = make_dataset()

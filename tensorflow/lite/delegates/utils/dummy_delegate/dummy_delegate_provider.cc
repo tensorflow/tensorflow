@@ -29,7 +29,7 @@ class DummyDelegateProvider : public DelegateProvider {
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -43,9 +43,10 @@ std::vector<Flag> DummyDelegateProvider::CreateFlags(ToolParams* params) const {
   return flags;
 }
 
-void DummyDelegateProvider::LogParams(const ToolParams& params) const {
-  TFLITE_LOG(INFO) << "Use dummy test delegate : ["
-                   << params.Get<bool>("use_dummy_delegate") << "]";
+void DummyDelegateProvider::LogParams(const ToolParams& params,
+                                      bool verbose) const {
+  LOG_TOOL_PARAM(params, bool, "use_dummy_delegate", "Use dummy test delegate",
+                 verbose);
 }
 
 TfLiteDelegatePtr DummyDelegateProvider::CreateTfLiteDelegate(

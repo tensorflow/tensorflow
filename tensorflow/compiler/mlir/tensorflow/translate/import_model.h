@@ -65,7 +65,8 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
 stream_executor::port::StatusOr<mlir::OwningModuleRef>
 ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
                           absl::Span<std::string> exported_names,
-                          mlir::MLIRContext* context);
+                          mlir::MLIRContext* context,
+                          bool upgrade_legacy = false);
 
 // Serialize a MLIR module to a string.
 std::string MlirModuleToString(mlir::ModuleOp module,

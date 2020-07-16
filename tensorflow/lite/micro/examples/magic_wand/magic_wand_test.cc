@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/magic_wand/magic_wand_model_data.h"
 #include "tensorflow/lite/micro/examples/magic_wand/ring_micro_features_data.h"
 #include "tensorflow/lite/micro/examples/magic_wand/slope_micro_features_data.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"

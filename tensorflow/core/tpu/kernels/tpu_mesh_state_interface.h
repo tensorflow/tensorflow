@@ -63,8 +63,8 @@ class TpuMeshStateInterface : public tensorflow::ResourceBase {
     // Static device assignment enables XLA to perform certain optimization when
     // all cores are used in the replicated computation.
     return metadata.num_cores_per_replica() * metadata.num_replicas() ==
-           CompileApiFn()->TpuTopology_AvailableCoreCountFn(mesh_state_,
-                                                            tpu_core_type);
+           UtilApiFn()->TpuTopology_AvailableCoreCountFn(mesh_state_,
+                                                         tpu_core_type);
   }
 
   string DebugString() const override { return "TpuMeshStateInterface"; }

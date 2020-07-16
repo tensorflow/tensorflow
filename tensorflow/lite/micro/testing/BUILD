@@ -68,7 +68,10 @@ py_binary(
     srcs = ["generate_test_models.py"],
     python_version = "PY3",
     srcs_version = "PY3ONLY",
-    tags = ["noubsan"],  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
+    tags = [
+        "nomicro_static",  # TF dep incompatible w/ TF_LITE_STATIC_MEMORY.
+        "noubsan",  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",

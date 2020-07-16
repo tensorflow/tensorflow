@@ -49,6 +49,10 @@ class GraphTensor : public TracingTensorHandle {
   explicit GraphTensor(TF_Output output)
       : TracingTensorHandle(kGraph), output_(output) {}
   void Release() override { delete this; }
+
+  tensorflow::DataType DataType() const override {
+    return static_cast<tensorflow::DataType>(TF_OperationOutputType(output_));
+  }
   TF_Output output_;
 
   // For LLVM style RTTI.
@@ -102,9 +106,18 @@ class GraphOperation : public TracingOperation {
     TF_AddInput(op_.get(), t->output_);
     return Status::OK();
   }
-  Status AddInputList(absl::Span<AbstractTensorHandle*> inputs) override {
-    return tensorflow::errors::Unimplemented(
-        "AddInputList has not been implemented yet.");
+  Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override {
+    std::vector<TF_Output> tf_outputs(inputs.size());
+    for (int i = 0; i < inputs.size(); i++) {
+      GraphTensor* t = dyn_cast<GraphTensor>(inputs[i]);
+      if (!t) {
+        return tensorflow::errors::InvalidArgument(
+            "Unable to cast input to GraphTensor");
+      }
+      tf_outputs[i] = t->output_;
+    }
+    TF_AddInputList(op_.get(), tf_outputs.data(), tf_outputs.size());
+    return Status::OK();
   }
   Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                  int* num_retvals) override {
@@ -260,7 +273,7 @@ class GraphContext : public TracingContext {
   }
 
   Status AddParameter(DataType dtype, TracingTensorHandle** output) override {
-    auto operation = CreateOperation();
+    TracingOperationPtr operation(CreateOperation());
     TF_RETURN_IF_ERROR(operation->Reset("Placeholder", nullptr));
     TF_RETURN_IF_ERROR(
         operation->SetOpName(absl::StrCat("_input_", inputs_.size()).c_str()));

@@ -1020,6 +1020,17 @@ TEST_F(ReduceShapeInferenceTest, ErrorElementTypeVsApplyType) {
               HasSubstr("0-th parameter shape differs"));
 }
 
+TEST_F(ReduceShapeInferenceTest, ReduceWithRepeatedReduceDimension) {
+  ProgramShape to_apply = ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {5, 3});
+  auto inferred_status = ShapeInference::InferReduceShape(
+      {&arg_shape, &f32_},
+      /*dimensions_to_reduce=*/{0, 0}, to_apply);
+  EXPECT_FALSE(inferred_status.ok());
+  EXPECT_THAT(inferred_status.status().error_message(),
+              HasSubstr("Duplicate reduction dimension: 0"));
+}
+
 TEST_F(ShapeInferenceTest, InferSliceShapeRank2) {
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64});
   auto inferred_status =

@@ -166,7 +166,7 @@ class SquareLinearOperatorKroneckerTest(
     self.assertFalse(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
 
-    with self.assertRaisesRegexp(ValueError, "always non-singular"):
+    with self.assertRaisesRegex(ValueError, "always non-singular"):
       kronecker.LinearOperatorKronecker(
           [operator_1, operator_2], is_non_singular=False)
 
@@ -184,11 +184,11 @@ class SquareLinearOperatorKroneckerTest(
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3)),
         linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3).astype(np.float32))
     ]
-    with self.assertRaisesRegexp(TypeError, "same dtype"):
+    with self.assertRaisesRegex(TypeError, "same dtype"):
       kronecker.LinearOperatorKronecker(operators)
 
   def test_empty_or_one_operators_raises(self):
-    with self.assertRaisesRegexp(ValueError, ">=1 operators"):
+    with self.assertRaisesRegex(ValueError, ">=1 operators"):
       kronecker.LinearOperatorKronecker([])
 
   def test_kronecker_adjoint_type(self):

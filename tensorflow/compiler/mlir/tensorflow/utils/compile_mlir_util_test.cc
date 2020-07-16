@@ -184,7 +184,7 @@ TEST(CompileSerializedMlirToXlaHloTest, CompileTimeConstantFoldedSuccess) {
   // only be lowered when tf.Shape is folded into a constant.
   constexpr char mlir_module[] = R"(
     module attributes {tf.versions = {producer = 179 : i32}} {
-      func @main(%arg0: tensor<10x19xf32>, %arg1: tensor<19x10xf32> {xla_hlo.is_same_data_across_replicas}) -> tensor<10x19xf32> {
+      func @main(%arg0: tensor<10x19xf32>, %arg1: tensor<19x10xf32> {mhlo.is_same_data_across_replicas}) -> tensor<10x19xf32> {
         %0 = "tf.Shape"(%arg0) : (tensor<10x19xf32>) -> tensor<2xi64>
         %1 = "tf.Reshape"(%arg1, %0) : (tensor<19x10xf32>, tensor<2xi64>) -> tensor<10x19xf32>
         return %1 : tensor<10x19xf32>
@@ -344,7 +344,7 @@ ENTRY %main.4 (arg_tuple.1: ()) -> (s32[0], s32[0]) {
 TEST(CompileSerializedMlirToXlaHloTest, ArgumentSharding) {
   constexpr char mlir_module[] = R"(
 module attributes {tf.versions = {producer = 179 : i32}} {
-  func @main(%arg0: tensor<128x10xf32> {xla_hlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"}, %arg1: tensor<10x1024xf32> {xla_hlo.sharding = "\08\01\1A\01\01\22\01\00"}, %arg2: tensor<128x1024xf32> {xla_hlo.sharding = ""}) {
+  func @main(%arg0: tensor<128x10xf32> {mhlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"}, %arg1: tensor<10x1024xf32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, %arg2: tensor<128x1024xf32> {mhlo.sharding = ""}) {
     return
   }
 }
@@ -383,7 +383,7 @@ ENTRY %main.6 (arg_tuple.1: (f32[128,10], f32[10,1024], f32[128,1024])) -> () {
 TEST(CompileSerializedMlirToXlaHloTest, BadArgumentSharding) {
   constexpr char mlir_module[] = R"(
 module attributes {tf.versions = {producer = 179 : i32}} {
-  func @main(%arg0: tensor<128x10xf32> {xla_hlo.sharding = "bad_sharding"}) {
+  func @main(%arg0: tensor<128x10xf32> {mhlo.sharding = "bad_sharding"}) {
     return
   }
 }
@@ -403,7 +403,7 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 TEST(CompileSerializedMlirToXlaHloTest, ResultSharding) {
   constexpr char mlir_module[] = R"(
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 351 : i32}} {
-  func @main(%arg0: tensor<128x10xf32>, %arg1: tensor<10x1024xf32>, %arg2: tensor<128x1024xf32>) -> (tensor<128x10xf32> {xla_hlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"}, tensor<10x1024xf32> {xla_hlo.sharding = "\08\01\1A\01\01\22\01\00"}, tensor<128x1024xf32> {xla_hlo.sharding = ""}) {
+  func @main(%arg0: tensor<128x10xf32>, %arg1: tensor<10x1024xf32>, %arg2: tensor<128x1024xf32>) -> (tensor<128x10xf32> {mhlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"}, tensor<10x1024xf32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, tensor<128x1024xf32> {mhlo.sharding = ""}) {
     return %arg0, %arg1, %arg2 : tensor<128x10xf32>, tensor<10x1024xf32>, tensor<128x1024xf32>
   }
 }

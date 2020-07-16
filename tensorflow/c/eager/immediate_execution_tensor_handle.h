@@ -33,8 +33,6 @@ namespace tensorflow {
 // is needed a static_cast can be applied.
 class ImmediateExecutionTensorHandle : public AbstractTensorHandle {
  public:
-  // Returns tensor dtype.
-  virtual tensorflow::DataType DataType() const = 0;
   // Returns number of dimensions.
   virtual Status NumDims(int* num_dims) const = 0;
   // Returns number of elements across all dimensions.

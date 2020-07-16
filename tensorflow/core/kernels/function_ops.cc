@@ -89,6 +89,11 @@ REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceArgOp).Device(DEVICE_CPU), ArgOp);
 REGISTER_SYSTEM_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_CPU), RetvalOp);
 REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceRetOp).Device(DEVICE_CPU), RetvalOp);
 
+// TPU ops are only registered when they are required as part of the larger
+// TPU runtime, and does not need to be registered when selective registration
+// is turned on.
+REGISTER_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_TPU_SYSTEM), RetvalOp);
+
 #if TENSORFLOW_USE_SYCL
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \

@@ -277,6 +277,10 @@ tf_module {
     argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "silu"
+    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "softmax"
     argspec: "args=[\'logits\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }

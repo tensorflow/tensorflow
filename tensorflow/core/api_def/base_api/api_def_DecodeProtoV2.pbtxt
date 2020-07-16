@@ -1,6 +1,5 @@
 op {
   graph_op_name: "DecodeProtoV2"
-  visibility: HIDDEN
   in_arg {
     name: "bytes"
     description: <<END

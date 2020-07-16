@@ -756,7 +756,7 @@ class PoolingTest(test.TestCase):
                                          use_gpu=False):
     with self.cached_session(use_gpu=use_gpu):
       t = constant_op.constant(1.0, shape=in_size)
-      with self.assertRaisesRegexp(errors_impl.UnimplementedError, error_msg):
+      with self.assertRaisesRegex(errors_impl.UnimplementedError, error_msg):
         t = nn_ops.max_pool(
             t, ksize=ksize, strides=strides, padding="SAME").eval()
 
@@ -1931,7 +1931,7 @@ class PoolingTest(test.TestCase):
       for pool_func in pool_funcs:
         if pool_func != nn_ops.max_pool:
           # Illegal strides.
-          with self.assertRaisesRegexp(
+          with self.assertRaisesRegex(
               errors_impl.UnimplementedError,
               "Pooling is not yet supported on the batch"):
             sess.run(
@@ -1942,14 +1942,14 @@ class PoolingTest(test.TestCase):
                     padding="SAME"))
 
         # Filter too large.
-        with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+        with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           sess.run(
               pool_func(
                   array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
                   ksize=[1, 20, 21, 1],
                   strides=[1, 1, 1, 1],
                   padding="VALID"))
-        with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
+        with self.assertRaisesRegex(ValueError, "Negative dimension size"):
           pool_func(
               array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
               ksize=[1, 21, 20, 1],

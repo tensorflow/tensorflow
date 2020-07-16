@@ -73,42 +73,42 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
   def test_policy_errors(self):
     # Test passing invalid strings
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Cannot convert value abc to a mixed precision Policy.'):
       mp_policy.Policy('abc')
 
     # Test passing a DType
-    with self.assertRaisesRegexp(TypeError,
-                                 "'name' must be a string, not a DType. "
-                                 "Instead, pass DType.name. Got: float16"):
+    with self.assertRaisesRegex(
+        TypeError, "'name' must be a string, not a DType. "
+        'Instead, pass DType.name. Got: float16'):
       mp_policy.Policy(dtypes.float16)
 
     # Test passing a non-DType invalid type
-    with self.assertRaisesRegexp(TypeError,
-                                 "'name' must be a string, but got: 5"):
+    with self.assertRaisesRegex(TypeError,
+                                "'name' must be a string, but got: 5"):
       mp_policy.Policy(5)
 
     # Test passing a now-removed policy ending in float32_vars
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Policies ending in \'_float32_vars\' have been removed '
-                    'from TensorFlow. Please use the \'mixed_float16\' or '
-                    '\'mixed_bfloat16\' policy instead. Got policy name: '
-                    '\'infer_float32_vars\''):
+        'from TensorFlow. Please use the \'mixed_float16\' or '
+        '\'mixed_bfloat16\' policy instead. Got policy name: '
+        '\'infer_float32_vars\''):
       mp_policy.Policy('infer_float32_vars')
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Policies ending in \'_float32_vars\' have been removed '
-                    'from TensorFlow. Please use the \'mixed_float16\' policy '
-                    'instead. Got policy name: \'float16_with_float32_vars\''):
+        'from TensorFlow. Please use the \'mixed_float16\' policy '
+        'instead. Got policy name: \'float16_with_float32_vars\''):
       mp_policy.Policy('float16_with_float32_vars')
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Policies ending in \'_float32_vars\' have been removed '
-                    'from TensorFlow. Please use the \'mixed_bfloat16\' policy '
-                    'instead. Got policy name: \'bfloat16_with_float32_vars\''):
+        'from TensorFlow. Please use the \'mixed_bfloat16\' policy '
+        'instead. Got policy name: \'bfloat16_with_float32_vars\''):
       mp_policy.Policy('bfloat16_with_float32_vars')
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'Policies ending in \'_float32_vars\' have been removed '
-                    'from TensorFlow. Got policy name: '
-                    '\'int8_with_float32_vars\''):
+        'from TensorFlow. Got policy name: '
+        '\'int8_with_float32_vars\''):
       mp_policy.Policy('int8_with_float32_vars')
 
   @testing_utils.enable_v2_dtype_behavior
@@ -181,7 +181,7 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
       if config_module.list_physical_devices('GPU'):
         mock_warn.assert_not_called()
       else:
-        self.assertRegexpMatches(
+        self.assertRegex(
             mock_warn.call_args[0][0],
             r'Mixed precision compatibility check \(mixed_float16\): WARNING.*')
 
@@ -292,9 +292,9 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
     try:
       mixed_precision.enable_mixed_precision_graph_rewrite(
           gradient_descent.SGD(1.))
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'cannot be set to "mixed_float16", .* the mixed '
-                      'precision graph rewrite has already been enabled'):
+          'precision graph rewrite has already been enabled'):
         mp_policy.set_policy('mixed_float16')
       with mp_policy.policy_scope('float64'):
         pass  # Non-mixed policies are allowed
@@ -304,19 +304,16 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
   @testing_utils.disable_v2_dtype_behavior
   def test_v1_dtype_behavior(self):
     # Setting global policies are not allowed with V1 dtype behavior
-    with self.assertRaisesRegexp(
-        ValueError,
-        'global policy can only be set in TensorFlow 2'):
+    with self.assertRaisesRegex(
+        ValueError, 'global policy can only be set in TensorFlow 2'):
       with mp_policy.policy_scope(mp_policy.Policy('_infer')):
         pass
-    with self.assertRaisesRegexp(
-        ValueError,
-        'global policy can only be set in TensorFlow 2'):
+    with self.assertRaisesRegex(
+        ValueError, 'global policy can only be set in TensorFlow 2'):
       with mp_policy.policy_scope(mp_policy.Policy('float32')):
         pass
-    with self.assertRaisesRegexp(
-        ValueError,
-        'global policy can only be set in TensorFlow 2'):
+    with self.assertRaisesRegex(
+        ValueError, 'global policy can only be set in TensorFlow 2'):
       with mp_policy.policy_scope(mp_policy.Policy('mixed_float16')):
         pass
 

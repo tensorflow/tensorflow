@@ -1246,8 +1246,8 @@ class DebugAnalyzer(object):
     parsed = self._arg_parsers["list_source"].parse_args(args)
     source_list = source_utils.list_source_files_against_dump(
         self._debug_dump,
-        path_regex_whitelist=parsed.path_filter,
-        node_name_regex_whitelist=parsed.node_name_filter)
+        path_regex_allowlist=parsed.path_filter,
+        node_name_regex_allowlist=parsed.node_name_filter)
 
     top_lines = [
         RL("List of source files that created nodes in this run", "bold")]

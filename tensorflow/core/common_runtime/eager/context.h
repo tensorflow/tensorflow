@@ -222,24 +222,18 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   // Select an appropriate device for an operation.
   //
-  // Given the preferred device for the operation, and the list of devices the
-  // operation supports, finds the best suitable device for the operation in
-  // this context.
+  // Given the preferred device for the operation, and the node_def, finds the
+  // best suitable device for the operation in this context.
   //
   // The preferred device is specified as a `ParsedName` containing the elements
   // (details) that the resulting device should match. If there are no such
   // devices, and the context currently allows soft device placement, a suitable
   // device not matching `preferred` will be chosen.
   //
-  // The `dtype` parameter specifies the operation's result data type, if
-  // known. Setting it to DT_INVALID will make this method not use the data type
-  // for its decisions.
-  //
   // The chosen device is stored in the `device` argument. The argument is not
   // modified unless this method returns `Status::OK()`.
   Status SelectDevice(DeviceNameUtils::ParsedName preferred,
-                      const PrioritizedDeviceTypeVector& supported,
-                      const DataType dtype, Device** device) const;
+                      const NodeDef& ndef, Device** out) const;
 
   // Sets the implicit copy policy for the current thread.
   void SetThreadLocalMirroringPolicy(ContextMirroringPolicy);
@@ -377,8 +371,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // class/struct.
   //
   // Enables the eager context to communicate with remote devices. When
-  // initializing with this method, this context will be the master context,
-  // which will kill all its slaves in shutdown.
+  // initializing with this method, this context will be the primary context,
+  // which will kill all its remote contexts in shutdown.
   //
   // - server: A ServerInterface that exports the tensorflow.WorkerService.
   // Note that this class expects the server to already have been started.
