@@ -660,7 +660,7 @@ Following the Steps to run micro speech example at HIMAX WE1 EVB platform.
 After these steps, press reset button on the HIMAX WE1 EVB, you will see application output in the serial
 terminal and lighting LED.
 
-![Animation on Himax WE1 EVB](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide/images/tflm_example_micro_speech_int8_led.gif)
+![Animation on Himax WE1 EVB](https://raw.githubusercontent.com/HimaxWiseEyePlus/bsp_tflu/master/HIMAX_WE1_EVB_user_guide/images/tflm_example_micro_speech_int8_led.gif)
 
 ## Run on macOS
 
