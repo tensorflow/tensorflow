@@ -1368,13 +1368,13 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
 
   def testFlipImageUnknownShape(self):
-    image_input = constant_op.constant(
-        [[[[0, 1, 2], [3, 4, 5]], [[6, 7, 8], [9, 10, 11]]]])
-
     expected_output = constant_op.constant(
         [[[[3, 4, 5], [0, 1, 2]], [[9, 10, 11], [6, 7, 8]]]])
 
-    def generator(): yield image_input
+    def generator():
+      image_input = np.array(
+          [[[[0, 1, 2], [3, 4, 5]], [[6, 7, 8], [9, 10, 11]]]], np.int32)
+      yield image_input
 
     dataset = dataset_ops.Dataset.from_generator(
         generator,
