@@ -1090,11 +1090,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
             with trace.Trace(
-                'TraceContext',
-                graph_type='train',
+                'train',
                 epoch_num=epoch,
                 step_num=step,
-                batch_size=batch_size):
+                batch_size=batch_size,
+                _r=1):
               callbacks.on_train_batch_begin(step)
               tmp_logs = train_function(iterator)
               if data_handler.should_sync:
@@ -1378,7 +1378,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         self.reset_metrics()
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
-            with trace.Trace('TraceContext', graph_type='test', step_num=step):
+            with trace.Trace('test', step_num=step, _r=1):
               callbacks.on_test_batch_begin(step)
               tmp_logs = test_function(iterator)
               if data_handler.should_sync:
