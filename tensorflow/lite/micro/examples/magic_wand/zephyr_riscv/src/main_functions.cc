@@ -106,7 +106,6 @@ void setup() {
 }
 
 void loop() {
-
 #ifdef ZEPHYR_RISCV_PROFILE
   unsigned int cycle = 0;
   static unsigned int count = 0;
@@ -131,7 +130,8 @@ void loop() {
 
 #ifdef ZEPHYR_RISCV_PROFILE
   TF_LITE_REPORT_ERROR(error_reporter,
-                       "[ZEPHYR_RISCV_PROFILE] Before Invoke(): %d cycles\n", count);
+                       "[ZEPHYR_RISCV_PROFILE] Before Invoke(): %d cycles\n",
+                       count);
 
   // Reset cycle count for Invoke()
   __asm__ __volatile__("csrw mcycle, %0" : : "r"(CLEAR));
@@ -149,7 +149,8 @@ void loop() {
 #ifdef ZEPHYR_RISCV_PROFILE
   __asm__ __volatile__("csrr %0, mcycle" : "=r"(cycle));
   TF_LITE_REPORT_ERROR(error_reporter,
-                       "[ZEPHYR_RISCV_PROFILE] Invoke(): %d cycles\n", (int)cycle);
+                       "[ZEPHYR_RISCV_PROFILE] Invoke(): %d cycles\n",
+                       (int)cycle);
 
   // Reset cycle count for PredictGesture()
   __asm__ __volatile__("csrw mcycle, %0" : : "r"(CLEAR));
@@ -161,7 +162,8 @@ void loop() {
 #ifdef ZEPHYR_RISCV_PROFILE
   __asm__ __volatile__("csrr %0, mcycle" : "=r"(cycle));
   TF_LITE_REPORT_ERROR(error_reporter,
-                       "[ZEPHYR_RISCV_PROFILE] PredictGesture(): %d cycles\n", (int)cycle);
+                       "[ZEPHYR_RISCV_PROFILE] PredictGesture(): %d cycles\n",
+                       (int)cycle);
 
   // Reset cycle count for HandleOutput()
   __asm__ __volatile__("csrw mcycle, %0" : : "r"(CLEAR));
@@ -173,6 +175,7 @@ void loop() {
 #ifdef ZEPHYR_RISCV_PROFILE
   __asm__ __volatile__("csrr %0, mcycle" : "=r"(cycle));
   TF_LITE_REPORT_ERROR(error_reporter,
-                       "[ZEPHYR_RISCV_PROFILE] HandleOutput(): %d cycles\n", (int)cycle);
+                       "[ZEPHYR_RISCV_PROFILE] HandleOutput(): %d cycles\n",
+                       (int)cycle);
 #endif /* ZEPHYR_RISCV_PROFILE */
 }
