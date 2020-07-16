@@ -1059,8 +1059,7 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Less_equal operator";
 
   let description = [{
@@ -1121,8 +1120,7 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
 def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     ResultsBroadcastableShape,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Greater_equal operator";
 
   let description = [{
@@ -1415,7 +1413,6 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
 def TFL_EqualOp: TFL_Op<"equal", [
     Commutative,
-    NoQuantizableResult,
     ResultsBroadcastableShape,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     PredOpTrait<"Operands have same value type", TCopVTEtIsSameAs<0, 1>>]> {
@@ -1621,8 +1618,7 @@ def TFL_GreaterOp : TFL_Op<"greater", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Greater operator";
 
   let description = [{
@@ -1721,8 +1717,7 @@ def TFL_LessOp : TFL_Op<"less", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Less operator";
 
   let description = [{
