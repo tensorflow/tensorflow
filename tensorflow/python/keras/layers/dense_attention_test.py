@@ -23,7 +23,6 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import dense_attention
@@ -361,7 +360,6 @@ class AttentionTest(test.TestCase, parameterized.TestCase):
       attention_layer.build(input_shape=([1, 1, 1], [1, 1, 1]))
       self.assertAllClose(1., attention_layer.scale.value())
 
-  @test_util.deprecated_graph_mode_only
   def test_scale_init_graph(self):
     """Tests that scale initializes to 1 when use_scale=True."""
     with self.cached_session() as sess:
