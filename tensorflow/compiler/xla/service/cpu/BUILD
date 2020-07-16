@@ -615,7 +615,8 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core/kernels:eigen_helpers_no_mkl",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
@@ -703,6 +704,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:types",
