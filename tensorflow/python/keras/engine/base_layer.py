@@ -3215,7 +3215,19 @@ def _in_functional_construction_mode(inputs, args, kwargs, input_list):  # pylin
         for tensor in nest.flatten([inputs, args, kwargs]))
   else:
     if context.executing_eagerly():
-      return all(tf_utils.is_symbolic_tensor(t) for t in input_list)
+      all_inputs_symbolic = all(
+          tf_utils.is_symbolic_tensor(t) for t in input_list)
+      if (any(tf_utils.is_symbolic_tensor(t) for t in nest.flatten(
+          [inputs, args, kwargs])) and not all_inputs_symbolic):
+        raise ValueError('It appears you are trying to construct a '
+                         'functional model, but not all of the inputs in '
+                         'the first positional argument of your layer call '
+                         'are symbolic tensors. '
+                         '(Input objects, or the output of another layer) '
+                         'Functional models cannot correctly track layers '
+                         'unless all values in the first call argument '
+                         'are symbolic.')
+      return all_inputs_symbolic
     else:
       return (base_layer_utils.is_in_keras_graph() or
               all(hasattr(t, '_keras_history') for t in input_list))

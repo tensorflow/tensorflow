@@ -931,6 +931,72 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # Check that second input was correctly added to first.
     self.assertEqual(history.history['loss'][0], 0.0)
 
+  @combinations.generate(combinations.times(
+      combinations.keras_mode_combinations(mode='eager'),
+      combinations.combine(use_keras_tensors=False)))
+  def test_only_some_in_first_arg_derived_from_keras_layer(self):
+    class MyAddAll(layers.Layer):
+
+      def call(self, inputs):
+        x = inputs[0]
+        for inp in inputs[1:]:
+          if inp is not None:
+            x = x + inp
+        return x
+
+    input1 = input_layer_lib.Input(10)
+    input2 = input_layer_lib.Input(10)
+    layer = MyAddAll()
+
+    with self.assertRaisesRegexp(ValueError, 'construct a functional'):
+      layer([0.0, input1, None, input2, None])
+
+  @combinations.generate(combinations.times(
+      combinations.keras_mode_combinations(mode='eager'),
+      combinations.combine(use_keras_tensors=True)))
+  def test_only_some_in_first_arg_derived_from_keras_layer_keras_tensors(self):
+    # This functionality is unsupported in v1 graphs
+
+    class MyAddAll(layers.Layer):
+
+      def call(self, inputs):
+        x = inputs[0]
+        for inp in inputs[1:]:
+          if inp is not None:
+            x = x + inp
+        return x
+
+    input1 = input_layer_lib.Input(10)
+    input2 = input_layer_lib.Input(10)
+    layer = MyAddAll()
+    outputs = layer([0.0, input1, None, input2, None])
+    model = training_lib.Model([input1, input2], outputs)
+    self.assertIn(layer, model.layers)
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
+    # Check serialization.
+    model = training_lib.Model.from_config(
+        model.get_config(), custom_objects={'MyAddAll': MyAddAll})
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(
+        x=[3 * np.ones((10, 10)), 7 * np.ones((10, 10))],
+        y=10 * np.ones((10, 10)),
+        batch_size=2)
+    # Check that second input was correctly added to first.
+    self.assertEqual(history.history['loss'][0], 0.0)
+
   @combinations.generate(combinations.keras_mode_combinations())
   def test_call_kwarg_derived_from_keras_layer(self):
 
@@ -1069,7 +1135,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     input2 = input_layer_lib.Input(10)
     input3 = input_layer_lib.Input(10)
 
-    outputs = AddAll()(
+    layer = AddAll()
+    outputs = layer(
         [input1, 4 * array_ops.ones((1, 10))],
         x3={
             'a': input2,
@@ -1077,6 +1144,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
             'c': 5 * array_ops.ones((1, 10))
         })
     model = training_lib.Model([input1, input2, input3], outputs)
+    self.assertIn(layer, model.layers)
     model.compile(
         'sgd',
         'mse',
