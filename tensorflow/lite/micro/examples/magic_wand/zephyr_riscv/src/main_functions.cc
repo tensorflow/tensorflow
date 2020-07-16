@@ -104,22 +104,73 @@ void setup() {
 }
 
 void loop() {
+
+#ifdef ZEPHYR_DEBUG
+  unsigned int cycle = 0;
+  static unsigned int count = 0;
+  static const unsigned int CLEAR = 0;
+
+  // Reset cycle count for ReadAccelerometer()
+  __asm__ __volatile__("csrw mcycle, %0" : : "r"(CLEAR));
+#endif /* ZEPHYR_DEBUG */
+
   // Attempt to read new data from the accelerometer.
   bool got_data =
       ReadAccelerometer(error_reporter, model_input->data.f, input_length);
+
+#ifdef ZEPHYR_DEBUG
+  __asm__ __volatile__("csrr %0, mcycle" : "=r"(cycle));
+  // Accumulate cycle count till enough data is collected
+  count += cycle;
+#endif /* ZEPHYR_DEBUG */
+
   // If there was no new data, wait until next time.
   if (!got_data) return;
 
+#ifdef ZEPHYR_DEBUG
+  TF_LITE_REPORT_ERROR(error_reporter,
+                       "[ZEPHYR_DEBUG] Before Invoke(): %d cycles\n", count);
+
+  // Reset cycle count for Invoke()
+  __asm__ __volatile__("csrw mcycle, %0" : : "r"(CLEAR));
+#endif /* ZEPHYR_DEBUG */
+
   // Run inference, and report any error.
   TfLiteStatus invoke_status = interpreter->Invoke();
+
   if (invoke_status != kTfLiteOk) {
     TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed on index: %d\n",
                          begin_index);
     return;
   }
+
+#ifdef ZEPHYR_DEBUG
+  __asm__ __volatile__("csrr %0, mcycle" : "=r"(cycle));
+  TF_LITE_REPORT_ERROR(error_reporter,
+                       "[ZEPHYR_DEBUG] Invoke(): %d cycles\n", (int)cycle);
+
+  // Reset cycle count for PredictGesture()
+  __asm__ __volatile__("csrw mcycle, %0" : : "r"(CLEAR));
+#endif /* ZEPHYR_DEBUG */
+
   // Analyze the results to obtain a prediction
   int gesture_index = PredictGesture(interpreter->output(0)->data.f);
 
+#ifdef ZEPHYR_DEBUG
+  __asm__ __volatile__("csrr %0, mcycle" : "=r"(cycle));
+  TF_LITE_REPORT_ERROR(error_reporter,
+                       "[ZEPHYR_DEBUG] PredictGesture(): %d cycles\n", (int)cycle);
+
+  // Reset cycle count for HandleOutput()
+  __asm__ __volatile__("csrw mcycle, %0" : : "r"(CLEAR));
+#endif /* ZEPHYR_DEBUG */
+
   // Produce an output
   HandleOutput(error_reporter, gesture_index);
+
+#ifdef ZEPHYR_DEBUG
+  __asm__ __volatile__("csrr %0, mcycle" : "=r"(cycle));
+  TF_LITE_REPORT_ERROR(error_reporter,
+                       "[ZEPHYR_DEBUG] HandleOutput(): %d cycles\n", (int)cycle);
+#endif /* ZEPHYR_DEBUG */
 }
