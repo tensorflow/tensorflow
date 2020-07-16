@@ -368,8 +368,7 @@ class BatchResource : public ResourceBase {
     TF_RETURN_IF_ERROR(
         Batcher::Create(batcher_options, &new_resource->batcher_));
 
-    new_resource->batcher_queue_options_.input_batch_size_limit =
-        max_batch_size;
+    new_resource->batcher_queue_options_.max_batch_size = max_batch_size;
     new_resource->batcher_queue_options_.max_enqueued_batches =
         max_enqueued_batches;
     new_resource->batcher_queue_options_.batch_timeout_micros =

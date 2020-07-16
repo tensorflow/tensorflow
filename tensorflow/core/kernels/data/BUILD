@@ -63,6 +63,7 @@ tf_cc_test(
     name = "dataset_utils_test",
     srcs = ["dataset_utils_test.cc"],
     deps = [
+        ":dataset_test_base",
         ":dataset_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
@@ -1201,6 +1202,7 @@ tf_kernel_library(
     hdrs = ["cache_dataset_ops.h"],
     deps = [
         ":cache_ops",
+        ":dataset_utils",
         ":name_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

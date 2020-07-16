@@ -284,7 +284,8 @@ class PartitionedHlo {
 
   // Helper function to reshard the tensor using AllToAll (instead of the
   // default of Replicate followed by Slice).
-  PartitionedHlo ReshardWithAllToAll(const HloSharding& target) const;
+  PartitionedHlo ReshardWithAllToAll(const HloSharding& target,
+                                     int64 source_dim, int64 target_dim) const;
 
   // Helper function to reshard the tensor using CollectivePermute.
   PartitionedHlo ReshardWithCollectivePermute(const HloSharding& target) const;

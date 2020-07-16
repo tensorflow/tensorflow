@@ -271,6 +271,7 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
     : GPUOperation(definition),
       padding_(padding),
       work_group_launch_order_(2, 0, 1) {
+  work_group_size_ = int3(8, 4, 1);
   if (device.IsPowerVR()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
   } else if (device.IsNvidia() || device.IsIntel()) {
@@ -287,9 +288,7 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
     : GPUOperation(std::move(operation)),
       padding_(operation.padding_),
       work_group_launch_order_(operation.work_group_launch_order_),
-      weights_upload_type_(operation.weights_upload_type_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      weights_upload_type_(operation.weights_upload_type_) {}
 
 ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
     ConvolutionTransposed3x3&& operation) {
@@ -297,8 +296,6 @@ ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
     std::swap(padding_, operation.padding_);
     std::swap(work_group_launch_order_, operation.work_group_launch_order_);
     std::swap(weights_upload_type_, operation.weights_upload_type_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -336,9 +333,7 @@ absl::Status ConvolutionTransposed3x3::BindArguments() {
   const int padding_y =
       padding_.y >= 1 ? (padding_.y - 1) / 2 : (padding_.y - 2) / 2;
   RETURN_IF_ERROR(args_.SetInt("padding_x", padding_x * src_[0]->Batch()));
-  RETURN_IF_ERROR(args_.SetInt("padding_y", padding_y));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetInt("padding_y", padding_y);
 }
 
 int3 ConvolutionTransposed3x3::GetGridSize() const {
@@ -352,12 +347,6 @@ int3 ConvolutionTransposed3x3::GetGridSize() const {
   return int3(wg[work_group_launch_order_[0]] * work_group_size_.x,
               wg[work_group_launch_order_[1]] * work_group_size_.y,
               wg[work_group_launch_order_[2]] * work_group_size_.z);
-  return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status ConvolutionTransposed3x3::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 bool IsConvolutionTransposed3x3Supported(

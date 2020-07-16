@@ -237,8 +237,10 @@ class PiecewiseConstantDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "PiecewiseConstant"):
-      boundaries = nest.map_structure(ops.convert_to_tensor_v2, self.boundaries)
-      values = nest.map_structure(ops.convert_to_tensor_v2, self.values)
+      boundaries = nest.map_structure(ops.convert_to_tensor_v2,
+                                      nest.flatten(self.boundaries))
+      values = nest.map_structure(ops.convert_to_tensor_v2,
+                                  nest.flatten(self.values))
       x_recomp = ops.convert_to_tensor_v2(step)
       for i, b in enumerate(boundaries):
         if b.dtype.base_dtype != x_recomp.dtype.base_dtype:

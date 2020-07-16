@@ -566,8 +566,8 @@ string GenPythonOp::Code() {
        i < end; ++i) {
     attrs_.push_back(params_no_default[i].GetName());
   }
-  for (const auto& param : params_with_default) {
-    attrs_.push_back(param.GetName());
+  for (int i = 0, end = params_with_default.size(); i < end; ++i) {
+    attrs_.push_back(params_with_default[i].GetName());
   }
 
   param_names_.reserve(params_no_default.size() + params_with_default.size());

@@ -59,4 +59,65 @@ TF_LITE_MICRO_TEST(TestMultipleTooLarge) {
   TF_LITE_MICRO_EXPECT_EQ(nullptr, result);
 }
 
+TF_LITE_MICRO_TEST(TestTempAllocations) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  uint8_t* temp1 = allocator.AllocateTemp(100, 1);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, temp1);
+
+  uint8_t* temp2 = allocator.AllocateTemp(100, 1);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, temp2);
+
+  // Expect that the next micro allocation is 100 bytes away from each other.
+  TF_LITE_MICRO_EXPECT_EQ(temp2 - temp1, 100);
+}
+
+TF_LITE_MICRO_TEST(TestResetTempAllocations) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  uint8_t* temp1 = allocator.AllocateTemp(100, 1);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, temp1);
+
+  allocator.ResetTempAllocations();
+
+  uint8_t* temp2 = allocator.AllocateTemp(100, 1);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, temp2);
+
+  // Reset temp allocations should have the same start address:
+  TF_LITE_MICRO_EXPECT_EQ(temp2 - temp1, 0);
+}
+
+TF_LITE_MICRO_TEST(TestAllocateHeadWithoutResettingTemp) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
+
+  uint8_t* temp = allocator.AllocateTemp(100, 1);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, temp);
+
+  // Allocation should be null since temp allocation was not followed by a call
+  // to ResetTempAllocations().
+  uint8_t* head = allocator.AllocateFromHead(100, 1);
+  TF_LITE_MICRO_EXPECT_EQ(nullptr, head);
+
+  allocator.ResetTempAllocations();
+
+  head = allocator.AllocateFromHead(100, 1);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, head);
+
+  // The most recent head allocation should be in the same location as the
+  // original temp allocation pointer.
+  TF_LITE_MICRO_EXPECT_EQ(temp, head);
+}
+
+// TODO(b/161171251): Add more coverage to this test - specifically around -1
+// alignments and other odd allocation requests.
+
 TF_LITE_MICRO_TESTS_END

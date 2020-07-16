@@ -561,6 +561,16 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                        /*dilations=*/{1, 1, 1, 1}, strides_, padding_,
                        explicit_paddings_, data_format_, &dims));
 
+    OP_REQUIRES(context, dims.in_depth == filter.shape().dim_size(2),
+                errors::InvalidArgument("Computed input depth ", dims.in_depth,
+                                        " doesn't match filter input depth ",
+                                        filter.shape().dim_size(2)));
+    OP_REQUIRES(
+        context, dims.out_depth == filter.shape().dim_size(3),
+        errors::InvalidArgument("Computed output depth ", dims.out_depth,
+                                " doesn't match filter output depth ",
+                                filter.shape().dim_size(3)));
+
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));

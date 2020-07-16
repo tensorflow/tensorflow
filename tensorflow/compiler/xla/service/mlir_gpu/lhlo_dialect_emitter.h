@@ -88,6 +88,7 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
       const HloInstruction& hlo, const ShapeIndex& index) const override;
   int64 ByteSizeOf(const Shape& shape) const override;
   absl::string_view platform_name() const override;
+
   mlir::Location getLocation(const HloInstruction* instr) const;
 
   xla::mlir_gpu::EmissionContext* emission_context_;

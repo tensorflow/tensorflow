@@ -107,10 +107,10 @@ TfLiteStatus GetQuantizationParams(TensorT* tensor, TensorType activations_type,
         std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max(),
         quantization_params);
   } else if (activations_type == TensorType_INT16) {
-    const float quantized_range = 32767.0;
+    const int half_quantized_range = 32767;
     GetSymmetricQuantizationParams(tensor->quantization->min[0],
                                    tensor->quantization->max[0],
-                                   quantized_range, quantization_params);
+                                   half_quantized_range, quantization_params);
   } else {
     TF_LITE_REPORT_ERROR(
         error_reporter,
