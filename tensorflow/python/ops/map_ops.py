@@ -18,14 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import load_library
-from tensorflow.python.platform import resource_loader
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_map_ops
 from tensorflow.python.ops.gen_map_ops import *
-from tensorflow.python.framework import constant_op
 
 ops.NotDifferentiable("EmptyTensorMap")
 

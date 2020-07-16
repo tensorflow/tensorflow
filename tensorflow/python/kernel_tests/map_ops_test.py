@@ -17,27 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.platform import test
 from absl.testing import parameterized
-from tensorflow.python.framework import test_util
-
-from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import map_ops
+from tensorflow.python.platform import test
 
 @test_util.run_all_in_graph_and_eager_modes
 class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
-  
-  def testEmptyTensorMap(self):
-    m = map_ops.empty_tensor_map()
-  
-  def testTensorMapSize(self):
+
+  def testEmptyTensorMapSize(self):
     m = map_ops.empty_tensor_map()
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 0)
@@ -62,12 +53,12 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
     v = constant_op.constant(2.0)
-    
+
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "Trying to lookup non-existent key."):
       l = map_ops.tensor_map_lookup(m, k)
       self.evaluate(l)
-    
+
   def testTensorMapReplace(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
@@ -115,7 +106,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 "Trying to erase non-existent item."):
       m, e = map_ops.tensor_map_erase(m, k)
       self.evaluate(e)
-  
+
   def testTensorMapEraseMissingKeyFails(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
