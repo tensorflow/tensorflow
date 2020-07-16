@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/filesystem/plugins/s3/s3_filesystem.h"
 
 #include <aws/core/config/AWSProfileConfigLoader.h>
+#include <aws/core/utils/stream/PreallocatedStreamBuf.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +38,7 @@ constexpr int kExecutorPoolSize = 25;
 
 constexpr uint64_t kS3MultiPartUploadChunkSize = 50 * 1024 * 1024;    // 50 MB
 constexpr uint64_t kS3MultiPartDownloadChunkSize = 50 * 1024 * 1024;  // 50 MB
+constexpr size_t kDownloadRetries = 3;
 
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
@@ -241,6 +243,16 @@ typedef struct S3File {
   bool use_multi_part_download;
 } S3File;
 
+// AWS Streams destroy the buffer (buf) passed, so creating a new
+// IOStream that retains the buffer so the calling function
+// can control it's lifecycle
+class TFS3UnderlyingStream : public Aws::IOStream {
+ public:
+  using Base = Aws::IOStream;
+  TFS3UnderlyingStream(std::streambuf* buf) : Base(buf) {}
+  virtual ~TFS3UnderlyingStream() = default;
+};
+
 void Cleanup(TF_RandomAccessFile* file) {
   auto s3_file = static_cast<S3File*>(file->plugin_file);
   delete s3_file;
@@ -273,8 +285,36 @@ static int64_t ReadS3Client(S3File* s3_file, uint64_t offset, size_t n,
 
 static int64_t ReadS3TransferManager(S3File* s3_file, uint64_t offset, size_t n,
                                      char* buffer, TF_Status* status) {
-  // TODO(vnvo2409): Implement this function.
-  return -1;
+  auto create_download_stream = [&]() {
+    return Aws::New<TFS3UnderlyingStream>(
+        "S3ReadStream",
+        Aws::New<Aws::Utils::Stream::PreallocatedStreamBuf>(
+            "S3ReadStream", reinterpret_cast<unsigned char*>(buffer), n));
+  };
+  auto handle = s3_file->transfer_manager->DownloadFile(
+      s3_file->bucket, s3_file->object, offset, n, create_download_stream);
+  handle->WaitUntilFinished();
+
+  size_t retries = 0;
+  while (handle->GetStatus() == Aws::Transfer::TransferStatus::FAILED &&
+         handle->GetLastError().GetResponseCode() !=
+             Aws::Http::HttpResponseCode::REQUESTED_RANGE_NOT_SATISFIABLE &&
+         retries++ < kDownloadRetries) {
+    // Only failed parts will be downloaded again.
+    s3_file->transfer_manager->RetryDownload(handle);
+    handle->WaitUntilFinished();
+  }
+
+  if (handle->GetStatus() != Aws::Transfer::TransferStatus::COMPLETED)
+    TF_SetStatusFromAWSError(handle->GetLastError(), status);
+  else
+    TF_SetStatus(status, TF_OK, "");
+  if (TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_OUT_OF_RANGE)
+    return -1;
+  int64_t read = handle->GetBytesTransferred();
+  if (read < n)
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
+  return read;
 }
 
 int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
