@@ -33,7 +33,6 @@ std::vector<std::string> SplitString(const std::string& str, char delimiter) {
   return tokens;
 }
 
-
 // External delegate provider used to dynamically load delegate libraries
 // Note: Assumes the lifetime of the provider exceeds the usage scope of
 // the generated delegates.
@@ -48,7 +47,7 @@ class ExternalDelegateProvider : public DelegateProvider {
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -63,16 +62,18 @@ std::vector<Flag> ExternalDelegateProvider::CreateFlags(
                               "The library path for the underlying external."),
       CreateFlag<std::string>(
           "external_delegate_options", params,
-          "Comma-separated options to be passed to the external delegate")};
+          "A list of comma-separated options to be passed to the external "
+          "delegate. Each option is a colon-separated key-value pair, e.g. "
+          "option_name:option_value.")};
   return flags;
 }
 
-void ExternalDelegateProvider::LogParams(const ToolParams& params) const {
-  TFLITE_LOG(INFO) << "External delegate path : ["
-                   << params.Get<std::string>("external_delegate_path") << "]";
-  TFLITE_LOG(INFO) << "External delegate options : ["
-                   << params.Get<std::string>("external_delegate_options")
-                   << "]";
+void ExternalDelegateProvider::LogParams(const ToolParams& params,
+                                         bool verbose) const {
+  LOG_TOOL_PARAM(params, std::string, "external_delegate_path",
+                 "External delegate path", verbose);
+  LOG_TOOL_PARAM(params, std::string, "external_delegate_options",
+                 "External delegate options", verbose);
 }
 
 TfLiteDelegatePtr ExternalDelegateProvider::CreateTfLiteDelegate(

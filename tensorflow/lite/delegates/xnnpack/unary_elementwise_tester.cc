@@ -37,8 +37,15 @@ void UnaryElementwiseTester::Test(tflite::BuiltinOperator unary_op,
                                   TfLiteDelegate* delegate) const {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
-  auto input_rng = std::bind(
-      std::uniform_real_distribution<float>(-15.0f, 15.0f), std::ref(rng));
+  std::uniform_real_distribution<float> input_distribution(-15.0f, 15.0f);
+  switch (unary_op) {
+    case BuiltinOperator_SQRT:
+      input_distribution = std::uniform_real_distribution<float>(0.0f, 10.0f);
+      break;
+    default:
+      break;
+  }
+  auto input_rng = std::bind(input_distribution, std::ref(rng));
 
   std::vector<char> buffer = CreateTfLiteModel(unary_op);
   const Model* model = GetModel(buffer.data());
@@ -96,6 +103,7 @@ void UnaryElementwiseTester::Test(tflite::BuiltinOperator unary_op,
     case BuiltinOperator_RELU6:
     case BuiltinOperator_ROUND:
     case BuiltinOperator_SQUARE:
+    case BuiltinOperator_SQRT:
       for (size_t i = 0; i < Size(); i++) {
         ASSERT_EQ(default_output_data[i], delegate_output_data[i]);
       }

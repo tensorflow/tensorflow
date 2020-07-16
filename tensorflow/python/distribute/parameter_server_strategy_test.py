@@ -43,10 +43,10 @@ from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
@@ -450,10 +450,12 @@ class ParameterServerStrategyTestBase(
          self.cached_session(target=master_target,
                              config=sess_config) as sess, \
          d.scope():
-      l = core.Dense(1, use_bias=False)
+      kernel = strategy_test_lib.create_variable_like_keras_layer(
+          'kernel', (1, 1), dtypes.float32,)
 
       def loss_fn(x):
-        y = array_ops.reshape(l(x), []) - constant_op.constant(1.)
+        y = array_ops.reshape(
+            math_ops.matmul(x, kernel), []) - constant_op.constant(1.)
         return y * y
 
       # TODO(yuefengz, apassos): eager.backprop.implicit_grad is not safe for

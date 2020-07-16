@@ -853,6 +853,9 @@ def is_sparse(tensor):
   True
 
   """
+  spec = getattr(tensor, '_type_spec', None)
+  if spec is not None:
+    return isinstance(spec, sparse_tensor.SparseTensorSpec)
   return isinstance(tensor, sparse_tensor.SparseTensor)
 
 
@@ -1128,13 +1131,14 @@ def is_keras_tensor(x):
   True
 
   """
-  if keras_tensor.keras_tensors_enabled():
-    return isinstance(x, keras_tensor.KerasTensor)
   if not isinstance(x,
                     (ops.Tensor, variables_module.Variable,
-                     sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
+                     sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor,
+                     keras_tensor.KerasTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
+  if keras_tensor.keras_tensors_enabled():
+    return isinstance(x, keras_tensor.KerasTensor)
   return hasattr(x, '_keras_history')
 
 
@@ -3452,7 +3456,7 @@ _VALUE_SET_CODE_STRING = """
   >>> print(K.get_value(v))
   3.0
 
-  Variable semantics in TensorFlow 2 are eager execution friendly. The above 
+  Variable semantics in TensorFlow 2 are eager execution friendly. The above
   code is roughly equivalent to:
 
   >>> v = tf.Variable(1.)
@@ -4541,7 +4545,10 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Returns:
       A tensor.
   """
-
+  # While x can be a tensor or variable, we also see cases where
+  # numpy arrays, lists, tuples are passed as well.
+  # lists, tuples do not have 'dtype' attribute.
+  dtype = getattr(x, 'dtype', floatx())
   if alpha != 0.:
     if max_value is None and threshold == 0:
       return nn.leaky_relu(x, alpha=alpha)
@@ -4555,7 +4562,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
   if threshold != 0:
     # computes x for x > threshold else 0
-    x = x * math_ops.cast(math_ops.greater(x, threshold), floatx())
+    x = x * math_ops.cast(math_ops.greater(x, threshold), dtype=dtype)
   elif max_value == 6:
     # if no threshold, then can use nn.relu6 native TF op for performance
     x = nn.relu6(x)
@@ -4667,15 +4674,15 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
     [[1. 0. 0.]
      [0. 1. 0.]
      [0. 0. 1.]], shape=(3, 3), dtype=float32)
-  >>> b = tf.constant([.9, .05, .05, .5, .89, .6, .05, .01, .94], shape=[3,3])
+  >>> b = tf.constant([.9, .05, .05, .05, .89, .06, .05, .01, .94], shape=[3,3])
   >>> print(b)
   tf.Tensor(
     [[0.9  0.05 0.05]
-     [0.5  0.89 0.6 ]
+     [0.05 0.89 0.06]
      [0.05 0.01 0.94]], shape=(3, 3), dtype=float32)
   >>> loss = tf.keras.backend.categorical_crossentropy(a, b)
   >>> print(np.around(loss, 5))
-  [0.10536 0.80467 0.06188]
+  [0.10536 0.11653 0.06188]
   >>> loss = tf.keras.backend.categorical_crossentropy(a, a)
   >>> print(np.around(loss, 5))
   [0. 0. 0.]
@@ -4690,7 +4697,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
         labels=target, logits=output, axis=axis)
 
   if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Softmax'):
+      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
     # When softmax activation function is used for output operation, we
     # use logits from the softmax function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -4735,7 +4742,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
 
   if (not from_logits and
       not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Softmax'):
+      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
     # When softmax activation function is used for output operation, we
     # use logits from the softmax function directly to compute loss in order
     # to prevent collapsing zero when training.
@@ -4814,7 +4821,7 @@ def binary_crossentropy(target, output, from_logits=False):
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
   if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
-      output.op.type == 'Sigmoid'):
+      output.op.type == 'Sigmoid') and not hasattr(output, '_keras_history'):
     # When sigmoid activation function is used for output operation, we
     # use logits from the sigmoid function directly to compute loss in order
     # to prevent collapsing zero when training.

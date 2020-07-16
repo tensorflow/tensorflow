@@ -456,50 +456,41 @@ void InitializeTableFromDataset(OpKernelContext* ctx,
                                 data::DatasetBase* dataset,
                                 InitializableLookupTable* table,
                                 AsyncOpKernel::DoneCallback done) {
+  // Construct the cleanup before `iter` below so that `iter` is destroyed
+  // before calling `done`.
+  auto cleanup = gtl::MakeCleanup([done = std::move(done)]() { done(); });
   // Assert that the dataset types match up to that expected in the table.
   const auto& dataset_types = dataset->output_dtypes();
-  OP_REQUIRES_ASYNC(
+  OP_REQUIRES(
       ctx, dataset_types.size() == 2,
-      errors::InvalidArgument("Dataset should have two output types only"),
-      done);
-  OP_REQUIRES_ASYNC(
-      ctx, dataset_types[0] == table->key_dtype(),
-      errors::InvalidArgument("Key dtype expected: ", table->key_dtype(),
-                              " but obtained: ", dataset_types[0],
-                              " from the dataset"),
-      done);
-  OP_REQUIRES_ASYNC(
-      ctx, dataset_types[1] == table->value_dtype(),
-      errors::InvalidArgument("Value dtype expected: ", table->value_dtype(),
-                              " but obtained: ", dataset_types[1],
-                              " from the dataset"),
-      done);
+      errors::InvalidArgument("Dataset should have two output types only"));
+  OP_REQUIRES(ctx, dataset_types[0] == table->key_dtype(),
+              errors::InvalidArgument(
+                  "Key dtype expected: ", table->key_dtype(),
+                  " but obtained: ", dataset_types[0], " from the dataset"));
+  OP_REQUIRES(ctx, dataset_types[1] == table->value_dtype(),
+              errors::InvalidArgument(
+                  "Value dtype expected: ", table->value_dtype(),
+                  " but obtained: ", dataset_types[1], " from the dataset"));
   // Assert that the dataset output shapes are scalars.
   const auto& dataset_shapes = dataset->output_shapes();
-  OP_REQUIRES_ASYNC(
+  OP_REQUIRES(
       ctx, dataset_shapes.size() == 2,
-      errors::InvalidArgument("Dataset should have two output shapes only"),
-      done);
-  OP_REQUIRES_ASYNC(
-      ctx, dataset_shapes[0].IsCompatibleWith(PartialTensorShape({})),
-      errors::InvalidArgument("Expected scalar for key. Obtained: ",
-                              dataset_shapes[0].DebugString()),
-      done);
-  OP_REQUIRES_ASYNC(
-      ctx, dataset_shapes[1].IsCompatibleWith(PartialTensorShape({})),
-      errors::InvalidArgument("Expected scalar for key. Obtained: ",
-                              dataset_shapes[1].DebugString()),
-      done);
+      errors::InvalidArgument("Dataset should have two output shapes only"));
+  OP_REQUIRES(ctx, dataset_shapes[0].IsCompatibleWith(PartialTensorShape({})),
+              errors::InvalidArgument("Expected scalar for key. Obtained: ",
+                                      dataset_shapes[0].DebugString()));
+  OP_REQUIRES(ctx, dataset_shapes[1].IsCompatibleWith(PartialTensorShape({})),
+              errors::InvalidArgument("Expected scalar for key. Obtained: ",
+                                      dataset_shapes[1].DebugString()));
   DatasetIterator iter(dataset);
-  OP_REQUIRES_OK_ASYNC(ctx, iter.Init(ctx), done);
+  OP_REQUIRES_OK(ctx, iter.Init(ctx));
   Status s = table->Initialize(iter);
   if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table already initialized from dataset.";
-    done();
     return;
   }
   ctx->SetStatus(s);
-  done();
 }
 
 }  // namespace lookup

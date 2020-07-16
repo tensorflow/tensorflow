@@ -26,6 +26,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -272,6 +273,7 @@ class PiecewiseConstantDecay(LearningRateSchedule):
             "values": self.values,
             "name": self.name
         }
+
 
 
 @keras_export("keras.optimizers.schedules.PolynomialDecay")

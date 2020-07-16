@@ -188,20 +188,16 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
   if (saved_model_version == 2) {
-    auto module = tensorflow::SavedModelObjectGraphToMlirImport(
+    auto module_or = tensorflow::SavedModelObjectGraphToMlirImport(
         input_filename, tags, exported_names, context);
-    if (!module)
-      return tensorflow::errors::InvalidArgument("fail to open input file");
-
-    return module;
+    if (!module_or.status().ok()) return module_or.status();
+    return module_or.ConsumeValueOrDie();
   } else if (saved_model_version == 1) {
-    auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
+    auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
         input_filename, tags, exported_names, context);
 
-    if (!module)
-      return tensorflow::errors::InvalidArgument("fail to open input file");
-
-    return module;
+    if (!module_or.status().ok()) return module_or.status();
+    return module_or.ConsumeValueOrDie();
   } else {
     return tensorflow::errors::InvalidArgument(
         "Should be either saved model v1 or v2");

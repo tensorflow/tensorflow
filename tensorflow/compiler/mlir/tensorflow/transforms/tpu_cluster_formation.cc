@@ -49,7 +49,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -330,40 +329,51 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
   // Index attribute value stored on TPUReplicatedInput op. These will be used
   // later for dynamic padder.
   llvm::SmallVector<int64_t, 8> replicated_input_indices;
+  llvm::SmallVector<int64_t, 8> packed_input_indices;
   bool has_replicated_input_index = false;
 
   // Indices of the replicate op's arguments that are mirrored variables.
   llvm::SmallVector<int64_t, 8> mirrored_variable_indices;
 
   // Check if number of operands of each used TPUReplicatedInput op matches
-  // `num_replicas`. Collect all their operands and associated type for creating
-  // the replicate op.
+  // `num_replicas` or 1. Collect all their operands and associated type for
+  // creating the replicate op.
   llvm::SmallVector<std::pair<Operation::operand_range, Type>, 8>
       replicated_inputs;
+  llvm::SmallVector<Value, 8> packed_inputs;
   for (auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
     auto input = pos_and_input.value();
-    if (input->getNumOperands() != num_replicas)
-      return input->emitOpError() << "requires " << num_replicas << " operands";
-
-    replicated_inputs.push_back(
-        {input->getOperands(), input->getOperand(0).getType()});
+    bool is_packed = llvm::cast<TF::TPUReplicatedInputOp>(input).is_packed();
+    int num_inputs = is_packed ? 1 : num_replicas;
+    if (input->getNumOperands() != num_inputs)
+      return input->emitOpError() << "requires " << num_inputs << " operands";
 
     auto tpu_replicated_input = llvm::cast<TF::TPUReplicatedInputOp>(input);
     int64_t tpu_replicated_input_index =
         tpu_replicated_input.index().getSExtValue();
-    replicated_input_indices.push_back(tpu_replicated_input_index);
+    if (is_packed) {
+      packed_inputs.push_back(input->getOperand(0));
+      packed_input_indices.push_back(tpu_replicated_input_index);
+    } else {
+      replicated_inputs.push_back(
+          {input->getOperands(), input->getOperand(0).getType()});
+      replicated_input_indices.push_back(tpu_replicated_input_index);
+    }
     if (tpu_replicated_input_index != -1) has_replicated_input_index = true;
 
     if (tpu_replicated_input.is_mirrored_variable())
       mirrored_variable_indices.push_back(pos_and_input.index());
   }
 
+  replicated_input_indices.append(packed_input_indices.begin(),
+                                  packed_input_indices.end());
+
   // Create replicate op.
   OpBuilder builder(cluster);
   auto replicate_op = builder.create<tf_device::ReplicateOp>(
       cluster.getLoc(), num_replicas,
       llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>(),
-      replicated_inputs, cluster.getResultTypes());
+      replicated_inputs, packed_inputs, cluster.getResultTypes());
   if (has_replicated_input_index)
     replicate_op.setAttr(kReplicatedInputIndicesAttr,
                          builder.getI64ArrayAttr(replicated_input_indices));
@@ -493,19 +503,9 @@ void TPUClusterFormation::runOnFunction() {
     if (failed(FormClustersInBlock(&block, metadata_map)))
       return signalPassFailure();
 
-  auto island_result = getFunction().walk([&](tf_executor::IslandOp island) {
-    if (failed(FormClustersInBlock(&island.GetBody(), metadata_map)))
-      return WalkResult::interrupt();
-
-    return WalkResult::advance();
-  });
-
-  if (island_result.wasInterrupted()) return signalPassFailure();
-
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
   auto remove_result = getFunction().walk([&](Operation* op) {
-    if (!llvm::isa<TF::TPUReplicatedInputOp>(op) &&
-        !llvm::isa<TF::TPUReplicatedOutputOp>(op))
+    if (!llvm::isa<TF::TPUReplicatedInputOp, TF::TPUReplicatedOutputOp>(op))
       return WalkResult::advance();
 
     // Forward operand to result. When `num_replicas` attribute is 1, no

@@ -37,7 +37,7 @@ limitations under the License.
 #ifndef __XA_OPUS_CODEC_DEFINITIONS_H__
 #define __XA_OPUS_CODEC_DEFINITIONS_H__
 
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xa_nnlib/algo/common/include/xa_api_defs.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini_staging/xa_nnlib/algo/common/include/xa_api_defs.h"
 
 /* Identification Strings */
 #define LIBNAME "HiFi Mini Neural Network Library"

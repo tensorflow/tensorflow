@@ -140,7 +140,7 @@ class SaveV2 : public OpKernel {
           const float* t_data = tensor.flat<float>().data();
           float min = std::numeric_limits<float>::infinity();
           float max = -std::numeric_limits<float>::infinity();
-          float avg = 0.0;
+          double avg = 0.0;
           for (int i = 0; i < tensor.NumElements(); ++i) {
             if (t_data[i] < min) min = t_data[i];
             if (t_data[i] > max) max = t_data[i];

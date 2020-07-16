@@ -179,7 +179,7 @@ Shape TypeToShape(mlir::Type type) {
       }
       return ShapeUtil::MakeTupleShape(shapes);
     }
-    case mlir::xla_hlo::HLOTypes::Token:
+    case mlir::mhlo::HLOTypes::Token:
       return ShapeUtil::MakeTokenShape();
     default:
       break;

@@ -168,10 +168,20 @@ cc_library(
 )
 
 cc_library(
+    name = "TestReducer",
+    srcs = [
+        "lib/Reducer/MLIRTestReducer.cpp",
+    ],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "TestTransforms",
-    srcs = glob([
-        "lib/Transforms/*.cpp",
-    ]),
+    srcs = glob(["lib/Transforms/*.cpp"]),
     defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
     includes = ["lib/Dialect/Test"],
     deps = [

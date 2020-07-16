@@ -19,10 +19,18 @@ limitations under the License.
 // Some internal utility functions for the SavedModelAPI, factored out into a
 // separately unit-testable header.
 
+#include <memory>
+#include <unordered_map>
+
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/constant.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 
 namespace tensorflow {
@@ -42,6 +50,32 @@ Status TensorProtoToConstant(ImmediateExecutionContext* ctx,
 Status LoadSavedVariable(ImmediateExecutionContext* ctx,
                          const SavedVariable& variable,
                          std::unique_ptr<Variable>* output);
+
+// Creates a TFConcreteFunction from a SavedConcreteFunction.
+Status LoadTFConcreteFunction(
+    const SavedConcreteFunction& saved_concrete_function,
+    const FunctionDef* function_def,
+    const std::unordered_map<int, std::unique_ptr<TensorHandleConvertible>>&
+        captured_objects,
+    ImmediateExecutionContext* ctx, std::unique_ptr<TFConcreteFunction>* out);
+
+// Find the SavedObject in `object_graph` at location `path`. `path` must be a
+// dot-delimited string of object names relative to the root object. If no
+// object is found, returns nullptr. Callers must ensure `object_graph` outlives
+// the returned pointer.
+const SavedObject* FindNodeAtPath(StringPiece path,
+                                  const SavedObjectGraph& object_graph);
+
+// Maps each node in `graphdef` to its corresponding Attribute Map.
+// Callers must ensure that `graphdef` outlives the returned map.
+std::unordered_map<StringPiece, const AttrValueMap*, StringPieceHasher>
+NodeToAttrMap(const tensorflow::GraphDef& graphdef);
+
+// Maps the name of each FunctionDef in `library` to its corresponding
+// FunctionDef. Callers must ensure `library` outlives the returned map.
+std::unordered_map<StringPiece, const tensorflow::FunctionDef*,
+                   StringPieceHasher>
+FunctionNameToFunctionDefMap(const FunctionDefLibrary& library);
 
 }  // namespace internal
 }  // namespace tensorflow

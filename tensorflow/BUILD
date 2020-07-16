@@ -467,6 +467,13 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This flag enables experimental MLIR bridge support.
+config_setting(
+    name = "enable_mlir_bridge",
+    values = {"define": "enable_mlir_bridge=true"},
+    visibility = ["//visibility:public"],
+)
+
 # This flag enables experimental TPU support
 config_setting(
     name = "with_tpu_support",

@@ -23,29 +23,34 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-OutfeedThunk::OutfeedThunk(ShapeTree<BufferAllocation::Slice> outfeed_slices,
-                           const HloInstruction* hlo_instruction)
-    : Thunk(Kind::kOutfeed, hlo_instruction),
+OutfeedThunk::OutfeedThunk(ThunkInfo thunk_info,
+                           ShapeTree<BufferAllocation::Slice> outfeed_slices)
+    : Thunk(Kind::kOutfeed, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       outfeed_slices_(std::move(outfeed_slices)) {}
 
 Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
   auto& buffer_allocations = *params.buffer_allocations;
 
-  VLOG(2) << "Outfeeding from GPU: " << hlo_instruction()->ToString();
+  VLOG(2) << "Outfeeding from GPU: " << hlo_instruction_->ToString();
 
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager();
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* outfeed_buffers =
       outfeed_manager->BlockingGetNextDestination();
 
   // Nothing to be done for empty tuples.
-  if (ShapeUtil::IsEmptyTuple(hlo_instruction()->operand(0)->shape())) {
+  if (ShapeUtil::IsEmptyTuple(hlo_instruction_->operand(0)->shape())) {
     return Status::OK();
   }
-  CHECK(ShapeUtil::Compatible(hlo_instruction()->operand(0)->shape(),
-                              outfeed_buffers->shape()));
+  CHECK(ShapeUtil::Compatible(hlo_instruction_->operand(0)->shape(),
+                              outfeed_buffers->shape()))
+      << "XLA program outfeed request of shape "
+      << hlo_instruction_->operand(0)->shape().ToString()
+      << " did not match the runtime's outfeed buffer of shape "
+      << outfeed_buffers->shape().ToString();
 
   TF_RETURN_IF_ERROR(outfeed_buffers->ForEachMutableElementWithStatus(
       [&](const ShapeIndex& index, std::unique_ptr<OutfeedBuffer>* buffer) {

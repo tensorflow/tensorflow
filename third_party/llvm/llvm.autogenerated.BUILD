@@ -723,6 +723,7 @@ cc_library(
         exclude = [
             "lib/Analysis/MLInlineAdvisor.cpp",
             "lib/Analysis/ReleaseModeModelRunner.cpp",
+            "lib/Analysis/TFUtils.cpp",
         ],
     ),
     hdrs = glob([

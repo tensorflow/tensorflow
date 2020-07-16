@@ -145,16 +145,11 @@ Padding::Padding(const OperationDef& definition, const PadAttributes& attr)
     : GPUOperation(definition), attributes_(attr) {}
 
 Padding::Padding(Padding&& kernel)
-    : GPUOperation(std::move(kernel)),
-      attributes_(kernel.attributes_),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
+    : GPUOperation(std::move(kernel)), attributes_(kernel.attributes_) {}
 
 Padding& Padding::operator=(Padding&& kernel) {
   if (this != &kernel) {
     std::swap(attributes_, kernel.attributes_);
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
     GPUOperation::operator=(std::move(kernel));
   }
   return *this;
@@ -180,8 +175,7 @@ absl::Status Padding::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("prepended_y", attributes_.prepended.h));
   RETURN_IF_ERROR(args_.SetInt("prepended_z", attributes_.prepended.c));
   RETURN_IF_ERROR(args_.SetInt("prepended_w", attributes_.prepended.b));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 Padding::GetGridSize() const {
@@ -189,16 +183,6 @@ int3 Padding::GetGridSize() const {
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status Padding::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status Padding::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 Padding CreatePadding(const OperationDef& definition,

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -verify-diagnostics
+// RUN: tf-opt %s -split-input-file -verify-diagnostics -allow-unregistered-dialect
 
 module attributes {tf_saved_model.semantics} {
 
@@ -386,4 +386,17 @@ module attributes {tf_saved_model.semantics} {
   func @init() attributes { tf_saved_model.exported_names = ["a", "b"] } {
     return
   }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+  // expected-error@+1 {{unknown symbol operation}}
+  "some_dialect.some_op"() {sym_name = "v"} : () -> ()
+  func @f(%arg0: tensor<!tf.resource<tensor<?xf32>>> {tf_saved_model.bound_input = @v})
+    attributes { tf_saved_model.exported_names = ["a"] } {
+    return
+  }
+
 }

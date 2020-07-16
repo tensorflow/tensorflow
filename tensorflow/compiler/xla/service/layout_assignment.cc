@@ -1357,6 +1357,20 @@ Status LayoutAssignment::PropagateOperandConstraint(
   // Propagate layouts between operands of the same instruction. This is a
   // constraint on non-layout-changing instructions.
   if (!instruction_can_change_layout_func_(user)) {
+    // Only propgate the layout of the largest concatenate operand.
+    if (user->opcode() == HloOpcode::kConcatenate) {
+      for (int64 operand_no = 0; operand_no < user->operand_count();
+           ++operand_no) {
+        const HloInstruction* sibling = user->operand(operand_no);
+        if (sibling == operand) {
+          continue;
+        }
+        if (sibling->shape().dimensions(user->concatenate_dimension()) >
+            operand->shape().dimensions(user->concatenate_dimension())) {
+          return Status::OK();
+        }
+      }
+    }
     // Make sure all siblings have the same layout as the operand.
     for (int64 operand_no = 0; operand_no < user->operand_count();
          ++operand_no) {

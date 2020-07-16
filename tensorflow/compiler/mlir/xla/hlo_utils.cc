@@ -197,7 +197,7 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
   }
 }
 
-mlir::xla_hlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
+mlir::mhlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
     const GatherDimensionNumbers& input, mlir::Builder builder) {
   auto offset_dims = CreateDenseIntElementsAttrFromVector(
       llvm::SmallVector<int64, 4>{input.offset_dims().begin(),
@@ -215,7 +215,7 @@ mlir::xla_hlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
   mlir::IntegerAttr index_vector_dim =
       builder.getI64IntegerAttr(input.index_vector_dim());
 
-  return mlir::xla_hlo::GatherDimensionNumbers::get(
+  return mlir::mhlo::GatherDimensionNumbers::get(
       offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim,
       builder.getContext());
 }

@@ -794,7 +794,7 @@ TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
   EXPECT_EQ(key.type(), ::tflite::BuiltinOperator_CUSTOM);
   EXPECT_EQ(key.custom_code(), "HashTableV2");
   EXPECT_EQ(key.version(), 1);
-  // While HashTableV2 is excluded from the whitelisted flex op list, eventually
+  // While HashTableV2 is excluded from the allowlisted flex op list, eventually
   // it won't be, and the following expectations will need to change as the op
   // is explicitly blacklisted due to lack of asset support.
   EXPECT_FALSE(key.is_flex_op());

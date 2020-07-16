@@ -559,6 +559,14 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
             dataset_fn)
       dataset_ops.make_initializable_iterator(dist_dataset_from_func)
 
+  @combinations.generate(combinations.combine(tf_api_version=1))
+  def testV1(self):
+    self.assertIsInstance(ds_context.get_strategy(), distribute_lib.StrategyV1)
+
+  @combinations.generate(combinations.combine(tf_api_version=2))
+  def testV2(self):
+    self.assertIsInstance(ds_context.get_strategy(), distribute_lib.Strategy)
+
 
 class InputContextTest(test.TestCase):
 

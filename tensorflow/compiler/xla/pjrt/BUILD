@@ -215,6 +215,7 @@ tf_cc_test(
         # TODO(phawkins): figure out TF test infra such that this only runs under GPU.
         "no_oss",
         "requires-gpu-nvidia",
+        "notap",
     ],
     deps = [
         ":nvidia_gpu_device",

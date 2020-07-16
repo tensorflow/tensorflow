@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/micro/kernels/activation_utils.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/xtensa_tf_micro_common.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifimini_staging/xtensa_tf_micro_common.h"
 
 namespace tflite {
 namespace ops {

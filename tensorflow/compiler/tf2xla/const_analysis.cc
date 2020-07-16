@@ -74,7 +74,8 @@ Status CondConstInputIndices(
         *(fbody->graph), &compile_time_const_arg_indices,
         /*compile_time_const_nodes=*/nullptr, flib_runtime));
   }
-  for (int i = 0; i < compile_time_const_arg_indices.size(); i++) {
+  for (int i = 0, iter_limit = compile_time_const_arg_indices.size();
+       i < iter_limit; i++) {
     if (compile_time_const_arg_indices[i]) {
       // The 0th input is the pred or branch index, which is not passed to the
       // branches. So the i'th input of a branch function corresponds to the
