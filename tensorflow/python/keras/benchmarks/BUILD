@@ -75,6 +75,7 @@ py_library(
     name = "benchmark_util",
     srcs = ["benchmark_util.py"],
     deps = [
+        ":distribution_util",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
@@ -106,6 +107,14 @@ py_test(
     ],
     deps = [
         ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "distribution_util",
+    srcs = ["distribution_util.py"],
+    deps = [
         "//tensorflow:tensorflow_py",
     ],
 )
