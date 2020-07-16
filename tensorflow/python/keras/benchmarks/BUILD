@@ -28,6 +28,7 @@ py_library(
     name = "keras_benchmark_lib_pip",
     deps = [
         ":benchmark_util",
+        ":distribution_util",
         "//tensorflow/python/keras/benchmarks/saved_model_benchmarks:saved_model_benchmark_util",
     ],
 )

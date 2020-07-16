@@ -116,10 +116,10 @@ def measure_performance(model_fn,
 
   for _ in range(run_iters):
     timer = timeit.default_timer
-    t0 = timer()
     # Init the distribution strategy scope for each iteration.
     strategy_scope = distribution_util.get_strategy_scope(strategy)
     with strategy_scope:
+      t0 = timer()
       model = model_fn()
       build_time = timer() - t0
 
