@@ -125,7 +125,7 @@ class MemoryCheckerTest(test.TestCase):
       x = constant_op.constant(1)  # pylint: disable=unused-variable
       memory_checker.record_snapshot()
 
-    with self.assertRaisesRegexp(AssertionError, 'New Python objects'):
+    with self.assertRaisesRegex(AssertionError, 'New Python objects'):
       memory_checker.assert_no_new_python_objects()
 
   def testNewPythonObjectBelowThreshold(self):

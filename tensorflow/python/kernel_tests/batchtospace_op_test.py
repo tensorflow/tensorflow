@@ -63,7 +63,7 @@ class BatchToSpaceDepthToSpace(test.TestCase, PythonOpImpl):
               array_ops.transpose(x, [3, 1, 2, 0]), block_size=block_size),
           [3, 1, 2, 0])
       with self.cached_session():
-        self.assertAllEqual(y1.eval(), y2.eval())
+        self.assertAllEqual(y1, y2)
 
 
 class BatchToSpaceDepthToSpaceCpp(BatchToSpaceDepthToSpace, CppOpImpl):

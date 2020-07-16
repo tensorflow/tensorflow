@@ -623,14 +623,14 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
     self.assertGreater(total, 0)
 
   def testCheckAlive(self):
-    with self.assertRaisesRegexp(ValueError, "Context is not initialized."):
+    with self.assertRaisesRegex(ValueError, "Context is not initialized."):
       context.check_alive("/job:remote_device/task:0")
     context.context().ensure_initialized()
 
     self.assertTrue(context.check_alive("/job:remote_device/replica:0/task:0"))
     self.assertTrue(context.check_alive("/job:remote_device/replica:0/task:1"))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         "Client for target /job:remote_device/replica:0/task:10 not found."):
       context.check_alive("/job:remote_device/replica:0/task:10")

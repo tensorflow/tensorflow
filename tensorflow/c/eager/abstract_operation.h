@@ -73,7 +73,8 @@ class AbstractOperation {
   virtual Status SetDeviceName(const char* name) = 0;
 
   virtual Status AddInput(AbstractTensorHandle* input) = 0;
-  virtual Status AddInputList(absl::Span<AbstractTensorHandle*> inputs) = 0;
+  virtual Status AddInputList(
+      absl::Span<AbstractTensorHandle* const> inputs) = 0;
   virtual Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                          int* num_retvals) = 0;
 

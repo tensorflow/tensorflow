@@ -63,3 +63,17 @@ func @main2(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) -> tensor<2x4xf32> {
 // CHECK-NEXT:  %[[add:.*]] = tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<2x4x!quant.uniform<u8:f32, 0.49803921568627452>>
 // CHECK-NEXT:  return %[[add]] : tensor<2x4x!quant.uniform<u8:f32, 0.49803921568627452>>
 // CHECK-NEXT:}
+
+// CHECK-LABEL: HandleReturnedDequantizeWithAnotherUse
+func @HandleReturnedDequantizeWithAnotherUse(%arg0: tensor<128x16xf32>) -> (tensor<128x16xf32>, tensor<128xi32>) {
+// CHECK-NEXT:  %[[cst:.*]] = constant dense<1> : tensor<i32>
+  %cst = constant dense<1> : tensor<i32>
+// CHECK-NEXT:  %[[softmax:.*]] = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<128x16xf32>) -> tensor<128x16xf32>
+  %0 = "tfl.softmax"(%arg0) {beta = 1.000000e+00 : f32} : (tensor<128x16xf32>) -> tensor<128x16xf32>
+  %1 = "tfl.quantize"(%0) {qtype = tensor<128x16x!quant.uniform<u8:f32, 3.906250e-03>>, volatile} : (tensor<128x16xf32>) -> tensor<128x16x!quant.uniform<u8:f32, 3.906250e-03>>
+  %2 = "tfl.dequantize"(%1) : (tensor<128x16x!quant.uniform<u8:f32, 3.906250e-03>>) -> tensor<128x16xf32>
+// CHECK-NEXT:  %[[argmax:.*]] = "tfl.arg_max"(%[[softmax]], %[[cst]]) : (tensor<128x16xf32>, tensor<i32>) -> tensor<128xi32>
+  %3 = "tfl.arg_max"(%2, %cst) : (tensor<128x16xf32>, tensor<i32>) -> tensor<128xi32>
+// CHECK-NEXT:  return %[[softmax]], %[[argmax]] : tensor<128x16xf32>, tensor<128xi32>
+  return %2, %3 : tensor<128x16xf32>, tensor<128xi32>
+}

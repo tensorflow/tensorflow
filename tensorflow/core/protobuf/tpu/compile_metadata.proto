@@ -105,7 +105,11 @@ message TPUCompileMetadataProto {
   // search on the compiler parameters.
   int64 xla_fusion_autotuner_thresh = 13;
 
-  // Enables TPU compiler to add sharding policies for inputs/outputs to
+  // Enables TPU compiler to add partitioning policies for inputs/outputs to
   // the XLA computation for model parallelism.
   bool enable_automatic_model_parallelism = 14;
+
+  // Whether to use XLA's SPMD or MPMD partitioner when compiler partitioning is
+  // requested.
+  bool use_spmd_for_xla_partitioning = 15;
 }

@@ -600,6 +600,35 @@ func @if_else(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.
 
 // -----
 
+// Tests that the pass reports error if output does not alias input.
+
+func @cluster_with_if(%arg0: tensor<i1>) -> tensor<4xf32> {
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+  %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
+  %2 = "tf_device.cluster"() ( {
+    // expected-error @+1 {{unsupported output: resource does not alias input}}
+    %3 = "tf.If"(%arg0, %0, %1) {then_branch = @if_then, else_branch = @if_else,
+        is_stateless = false}
+      : (tensor<i1>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
+      -> (tensor<*x!tf.resource<tensor<4xf32>>>)
+    %4 = "tf.ReadVariableOp"(%3) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
+    tf_device.return %4 : tensor<4xf32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<4xf32>
+  return %2 : tensor<4xf32>
+}
+func @if_then(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
+    -> (tensor<*x!tf.resource<tensor<4xf32>>>) {
+  %0 = "tf.foo"(%arg0) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<*x!tf.resource<tensor<4xf32>>>
+  return %0 : tensor<*x!tf.resource<tensor<4xf32>>>
+}
+func @if_else(%arg0: tensor<*x!tf.resource<tensor<4xf32>>>, %arg1: tensor<*x!tf.resource<tensor<4xf32>>>)
+    -> (tensor<*x!tf.resource<tensor<4xf32>>>) {
+  %0 = "tf.bar"(%arg0) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<*x!tf.resource<tensor<4xf32>>>
+  return %0 : tensor<*x!tf.resource<tensor<4xf32>>>
+}
+
+// -----
+
 // Tests that the pass lifts resources on two partitioned call ops sharing the
 // same callee. The lifting should clone the callee then modify the clone.
 
@@ -710,3 +739,29 @@ func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf.res
   %0 = "tf._Unknown_"() : () -> tensor<*x!tf.resource<tensor<f32>>>
   return %0 : tensor<*x!tf.resource<tensor<f32>>>
 }
+
+// -----
+
+// Tests call op where it's result is the result of a tf.ReadVariableOp.
+
+// CHECK-LABEL: func @call_with_forwarded_read_only_result
+// CHECK-SAME: (%[[RESOURCE_ARG0:.*]]: tensor<*x!tf.resource<tensor<f32>>>)
+func @call_with_forwarded_read_only_result(%arg0: tensor<*x!tf.resource<tensor<f32>>>) {
+  // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[RESOURCE_ARG0]])
+  %0 = "tf_device.cluster"() ( {
+    // CHECK: %[[CALL:.*]] = "tf.StatefulPartitionedCall"(%[[READ]])
+    %1 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
+    // CHECK-NEXT: tf_device.return %[[CALL]]
+    tf_device.return %1 : tensor<f32>
+  }) {} : () -> tensor<f32>
+  return
+}
+
+func @callee(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
+  %0 = "tf.ReadVariableOp"(%arg0) {device = ""} : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
+  %1 = "tf.Identity"(%0) {device = ""} : (tensor<f32>) -> tensor<f32>
+  return %1 : tensor<f32>
+}
+
+// CHECK:      func @callee_resource_lifted(%[[A0:.*]]: tensor<f32>) -> tensor<f32>
+// CHECK-NEXT:   return %[[A0]]

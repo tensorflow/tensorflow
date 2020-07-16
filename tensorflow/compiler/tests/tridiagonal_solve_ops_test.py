@@ -223,7 +223,7 @@ class TridiagonalSolveOpsTest(xla_test.XLATestCase):
                                     num_rhs)).astype(np.float32)
 
     with self.session() as sess, self.test_scope():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.UnimplementedError,
           "Current implementation does not yet support pivoting."):
         diags = array_ops.placeholder(

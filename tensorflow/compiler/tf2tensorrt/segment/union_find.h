@@ -149,9 +149,11 @@ template <typename T>
 class UnionFind {
  public:
   UnionFind() : size_(1), parent_(nullptr) {}
-  explicit UnionFind(const T& v, ClusterBatchSize batch_size)
+  UnionFind(const T& v, ClusterBatchSize batch_size,
+            const DeviceNameUtils::ParsedName& device_name)
       : size_(1),
         cluster_batch_size_(batch_size),
+        cluster_device_name_(device_name),
         parent_(nullptr),
         value_(v) {}
 
@@ -159,9 +161,15 @@ class UnionFind {
   // this object to the root of the cluster.
   int Size() { return FindRoot()->size_; }
 
-  // Returns the batch size of the cluster and compress the path from this
+  // Returns the batch size of the cluster and compresses the path from this
   // object to the root object.
   ClusterBatchSize BatchSize() { return FindRoot()->cluster_batch_size_; }
+
+  // Returns the device name of the cluster and compresses the path from this
+  // object to the root object.
+  const DeviceNameUtils::ParsedName& DeviceName() {
+    return FindRoot()->cluster_device_name_;
+  }
 
   // Merges this cluster with 'other'. This cluster's size_ is updated to
   // the size of the merged cluster; the size_ of 'other' becomes inaccessible
@@ -181,6 +189,7 @@ class UnionFind {
 
   int size_;
   ClusterBatchSize cluster_batch_size_;
+  DeviceNameUtils::ParsedName cluster_device_name_;
   UnionFind* parent_;
   T value_;
 };
@@ -192,12 +201,20 @@ Status UnionFind<T>::Merge(UnionFind* other) {
   if (a == b) return Status::OK();
 
   ClusterBatchSize batch_size = a->cluster_batch_size_;
-  bool merged = batch_size.MergeIfCompatible(other->cluster_batch_size_);
-  if (!merged) {
-    return errors::Internal("trying to merge incompatible cluster.");
+  if (!batch_size.MergeIfCompatible(other->cluster_batch_size_)) {
+    return errors::Internal(
+        "trying to merge clusters with incompatible batch sizes.");
+  }
+
+  absl::optional<DeviceNameUtils::ParsedName> device_name =
+      MergeIfCompatible(a->cluster_device_name_, other->cluster_device_name_);
+  if (!device_name.has_value()) {
+    return errors::Internal(
+        "trying to merge clusters with incompatible device assignment.");
   }
 
   a->cluster_batch_size_ = batch_size;
+  a->cluster_device_name_ = *device_name;
   b->parent_ = a;
   a->size_ += b->size_;
   return Status::OK();

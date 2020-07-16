@@ -100,7 +100,7 @@ class CollectiveOpGPUTest(test.TestCase):
           t = constant_op.constant(inputs[i], dtype=dtypes.int32)
           collectives.append(collective_ops.all_reduce(
               t, self._group_size, group_key, instance_key, 'Add', 'Div'))
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InternalError,
           'does not support datatype DT_INT32 on DEVICE_GPU'):
         sess.run(collectives)
@@ -190,7 +190,7 @@ class CollectiveOpGPUTest(test.TestCase):
           t = constant_op.constant(tensor_value)
           collectives.append(collective_ops.broadcast_recv(
               t.shape, t.dtype, self._group_size, group_key, instance_key))
-      with self.assertRaisesRegexp(errors.InternalError, 'found no source'):
+      with self.assertRaisesRegex(errors.InternalError, 'found no source'):
         sess.run(collectives)
 
   def testNcclBroadcastDoubleSend(self):
@@ -209,7 +209,7 @@ class CollectiveOpGPUTest(test.TestCase):
           t = constant_op.constant(tensor_value)
           collectives.append(collective_ops.broadcast_send(
               t, t.shape, t.dtype, self._group_size, group_key, instance_key))
-      with self.assertRaisesRegexp(errors.InternalError, 'already has source'):
+      with self.assertRaisesRegex(errors.InternalError, 'already has source'):
         sess.run(collectives)
 
   def testBasicNcclAllGather(self):
@@ -255,8 +255,8 @@ class CollectiveOpGPUTest(test.TestCase):
                                        instance_key, 'Add', 'Id')
       run_options = config_pb2.RunOptions()
       run_options.experimental.collective_graph_key = 100
-      with self.assertRaisesRegexp(errors.InternalError,
-                                   'but that group has type'):
+      with self.assertRaisesRegex(errors.InternalError,
+                                  'but that group has type'):
         sess.run([c0, c1], options=run_options)
 
   @test_util.run_v2_only

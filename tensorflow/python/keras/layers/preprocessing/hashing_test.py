@@ -225,7 +225,7 @@ class HashingTest(keras_parameterized.TestCase):
     inp_data_2 = ragged_factory_ops.constant(
         [['omar', 'stringer', 'marlo', 'wire'], ['marlo', 'skywalker', 'wire']],
         dtype=dtypes.string)
-    with self.assertRaisesRegexp(ValueError, 'not supported yet'):
+    with self.assertRaisesRegex(ValueError, 'not supported yet'):
       _ = layer([inp_data_1, inp_data_2])
 
   def test_hash_ragged_int_input_farmhash(self):
@@ -274,7 +274,7 @@ class HashingTest(keras_parameterized.TestCase):
     inp_data_2 = ragged_factory_ops.constant(
         [['omar', 'stringer', 'marlo', 'wire'], ['marlo', 'skywalker', 'wire']],
         dtype=dtypes.string)
-    with self.assertRaisesRegexp(ValueError, 'not supported yet'):
+    with self.assertRaisesRegex(ValueError, 'not supported yet'):
       _ = layer([inp_data_1, inp_data_2])
 
   def test_hash_ragged_int_input_siphash(self):
@@ -292,15 +292,15 @@ class HashingTest(keras_parameterized.TestCase):
     self.assertAllClose(out_data, model.predict(inp_data))
 
   def test_invalid_inputs(self):
-    with self.assertRaisesRegexp(ValueError, 'cannot be `None`'):
+    with self.assertRaisesRegex(ValueError, 'cannot be `None`'):
       _ = hashing.Hashing(num_bins=None)
-    with self.assertRaisesRegexp(ValueError, 'cannot be `None`'):
+    with self.assertRaisesRegex(ValueError, 'cannot be `None`'):
       _ = hashing.Hashing(num_bins=-1)
-    with self.assertRaisesRegexp(ValueError, 'can only be a tuple of size 2'):
+    with self.assertRaisesRegex(ValueError, 'can only be a tuple of size 2'):
       _ = hashing.Hashing(num_bins=2, salt='string')
-    with self.assertRaisesRegexp(ValueError, 'can only be a tuple of size 2'):
+    with self.assertRaisesRegex(ValueError, 'can only be a tuple of size 2'):
       _ = hashing.Hashing(num_bins=2, salt=[1])
-    with self.assertRaisesRegexp(ValueError, 'can only be a tuple of size 2'):
+    with self.assertRaisesRegex(ValueError, 'can only be a tuple of size 2'):
       _ = hashing.Hashing(num_bins=1, salt=constant_op.constant([133, 137]))
 
   def test_hash_compute_output_signature(self):

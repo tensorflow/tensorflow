@@ -53,7 +53,7 @@ class AdagradDAOptimizerTest(test.TestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllClose([0.0, 0.0], v0_val)
@@ -94,7 +94,7 @@ class AdagradDAOptimizerTest(test.TestCase):
         loss = pred * pred
         sgd_op = adagrad_da.AdagradDAOptimizer(
             1.0, global_step).minimize(loss)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
@@ -122,7 +122,7 @@ class AdagradDAOptimizerTest(test.TestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -155,7 +155,7 @@ class AdagradDAOptimizerTest(test.TestCase):
             l2_regularization_strength=0.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)
@@ -188,7 +188,7 @@ class AdagradDAOptimizerTest(test.TestCase):
             l2_regularization_strength=2.0)
         update = opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]), global_step=global_step)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         v0_val, v1_val = self.evaluate([var0, var1])
         self.assertAllCloseAccordingToType([1.0, 2.0], v0_val)

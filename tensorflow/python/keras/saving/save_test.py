@@ -76,7 +76,7 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
     path = os.path.join(self.get_temp_dir(), 'model')
     save.save_model(self.model, path, save_format='h5')
     self.assert_h5_format(path)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         NotImplementedError,
         'requires the model to be a Functional model or a Sequential model.'):
       save.save_model(self.subclassed_model, path, save_format='h5')
@@ -86,7 +86,7 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
     path = os.path.join(self.get_temp_dir(), 'model')
     save.save_model(self.model, path, save_format='tf')
     self.assert_saved_model(path)
-    with self.assertRaisesRegexp(ValueError, 'input shapes have not been set'):
+    with self.assertRaisesRegex(ValueError, 'input shapes have not been set'):
       save.save_model(self.subclassed_model, path, save_format='tf')
     self.subclassed_model.predict(np.random.random((3, 5)))
     save.save_model(self.subclassed_model, path, save_format='tf')

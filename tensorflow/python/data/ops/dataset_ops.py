@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import collections
 import functools
 import sys
 import threading
@@ -72,6 +71,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest as tf_nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 # Loaded lazily due to a circular dependency (roughly
@@ -103,7 +103,7 @@ tf_export("data.UNKNOWN_CARDINALITY").export_constant(__name__, "UNKNOWN")
 
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class DatasetV2(collections.Iterable, tracking_base.Trackable,
+class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
                 composite_tensor.CompositeTensor):
   """Represents a potentially large set of elements.
 
@@ -2250,7 +2250,7 @@ class DatasetV1(DatasetV2):
     # by value _make_dataset() function would try to capture these variant
     # tensor dataset inputs, which are marked as stateful ops and would throw
     # an error if we try and capture them. We therefore traverse the graph
-    # to find all these ops and whitelist them so that the capturing
+    # to find all these ops and allowlist them so that the capturing
     # logic instead of throwing an error recreates these ops which is what was
     # happening before.
     all_ds_ops = traverse.obtain_all_variant_tensor_ops(self)
@@ -2258,7 +2258,7 @@ class DatasetV1(DatasetV2):
 
     # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
     # a 0-argument function.
-    @function.Defun(capture_by_value=True, whitelisted_stateful_ops=all_ds_ops)
+    @function.Defun(capture_by_value=True, allowlisted_stateful_ops=all_ds_ops)
     def _make_dataset():
       """Factory function for a dataset."""
       # NOTE(mrry): `Defun` does not capture the graph-level seed from the
@@ -3770,17 +3770,19 @@ class BatchDataset(UnaryDataset):
 class _NumpyIterator(object):
   """Iterator over a dataset with elements converted to numpy."""
 
+  __slots__ = ["_iterator"]
+
   def __init__(self, dataset):
     self._iterator = iter(dataset)
 
   def __iter__(self):
     return self
 
-  def next(self):
+  def __next__(self):
     return nest.map_structure(lambda x: x.numpy(), next(self._iterator))
 
-  def __next__(self):
-    return self.next()
+  def next(self):
+    return self.__next__()
 
 
 class _VariantTracker(tracking.CapturableResource):

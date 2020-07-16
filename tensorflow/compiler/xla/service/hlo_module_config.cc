@@ -41,6 +41,12 @@ void HloModuleConfig::SetDefaultComputationLayout(
   entry_computation_layout_ = ComputationLayout(program_shape);
 }
 
+void HloModuleConfig::SetComputationLayoutIfExists(
+    const ProgramShape& program_shape) {
+  entry_computation_layout_ = ComputationLayout(program_shape,
+                                                /*ignore_layouts=*/false);
+}
+
 string HloModuleConfig::compilation_cache_key() const {
   string key = absl::StrCat("profiling=", hlo_profiling_enabled());
   StrAppend(&key, "::(");

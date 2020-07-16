@@ -865,7 +865,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
   This only allows capturing tensors in the forward graph. A ValueError is
   raised if an attempt is made to capture a tensor not in the forward graph.
   To manually capture capture a tensor that is not in the forward graph, call
-  `capture` with `whitelisted=True`.
+  `capture` with `allowlisted=True`.
 
   Note: The `captures` dict does not contain the forward tensor since it is not
   directly captured. It contains the accumulator corresponding to this forward
@@ -968,16 +968,16 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
         op_def=op_def,
         compute_device=compute_device)
 
-  def capture(self, tensor, name=None, whitelisted=False):
+  def capture(self, tensor, name=None, allowlisted=False):
     """Selectively captures external tensors.
 
-    If `whitelisted` is False only allows capturing tensors in the
+    If `allowlisted` is False only allows capturing tensors in the
     `_forward_graph`.
 
     Args:
       tensor: Tensor. May be from this FuncGraph or a different graph.
       name: Optional name if a placeholder is created.
-      whitelisted: If False (default), only allows capturing tensors from the
+      allowlisted: If False (default), only allows capturing tensors from the
         forward graph.
 
     Returns:
@@ -985,9 +985,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
 
     Raises:
       ValueError: If attempting to capture an external tensor not in the forward
-        graph with `whitelisted` set to False.
+        graph with `allowlisted` set to False.
     """
-    if not whitelisted and (isinstance(tensor, ops.EagerTensor) or
+    if not allowlisted and (isinstance(tensor, ops.EagerTensor) or
                             (tensor.graph is not self and
                              tensor.graph != self._forward_graph)):
       with self._forward_cond_graph.as_default():
@@ -1136,7 +1136,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
         "Resource tensors must be loop invariants %s." % tensor_in_outer_graph)
 
     self._indirect_captures[ops.tensor_id(tensor)] = self.capture(
-        tensor_in_outer_graph, whitelisted=True)
+        tensor_in_outer_graph, allowlisted=True)
     return self._indirect_captures[ops.tensor_id(tensor)]
 
 

@@ -335,7 +335,7 @@ class GCEClusterResolverTest(test.TestCase):
         credentials=None,
         service=self.gen_standard_mock_service_client(name_to_ip))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         RuntimeError, 'You cannot reset the task_type '
         'of the GCEClusterResolver after it has '
         'been created.'):

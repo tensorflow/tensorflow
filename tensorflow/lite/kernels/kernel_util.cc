@@ -28,6 +28,32 @@ limitations under the License.
 
 namespace tflite {
 
+const TfLiteTensor* GetInput(const TfLiteContext* context,
+                             const TfLiteNode* node, int index) {
+  return &context->tensors[node->inputs->data[index]];
+}
+
+TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
+                               int index) {
+  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
+  return (tensor->is_variable) ? tensor : nullptr;
+}
+
+TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
+                        int index) {
+  return &context->tensors[node->outputs->data[index]];
+}
+
+const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
+                                           const TfLiteNode* node, int index) {
+  const bool use_tensor = index < node->inputs->size &&
+                          node->inputs->data[index] != kTfLiteOptionalTensor;
+  if (use_tensor) {
+    return &context->tensors[node->inputs->data[index]];
+  }
+  return nullptr;
+}
+
 // Per-axis
 TfLiteStatus PopulateConvolutionQuantizationParams(
     TfLiteContext* context, const TfLiteTensor* input,
