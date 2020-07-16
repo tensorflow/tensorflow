@@ -22,19 +22,19 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow { 
-
+ 
 std::string ShapeDebugString(TF_Tensor* tensor) { 
-	// A TF_Tensor cannot have an unknown rank. 
-	CHECK_GE(TF_NumDims(tensor), 0); 
-	tensorflow::string s = "["; 
-	for (int i = 0; i < TF_NumDims(tensor); ++i) { 
-		if (i > 0) tensorflow::strings::StrAppend(&s, ","); 
-		int64_t dim = TF_Dim(tensor, i);
-		// A TF_Tensor cannot have an unknown dimension.
-		CHECK_GE(dim, 0); 
-		tensorflow::strings::StrAppend(&s, dim);
-	}
-	tensorflow::strings::StrAppend(&s, "]");
-	return s; 
+  // A TF_Tensor cannot have an unknown rank. 
+  CHECK_GE(TF_NumDims(tensor), 0); 
+  tensorflow::string s = "["; 
+  for (int i = 0; i < TF_NumDims(tensor); ++i) { 
+    if (i > 0) tensorflow::strings::StrAppend(&s, ","); 
+    int64_t dim = TF_Dim(tensor, i);
+    // A TF_Tensor cannot have an unknown dimension.
+    CHECK_GE(dim, 0); 
+    tensorflow::strings::StrAppend(&s, dim);
+  }
+  tensorflow::strings::StrAppend(&s, "]");
+  return s; 
 }
 } // namespace tensorflow
