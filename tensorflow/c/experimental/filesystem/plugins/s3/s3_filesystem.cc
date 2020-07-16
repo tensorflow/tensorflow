@@ -495,6 +495,21 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
   TF_SetStatus(status, TF_OK, "");
 }
 
+void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
+                     TF_WritableFile* file, TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+  GetTransferManager(Aws::Transfer::TransferDirection::UPLOAD, s3_file);
+  file->plugin_file = new tf_writable_file::S3File(
+      bucket, object, s3_file->s3_client,
+      s3_file->transfer_managers[Aws::Transfer::TransferDirection::UPLOAD]);
+  TF_SetStatus(status, TF_OK, "");
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_s3_filesystem
