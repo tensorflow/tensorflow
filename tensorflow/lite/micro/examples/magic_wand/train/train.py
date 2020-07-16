@@ -203,7 +203,7 @@ if __name__ == "__main__":
   parser.add_argument("--person", "-p")
   parser.add_argument("--fully-quantized",
                       action="store_true",
-                      help="Fully quantized the model when converting to *.tflite")
+                      help="Fully quantized the model.")
   args = parser.parse_args()
 
   seq_length = 128
