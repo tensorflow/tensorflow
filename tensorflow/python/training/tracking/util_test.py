@@ -59,7 +59,7 @@ class InterfaceTests(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testAddVariable(self):
     obj = NonLayerTrackable()
-    with self.assertRaisesRegexp(ValueError, "do not specify shape"):
+    with self.assertRaisesRegex(ValueError, "do not specify shape"):
       trackable_utils.add_variable(
           obj, name="shape_specified_twice", shape=[], initializer=1)
     constant_initializer = trackable_utils.add_variable(
@@ -83,7 +83,7 @@ class InterfaceTests(test.TestCase):
         name="duplicate", initial_value=1.)
     duplicate = trackable_utils.add_variable(
         obj, name="duplicate", shape=[])
-    with self.assertRaisesRegexp(ValueError, "'duplicate'.*already declared"):
+    with self.assertRaisesRegex(ValueError, "'duplicate'.*already declared"):
       trackable_utils.add_variable(obj, name="duplicate", shape=[])
 
     self.evaluate(trackable_utils.gather_initializers(obj))
@@ -365,9 +365,8 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       partial_root = trackable_utils.Checkpoint(v1=base.Trackable(),
                                                 v2=variables_lib.Variable(0.))
       status = partial_root.restore(save_path)
-      with self.assertRaisesRegexp(
-          AssertionError,
-          r"Unused attributes(.|\n)*\(root\).v1"):
+      with self.assertRaisesRegex(AssertionError,
+                                  r"Unused attributes(.|\n)*\(root\).v1"):
         status.assert_consumed()
 
   def testSilencePartialWarning(self):

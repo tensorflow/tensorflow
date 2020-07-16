@@ -81,9 +81,14 @@ class HloModuleConfig {
     return entry_computation_layout_.has_value();
   }
 
-  // Sets the entry computation layout for this config. If the entry computation
-  // layout already exists, it is silently replaced.
+  // Sets the entry_computation_layout's parameter and result shapes for this
+  // config, according to the given program shape. The parameters and result
+  // are set to default layout.
   void SetDefaultComputationLayout(const ProgramShape& program_shape);
+
+  // Same as above but if the given program contains layout for parameters or
+  // result, the entry_computation_layout's layout is updated accordingly.
+  void SetComputationLayoutIfExists(const ProgramShape& program_shape);
 
   // Returns a constant reference to the layout of the entry computation.
   // Assumes the layout was set.

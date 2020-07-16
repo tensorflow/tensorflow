@@ -340,8 +340,9 @@ ConvTexture::ConvTexture(const OperationDef& definition,
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h),
       dilation_(attr.dilations.w, attr.dilations.h),
       different_weights_for_height_(false),
-      block_size_(2, 2, 2),
-      work_group_size_(4, 4, 2) {}
+      block_size_(2, 2, 2) {
+  work_group_size_ = int3(4, 4, 2);
+}
 
 ConvTexture::ConvTexture(const OperationDef& definition)
     : GPUOperation(definition),
@@ -350,8 +351,9 @@ ConvTexture::ConvTexture(const OperationDef& definition)
       padding_(0, 0),
       dilation_(1, 1),
       different_weights_for_height_(false),
-      block_size_(4, 1, 2),
-      work_group_size_(16, 1, 2) {}
+      block_size_(4, 1, 2) {
+  work_group_size_ = int3(16, 1, 2);
+}
 
 ConvTexture::ConvTexture(ConvTexture&& operation)
     : GPUOperation(std::move(operation)),
@@ -360,9 +362,7 @@ ConvTexture::ConvTexture(ConvTexture&& operation)
       padding_(operation.padding_),
       dilation_(operation.dilation_),
       different_weights_for_height_(operation.different_weights_for_height_),
-      block_size_(operation.block_size_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      block_size_(operation.block_size_) {}
 
 ConvTexture& ConvTexture::operator=(ConvTexture&& operation) {
   if (this != &operation) {
@@ -373,8 +373,6 @@ ConvTexture& ConvTexture::operator=(ConvTexture&& operation) {
     std::swap(different_weights_for_height_,
               operation.different_weights_for_height_);
     std::swap(block_size_, operation.block_size_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -422,8 +420,6 @@ absl::Status ConvTexture::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
   RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));
   RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
   return absl::OkStatus();
 }
 
@@ -436,14 +432,8 @@ int3 ConvTexture::GetGridSize() const {
 }
 
 absl::Status ConvTexture::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                              &work_group_size_);
-}
-
-absl::Status ConvTexture::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+  return GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_);
 }
 
 absl::Status CreateConvTexture(const CreationContext& creation_context,

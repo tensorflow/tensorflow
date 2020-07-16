@@ -449,7 +449,8 @@ TEST_F(RemapperTest, FuseMatMulWithBias) {
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
 
-TEST_F(RemapperTest, FuseConv2DWithBiasAndActivationOnGPU) {
+// TODO(b/161005848): Fix flaky test.
+TEST_F(RemapperTest, DISABLED_FuseConv2DWithBiasAndActivationOnGPU) {
 #if !(GOOGLE_CUDA)
   GTEST_SKIP() << "No CUDA, skip FuseConv2DWithBiasAndActivation on GPU";
 #endif  // !GOOGLE_CUDA
@@ -679,6 +680,7 @@ TEST_F(RemapperTest, FuseMatMulWithBiasAndActivation) {
   }
 }
 
+#ifndef INTEL_MKL
 TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
   using ops::Placeholder;
 
@@ -922,6 +924,7 @@ TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
+#endif
 
 }  // namespace grappler
 }  // namespace tensorflow

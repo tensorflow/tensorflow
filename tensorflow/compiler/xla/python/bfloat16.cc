@@ -455,10 +455,10 @@ int NPyBfloat16_Compare(const void* a, const void* b, void* arr) {
     return 1;
   }
   // NaNs sort to the end.
-  if (!std::isnan(x) && std::isnan(y)) {
+  if (!Eigen::numext::isnan(x) && Eigen::numext::isnan(y)) {
     return -1;
   }
-  if (std::isnan(x) && !std::isnan(y)) {
+  if (Eigen::numext::isnan(x) && !Eigen::numext::isnan(y)) {
     return 1;
   }
   return 0;
@@ -708,8 +708,8 @@ struct UnaryUFunc {
   static std::vector<int> Types() {
     return {TypeDescriptor<InType>::Dtype(), TypeDescriptor<OutType>::Dtype()};
   }
-  static void Call(char** args, npy_intp* dimensions, npy_intp* steps,
-                   void* data) {
+  static void Call(char** args, const npy_intp* dimensions,
+                   const npy_intp* steps, void* data) {
     const char* i0 = args[0];
     char* o = args[1];
     for (npy_intp k = 0; k < *dimensions; k++) {
@@ -728,8 +728,8 @@ struct UnaryUFunc2 {
     return {TypeDescriptor<InType>::Dtype(), TypeDescriptor<OutType>::Dtype(),
             TypeDescriptor<OutType2>::Dtype()};
   }
-  static void Call(char** args, npy_intp* dimensions, npy_intp* steps,
-                   void* data) {
+  static void Call(char** args, const npy_intp* dimensions,
+                   const npy_intp* steps, void* data) {
     const char* i0 = args[0];
     char* o0 = args[1];
     char* o1 = args[2];
@@ -751,8 +751,8 @@ struct BinaryUFunc {
     return {TypeDescriptor<InType>::Dtype(), TypeDescriptor<InType>::Dtype(),
             TypeDescriptor<OutType>::Dtype()};
   }
-  static void Call(char** args, npy_intp* dimensions, npy_intp* steps,
-                   void* data) {
+  static void Call(char** args, const npy_intp* dimensions,
+                   const npy_intp* steps, void* data) {
     const char* i0 = args[0];
     const char* i1 = args[1];
     char* o = args[2];
@@ -774,8 +774,8 @@ struct BinaryUFunc2 {
     return {TypeDescriptor<InType>::Dtype(), TypeDescriptor<InType2>::Dtype(),
             TypeDescriptor<OutType>::Dtype()};
   }
-  static void Call(char** args, npy_intp* dimensions, npy_intp* steps,
-                   void* data) {
+  static void Call(char** args, const npy_intp* dimensions,
+                   const npy_intp* steps, void* data) {
     const char* i0 = args[0];
     const char* i1 = args[1];
     char* o = args[2];
@@ -795,7 +795,8 @@ struct BinaryUFunc2 {
 template <typename UFunc>
 bool RegisterUFunc(PyObject* numpy, const char* name) {
   std::vector<int> types = UFunc::Types();
-  PyUFuncGenericFunction fn = UFunc::Call;
+  PyUFuncGenericFunction fn =
+      reinterpret_cast<PyUFuncGenericFunction>(UFunc::Call);
   Safe_PyObjectPtr ufunc_obj = make_safe(PyObject_GetAttrString(numpy, name));
   if (!ufunc_obj) {
     return false;
@@ -961,7 +962,7 @@ struct Frexp {
 struct Heaviside {
   bfloat16 operator()(bfloat16 bx, bfloat16 h0) {
     float x = static_cast<float>(bx);
-    if (std::isnan(x)) {
+    if (Eigen::numext::isnan(x)) {
       return bx;
     }
     if (x < 0) {
@@ -983,7 +984,9 @@ struct IsInf {
   bool operator()(bfloat16 a) { return std::isinf(static_cast<float>(a)); }
 };
 struct IsNan {
-  bool operator()(bfloat16 a) { return std::isnan(static_cast<float>(a)); }
+  bool operator()(bfloat16 a) {
+    return Eigen::numext::isnan(static_cast<float>(a));
+  }
 };
 struct Ldexp {
   bfloat16 operator()(bfloat16 a, int exp) {
@@ -1199,25 +1202,25 @@ struct Ge {
 struct Maximum {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
     float fa(a), fb(b);
-    return std::isnan(fa) || fa > fb ? a : b;
+    return Eigen::numext::isnan(fa) || fa > fb ? a : b;
   }
 };
 struct Minimum {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
     float fa(a), fb(b);
-    return std::isnan(fa) || fa < fb ? a : b;
+    return Eigen::numext::isnan(fa) || fa < fb ? a : b;
   }
 };
 struct Fmax {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
     float fa(a), fb(b);
-    return std::isnan(fb) || fa > fb ? a : b;
+    return Eigen::numext::isnan(fb) || fa > fb ? a : b;
   }
 };
 struct Fmin {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
     float fa(a), fb(b);
-    return std::isnan(fb) || fa < fb ? a : b;
+    return Eigen::numext::isnan(fb) || fa < fb ? a : b;
   }
 };
 
@@ -1243,7 +1246,8 @@ struct NextAfter {
     float from_as_float(from), to_as_float(to);
     memcpy(&from_as_int, &from, sizeof(bfloat16));
     memcpy(&to_as_int, &to, sizeof(bfloat16));
-    if (std::isnan(from_as_float) || std::isnan(to_as_float)) {
+    if (Eigen::numext::isnan(from_as_float) ||
+        Eigen::numext::isnan(to_as_float)) {
       return bfloat16(std::numeric_limits<float>::quiet_NaN());
     }
     if (from_as_int == to_as_int) {

@@ -31,10 +31,12 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/mlir_emitter.h"
+#include "tensorflow/compiler/xla/service/cpu/mlir_matmul_codegen_strategy.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/cpu/tiled_dot_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
@@ -202,6 +204,20 @@ class DotOpEmitter {
         .value_or(kDefaultTileSize);
   }
 
+  std::array<int64_t, 3> GetMlirGemmTileSize() const {
+    // Tile by 4 x registers x register size. This was picked by running
+    // small matmuls on Haswell and Skylake. There's a lot of room for
+    // improvement here.
+    constexpr int64_t kDefaultTileSizeForM = 4;
+    int64_t elements_per_register =
+        target_machine_features_.vector_register_num_elements(
+            *b_->GetInsertBlock()->getParent(),
+            dot_info_.result_shape.element_type());
+    int64_t num_registers = target_machine_features_.vector_register_count(
+        *b_->GetInsertBlock()->getParent());
+    return {{kDefaultTileSizeForM, num_registers, elements_per_register}};
+  }
+
   DotInfo dot_info_;
   string dot_hlo_name_;
   const llvm_ir::IrArray& target_array_;
@@ -250,6 +266,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
       absl::StrCat("linalgMatMul_", dot_info_.result_shape.ToString(true), "_",
                    dot_info_.lhs_shape.ToString(true), "_",
                    dot_info_.rhs_shape.ToString(true));
+
   return EmitMlirFuncAndCall(
       mlir_context_, b_, dot_info_.result_shape, operand_shapes, target_ptr,
       operand_ptrs, name, [&](mlir::OpBuilder* builder, mlir::FuncOp function) {
@@ -259,6 +276,27 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         mlir::edsc::intrinsics::linalg_matmul(mlir::TypeRange{},
                                               mlir::ValueRange{b, c, a});
         mlir::edsc::intrinsics::std_ret();
+
+        mlir::linalg::LinalgTilingOptions tilingOptions;
+        tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());
+        int64 alignment =
+            target_machine_features_.minimum_alignment_for_allocation(
+                ShapeUtil::ByteSizeOf(dot_info_.result_shape));
+        mlir_strategy::MatmulCodegenStrategy strategy;
+        strategy.tile<mlir::linalg::MatmulOp>(tilingOptions)
+            .promote<mlir::linalg::MatmulOp>(
+                mlir::linalg::LinalgPromotionOptions()
+                    .setAlignment(alignment)
+                    .setUseFullTileBuffersByDefault(true)
+                    .setUseAlloca(true))
+            .vectorize<mlir::linalg::MatmulOp>()
+            .setVectorTransformsOptions(
+                mlir::vector::VectorTransformsOptions()
+                    .setVectorTransformsOptions(
+                        mlir::vector::VectorContractLowering::OuterProduct))
+            .setVectorTransferToSCFOptions(
+                mlir::VectorTransferToSCFOptions().setUnroll(true));
+        strategy.transform(function);
       });
 }
 

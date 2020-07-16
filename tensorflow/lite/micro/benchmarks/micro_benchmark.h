@@ -62,13 +62,23 @@ template <typename inputT>
 class MicroBenchmarkRunner {
  public:
   MicroBenchmarkRunner(const uint8_t* model, uint8_t* tensor_arena,
-                       int tensor_arena_size, int random_seed)
+                       int tensor_arena_size)
       : model_(tflite::GetModel(model)),
         reporter_(&micro_reporter_),
         interpreter_(model_, resolver_, tensor_arena, tensor_arena_size,
                      reporter_) {
     interpreter_.AllocateTensors();
+  }
 
+  void RunSingleIteration() {
+    // Run the model on this input and make sure it succeeds.
+    TfLiteStatus invoke_status = interpreter_.Invoke();
+    if (invoke_status != kTfLiteOk) {
+      TF_LITE_REPORT_ERROR(reporter_, "Invoke failed.");
+    }
+  }
+
+  void SetRandomInput(const int random_seed) {
     // The pseudo-random number generator is initialized to a constant seed
     std::srand(random_seed);
     TfLiteTensor* input = interpreter_.input(0);
@@ -84,27 +94,13 @@ class MicroBenchmarkRunner {
     }
   }
 
-  void RunSingleIterationRandomInput() {
-    // Run the model on this input and make sure it succeeds.
-    TfLiteStatus invoke_status = interpreter_.Invoke();
-    if (invoke_status != kTfLiteOk) {
-      TF_LITE_REPORT_ERROR(reporter_, "Invoke failed.");
-    }
-  }
-
-  void RunSingleIterationCustomInput(const inputT* custom_input) {
+  void SetInput(const inputT* custom_input) {
     // Populate input tensor with an image with no person.
     TfLiteTensor* input = interpreter_.input(0);
     inputT* input_buffer = tflite::GetTensorData<inputT>(input);
     int input_length = input->bytes / sizeof(inputT);
     for (int i = 0; i < input_length; i++) {
       input_buffer[i] = custom_input[i];
-    }
-
-    // Run the model on this input and make sure it succeeds.
-    TfLiteStatus invoke_status = interpreter_.Invoke();
-    if (invoke_status != kTfLiteOk) {
-      TF_LITE_REPORT_ERROR(reporter_, "Invoke failed.");
     }
   }
 

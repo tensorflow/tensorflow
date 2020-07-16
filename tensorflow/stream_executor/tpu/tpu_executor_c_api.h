@@ -282,13 +282,16 @@ void TpuTransferManager_TransferLiteralFromDevice(
     XLA_TransferManager* manager, SE_Stream* stream,
     XLA_ShapedBuffer* device_buffer, XLA_Literal* literal,
     XLA_StatusCallbackFn callback, void* ctx);
-
 int64_t TpuTransferManager_GetByteSizeRequirement(XLA_TransferManager* manager,
                                                   XLA_Shape* shape);
 void TpuTransferManager_WriteSingleTupleIndexTable(
     XLA_TransferManager* manager, SE_Stream* stream,
     SE_DeviceMemoryBase* elements, size_t elements_len, XLA_Shape* shape,
     SE_DeviceMemoryBase* region, SE_Status* status);
+
+void HardwareLayout_HostShapeToDeviceShape(XLA_Shape* host_shape,
+                                           XLA_Shape* device_shape);
+int64_t HardwareLayout_ShapeSize(XLA_Shape* shape);
 
 XLA_ComputationPlacer* TpuComputationPlacer_New();
 void TpuComputationPlacer_Free(XLA_ComputationPlacer* placer);
@@ -378,6 +381,9 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralFromDevice);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetByteSizeRequirement);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_WriteSingleTupleIndexTable);
+
+  TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_HostShapeToDeviceShape);
+  TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSize);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_Free);

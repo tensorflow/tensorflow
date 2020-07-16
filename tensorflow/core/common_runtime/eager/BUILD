@@ -120,6 +120,21 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "placement_test",
+    srcs = ["placement_test.cc"],
+    deps = [
+        ":context",
+        ":core",
+        ":eager_operation",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cuda_library(
     name = "eager_operation",
     srcs = [

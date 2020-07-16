@@ -25,7 +25,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import nadam
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -85,8 +84,8 @@ class NadamOptimizerTest(test.TestCase):
         var1_np = np.array([3.0, 3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np)
-        var1 = resource_variable_ops.ResourceVariable(var1_np)
+        var0 = variables.Variable(var0_np)
+        var1 = variables.Variable(var1_np)
         grads0_np_indices = np.array([0, 2], dtype=np.int32)
         grads0 = ops.IndexedSlices(
             constant_op.constant(grads0_np[grads0_np_indices]),
@@ -97,18 +96,18 @@ class NadamOptimizerTest(test.TestCase):
             constant_op.constant(grads1_np_indices), constant_op.constant([3]))
         opt = nadam.Nadam(epsilon=sparse_epsilon)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 1.0, 2.0], var0)
+        self.assertAllClose([3.0, 3.0, 4.0], var1)
 
         beta1_power, beta2_power = get_beta_accumulators(opt, dtype)
 
         # Run 3 steps of Nadam
         for t in range(3):
-          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power.eval())
-          self.assertAllCloseAccordingToType(0.999**(t + 1), beta2_power.eval())
+          self.assertAllCloseAccordingToType(0.9**(t + 1), beta1_power)
+          self.assertAllCloseAccordingToType(0.999**(t + 1), beta2_power)
           update.run()
 
           mcache = update_m_cache(mcache, t)
@@ -118,8 +117,8 @@ class NadamOptimizerTest(test.TestCase):
               var1_np, grads1_np, t, m1, v1, mcache, epsilon=sparse_epsilon)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, var0)
+          self.assertAllCloseAccordingToType(var1_np, var1)
 
   def testBasic(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
@@ -132,17 +131,17 @@ class NadamOptimizerTest(test.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np)
-        var1 = resource_variable_ops.ResourceVariable(var1_np)
+        var0 = variables.Variable(var0_np)
+        var1 = variables.Variable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
         opt = nadam.Nadam()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], var0)
+        self.assertAllClose([3.0, 4.0], var1)
 
         # Run 3 steps of Nadam
         for t in range(3):
@@ -155,8 +154,8 @@ class NadamOptimizerTest(test.TestCase):
                                                mcache)
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, var0)
+          self.assertAllCloseAccordingToType(var1_np, var1)
 
   def testConstructNAdamWithLR(self):
     opt = nadam.Nadam(lr=1.0)

@@ -116,34 +116,30 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace maximum_minimum
 
-TfLiteRegistration* Register_MAXIMUM() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr,
-      /*free=*/nullptr,
-      /*prepare=*/nullptr,
-      /*invoke=*/
-      maximum_minimum::Eval<maximum_minimum::kReference,
-                            maximum_minimum::MaximumOp>,
-      /*profiling_string=*/nullptr,
-      /*builtin_code=*/0,
-      /*custom_name=*/nullptr,
-      /*version=*/0};
-  return &r;
+TfLiteRegistration Register_MAXIMUM() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/
+          maximum_minimum::Eval<maximum_minimum::kReference,
+                                maximum_minimum::MaximumOp>,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
-TfLiteRegistration* Register_MINIMUM() {
-  static TfLiteRegistration r = {
-      /*init=*/nullptr,
-      /*free=*/nullptr,
-      /*prepare=*/nullptr,
-      /*invoke=*/
-      maximum_minimum::Eval<maximum_minimum::kReference,
-                            maximum_minimum::MinimumOp>,
-      /*profiling_string=*/nullptr,
-      /*builtin_code=*/0,
-      /*custom_name=*/nullptr,
-      /*version=*/0};
-  return &r;
+TfLiteRegistration Register_MINIMUM() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/
+          maximum_minimum::Eval<maximum_minimum::kReference,
+                                maximum_minimum::MinimumOp>,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

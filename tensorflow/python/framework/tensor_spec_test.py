@@ -172,11 +172,11 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
 class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
 
   def testInvalidMinimum(self):
-    with self.assertRaisesRegexp(ValueError, "not compatible"):
+    with self.assertRaisesRegex(ValueError, "not compatible"):
       tensor_spec.BoundedTensorSpec((3, 5), dtypes.uint8, (0, 0, 0), (1, 1))
 
   def testInvalidMaximum(self):
-    with self.assertRaisesRegexp(ValueError, "not compatible"):
+    with self.assertRaisesRegex(ValueError, "not compatible"):
       tensor_spec.BoundedTensorSpec((3, 5), dtypes.uint8, 0, (1, 1, 1))
 
   def testMinimumMaximumAttributes(self):
@@ -190,9 +190,9 @@ class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
   def testNotWriteableNP(self):
     spec = tensor_spec.BoundedTensorSpec(
         (1, 2, 3), dtypes.float32, 0, (5, 5, 5))
-    with self.assertRaisesRegexp(ValueError, "read-only"):
+    with self.assertRaisesRegex(ValueError, "read-only"):
       spec.minimum[0] = -1
-    with self.assertRaisesRegexp(ValueError, "read-only"):
+    with self.assertRaisesRegex(ValueError, "read-only"):
       spec.maximum[0] = 100
 
   def testReuseSpec(self):

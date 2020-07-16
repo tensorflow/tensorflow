@@ -188,7 +188,7 @@ StatusOr<ExecutionOutput> LocalExecutable::Run(
   std::vector<const Shape*> argument_shapes;
   argument_shapes.reserve(arguments.size());
   for (const ExecutionInput& arg : arguments) {
-    argument_shapes.push_back(&arg.shape());
+    argument_shapes.push_back(&arg.host_shape());
   }
   return AsyncCallAndBlockHostUntilDone<ExecutionOutput>(
       argument_shapes, run_options, [&](const ExecutableRunOptions& options) {
@@ -326,7 +326,7 @@ StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
   std::vector<const Shape*> argument_shapes;
   argument_shapes.reserve(arguments.size());
   for (const ExecutionInput& arg : arguments) {
-    argument_shapes.push_back(&arg.shape());
+    argument_shapes.push_back(&arg.host_shape());
   }
   return RunAsync(argument_shapes, std::move(arguments), run_options);
 }

@@ -43,10 +43,11 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/NVVMIR.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -86,15 +87,15 @@ struct MaterializeBroadcastsPass
     mlir::ConversionTarget conversionTarget(getContext());
     mlir::OwningRewritePatternList conversionPatterns;
 
-    // Consider the xla_hlo dialect legal for tests.
-    conversionTarget.addLegalDialect<mlir::xla_hlo::XlaHloDialect>();
+    // Consider the mhlo dialect legal for tests.
+    conversionTarget.addLegalDialect<mlir::mhlo::MhloDialect>();
     // The conversion uses helpers from the Standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
 
-    mlir::xla_hlo::SetupMaterializeBroadcastsLegality(&getContext(),
-                                                      &conversionTarget);
-    mlir::xla_hlo::PopulateMaterializeBroadcastsPatterns(&getContext(),
-                                                         &conversionPatterns);
+    mlir::mhlo::SetupMaterializeBroadcastsLegality(&getContext(),
+                                                   &conversionTarget);
+    mlir::mhlo::PopulateMaterializeBroadcastsPatterns(&getContext(),
+                                                      &conversionPatterns);
 
     if (failed(applyPartialConversion(getFunction(), conversionTarget,
                                       conversionPatterns))) {
@@ -107,7 +108,7 @@ struct UnfuseBatchNormPass
     : public mlir::PassWrapper<UnfuseBatchNormPass, mlir::FunctionPass> {
   void runOnFunction() override {
     mlir::OwningRewritePatternList patterns;
-    mlir::xla_hlo::PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
+    mlir::mhlo::PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
     mlir::applyPatternsAndFoldGreedily(getOperation(), patterns);
   }
 };
@@ -121,13 +122,13 @@ Status LowerTfOpToLhloWithDynamicShapes(mlir::ModuleOp module) {
                       /*shouldPrintAfterPass=*/enable_if_vlog_is_on,
                       /*printModuleScope=*/false,
                       /*printAfterOnlyOnChange=*/false, llvm::dbgs());
-  pm.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass(false));
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(false));
   pm.addNestedPass<mlir::FuncOp>(
       absl::make_unique<MaterializeBroadcastsPass>());
   pm.addNestedPass<mlir::FuncOp>(absl::make_unique<UnfuseBatchNormPass>());
-  pm.addPass(mlir::xla_hlo::createLegalizeToLhloPass(
+  pm.addPass(mlir::mhlo::createLegalizeToLhloPass(
       /*results_escape_functions=*/true));
-  pm.addNestedPass<mlir::FuncOp>(mlir::xla_lhlo::createLhloCopyRemovalPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::lmhlo::createLhloCopyRemovalPass());
 
   if (failed(pm.run(module))) {
     return InternalError("Lowering TF to LHLO failed.");

@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import keras_export
 
@@ -158,8 +158,10 @@ class SGD(optimizer_v2.OptimizerV2):
       coefficients = (kwargs.get("apply_state", {}).get((var_device, var_dtype))
                       or self._fallback_apply_state(var_device, var_dtype))
 
-      return resource_variable_ops.resource_scatter_add(
-          var.handle, indices, -grad * coefficients["lr_t"])
+      return gen_resource_variable_ops.ResourceScatterAdd(
+          resource=var.handle,
+          indices=indices,
+          updates=-grad * coefficients["lr_t"])
 
   def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
     # This method is only needed for momentum optimization.

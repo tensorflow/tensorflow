@@ -42,6 +42,7 @@ config.suffixes = ['.td', '.mlir', '.pbtxt']
 
 mlir_tf_tools_dirs = [
     'tensorflow/compiler/mlir',
+    'tensorflow/compiler/mlir/hlo',
     'tensorflow/compiler/mlir/lite',
     'tensorflow/compiler/mlir/tensorflow',
     'tensorflow/compiler/mlir/tfjs',

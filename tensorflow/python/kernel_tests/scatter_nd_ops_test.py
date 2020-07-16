@@ -200,7 +200,7 @@ class StatefulScatterNdTest(test.TestCase):
     with self.session(use_gpu=True) as sess:
       self.evaluate(init)
       self.evaluate(scatter)
-      self.assertAllClose(ref.eval(), expected)
+      self.assertAllClose(ref, expected)
 
   def testSimple2(self):
     indices = constant_op.constant([[1, 0], [1, 1]], dtype=dtypes.int32)

@@ -64,7 +64,7 @@ class BitcastTest(test.TestCase):
   def testErrors(self):
     x = np.zeros([1, 1], np.int8)
     datatype = dtypes.int32
-    with self.assertRaisesRegexp(ValueError, "Cannot bitcast due to shape"):
+    with self.assertRaisesRegex(ValueError, "Cannot bitcast due to shape"):
       array_ops.bitcast(x, datatype, None)
 
   def testEmpty(self):

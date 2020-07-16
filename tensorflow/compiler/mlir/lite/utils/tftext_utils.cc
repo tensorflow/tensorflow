@@ -44,7 +44,9 @@ namespace TFL {
 namespace {
 
 constexpr char kWhitespaceTokenizer[] = "tftext:WhitespaceTokenizer";
-constexpr char kTFAPIImplements[] = "tf.api_implements";
+constexpr char kTFImplements[] = "tf._implements";
+
+using mlir::TF::FuncAttr;
 
 inline OpaqueElementsAttr emptyCustomOption(OpBuilder* builder) {
   std::string content = "";
@@ -121,11 +123,11 @@ LogicalResult VerifyWhitespaceTokenizer(mlir::FuncOp func) {
   return success();
 }
 
-LogicalResult ConvertWhitespaceTokenizer(mlir::FuncOp func,
-                                         llvm::StringRef api) {
+LogicalResult ConvertWhitespaceTokenizer(mlir::FuncOp func, llvm::StringRef api,
+                                         FuncAttr attr) {
   func.eraseBody();
   func.addEntryBlock();
-  func.setAttr(kTFAPIImplements, StringAttr::get(api, func.getContext()));
+  func.setAttr(kTFImplements, attr);
   Value text = func.getArgument(0);
   OpBuilder builder(func.getBody());
 
@@ -137,13 +139,26 @@ LogicalResult ConvertWhitespaceTokenizer(mlir::FuncOp func,
 }
 }  // namespace
 
-LogicalResult ConvertTFTextAPI(mlir::FuncOp func, llvm::StringRef api) {
+LogicalResult ConvertTFTextAPI(mlir::FuncOp func, llvm::StringRef api,
+                               FuncAttr attr) {
   if (api.str() == kWhitespaceTokenizer) {
     if (succeeded(VerifyWhitespaceTokenizer(func))) {
-      return ConvertWhitespaceTokenizer(func, api);
+      return ConvertWhitespaceTokenizer(func, api, attr);
     }
   }
   return failure();
+}
+
+bool IsTFTextRegistered(const tensorflow::OpRegistry* op_registery) {
+  const std::vector<std::string> kTFTextOps = {
+      "WhitespaceTokenizeWithOffsets",
+  };
+  for (const auto& iter : kTFTextOps) {
+    if (op_registery->LookUp(iter)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace TFL
