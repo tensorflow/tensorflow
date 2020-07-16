@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as onp
 import tensorflow.compat.v2 as tf
 
-import tensorflow.python.ops.numpy_ops as np
+from tensorflow.python.ops import numpy_ops as np
 
 
 # Tests for code snippet put in README.md
