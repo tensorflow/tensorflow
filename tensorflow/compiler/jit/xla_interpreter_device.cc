@@ -26,15 +26,24 @@ namespace tensorflow {
 const char* const DEVICE_XLA_INTERPRETER = "XLA_INTERPRETER";
 const char* const DEVICE_INTERPRETER_XLA_JIT = "XLA_INTERPRETER_JIT";
 
-constexpr std::array<DataType, 9> kExecAllTypes = {
+constexpr std::array<DataType, 10> kExecAllTypes = {
     {DT_INT8, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
-     DT_BOOL, DT_BFLOAT16}};
+     DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
 
 class XlaInterpreterDeviceFactory : public DeviceFactory {
  public:
+  Status ListPhysicalDevices(std::vector<string>* devices) override;
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
 };
+
+Status XlaInterpreterDeviceFactory::ListPhysicalDevices(
+    std::vector<string>* devices) {
+  devices->push_back(
+      absl::StrCat("/physical_device:", DEVICE_XLA_INTERPRETER, ":0"));
+
+  return Status::OK();
+}
 
 Status XlaInterpreterDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
@@ -47,7 +56,15 @@ Status XlaInterpreterDeviceFactory::CreateDevices(
   registration.compilation_device_name = DEVICE_INTERPRETER_XLA_JIT;
   registration.autoclustering_policy =
       XlaOpRegistry::AutoclusteringPolicy::kAlways;
-  registration.compile_resource_ops = true;
+  registration.cluster_resource_variable_ops_unsafely = true;
+  registration.cluster_stack_ops = false;
+  registration.cluster_tensor_array_ops = true;
+  registration.cluster_stateful_rng_ops = true;
+  registration.cluster_control_trigger = true;
+  registration.elide_assert_and_checknumerics = true;
+  registration.cluster_variant_ops = true;
+  registration.cluster_slow_ops = true;
+  registration.cluster_inaccurate_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_INTERPRETER,
                                            registration);
 

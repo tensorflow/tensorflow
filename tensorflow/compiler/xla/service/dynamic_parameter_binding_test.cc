@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -33,7 +32,15 @@ limitations under the License.
 
 namespace xla {
 namespace {
-class DynamicParameterBindingTest : public HloTestBase {};
+class DynamicParameterBindingTest : public HloTestBase {
+ protected:
+  // Serialize and then deserialize a binding.
+  void SerializeAndDeserialize(DynamicParameterBinding* binding) {
+    DynamicParameterBindingProto proto = binding->ToProto();
+    TF_ASSERT_OK_AND_ASSIGN(*binding,
+                            DynamicParameterBinding::CreateFromProto(proto));
+  }
+};
 
 TEST_F(DynamicParameterBindingTest, SimpleBinding) {
   // 'b' is a dynamic shape; 'a' represents the real size of b's first
@@ -48,7 +55,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
 
   DynamicParameterBinding binding;
 
@@ -56,15 +63,20 @@ ENTRY main {
       binding.Bind(DynamicParameterBinding::DynamicParameter{0, {}},
                    DynamicParameterBinding::DynamicDimension{1, {}, 0}));
 
-  absl::optional<DynamicParameterBinding::DynamicParameter> param =
-      binding.GetBinding(
-          DynamicParameterBinding::DynamicDimension{/*parameter_num=*/1,
-                                                    /*parameter_index=*/{},
-                                                    /*dimension=*/0});
-  EXPECT_TRUE(param);
-  EXPECT_EQ(param->parameter_num, 0);
-  EXPECT_EQ(param->parameter_index, ShapeIndex({}));
-  TF_EXPECT_OK(binding.Verify(*module));
+  auto test = [&](const DynamicParameterBinding& binding) {
+    absl::optional<DynamicParameterBinding::DynamicParameter> param =
+        binding.GetBinding(
+            DynamicParameterBinding::DynamicDimension{/*parameter_num=*/1,
+                                                      /*parameter_index=*/{},
+                                                      /*dimension=*/0});
+    EXPECT_TRUE(param);
+    EXPECT_EQ(param->parameter_num, 0);
+    EXPECT_EQ(param->parameter_index, ShapeIndex({}));
+    TF_EXPECT_OK(binding.Verify(*module));
+  };
+  test(binding);
+  SerializeAndDeserialize(&binding);
+  test(binding);
 }
 
 TEST_F(DynamicParameterBindingTest, TupleBinding) {
@@ -81,7 +93,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
 
   DynamicParameterBinding binding;
 
@@ -89,16 +101,21 @@ ENTRY main {
       binding.Bind(DynamicParameterBinding::DynamicParameter{0, {0}},
                    DynamicParameterBinding::DynamicDimension{0, {1}, 0}));
 
-  absl::optional<DynamicParameterBinding::DynamicParameter> param =
-      binding.GetBinding(
-          DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
-                                                    /*parameter_index=*/{1},
-                                                    /*dimension=*/0});
+  auto test = [&](const DynamicParameterBinding& binding) {
+    absl::optional<DynamicParameterBinding::DynamicParameter> param =
+        binding.GetBinding(
+            DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
+                                                      /*parameter_index=*/{1},
+                                                      /*dimension=*/0});
 
-  EXPECT_TRUE(param);
-  EXPECT_EQ(param->parameter_num, 0);
-  EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
-  TF_EXPECT_OK(binding.Verify(*module));
+    EXPECT_TRUE(param);
+    EXPECT_EQ(param->parameter_num, 0);
+    EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
+    TF_EXPECT_OK(binding.Verify(*module));
+  };
+  test(binding);
+  SerializeAndDeserialize(&binding);
+  test(binding);
 }
 
 TEST_F(DynamicParameterBindingTest, TupleBindingWithMultiDimension) {
@@ -115,7 +132,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
 
   DynamicParameterBinding binding;
 
@@ -127,26 +144,35 @@ ENTRY main {
       binding.Bind(DynamicParameterBinding::DynamicParameter{0, {0}},
                    DynamicParameterBinding::DynamicDimension{0, {1}, 1}));
 
-  absl::optional<DynamicParameterBinding::DynamicParameter> param =
-      binding.GetBinding(
-          DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
-                                                    /*parameter_index=*/{1},
-                                                    /*dimension=*/0});
+  auto test = [&](const DynamicParameterBinding& binding) {
+    absl::optional<DynamicParameterBinding::DynamicParameter> param =
+        binding.GetBinding(
+            DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
+                                                      /*parameter_index=*/{1},
+                                                      /*dimension=*/0});
 
-  EXPECT_TRUE(param);
-  EXPECT_EQ(param->parameter_num, 0);
-  EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
+    EXPECT_TRUE(param);
+    EXPECT_EQ(param->parameter_num, 0);
+    EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
 
-  absl::optional<DynamicParameterBinding::DynamicParameter> param2 =
-      binding.GetBinding(
-          DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
-                                                    /*parameter_index=*/{1},
-                                                    /*dimension=*/0});
-  EXPECT_TRUE(param2);
-  EXPECT_EQ(param2->parameter_num, 0);
-  EXPECT_EQ(param2->parameter_index, ShapeIndex({0}));
+    absl::optional<DynamicParameterBinding::DynamicParameter> param2 =
 
-  TF_EXPECT_OK(binding.Verify(*module));
+        binding.GetBinding(
+            DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
+                                                      /*parameter_index=*/{1},
+                                                      /*dimension=*/0});
+    EXPECT_TRUE(param2);
+    EXPECT_EQ(param2->parameter_num, 0);
+    EXPECT_EQ(param2->parameter_index, ShapeIndex({0}));
+    TF_EXPECT_OK(binding.Verify(*module));
+  };
+
+  test(binding);
+
+  SerializeAndDeserialize(&binding);
+
+  // Test the binding again after deserialization.
+  test(binding);
 }
 
 }  // namespace

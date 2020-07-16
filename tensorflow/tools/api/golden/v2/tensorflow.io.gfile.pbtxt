@@ -1,5 +1,9 @@
 path: "tensorflow.io.gfile"
 tf_module {
+  member {
+    name: "GFile"
+    mtype: "<type \'type\'>"
+  }
   member_method {
     name: "copy"
     argspec: "args=[\'src\', \'dst\', \'overwrite\'], varargs=None, keywords=None, defaults=[\'False\'], "

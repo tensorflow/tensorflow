@@ -1,0 +1,136 @@
+# TensorFlow Lite for Swift
+
+load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist", "tflite_ios_lab_runner")
+load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework", "ios_unit_test")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+config_setting(
+    name = "use_coreml_delegate",
+    values = {"define": "use_coreml_delegate=1"},
+)
+
+config_setting(
+    name = "use_metal_delegate",
+    values = {"define": "use_metal_delegate=1"},
+)
+
+# By default this builds with no delegates.
+# To build with the Metal delegate pass --define=use_metal_delegate=1
+# To build with the CoreML delegate pass --define=use_coreml_delegate=1
+swift_library(
+    name = "TensorFlowLite",
+    srcs = glob(
+        [
+            "Sources/*.swift",
+        ],
+        exclude = [
+            "Sources/CoreMLDelegate.swift",
+            "Sources/MetalDelegate.swift",
+        ],
+    ) + select({
+        ":use_coreml_delegate": [
+            "Sources/CoreMLDelegate.swift",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        ":use_metal_delegate": [
+            "Sources/MetalDelegate.swift",
+        ],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        ":use_coreml_delegate": [
+            "-Wl,-weak_framework,CoreML",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        ":use_metal_delegate": [
+            "-Wl,-weak_framework,Metal",
+        ],
+        "//conditions:default": [],
+    }),
+    module_name = "TensorFlowLite",
+    tags = TFL_DEFAULT_TAGS + ["nobuilder"],
+    visibility = ios_visibility_whitelist(),
+    deps = [
+        "//tensorflow/lite/experimental/ios:tensorflow_lite_c",
+    ] + select({
+        ":use_coreml_delegate": [
+            "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        ":use_metal_delegate": [
+            "//tensorflow/lite/delegates/gpu:metal_delegate",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+swift_library(
+    name = "TensorFlowLiteAllDelegates",
+    testonly = 1,
+    srcs = glob(["Sources/*.swift"]),
+    linkopts = [
+        "-Wl,-weak_framework,CoreML",
+        "-Wl,-weak_framework,Metal",
+    ],
+    module_name = "TensorFlowLite",
+    tags = TFL_DEFAULT_TAGS + ["builder_default_ios_arm64"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
+        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
+        "//tensorflow/lite/experimental/ios:tensorflow_lite_c",
+    ],
+)
+
+# bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/swift:TensorFlowLite_framework
+ios_static_framework(
+    name = "TensorFlowLite_framework",
+    avoid_deps = [
+        "//tensorflow/lite/experimental/ios:tensorflow_lite_c",
+    ],
+    bundle_name = "TensorFlowLite",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    deps = [
+        ":TensorFlowLite",
+    ],
+)
+
+ios_unit_test(
+    name = "Tests",
+    size = "small",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
+    deps = [
+        ":TestsLibrary",
+    ],
+)
+
+swift_library(
+    name = "TestsLibrary",
+    testonly = 1,
+    srcs = glob(["Tests/*.swift"]),
+    tags = TFL_DEFAULT_TAGS,
+    deps = [
+        ":Resources",
+        ":TensorFlowLiteAllDelegates",
+    ],
+)
+
+objc_library(
+    name = "Resources",
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
+    tags = TFL_DEFAULT_TAGS,
+)

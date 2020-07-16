@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "LookupTableInsertV2"
+  endpoint {
+    name: "LookupTableInsert"
+  }
+}

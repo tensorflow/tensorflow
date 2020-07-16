@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 class DynamicUpdateSliceOpsTest(xla_test.XLATestCase):
 
   def _assertOpOutputMatchesExpected(self, op, args, expected):
-    with self.cached_session() as session:
+    with self.session() as session:
       with self.test_scope():
         placeholders = [
             array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)

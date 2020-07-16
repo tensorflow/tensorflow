@@ -1,0 +1,238 @@
+path: "tensorflow.metrics.SparseCategoricalCrossentropy"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.metrics.SparseCategoricalCrossentropy\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.MeanMetricWrapper\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.Mean\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.Reduce\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.Metric\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.module.module.Module\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.version_utils.LayerVersionSelector\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "activity_regularizer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dynamic"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "inbound_nodes"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "input"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "input_mask"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "input_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "input_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "losses"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "metrics"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name_scope"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "non_trainable_variables"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "non_trainable_weights"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "outbound_nodes"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "output"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "output_mask"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "output_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "stateful"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "submodules"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "supports_masking"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "trainable"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "trainable_variables"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "trainable_weights"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "updates"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "variables"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "weights"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'name\', \'dtype\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'sparse_categorical_crossentropy\', \'None\', \'False\', \'-1\'], "
+  }
+  member_method {
+    name: "add_loss"
+    argspec: "args=[\'self\', \'losses\'], varargs=None, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "add_metric"
+    argspec: "args=[\'self\', \'value\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "add_update"
+    argspec: "args=[\'self\', \'updates\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "add_variable"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "add_weight"
+    argspec: "args=[\'self\', \'name\', \'shape\', \'aggregation\', \'synchronization\', \'initializer\', \'dtype\'], varargs=None, keywords=None, defaults=[\'()\', \'VariableAggregation.SUM\', \'VariableSynchronization.ON_READ\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "apply"
+    argspec: "args=[\'self\', \'inputs\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "build"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "call"
+    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "compute_mask"
+    argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "compute_output_shape"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute_output_signature"
+    argspec: "args=[\'self\', \'input_signature\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "count_params"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_input_at"
+    argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_input_mask_at"
+    argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_input_shape_at"
+    argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_losses_for"
+    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_output_at"
+    argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_output_mask_at"
+    argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_output_shape_at"
+    argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_updates_for"
+    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_weights"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_states"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "result"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_weights"
+    argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "update_state"
+    argspec: "args=[\'self\', \'y_true\', \'y_pred\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "with_name_scope"
+    argspec: "args=[\'cls\', \'method\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -1,0 +1,12 @@
+op {
+  name: "TensorForestTreeIsInitializedOp"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "is_initialized"
+    type: DT_BOOL
+  }
+  is_stateful: true
+}

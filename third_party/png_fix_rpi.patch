@@ -1,7 +1,7 @@
-diff -r -u /tmp/libpng-1.6.34/scripts/pnglibconf.h.prebuilt ./scripts/pnglibconf.h.prebuilt
---- /tmp/libpng-1.6.34/scripts/pnglibconf.h.prebuilt	2017-09-29 01:42:33.000000000 -0700
-+++ ./scripts/pnglibconf.h.prebuilt	2018-05-01 09:51:24.719318242 -0700
-@@ -20,6 +20,12 @@
+diff -r -u /tmp/libpng-1.6.37/scripts/pnglibconf.h.prebuilt ./scripts/pnglibconf.h.prebuilt
+--- /tmp/libpng-1.6.37/scripts/pnglibconf.h.prebuilt    2019-04-14 11:10:32.000000000 -0700
++++ ./scripts/pnglibconf.h.prebuilt     2019-05-21 09:40:52.138528512 -0700
+@@ -19,6 +19,12 @@
  #define PNG_ALIGNED_MEMORY_SUPPORTED
  /*#undef PNG_ARM_NEON_API_SUPPORTED*/
  /*#undef PNG_ARM_NEON_CHECK_SUPPORTED*/
@@ -11,6 +11,6 @@ diff -r -u /tmp/libpng-1.6.34/scripts/pnglibconf.h.prebuilt ./scripts/pnglibconf
 +#define PNG_ARM_NEON_OPT 0
 +
 +
- /*#undef PNG_POWERPC_VSX_API_SUPPORTED*/
- /*#undef PNG_POWERPC_VSX_CHECK_SUPPORTED*/
  #define PNG_BENIGN_ERRORS_SUPPORTED
+ #define PNG_BENIGN_READ_ERRORS_SUPPORTED
+ /*#undef PNG_BENIGN_WRITE_ERRORS_SUPPORTED*/

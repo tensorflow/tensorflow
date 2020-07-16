@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ExperimentalLMDBDataset"
+  endpoint {
+    name: "data.ExperimentalLmdbDataset"
+  }
+}

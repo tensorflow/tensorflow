@@ -83,8 +83,9 @@ class CallGraphTest : public HloTestBase {
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* zero = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
-    builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, param0, zero));
+    builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
+                                      zero, ComparisonDirection::kGt));
     return builder.Build();
   }
 
@@ -102,6 +103,7 @@ TEST_F(CallGraphTest, SingletonComputation) {
 
   const CallGraphNode& node = call_graph->GetNode(computation);
   EXPECT_EQ(computation, node.computation());
+  EXPECT_EQ(node.depth(), 0);
   EXPECT_TRUE(node.callsites().empty());
   EXPECT_TRUE(node.callees().empty());
   EXPECT_TRUE(node.caller_callsites().empty());
@@ -122,11 +124,13 @@ TEST_F(CallGraphTest, UnreachableComputation) {
   EXPECT_EQ(2, call_graph->nodes().size());
 
   const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
+  EXPECT_EQ(entry_node.depth(), 0);
   EXPECT_EQ(entry_computation, entry_node.computation());
   EXPECT_EQ(CallContext::kSequential, entry_node.context());
 
   const CallGraphNode& unreachable_node =
       call_graph->GetNode(unreachable_computation);
+  EXPECT_EQ(unreachable_node.depth(), 0);
   EXPECT_EQ(unreachable_computation, unreachable_node.computation());
   EXPECT_EQ(CallContext::kSequential, unreachable_node.context());
 }
@@ -145,6 +149,7 @@ TEST_F(CallGraphTest, ParallelComputation) {
 
   const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
   EXPECT_EQ(entry_computation, entry_node.computation());
+  EXPECT_EQ(entry_node.depth(), 0);
   EXPECT_EQ(CallContext::kSequential, entry_node.context());
   EXPECT_EQ(5, entry_node.callsites().size());
   EXPECT_EQ(1, entry_node.callees().size());
@@ -153,6 +158,7 @@ TEST_F(CallGraphTest, ParallelComputation) {
 
   const CallGraphNode& map_node = call_graph->GetNode(map_computation);
   EXPECT_EQ(map_computation, map_node.computation());
+  EXPECT_EQ(map_node.depth(), 1);
   EXPECT_EQ(CallContext::kParallel, map_node.context());
   EXPECT_TRUE(map_node.callsites().empty());
   EXPECT_TRUE(map_node.callees().empty());
@@ -234,6 +240,7 @@ TEST_F(CallGraphTest, ContextBothComputations) {
   EXPECT_EQ(entry_node.GetCallSite(map), &map_callsite);
 
   const CallGraphNode& sub_node = call_graph->GetNode(subcomputation);
+  EXPECT_EQ(sub_node.depth(), 1);
   EXPECT_EQ(CallContext::kBoth, sub_node.context());
 }
 
@@ -264,6 +271,7 @@ TEST_F(CallGraphTest, ComputationWithConditional) {
   EXPECT_EQ(3, call_graph->nodes().size());
 
   const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
+  EXPECT_EQ(entry_node.depth(), 0);
   EXPECT_EQ(entry_computation, entry_node.computation());
   EXPECT_EQ(1, entry_node.callsites().size());
 
@@ -275,11 +283,13 @@ TEST_F(CallGraphTest, ComputationWithConditional) {
   EXPECT_EQ(entry_node.GetCallSite(conditional), &conditional_callsite);
 
   const CallGraphNode& true_node = call_graph->GetNode(true_computation);
+  EXPECT_EQ(true_node.depth(), 1);
   EXPECT_TRUE(true_node.callees().empty());
   EXPECT_EQ(1, true_node.callers().size());
   EXPECT_EQ(entry_computation, true_node.callers()[0]);
 
   const CallGraphNode& false_node = call_graph->GetNode(false_computation);
+  EXPECT_EQ(false_node.depth(), 1);
   EXPECT_TRUE(false_node.callees().empty());
   EXPECT_EQ(1, false_node.callers().size());
   EXPECT_EQ(entry_computation, false_node.callers()[0]);
@@ -332,9 +342,21 @@ TEST_F(CallGraphTest, ComplexGraph) {
   EXPECT_EQ(5, call_graph->nodes().size());
   EXPECT_FALSE(call_graph->IsFlattened());
 
+  const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
+  const CallGraphNode& a_node = call_graph->GetNode(a_computation);
+  const CallGraphNode& b_node = call_graph->GetNode(b_computation);
+  const CallGraphNode& c_node = call_graph->GetNode(c_computation);
+  const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
+
+  // Verify depths.
+  EXPECT_EQ(entry_node.depth(), 0);
+  EXPECT_EQ(a_node.depth(), 1);
+  EXPECT_EQ(b_node.depth(), 2);
+  EXPECT_EQ(c_node.depth(), 3);
+  EXPECT_EQ(cond_node.depth(), 2);
+
   // Entry computation has one while instruction calling two computations
   // (cond_computation and a_computation).
-  const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
   ASSERT_EQ(1, entry_node.callsites().size());
   const std::vector<HloComputation*>& called_computations =
       entry_node.callsites()[0].called_computations();
@@ -342,7 +364,6 @@ TEST_F(CallGraphTest, ComplexGraph) {
               UnorderedElementsAre(cond_computation, a_computation));
   EXPECT_EQ(CallContext::kSequential, entry_node.context());
 
-  const CallGraphNode& c_node = call_graph->GetNode(c_computation);
   EXPECT_TRUE(c_node.callsites().empty());
   EXPECT_THAT(c_node.callers(),
               UnorderedElementsAre(a_computation, b_computation));
@@ -364,7 +385,7 @@ TEST_F(CallGraphTest, ComplexGraph) {
 
   // Verify visitation order of some computations in the graph.
   auto index_of = [&visited](const HloComputation* comp) {
-    auto it = std::find(visited.begin(), visited.end(), comp);
+    auto it = absl::c_find(visited, comp);
     EXPECT_NE(it, visited.end());
     return std::distance(visited.begin(), it);
   };

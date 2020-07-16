@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/types.proto";
+
+message DatasetDef {
+  // We represent datasets as tensorflow GraphDefs which define the operations
+  // needed to create a tf.data dataset.
+  GraphDef graph = 1;
+}
+
+message TaskDef {
+  // The dataset to iterate over.
+  // TODO(aaudibert): load the dataset from disk instead of passing it here.
+  DatasetDef dataset = 1;
+  int64 dataset_id = 2;
+  int64 task_id = 3;
+  int64 job_id = 4;
+}

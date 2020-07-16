@@ -16,8 +16,6 @@
 
 The analyzer performs post hoc analysis of dumped intermediate tensors and
 graph structure information from debugged Session.run() calls.
-
-The other part of the debugger is the stepper (c.f. stepper_cli.py).
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -1202,12 +1200,12 @@ class DebugAnalyzer(object):
       return debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
 
     path_column_width = max(
-        max([len(item[0]) for item in source_list]), len(path_head)) + 1
+        max(len(item[0]) for item in source_list), len(path_head)) + 1
     num_nodes_column_width = max(
-        max([len(str(item[2])) for item in source_list]),
+        max(len(str(item[2])) for item in source_list),
         len(num_nodes_head)) + 1
     num_tensors_column_width = max(
-        max([len(str(item[3])) for item in source_list]),
+        max(len(str(item[3])) for item in source_list),
         len(num_tensors_head)) + 1
 
     head = RL(path_head + " " * (path_column_width - len(path_head)), color)
@@ -1248,8 +1246,8 @@ class DebugAnalyzer(object):
     parsed = self._arg_parsers["list_source"].parse_args(args)
     source_list = source_utils.list_source_files_against_dump(
         self._debug_dump,
-        path_regex_whitelist=parsed.path_filter,
-        node_name_regex_whitelist=parsed.node_name_filter)
+        path_regex_allowlist=parsed.path_filter,
+        node_name_regex_allowlist=parsed.node_name_filter)
 
     top_lines = [
         RL("List of source files that created nodes in this run", "bold")]
@@ -1440,8 +1438,7 @@ class DebugAnalyzer(object):
 
     hang += DEPTH_TEMPLATE % depth
 
-    for i in xrange(len(all_inputs)):
-      inp = all_inputs[i]
+    for i, inp in enumerate(all_inputs):
       op_type = self._debug_dump.node_op_type(debug_graphs.get_node_name(inp))
       if op_type in self._GRAPH_STRUCT_OP_TYPE_BLACKLIST:
         continue

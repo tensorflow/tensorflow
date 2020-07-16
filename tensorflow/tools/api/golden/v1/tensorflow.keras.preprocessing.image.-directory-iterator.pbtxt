@@ -1,0 +1,45 @@
+path: "tensorflow.keras.preprocessing.image.DirectoryIterator"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.preprocessing.image.DirectoryIterator\'>"
+  is_instance: "<class \'keras_preprocessing.image.directory_iterator.DirectoryIterator\'>"
+  member {
+    name: "allowed_class_modes"
+    mtype: "<type \'set\'>"
+  }
+  member {
+    name: "filepaths"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "labels"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "sample_weight"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "white_list_formats"
+    mtype: "<type \'tuple\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'directory\', \'image_data_generator\', \'target_size\', \'color_mode\', \'classes\', \'class_mode\', \'batch_size\', \'shuffle\', \'seed\', \'data_format\', \'save_to_dir\', \'save_prefix\', \'save_format\', \'follow_links\', \'subset\', \'interpolation\', \'dtype\'], varargs=None, keywords=None, defaults=[\'(256, 256)\', \'rgb\', \'None\', \'categorical\', \'32\', \'True\', \'None\', \'None\', \'None\', \'\', \'png\', \'False\', \'None\', \'nearest\', \'None\'], "
+  }
+  member_method {
+    name: "next"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "on_epoch_end"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_processing_attrs"
+    argspec: "args=[\'self\', \'image_data_generator\', \'target_size\', \'color_mode\', \'data_format\', \'save_to_dir\', \'save_prefix\', \'save_format\', \'subset\', \'interpolation\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -1,0 +1,44 @@
+op {
+  graph_op_name: "TridiagonalSolve"
+  visibility: HIDDEN
+  in_arg {
+    name: "diagonals"
+    description: <<END
+Tensor of shape `[..., 3, M]` whose innermost 2 dimensions represent the
+tridiagonal matrices with three rows being the superdiagonal, diagonals, and
+subdiagonals, in order. The last element of the superdiagonal and the first
+element of the subdiagonal is ignored.
+END
+  }
+  in_arg {
+    name: "rhs"
+    description: <<END
+Tensor of shape `[..., M, K]`, representing K right-hand sides per each
+left-hand side.
+END
+  }
+  attr {
+    name: "partial_pivoting"
+    description: <<END
+Whether to apply partial pivoting. Partial pivoting makes the procedure more
+stable, but slower.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Tensor of shape `[..., M, K]` containing the solutions
+END
+  }
+
+  summary: "Solves tridiagonal systems of equations."
+  description: <<END
+  Solves tridiagonal systems of equations.
+  Supports batch dimensions and multiple right-hand sides per each left-hand
+  side.
+  On CPU, solution is computed via Gaussian elimination with or without partial
+  pivoting, depending on `partial_pivoting` attribute. On GPU, Nvidia's cuSPARSE
+  library is used: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv
+  Partial pivoting is not yet supported by XLA backends.
+END
+}

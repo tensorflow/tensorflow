@@ -5,13 +5,14 @@ visibility = [
     "//tensorflow:internal",
 ]
 
-package(default_visibility = visibility)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+)
+
+package(
+    default_visibility = visibility,
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -44,7 +45,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

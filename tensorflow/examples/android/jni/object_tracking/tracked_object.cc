@@ -50,7 +50,7 @@ TrackedObject::~TrackedObject() {}
 void TrackedObject::UpdatePosition(const BoundingBox& new_position,
                                    const int64_t timestamp,
                                    const ImageData& image_data,
-                                   const bool authoratative) {
+                                   const bool authoritative) {
   last_known_position_ = new_position;
   position_last_computed_time_ = timestamp;
 
@@ -88,7 +88,7 @@ void TrackedObject::UpdatePosition(const BoundingBox& new_position,
 
     if (object_model_ != NULL) {
       object_model_->TrackStep(last_known_position_, *image_data.GetImage(),
-                               *image_data.GetIntegralImage(), authoratative);
+                               *image_data.GetIntegralImage(), authoritative);
     }
   } else if (tracked_match_score_ < kMatchScoreForImmediateTermination) {
     if (num_consecutive_frames_below_threshold_ < 1000) {

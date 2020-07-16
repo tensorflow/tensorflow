@@ -1,0 +1,224 @@
+diff --git a/src/collectives/device/all_gather.cu b/src/collectives/device/all_gather.cu.cc
+similarity index 100%
+rename from src/collectives/device/all_gather.cu
+rename to src/collectives/device/all_gather.cu.cc
+diff --git a/src/collectives/device/all_reduce.cu b/src/collectives/device/all_reduce.cu.cc
+similarity index 100%
+rename from src/collectives/device/all_reduce.cu
+rename to src/collectives/device/all_reduce.cu.cc
+diff --git a/src/collectives/device/broadcast.cu b/src/collectives/device/broadcast.cu.cc
+similarity index 100%
+rename from src/collectives/device/broadcast.cu
+rename to src/collectives/device/broadcast.cu.cc
+diff --git a/src/collectives/device/functions.cu b/src/collectives/device/functions.cu.cc
+similarity index 100%
+rename from src/collectives/device/functions.cu
+rename to src/collectives/device/functions.cu.cc
+diff --git a/src/collectives/device/reduce.cu b/src/collectives/device/reduce.cu.cc
+similarity index 100%
+rename from src/collectives/device/reduce.cu
+rename to src/collectives/device/reduce.cu.cc
+diff --git a/src/collectives/device/reduce_scatter.cu b/src/collectives/device/reduce_scatter.cu.cc
+similarity index 100%
+rename from src/collectives/device/reduce_scatter.cu
+rename to src/collectives/device/reduce_scatter.cu.cc
+diff --git a/src/collectives/device/sendrecv.cu b/src/collectives/device/sendrecv.cu.cc
+similarity index 100%
+rename from src/collectives/device/sendrecv.cu
+rename to src/collectives/device/sendrecv.cu.cc
+diff --git a/src/nccl.h.in b/src/nccl.h
+similarity index 98%
+rename from src/nccl.h.in
+rename to src/nccl.h
+index 985274e..7ebb1e1 100644
+--- a/src/nccl.h.in
++++ b/src/nccl.h
+@@ -10,12 +10,12 @@
+ #include <cuda_runtime.h>
+ #include <cuda_fp16.h>
+ 
+-#define NCCL_MAJOR ${nccl:Major}
+-#define NCCL_MINOR ${nccl:Minor}
+-#define NCCL_PATCH ${nccl:Patch}
+-#define NCCL_SUFFIX "${nccl:Suffix}"
++#define NCCL_MAJOR 2
++#define NCCL_MINOR 7
++#define NCCL_PATCH 3
++#define NCCL_SUFFIX ""
+ 
+-#define NCCL_VERSION_CODE ${nccl:Version}
++#define NCCL_VERSION_CODE 2703
+ #define NCCL_VERSION(X,Y,Z) ((X) * 1000 + (Y) * 100 + (Z))
+ 
+ #ifdef __cplusplus
+See https://github.com/NVIDIA/nccl/pull/322.patch
+From 410d341bd4569f60282576daa5c991717dbd560e Mon Sep 17 00:00:00 2001
+From: Danilo <doak@google.com>
+Date: Tue, 14 Apr 2020 14:52:42 +0200
+Subject: [PATCH 1/2] Fix memory leak in xml.cc.
+
+This patch fixes the memory leak documented in
+https://github.com/NVIDIA/nccl/issues/321, where one of the buffers
+allocated by realpath(), inside getPciPath() is not freed.
+
+The memory management aspect of this function also seemed odd and
+unecessary, as the realpath() function is documented to only write up to
+PATH_MAX bytes to the buffer passed to it, meaning we don't need dynamic
+memory allocation at all. I also changed the function signature of
+getPciPath to enforce the use of a fixed-size buffer.
+---
+ src/graph/xml.cc | 23 ++++++++++++-----------
+ 1 file changed, 12 insertions(+), 11 deletions(-)
+
+diff --git a/src/graph/xml.cc b/src/graph/xml.cc
+index 550cfcd0c..8fea91950 100644
+--- a/src/graph/xml.cc
++++ b/src/graph/xml.cc
+@@ -323,12 +323,14 @@ ncclResult_t ncclTopoGetXmlFromFile(const char* xmlTopoFile, struct ncclXml* xml
+ static void memcpylower(char* dst, const char* src, const size_t size) {
+   for (int i=0; i<size; i++) dst[i] = tolower(src[i]);
+ }
+-static ncclResult_t getPciPath(const char* busId, char** path) {
++
++static ncclResult_t getPciPath(const char* busId, char path[PATH_MAX+1]) {
+   char busPath[] = "/sys/class/pci_bus/0000:00/../../0000:00:00.0";
+   memcpylower(busPath+sizeof("/sys/class/pci_bus/")-1, busId, BUSID_REDUCED_SIZE-1);
+   memcpylower(busPath+sizeof("/sys/class/pci_bus/0000:00/../../")-1, busId, BUSID_SIZE-1);
+-  *path = realpath(busPath, NULL);
+-  if (*path == NULL) {
++  // Ensure that the returned string will always be null-terminated;
++  path[PATH_MAX] = 0;
++  if (realpath(busPath, path) == NULL) {
+     WARN("Could not find real path of %s", busPath);
+     return ncclSystemError;
+   }
+@@ -462,16 +464,16 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml*
+   // Fill info, then parent
+   const char* busId;
+   NCCLCHECK(xmlGetAttr(pciNode, "busid", &busId));
+-  char* path = NULL;
++  char path[PATH_MAX+1];
+   int index;
+   NCCLCHECK(xmlGetAttrIndex(pciNode, "class", &index));
+   if (index == -1) {
+-    if (path == NULL) NCCLCHECK(getPciPath(busId, &path));
++    NCCLCHECK(getPciPath(busId, path));
+     NCCLCHECK(ncclTopoSetAttrFromSys(pciNode, path, "class", "class"));
+   }
+   NCCLCHECK(xmlGetAttrIndex(pciNode, "link_speed", &index));
+   if (index == -1) {
+-    if (path == NULL) NCCLCHECK(getPciPath(busId, &path));
++    NCCLCHECK(getPciPath(busId, path));
+     char deviceSpeedStr[MAX_STR_LEN];
+     float deviceSpeed;
+     NCCLCHECK(ncclTopoGetStrFromSys(path, "max_link_speed", deviceSpeedStr));
+@@ -484,7 +486,7 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml*
+   }
+   NCCLCHECK(xmlGetAttrIndex(pciNode, "link_width", &index));
+   if (index == -1) {
+-    if (path == NULL) NCCLCHECK(getPciPath(busId, &path));
++    NCCLCHECK(getPciPath(busId, path));
+     char strValue[MAX_STR_LEN];
+     NCCLCHECK(ncclTopoGetStrFromSys(path, "max_link_width", strValue));
+     int deviceWidth = strtol(strValue, NULL, 0);
+@@ -494,7 +496,7 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml*
+   }
+   struct ncclXmlNode* parent = pciNode->parent;
+   if (parent == NULL) {
+-    if (path == NULL) NCCLCHECK(getPciPath(busId, &path));
++    NCCLCHECK(getPciPath(busId, path));
+ 
+     // Save that for later in case next step is a CPU
+     char numaIdStr[MAX_STR_LEN];
+@@ -544,7 +546,6 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml*
+   } else if (strcmp(parent->name, "cpu") == 0) {
+     NCCLCHECK(ncclTopoGetXmlFromCpu(parent, xml));
+   }
+-  free(path);
+   return ncclSuccess;
+ }
+ 
+@@ -644,8 +644,8 @@ ncclResult_t ncclTopoGetXmlFromGpu(struct ncclXmlNode* pciNode, nvmlDevice_t nvm
+         // Remote NVLink device is not visible inside this VM. Assume NVSwitch.
+         NCCLCHECK(xmlSetAttr(sub, "tclass", "0x068000"));
+       } else {
+-        char* path;
+-        NCCLCHECK(getPciPath(busId, &path));
++        char path[PATH_MAX+1];
++        NCCLCHECK(getPciPath(busId, path));
+         NCCLCHECK(ncclTopoSetAttrFromSys(sub, path, "class", "tclass"));
+       }
+     }
+
+From f02d51952ac587237ea5f7c607a5b379381d09d7 Mon Sep 17 00:00:00 2001
+From: Danilo <doak@google.com>
+Date: Tue, 14 Apr 2020 22:17:49 +0200
+Subject: [PATCH 2/2] Performance tweaks in ncclTopoGetXmlFromSys.
+
+Reduce the number of getPciPath calls to a single one per invocation
+and split the function in two so that the large `path` buffer does
+not linger the in the stack during recursive calls.
+---
+ src/graph/xml.cc | 17 +++++++++++------
+ 1 file changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/src/graph/xml.cc b/src/graph/xml.cc
+index 8fea91950..42eb68a4b 100644
+--- a/src/graph/xml.cc
++++ b/src/graph/xml.cc
+@@ -460,20 +460,21 @@ int checkBDFFormat(char* bdf) {
+   return 1;
+ }
+ 
+-ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml* xml) {
++ncclResult_t ncclTopoGetXmlNodeFromSys(struct ncclXmlNode* pciNode,
++                                       struct ncclXml* xml,
++                                       struct ncclXmlNode** return_parent) {
+   // Fill info, then parent
+   const char* busId;
+   NCCLCHECK(xmlGetAttr(pciNode, "busid", &busId));
+   char path[PATH_MAX+1];
++  NCCLCHECK(getPciPath(busId, path));
+   int index;
+   NCCLCHECK(xmlGetAttrIndex(pciNode, "class", &index));
+   if (index == -1) {
+-    NCCLCHECK(getPciPath(busId, path));
+     NCCLCHECK(ncclTopoSetAttrFromSys(pciNode, path, "class", "class"));
+   }
+   NCCLCHECK(xmlGetAttrIndex(pciNode, "link_speed", &index));
+   if (index == -1) {
+-    NCCLCHECK(getPciPath(busId, path));
+     char deviceSpeedStr[MAX_STR_LEN];
+     float deviceSpeed;
+     NCCLCHECK(ncclTopoGetStrFromSys(path, "max_link_speed", deviceSpeedStr));
+@@ -486,7 +487,6 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml*
+   }
+   NCCLCHECK(xmlGetAttrIndex(pciNode, "link_width", &index));
+   if (index == -1) {
+-    NCCLCHECK(getPciPath(busId, path));
+     char strValue[MAX_STR_LEN];
+     NCCLCHECK(ncclTopoGetStrFromSys(path, "max_link_width", strValue));
+     int deviceWidth = strtol(strValue, NULL, 0);
+@@ -496,8 +496,6 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml*
+   }
+   struct ncclXmlNode* parent = pciNode->parent;
+   if (parent == NULL) {
+-    NCCLCHECK(getPciPath(busId, path));
+-
+     // Save that for later in case next step is a CPU
+     char numaIdStr[MAX_STR_LEN];
+     NCCLCHECK(ncclTopoGetStrFromSys(path, "numa_node", numaIdStr));
+@@ -541,6 +539,13 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml*
+     pciNode->parent = parent;
+     parent->subs[parent->nSubs++] = pciNode;
+   }
++  *return_parent = parent;
++  return ncclSuccess;
++}
++
++ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml* xml) {
++  struct ncclXmlNode* parent;
++  ncclTopoGetXmlNodeFromSys(pciNode, xml, &parent);
+   if (strcmp(parent->name, "pci") == 0) {
+     NCCLCHECK(ncclTopoGetXmlFromSys(parent, xml));
+   } else if (strcmp(parent->name, "cpu") == 0) {

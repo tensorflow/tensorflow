@@ -69,6 +69,11 @@ Status SimplifyHelper(const Tensor& data, const Tensor& axis,
                                      " dimension(s)");
     }
     index = (index + data.dims()) % data.dims();
+    if (bitmap[index]) {
+      return errors::InvalidArgument(
+          "Invalid reduction arguments: Axes contains duplicate dimension: ",
+          index);
+    }
     bitmap[index] = true;
   }
   return Status::OK();
@@ -146,9 +151,9 @@ Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
     }
   }
 
-  VLOG(1) << "data reshape: " << str_util::Join(data_reshape_, ",");
-  VLOG(1) << "out  reshape: " << str_util::Join(out_reshape_, ",");
-  VLOG(1) << "out    shape: " << str_util::Join(out_shape_, ",");
+  VLOG(1) << "data reshape: " << absl::StrJoin(data_reshape_, ",");
+  VLOG(1) << "out  reshape: " << absl::StrJoin(out_reshape_, ",");
+  VLOG(1) << "out    shape: " << absl::StrJoin(out_shape_, ",");
   return Status::OK();
 }
 

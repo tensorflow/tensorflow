@@ -12,11 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <string>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace {
@@ -92,6 +99,17 @@ class ComparisonOpModel : public SingleOpModel {
   }
 };
 
+TEST(ComparisonsTest, EqualBool) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_BOOL,
+                          BuiltinOperator_EQUAL);
+  model.PopulateTensor<bool>(model.input1(), {true, false, true, false});
+  model.PopulateTensor<bool>(model.input2(), {true, true, false, false});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
 TEST(ComparisonsTest, EqualFloat) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT32,
                           BuiltinOperator_EQUAL);
@@ -112,6 +130,20 @@ TEST(ComparisonsTest, EqualInt) {
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, true, false));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(ComparisonsTest, EqualString) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  ComparisonOpModel model({1, 1, 1, 4, 1}, {1, 1, 1, 4, 1}, TensorType_STRING,
+                          BuiltinOperator_EQUAL);
+  model.PopulateTensor<std::string>(model.input1(), {"A", "B", "C", "D"});
+  model.PopulateTensor<std::string>(model.input2(), {"A", "C", "B", "D"});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4, 1));
 }
 
 TEST(ComparisonsTest, EqualBroadcast) {
@@ -137,6 +169,31 @@ TEST(ComparisonsTest, EqualBroadcastTwoD) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 2, 4));
 }
 
+TEST(ComparisonsTest, EqualBroadcastString) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 1}, TensorType_STRING,
+                          BuiltinOperator_EQUAL);
+  model.PopulateTensor<std::string>(model.input1(), {"A", "B", "A", "B"});
+  model.PopulateTensor<std::string>(model.input2(), {"A"});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, true, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(ComparisonsTest, NotEqualBool) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_BOOL,
+                          BuiltinOperator_NOT_EQUAL);
+  model.PopulateTensor<bool>(model.input1(), {true, false, true, false});
+  model.PopulateTensor<bool>(model.input2(), {true, true, false, false});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, true, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
 TEST(ComparisonsTest, NotEqualFloat) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT32,
                           BuiltinOperator_NOT_EQUAL);
@@ -157,6 +214,20 @@ TEST(ComparisonsTest, NotEqualInt) {
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, true, false, true));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(ComparisonsTest, NotEqualString) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  ComparisonOpModel model({1, 1, 1, 1, 4}, {1, 1, 1, 1, 4}, TensorType_STRING,
+                          BuiltinOperator_NOT_EQUAL);
+  model.PopulateTensor<std::string>(model.input1(), {"A", "B", "C", "D"});
+  model.PopulateTensor<std::string>(model.input2(), {"A", "C", "B", "D"});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, true, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 1, 4));
 }
 
 TEST(ComparisonsTest, NotEqualBroadcast) {
@@ -180,6 +251,20 @@ TEST(ComparisonsTest, NotEqualBroadcastTwoD) {
   EXPECT_THAT(model.GetOutput(),
               ElementsAre(true, true, true, true, true, true, false, true));
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 2, 4));
+}
+
+TEST(ComparisonsTest, NotEqualBroadcastString) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 1}, TensorType_STRING,
+                          BuiltinOperator_NOT_EQUAL);
+  model.PopulateTensor<std::string>(model.input1(), {"A", "B", "A", "B"});
+  model.PopulateTensor<std::string>(model.input2(), {"A"});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, false, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
 TEST(ComparisonsTest, GreaterFloat) {
@@ -363,7 +448,7 @@ TEST(ComparisonsTest, LessEqualBroadcastTwoD) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 2, 4));
 }
 
-TEST(QuantizedComparisonsTest, EqualQuantized) {
+TEST(QuantizedComparisonsTest, EqualUInt8Quantized) {
   const float kMin = -1.f;
   const float kMax = 128.f;
   ComparisonOpModel model({TensorType_UINT8, {1, 2, 2, 1}, kMin, kMax},
@@ -376,7 +461,20 @@ TEST(QuantizedComparisonsTest, EqualQuantized) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, true, false));
 }
 
-TEST(QuantizedComparisonsTest, NotEqualQuantized) {
+TEST(QuantizedComparisonsTest, EqualInt8Quantized) {
+  const float kMin = -127.f;
+  const float kMax = 127.f;
+  ComparisonOpModel model({TensorType_INT8, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT8, {1, 2, 2, 1}, kMin, kMax},
+                          TensorType_INT8, BuiltinOperator_EQUAL);
+  model.QuantizeAndPopulate<int8_t>(model.input1(), {1, -9, 7, 3});
+  model.QuantizeAndPopulate<int8_t>(model.input2(), {-1, 2, 7, 5});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, true, false));
+}
+
+TEST(QuantizedComparisonsTest, NotEqualUInt8Quantized) {
   const float kMin = -1.f;
   const float kMax = 128.f;
   ComparisonOpModel model({TensorType_UINT8, {1, 2, 2, 1}, kMin, kMax},
@@ -384,6 +482,19 @@ TEST(QuantizedComparisonsTest, NotEqualQuantized) {
                           TensorType_UINT8, BuiltinOperator_NOT_EQUAL);
   model.QuantizeAndPopulate<uint8_t>(model.input1(), {1, 9, 7, 3});
   model.QuantizeAndPopulate<uint8_t>(model.input2(), {1, 2, 7, 0});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, false, true));
+}
+
+TEST(QuantizedComparisonsTest, NotEqualInt8Quantized) {
+  const float kMin = -127.f;
+  const float kMax = 127.f;
+  ComparisonOpModel model({TensorType_INT8, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT8, {1, 2, 2, 1}, kMin, kMax},
+                          TensorType_INT8, BuiltinOperator_NOT_EQUAL);
+  model.QuantizeAndPopulate<int8_t>(model.input1(), {1, -9, 7, 3});
+  model.QuantizeAndPopulate<int8_t>(model.input2(), {1, 2, 7, 5});
   model.Invoke();
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, false, true));
@@ -470,7 +581,7 @@ TEST(ComparisonsTest, QuantizedEqualWithBroadcast) {
   }
 }
 
-TEST(ComparisonsTest, QuantizedNotEqualWithBroadcast) {
+TEST(ComparisonsTest, QuantizedUInt8NotEqualWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
   std::vector<std::vector<int>> test_shapes = {
@@ -488,7 +599,25 @@ TEST(ComparisonsTest, QuantizedNotEqualWithBroadcast) {
   }
 }
 
-TEST(ComparisonsTest, QuantizedGreaterWithBroadcast) {
+TEST(ComparisonsTest, QuantizedInt8NotEqualWithBroadcast) {
+  const float kMin = -127.f;
+  const float kMax = 127.f;
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    ComparisonOpModel model({TensorType_INT8, test_shapes[i], kMin, kMax},
+                            {TensorType_INT8, {}, kMin, kMax}, TensorType_INT8,
+                            BuiltinOperator_NOT_EQUAL);
+    model.QuantizeAndPopulate<int8_t>(model.input1(), {-20, 2, 7, -8, 11, 20});
+    model.QuantizeAndPopulate<int8_t>(model.input2(), {2});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutput(),
+                ElementsAre(true, false, true, true, true, true))
+        << "With shape number " << i;
+  }
+}
+
+TEST(ComparisonsTest, QuantizedUInt8GreaterWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
   std::vector<std::vector<int>> test_shapes = {
@@ -506,7 +635,25 @@ TEST(ComparisonsTest, QuantizedGreaterWithBroadcast) {
   }
 }
 
-TEST(ComparisonsTest, QuantizedGreaterEqualWithBroadcast) {
+TEST(ComparisonsTest, QuantizedInt8GreaterWithBroadcast) {
+  const float kMin = -127.f;
+  const float kMax = 127.f;
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    ComparisonOpModel model({TensorType_INT8, test_shapes[i], kMin, kMax},
+                            {TensorType_INT8, {}, kMin, kMax}, TensorType_INT8,
+                            BuiltinOperator_GREATER);
+    model.QuantizeAndPopulate<int8_t>(model.input1(), {20, -2, -71, 8, 11, 20});
+    model.QuantizeAndPopulate<int8_t>(model.input2(), {8});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutput(),
+                ElementsAre(true, false, false, false, true, true))
+        << "With shape number " << i;
+  }
+}
+
+TEST(ComparisonsTest, QuantizedUInt8GreaterEqualWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
   std::vector<std::vector<int>> test_shapes = {
@@ -524,7 +671,25 @@ TEST(ComparisonsTest, QuantizedGreaterEqualWithBroadcast) {
   }
 }
 
-TEST(ComparisonsTest, QuantizedLessWithBroadcast) {
+TEST(ComparisonsTest, QuantizedInt8GreaterEqualWithBroadcast) {
+  const float kMin = -127.f;
+  const float kMax = 127.f;
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    ComparisonOpModel model({TensorType_INT8, test_shapes[i], kMin, kMax},
+                            {TensorType_INT8, {}, kMin, kMax}, TensorType_INT8,
+                            BuiltinOperator_GREATER_EQUAL);
+    model.QuantizeAndPopulate<int8_t>(model.input1(), {20, -2, -71, 8, 11, 20});
+    model.QuantizeAndPopulate<int8_t>(model.input2(), {8});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutput(),
+                ElementsAre(true, false, false, true, true, true))
+        << "With shape number " << i;
+  }
+}
+
+TEST(ComparisonsTest, QuantizedUInt8LessWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
   std::vector<std::vector<int>> test_shapes = {
@@ -542,7 +707,25 @@ TEST(ComparisonsTest, QuantizedLessWithBroadcast) {
   }
 }
 
-TEST(ComparisonsTest, QuantizedLessEqualWithBroadcast) {
+TEST(ComparisonsTest, QuantizedInt8LessWithBroadcast) {
+  const float kMin = -127.f;
+  const float kMax = 127.f;
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    ComparisonOpModel model({TensorType_INT8, test_shapes[i], kMin, kMax},
+                            {TensorType_INT8, {}, kMin, kMax}, TensorType_INT8,
+                            BuiltinOperator_LESS);
+    model.QuantizeAndPopulate<int8_t>(model.input1(), {20, -2, -71, 8, 11, 20});
+    model.QuantizeAndPopulate<int8_t>(model.input2(), {8});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutput(),
+                ElementsAre(false, true, true, false, false, false))
+        << "With shape number " << i;
+  }
+}
+
+TEST(ComparisonsTest, QuantizedUInt8LessEqualWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
   std::vector<std::vector<int>> test_shapes = {
@@ -560,11 +743,22 @@ TEST(ComparisonsTest, QuantizedLessEqualWithBroadcast) {
   }
 }
 
+TEST(ComparisonsTest, QuantizedInt8LessEqualWithBroadcast) {
+  const float kMin = -127.f;
+  const float kMax = 127.f;
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    ComparisonOpModel model({TensorType_INT8, test_shapes[i], kMin, kMax},
+                            {TensorType_INT8, {}, kMin, kMax}, TensorType_INT8,
+                            BuiltinOperator_LESS_EQUAL);
+    model.QuantizeAndPopulate<int8_t>(model.input1(), {20, -2, -71, 8, 11, 20});
+    model.QuantizeAndPopulate<int8_t>(model.input2(), {8});
+    model.Invoke();
+    EXPECT_THAT(model.GetOutput(),
+                ElementsAre(false, true, true, true, false, false))
+        << "With shape number " << i;
+  }
+}
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

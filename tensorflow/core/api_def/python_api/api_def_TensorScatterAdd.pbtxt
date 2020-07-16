@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "TensorScatterAdd"
+  deprecation_message: "Use tensor_scatter_nd_add instead"
+  endpoint {
+    name: "tensor_scatter_nd_add"
+  }
+  endpoint {
+    name: "tensor_scatter_add"
+    deprecation_version: 2
+  }
+}

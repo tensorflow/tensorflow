@@ -52,7 +52,7 @@ std::unordered_map<string, FactoryItem>& device_factories() {
 
 // static
 int32 DeviceFactory::DevicePriority(const string& device_type) {
-  mutex_lock l(*get_device_factory_lock());
+  tf_shared_lock l(*get_device_factory_lock());
   std::unordered_map<string, FactoryItem>& factories = device_factories();
   auto iter = factories.find(device_type);
   if (iter != factories.end()) {
@@ -82,12 +82,80 @@ void DeviceFactory::Register(const string& device_type, DeviceFactory* factory,
 }
 
 DeviceFactory* DeviceFactory::GetFactory(const string& device_type) {
-  mutex_lock l(*get_device_factory_lock());  // could use reader lock
+  tf_shared_lock l(*get_device_factory_lock());
   auto it = device_factories().find(device_type);
   if (it == device_factories().end()) {
     return nullptr;
   }
   return it->second.factory.get();
+}
+
+Status DeviceFactory::ListAllPhysicalDevices(std::vector<string>* devices) {
+  // CPU first. A CPU device is required.
+  auto cpu_factory = GetFactory("CPU");
+  if (!cpu_factory) {
+    return errors::NotFound(
+        "CPU Factory not registered. Did you link in threadpool_device?");
+  }
+
+  size_t init_size = devices->size();
+  TF_RETURN_IF_ERROR(cpu_factory->ListPhysicalDevices(devices));
+  if (devices->size() == init_size) {
+    return errors::NotFound("No CPU devices are available in this process");
+  }
+
+  // Then the rest (including GPU).
+  tf_shared_lock l(*get_device_factory_lock());
+  for (auto& p : device_factories()) {
+    auto factory = p.second.factory.get();
+    if (factory != cpu_factory) {
+      TF_RETURN_IF_ERROR(factory->ListPhysicalDevices(devices));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status DeviceFactory::GetAnyDeviceDetails(
+    int device_index, std::unordered_map<string, string>* details) {
+  if (device_index < 0) {
+    return errors::InvalidArgument("Device index out of bounds: ",
+                                   device_index);
+  }
+  const int orig_device_index = device_index;
+
+  // Iterate over devices in the same way as in ListAllPhysicalDevices.
+  auto cpu_factory = GetFactory("CPU");
+  if (!cpu_factory) {
+    return errors::NotFound(
+        "CPU Factory not registered. Did you link in threadpool_device?");
+  }
+
+  std::vector<string> devices;
+  TF_RETURN_IF_ERROR(cpu_factory->ListPhysicalDevices(&devices));
+  if (device_index < devices.size()) {
+    return cpu_factory->GetDeviceDetails(device_index, details);
+  }
+  device_index -= devices.size();
+
+  // Then the rest (including GPU).
+  tf_shared_lock l(*get_device_factory_lock());
+  for (auto& p : device_factories()) {
+    auto factory = p.second.factory.get();
+    if (factory != cpu_factory) {
+      devices.clear();
+      // TODO(b/146009447): Find the factory size without having to allocate a
+      // vector with all the physical devices.
+      TF_RETURN_IF_ERROR(factory->ListPhysicalDevices(&devices));
+      if (device_index < devices.size()) {
+        return factory->GetDeviceDetails(device_index, details);
+      }
+      device_index -= devices.size();
+    }
+  }
+
+  return errors::InvalidArgument("Device index out of bounds: ",
+                                 orig_device_index);
 }
 
 Status DeviceFactory::AddDevices(
@@ -97,7 +165,7 @@ Status DeviceFactory::AddDevices(
   auto cpu_factory = GetFactory("CPU");
   if (!cpu_factory) {
     return errors::NotFound(
-        "CPU Factory not registered.  Did you link in threadpool_device?");
+        "CPU Factory not registered. Did you link in threadpool_device?");
   }
   size_t init_size = devices->size();
   TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(options, name_prefix, devices));

@@ -1,0 +1,11 @@
+path: "tensorflow.debugging.experimental"
+tf_module {
+  member_method {
+    name: "disable_dump_debug_info"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_dump_debug_info"
+    argspec: "args=[\'dump_root\', \'tensor_debug_mode\', \'circular_buffer_size\', \'op_regex\', \'tensor_dtypes\'], varargs=None, keywords=None, defaults=[\'NO_TENSOR\', \'1000\', \'None\', \'None\'], "
+  }
+}

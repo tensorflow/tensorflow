@@ -17,6 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_HASH_CRC32C_H_
 
 #include <stddef.h>
+
+// NOLINTNEXTLINE
+#include "tensorflow/core/platform/platform.h"
+// NOLINTNEXTLINE
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -29,6 +34,11 @@ extern uint32 Extend(uint32 init_crc, const char* data, size_t n);
 
 // Return the crc32c of data[0,n-1]
 inline uint32 Value(const char* data, size_t n) { return Extend(0, data, n); }
+
+#if defined(PLATFORM_GOOGLE)
+extern uint32 Extend(uint32 init_crc, const absl::Cord& cord);
+inline uint32 Value(const absl::Cord& cord) { return Extend(0, cord); }
+#endif
 
 static const uint32 kMaskDelta = 0xa282ead8ul;
 

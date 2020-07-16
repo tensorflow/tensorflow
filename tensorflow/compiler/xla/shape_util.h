@@ -43,6 +43,8 @@ limitations under the License.
 
 namespace xla {
 
+class ShapeIndexView;
+
 // An index for specifying a particular nested subshape within a shape. Used in
 // ShapeUtil::GetSubshape and other interfaces. Shapes are recursive data
 // structures (trees) and ShapeIndex defines a path through the tree where each
@@ -68,6 +70,8 @@ class ShapeIndex {
   ShapeIndex(std::initializer_list<int64> init) : indices_(init) {}
   template <typename InputIt>
   ShapeIndex(InputIt start, InputIt end) : indices_(start, end) {}
+
+  explicit ShapeIndex(ShapeIndexView v);
 
   bool empty() const { return indices_.empty(); }
   size_t size() const { return indices_.size(); }
@@ -137,6 +141,10 @@ class ShapeIndexView {
     CHECK(!empty());
     return indices_.front();
   }
+  int64 back() const {
+    CHECK(!empty());
+    return indices_.back();
+  }
   ShapeIndexView ConsumeFront() const {
     ShapeIndexView result = *this;
     result.indices_.remove_prefix(1);
@@ -161,6 +169,9 @@ class ShapeIndexView {
   absl::Span<const int64> indices_;
 };
 
+inline ShapeIndex::ShapeIndex(ShapeIndexView v)
+    : ShapeIndex(v.begin(), v.end()) {}
+
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index);
 
@@ -181,11 +192,8 @@ class ShapeUtil {
   };
 
   // Returns the number of elements are contained within the provided shape;
-  // e.g. for rank 0 (scalars) the result is always 1. Note that sparse shapes
-  // may not actually be able to store this number of elements. See
-  // LayoutUtil::MaxSparseElements(shape) to obtain the maximum number of
-  // elements that can be stored in a sparse shape.
-  // Precondition: IsArray(shape)
+  // e.g. for rank 0 (scalars) the result is always 1.
+  // Precondition: shape.IsArray()
   static int64 ElementsIn(const Shape& shape);
 
   // As ElementsIn(), but recurses through tuples.
@@ -207,7 +215,7 @@ class ShapeUtil {
 
   // Returns the number of bytes used to store the primitive_type.
   //
-  // Precondition: ShapeUtil::IsArray(shape)
+  // Precondition: shape.IsArray()
   static int64 ByteSizeOfPrimitiveType(PrimitiveType primitive_type);
 
   // Returns the number of bytes required to store the tuple member pointers for
@@ -217,19 +225,11 @@ class ShapeUtil {
                                          int64 pointer_size);
 
   // Returns the number of bytes required for the elements in an allocation of
-  // `shape`, which must be an array shape. The return value does not include
-  // the bytes needed to store sparse indices. Dense shapes use a separate
+  // `shape`, which must be an array shape. Shapes use a separate
   // memory location for each element, and so for these shapes,
-  // `ByteSizeOf(shape) == ByteSizeOfElements(shape)`. For dense shapes, this
-  // size also includes padding if present in the layout. For sparse shapes,
-  // `ByteSizeOf(shape) == ByteSizeOfElements(shape) +
-  // ByteSizeOfSparseindices(shape)`.
+  // `ByteSizeOf(shape) == ByteSizeOfElements(shape)`. This
+  // size also includes padding if present in the layout.
   static int64 ByteSizeOfElements(const Shape& shape);
-
-  // Returns the number of bytes required for the sparse indices in an
-  // allocation of shape. The shape must be an array shape. The return value
-  // does not include the bytes needed to store sparse indices.
-  static int64 ByteSizeOfSparseIndices(const Shape& shape);
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
@@ -240,10 +240,6 @@ class ShapeUtil {
   //
   // (param_name: f32[42x12], ...) -> f32[24x42]
   static string HumanString(const ProgramShape& program_shape);
-
-  // Parses a ShapeUtil::HumanString-format shape string back into a shape
-  // object.
-  static StatusOr<Shape> ParseShapeString(absl::string_view s);
 
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.
@@ -266,14 +262,13 @@ class ShapeUtil {
   }
 
   // Returns the higher-precision element type if a and b are both floating
-  // point types; otherwise, checks that that they have the same element type
+  // point types; otherwise, checks that they have the same element type
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
     if (SameElementType(a, b)) {
       return a.element_type();
     }
-    CHECK(SameElementTypeIgnoringFpPrecision(a, b));
     return primitive_util::BitWidth(a.element_type()) <
                    primitive_util::BitWidth(b.element_type())
                ? b.element_type()
@@ -294,15 +289,24 @@ class ShapeUtil {
   // being F32. Tuple elements are compared recursively for compatibility.
   static bool CompatibleIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
 
-  // Returns whether the lhs and rhs shapes are identical protobufs.
+  // Returns whether the lhs and rhs shapes are identical.
   static bool Equal(const Shape& lhs, const Shape& rhs);
+
+  // As Equal, but does not compare the element type.
+  static bool EqualIgnoringElementType(const Shape& lhs, const Shape& rhs);
 
   // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
   static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
 
-  // Returns the rank (number of dimensions) of the given shape.
-  // Precondition: !IsTuple(shape)
-  static int64 Rank(const Shape& shape);
+  // Two shapes have same structure if all subshape indices of lhs are presented
+  // on rhs and vice versa.
+  // A nested tuple shape of (F32, (S32[2], F32[2, 2])) is structurally equal to
+  // (S32, (F32[3], S32[2])) as their structures are both (,(,))
+  //
+  // In contrast, (F32, (F32, F32)) is structurally different from
+  // ((F32, F32), F32) as the former has structure (,(,)) while the latter has
+  // ((,),)
+  static bool EqualStructure(const Shape& lhs, const Shape& rhs);
 
   // Returns the number of dimensions for which the dimension is not (trivially)
   // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
@@ -317,10 +321,10 @@ class ShapeUtil {
   // Scalar-specific
 
   static bool IsScalar(const Shape& shape) {
-    return IsArray(shape) && Rank(shape) == 0;
+    return shape.IsArray() && shape.rank() == 0;
   }
   static bool IsEffectiveScalar(const Shape& shape) {
-    return IsArray(shape) && TrueRank(shape) == 0;
+    return shape.IsArray() && TrueRank(shape) == 0;
   }
 
   // Returns whether "shape" is a scalar (array) with the given element_type.
@@ -345,6 +349,9 @@ class ShapeUtil {
   // element type changed to type.
   static Shape ChangeElementType(const Shape& original, PrimitiveType type);
 
+  // Retursn a shape with same dimensions but with all dimensions set to static.
+  static Shape MakeStaticShape(const Shape& original);
+
   // Creates a tuple shape from a slice of element shapes within the tuple.
   static Shape MakeTupleShape(absl::Span<const Shape> shapes);
 
@@ -358,6 +365,14 @@ class ShapeUtil {
 
   // Appends a shape to the given tuple.
   static void AppendShapeToTuple(const Shape& shape, Shape* tuple_shape);
+
+  // Update a subshape of a tuple.
+  static void UpdateTupleShape(const Shape& shape, int64 index,
+                               Shape* tuple_shape);
+
+  // Update the dynamic dimension for a shape. This shape can be a nested tuple.
+  static void UpdateDynamicDimension(Shape* shape, ShapeIndexView index,
+                                     int64 dim, bool is_dynamic);
 
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
@@ -375,11 +390,27 @@ class ShapeUtil {
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64> dimensions);
 
+  // Make a scalar shape with given primitive type.
+  static Shape MakeScalarShape(PrimitiveType element_type);
+
+  // Constructs a new shape with the given element type and sequence of
+  // potentially dynamic dimensions. The argument 'dynamic_dimensions' indicates
+  // with a true value that the respective dimension is dynamic. If the
+  // dimension is dynamic then the respective value in 'dimension' is an upper
+  // bound on the dimension size. 'dimensions' and 'dynamic_dimensions' must be
+  // the same size.
+  static Shape MakeShape(PrimitiveType element_type,
+                         absl::Span<const int64> dimensions,
+                         const std::vector<bool>& dynamic_dimensions);
+
   // Constructs a new shape with the given element type and sequence of
   // dimensions. Method checks if the element type is valid and the shape's
   // size fits in std::numeric_limits<int64>::max().
   static StatusOr<Shape> MakeValidatedShape(PrimitiveType element_type,
                                             absl::Span<const int64> dimensions);
+  static StatusOr<Shape> MakeValidatedShape(
+      PrimitiveType element_type, absl::Span<const int64> dimensions,
+      const std::vector<bool>& dynamic_dimensions);
 
   // Creates a Shape with element type corresponding to T and the given
   // dimensions
@@ -393,11 +424,13 @@ class ShapeUtil {
   // Returns a value shape such that shape.has_layout().
   static Shape MakeShapeWithLayout(PrimitiveType element_type,
                                    absl::Span<const int64> dimensions,
-                                   absl::Span<const int64> minor_to_major);
+                                   absl::Span<const int64> minor_to_major,
+                                   absl::Span<const Tile> tiles = {},
+                                   int64 element_size_in_bits = 0,
+                                   int64 memory_space = 0);
 
-  static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
-                                         absl::Span<const int64> dimensions,
-                                         int64 max_sparse_elements);
+  // Returns the same shape except with all dimensions set to be static.
+  static Shape MakeShapeWithStaticDimensions(const Shape& shape);
 
   // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
   static Shape MakeShapeWithDescendingLayout(
@@ -447,27 +480,6 @@ class ShapeUtil {
   // that floating point numbers are signed.
   static bool ElementIsSigned(const Shape& shape);
 
-  // Returns whether the shape is a tuple.
-  static bool IsTuple(const Shape& shape) {
-    return shape.element_type() == TUPLE;
-  }
-
-  // Returns whether the shape is an opaque value (i.e. an 'existential' typed
-  // value that is passed to CustomCall operations).
-  static bool IsOpaque(const Shape& shape) {
-    return shape.element_type() == OPAQUE;
-  }
-
-  // Returns whether the shape is an token value used for ordering
-  // side-effecting operations.
-  static bool IsToken(const Shape& shape) {
-    return shape.element_type() == TOKEN;
-  }
-
-  // Returns whether the shape is an array.  Note that scalars are considered
-  // arrays.
-  static bool IsArray(const Shape& shape);
-
   // Returns whether the given primitive type corresponds to an array shape.
   static bool IsArrayPrimitiveType(PrimitiveType primitive_type);
 
@@ -496,12 +508,6 @@ class ShapeUtil {
   // Returns the shape of the real/imaginary components of the given complex
   // shape.
   static Shape ComplexComponentShape(const Shape& complex_shape);
-
-  // Shorthand for testing whether a shape is of a given element type and
-  // sequence of dimensions.
-  ABSL_DEPRECATED("Use Equal() instead.")
-  static bool ShapeIs(const Shape& shape, PrimitiveType element_type,
-                      std::initializer_list<int64> dimensions);
 
   // Returns true if the given shape has a subshape at the given index.
   static bool IndexIsValid(const Shape& shape, ShapeIndexView index);
@@ -551,6 +557,9 @@ class ShapeUtil {
   // (dimensions with bound 1).
   static bool HasDegenerateDimensions(const Shape& shape);
 
+  // Drops any degenerate dimensions (i.e. dimensions of size 1)
+  static Shape DropDegenerateDimensions(const Shape& shape);
+
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[permutation[i]] = argument.dimensions[i].
   //
@@ -595,6 +604,20 @@ class ShapeUtil {
   static std::vector<std::pair<int64, int64>> DimensionsUnmodifiedByReshape(
       const Shape& input_shape, const Shape& output_shape);
 
+  // Return whether the given reshape instruction leaves the dimensions at the
+  // given input indices unmodified, and returns their output indices.
+  //
+  // Example:
+  //   input_dim_indices = {2, 3}
+  //   input  shape = T[a, b, x, y, cd]
+  //   output shape = T[ab, x, 1, y, c, d]
+  //   return value = {1, 3}
+  //
+  // Precondition: input_dim_indices is sorted.
+  static absl::optional<std::vector<int64>> ReshapeLeavesDimensionsUnmodified(
+      const Shape& from_shape, const Shape& to_shape,
+      absl::Span<const int64> input_dim_indices);
+
   // Returns whether a transpose from input_shape to output_shape with dimension
   // mapping "dimension_mapping" produces a result which is bit-wise identical
   // to its input and thus may be replaced with a bitcast.
@@ -633,15 +656,23 @@ class ShapeUtil {
   static Shape FilterDimensions(const std::function<bool(int64)>& p,
                                 Shape shape);
 
-  // Iterates through all the shape indexes, in minor to major order, starting
-  // from the base indexes, incrementing by the incr steps, up to count
-  // (index[i] < base[i] + count[i]), and calls the visitor_function with the
-  // current index.
-  // The visitor_function visitor function should return true if it wants to
-  // continue, or false otherwise.
+  // Returns true if `dynamic_shape` has dimensions that are less-equal to the
+  // "bounded_shape". Shapes must be arrays.
+  static bool DynamicArrayShapeIsCompatible(const xla::Shape& dynamic_shape,
+                                            const xla::Shape& bounded_shape);
+
+  // Same as DynamicArrayShapeIsCompatible() but supports tuples.
+  static bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
+                                       const xla::Shape& bounded_shape);
+
+  // Iterates through all the shape indexes, in minor to major order,
+  // starting from the base indexes, incrementing by the incr steps, up to
+  // count (index[i] < base[i] + count[i]), and calls the visitor_function
+  // with the current index. The visitor_function visitor function should
+  // return true if it wants to continue, or false otherwise.
   //
   // visitor_function must be a callable of type
-  // StatusOr<bool>(Span<int64>) or compatible.
+  // StatusOr<bool>(absl::Span<int64>) or compatible.
   template <typename FnType>
   static Status ForEachIndexWithStatus(const Shape& shape,
                                        absl::Span<const int64> base,
@@ -694,11 +725,9 @@ class ShapeUtil {
 
   template <typename FnType>
   static void ForEachIndex(const Shape& shape, const FnType& visitor_function) {
-    ForEachIndexWithStatus(shape,
-                           [&](absl::Span<const int64> indices) {
-                             return StatusOr<bool>(visitor_function(indices));
-                           })
-        .IgnoreError();
+    ForEachIndexWithStatus(shape, [&](absl::Span<const int64> indices) {
+      return StatusOr<bool>(visitor_function(indices));
+    }).IgnoreError();
   }
 
   // A parallel version of ForEachIndex(WithStatus). This can only be used if
@@ -728,6 +757,21 @@ class ShapeUtil {
   // Compute a hash for `shape`.
   static size_t Hash(const Shape& shape);
 
+  // About 0-2-1 transpose:
+  //
+  // If a shape can be viewed as three logical components 0-1-2 in the order of
+  // major to minor, a 0-2-1-transpose changes the order of such logical
+  // components to 0-2-1. We call the shape being transposed the input shape and
+  // the transposed shape the output shape. The logical view of the input/output
+  // shapes for the transpose are called the 0-1-2/0-2-1 shapes or the
+  // normalized shapes. The original input/output shapes are called unnormalized
+  // shapes.
+  //
+  // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
+  // normalized shape of `b` or the 0-2-1 shape.
+  static absl::optional<std::vector<int64>> FindTranspose021(const Shape& a,
+                                                             const Shape& b);
+
  private:
   // Validates the shape size is sane. This makes sure it's safe to do
   // calculations in int64 without overflowing.
@@ -747,7 +791,7 @@ class ShapeUtil {
     if (ShapeUtil::IsZeroElementArray(shape)) {
       return Status::OK();
     }
-    CHECK_EQ(Rank(shape), base.size());
+    CHECK_EQ(shape.rank(), base.size());
     CHECK_EQ(incr.size(), base.size());
     CHECK_EQ(count.size(), base.size());
     const int64 rank = LayoutUtil::MinorToMajor(shape).size();
@@ -755,7 +799,7 @@ class ShapeUtil {
     // once with the proper empty indexes.
     int64 n = -1;
     std::vector<int64> indexes(base.begin(), base.end());
-    const int kNumThreads = tensorflow::port::NumSchedulableCPUs();
+    const int kNumThreads = tensorflow::port::MaxParallelism();
     absl::optional<tensorflow::thread::ThreadPool> pool;
     if (parallel) {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);

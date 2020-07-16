@@ -1,0 +1,12 @@
+op {
+  name: "TensorForestTreeSerialize"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "tree_config"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

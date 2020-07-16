@@ -77,13 +77,25 @@ Array2D<uint32> PackLargeInput(Array2D<NativeT> &input) {
 
 template <typename NativeT>
 Array2D<bfloat16> GenerateLargeSizeMinCombinedOutput(
-    Array2D<NativeT> &input, const QuantizedRange &range) {
+    Array2D<NativeT> &input, const QuantizedRange &range,
+    bool transpose_output = false) {
   const int64 size_per_pack = sizeof(uint32) / sizeof(NativeT);
   int64 width = input.width();
 
   int64 padded_output_width = CeilOfRatio(width, size_per_pack) * size_per_pack;
 
-  Array2D<bfloat16> output(input.height(), padded_output_width, bfloat16(0.0));
+  int64 output_height;
+  int64 output_width;
+
+  if (transpose_output) {
+    output_height = padded_output_width;
+    output_width = input.height();
+  } else {
+    output_height = input.height();
+    output_width = padded_output_width;
+  }
+
+  Array2D<bfloat16> output(output_height, output_width, bfloat16(0.0));
 
   float half_range =
       !std::is_signed<NativeT>::value
@@ -102,7 +114,11 @@ Array2D<bfloat16> GenerateLargeSizeMinCombinedOutput(
       bfloat16 result =
           static_cast<bfloat16>(input(h, w) + half_range) * scale_factor +
           range.min;
-      output(h, w) = result;
+      if (transpose_output) {
+        output(w, h) = result;
+      } else {
+        output(h, w) = result;
+      }
     }
   }
 
@@ -206,6 +222,29 @@ XLA_TEST_F(DequantizeTest, MinCombinedUint8R2) {
   ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
+XLA_TEST_F(DequantizeTest, MinCombinedUint8R2TransposeOutput) {
+  XlaBuilder builder(TestName());
+  std::vector<std::vector<uint8>> input = {
+      {0, 1, 2, 3},
+      {4, 5, 6, 7},
+      {8, 9, 10, 11},
+      {12, 13, 16, 15},
+  };
+  auto x = ConstantR2<uint32>(&builder, {{PackToUint32<uint8>(input[0])[0]},
+                                         {PackToUint32<uint8>(input[1])[0]},
+                                         {PackToUint32<uint8>(input[2])[0]},
+                                         {PackToUint32<uint8>(input[3])[0]}});
+  QuantizedRange range(0, 255.0f);
+  xla::Dequantize<uint8>(x, range, "MIN_COMBINED", /*transpose_output=*/true);
+  const Array2D<bfloat16> expected = {
+      {bfloat16(0.0), bfloat16(4.0), bfloat16(8.0), bfloat16(12.0)},
+      {bfloat16(1.0), bfloat16(5.0), bfloat16(9.0), bfloat16(13.0)},
+      {bfloat16(2.0), bfloat16(6.0), bfloat16(10.0), bfloat16(16.0)},
+      {bfloat16(3.0), bfloat16(7.0), bfloat16(11.0), bfloat16(15.0)},
+  };
+  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+}
+
 XLA_TEST_F(DequantizeTest, MinCombinedUint8R2TailingZero) {
   XlaBuilder builder(TestName());
   std::vector<std::vector<uint8>> input = {
@@ -236,6 +275,36 @@ XLA_TEST_F(DequantizeTest, MinCombinedUint8R2TailingZero) {
   ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
+XLA_TEST_F(DequantizeTest, MinCombinedUint8R2TailingZeroTransposeOutput) {
+  XlaBuilder builder(TestName());
+  std::vector<std::vector<uint8>> input = {
+      {0, 1, 2, 3, 16},
+      {4, 5, 6, 7, 17},
+      {8, 9, 10, 11, 18},
+      {12, 13, 16, 15, 19},
+  };
+  auto x = ConstantR2<uint32>(
+      &builder,
+      {{PackToUint32<uint8>(input[0])[0], PackToUint32<uint8>(input[0])[1]},
+       {PackToUint32<uint8>(input[1])[0], PackToUint32<uint8>(input[1])[1]},
+       {PackToUint32<uint8>(input[2])[0], PackToUint32<uint8>(input[2])[1]},
+       {PackToUint32<uint8>(input[3])[0], PackToUint32<uint8>(input[3])[1]}});
+  QuantizedRange range(0, 255.0f);
+  xla::Dequantize<uint8>(x, range, "MIN_COMBINED", /*transpose_output=*/true);
+
+  const Array2D<bfloat16> expected = {
+      {bfloat16(0.0), bfloat16(4.0), bfloat16(8.0), bfloat16(12.0)},
+      {bfloat16(1.0), bfloat16(5.0), bfloat16(9.0), bfloat16(13.0)},
+      {bfloat16(2.0), bfloat16(6.0), bfloat16(10.0), bfloat16(16.0)},
+      {bfloat16(3.0), bfloat16(7.0), bfloat16(11.0), bfloat16(15.0)},
+      {bfloat16(16.0), bfloat16(17.0), bfloat16(18.0), bfloat16(19.0)},
+      {bfloat16(0.0), bfloat16(0.0), bfloat16(0.0), bfloat16(0.0)},
+      {bfloat16(0.0), bfloat16(0.0), bfloat16(0.0), bfloat16(0.0)},
+      {bfloat16(0.0), bfloat16(0.0), bfloat16(0.0), bfloat16(0.0)},
+  };
+  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+}
+
 XLA_TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTest) {
   XlaBuilder builder(TestName());
   Array2D<uint8> input = GenerateLargeSizeInput<uint8>(500, 3547);
@@ -247,6 +316,20 @@ XLA_TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTest) {
 
   const Array2D<bfloat16> expected =
       GenerateLargeSizeMinCombinedOutput<uint8>(input, range);
+  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+}
+
+XLA_TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTestTransposeOutput) {
+  XlaBuilder builder(TestName());
+  Array2D<uint8> input = GenerateLargeSizeInput<uint8>(500, 3547);
+  Array2D<uint32> input_packed = PackLargeInput<uint8>(input);
+
+  auto x = ConstantR2FromArray2D<uint32>(&builder, input_packed);
+  QuantizedRange range(0, 255.0f);
+  xla::Dequantize<uint8>(x, range, "MIN_COMBINED", /*transpose_output=*/true);
+
+  const Array2D<bfloat16> expected = GenerateLargeSizeMinCombinedOutput<uint8>(
+      input, range, /*transpose_output=*/true);
   ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 

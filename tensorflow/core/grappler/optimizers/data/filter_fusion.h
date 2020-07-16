@@ -16,32 +16,35 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_FILTER_FUSION_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_FILTER_FUSION_H_
 
-#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
 namespace grappler {
 
 // This optimization fuses filter transformations.
-class FilterFusion : public CustomGraphOptimizer {
+class FilterFusion : public TFDataOptimizerBase {
  public:
   FilterFusion() = default;
   ~FilterFusion() override = default;
 
   string name() const override { return "filter_fusion"; };
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return Status::OK();
   }
 
-  Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* output) override;
+  Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
+                                 GraphDef* output,
+                                 OptimizationStats* stats) override;
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
 };
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_FILTER_FUSION_H_

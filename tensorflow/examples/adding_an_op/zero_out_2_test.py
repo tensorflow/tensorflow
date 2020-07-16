@@ -33,13 +33,13 @@ class ZeroOut2Test(tf.test.TestCase):
   def test(self):
     with self.cached_session():
       result = zero_out_op_2.zero_out([5, 4, 3, 2, 1])
-      self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
+      self.assertAllEqual(result, [5, 0, 0, 0, 0])
 
   @test_util.run_deprecated_v1
   def test_2d(self):
     with self.cached_session():
       result = zero_out_op_2.zero_out([[6, 5, 4], [3, 2, 1]])
-      self.assertAllEqual(result.eval(), [[6, 0, 0], [0, 0, 0]])
+      self.assertAllEqual(result, [[6, 0, 0], [0, 0, 0]])
 
   @test_util.run_deprecated_v1
   def test_grad(self):
@@ -47,7 +47,7 @@ class ZeroOut2Test(tf.test.TestCase):
       shape = (5,)
       x = tf.constant([5, 4, 3, 2, 1], dtype=tf.float32)
       y = zero_out_op_2.zero_out(x)
-      err = tf.test.compute_gradient_error(x, shape, y, shape)
+      err = tf.compat.v1.test.compute_gradient_error(x, shape, y, shape)
       self.assertLess(err, 1e-4)
 
   @test_util.run_deprecated_v1
@@ -56,7 +56,7 @@ class ZeroOut2Test(tf.test.TestCase):
       shape = (2, 3)
       x = tf.constant([[6, 5, 4], [3, 2, 1]], dtype=tf.float32)
       y = zero_out_op_2.zero_out(x)
-      err = tf.test.compute_gradient_error(x, shape, y, shape)
+      err = tf.compat.v1.test.compute_gradient_error(x, shape, y, shape)
       self.assertLess(err, 1e-4)
 
 

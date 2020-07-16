@@ -69,7 +69,7 @@ class GrpcRPCFactory : public RPCFactory {
 
   mutex mu_;
   typedef std::unique_ptr<::grpc::GenericStub> StubPtr;
-  std::unordered_map<string, StubPtr> stubs_ GUARDED_BY(mu_);
+  std::unordered_map<string, StubPtr> stubs_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

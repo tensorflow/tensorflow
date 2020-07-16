@@ -27,6 +27,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -35,13 +36,16 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("RandomShuffleQueue removed from v2")
 class RandomShuffleQueueTest(test.TestCase):
 
   def setUp(self):
     # Useful for debugging when a test times out.
     super(RandomShuffleQueueTest, self).setUp()
     tf_logging.error("Starting: %s", self._testMethodName)
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
 
   def tearDown(self):
     super(RandomShuffleQueueTest, self).tearDown()
@@ -51,9 +55,9 @@ class RandomShuffleQueueTest(test.TestCase):
     with self.cached_session():
       q = data_flow_ops.RandomShuffleQueue(10, 5, dtypes_lib.float32)
       enqueue_op = q.enqueue((10.0,))
-      self.assertAllEqual(0, q.size().eval())
+      self.assertAllEqual(0, q.size())
       enqueue_op.run()
-      self.assertAllEqual(1, q.size().eval())
+      self.assertAllEqual(1, q.size())
 
   def testEnqueueWithShape(self):
     with self.cached_session():
@@ -61,7 +65,7 @@ class RandomShuffleQueueTest(test.TestCase):
           10, 5, dtypes_lib.float32, shapes=tensor_shape.TensorShape([3, 2]))
       enqueue_correct_op = q.enqueue(([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],))
       enqueue_correct_op.run()
-      self.assertAllEqual(1, q.size().eval())
+      self.assertAllEqual(1, q.size())
       with self.assertRaises(ValueError):
         q.enqueue(([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],))
 
@@ -70,7 +74,7 @@ class RandomShuffleQueueTest(test.TestCase):
       q = data_flow_ops.RandomShuffleQueue(
           10, 5, [dtypes_lib.int32, dtypes_lib.int32], shapes=[(), (2,)])
       q.enqueue_many([[1, 2, 3, 4], [[1, 1], [2, 2], [3, 3], [4, 4]]]).run()
-      self.assertAllEqual(4, q.size().eval())
+      self.assertAllEqual(4, q.size())
 
       q2 = data_flow_ops.RandomShuffleQueue(
           10, 5, dtypes_lib.int32, shapes=tensor_shape.TensorShape([3]))
@@ -649,8 +653,8 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertItemsEqual(expected, results)
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                   "is closed and has insufficient"):
+      with self.assertRaisesRegex(errors_impl.OutOfRangeError,
+                                  "is closed and has insufficient"):
         self.evaluate(dequeued_t)
 
   def testBlockingDequeueFromClosedQueue(self):
@@ -676,8 +680,8 @@ class RandomShuffleQueueTest(test.TestCase):
 
         self.assertItemsEqual(elems, results)
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
+        with self.assertRaisesRegex(errors_impl.OutOfRangeError,
+                                    "is closed and has insufficient"):
           self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=blocking_dequeue)
@@ -701,8 +705,8 @@ class RandomShuffleQueueTest(test.TestCase):
 
       def dequeue():
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
+        with self.assertRaisesRegex(errors_impl.OutOfRangeError,
+                                    "is closed and has insufficient"):
           self.evaluate(dequeued_t)
         finished.append(True)
 
@@ -732,8 +736,8 @@ class RandomShuffleQueueTest(test.TestCase):
         self.assertItemsEqual(elems, self.evaluate(dequeued_t))
         progress.append(1)
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
+        with self.assertRaisesRegex(errors_impl.OutOfRangeError,
+                                    "is closed and has insufficient"):
           self.evaluate(dequeued_t)
         progress.append(2)
 
@@ -766,9 +770,9 @@ class RandomShuffleQueueTest(test.TestCase):
 
       def dequeue():
         results.extend(self.evaluate(dequeued_t))
-        self.assertEquals(3, len(results))
+        self.assertEqual(3, len(results))
         results.extend(self.evaluate(dequeued_t))
-        self.assertEquals(4, len(results))
+        self.assertEqual(4, len(results))
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -797,11 +801,11 @@ class RandomShuffleQueueTest(test.TestCase):
 
       def dequeue():
         results.extend(self.evaluate(dequeued_t))
-        self.assertEquals(3, len(results))
+        self.assertEqual(3, len(results))
         # min_after_dequeue is 2, we ask for 3 elements, and we end up only
         # getting the remaining 1.
         results.extend(self.evaluate(dequeued_t))
-        self.assertEquals(4, len(results))
+        self.assertEqual(4, len(results))
 
       dequeue_thread = self.checkedThread(target=dequeue)
       dequeue_thread.start()
@@ -829,8 +833,8 @@ class RandomShuffleQueueTest(test.TestCase):
         results.extend(self.evaluate(dequeued_t))
         self.assertEqual(len(results), 3)
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
+        with self.assertRaisesRegex(errors_impl.OutOfRangeError,
+                                    "is closed and has insufficient"):
           self.evaluate(dequeued_t)
         # While the last dequeue failed, we want to insure that it returns
         # any elements that it potentially reserved to dequeue. Thus the
@@ -854,8 +858,8 @@ class RandomShuffleQueueTest(test.TestCase):
 
       def dequeue():
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
+        with self.assertRaisesRegex(errors_impl.OutOfRangeError,
+                                    "is closed and has insufficient"):
           self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
@@ -874,8 +878,8 @@ class RandomShuffleQueueTest(test.TestCase):
 
       def dequeue():
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.OutOfRangeError,
-                                     "is closed and has insufficient"):
+        with self.assertRaisesRegex(errors_impl.OutOfRangeError,
+                                    "is closed and has insufficient"):
           self.evaluate(dequeued_t)
 
       dequeue_thread = self.checkedThread(target=dequeue)
@@ -896,7 +900,7 @@ class RandomShuffleQueueTest(test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(errors_impl.CancelledError, "is closed"):
+      with self.assertRaisesRegex(errors_impl.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testEnqueueManyToClosedQueue(self):
@@ -910,7 +914,7 @@ class RandomShuffleQueueTest(test.TestCase):
       close_op.run()
 
       # Expect the operation to fail due to the queue being closed.
-      with self.assertRaisesRegexp(errors_impl.CancelledError, "is closed"):
+      with self.assertRaisesRegex(errors_impl.CancelledError, "is closed"):
         enqueue_op.run()
 
   def testBlockingEnqueueToFullQueue(self):
@@ -992,7 +996,7 @@ class RandomShuffleQueueTest(test.TestCase):
         self.evaluate(blocking_enqueue_op)
 
         # Expect the operation to fail due to the queue being closed.
-        with self.assertRaisesRegexp(errors_impl.CancelledError, "closed"):
+        with self.assertRaisesRegex(errors_impl.CancelledError, "closed"):
           self.evaluate(blocking_enqueue_op)
 
       thread1 = self.checkedThread(target=blocking_enqueue)
@@ -1065,7 +1069,7 @@ class RandomShuffleQueueTest(test.TestCase):
 
       # At this point the close operation will complete, so the next enqueue
       # will fail.
-      with self.assertRaisesRegexp(errors_impl.CancelledError, "closed"):
+      with self.assertRaisesRegex(errors_impl.CancelledError, "closed"):
         self.evaluate(blocking_enqueue_op)
 
   def testSharedQueueSameSession(self):
@@ -1197,7 +1201,7 @@ class RandomShuffleQueueTest(test.TestCase):
   def testSelectQueue(self):
     with self.cached_session():
       num_queues = 10
-      qlist = list()
+      qlist = []
       for _ in xrange(num_queues):
         qlist.append(
             data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32))
@@ -1237,6 +1241,9 @@ class RandomShuffleQueueTest(test.TestCase):
       self.evaluate(enqueue_many_op)
 
   def testResetOfBlockingOperation(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
     with self.cached_session() as sess:
       q_empty = data_flow_ops.RandomShuffleQueue(5, 0, dtypes_lib.float32, (
           (),))
@@ -1417,7 +1424,6 @@ class RandomShuffleQueueTest(test.TestCase):
 
       self.assertItemsEqual(elem, results)
 
-  @test_util.run_v1_only("b/120545219")
   def testBigDequeueMany(self):
     with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(2, 0, dtypes_lib.int32, ((),))

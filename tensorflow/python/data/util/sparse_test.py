@@ -87,64 +87,67 @@ class SparseTest(test.TestCase):
             "expected": ()
         },
         {
-            "types": tensor_shape.scalar(),
+            "types": tensor_shape.TensorShape([]),
             "classes": ops.Tensor,
-            "expected": tensor_shape.scalar()
+            "expected": tensor_shape.TensorShape([])
         },
         {
-            "types": tensor_shape.scalar(),
+            "types": tensor_shape.TensorShape([]),
             "classes": sparse_tensor.SparseTensor,
             "expected": tensor_shape.unknown_shape()
         },
         {
-            "types": (tensor_shape.scalar()),
+            "types": (tensor_shape.TensorShape([])),
             "classes": (ops.Tensor),
-            "expected": (tensor_shape.scalar())
+            "expected": (tensor_shape.TensorShape([]))
         },
         {
-            "types": (tensor_shape.scalar()),
+            "types": (tensor_shape.TensorShape([])),
             "classes": (sparse_tensor.SparseTensor),
             "expected": (tensor_shape.unknown_shape())
         },
         {
-            "types": (tensor_shape.scalar(), ()),
+            "types": (tensor_shape.TensorShape([]), ()),
             "classes": (ops.Tensor, ()),
-            "expected": (tensor_shape.scalar(), ())
+            "expected": (tensor_shape.TensorShape([]), ())
         },
         {
-            "types": ((), tensor_shape.scalar()),
+            "types": ((), tensor_shape.TensorShape([])),
             "classes": ((), ops.Tensor),
-            "expected": ((), tensor_shape.scalar())
+            "expected": ((), tensor_shape.TensorShape([]))
         },
         {
-            "types": (tensor_shape.scalar(), ()),
+            "types": (tensor_shape.TensorShape([]), ()),
             "classes": (sparse_tensor.SparseTensor, ()),
             "expected": (tensor_shape.unknown_shape(), ())
         },
         {
-            "types": ((), tensor_shape.scalar()),
+            "types": ((), tensor_shape.TensorShape([])),
             "classes": ((), sparse_tensor.SparseTensor),
             "expected": ((), tensor_shape.unknown_shape())
         },
         {
-            "types": (tensor_shape.scalar(), (), tensor_shape.scalar()),
+            "types": (tensor_shape.TensorShape([]), (),
+                      tensor_shape.TensorShape([])),
             "classes": (ops.Tensor, (), ops.Tensor),
-            "expected": (tensor_shape.scalar(), (), tensor_shape.scalar())
+            "expected": (tensor_shape.TensorShape([]), (),
+                         tensor_shape.TensorShape([]))
         },
         {
-            "types": (tensor_shape.scalar(), (), tensor_shape.scalar()),
-            "classes": (sparse_tensor.SparseTensor, (),
-                        sparse_tensor.SparseTensor),
+            "types": (tensor_shape.TensorShape([]), (),
+                      tensor_shape.TensorShape([])),
+            "classes":
+                (sparse_tensor.SparseTensor, (), sparse_tensor.SparseTensor),
             "expected": (tensor_shape.unknown_shape(), (),
                          tensor_shape.unknown_shape())
         },
         {
-            "types": ((), tensor_shape.scalar(), ()),
+            "types": ((), tensor_shape.TensorShape([]), ()),
             "classes": ((), ops.Tensor, ()),
-            "expected": ((), tensor_shape.scalar(), ())
+            "expected": ((), tensor_shape.TensorShape([]), ())
         },
         {
-            "types": ((), tensor_shape.scalar(), ()),
+            "types": ((), tensor_shape.TensorShape([]), ()),
             "classes": ((), sparse_tensor.SparseTensor, ()),
             "expected": ((), tensor_shape.unknown_shape(), ())
         },

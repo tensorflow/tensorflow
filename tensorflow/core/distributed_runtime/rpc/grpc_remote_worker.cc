@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "grpcpp/generic/generic_stub.h"
 #include "grpcpp/grpcpp.h"
-
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
@@ -39,12 +38,14 @@ limitations under the License.
 
 namespace tensorflow {
 
+const int kMaxWorkerRpcRetries = 10;
+
 class GrpcRemoteWorker : public WorkerInterface {
  public:
   explicit GrpcRemoteWorker(SharedGrpcChannelPtr channel,
                             ::grpc::CompletionQueue* completion_queue,
                             thread::ThreadPool* callback_threadpool,
-                            WorkerCacheLogger* logger)
+                            WorkerCacheLogger* logger, const string& target)
       : channel_(std::move(channel)),
         stub_(channel_),
         cq_(completion_queue),
@@ -64,14 +65,17 @@ class GrpcRemoteWorker : public WorkerInterface {
         completegroup_(Method(GrpcWorkerMethod::kCompleteGroup)),
         instancesource_(Method(GrpcWorkerMethod::kCompleteInstance)),
         getstepsequence_(Method(GrpcWorkerMethod::kGetStepSequence)),
-        logger_(logger) {}
+        markrecvfinished_(Method(GrpcWorkerMethod::kMarkRecvFinished)),
+        logger_(logger),
+        target_(target) {}
 
   ~GrpcRemoteWorker() override {}
 
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
-    IssueRequest(request, response, getstatus_, std::move(done));
+    IssueRequest(request, response, getstatus_, std::move(done), nullptr,
+                 fail_fast);
   }
 
   void CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
@@ -128,12 +132,10 @@ class GrpcRemoteWorker : public WorkerInterface {
     int64 start_usec = Env::Default()->NowMicros();
     // Type-specialized logging for this method.
     bool logging_active = logger_->LoggingActive() || VLOG_IS_ON(2);
-    StatusCallback wrapper_done;
-    const StatusCallback* cb_to_use;
-    if (!logging_active) {
-      cb_to_use = &done;  // No additional work to do, so just use done directly
-    } else {
-      wrapper_done = [this, request, response, done, start_usec](Status s) {
+
+    auto callback = [this, request, response, done, start_usec,
+                     logging_active](Status s) {
+      if (logging_active) {
         if (logger_->LoggingActive()) {
           int64 end_usec = Env::Default()->NowMicros();
           int64 step_id = request->step_id();
@@ -157,19 +159,25 @@ class GrpcRemoteWorker : public WorkerInterface {
         }
         VLOG(2) << "done callback, req: " << request->DebugString()
                 << " response " << response->DebugString();
-        done(s);
-      };
-      cb_to_use = &wrapper_done;
-    }
+      }
 
-    IssueRequest(request, response, recvbuf_, *cb_to_use, call_opts);
+      // Note done() can delete this worker object, so we need to call done()
+      // last.
+      if (response->require_ack()) {
+        IssueMarkRecvFinishedRequest(request->request_id());
+      }
+      done(s);
+    };
+
+    IssueRequest(request, response, recvbuf_, callback, call_opts);
   }
 
   void CompleteGroupAsync(CallOptions* call_opts,
                           const CompleteGroupRequest* request,
                           CompleteGroupResponse* response,
                           StatusCallback done) override {
-    IssueRequest(request, response, completegroup_, std::move(done), call_opts);
+    IssueRequest(request, response, completegroup_, std::move(done), call_opts,
+                 /*fail_fast=*/false);
   }
 
   void CompleteInstanceAsync(CallOptions* call_opts,
@@ -192,12 +200,10 @@ class GrpcRemoteWorker : public WorkerInterface {
     int64 start_usec = Env::Default()->NowMicros();
     // Type-specialized logging for this method.
     bool logging_active = logger_->LoggingActive() || VLOG_IS_ON(2);
-    StatusCallback wrapper_done;
-    const StatusCallback* cb_to_use;
-    if (!logging_active) {
-      cb_to_use = &done;  // No additional work to do, so just use done directly
-    } else {
-      wrapper_done = [this, request, response, done, start_usec](Status s) {
+
+    auto callback = [this, request, response, done, start_usec,
+                     logging_active](Status s) {
+      if (logging_active) {
         if (logger_->LoggingActive()) {
           int64 end_usec = Env::Default()->NowMicros();
           int64 step_id = request->step_id();
@@ -236,12 +242,17 @@ class GrpcRemoteWorker : public WorkerInterface {
         }
         VLOG(2) << "done callback, req: " << request->DebugString()
                 << " response " << response->metadata().DebugString();
-        done(s);
-      };
-      cb_to_use = &wrapper_done;
-    }
+      }
 
-    IssueRequest(request, response, recvtensor_, *cb_to_use, call_opts);
+      // Note done() can delete this worker object, so we need to call done()
+      // last.
+      if (response->metadata().require_ack()) {
+        IssueMarkRecvFinishedRequest(request->request_id());
+      }
+      done(s);
+    };
+
+    IssueRequest(request, response, recvtensor_, callback, call_opts);
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
@@ -259,17 +270,30 @@ class GrpcRemoteWorker : public WorkerInterface {
   // given callback, `done`, will be called when the RPC completes.
   void IssueRequest(const protobuf::Message* request,
                     protobuf::Message* response, const ::grpc::string& method,
-                    StatusCallback done, CallOptions* call_opts = nullptr) {
-    new RPCState<protobuf::Message>(&stub_, cq_, method, *request, response,
-                                    std::move(done), call_opts,
-                                    callback_threadpool_);
+                    StatusCallback done, CallOptions* call_opts = nullptr,
+                    bool fail_fast = true) {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, method, *request, response, std::move(done), call_opts,
+        callback_threadpool_, /*max_retries=*/0, fail_fast, &target_);
   }
+
   void IssueRequest(const protobuf::Message* request, TensorResponse* response,
                     const ::grpc::string& method, StatusCallback done,
                     CallOptions* call_opts = nullptr) {
     new RPCState<TensorResponse>(&stub_, cq_, method, *request, response,
                                  std::move(done), call_opts,
-                                 callback_threadpool_);
+                                 callback_threadpool_, /*max_retries=*/0,
+                                 /*fail_fast=*/true, &target_);
+  }
+
+  void IssueMarkRecvFinishedRequest(int64 request_id) {
+    VLOG(2) << "Send MarkRecvFinishedRequest for request " << request_id;
+    MarkRecvFinishedRequest request;
+    request.set_request_id(request_id);
+
+    MarkRecvFinishedResponse* response = new MarkRecvFinishedResponse();
+    auto done = [response](Status status) { delete response; };
+    IssueRequest(&request, response, markrecvfinished_, done);
   }
 
   // Helper function for initializing the RpcMethod objects below.
@@ -295,9 +319,11 @@ class GrpcRemoteWorker : public WorkerInterface {
   const ::grpc::string completegroup_;
   const ::grpc::string instancesource_;
   const ::grpc::string getstepsequence_;
+  const ::grpc::string markrecvfinished_;
 
   // Support for logging.
   WorkerCacheLogger* logger_;
+  const string target_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcRemoteWorker);
 };
@@ -305,9 +331,10 @@ class GrpcRemoteWorker : public WorkerInterface {
 WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
                                      thread::ThreadPool* callback_threadpool,
-                                     WorkerCacheLogger* logger) {
+                                     WorkerCacheLogger* logger,
+                                     const string& target) {
   return new GrpcRemoteWorker(std::move(channel), completion_queue,
-                              callback_threadpool, logger);
+                              callback_threadpool, logger, target);
 }
 
 }  // namespace tensorflow

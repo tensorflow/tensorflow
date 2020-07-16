@@ -18,7 +18,6 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -66,7 +65,7 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text, config));
+                          ParseAndReturnVerifiedModule(hlo_text, config));
   CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir);
 }
 
@@ -82,6 +81,29 @@ void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   ASSERT_TRUE(filecheck_result.ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
+}
+
+void LlvmIrGenTestBase::MatchOptimizedHlo(absl::string_view hlo,
+                                          absl::string_view pattern,
+                                          bool print_operand_shape) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(hlo));
+  HloPrintOptions print_opts;
+  print_opts.set_print_operand_shape(print_operand_shape);
+  StatusOr<bool> filecheck_result =
+      RunFileCheck(optimized_module->ToString(print_opts), pattern);
+  TF_ASSERT_OK(filecheck_result.status());
+  EXPECT_TRUE(filecheck_result.ValueOrDie());
+}
+
+StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
+    absl::string_view hlo) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
+  return backend().compiler()->RunHloPasses(
+      std::move(module), backend().default_stream_executor(),
+      backend().default_stream_executor()->GetAllocator());
 }
 
 LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {

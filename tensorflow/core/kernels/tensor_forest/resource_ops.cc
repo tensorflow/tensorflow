@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/kernels/tensor_forest/resources.h"
+#include "tensorflow/core/lib/core/refcount.h"
 
 namespace tensorflow {
 
@@ -33,7 +34,7 @@ class TensorForestCreateTreeVariableOp : public OpKernel {
 
     auto* const result = new TensorForestTreeResource();
 
-    if (!result->InitFromSerialized(tree_config_t->scalar<string>()())) {
+    if (!result->InitFromSerialized(tree_config_t->scalar<tstring>()())) {
       result->Unref();
       OP_REQUIRES(context, false,
                   errors::InvalidArgument("Unable to parse tree config."));
@@ -55,15 +56,14 @@ class TensorForestTreeSerializeOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    TensorForestTreeResource* decision_tree_resource;
+    core::RefCountPtr<TensorForestTreeResource> decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
     Tensor* output_config_t = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(0, TensorShape(), &output_config_t));
-    output_config_t->scalar<string>()() =
+    output_config_t->scalar<tstring>()() =
         decision_tree_resource->decision_tree().SerializeAsString();
   }
 };
@@ -74,13 +74,11 @@ class TensorForestTreeDeserializeOp : public OpKernel {
   explicit TensorForestTreeDeserializeOp(OpKernelConstruction* context)
       : OpKernel(context) {}
   void Compute(OpKernelContext* context) override {
-    TensorForestTreeResource* decision_tree_resource;
+    core::RefCountPtr<TensorForestTreeResource> decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
 
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
-
     const Tensor* tree_config_t;
     OP_REQUIRES_OK(context, context->input("tree_config", &tree_config_t));
 
@@ -88,7 +86,7 @@ class TensorForestTreeDeserializeOp : public OpKernel {
     decision_tree_resource->Reset();
 
     if (!decision_tree_resource->InitFromSerialized(
-            tree_config_t->scalar<string>()())) {
+            tree_config_t->scalar<tstring>()())) {
       OP_REQUIRES(context, false,
                   errors::InvalidArgument("Unable to parse tree config."));
     }
@@ -102,11 +100,10 @@ class TensorForestTreeSizeOp : public OpKernel {
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    TensorForestTreeResource* decision_tree_resource;
+    core::RefCountPtr<TensorForestTreeResource> decision_tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &decision_tree_resource));
     mutex_lock l(*decision_tree_resource->get_mutex());
-    core::ScopedUnref unref_me(decision_tree_resource);
     Tensor* output_t = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape(), &output_t));

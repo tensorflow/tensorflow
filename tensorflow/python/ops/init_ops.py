@@ -25,6 +25,7 @@ def _initializer(shape, dtype=dtypes.float32, partition_info=None):
     partition_info: (Optional) variable_scope._PartitionInfo object holding
       additional information about how the variable is partitioned. May be
       `None` if the variable is not partitioned.
+
   Returns:
     A `Tensor` of type `dtype` and `shape`.
 """
@@ -38,6 +39,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops_impl
@@ -45,14 +47,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.deprecation import deprecated
-from tensorflow.python.util.deprecation import  deprecated_arg_values
+from tensorflow.python.util.deprecation import deprecated_arg_values
+from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("keras.initializers.Initializer")
 class Initializer(object):
-  """Initializer base class: all initializers inherit from this class.
-  """
+  """Initializer base class: all initializers inherit from this class."""
 
   def __call__(self, shape, dtype=None, partition_info=None):
     """Returns a tensor object initialized as specified by the initializer.
@@ -87,8 +88,8 @@ class Initializer(object):
     ```
 
     Args:
-      config: A Python dictionary.
-        It will typically be the output of `get_config`.
+      config: A Python dictionary. It will typically be the output of
+        `get_config`.
 
     Returns:
       An Initializer instance.
@@ -96,11 +97,14 @@ class Initializer(object):
     return cls(**config)
 
 
-@tf_export("keras.initializers.Zeros", "initializers.zeros",
-           "zeros_initializer", "keras.initializers.zeros")
+@tf_export(v1=["initializers.zeros", "zeros_initializer"])
+@deprecation.deprecated_endpoints("initializers.zeros")
 class Zeros(Initializer):
   """Initializer that generates tensors initialized to 0."""
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
   def __init__(self, dtype=dtypes.float32):
     self.dtype = dtypes.as_dtype(dtype)
 
@@ -113,11 +117,14 @@ class Zeros(Initializer):
     return {"dtype": self.dtype.name}
 
 
-@tf_export("keras.initializers.Ones", "initializers.ones", "ones_initializer",
-           "keras.initializers.ones")
+@tf_export(v1=["initializers.ones", "ones_initializer"])
+@deprecation.deprecated_endpoints("initializers.ones", "ones_initializer")
 class Ones(Initializer):
   """Initializer that generates tensors initialized to 1."""
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
   def __init__(self, dtype=dtypes.float32):
     self.dtype = dtypes.as_dtype(dtype)
 
@@ -130,8 +137,8 @@ class Ones(Initializer):
     return {"dtype": self.dtype.name}
 
 
-@tf_export("keras.initializers.Constant", "initializers.constant",
-           "constant_initializer", "keras.initializers.constant")
+@tf_export(v1=["initializers.constant", "constant_initializer"])
+@deprecation.deprecated_endpoints("constant_initializer")
 class Constant(Initializer):
   """Initializer that generates tensors with constant values.
 
@@ -166,51 +173,44 @@ class Constant(Initializer):
     of the `value` list, even reshaped, as shown in the two commented lines
     below the `value` list initialization.
 
-  ```python
-    >>> import numpy as np
-    >>> import tensorflow as tf
-
-    >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
-    >>> # value = np.array(value)
-    >>> # value = value.reshape([2, 4])
-    >>> init = tf.constant_initializer(value)
-
-    >>> print('fitting shape:')
-    >>> with tf.Session():
-    >>>   x = tf.get_variable('x', shape=[2, 4], initializer=init)
-    >>>   x.initializer.run()
-    >>>   print(x.eval())
-
-    fitting shape:
-    [[ 0.  1.  2.  3.]
-     [ 4.  5.  6.  7.]]
-
-    >>> print('larger shape:')
-    >>> with tf.Session():
-    >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init)
-    >>>   x.initializer.run()
-    >>>   print(x.eval())
-
-    larger shape:
-    [[ 0.  1.  2.  3.]
-     [ 4.  5.  6.  7.]
-     [ 7.  7.  7.  7.]]
-
-    >>> print('smaller shape:')
-    >>> with tf.Session():
-    >>>   x = tf.get_variable('x', shape=[2, 3], initializer=init)
-
-    ValueError: Too many elements provided. Needed at most 6, but received 8
-
-    >>> print('shape verification:')
-    >>> init_verify = tf.constant_initializer(value, verify_shape=True)
-    >>> with tf.Session():
-    >>>   x = tf.get_variable('x', shape=[3, 4], initializer=init_verify)
-
-    TypeError: Expected Tensor's shape: (3, 4), got (8,).
-  ```
+  >>> value = [0, 1, 2, 3, 4, 5, 6, 7]
+  >>> init = tf.compat.v1.constant_initializer(value)
+  >>> # fitting shape
+  >>> with tf.compat.v1.Session():
+  ...   x = tf.compat.v1.get_variable('x', shape=[2, 4], initializer=init)
+  ...   x.initializer.run()
+  ...   print(x.eval())
+  [[0. 1. 2. 3.]
+   [4. 5. 6. 7.]]
+  >>> # Larger shape
+  >>> with tf.compat.v1.Session():
+  ...   y = tf.compat.v1.get_variable('y', shape=[3, 4], initializer=init)
+  ...   y.initializer.run()
+  ...   print(y.eval())
+  [[0.  1.  2.  3.]
+   [4.  5.  6.  7.]
+   [7.  7.  7.  7.]]
+  >>> # Smaller shape
+  >>> with tf.compat.v1.Session():
+  ...   z = tf.compat.v1.get_variable('z', shape=[2, 3], initializer=init)
+  Traceback (most recent call last):
+  ...
+  ValueError: Too many elements provided. Needed at most 6, but received 8
+  >>> # Shape verification
+  >>> init_verify = tf.compat.v1.constant_initializer(value, verify_shape=True)
+  >>> with tf.compat.v1.Session():
+  ...  u = tf.compat.v1.get_variable('u', shape=[3, 4],
+  ...                                initializer=init_verify)
+  Traceback (most recent call last):
+  ...
+  TypeError: Expected Tensor's shape: (3, 4), got (8,).
   """
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
+  @deprecated_args(None, "Objects must now be the required shape or no shape "
+                   "can be specified", "verify_shape")
   def __init__(self, value=0, dtype=dtypes.float32, verify_shape=False):
     if not (np.isscalar(value) or isinstance(value, (list, tuple, np.ndarray))):
       raise TypeError(
@@ -237,22 +237,25 @@ class Constant(Initializer):
     return {"value": self.value, "dtype": self.dtype.name}
 
 
-@tf_export("initializers.random_uniform", "random_uniform_initializer")
+@tf_export(v1=["initializers.random_uniform", "random_uniform_initializer"])
+@deprecation.deprecated_endpoints("initializers.random_uniform")
 class RandomUniform(Initializer):
   """Initializer that generates tensors with a uniform distribution.
 
   Args:
-    minval: A python scalar or a scalar tensor. Lower bound of the range
-      of random values to generate.
-    maxval: A python scalar or a scalar tensor. Upper bound of the range
-      of random values to generate.  Defaults to 1 for float types.
+    minval: A python scalar or a scalar tensor. Lower bound of the range of
+      random values to generate.
+    maxval: A python scalar or a scalar tensor. Upper bound of the range of
+      random values to generate.  Defaults to 1 for float types.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer.
   """
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
   def __init__(self, minval=0, maxval=None, seed=None, dtype=dtypes.float32):
     self.minval = minval
     self.maxval = maxval
@@ -274,22 +277,25 @@ class RandomUniform(Initializer):
     }
 
 
-@tf_export("initializers.random_normal", "random_normal_initializer")
+@tf_export(v1=["initializers.random_normal", "random_normal_initializer"])
+@deprecation.deprecated_endpoints("initializers.random_normal")
 class RandomNormal(Initializer):
   """Initializer that generates tensors with a normal distribution.
 
   Args:
-    mean: a python scalar or a scalar tensor. Mean of the random values
-      to generate.
-    stddev: a python scalar or a scalar tensor. Standard deviation of the
-      random values to generate.
+    mean: a python scalar or a scalar tensor. Mean of the random values to
+      generate.
+    stddev: a python scalar or a scalar tensor. Standard deviation of the random
+      values to generate.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
   """
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
   def __init__(self, mean=0.0, stddev=1.0, seed=None, dtype=dtypes.float32):
     self.mean = mean
     self.stddev = stddev
@@ -311,7 +317,9 @@ class RandomNormal(Initializer):
     }
 
 
-@tf_export("initializers.truncated_normal", "truncated_normal_initializer")
+@tf_export(v1=["initializers.truncated_normal", "truncated_normal_initializer"])
+@deprecation.deprecated_endpoints("initializers.truncated_normal",
+                                  "truncated_normal_initializer")
 class TruncatedNormal(Initializer):
   """Initializer that generates a truncated normal distribution.
 
@@ -321,17 +329,19 @@ class TruncatedNormal(Initializer):
   neural network weights and filters.
 
   Args:
-    mean: a python scalar or a scalar tensor. Mean of the random values
-      to generate.
-    stddev: a python scalar or a scalar tensor. Standard deviation of the
-      random values to generate.
+    mean: a python scalar or a scalar tensor. Mean of the random values to
+      generate.
+    stddev: a python scalar or a scalar tensor. Standard deviation of the random
+      values to generate.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
   """
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
   def __init__(self, mean=0.0, stddev=1.0, seed=None, dtype=dtypes.float32):
     self.mean = mean
     self.stddev = stddev
@@ -353,12 +363,11 @@ class TruncatedNormal(Initializer):
     }
 
 
-@tf_export(
-    "initializers.uniform_unit_scaling",
-    v1=[
-        "initializers.uniform_unit_scaling", "uniform_unit_scaling_initializer"
-    ])
-@deprecation.deprecated_endpoints("uniform_unit_scaling_initializer")
+@tf_export(v1=[
+    "initializers.uniform_unit_scaling", "uniform_unit_scaling_initializer"
+])
+@deprecation.deprecated_endpoints("uniform_unit_scaling_initializer",
+                                  "initializers.uniform_unit_scaling")
 class UniformUnitScaling(Initializer):
   """Initializer that generates tensors without scaling variance.
 
@@ -380,16 +389,17 @@ class UniformUnitScaling(Initializer):
   Args:
     factor: Float.  A multiplicative factor by which the values will be scaled.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
-
   References:
       [Sussillo et al., 2014](https://arxiv.org/abs/1412.6558)
       ([pdf](http://arxiv.org/pdf/1412.6558.pdf))
   """
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
   @deprecated(None,
               "Use tf.initializers.variance_scaling instead with distribution="
               "uniform to get equivalent behavior.")
@@ -421,14 +431,9 @@ class UniformUnitScaling(Initializer):
     return {"factor": self.factor, "seed": self.seed, "dtype": self.dtype.name}
 
 
-@tf_export(
-    "keras.initializers.VarianceScaling",
-    "initializers.variance_scaling",
-    v1=[
-        "keras.initializers.VarianceScaling", "initializers.variance_scaling",
-        "variance_scaling_initializer"
-    ])
-@deprecation.deprecated_endpoints("variance_scaling_initializer")
+@tf_export(v1=["initializers.variance_scaling", "variance_scaling_initializer"])
+@deprecation.deprecated_endpoints("initializers.variance_scaling",
+                                  "variance_scaling_initializer")
 class VarianceScaling(Initializer):
   """Initializer capable of adapting its scale to the shape of weights tensors.
 
@@ -449,8 +454,7 @@ class VarianceScaling(Initializer):
     mode: One of "fan_in", "fan_out", "fan_avg".
     distribution: Random distribution to use. One of "normal", "uniform".
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
 
@@ -459,6 +463,9 @@ class VarianceScaling(Initializer):
       "distribution" arguments.
   """
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
   @deprecated_arg_values(
       None,
       "`normal` is a deprecated alias for `truncated_normal`",
@@ -474,8 +481,9 @@ class VarianceScaling(Initializer):
     if mode not in {"fan_in", "fan_out", "fan_avg"}:
       raise ValueError("Invalid `mode` argument:", mode)
     distribution = distribution.lower()
-    if distribution not in {"normal", "uniform",
-                            "truncated_normal", "untruncated_normal"}:
+    if distribution not in {
+        "normal", "uniform", "truncated_normal", "untruncated_normal"
+    }:
       raise ValueError("Invalid `distribution` argument:", distribution)
     self.scale = scale
     self.mode = mode
@@ -498,14 +506,13 @@ class VarianceScaling(Initializer):
     else:
       scale /= max(1., (fan_in + fan_out) / 2.)
     if self.distribution == "normal" or self.distribution == "truncated_normal":
-    # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
+      # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
       stddev = math.sqrt(scale) / .87962566103423978
       return random_ops.truncated_normal(
           shape, 0.0, stddev, dtype, seed=self.seed)
     elif self.distribution == "untruncated_normal":
       stddev = math.sqrt(scale)
-      return random_ops.random_normal(
-          shape, 0.0, stddev, dtype, seed=self.seed)
+      return random_ops.random_normal(shape, 0.0, stddev, dtype, seed=self.seed)
     else:
       limit = math.sqrt(3.0 * scale)
       return random_ops.random_uniform(
@@ -521,15 +528,9 @@ class VarianceScaling(Initializer):
     }
 
 
-@tf_export(
-    "keras.initializers.Orthogonal",
-    "initializers.orthogonal",
-    "keras.initializers.orthogonal",
-    v1=[
-        "keras.initializers.Orthogonal", "initializers.orthogonal",
-        "orthogonal_initializer", "keras.initializers.orthogonal"
-    ])
-@deprecation.deprecated_endpoints("orthogonal_initializer")
+@tf_export(v1=["initializers.orthogonal", "orthogonal_initializer"])
+@deprecation.deprecated_endpoints("initializers.orthogonal",
+                                  "orthogonal_initializer")
 class Orthogonal(Initializer):
   """Initializer that generates an orthogonal matrix.
 
@@ -547,16 +548,17 @@ class Orthogonal(Initializer):
   Args:
     gain: multiplicative factor to apply to the orthogonal matrix
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
-
   References:
       [Saxe et al., 2014](https://openreview.net/forum?id=_wzZwKpTDF_9C)
       ([pdf](https://arxiv.org/pdf/1312.6120.pdf))
   """
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
   def __init__(self, gain=1.0, seed=None, dtype=dtypes.float32):
     self.gain = gain
     self.dtype = _assert_float_dtype(dtypes.as_dtype(dtype))
@@ -574,9 +576,12 @@ class Orthogonal(Initializer):
     num_rows = 1
     for dim in shape[:-1]:
       num_rows *= dim
-    num_cols = shape[-1]
-    flat_shape = (num_cols, num_rows) if num_rows < num_cols else (num_rows,
-                                                                   num_cols)
+    num_rows = int(num_rows)
+    num_cols = int(shape[-1])
+    if num_rows < num_cols:
+      flat_shape = (num_cols, num_rows)
+    else:
+      flat_shape = (num_rows, num_cols)
 
     # Generate a random matrix
     a = random_ops.random_normal(flat_shape, dtype=dtype, seed=self.seed)
@@ -593,6 +598,8 @@ class Orthogonal(Initializer):
     return {"gain": self.gain, "seed": self.seed, "dtype": self.dtype.name}
 
 
+# Note these haven't been ported to TF2.0. They are not currently visible and
+# the tests are non trivial to port
 class ConvolutionDeltaOrthogonal(Initializer):
   """Initializer that generates a delta orthogonal kernel for ConvNets.
 
@@ -603,14 +610,13 @@ class ConvolutionDeltaOrthogonal(Initializer):
 
 
   Args:
-    gain: Multiplicative factor to apply to the orthogonal
-      matrix. Default is 1. The 2-norm of an input is multiplied by a factor of
-      `gain` after applying this convolution.
+    gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
+      The 2-norm of an input is multiplied by a factor of `gain` after applying
+      this convolution.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
-
   References:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
@@ -634,7 +640,8 @@ class ConvolutionDeltaOrthogonal(Initializer):
 
     # Generate a random matrix
     a = random_ops.random_normal([shape[-1], shape[-1]],
-                                 dtype=dtype, seed=self.seed)
+                                 dtype=dtype,
+                                 seed=self.seed)
     # Compute the qr factorization
     q, r = gen_linalg_ops.qr(a, full_matrices=False)
     # Make Q uniform
@@ -643,14 +650,15 @@ class ConvolutionDeltaOrthogonal(Initializer):
     q = q[:shape[-2], :]
     q *= math_ops.cast(self.gain, dtype=dtype)
     if len(shape) == 3:
-      weight = array_ops.scatter_nd([[(shape[0]-1)//2]],
+      weight = array_ops.scatter_nd([[(shape[0] - 1) // 2]],
                                     array_ops.expand_dims(q, 0), shape)
     elif len(shape) == 4:
-      weight = array_ops.scatter_nd([[(shape[0]-1)//2, (shape[1]-1)//2]],
+      weight = array_ops.scatter_nd([[(shape[0] - 1) // 2,
+                                      (shape[1] - 1) // 2]],
                                     array_ops.expand_dims(q, 0), shape)
     else:
-      weight = array_ops.scatter_nd([[(shape[0]-1)//2, (shape[1]-1)//2,
-                                      (shape[2]-1)//2]],
+      weight = array_ops.scatter_nd([[(shape[0] - 1) // 2, (shape[1] - 1) // 2,
+                                      (shape[2] - 1) // 2]],
                                     array_ops.expand_dims(q, 0), shape)
     return weight
 
@@ -664,14 +672,13 @@ class ConvolutionOrthogonal(Initializer):
   Base class used to construct 1D, 2D and 3D orthogonal kernels for convolution.
 
   Args:
-    gain: multiplicative factor to apply to the orthogonal
-      matrix. Default is 1. The 2-norm of an input is multiplied by a factor of
-      `gain` after applying this convolution.
+    gain: multiplicative factor to apply to the orthogonal matrix. Default is 1.
+      The 2-norm of an input is multiplied by a factor of `gain` after applying
+      this convolution.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
-
   References:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
@@ -694,6 +701,7 @@ class ConvolutionOrthogonal(Initializer):
 
     Args:
       n: Dimension.
+
     Returns:
       A n x n orthogonal matrix.
     """
@@ -711,13 +719,14 @@ class ConvolutionOrthogonal(Initializer):
 
     Args:
       n: Dimension.
+
     Returns:
       A n x n symmetric projection matrix, i.e. a matrix P s.t. P=P*P, P=P^T.
     """
     q = self._orthogonal_matrix(n)
     # randomly zeroing out some columns
-    mask = math_ops.cast(random_ops.random_normal([n], seed=self.seed) > 0,
-                         self.dtype)
+    mask = math_ops.cast(
+        random_ops.random_normal([n], seed=self.seed) > 0, self.dtype)
     if self.seed:
       self.seed += 1
     c = math_ops.multiply(q, mask)
@@ -734,14 +743,12 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
   See algorithm 1 in (Xiao et al., 2018).
 
   Args:
-    gain: Multiplicative factor to apply to the orthogonal
-      matrix. Default is 1. This has the effect of scaling the output 2-norm by
-      a factor of `gain`.
+    gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
+      This has the effect of scaling the output 2-norm by a factor of `gain`.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
-
   References:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
@@ -770,6 +777,7 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       x: A k1 * k2 dictionary.
       k1: First dimension of x.
       k2: Second dimension of x.
+
     Returns:
       A k1 * k2 tensor.
     """
@@ -778,11 +786,14 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
                             for i in range(k1)])
 
   def _block_orth(self, p1, p2):
-    """Construct a 2 x 2 kernel. Used to construct orthgonal kernel.
+    """Construct a 2 x 2 kernel.
+
+    Used to construct orthgonal kernel.
 
     Args:
       p1: A symmetric projection matrix.
       p2: A symmetric projection matrix.
+
     Returns:
       A 2 x 2 kernel [[p1p2,         p1(1-p2)],
                       [(1-p1)p2, (1-p1)(1-p2)]].
@@ -840,6 +851,7 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       ksize: Kernel size.
       cin: Number of input channels.
       cout: Number of output channels.
+
     Returns:
       An [ksize, ksize, cin, cout] orthogonal kernel.
     Raises:
@@ -852,11 +864,11 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
     if ksize == 1:
       return array_ops.expand_dims(array_ops.expand_dims(orth, 0), 0)
 
-    p = self._block_orth(self._symmetric_projection(cout),
-                         self._symmetric_projection(cout))
+    p = self._block_orth(
+        self._symmetric_projection(cout), self._symmetric_projection(cout))
     for _ in range(ksize - 2):
-      temp = self._block_orth(self._symmetric_projection(cout),
-                              self._symmetric_projection(cout))
+      temp = self._block_orth(
+          self._symmetric_projection(cout), self._symmetric_projection(cout))
       p = self._matrix_conv(p, temp)
     for i in range(ksize):
       for j in range(ksize):
@@ -875,15 +887,13 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
   See algorithm 1 in (Xiao et al., 2018).
 
   Args:
-    gain: Multiplicative factor to apply to the orthogonal
-      matrix. Default is 1. The 2-norm of an input is multiplied by a factor of
-      `gain` after applying this convolution.
+    gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
+      The 2-norm of an input is multiplied by a factor of `gain` after applying
+      this convolution.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
-
   References:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
@@ -908,6 +918,7 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
     Args:
       x: A dictionary of length k.
       k: Dimension of x.
+
     Returns:
       A tensor with the same dimension.
     """
@@ -915,10 +926,13 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
     return array_ops.stack([x[i] for i in range(k)])
 
   def _block_orth(self, projection_matrix):
-    """Construct a kernel. Used to construct orthgonal kernel.
+    """Construct a kernel.
+
+    Used to construct orthgonal kernel.
 
     Args:
       projection_matrix: A symmetric projection matrix of size n x n.
+
     Returns:
       [projection_matrix, (1 - projection_matrix)].
     """
@@ -965,6 +979,7 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
       ksize: Kernel size.
       cin: Number of input channels.
       cout: Number of output channels.
+
     Returns:
       An [ksize, ksize, cin, cout] orthogonal kernel.
     Raises:
@@ -997,14 +1012,13 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
   See algorithm 1 (Xiao et al., 2018).
 
   Args:
-    gain: Multiplicative factor to apply to the orthogonal
-      matrix. Default is 1. The 2-norm of an input is multiplied by a factor of
-      `gain` after applying this convolution.
+    gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
+      The 2-norm of an input is multiplied by a factor of `gain` after applying
+      this convolution.
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
-
   References:
       [Xiao et al., 2018](http://proceedings.mlr.press/v80/xiao18a.html)
       ([pdf](http://proceedings.mlr.press/v80/xiao18a/xiao18a.pdf))
@@ -1034,6 +1048,7 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
       k1: First dimension of x.
       k2: Second dimension of x.
       k3: Third dimension of x.
+
     Returns:
       A k1 * k2 * k3 tensor.
     """
@@ -1043,12 +1058,15 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
          for j in range(k2)]) for i in range(k1)])
 
   def _block_orth(self, p1, p2, p3):
-    """Construct a 3 x 3 kernel. Used to construct orthgonal kernel.
+    """Construct a 3 x 3 kernel.
+
+    Used to construct orthgonal kernel.
 
     Args:
       p1: A symmetric projection matrix.
       p2: A symmetric projection matrix.
       p3: A symmetric projection matrix.
+
     Returns:
       A 2 x 2 x 2 kernel.
     Raises:
@@ -1060,11 +1078,14 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     n = p1_shape[0]
     eye = linalg_ops_impl.eye(n, dtype=self.dtype)
     kernel2x2x2 = {}
+
     def matmul(p1, p2, p3):
       return math_ops.matmul(math_ops.matmul(p1, p2), p3)
+
     def cast(i, p):
       """Return p or (1-p)."""
-      return i * p + (1-i) * (eye - p)
+      return i * p + (1 - i) * (eye - p)
+
     for i in [0, 1]:
       for j in [0, 1]:
         for k in [0, 1]:
@@ -1102,9 +1123,9 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
             for index2 in range(min(k, j + 1)):
               for index3 in range(min(k, r + 1)):
                 if (i - index1) < l and (j - index2) < l and (r - index3) < l:
-                  result[i, j, r] += math_ops.matmul(m1[index1, index2, index3],
-                                                     m2[i - index1, j - index2,
-                                                        r - index3])
+                  result[i, j, r] += math_ops.matmul(
+                      m1[index1, index2, index3],
+                      m2[i - index1, j - index2, r - index3])
     return result
 
   def _orthogonal_kernel(self, ksize, cin, cout):
@@ -1114,6 +1135,7 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
       ksize: Kernel size.
       cin: Number of input channels.
       cout: Number of output channels.
+
     Returns:
       An [ksize, ksize, ksize, cin, cout] orthogonal kernel.
     Raises:
@@ -1125,16 +1147,15 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     orth = self._orthogonal_matrix(cout)[0:cin, :]
     if ksize == 1:
       return array_ops.expand_dims(
-          array_ops.expand_dims(
-              array_ops.expand_dims(orth, 0), 0), 0)
+          array_ops.expand_dims(array_ops.expand_dims(orth, 0), 0), 0)
 
-    p = self._block_orth(self._symmetric_projection(cout),
-                         self._symmetric_projection(cout),
-                         self._symmetric_projection(cout))
+    p = self._block_orth(
+        self._symmetric_projection(cout), self._symmetric_projection(cout),
+        self._symmetric_projection(cout))
     for _ in range(ksize - 2):
-      temp = self._block_orth(self._symmetric_projection(cout),
-                              self._symmetric_projection(cout),
-                              self._symmetric_projection(cout))
+      temp = self._block_orth(
+          self._symmetric_projection(cout), self._symmetric_projection(cout),
+          self._symmetric_projection(cout))
       p = self._matrix_conv(p, temp)
     for i in range(ksize):
       for j in range(ksize):
@@ -1144,8 +1165,8 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     return self._dict_to_tensor(p, ksize, ksize, ksize)
 
 
-@tf_export("keras.initializers.Identity", "initializers.identity",
-           "keras.initializers.identity")
+@tf_export(v1=["initializers.identity"])
+@deprecation.deprecated_endpoints("initializers.identity")
 class Identity(Initializer):
   """Initializer that generates the identity matrix.
 
@@ -1157,6 +1178,9 @@ class Identity(Initializer):
       calling the initializer. Only floating point types are supported.
   """
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
   def __init__(self, gain=1.0, dtype=dtypes.float32):
     self.gain = gain
     self.dtype = _assert_float_dtype(dtypes.as_dtype(dtype))
@@ -1168,6 +1192,8 @@ class Identity(Initializer):
           "Identity matrix initializer can only be used for 2D matrices.")
     if dtype is None:
       dtype = self.dtype
+    if isinstance(full_shape, tensor_shape.TensorShape):
+      full_shape = full_shape.as_list()
     initializer = linalg_ops_impl.eye(*full_shape, dtype=dtype)
     if partition_info is not None:
       initializer = array_ops.slice(initializer, partition_info.var_offset,
@@ -1178,8 +1204,9 @@ class Identity(Initializer):
     return {"gain": self.gain, "dtype": self.dtype.name}
 
 
-@tf_export("glorot_uniform_initializer", "keras.initializers.glorot_uniform",
-           "initializers.glorot_uniform")
+@tf_export(v1=["glorot_uniform_initializer", "initializers.glorot_uniform"])
+@deprecation.deprecated_endpoints("glorot_uniform_initializer",
+                                  "initializers.glorot_uniform")
 class GlorotUniform(VarianceScaling):
   """The Glorot uniform initializer, also called Xavier uniform initializer.
 
@@ -1190,62 +1217,53 @@ class GlorotUniform(VarianceScaling):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
-
   References:
       [Glorot et al., 2010](http://proceedings.mlr.press/v9/glorot10a.html)
       ([pdf](http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf))
   """
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
   def __init__(self, seed=None, dtype=dtypes.float32):
     super(GlorotUniform, self).__init__(
-        scale=1.0,
-        mode="fan_avg",
-        distribution="uniform",
-        seed=seed,
-        dtype=dtype)
+        scale=1.0, mode="fan_avg", distribution="uniform", seed=seed)
 
   def get_config(self):
     return {"seed": self.seed, "dtype": self.dtype.name}
 
 
-@tf_export(
-    "keras.initializers.glorot_normal",
-    "initializers.glorot_normal",
-    v1=[
-        "glorot_normal_initializer", "keras.initializers.glorot_normal",
-        "initializers.glorot_normal"
-    ])
-@deprecation.deprecated_endpoints("glorot_normal_initializer")
+@tf_export(v1=["glorot_normal_initializer", "initializers.glorot_normal"])
+@deprecation.deprecated_endpoints("glorot_normal_initializer",
+                                  "initializers.glorot_normal")
 class GlorotNormal(VarianceScaling):
   """The Glorot normal initializer, also called Xavier normal initializer.
 
   It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(2 / (fan_in + fan_out))`
-  where `fan_in` is the number of input units in the weight tensor
-  and `fan_out` is the number of output units in the weight tensor.
+  with standard deviation (after truncation) given by
+  `stddev = sqrt(2 / (fan_in + fan_out))` where `fan_in` is the number
+  of input units in the weight tensor and `fan_out` is the number of
+  output units in the weight tensor.
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed` for behavior.
+      `tf.compat.v1.set_random_seed` for behavior.
     dtype: Default data type, used if no `dtype` argument is provided when
       calling the initializer. Only floating point types are supported.
-
   References:
       [Glorot et al., 2010](http://proceedings.mlr.press/v9/glorot10a.html)
       ([pdf](http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf))
   """
 
+  @deprecated_args(None,
+                   "Call initializer instance with the dtype argument instead "
+                   "of passing it to the constructor", "dtype")
   def __init__(self, seed=None, dtype=dtypes.float32):
     super(GlorotNormal, self).__init__(
-        scale=1.0,
-        mode="fan_avg",
-        distribution="truncated_normal",
-        seed=seed,
-        dtype=dtype)
+        scale=1.0, mode="fan_avg", distribution="truncated_normal", seed=seed)
 
   def get_config(self):
     return {"seed": self.seed, "dtype": self.dtype.name}
@@ -1273,13 +1291,14 @@ convolutional_orthogonal_3d = ConvolutionOrthogonal3D
 # pylint: enable=invalid-name
 
 
-@tf_export("keras.initializers.lecun_normal", "initializers.lecun_normal")
+@tf_export(v1=["initializers.lecun_normal"])
 def lecun_normal(seed=None):
   """LeCun normal initializer.
 
   It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(1 / fan_in)`
-  where `fan_in` is the number of input units in the weight tensor.
+  with standard deviation (after truncation) given by
+  `stddev = sqrt(1 / fan_in)` where `fan_in` is the number of
+  input units in the weight tensor.
 
   Arguments:
       seed: A Python integer. Used to seed the random generator.
@@ -1289,7 +1308,9 @@ def lecun_normal(seed=None):
 
   References:
       - Self-Normalizing Neural Networks,
-      [Klambauer et al., 2017](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks)
+      [Klambauer et al.,
+      2017](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks)
+      # pylint: disable=line-too-long
       ([pdf](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks.pdf))
       - Efficient Backprop,
       [Lecun et al., 1998](http://yann.lecun.com/exdb/publis/pdf/lecun-98b.pdf)
@@ -1298,7 +1319,7 @@ def lecun_normal(seed=None):
       scale=1., mode="fan_in", distribution="truncated_normal", seed=seed)
 
 
-@tf_export("keras.initializers.lecun_uniform", "initializers.lecun_uniform")
+@tf_export(v1=["initializers.lecun_uniform"])
 def lecun_uniform(seed=None):
   """LeCun uniform initializer.
 
@@ -1314,7 +1335,9 @@ def lecun_uniform(seed=None):
 
   References:
       - Self-Normalizing Neural Networks,
-      [Klambauer et al., 2017](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks)
+      [Klambauer et al.,
+      2017](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks)
+      # pylint: disable=line-too-long
       ([pdf](https://papers.nips.cc/paper/6698-self-normalizing-neural-networks.pdf))
       - Efficient Backprop,
       [Lecun et al., 1998](http://yann.lecun.com/exdb/publis/pdf/lecun-98b.pdf)
@@ -1323,13 +1346,14 @@ def lecun_uniform(seed=None):
       scale=1., mode="fan_in", distribution="uniform", seed=seed)
 
 
-@tf_export("keras.initializers.he_normal", "initializers.he_normal")
+@tf_export(v1=["initializers.he_normal"])
 def he_normal(seed=None):
   """He normal initializer.
 
   It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(2 / fan_in)`
-  where `fan_in` is the number of input units in the weight tensor.
+  with standard deviation (after truncation) given by
+  `stddev = sqrt(2 / fan_in)` where `fan_in` is the number of
+  input units in the weight tensor.
 
   Arguments:
       seed: A Python integer. Used to seed the random generator.
@@ -1338,14 +1362,16 @@ def he_normal(seed=None):
       An initializer.
 
   References:
-      [He et al., 2015](https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html)
+      [He et al., 2015]
+      (https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html)
+      # pylint: disable=line-too-long
       ([pdf](https://www.cv-foundation.org/openaccess/content_iccv_2015/papers/He_Delving_Deep_into_ICCV_2015_paper.pdf))
   """
   return VarianceScaling(
       scale=2., mode="fan_in", distribution="truncated_normal", seed=seed)
 
 
-@tf_export("keras.initializers.he_uniform", "initializers.he_uniform")
+@tf_export(v1=["initializers.he_uniform"])
 def he_uniform(seed=None):
   """He uniform variance scaling initializer.
 
@@ -1360,7 +1386,9 @@ def he_uniform(seed=None):
       An initializer.
 
   References:
-      [He et al., 2015](https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html)
+      [He et al., 2015]
+      (https://www.cv-foundation.org/openaccess/content_iccv_2015/html/He_Delving_Deep_into_ICCV_2015_paper.html)
+      # pylint: disable=line-too-long
       ([pdf](https://www.cv-foundation.org/openaccess/content_iccv_2015/papers/He_Delving_Deep_into_ICCV_2015_paper.pdf))
   """
   return VarianceScaling(
@@ -1377,7 +1405,7 @@ def _compute_fans(shape):
     shape: Integer shape tuple or TF tensor shape.
 
   Returns:
-    A tuple of scalars (fan_in, fan_out).
+    A tuple of integer scalars (fan_in, fan_out).
   """
   if len(shape) < 1:  # Just to avoid errors for constants.
     fan_in = fan_out = 1
@@ -1389,12 +1417,12 @@ def _compute_fans(shape):
   else:
     # Assuming convolution kernels (2D, 3D, or more).
     # kernel shape: (..., input_depth, depth)
-    receptive_field_size = 1.
+    receptive_field_size = 1
     for dim in shape[:-2]:
       receptive_field_size *= dim
     fan_in = shape[-2] * receptive_field_size
     fan_out = shape[-1] * receptive_field_size
-  return fan_in, fan_out
+  return int(fan_in), int(fan_out)
 
 
 def _assert_float_dtype(dtype):

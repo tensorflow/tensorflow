@@ -1,0 +1,29 @@
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+
+HloModule foo
+
+%cond (arg_1: s64[]) -> pred[] {
+  %arg_1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
+  ROOT %compare.2 = pred[] compare(%arg_1, %arg_1), direction=LT, metadata={op_type="Less" op_name="Less"}
+}
+
+%loop (arg_1: s64[]) -> s64[] {
+  %arg_1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
+  ROOT %compare.2 = s64[] add(%arg_1, %arg_1), metadata={op_type="Less" op_name="Less"}
+}
+
+// CHECK-LABEL: func @main(%arg0: tensor<i64>) -> tensor<i64> {
+ENTRY %foo (arg0.1: s64[]) -> s64[] {
+  %arg0.1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
+
+  // CHECK: "mhlo.while"(%arg0) ( {
+  // CHECK:   ^bb0
+  // CHECK:     "mhlo.compare"
+  // CHECK:     "mhlo.return"
+  // CHECK:   },  {
+  // CHECK:   ^bb0
+  // CHECK:     mhlo.add
+  // CHECK:     "mhlo.return"
+  // CHECK: }) : (tensor<i64>) -> tensor<i64>
+  ROOT %while.2 = s64[] while(%arg0.1), body=%loop, condition=%cond
+}

@@ -2,7 +2,7 @@ path: "tensorflow.train.SyncReplicasOptimizer"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.sync_replicas_optimizer.SyncReplicasOptimizer\'>"
   is_instance: "<class \'tensorflow.python.training.optimizer.Optimizer\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "GATE_GRAPH"

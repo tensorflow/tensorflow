@@ -361,7 +361,7 @@ TEST(WriteType, ParameterizedClassAndSupertypes) {
   clazz.add_parameter(type_t);
   Type type_u = Type::Generic("U").add_supertype(Type::Class("Number"));
   clazz.add_parameter(type_u);
-  clazz.add_supertype(Type::Interface("Parametrizable").add_parameter(type_u));
+  clazz.add_supertype(Type::Interface("Parameterizable").add_parameter(type_u));
   clazz.add_supertype(Type::Interface("Runnable"));
   clazz.add_supertype(Type::Class("SuperTest").add_parameter(type_t));
 
@@ -370,7 +370,7 @@ TEST(WriteType, ParameterizedClassAndSupertypes) {
   const char* expected =
       "package org.tensorflow;\n\n"
       "public class Test<T, U extends Number>"
-      " extends SuperTest<T> implements Parametrizable<U>, Runnable {\n}\n";
+      " extends SuperTest<T> implements Parameterizable<U>, Runnable {\n}\n";
   ASSERT_STREQ(expected, writer.str().data());
 }
 

@@ -23,8 +23,7 @@ END
   description: <<END
 N is the size of the segment being reduced.
 
-Read
-[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
-for an explanation of segments.
+See `tf.sparse.segment_sum` for usage examples.
+
 END
 }

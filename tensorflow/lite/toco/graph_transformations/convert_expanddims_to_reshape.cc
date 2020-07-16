@@ -56,8 +56,14 @@ namespace toco {
   }
   int axis = axis_array.GetBuffer<ArrayDataType::kInt32>().data[0];
   std::vector<int> reshape_dims(input_array.shape().dims());
+  int original_dims_num = reshape_dims.size();
+  if (axis > original_dims_num || axis < -(original_dims_num + 1)) {
+    return tensorflow::errors::InvalidArgument(absl::StrCat(
+        "Invalid axis attribute ", axis, " for original dimension ",
+        original_dims_num, " in ExpandDims op."));
+  }
   if (axis < 0) {
-    axis = reshape_dims.size();
+    axis = reshape_dims.size() + 1 + axis;
   }
   reshape_dims.insert(reshape_dims.begin() + axis, 1);
 
@@ -70,8 +76,9 @@ namespace toco {
   reshape_op->outputs = expand_op->outputs;
 
   // Create a new input array
-  string axis_array_name = expand_op->inputs[1];
-  string shape_array_name = toco::AvailableArrayName(*model, axis_array_name);
+  std::string axis_array_name = expand_op->inputs[1];
+  std::string shape_array_name =
+      toco::AvailableArrayName(*model, axis_array_name);
   Array& shape_array = model->GetOrCreateArray(shape_array_name);
   *(shape_array.mutable_shape()->mutable_dims()) = {
       1, static_cast<int>(reshape_dims.size())};
@@ -88,10 +95,8 @@ namespace toco {
   }
 
   // Replace the operator in the graph.
-  const auto reshape_it = model->operators.emplace(expand_it, reshape_op);
-  expand_it = reshape_it + 1;
-  CHECK_EQ(expand_it->get(), expand_op);
-  model->operators.erase(expand_it);
+  model->operators.emplace(expand_it, reshape_op);
+  DeleteOpAndArrays(model, expand_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();

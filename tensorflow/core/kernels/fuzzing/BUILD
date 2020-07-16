@@ -1,27 +1,21 @@
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_ops_fuzz_target_lib")
+load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_oss_fuzz_corpus")
+load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_oss_fuzz_dict")
 
 package(
     default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
     name = "fuzz_session",
     hdrs = ["fuzz_session.h"],
     deps = [
-        "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:direct_session",
-        "//tensorflow/core:ops",
         "//tensorflow/core:tensorflow",
     ],
 )
-
-load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_ops_fuzz_target_lib")
-load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_oss_fuzz_corpus")
-load("//tensorflow/core/kernels/fuzzing:tf_ops_fuzz_target_lib.bzl", "tf_oss_fuzz_dict")
-
-tf_ops_fuzz_target_lib("identity")
 
 tf_ops_fuzz_target_lib("string_to_number")
 
@@ -70,3 +64,13 @@ tf_oss_fuzz_corpus("decode_json_example")
 tf_oss_fuzz_dict("decode_json_example")
 
 tf_ops_fuzz_target_lib("check_numerics")
+
+tf_ops_fuzz_target_lib("one_hot")
+
+tf_ops_fuzz_target_lib("scatter_nd")
+
+tf_oss_fuzz_corpus("scatter_nd")
+
+tf_ops_fuzz_target_lib("decode_csv")
+
+tf_oss_fuzz_corpus("decode_csv")

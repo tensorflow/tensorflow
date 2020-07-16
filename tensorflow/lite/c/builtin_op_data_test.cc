@@ -56,6 +56,7 @@ TEST(IntArray, CanCompileStructs) {
   TfLiteReshapeParams reshape_params;
   TfLiteSkipGramParams skip_gram_params;
   TfLiteSpaceToDepthParams space_to_depth_params;
+  TfLiteDepthToSpaceParams depth_to_space_params;
   TfLiteCastParams cast_params;
   TfLiteCombinerType combiner_type = kTfLiteCombinerTypeSqrtn;
   TfLiteEmbeddingLookupSparseParams lookup_sparse_params;
@@ -71,8 +72,10 @@ TEST(IntArray, CanCompileStructs) {
   TfLiteTransposeConvParams transpose_conv_params;
   TfLiteSparseToDenseParams sparse_to_dense_params;
   TfLiteShapeParams shape_params;
+  TfLiteRankParams rank_params;
   TfLiteFakeQuantParams fake_quant_params;
   TfLitePackParams pack_params;
+  TfLiteUnpackParams unpack_params;
   TfLiteOneHotParams one_hot_params;
   TfLiteBidirectionalSequenceRNNParams bidi_sequence_rnn_params;
   TfLiteBidirectionalSequenceLSTMParams bidi_sequence_lstm_params;

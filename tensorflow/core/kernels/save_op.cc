@@ -55,15 +55,15 @@ class ShardedFilenameOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     static const char* input_names[3] = {"basename", "shard", "num_shards"};
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      OP_REQUIRES(ctx, IsLegacyScalar(ctx->input(i).shape()),
+      OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(i).shape()),
                   errors::InvalidArgument(input_names[i],
                                           " must be a scalar, got shape ",
                                           ctx->input(i).shape().DebugString()));
     }
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
-    out->scalar<string>()() = strings::Printf(
-        "%s-%05d-of-%05d", ctx->input(0).scalar<string>()().c_str(),
+    out->scalar<tstring>()() = strings::Printf(
+        "%s-%05d-of-%05d", ctx->input(0).scalar<tstring>()().c_str(),
         ctx->input(1).scalar<int32>()(), ctx->input(2).scalar<int32>()());
   }
 };
@@ -78,15 +78,15 @@ class ShardedFilespecOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     static const char* input_names[2] = {"basename", "num_shards"};
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      OP_REQUIRES(ctx, IsLegacyScalar(ctx->input(i).shape()),
+      OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(i).shape()),
                   errors::InvalidArgument(input_names[i],
                                           " must be a scalar, got shape ",
                                           ctx->input(i).shape().DebugString()));
     }
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
-    out->scalar<string>()() = strings::Printf(
-        "%s-\?\?\?\?\?-of-%05d", ctx->input(0).scalar<string>()().c_str(),
+    out->scalar<tstring>()() = strings::Printf(
+        "%s-\?\?\?\?\?-of-%05d", ctx->input(0).scalar<tstring>()().c_str(),
         ctx->input(1).scalar<int32>()());
   }
 };

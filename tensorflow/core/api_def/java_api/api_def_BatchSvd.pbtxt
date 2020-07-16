@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "BatchSvd"
+  endpoint {
+    name: "linalg.BatchSvd"
+  }
+}

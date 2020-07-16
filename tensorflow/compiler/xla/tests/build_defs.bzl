@@ -1,20 +1,21 @@
 """Build rules for XLA testing."""
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "rocm_is_configured")
 load("//tensorflow/compiler/xla/tests:plugin.bzl", "plugins")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
 all_backends = ["cpu", "gpu"] + plugins.keys()
 
 def filter_backends(backends):
-    """Removes "gpu" from a backend list if CUDA is not enabled.
+    """Removes "gpu" from a backend list if CUDA or ROCm is not enabled.
 
     This allows us to simply hardcode lists including "gpu" here and in the
-    BUILD file, without causing failures when CUDA isn't enabled.'
+    BUILD file, without causing failures when CUDA or ROCm isn't enabled.'
 
     Args:
       backends: A list of backends to filter.
@@ -22,7 +23,7 @@ def filter_backends(backends):
     Returns:
       The filtered list of backends.
     """
-    if cuda_is_configured():
+    if cuda_is_configured() or rocm_is_configured():
         return backends
     else:
         return [backend for backend in backends if backend != "gpu"]
@@ -33,7 +34,8 @@ def xla_test(
         deps,
         xla_test_library_deps = [],
         backends = [],
-        blacklisted_backends = [],
+        disabled_backends = [],
+        real_hardware_only = False,
         args = [],
         tags = [],
         copts = [],
@@ -97,7 +99,7 @@ def xla_test(
       backends: A list of backends to generate tests for. Supported values: "cpu",
         "gpu". If this list is empty, the test will be generated for all supported
         backends.
-      blacklisted_backends: A list of backends to NOT generate tests for.
+      disabled_backends: A list of backends to NOT generate tests for.
       args: Test arguments for the target.
       tags: Tags for the target.
       copts: Additional copts to pass to the build.
@@ -108,6 +110,10 @@ def xla_test(
         use for that target.
       **kwargs: Additional keyword arguments to pass to native.cc_test.
     """
+
+    # All of the backends in all_backends are real hardware.
+    _ignore = [real_hardware_only]
+
     test_names = []
     if not backends:
         backends = all_backends
@@ -115,7 +121,7 @@ def xla_test(
     backends = [
         backend
         for backend in backends
-        if backend not in blacklisted_backends
+        if backend not in disabled_backends
     ]
 
     native.cc_library(
@@ -123,7 +129,7 @@ def xla_test(
         srcs = srcs,
         copts = copts,
         testonly = True,
-        deps = deps + ["//tensorflow/compiler/xla/tests:test_macros_header"],
+        deps = deps,
     )
 
     for backend in filter_backends(backends):
@@ -167,7 +173,7 @@ def xla_test(
 
         test_names.append(test_name)
 
-    native.test_suite(name = name, tests = test_names)
+    native.test_suite(name = name, tags = tags, tests = test_names)
 
 def xla_test_library(
         name,
@@ -260,9 +266,6 @@ def generate_backend_test_macros(backends = []):
                 "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
             ],
             deps = [
-                "//tensorflow/compiler/xla:types",
-                "//tensorflow/core:lib",
-                "//tensorflow/core:regexp_internal",
-                "//tensorflow/core:test",
+                "//tensorflow/core/platform:logging",
             ],
         )

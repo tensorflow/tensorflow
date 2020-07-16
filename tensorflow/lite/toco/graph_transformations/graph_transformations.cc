@@ -29,7 +29,7 @@ namespace toco {
 
 namespace {
 
-void PrintModelStats(const string& label, const Model& model) {
+void PrintModelStats(const std::string& label, const Model& model) {
   int quantized_arrays = 0;
   for (const auto& array : model.GetArrayMap()) {
     if (array.second->quantization_params) {
@@ -57,8 +57,8 @@ void PrintModelStats(const string& label, const Model& model) {
 void DiscardUselessConnectedComponentsAndRNNBackEdges(Model* model) {
   // Identify the set of arrays that are in 'useful' connected components
   // of the graph, which means connected to output arrays.
-  std::unordered_set<string> useful_arrays;
-  for (const string& output_array : model->flags.output_arrays()) {
+  std::unordered_set<std::string> useful_arrays;
+  for (const std::string& output_array : model->flags.output_arrays()) {
     useful_arrays.insert(output_array);
   }
   bool found_new_useful_arrays;
@@ -66,15 +66,15 @@ void DiscardUselessConnectedComponentsAndRNNBackEdges(Model* model) {
     found_new_useful_arrays = false;
     for (const auto& op : model->operators) {
       bool op_touches_useful_arrays = false;
-      for (const string& output : op->outputs) {
+      for (const std::string& output : op->outputs) {
         op_touches_useful_arrays |= useful_arrays.count(output);
       }
       if (op_touches_useful_arrays) {
-        for (const string& input : op->inputs) {
+        for (const std::string& input : op->inputs) {
           found_new_useful_arrays |= !useful_arrays.count(input);
           useful_arrays.insert(input);
         }
-        for (const string& output : op->outputs) {
+        for (const std::string& output : op->outputs) {
           found_new_useful_arrays |= !useful_arrays.count(output);
           useful_arrays.insert(output);
         }
@@ -91,7 +91,7 @@ void DiscardUselessConnectedComponentsAndRNNBackEdges(Model* model) {
     }
   } while (found_new_useful_arrays);
   // Erase arrays that aren't useful, and that are discardable.
-  model->EraseArrays([&](const string& name) {
+  model->EraseArrays([&](const std::string& name) {
     return (!useful_arrays.count(name) && IsDiscardableArray(*model, name));
   });
   // Erase operators that do not produce a useful output array.
@@ -101,7 +101,7 @@ void DiscardUselessConnectedComponentsAndRNNBackEdges(Model* model) {
     if (useful_arrays.count((*it)->outputs[0])) {
       ++it;
     } else {
-      for (const string& output : (*it)->outputs) {
+      for (const std::string& output : (*it)->outputs) {
         CHECK(!useful_arrays.count(output));
       }
       it = model->operators.erase(it);
@@ -128,7 +128,8 @@ void DiscardUselessConnectedComponentsAndRNNBackEdges(Model* model) {
 }
 
 bool GraphTransformationsPass(int increment, Model* model,
-                              const GraphTransformationsSet& transformations) {
+                              const GraphTransformationsSet& transformations,
+                              tensorflow::Status* status) {
   CHECK(increment == 1 || increment == -1);
   bool changed = false;
   if (model->operators.empty()) {
@@ -142,7 +143,10 @@ bool GraphTransformationsPass(int increment, Model* model,
     for (const auto& transformation : transformations) {
       CHECK(!changed_now);
       CHECK(transformation->Messages().empty());
-      CHECK(transformation->Run(model, op_index, &changed_now).ok());
+      *status = transformation->Run(model, op_index, &changed_now);
+      if (!status->ok()) {
+        return false;
+      }
       const char* made_a_change_msg =
           changed_now ? "made a change" : "did NOT make a change";
       const int log_level =
@@ -152,7 +156,7 @@ bool GraphTransformationsPass(int increment, Model* model,
                         << " at op_index=" << op_index << "/"
                         << model->operators.size() - 1;
       }
-      for (const string& message : transformation->Messages()) {
+      for (const std::string& message : transformation->Messages()) {
         VLOG(log_level) << transformation->Name() << " " << made_a_change_msg
                         << " at op_index=" << op_index << "/"
                         << model->operators.size() - 1 << ": " << message;
@@ -186,18 +190,21 @@ bool GraphTransformationsPass(int increment, Model* model,
 
 }  // namespace
 
-void RunGraphTransformations(Model* model, const string& msg,
-                             const GraphTransformationsSet& transformations) {
+tensorflow::Status RunGraphTransformationsWithStatus(
+    Model* model, const std::string& msg,
+    const GraphTransformationsSet& transformations) {
   PrintModelStats(toco::port::StringF("Before %s", msg), *model);
   int pass_index = 0;
+  tensorflow::Status status;
   while (GraphTransformationsPass((pass_index % 2) ? -1 : 1, model,
-                                  transformations)) {
+                                  transformations, &status)) {
     pass_index++;
     const auto& label =
         toco::port::StringF("After %s pass %d", msg, pass_index);
     PrintModelStats(label, *model);
     CheckInvariants(*model);
   }
+  return status;
 }
 
 }  // namespace toco

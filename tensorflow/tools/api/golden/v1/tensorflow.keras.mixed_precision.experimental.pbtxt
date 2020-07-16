@@ -1,0 +1,7 @@
+path: "tensorflow.keras.mixed_precision.experimental"
+tf_module {
+  member {
+    name: "LossScaleOptimizer"
+    mtype: "<type \'type\'>"
+  }
+}

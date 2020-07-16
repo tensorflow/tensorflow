@@ -72,7 +72,7 @@ ChannelHandle ChannelTracker::AllocateHandle(ChannelHandle::ChannelType type) {
 }
 
 Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
-  if (opaque_to_channel_.count(handle.handle()) == 0) {
+  if (!opaque_to_channel_.contains(handle.handle())) {
     return NotFound("channel handle not found: %d", handle.handle());
   }
   Channel& channel = opaque_to_channel_[handle.handle()];
@@ -94,7 +94,7 @@ Status ChannelTracker::RegisterSendInternal(const ChannelHandle& handle) {
 }
 
 Status ChannelTracker::RegisterRecvInternal(const ChannelHandle& handle) {
-  if (opaque_to_channel_.count(handle.handle()) == 0) {
+  if (!opaque_to_channel_.contains(handle.handle())) {
     return NotFound("channel handle not found: %d", handle.handle());
   }
   Channel& channel = opaque_to_channel_[handle.handle()];

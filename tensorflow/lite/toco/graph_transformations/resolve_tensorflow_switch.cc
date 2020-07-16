@@ -17,10 +17,11 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -36,7 +37,7 @@ namespace toco {
 
   CHECK_EQ(switch_op->inputs.size(), 2);
   CHECK_EQ(switch_op->outputs.size(), 2);
-  const string& predicate_name = switch_op->inputs[1];
+  const std::string& predicate_name = switch_op->inputs[1];
   // If the predicate array hasn't been resolved to a constant yet,
   // we need to yield.
   if (!IsConstantParameterArray(*model, predicate_name)) {
@@ -95,9 +96,17 @@ namespace toco {
       if (*input_it == switch_op->outputs[nonselected_output_index]) {
         // Let us guard our assumption that only Merge nodes consume the outputs
         // of Switch nodes:
-        CHECK(other_op->type == OperatorType::kMerge)
-            << "Found " << HelpfulOperatorTypeName(*other_op)
-            << " as non-selected output from Switch, but only Merge supported.";
+        if (other_op->type != OperatorType::kMerge) {
+          return ::tensorflow::Status(
+              ::tensorflow::error::FAILED_PRECONDITION,
+              ::absl::StrCat(
+                  "Found ", HelpfulOperatorTypeName(*other_op),
+                  " as non-selected output from Switch, but only "
+                  "Merge supported. Control flow ops like Switch and Merge are "
+                  "not generally supported. We are working on fixing this, "
+                  "please see the Github issue at "
+                  "https://github.com/tensorflow/tensorflow/issues/28485."));
+        }
         input_it = other_op->inputs.erase(input_it);
       } else {
         ++input_it;
@@ -121,7 +130,7 @@ namespace toco {
   }
   // Remove the switch node itself.
   AddMessageF("Removing already-resolved %s", LogName(*switch_op));
-  model->operators.erase(switch_it);
+  DeleteOpAndArrays(model, switch_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

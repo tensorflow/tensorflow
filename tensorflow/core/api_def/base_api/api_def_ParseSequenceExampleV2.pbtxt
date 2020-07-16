@@ -1,0 +1,147 @@
+op {
+  graph_op_name: "ParseSequenceExampleV2"
+  in_arg {
+    name: "serialized"
+    description: <<END
+A scalar or vector containing binary serialized SequenceExample protos.
+END
+  }
+  in_arg {
+    name: "debug_name"
+    description: <<END
+A scalar or vector containing the names of the serialized protos.
+May contain, for example, table key (descriptive) name for the
+corresponding serialized proto.  This is purely useful for debugging
+purposes, and the presence of values here has no effect on the output.
+May also be an empty vector if no name is available.
+END
+  }
+  in_arg {
+    name: "context_sparse_keys"
+    description: <<END
+The keys expected in the Examples' features associated with context_sparse
+values.
+END
+  }
+  in_arg {
+    name: "context_dense_keys"
+    description: <<END
+The keys expected in the SequenceExamples' context features associated with
+dense values.
+END
+  }
+  in_arg {
+    name: "context_ragged_keys"
+    description: <<END
+The keys expected in the Examples' features associated with context_ragged
+values.
+END
+  }
+  in_arg {
+    name: "feature_list_sparse_keys"
+    description: <<END
+The keys expected in the FeatureLists associated with sparse values.
+END
+  }
+  in_arg {
+    name: "feature_list_dense_keys"
+    description: <<END
+The keys expected in the SequenceExamples' feature_lists associated
+with lists of dense values.
+END
+  }
+  in_arg {
+    name: "feature_list_ragged_keys"
+    description: <<END
+The keys expected in the FeatureLists associated with ragged values.
+END
+  }
+  in_arg {
+    name: "feature_list_dense_missing_assumed_empty"
+    description: <<END
+A vector corresponding 1:1 with feature_list_dense_keys, indicating which
+features may be missing from the SequenceExamples.  If the associated
+FeatureList is missing, it is treated as empty.
+END
+  }
+  in_arg {
+    name: "context_dense_defaults"
+    description: <<END
+A list of Ncontext_dense Tensors (some may be empty).
+context_dense_defaults[j] provides default values
+when the SequenceExample's context map lacks context_dense_key[j].
+If an empty Tensor is provided for context_dense_defaults[j],
+then the Feature context_dense_keys[j] is required.
+The input type is inferred from context_dense_defaults[j], even when it's
+empty.  If context_dense_defaults[j] is not empty, its shape must match
+context_dense_shapes[j].
+END
+  }
+
+  attr {
+    name: "context_sparse_types"
+    description: <<END
+A list of Ncontext_sparse types; the data types of data in
+each context Feature given in context_sparse_keys.
+Currently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),
+DT_INT64 (Int64List), and DT_STRING (BytesList).
+END
+  }
+  attr {
+    name: "context_dense_shapes"
+    description: <<END
+A list of Ncontext_dense shapes; the shapes of data in
+each context Feature given in context_dense_keys.
+The number of elements in the Feature corresponding to context_dense_key[j]
+must always equal context_dense_shapes[j].NumEntries().
+The shape of context_dense_values[j] will match context_dense_shapes[j].
+END
+  }
+  attr {
+    name: "feature_list_sparse_types"
+    description: <<END
+A list of Nfeature_list_sparse types; the data types
+of data in each FeatureList given in feature_list_sparse_keys.
+Currently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),
+DT_INT64 (Int64List), and DT_STRING (BytesList).
+END
+  }
+  attr {
+    name: "feature_list_dense_shapes"
+    description: <<END
+A list of Nfeature_list_dense shapes; the shapes of
+data in each FeatureList given in feature_list_dense_keys.
+The shape of each Feature in the FeatureList corresponding to
+feature_list_dense_key[j] must always equal
+feature_list_dense_shapes[j].NumEntries().
+END
+  }
+  attr {
+    name: "context_ragged_value_types"
+    description: <<END
+RaggedTensor.value dtypes for the ragged context features.
+END
+  }
+  attr {
+    name: "context_ragged_split_types"
+    description: <<END
+RaggedTensor.row_split dtypes for the ragged context features.
+END
+  }
+  attr {
+    name: "feature_list_ragged_value_types"
+    description: <<END
+RaggedTensor.value dtypes for the ragged FeatureList features.
+END
+  }
+  attr {
+    name: "feature_list_ragged_split_types"
+    description: <<END
+RaggedTensor.row_split dtypes for the ragged FeatureList features.
+END
+  }
+  summary: <<END
+Transforms a vector of tf.io.SequenceExample protos (as strings) into
+typed tensors.
+END
+}

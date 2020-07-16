@@ -26,7 +26,28 @@ namespace tensorflow {
 // log anything to a non-local place, e.g. a database.
 class Logger {
  public:
-  static Logger* Singleton();
+  // The singleton is supposed to be used in the following steps:
+  // * At program start time, REGISTER_MODULE_INITIALIZER calls
+  //   SetSingletonFactory.
+  // * At some point in the program execution, Singleton() is called for the
+  //   first time, initializing the logger.
+  // * Succeeding calls to Singleton() return the initialized logger.
+  using FactoryFunc = Logger* (*)();
+
+  static void SetSingletonFactory(FactoryFunc factory) {
+    singleton_factory_ = factory;
+  }
+
+  // Returns the per-process Logger instance, constructing synchronously it if
+  // necessary.
+  static Logger* GetSingleton();
+
+  // Like GetSingleton, except that this does not wait for the construction of
+  // Logger to finish before returning.
+  //
+  // Returns the constructed instance of Logger if it has been constructed,
+  // otherwise returns nullptr (if the logger is not ready yet).
+  static Logger* GetSingletonAsync();
 
   virtual ~Logger() = default;
 
@@ -44,6 +65,10 @@ class Logger {
  private:
   virtual void DoLogProto(google::protobuf::Any* proto) = 0;
   virtual void DoFlush() = 0;
+
+  static FactoryFunc singleton_factory_;
+
+  friend struct AsyncSingletonImpl;
 };
 
 }  // namespace tensorflow

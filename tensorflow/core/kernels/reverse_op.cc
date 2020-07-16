@@ -19,13 +19,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/reverse_op.h"
 #include <memory>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -113,9 +113,9 @@ DoHandleReverseCase(OpKernelContext* context, const Tensor& input,
     static_assert(sizeof(complex128) == 16, "complex128 must be 16 bytes");
     ReverseRows<complex128, NUM_CHANNELS>(context, input, result);
   } else {
-    context->CtxFailure(
-        errors::InvalidArgument("%s has unexpected size of %d bytes",
-                                DataTypeString(input.dtype()), sizeof(T)));
+    context->CtxFailure(errors::InvalidArgument(DataTypeString(input.dtype()),
+                                                " has unexpected size of ",
+                                                sizeof(T), " bytes"));
   }
 }
 
@@ -314,10 +314,10 @@ class ReverseV2Op : public OpKernel {
                               .HostMemory("axis"),           \
                           ReverseV2Op<CPUDevice, T, int64>)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
-TF_CALL_string(REGISTER_KERNELS);
+TF_CALL_tstring(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Forward declarations of the function specializations for GPU (to prevent
 // building the GPU versions here, they will be built compiling _gpu.cu.cc).
@@ -342,12 +342,7 @@ namespace functor {
 
 TF_CALL_uint8(DECLARE_GPU_SPEC);
 TF_CALL_int8(DECLARE_GPU_SPEC);
-TF_CALL_bool(DECLARE_GPU_SPEC);
-TF_CALL_half(DECLARE_GPU_SPEC);
-TF_CALL_float(DECLARE_GPU_SPEC);
-TF_CALL_double(DECLARE_GPU_SPEC);
-TF_CALL_complex64(DECLARE_GPU_SPEC);
-TF_CALL_complex128(DECLARE_GPU_SPEC);
+TF_CALL_GPU_ALL_TYPES(DECLARE_GPU_SPEC);
 #undef DECLARE_GPU_SPEC
 #undef DECLARE_GPU_SPEC_DIM
 }  // namespace functor
@@ -373,12 +368,7 @@ TF_CALL_complex128(DECLARE_GPU_SPEC);
                           ReverseV2Op<GPUDevice, T, int64>)
 TF_CALL_uint8(REGISTER_GPU_KERNELS);
 TF_CALL_int8(REGISTER_GPU_KERNELS);
-TF_CALL_bool(REGISTER_GPU_KERNELS);
-TF_CALL_half(REGISTER_GPU_KERNELS);
-TF_CALL_float(REGISTER_GPU_KERNELS);
-TF_CALL_double(REGISTER_GPU_KERNELS);
-TF_CALL_complex64(REGISTER_GPU_KERNELS);
-TF_CALL_complex128(REGISTER_GPU_KERNELS);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
@@ -407,7 +397,7 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .HostMemory("axis")
                             .HostMemory("output"),
                         ReverseV2Op<CPUDevice, int32, int64>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T)                             \

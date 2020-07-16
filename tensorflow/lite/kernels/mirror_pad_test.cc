@@ -12,11 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -183,6 +184,19 @@ TEST(MirrorPadTest, Pad_1D_Symmetric) {
   model.PopulateTensor<int>(model.padding_matrix_tensor_id(), {0, 2});
   model.Invoke();
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 3, 2}));
+}
+
+TEST(MirrorPadTest, Pad_1D_Symmetric_Multiple_Invoke) {
+  BaseMirrorPadOpModel<int> model(
+      {TensorType_INT32, {3}}, {TensorType_INT32, {1, 2}},
+      {TensorType_INT32, {}}, tflite::MirrorPadMode_SYMMETRIC);
+  model.PopulateTensor<int>(model.input_tensor_id(), {1, 2, 3});
+  model.PopulateTensor<int>(model.padding_matrix_tensor_id(), {0, 2});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 3, 2}));
+  model.PopulateTensor<int>(model.input_tensor_id(), {4, 5, 6});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({4, 5, 6, 6, 5}));
 }
 
 }  // namespace

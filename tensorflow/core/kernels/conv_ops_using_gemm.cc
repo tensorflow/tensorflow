@@ -47,9 +47,12 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <string.h>
+
 #include <map>
 #include <vector>
-#include "tensorflow/core/framework/common_shape_fns.h"
+
+#include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -57,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/gemm_functors.h"
 #include "tensorflow/core/kernels/image_resizer_state.h"

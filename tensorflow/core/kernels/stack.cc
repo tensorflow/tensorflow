@@ -57,7 +57,8 @@ class Stack : public ResourceBase {
   Status Push(const TensorAndAllocation& value) {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(CheckNotClosed());
-    if (max_size_ >= 0 && stack_.size() >= max_size_) {
+    int stack_size = stack_.size();
+    if (max_size_ >= 0 && stack_size >= max_size_) {
       return errors::InvalidArgument("Stack[", stack_name_, "] overflowed ",
                                      "its max_size (", max_size_, ")");
     }
@@ -96,7 +97,7 @@ class Stack : public ResourceBase {
 
   DataType ElemType() { return elem_type_; }
 
-  string DebugString() override {
+  string DebugString() const override {
     mutex_lock l(mu_);
     return strings::StrCat("Stack[", stack_name_, "]");
   }
@@ -112,10 +113,10 @@ class Stack : public ResourceBase {
   const string stack_name_;
   Tensor handle_;
   int max_size_;
-  bool closed_ GUARDED_BY(mu_);
-  std::vector<TensorAndAllocation> stack_ GUARDED_BY(mu_);
+  bool closed_ TF_GUARDED_BY(mu_);
+  std::vector<TensorAndAllocation> stack_ TF_GUARDED_BY(mu_);
 
-  Status CheckNotClosed() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status CheckNotClosed() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (closed_) {
       return errors::InvalidArgument("Stack[", stack_name_,
                                      "] has already been closed.");
@@ -134,8 +135,8 @@ Status GetStack(OpKernelContext* ctx, Stack** stack) {
           "Stack handle must have two elements, but had shape: ",
           Tstack_handle.shape().DebugString());
     }
-    const string& container = Tstack_handle.flat<string>()(0);
-    const string& stack_name = Tstack_handle.flat<string>()(1);
+    const string& container = Tstack_handle.flat<tstring>()(0);
+    const string& stack_name = Tstack_handle.flat<tstring>()(1);
     string key = strings::StrCat(container, stack_name);
     ResourceMgr* rm = ctx->resource_manager();
     if (rm == nullptr) {
@@ -145,7 +146,7 @@ Status GetStack(OpKernelContext* ctx, Stack** stack) {
     if (step_container == nullptr) {
       return errors::Internal("No step container.");
     }
-    TF_RETURN_IF_ERROR(rm->Lookup(step_container->name(), key, stack));
+    TF_RETURN_IF_ERROR(step_container->Lookup(rm, key, stack));
     return Status::OK();
   }
 }
@@ -184,11 +185,11 @@ void StackOp::Compute(OpKernelContext* ctx) {
   ResourceMgr* rm = ctx->resource_manager();
   OP_REQUIRES(ctx, rm != nullptr, errors::Internal("No resource manager."));
   string key = strings::StrCat(kContainer, stack_name);
-  Stack* stack = new Stack(elem_type_, stack_name, size);
   auto* step_container = ctx->step_container();
   OP_REQUIRES(ctx, step_container != nullptr,
               errors::Internal("No step container."));
-  OP_REQUIRES_OK(ctx, rm->Create(step_container->name(), key, stack));
+  Stack* stack = new Stack(elem_type_, stack_name, size);
+  OP_REQUIRES_OK(ctx, step_container->Create(rm, key, stack));
   if (IsRefType(ctx->expected_output_dtype(0))) {
     // Create the stack handle.
     AllocatorAttributes alloc_attr;
@@ -196,7 +197,7 @@ void StackOp::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(tensorflow::DT_STRING,
                                            tensorflow::TensorShape({2}),
                                            &stack->handle_, alloc_attr));
-    auto handle = stack->handle_.flat<string>();
+    auto handle = stack->handle_.flat<tstring>();
     handle(0) = kContainer;
     handle(1) = std::move(stack_name);
     ctx->set_output_ref(0, stack->mu(), &stack->handle_);
@@ -204,7 +205,7 @@ void StackOp::Compute(OpKernelContext* ctx) {
     Tensor* handle;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &handle));
     handle->flat<ResourceHandle>()(0) =
-        MakePerStepResourceHandle<Stack>(ctx, key);
+        ctx->step_container()->MakeResourceHandle<Stack>(key, *ctx->device());
   }
 }
 
@@ -244,9 +245,9 @@ void StackPushOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     DeviceContext* device_ctxt = ctx->op_device_context();
     auto device = static_cast<tensorflow::Device*>(ctx->device());
     Allocator* allocator = device->GetAllocator(alloc_attrs);
-    AllocatorStats stats;
-    allocator->GetStats(&stats);
-    if (stats.bytes_in_use > (stats.bytes_limit * kOccupancy)) {
+    absl::optional<AllocatorStats> stats = allocator->GetStats();
+    if (stats && *stats->bytes_limit &&
+        stats->bytes_in_use > (*stats->bytes_limit * kOccupancy)) {
       // Asynchronously copy the tensor from GPU to CPU memory.
       // TODO(yuanbyu): Swap the oldest tensor first.
       AllocatorAttributes host_alloc_attrs;

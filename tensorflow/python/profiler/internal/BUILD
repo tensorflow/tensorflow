@@ -1,11 +1,13 @@
-package(default_visibility = ["//tensorflow/python/profiler:__subpackages__"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+
+package(
+    default_visibility = ["//tensorflow/python/profiler:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "flops_registry",
@@ -40,6 +42,7 @@ py_library(
 py_test(
     name = "print_model_analysis_test",
     srcs = ["print_model_analysis_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core/profiler:protos_all_py",
@@ -57,16 +60,90 @@ py_test(
 cuda_py_test(
     name = "run_metadata_test",
     srcs = ["run_metadata_test.py"],
-    additional_deps = [
+    python_version = "PY3",
+    tags = [
+        "no_gpu",  # b/138442728
+        "no_pip",
+    ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+    deps = [
         ":model_analyzer_testlib",
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python/profiler:model_analyzer",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python/profiler:model_analyzer",
     ],
-    tags = [
-        "no_pip",
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_traceme",
+    srcs = ["traceme_wrapper.cc"],
+    module_name = "_pywrap_traceme",
+    visibility = [
+        "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
+        "//tensorflow/python/profiler:__subpackages__",
     ],
+    deps = [
+        ":traceme_wrapper",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "traceme_wrapper",
+    hdrs = ["traceme_wrapper.h"],
+    features = ["-layering_check"],
+    visibility = [
+        "//tensorflow/compiler/xla/python:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_profiler",
+    srcs = ["profiler_wrapper.cc"],
+    features = ["-layering_check"],
+    module_name = "_pywrap_profiler",
+    visibility = [
+        "//tensorflow/python/eager:__pkg__",
+        "//tensorflow/python/profiler:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler/convert:xplane_to_profile_response",
+        "//tensorflow/core/profiler/convert:xplane_to_trace_events",
+        "//tensorflow/core/profiler/lib:profiler_session_headers",
+        "//tensorflow/core/profiler/rpc:profiler_server",
+        "//tensorflow/core/profiler/rpc/client:capture_profile",
+        "//tensorflow/core/profiler/rpc/client:save_profile",
+        "//tensorflow/python:pybind11_status",
+        "@com_google_absl//absl/memory",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "python_hooks",
+    srcs = ["python_hooks.cc"],
+    hdrs = ["python_hooks.h"],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],  # Incompatible with -fexceptions.
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+    alwayslink = True,
 )

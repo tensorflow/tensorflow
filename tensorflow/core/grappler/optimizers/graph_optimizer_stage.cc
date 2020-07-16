@@ -42,7 +42,7 @@ Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
 
 Status GetTensorProperties(const GraphOptimizerContext& ctx,
                            const string& tensor,
-                           OpInfo::TensorProperties* properties) {
+                           const OpInfo::TensorProperties** properties) {
   if (ctx.graph_properties == nullptr) {
     return errors::InvalidArgument("Graph properties are unknown.");
   }
@@ -58,7 +58,7 @@ Status GetTensorProperties(const GraphOptimizerContext& ctx,
 
   const auto& output_properties =
       ctx.graph_properties->GetOutputProperties(tensor_id.node());
-  auto num_outputs = output_properties.size();
+  int num_outputs = output_properties.size();
 
   if (num_outputs == 0 || tensor_id.index() > num_outputs - 1) {
     return errors::InvalidArgument(
@@ -67,7 +67,7 @@ Status GetTensorProperties(const GraphOptimizerContext& ctx,
         " (num_outputs=", num_outputs, ")");
   }
 
-  properties->CopyFrom(output_properties[tensor_id.index()]);
+  *properties = &output_properties[tensor_id.index()];
   return Status::OK();
 }
 

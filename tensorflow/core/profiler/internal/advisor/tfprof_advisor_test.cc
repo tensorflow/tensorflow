@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/advisor/tfprof_advisor.h"
 
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -83,8 +82,8 @@ TEST_F(TFProfAdvisorTest, OperationChecker) {
   (*options.mutable_checkers())[kCheckers[1]];
   AdviceProto advice = advisor_->Advise(options);
   EXPECT_EQ(advice.checkers().at(kCheckers[1]).reports_size(), 1);
-  EXPECT_TRUE(str_util::StrContains(
-      advice.checkers().at(kCheckers[1]).reports(0), "NCHW"));
+  EXPECT_TRUE(
+      absl::StrContains(advice.checkers().at(kCheckers[1]).reports(0), "NCHW"));
 }
 
 TEST_F(TFProfAdvisorTest, UtilizationChecker) {
@@ -92,17 +91,16 @@ TEST_F(TFProfAdvisorTest, UtilizationChecker) {
   (*options.mutable_checkers())[kCheckers[0]];
   AdviceProto advice = advisor_->Advise(options);
   EXPECT_EQ(advice.checkers().at(kCheckers[0]).reports_size(), 1);
-  EXPECT_TRUE(str_util::StrContains(
-      advice.checkers().at(kCheckers[0]).reports(0), "low utilization"));
+  EXPECT_TRUE(absl::StrContains(advice.checkers().at(kCheckers[0]).reports(0),
+                                "low utilization"));
 }
 
 TEST_F(TFProfAdvisorTest, ExpensiveOperationChecker) {
   AdvisorOptionsProto options;
   (*options.mutable_checkers())[kCheckers[2]];
   AdviceProto advice = advisor_->Advise(options);
-  EXPECT_TRUE(
-      str_util::StrContains(advice.checkers().at(kCheckers[2]).reports(0),
-                            "top 1 operation type: Conv2D"));
+  EXPECT_TRUE(absl::StrContains(advice.checkers().at(kCheckers[2]).reports(0),
+                                "top 1 operation type: Conv2D"));
 }
 
 }  // namespace tfprof

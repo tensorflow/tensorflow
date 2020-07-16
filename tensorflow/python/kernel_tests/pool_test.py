@@ -65,8 +65,8 @@ def pool_direct_single_axis(
   input_size = input.shape[axis]
   if padding == "SAME":
     output_size = int(math.ceil(input_size / stride))
-    total_padding_amount = max(
-        0, (output_size - 1) * stride + effective_window_size - input_size)
+    total_padding_amount = max(0, (output_size - 1) * stride +
+                               effective_window_size - input_size)
     before_padding = total_padding_amount // 2
   elif padding == "VALID":
     output_size = int(
@@ -274,6 +274,9 @@ class PoolingTest(test.TestCase):
               strides=[1, 2],
               dilation_rate=[1, 1],
               data_format="NCHW")
+          if test.is_built_with_rocm():
+            # Pooling with 3D tensors is not supported in ROCm
+            continue
           self._test(
               input_shape=[2, 2, 7, 5, 3],
               window_shape=[2, 2, 2],
@@ -297,8 +300,10 @@ class PoolingTest(test.TestCase):
     x = constant_op.constant(x_val, name="x", dtype=dtypes.float32)
     output = nn_ops.pool(input=x, **kwargs)
     y_shape = output.get_shape().as_list()
-    err = gradient_checker.compute_gradient_error(
-        [x], [input_shape], output, y_shape, x_init_value=[x_val])
+    err = gradient_checker.compute_gradient_error([x], [input_shape],
+                                                  output,
+                                                  y_shape,
+                                                  x_init_value=[x_val])
     err_tolerance = 1e-2
     self.assertLess(err, err_tolerance)
 

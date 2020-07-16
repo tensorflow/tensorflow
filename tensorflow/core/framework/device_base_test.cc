@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
@@ -29,8 +28,8 @@ namespace tensorflow {
 TEST(DeviceBaseTest, CpuDevice) {
   DeviceBase dbase(Env::Default());
   thread::ThreadPool pool(Env::Default(), "test", 16);
-  EigenThreadPoolWrapper wrapper(&pool);
-  Eigen::ThreadPoolDevice eigen_device(&wrapper, pool.NumThreads());
+  Eigen::ThreadPoolDevice eigen_device(pool.AsEigenThreadPool(),
+                                       pool.NumThreads());
   ASSERT_FALSE(dbase.has_eigen_cpu_device());
   dbase.set_eigen_cpu_device(&eigen_device);
   ASSERT_TRUE(dbase.has_eigen_cpu_device());

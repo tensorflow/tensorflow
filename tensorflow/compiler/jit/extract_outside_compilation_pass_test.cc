@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.h"
@@ -31,6 +32,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 
@@ -54,7 +57,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, Basic) {
   add_node->AddAttr(kXlaConnectedToXlaComputationAttrName, "cluster");
   add_node->AddAttr(kXlaConnectedFromXlaComputationAttrName, "cluster");
 
-  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster");
+  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster", "");
   std::vector<OutputTensor> arg_source_tensors;
   NodeDef call_node_def;
   call_node_def.set_op("0");
@@ -69,7 +72,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, Basic) {
   for (Node *n : g->nodes()) {
     EXPECT_NE(n->type_string(), "_Arg");
   }
-  Node *recv_at_host = node_name_image["outside_compilation_cluster_0_recv"];
+  Node *recv_at_host = node_name_image["outside_compilation_cluster__0_recv"];
   EXPECT_NE(recv_at_host, nullptr);
   std::vector<DataType> recv_at_host_dtypes;
   TF_CHECK_OK(
@@ -82,7 +85,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, Basic) {
   for (Node *n : g->nodes()) {
     EXPECT_NE(n->type_string(), "_Retval");
   }
-  Node *send_from_host = node_name_image["outside_compilation_cluster_0_send"];
+  Node *send_from_host = node_name_image["outside_compilation_cluster__0_send"];
   EXPECT_NE(send_from_host, nullptr);
   std::vector<DataType> send_from_host_dtypes;
   TF_CHECK_OK(
@@ -115,7 +118,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, Basic) {
   TF_CHECK_OK(GetNodeAttr(AttrSlice(&call_node_def.attr()),
                           "shape_inference_graph", &shape_inference_graph));
   EXPECT_EQ(shape_inference_graph.name(),
-            "_outside_compilation_shape_inference_cluster_0");
+            "_outside_compilation_shape_inference_cluster__0");
 }
 
 TEST(RewriteOutsideCompilationSubgraphFnTest, NoSendFromHost) {
@@ -125,7 +128,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoSendFromHost) {
   std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
   TF_CHECK_OK(s.ToGraph(g.get()));
 
-  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster");
+  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster", "");
   std::vector<OutputTensor> arg_source_tensors;
   NodeDef call_node_def;
   call_node_def.set_op("0");
@@ -136,9 +139,9 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoSendFromHost) {
   // Check key placeholder and RecvAtHost is present, but SendFromHost is not.
   Node *key_placeholder = node_name_image["cluster_key_placeholder"];
   EXPECT_NE(key_placeholder, nullptr);
-  Node *recv_at_host = node_name_image["outside_compilation_cluster_0_recv"];
+  Node *recv_at_host = node_name_image["outside_compilation_cluster__0_recv"];
   EXPECT_NE(recv_at_host, nullptr);
-  Node *send_from_host = node_name_image["outside_compilation_cluster_0_send"];
+  Node *send_from_host = node_name_image["outside_compilation_cluster__0_send"];
   EXPECT_EQ(send_from_host, nullptr);
 }
 
@@ -151,7 +154,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoRecvAtHost) {
   std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
   TF_CHECK_OK(s.ToGraph(g.get()));
 
-  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster");
+  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster", "");
   std::vector<OutputTensor> arg_source_tensors;
   NodeDef call_node_def;
   call_node_def.set_op("0");
@@ -162,9 +165,9 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoRecvAtHost) {
   // Check key placeholder and SendFromHost is present, but RecvAtHost is not.
   Node *key_placeholder = node_name_image["cluster_key_placeholder"];
   EXPECT_NE(key_placeholder, nullptr);
-  Node *recv_at_host = node_name_image["outside_compilation_cluster_0_recv"];
+  Node *recv_at_host = node_name_image["outside_compilation_cluster__0_recv"];
   EXPECT_EQ(recv_at_host, nullptr);
-  Node *send_from_host = node_name_image["outside_compilation_cluster_0_send"];
+  Node *send_from_host = node_name_image["outside_compilation_cluster__0_send"];
   EXPECT_NE(send_from_host, nullptr);
 }
 
@@ -175,7 +178,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoKeyPlaceholder) {
   std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
   TF_CHECK_OK(s.ToGraph(g.get()));
 
-  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster");
+  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster", "");
   std::vector<OutputTensor> arg_source_tensors;
   NodeDef call_node_def;
   call_node_def.set_op("0");
@@ -186,9 +189,9 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, NoKeyPlaceholder) {
   // Check key placeholder/RecvAtHost/SendFromHost are not present.
   Node *key_placeholder = node_name_image["cluster_key_placeholder"];
   EXPECT_EQ(key_placeholder, nullptr);
-  Node *recv_at_host = node_name_image["outside_compilation_cluster_0_recv"];
+  Node *recv_at_host = node_name_image["outside_compilation_cluster__0_recv"];
   EXPECT_EQ(recv_at_host, nullptr);
-  Node *send_from_host = node_name_image["outside_compilation_cluster_0_send"];
+  Node *send_from_host = node_name_image["outside_compilation_cluster__0_send"];
   EXPECT_EQ(send_from_host, nullptr);
 }
 
@@ -207,7 +210,7 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, ShapesInferred) {
   const0_node->AddAttr(kXlaInferredShapesAttrName,
                        std::vector<PartialTensorShape>{shape});
 
-  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster");
+  RewriteOutsideCompilationSubgraphFn rewrite_fn("_xla", "_oc", "cluster", "");
   std::vector<OutputTensor> arg_source_tensors;
   NodeDef call_node_def;
   call_node_def.set_op("0");
@@ -222,7 +225,43 @@ TEST(RewriteOutsideCompilationSubgraphFnTest, ShapesInferred) {
   EXPECT_EQ(shapes[0].dim_size(), 1);
 }
 
-TEST(ExtractOutsideCompilationForFunctionTest, Basic) {
+class ExtractOutsideCompilationForFunctionTest : public ::testing::Test {
+ public:
+  void SetUp() override {
+    SessionOptions session_options;
+    std::vector<std::unique_ptr<Device>> devices;
+    TF_CHECK_OK(DeviceFactory::AddDevices(
+        session_options, "/job:localhost/replica:0/task:0", &devices));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+  }
+
+  Status ExtractOutsideCompilationTest(
+      const string &xla_cluster_attr_name,
+      const string &outside_compilation_attr_name,
+      const string &xla_cluster_name, const NameAttrList &func_name_attrs,
+      const string &new_func_name, const string &host_graph_func_name,
+      const std::map<string, int> &host_compute_core,
+      FunctionLibraryDefinition *fld,
+      std::vector<string> *shape_inference_graphs,
+      bool *has_outside_compilation) {
+    OptimizerOptions opts;
+    pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, fld, opts,
+        /*default_thread_pool=*/nullptr);
+    auto flr = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
+    return ExtractOutsideCompilationForFunction(
+        xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
+        func_name_attrs, new_func_name, host_graph_func_name, host_compute_core,
+        flr, fld, shape_inference_graphs, has_outside_compilation);
+  }
+
+ private:
+  std::unique_ptr<DeviceMgr> device_mgr_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+};
+
+TEST_F(ExtractOutsideCompilationForFunctionTest, Basic) {
   // Build the XLA computation func.
   // "const0"
   // "identity0" = "const0" (outside compilation cluster "0")
@@ -256,20 +295,15 @@ TEST(ExtractOutsideCompilationForFunctionTest, Basic) {
   NameAttrList name_attrs;
   name_attrs.set_name("cluster");
   *name_attrs.mutable_attr() = attrs;
-  TF_CHECK_OK(ExtractOutsideCompilationForFunction(
+  TF_CHECK_OK(ExtractOutsideCompilationTest(
       "_xla", "_oc", "cluster", name_attrs, "cluster_rewritten", "host_graph",
       host_compute_core, &fld, &shape_inference_graphs,
       &has_outside_compilation));
 
   // Get rewritten XLA computation function.
-  FunctionBody *xla_fbody = nullptr;
-  TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("cluster_rewritten"), AttrSlice(), &fld,
-      [&](const string &op, const OpDef **sig) {
-        return fld.LookUpOpDef(op, sig);
-      },
-      &xla_fbody));
-  std::unique_ptr<FunctionBody> xla_fbody_deleter(xla_fbody);
+  std::unique_ptr<FunctionBody> xla_fbody;
+  TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("cluster_rewritten"),
+                                      AttrSlice(), &fld, &xla_fbody));
   auto node_name_index = xla_fbody->graph->BuildNodeNameIndex();
 
   // Check XlaHostCompute nodes.
@@ -305,18 +339,13 @@ TEST(ExtractOutsideCompilationForFunctionTest, Basic) {
   EXPECT_EQ(shape_inference_graphs.size(), 0);
 
   // Check host graph: verify we have key placeholder and sequencer.
-  FunctionBody *host_fbody = nullptr;
+  std::unique_ptr<FunctionBody> host_fbody;
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> host_func_attrs;
-  host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
+  host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
   TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld,
-      [&](const string &op, const OpDef **sig) {
-        return fld.LookUpOpDef(op, sig);
-      },
-      &host_fbody));
-  std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
+      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
   Graph *host_graph = host_fbody->graph;
   Node *key_placeholder = nullptr, *sequencer = nullptr;
   for (Node *n : host_graph->nodes()) {
@@ -362,7 +391,7 @@ TEST(ExtractOutsideCompilationForFunctionTest, Basic) {
   }
 }
 
-TEST(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
+TEST_F(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
   // Build the XLA computation func.
   // "const0"
   FunctionDefLibrary fdl;
@@ -384,96 +413,13 @@ TEST(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
   NameAttrList name_attrs;
   name_attrs.set_name("cluster");
   *name_attrs.mutable_attr() = attrs;
-  TF_CHECK_OK(ExtractOutsideCompilationForFunction(
+  TF_CHECK_OK(ExtractOutsideCompilationTest(
       "_xla", "_oc", "cluster", name_attrs, "cluster_rewritten", "host_graph",
       host_compute_core, &fld, &shape_inference_graphs,
       &has_outside_compilation));
 
-  // Check host graph is empty.
-  FunctionBody *host_fbody = nullptr;
-  AttrValue device_ordinal_temp_value;
-  device_ordinal_temp_value.set_i(0);
-  protobuf::Map<string, AttrValue> host_func_attrs;
-  host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
-  TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld,
-      [&](const string &op, const OpDef **sig) {
-        return fld.LookUpOpDef(op, sig);
-      },
-      &host_fbody));
-  std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
-  Graph *host_graph = host_fbody->graph;
-  EXPECT_EQ(host_graph->num_nodes(), 2);
-}
-
-TEST(ExtractOutsideCompilationForFunctionTest, XlaHostComputeRemoved) {
-  // Build the XLA computation func.
-  // "const0"
-  // "const1" (outside compilation cluster "0")
-  FunctionDefLibrary fdl;
-  {
-    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-    Output const0 = ops::Const(s.WithOpName("const0"), 1, {2});
-    Output const1 = ops::Const(s.WithOpName("const1"), 1, {2});
-    std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
-    TF_CHECK_OK(s.ToGraph(g.get()));
-    auto node_name_image = g->BuildNodeNameIndex();
-    node_name_image["const1"]->AddAttr("_oc", "0");
-
-    FunctionDef *xla_fdef = fdl.add_function();
-    TF_CHECK_OK(GraphToFunctionDef(*g, "cluster", xla_fdef));
-  }
-  FunctionLibraryDefinition fld(OpRegistry::Global(), fdl);
-
-  protobuf::Map<string, tensorflow::AttrValue> attrs;
-  std::map<string, int> host_compute_core = {{"0", 1}, {"1", 0}};
-  std::vector<string> shape_inference_graphs;
-  bool has_outside_compilation;
-  NameAttrList name_attrs;
-  name_attrs.set_name("cluster");
-  *name_attrs.mutable_attr() = attrs;
-  TF_CHECK_OK(ExtractOutsideCompilationForFunction(
-      "_xla", "_oc", "cluster", name_attrs, "cluster_rewritten", "host_graph",
-      host_compute_core, &fld, &shape_inference_graphs,
-      &has_outside_compilation));
-
-  // Check rewritten XLA graph: verify that we have no XlaHostCompute.
-  FunctionBody *xla_fbody = nullptr;
-  TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("cluster_rewritten"), AttrSlice(), &fld,
-      [&](const string &op, const OpDef **sig) {
-        return fld.LookUpOpDef(op, sig);
-      },
-      &xla_fbody));
-  std::unique_ptr<FunctionBody> xla_fbody_deleter(xla_fbody);
-  for (Node *n : xla_fbody->graph->nodes()) {
-    EXPECT_NE(n->type_string(), "XlaHostCompute");
-  }
-
-  // Check host graph: verify we have no placeholder, but we have "const1".
-  FunctionBody *host_fbody = nullptr;
-  AttrValue device_ordinal_temp_value;
-  device_ordinal_temp_value.set_i(0);
-  protobuf::Map<string, AttrValue> host_func_attrs;
-  host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
-  TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld,
-      [&](const string &op, const OpDef **sig) {
-        return fld.LookUpOpDef(op, sig);
-      },
-      &host_fbody));
-  std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
-  Graph *host_graph = host_fbody->graph;
-  int num_key_placeholders = 0;
-  for (Node *n : host_graph->nodes()) {
-    if (n->type_string() == "Placeholder" &&
-        absl::EndsWith(n->name(), "_key_placeholder")) {
-      num_key_placeholders++;
-    }
-  }
-  EXPECT_EQ(num_key_placeholders, 0);
-  auto node_name_index = host_graph->BuildNodeNameIndex();
-  EXPECT_NE(node_name_index.find("const1"), node_name_index.end());
+  // Check host graph is not created.
+  EXPECT_EQ(fld.Find("host_graph"), nullptr);
 }
 
 REGISTER_OP("XlaSendToHost")
@@ -489,7 +435,7 @@ REGISTER_OP("XlaRecvFromHost")
     .Attr("key: string")
     .SetIsStateful();
 
-TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
+TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
   // Build the XLA computation func.
   // "const0" (bool)
   // "const1" (int32)
@@ -555,25 +501,21 @@ TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
   NameAttrList name_attrs;
   name_attrs.set_name("cluster");
   *name_attrs.mutable_attr() = attrs;
-  TF_CHECK_OK(ExtractOutsideCompilationForFunction(
+  TF_CHECK_OK(ExtractOutsideCompilationTest(
       "_xla", "_oc", "cluster", name_attrs, "cluster_rewritten", "host_graph",
       host_compute_core, &fld, &shape_inference_graphs,
       &has_outside_compilation));
 
   // Check host graph.
   {
-    FunctionBody *host_fbody = nullptr;
+    std::unique_ptr<FunctionBody> host_fbody;
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
     protobuf::Map<string, AttrValue> host_func_attrs;
-    host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
-        *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld,
-        [&](const string &op, const OpDef **sig) {
-          return fld.LookUpOpDef(op, sig);
-        },
-        &host_fbody));
-    std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
+    host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
+                                        AttrSlice(&host_func_attrs), &fld,
+                                        &host_fbody));
     Graph *host_graph = host_fbody->graph;
     auto node_name_index = host_graph->BuildNodeNameIndex();
 
@@ -590,7 +532,7 @@ TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
     EXPECT_EQ(if_oc_node_cond_input, recv_if_pred_node);
 
     // Check that then_branch outside compilation has node "identity_true_fn".
-    const FunctionDef *true_def = fld.Find("oc_then_branch_host_if_if");
+    const FunctionDef *true_def = fld.Find("oc_then_branch_host_if_true_fn");
     EXPECT_NE(true_def, nullptr);
     bool has_identity_true_fn_node = false;
     for (const auto &node_def : true_def->node_def()) {
@@ -602,7 +544,7 @@ TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
     EXPECT_TRUE(has_identity_true_fn_node);
 
     // Check that else_branch outside compilation has node "identity_false_fn".
-    const FunctionDef *false_def = fld.Find("oc_else_branch_host_if_if");
+    const FunctionDef *false_def = fld.Find("oc_else_branch_host_if_false_fn");
     EXPECT_NE(false_def, nullptr);
     bool has_identity_false_fn_node = false;
     for (const auto &node_def : false_def->node_def()) {
@@ -616,20 +558,24 @@ TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
 
   // Check XLA graph.
   {
-    FunctionBody *xla_fbody = nullptr;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
-        *fld.Find("cluster_rewritten"), AttrSlice(), &fld,
-        [&](const string &op, const OpDef **sig) {
-          return fld.LookUpOpDef(op, sig);
-        },
-        &xla_fbody));
-    std::unique_ptr<FunctionBody> xla_fbody_deleter(xla_fbody);
+    std::unique_ptr<FunctionBody> xla_fbody;
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("cluster_rewritten"),
+                                        AttrSlice(), &fld, &xla_fbody));
     Graph *xla_graph = xla_fbody->graph;
     auto node_name_index = xla_graph->BuildNodeNameIndex();
 
-    // Check that we have XlaSendToHost to send cond predicate to host.
+    // Check that we have XlaSendToHost to send cond predicate to host, and
+    // there is a control edge to If node.
     Node *send_if_pred_node = node_name_index["send_oc_if_pred_if"];
     EXPECT_NE(send_if_pred_node, nullptr);
+    bool has_control_edge_to_if = false;
+    for (const Edge *e : send_if_pred_node->out_edges()) {
+      if (e->IsControlEdge() && e->dst()->name() == "if") {
+        has_control_edge_to_if = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(has_control_edge_to_if);
 
     // Check that the "If" node now has `send_if_pred_node` as attribute
     // _xla_token_input_nodes.
@@ -642,7 +588,7 @@ TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
   }
 }
 
-TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
+TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
   // Build the XLA computation func.
   // "const0" (bool)
   // "while0" (input = "const0", cond = "cond_fn", body = "body_fn")
@@ -705,25 +651,21 @@ TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
   NameAttrList name_attrs;
   name_attrs.set_name("cluster");
   *name_attrs.mutable_attr() = attrs;
-  TF_CHECK_OK(ExtractOutsideCompilationForFunction(
+  TF_CHECK_OK(ExtractOutsideCompilationTest(
       "_xla", "_oc", "cluster", name_attrs, "cluster_rewritten", "host_graph",
       host_compute_core, &fld, &shape_inference_graphs,
       &has_outside_compilation));
 
   // Check host graph.
   {
-    FunctionBody *host_fbody = nullptr;
+    std::unique_ptr<FunctionBody> host_fbody;
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
     protobuf::Map<string, AttrValue> host_func_attrs;
-    host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
-        *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld,
-        [&](const string &op, const OpDef **sig) {
-          return fld.LookUpOpDef(op, sig);
-        },
-        &host_fbody));
-    std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
+    host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
+                                        AttrSlice(&host_func_attrs), &fld,
+                                        &host_fbody));
     Graph *host_graph = host_fbody->graph;
     auto node_name_index = host_graph->BuildNodeNameIndex();
 
@@ -732,7 +674,7 @@ TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
     EXPECT_NE(while_oc_node, nullptr);
 
     // Check that cond outside compilation has node "identity_cond_fn".
-    const FunctionDef *cond_def = fld.Find("oc_cond_host_while_while");
+    const FunctionDef *cond_def = fld.Find("oc_cond_host_while_cond_fn");
     EXPECT_NE(cond_def, nullptr);
     bool has_identity_cond_fn_node = false;
     for (const auto &node_def : cond_def->node_def()) {
@@ -744,7 +686,7 @@ TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
     EXPECT_TRUE(has_identity_cond_fn_node);
 
     // Check that body outside compilation has node "identity_body_fn".
-    const FunctionDef *body_def = fld.Find("oc_body_host_while_while");
+    const FunctionDef *body_def = fld.Find("oc_body_host_while_body_fn");
     EXPECT_NE(body_def, nullptr);
     bool has_identity_body_fn_node = false;
     for (const auto &node_def : body_def->node_def()) {
@@ -773,4 +715,305 @@ TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
   }
 }
 
+TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInFunction) {
+  // Build the XLA computation func.
+  // "const0" (int32)
+  // "fn" (input = "const0")
+  FunctionDefLibrary fdl;
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output arg = ops::_Arg(s.WithOpName("arg"), DT_INT32, 0);
+    Output identity = ops::Identity(s.WithOpName("identity"), arg);
+    ops::_Retval retval(s.WithOpName("retval"), identity, 0);
+    std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+    TF_CHECK_OK(s.ToGraph(g.get()));
+    auto node_name_image = g->BuildNodeNameIndex();
+    node_name_image["identity"]->AddAttr("_oc", "0");
+    PartialTensorShape shape({2});
+    node_name_image["identity"]->AddAttr(
+        kXlaInferredShapesAttrName, std::vector<PartialTensorShape>{shape});
+
+    FunctionDef *true_fn_fdef = fdl.add_function();
+    TF_CHECK_OK(GraphToFunctionDef(*g, "fn", true_fn_fdef));
+  }
+  FunctionLibraryDefinition fld(OpRegistry::Global(), fdl);
+  {
+    std::unique_ptr<Graph> g(new Graph(&fld));
+
+    tensorflow::TensorProto tensor_proto;
+    tensor_proto.set_dtype(tensorflow::DT_INT32);
+    tensorflow::TensorShapeProto shape;
+    shape.add_dim()->set_size(2);
+    *tensor_proto.mutable_tensor_shape() = shape;
+    for (int i = 0; i < 2; ++i) {
+      tensor_proto.add_int_val(1);
+    }
+    NodeDef const_def;
+    TF_CHECK_OK(NodeDefBuilder("const", "Const")
+                    .Attr("dtype", DT_INT32)
+                    .Attr("value", tensor_proto)
+                    .Finalize(&const_def));
+    Status s;
+    Node *const_node = g->AddNode(const_def, &s);
+    TF_CHECK_OK(s);
+
+    NodeDef fn_def;
+    TF_CHECK_OK(NodeDefBuilder("fn", "fn", &fld)
+                    .Input("const", 0, DT_INT32)
+                    .Finalize(&fn_def));
+    Node *fn_node = g->AddNode(fn_def, &s);
+    TF_CHECK_OK(s);
+    g->AddEdge(const_node, 0, fn_node, 0);
+
+    NodeDef ret_def;
+    TF_CHECK_OK(NodeDefBuilder("ret", "_Retval")
+                    .Attr("index", 0)
+                    .Attr("T", DT_INT32)
+                    .Input("fn", 0, DT_INT32)
+                    .Finalize(&ret_def));
+    Node *ret_node = g->AddNode(ret_def, &s);
+    TF_CHECK_OK(s);
+    g->AddEdge(fn_node, 0, ret_node, 0);
+
+    FunctionDef *xla_fdef = fdl.add_function();
+    TF_CHECK_OK(GraphToFunctionDef(*g, "cluster", xla_fdef));
+    TF_CHECK_OK(fld.AddFunctionDef(*xla_fdef));
+  }
+
+  protobuf::Map<string, tensorflow::AttrValue> attrs;
+  std::map<string, int> host_compute_core;
+  std::vector<string> shape_inference_graphs;
+  bool has_outside_compilation;
+  NameAttrList name_attrs;
+  name_attrs.set_name("cluster");
+  *name_attrs.mutable_attr() = attrs;
+  TF_CHECK_OK(ExtractOutsideCompilationTest(
+      "_xla", "_oc", "cluster", name_attrs, "cluster_rewritten", "host_graph",
+      host_compute_core, &fld, &shape_inference_graphs,
+      &has_outside_compilation));
+
+  // Check host graph.
+  {
+    std::unique_ptr<FunctionBody> host_fbody;
+    AttrValue device_ordinal_temp_value;
+    device_ordinal_temp_value.set_i(0);
+    protobuf::Map<string, AttrValue> host_func_attrs;
+    host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
+                                        AttrSlice(&host_func_attrs), &fld,
+                                        &host_fbody));
+    Graph *host_graph = host_fbody->graph;
+    auto node_name_index = host_graph->BuildNodeNameIndex();
+
+    // Verify we have call node for outside compilation in `fn`.
+    Node *call_node = node_name_index["oc_call_fn"];
+    EXPECT_NE(call_node, nullptr);
+
+    std::unique_ptr<FunctionBody> call_fbody;
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("oc_func_call_host_fn"),
+                                        AttrSlice(&host_func_attrs), &fld,
+                                        &call_fbody));
+
+    // Verify we have _XlaRecvAtHost and _XlaSendFromHost nodes.
+    bool has_recv = false, has_send = false;
+    for (Node *n : call_fbody->graph->nodes()) {
+      if (n->type_string() == "_XlaRecvAtHost") {
+        has_recv = true;
+      } else if (n->type_string() == "_XlaSendFromHost") {
+        has_send = true;
+      }
+    }
+    EXPECT_TRUE(has_recv);
+    EXPECT_TRUE(has_send);
+  }
+
+  // Check XLA graph.
+  {
+    std::unique_ptr<FunctionBody> xla_fbody;
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("cluster_rewritten"),
+                                        AttrSlice(), &fld, &xla_fbody));
+    Graph *xla_graph = xla_fbody->graph;
+    auto node_name_index = xla_graph->BuildNodeNameIndex();
+
+    // Check that we have call node.
+    Node *fn_node = node_name_index["fn"];
+    EXPECT_NE(fn_node, nullptr);
+    EXPECT_EQ(fn_node->type_string(), "fn_oc");
+
+    std::unique_ptr<FunctionBody> call_fbody;
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("fn_oc"), AttrSlice(), &fld,
+                                        &call_fbody));
+
+    // Verify we have XlaHostCompute nodes.
+    bool has_hc = false;
+    for (Node *n : call_fbody->graph->nodes()) {
+      if (n->type_string() == "XlaHostCompute") {
+        has_hc = true;
+      }
+    }
+    EXPECT_TRUE(has_hc);
+  }
+}
+
+TEST_F(ExtractOutsideCompilationForFunctionTest,
+       OutsideCompilationClusterDataDependency) {
+  // Build the XLA computation func.
+  // "const0"
+  // "identity0" = "const0" (outside compilation cluster "0")
+  // "identity1" = "identity0" (outside compilation cluster "1")
+  // "identity2" = "identity1"
+  FunctionDefLibrary fdl;
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output const0 = ops::Const(s.WithOpName("const0"), 1, {2});
+    Output identity0 = ops::Identity(s.WithOpName("identity0"), const0);
+    Output identity1 = ops::Identity(s.WithOpName("identity1"), identity0);
+    Output identity2 = ops::Identity(s.WithOpName("identity2"), identity1);
+    std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+    TF_CHECK_OK(s.ToGraph(g.get()));
+    std::cout << "Graph is " << (*g).ToGraphDefDebug().DebugString()
+              << std::endl;
+    auto node_name_image = g->BuildNodeNameIndex();
+    node_name_image["identity0"]->AddAttr("_oc", "0");
+    node_name_image["identity1"]->AddAttr("_oc", "1");
+
+    PartialTensorShape shape({2});
+    node_name_image["identity1"]->AddAttr(
+        kXlaInferredShapesAttrName, std::vector<PartialTensorShape>{shape});
+
+    FunctionDef *xla_fdef = fdl.add_function();
+    TF_CHECK_OK(GraphToFunctionDef(*g, "cluster", xla_fdef));
+  }
+  FunctionLibraryDefinition fld(OpRegistry::Global(), fdl);
+
+  protobuf::Map<string, tensorflow::AttrValue> attrs;
+  std::map<string, int> host_compute_core = {{"0", 1}, {"1", 0}};
+  std::vector<string> shape_inference_graphs;
+  bool has_outside_compilation;
+  NameAttrList name_attrs;
+  name_attrs.set_name("cluster");
+  *name_attrs.mutable_attr() = attrs;
+  TF_CHECK_OK(ExtractOutsideCompilationTest(
+      "_xla", "_oc", "cluster", name_attrs, "cluster_rewritten", "host_graph",
+      host_compute_core, &fld, &shape_inference_graphs,
+      &has_outside_compilation));
+
+  // Get rewritten XLA computation function.
+  std::unique_ptr<FunctionBody> xla_fbody;
+  TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("cluster_rewritten"),
+                                      AttrSlice(), &fld, &xla_fbody));
+  auto node_name_index = xla_fbody->graph->BuildNodeNameIndex();
+
+  // Check XlaHostCompute nodes.
+  Node *host_compute_0 = node_name_index["outside_compilation_0_host_compute"];
+  EXPECT_NE(host_compute_0, nullptr);
+  Node *host_compute_1 = node_name_index["outside_compilation_1_host_compute"];
+  EXPECT_NE(host_compute_1, nullptr);
+
+  // Check XlaHostCompute nodes' "_xla_token_input_nodes" attr.
+  std::vector<string> token_input_nodes;
+  TF_CHECK_OK(GetNodeAttr(AttrSlice(host_compute_0->attrs()),
+                          "_xla_token_input_nodes", &token_input_nodes));
+
+  std::vector<string> expected_token_input_nodes_0({"_xla_token_arg_node"});
+  EXPECT_EQ(token_input_nodes, expected_token_input_nodes_0);
+  token_input_nodes.clear();
+  std::vector<string> expected_token_input_nodes_1(
+      {"_xla_token_arg_node", "outside_compilation_0_host_compute"});
+  TF_CHECK_OK(GetNodeAttr(AttrSlice(host_compute_1->attrs()),
+                          "_xla_token_input_nodes", &token_input_nodes));
+  EXPECT_EQ(token_input_nodes, expected_token_input_nodes_1);
+
+  // Check there is a control edge from host_compute_0 to host_compute_1.
+  bool has_control_edge = false;
+  for (const Edge *e : host_compute_1->in_edges()) {
+    if (e->IsControlEdge() && e->src() == host_compute_0) {
+      has_control_edge = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(has_control_edge);
+}
+
+TEST_F(ExtractOutsideCompilationForFunctionTest,
+       OutsideCompilationClusterControlDependency) {
+  // Build the XLA computation func.
+  // "const0"
+  // "identity0" = "const0" (outside compilation cluster "0")
+  // "identity1" = "const0" "^identity0" (outside compilation cluster "1",
+  //                                      control dependent on cluster "0")
+  // "identity2" = "identity1"
+  FunctionDefLibrary fdl;
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output const0 = ops::Const(s.WithOpName("const0"), 1, {2});
+    Output identity0 = ops::Identity(s.WithOpName("identity0"), const0);
+    Output identity1 = ops::Identity(
+        s.WithOpName("identity1").WithControlDependencies(identity0), const0);
+    Output identity2 = ops::Identity(s.WithOpName("identity2"), identity1);
+    std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+    TF_CHECK_OK(s.ToGraph(g.get()));
+    std::cout << "Graph is " << (*g).ToGraphDefDebug().DebugString()
+              << std::endl;
+    auto node_name_image = g->BuildNodeNameIndex();
+    node_name_image["identity0"]->AddAttr("_oc", "0");
+    node_name_image["identity1"]->AddAttr("_oc", "1");
+
+    PartialTensorShape shape({2});
+    node_name_image["identity1"]->AddAttr(
+        kXlaInferredShapesAttrName, std::vector<PartialTensorShape>{shape});
+
+    FunctionDef *xla_fdef = fdl.add_function();
+    TF_CHECK_OK(GraphToFunctionDef(*g, "cluster", xla_fdef));
+  }
+  FunctionLibraryDefinition fld(OpRegistry::Global(), fdl);
+
+  protobuf::Map<string, tensorflow::AttrValue> attrs;
+  std::map<string, int> host_compute_core = {{"0", 1}, {"1", 0}};
+  std::vector<string> shape_inference_graphs;
+  bool has_outside_compilation;
+  NameAttrList name_attrs;
+  name_attrs.set_name("cluster");
+  *name_attrs.mutable_attr() = attrs;
+  TF_CHECK_OK(ExtractOutsideCompilationTest(
+      "_xla", "_oc", "cluster", name_attrs, "cluster_rewritten", "host_graph",
+      host_compute_core, &fld, &shape_inference_graphs,
+      &has_outside_compilation));
+
+  // Get rewritten XLA computation function.
+  std::unique_ptr<FunctionBody> xla_fbody;
+  TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("cluster_rewritten"),
+                                      AttrSlice(), &fld, &xla_fbody));
+  auto node_name_index = xla_fbody->graph->BuildNodeNameIndex();
+
+  // Check XlaHostCompute nodes.
+  Node *host_compute_0 = node_name_index["outside_compilation_0_host_compute"];
+  EXPECT_NE(host_compute_0, nullptr);
+  Node *host_compute_1 = node_name_index["outside_compilation_1_host_compute"];
+  EXPECT_NE(host_compute_1, nullptr);
+
+  // Check XlaHostCompute nodes' "_xla_token_input_nodes" attr.
+  std::vector<string> token_input_nodes;
+  TF_CHECK_OK(GetNodeAttr(AttrSlice(host_compute_0->attrs()),
+                          "_xla_token_input_nodes", &token_input_nodes));
+
+  std::vector<string> expected_token_input_nodes_0({"_xla_token_arg_node"});
+  EXPECT_EQ(token_input_nodes, expected_token_input_nodes_0);
+  token_input_nodes.clear();
+  std::vector<string> expected_token_input_nodes_1(
+      {"_xla_token_arg_node", "outside_compilation_0_host_compute"});
+  TF_CHECK_OK(GetNodeAttr(AttrSlice(host_compute_1->attrs()),
+                          "_xla_token_input_nodes", &token_input_nodes));
+  EXPECT_EQ(token_input_nodes, expected_token_input_nodes_1);
+
+  // Check there is a control edge from host_compute_0 to host_compute_1.
+  bool has_control_edge = false;
+  for (const Edge *e : host_compute_1->in_edges()) {
+    if (e->IsControlEdge() && e->src() == host_compute_0) {
+      has_control_edge = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(has_control_edge);
+}
 }  // namespace tensorflow

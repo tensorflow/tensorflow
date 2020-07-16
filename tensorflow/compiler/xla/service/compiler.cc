@@ -28,6 +28,14 @@ namespace xla {
 /* static */ tensorflow::mutex Compiler::platform_compiler_mutex_(
     tensorflow::LINKER_INITIALIZED);
 
+StatusOr<
+    std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+Compiler::RunHloPassesAndBufferAssignement(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
+    se::DeviceMemoryAllocator* device_allocator) {
+  return Unimplemented("This compiler does not support this method");
+}
+
 std::vector<std::unique_ptr<tensorflow::protobuf::Message>>
 Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
                                 se::StreamExecutor* executor) const {
@@ -98,10 +106,17 @@ Compiler::GetPlatformCompilers() {
   auto* factories = GetPlatformCompilerFactories();
   auto it = factories->find(platform->id());
   if (it == factories->end()) {
+    string hint;
+    if (platform->Name() == "Host") {
+      hint = " (hint: try linking in tensorflow/compiler/jit:xla_cpu_jit)";
+    } else if (platform->Name() == "CUDA") {
+      hint = " (hint: try linking in tensorflow/compiler/jit:xla_gpu_jit)";
+    }
+
     return NotFound(
         "could not find registered compiler for platform %s -- check "
-        "target linkage",
-        platform->Name());
+        "target linkage%s",
+        platform->Name(), hint);
   }
 
   // And then we invoke the factory, placing the result into the mapping.

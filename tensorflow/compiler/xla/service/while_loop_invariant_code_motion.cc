@@ -89,7 +89,7 @@ static void CreateLoopInvariantCopy(
 
     HloInstruction* next_operand =
         frame->instruction->mutable_operand(frame->operand_index++);
-    if (hoisted_instructions->count(next_operand) ||
+    if (hoisted_instructions->contains(next_operand) ||
         next_operand == while_body_param) {
       continue;
     }
@@ -127,7 +127,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     HloInstruction* while_instr) {
   auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
 
-  if (!ShapeUtil::IsTuple(while_instr->shape())) {
+  if (!while_instr->shape().IsTuple()) {
     // This restriction leaves one interesting pattern on the table:
     //
     //  while_body(f32[1024, 1024] %param) {
@@ -168,7 +168,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   // is no benefit to hoisting them unless something that uses it is also
   // hoisted.
   for (auto* instr : WhileUtil::GetInvariantGTEsForWhileBody(*while_body)) {
-    if (ShapeUtil::IsArray(instr->shape())) {
+    if (instr->shape().IsArray()) {
       // TODO(b/79147885): We should try to generalize this to tuples for
       // uniformity's sake, if nothing else.
       InsertOrDie(&unhoisted_invariant_instructions, instr);
@@ -219,18 +219,19 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 
       for (auto* operand : instruction->operands()) {
         ShapeUtil::ForEachSubshape(
-            operand->shape(),
-            [&input_size](const Shape& subshape, const ShapeIndex& /*index*/) {
-              if (ShapeUtil::IsArray(subshape)) {
-                input_size += ShapeUtil::ByteSizeOfElements(subshape);
+            operand->shape(), [&input_size, this](const Shape& subshape,
+                                                  const ShapeIndex& /*index*/) {
+              if (subshape.IsArray()) {
+                input_size += shape_size_function_(subshape);
               }
             });
       }
       ShapeUtil::ForEachSubshape(
           instruction->shape(),
-          [&output_size](const Shape& subshape, const ShapeIndex& /*index*/) {
-            if (ShapeUtil::IsArray(subshape)) {
-              output_size += ShapeUtil::ByteSizeOfElements(subshape);
+          [&output_size, this](const Shape& subshape,
+                               const ShapeIndex& /*index*/) {
+            if (subshape.IsArray()) {
+              output_size += shape_size_function_(subshape);
             }
           });
 
@@ -241,7 +242,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 
     auto is_invariant = [&](HloInstruction* op) {
       return hoisted_instructions.find(op) != hoisted_instructions.end() ||
-             unhoisted_invariant_instructions.count(op) ||
+             unhoisted_invariant_instructions.contains(op) ||
              op->opcode() == HloOpcode::kConstant;
     };
 
@@ -299,7 +300,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 }
 
 StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
-  VLOG(2) << "HLO module before WhileLoopConstantSinking:";
+  VLOG(2) << "HLO module before WhileLoopInvariantCodeMotion:";
   XLA_VLOG_LINES(2, module->ToString());
 
   bool changed = false;
@@ -316,7 +317,7 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
     // TryHoistingInvariantInstructionsFromWhileBody can be generalized to
     // optimize the condition computation too, if needed.
     //
-    // The transform we do here is a pessmization for while loops that execute
+    // The transform we do here is a pessimization for while loops that execute
     // zero times*, but at this time we expect those to be rare.  If this
     // becomes a problem we can consider using the conditional HLO to avoid
     // doing extra work for while loops with zero trip count.
@@ -331,10 +332,10 @@ StatusOr<bool> WhileLoopInvariantCodeMotion::Run(HloModule* module) {
   }
 
   if (changed) {
-    VLOG(2) << "HLO module after WhileLoopConstantSinking:";
+    VLOG(2) << "HLO module after WhileLoopInvariantCodeMotion:";
     XLA_VLOG_LINES(2, module->ToString());
   } else {
-    VLOG(2) << "HLO module unchanged after WhileLoopConstantSinking";
+    VLOG(2) << "HLO module unchanged after WhileLoopInvariantCodeMotion";
   }
 
   return changed;

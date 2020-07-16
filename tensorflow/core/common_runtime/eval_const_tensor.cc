@@ -19,11 +19,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 
@@ -42,7 +42,10 @@ Status TryToInferTensorOutputFromInputShapes(const Edge& edge,
   const Node* node = edge.src();
   InferenceContext* c = refiner.GetContext(node);
   if (c == nullptr) {
-    return errors::FailedPrecondition("Node does not have context.");
+    // An input without context is a soft failure; we sometimes need to break
+    // control flow loops by running shape inference on a node without first
+    // adding its input.
+    return Status::OK();
   }
 
   if (node->type_string() == "Shape") {

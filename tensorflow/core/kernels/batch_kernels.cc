@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -26,10 +28,73 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/percentile_sampler.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/incremental_barrier.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
+
+namespace {
+
+void RecordPaddingSize(int32 padding_size, const string& model_name,
+                       int32 execution_batch_size) {
+  static auto* cell = tensorflow::monitoring::PercentileSampler<2>::New(
+      {"/tensorflow/serving/batching/padding_size",
+       "Tracks the padding size distribution on batches by model_name (if "
+       "available).",
+       "model_name", "execution_batch_size"},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
+  cell->GetCell(model_name, absl::StrCat(execution_batch_size))
+      ->Add(static_cast<double>(padding_size));
+}
+
+void RecordInputBatchSize(int32 batch_size, const string& model_name) {
+  static auto* cell = tensorflow::monitoring::PercentileSampler<1>::New(
+      {"/tensorflow/serving/batching/input_batch_size",
+       "Tracks the batch size distribution on the inputs by model_name (if "
+       "available).",
+       "model_name"},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
+  cell->GetCell(model_name)->Add(static_cast<double>(batch_size));
+}
+
+void RecordProcessedBatchSize(int32 batch_size, const string& model_name) {
+  static auto* cell = tensorflow::monitoring::PercentileSampler<1>::New(
+      {"/tensorflow/serving/batching/processed_batch_size",
+       "Tracks the batch size distribution on processing by model_name (if "
+       "available).",
+       "model_name"},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
+  cell->GetCell(model_name)->Add(static_cast<double>(batch_size));
+}
+
+void RecordBatchDelayMs(int64 batch_delay_ms, const string& model_name) {
+  static auto* cell = monitoring::PercentileSampler<1>::New(
+      {"/tensorflow/serving/batching/batch_delay_ms",
+       "Tracks the batching delay for inputs by model_name (if "
+       "available).",
+       "model_name"},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, monitoring::UnitOfMeasure::kTime);
+  cell->GetCell(model_name)->Add(static_cast<double>(batch_delay_ms));
+}
+
+const string& GetModelName(OpKernelContext* ctx) {
+  static string* kModelNameUnset = new string("model_name_unset");
+  if (!ctx->session_metadata()) return *kModelNameUnset;
+  if (ctx->session_metadata()->name().empty()) return *kModelNameUnset;
+  return ctx->session_metadata()->name();
+}
+
+}  // namespace
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -38,11 +103,11 @@ typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
 
 // Concatenates 'inputs' into a single tensor along the zeroth dimension.
-// Requires that all elements of 'inputs' have element type T. Writes to the
-// op's output at position 'output_index', using 'context' for the allocation to
-// ensure proper device placement.
+// Requires that all elements of 'inputs' have element type T. Writes to
+// 'output' using 'context' for the allocation to ensure proper device
+// placement.
 template <typename T>
-Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor>& inputs,
+Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
               Tensor* output) {
   const int input_dims = inputs[0].dims();
   const TensorShape& input_shape = inputs[0].shape();
@@ -82,16 +147,36 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor>& inputs,
       context->allocate_temp(DataTypeToEnum<T>::value, output_shape, output));
   if (output->NumElements() > 0) {
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
     if (std::is_same<Device, GPUDevice>::value) {
       ConcatGPU<T>(context, inputs_flat, output, &output_flat);
       return Status::OK();
     }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     ConcatCPU<T>(context->device(), inputs_flat, &output_flat);
   }
 
   return Status::OK();
+}
+
+// Same as 'Concat' above, but handles Tensor dtype deduction automatically.
+Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
+              Tensor* output) {
+  const DataType type = inputs[0].dtype();
+  Status concat_status;
+  switch (type) {
+#define CASE(type)                                         \
+  case DataTypeToEnum<type>::value:                        \
+    concat_status = Concat<type>(context, inputs, output); \
+    break;
+    TF_CALL_ALL_TYPES(CASE);
+#undef CASE
+    default:
+      concat_status = errors::InvalidArgument("Unsupported data type: ", type);
+      break;
+  }
+  return concat_status;
 }
 
 // The Split*() functions split 'input' with element type T into 'sizes.size()'
@@ -103,7 +188,7 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor>& inputs,
 // applicable special case and wrote to the outputs. Otherwise acts as a no-op.
 template <typename T>
 Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
-                      const gtl::ArraySlice<int64>& sizes,
+                      const gtl::ArraySlice<int64> sizes,
                       std::vector<Tensor>* outputs, bool* done) {
   *done = false;
 
@@ -140,7 +225,7 @@ Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
 // Handles the general case, on CPU.
 template <typename T>
 Status SplitCPU(OpKernelContext* context, const Tensor& input,
-                const gtl::ArraySlice<int64>& sizes,
+                const gtl::ArraySlice<int64> sizes,
                 std::vector<Tensor>* outputs) {
   int64 suffix_dim_size = 1;
   for (int i = 1; i < input.shape().dims(); ++i) {
@@ -172,7 +257,8 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
   return Status::OK();
 }
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 // Handles the general case, on GPU.
 template <typename T>
@@ -183,13 +269,12 @@ Status SplitGPU(OpKernelContext* context, const Tensor& input,
   LOG(FATAL) << "Not yet implemented";  // Crash ok
 }
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // The outer function that dispatches to the various Split*() functions above.
 template <typename T>
 Status Split(OpKernelContext* context, const Tensor& input,
-             const gtl::ArraySlice<int64>& sizes,
-             std::vector<Tensor>* outputs) {
+             const gtl::ArraySlice<int64> sizes, std::vector<Tensor>* outputs) {
   bool easy_cases_done;
   TF_RETURN_IF_ERROR(
       SplitEasyCases<T>(context, input, sizes, outputs, &easy_cases_done));
@@ -197,20 +282,84 @@ Status Split(OpKernelContext* context, const Tensor& input,
     return Status::OK();
   }
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // TODO(olston, apassos): Handle non-CPU cases.
 // return SplitGPU<T>(context, input, sizes, outputs);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return SplitCPU<T>(context, input, sizes, outputs);
 }
+
+// Same as 'Split' above, but handles Tensor dtype automatically.
+Status Split(OpKernelContext* context, const Tensor& input,
+             const gtl::ArraySlice<int64> sizes, std::vector<Tensor>* outputs) {
+  const DataType type = input.dtype();
+  Status split_status;
+  switch (type) {
+#define CASE(type)                                              \
+  case DataTypeToEnum<type>::value:                             \
+    split_status = Split<type>(context, input, sizes, outputs); \
+    break;
+    TF_CALL_ALL_TYPES(CASE);
+#undef CASE
+    default:
+      split_status = errors::InvalidArgument("Unsupported data type: ", type);
+      break;
+  }
+  return split_status;
+}
+
+// Wrapper class to allow both lock-free construction and concurrent updates on
+// a shared 'status'.
+class ThreadSafeStatus {
+ public:
+  const Status& status() const& TF_LOCKS_EXCLUDED(mutex_) {
+    tf_shared_lock lock(mutex_);
+    return status_;
+  }
+  Status status() && TF_LOCKS_EXCLUDED(mutex_) {
+    tf_shared_lock lock(mutex_);
+    return std::move(status_);
+  }
+
+  // Retains the first error status: replaces the current status with
+  // `new_status` if `new_status` is not OK and the previous status is OK.
+  void Update(const Status& new_status) TF_LOCKS_EXCLUDED(mutex_) {
+    if (new_status.ok()) {
+      return;
+    }
+
+    mutex_lock lock(mutex_);
+    status_.Update(new_status);
+  }
+  void Update(Status&& new_status) TF_LOCKS_EXCLUDED(mutex_) {
+    if (new_status.ok()) {
+      return;
+    }
+
+    mutex_lock lock(mutex_);
+    status_.Update(std::forward<Status>(new_status));
+  }
+
+ private:
+  mutable mutex mutex_;
+  Status status_ TF_GUARDED_BY(mutex_);
+};
 
 // A class encapsulating the state and logic for batching tensors.
 class BatchResource : public ResourceBase {
  public:
+  // Given a BatchTask (from one op invocation) with 'num_outputs'== M and
+  // splitted into N sub tasks, TensorMatrix is a N X M matrix.
+  // Namely, TensorMatrix[i][j] indicates the i-th split tensor of j-th output;
+  // concatenating tensors along the 2nd dimension gives a output tensor.
+  typedef std::vector<std::vector<Tensor>> TensorMatrix;
+
   static Status Create(int32 num_batch_threads, int32 max_batch_size,
                        int32 batch_timeout_micros, int32 max_enqueued_batches,
                        const std::vector<int32>& allowed_batch_sizes,
                        FunctionLibraryRuntime::Handle fhandle,
+                       bool enable_large_batch_splitting,
                        std::unique_ptr<BatchResource>* resource) {
     std::unique_ptr<BatchResource> new_resource(new BatchResource);
 
@@ -224,8 +373,27 @@ class BatchResource : public ResourceBase {
         max_enqueued_batches;
     new_resource->batcher_queue_options_.batch_timeout_micros =
         batch_timeout_micros;
-
+    // Support for splitting large batch is still in progress.
+    new_resource->batcher_queue_options_.enable_large_batch_splitting =
+        enable_large_batch_splitting;
     new_resource->allowed_batch_sizes_ = allowed_batch_sizes;
+    if (enable_large_batch_splitting) {
+      new_resource->batcher_queue_options_.split_input_task_func =
+          [](std::unique_ptr<BatchTask>* input_task,
+             int open_batch_remaining_slot, int max_batch_size,
+             std::vector<std::unique_ptr<BatchTask>>* output_tasks) -> Status {
+        return SplitInputTask(input_task, open_batch_remaining_slot,
+                              max_batch_size, output_tasks);
+      };
+
+      if (allowed_batch_sizes.empty()) {
+        new_resource->batcher_queue_options_.max_execution_batch_size =
+            max_batch_size;
+      } else {
+        new_resource->batcher_queue_options_.max_execution_batch_size =
+            *allowed_batch_sizes.rbegin();
+      }
+    }
 
     new_resource->fhandle_ = fhandle;
 
@@ -233,19 +401,21 @@ class BatchResource : public ResourceBase {
     return Status::OK();
   }
 
-  string DebugString() final { return "BatchResource"; }
+  string DebugString() const final { return "BatchResource"; }
 
   // Ingests data from one invocation of the batch op. The data is enqueued to
   // be combined with others into a batch, asynchronously.
   Status RegisterInput(int64 guid, OpKernelContext* context,
                        const string& batcher_queue_name,
                        AsyncOpKernel::DoneCallback done_callback) {
-    std::unique_ptr<BatchTask> batch_components(new BatchTask);
+    auto batch_components = MakeUnique<BatchTask>();
+    batch_components->start_time = EnvTime::NowNanos();
     batch_components->guid = guid;
+    batch_components->propagated_context = Context(ContextKind::kThread);
     OpInputList tensors;
     TF_RETURN_IF_ERROR(context->input_list("in_tensors", &tensors));
-    for (int i = 0; i < tensors.size(); ++i) {
-      const Tensor& tensor = tensors[i];
+    batch_components->inputs.reserve(tensors.size());
+    for (const Tensor& tensor : tensors) {
       if (tensor.shape().dims() == 0) {
         return errors::InvalidArgument(
             "Batching input tensors must have at least one dimension");
@@ -258,16 +428,21 @@ class BatchResource : public ResourceBase {
       }
       batch_components->inputs.push_back(tensor);
     }
+    RecordInputBatchSize(tensors[0].shape().dim_size(0), GetModelName(context));
     OpInputList captured_tensors;
     const auto captured_status =
         context->input_list("captured_tensors", &captured_tensors);
     if (captured_status.ok()) {
+      batch_components->captured_inputs.reserve(captured_tensors.size());
       for (const Tensor& captured_tensor : captured_tensors) {
         batch_components->captured_inputs.push_back(captured_tensor);
       }
     }
     batch_components->context = context;
     batch_components->done_callback = std::move(done_callback);
+    batch_components->split_index = 0;
+    batch_components->output = std::make_shared<TensorMatrix>();
+    batch_components->status = std::make_shared<ThreadSafeStatus>();
 
     BatcherQueue* batcher_queue;
     TF_RETURN_IF_ERROR(
@@ -278,17 +453,47 @@ class BatchResource : public ResourceBase {
  private:
   BatchResource() = default;
 
-  // One input to be batched. Corresponds to one invocation of the batch op.
+  // One task to be batched, corresponds to a `slice` of input from one batch-op
+  // invocation.
+  //
+  // Given input from one batch-op invocation, a `slice` of this input is:
+  // 1) Split each Tensor in `BatchTask::inputs` along the 0th dimension.
+  // 2) 'split_index' is calculated along the 0-th dimension.
+  //
+  // Note input from one batch-op invocation is valid and considered a
+  // specialized `slice`.
   struct BatchTask : public serving::BatchTask {
     // A unique ID to identify this invocation of Batch.
     int64 guid;
+
+    Context propagated_context;
 
     std::vector<Tensor> inputs;
     std::vector<Tensor> captured_inputs;
     OpKernelContext* context;
     AsyncOpKernel::DoneCallback done_callback;
 
+    // The index of this split, along the 0-th dimension of input from op
+    // invocation.
+    int split_index = 0;
+
+    // Two-dimensional tensor matrix, ownership shared by:
+    // 1) each split of task (to fill one row in this matrix)
+    // and
+    // 2) callback that runs to merge output of individual splits for an op
+    // invocation, after all splits complete.
+    std::shared_ptr<TensorMatrix> output;
+
+    // 'status' records error (could be from any split) if at least one split
+    // returns error, OK otherwise.
+    // Ownership is shared by individual splits and callback.
+    std::shared_ptr<ThreadSafeStatus> status;
+
+    bool is_partial = false;
+
     size_t size() const override { return inputs[0].shape().dim_size(0); }
+
+    uint64 start_time;
   };
 
   using Batcher = serving::SharedBatchScheduler<BatchTask>;
@@ -335,6 +540,8 @@ class BatchResource : public ResourceBase {
 
     const int padded_batch_size = RoundToLowestAllowedBatchSize(batch.size());
     const int padding_amount = padded_batch_size - batch.size();
+    RecordPaddingSize(padding_amount, GetModelName(context), padded_batch_size);
+    RecordProcessedBatchSize(padded_batch_size, GetModelName(context));
 
     // All tasks should have the same number of input edges.
     const int num_inputs = batch.task(0).inputs.size();
@@ -354,52 +561,157 @@ class BatchResource : public ResourceBase {
       if (padding_amount > 0) {
         const Tensor& padding_source = batch.task(0).inputs.at(i);
         Tensor padding;
+        if (padding_source.shape().dim_size(0) == 0) {
+          return errors::InvalidArgument(
+              "Cannot use an empty tensor with zero rows as padding when "
+              "batching. (Input ",
+              i, " got shape ", padding_source.shape().DebugString(), ".)");
+        }
         if (padding_source.shape().dim_size(0) == 1) {
           padding = padding_source;
         } else {
-          const std::vector<int64> slice_sizes = {1};
-          const DataType type = padding_source.dtype();
-          Status slice_status;
-          std::vector<Tensor> slices;
-          switch (type) {
-#define CASE(type)                                                     \
-  case DataTypeToEnum<type>::value:                                    \
-    slice_status =                                                     \
-        SplitCPU<type>(context, padding_source, slice_sizes, &slices); \
-    break;
-            TF_CALL_ALL_TYPES(CASE);
-#undef CASE
-            default:
-              slice_status =
-                  errors::InvalidArgument("Unsupported data type: ", type);
-              break;
-          }
-          TF_RETURN_IF_ERROR(slice_status);
-          padding = slices.at(0);
+          padding = padding_source.Slice(0, 1);
         }
         for (int i = 0; i < padding_amount; ++i) {
           to_concatenate.push_back(padding);
         }
       }
 
-      const DataType type = to_concatenate[0].dtype();
-      Status concat_status;
       Tensor concatenated_tensor;
-      switch (type) {
-#define CASE(type)                                                   \
-  case DataTypeToEnum<type>::value:                                  \
-    concat_status =                                                  \
-        Concat<type>(context, to_concatenate, &concatenated_tensor); \
-    break;
-        TF_CALL_ALL_TYPES(CASE);
-#undef CASE
-        default:
-          concat_status =
-              errors::InvalidArgument("Unsupported data type: ", type);
-          break;
-      }
+      Status concat_status =
+          Concat(context, to_concatenate, &concatenated_tensor);
       TF_RETURN_IF_ERROR(concat_status);
       concatenated_tensors->push_back(concatenated_tensor);
+    }
+    return Status::OK();
+  }
+
+  // Split 'input' of 'input_task_ptr' along 0th dimension, into a list of
+  // 'output_tasks'.
+  // Task sizes are determined by
+  // 1) open_batch_remaining_slot
+  // 2) max_batch_size
+  // 3) size-of-input-task
+  // in a way that
+  // 1) Task sizes add up to `size-of-input-task`.
+  // 2) Task sizes from left to right are like
+  //    [open_batch_remaining_slot, max_batch_size, max_batch_size, ...,
+  //    `size-of-input-task` - `sum-of-previous-elements`].
+  //
+  // REQUIRES:
+  // Caller should make sure size-of-input-task is greater than
+  // open_batch_remaining_slot.
+  static Status SplitInputTask(
+      std::unique_ptr<BatchTask>* input_task_ptr, int open_batch_remaining_slot,
+      int max_batch_size,
+      std::vector<std::unique_ptr<BatchTask>>* output_tasks) {
+    BatchTask& input_task = *(*input_task_ptr);
+    const int64 input_task_size = input_task.size();
+
+    DCHECK_GT(input_task_size, open_batch_remaining_slot);
+
+    std::shared_ptr<ThreadSafeStatus> shared_status = input_task.status;
+
+    // `split_task_done_callback` runs only after all splitted tasks are
+    // complete.
+    std::function<void()> split_task_done_callback =
+        [done_callback = input_task.done_callback, output = input_task.output,
+         op_kernel_context = input_task.context, status = shared_status]() {
+          const int num_output = op_kernel_context->num_outputs();
+          for (int i = 0; i < num_output; ++i) {
+            Tensor output_tensor;
+
+            // Concat would memcpy each input tensor to one output tensor.
+            // In this context, Concat can be further optimized to get rid of
+            // some (probably all) memcpy when input tensors are slices of
+            // another copy.
+            // TODO(b/154140947):
+            // Add a custom implementation of Split and then optimize Concat.
+            std::vector<Tensor> to_concatenate;
+            to_concatenate.reserve(output->size());
+            for (int j = 0; j < output->size(); ++j) {
+              to_concatenate.push_back(std::move((*output)[j][i]));
+            }
+            const auto concat_status =
+                Concat(op_kernel_context, to_concatenate, &output_tensor);
+            if (!concat_status.ok()) {
+              status->Update(concat_status);
+            }
+
+            op_kernel_context->set_output(i, std::move(output_tensor));
+          }
+          op_kernel_context->SetStatus(status->status());
+          done_callback();
+        };
+    IncrementalBarrier barrier(split_task_done_callback);
+
+    std::vector<int64> output_task_sizes;
+
+    if (open_batch_remaining_slot > 0) {
+      output_task_sizes.push_back(open_batch_remaining_slot);
+    }
+
+    for (int left_task_size = input_task_size - open_batch_remaining_slot;
+         left_task_size > 0; left_task_size -= max_batch_size) {
+      int next_task_size = std::min(left_task_size, max_batch_size);
+      output_task_sizes.push_back(next_task_size);
+    }
+
+    const int output_task_num = output_task_sizes.size();
+    input_task.output->resize(output_task_num);
+
+    for (int i = 0; i < output_task_num; ++i) {
+      (*input_task.output)[i].resize(input_task.context->num_outputs());
+    }
+
+    output_tasks->reserve(output_task_num);
+    for (int i = 0; i < output_task_num; i++) {
+      auto task = absl::make_unique<BatchTask>();
+      task->guid = input_task.guid;
+      task->propagated_context = Context(ContextKind::kThread);
+      task->captured_inputs = input_task.captured_inputs;
+      task->context = input_task.context;
+      task->done_callback = barrier.Inc();
+      task->start_time = input_task.start_time;
+      task->split_index = i;
+      task->inputs.reserve(input_task.inputs.size());
+      task->is_partial = true;
+      task->status = input_task.status;
+
+      task->output = input_task.output;
+      output_tasks->push_back(std::move(task));
+    }
+
+    const int num_input_tensors = input_task.inputs.size();
+
+    // Splits each input tensor according to `output_task_sizes`, and
+    // initializes input of `output_tasks` with split results.
+    for (int i = 0; i < num_input_tensors; ++i) {
+      std::vector<Tensor> split_tensors;
+      const Tensor& input_tensor = input_task.inputs[i];
+      // TODO(b/154140947):
+      // Figure out the optimal implementation of Split, by using
+      // 'Tensor::Slice' and eliminating unnecessary memcpy as much as possible.
+      const Status split_status = Split(input_task.context, input_tensor,
+                                        output_task_sizes, &split_tensors);
+      if (!split_status.ok()) {
+        return errors::Internal(
+            "When splitting input, Tensor split operation failed: ",
+            split_status.ToString());
+      }
+      if (split_tensors.size() != output_task_sizes.size()) {
+        return errors::Internal(
+            "When splitting input, tensor split operation did not work as "
+            "expected; got ",
+            split_tensors.size(), " splits; expected ",
+            output_task_sizes.size());
+      }
+      for (int j = 0; j < output_tasks->size(); ++j) {
+        BatchTask& output_task = *((*output_tasks)[j]);
+        auto moved_tensor_iter = std::next(split_tensors.begin(), j);
+        std::move(moved_tensor_iter, moved_tensor_iter + 1,
+                  std::back_inserter(output_task.inputs));
+      }
     }
     return Status::OK();
   }
@@ -427,18 +739,20 @@ class BatchResource : public ResourceBase {
     std::map<string, std::vector<Tensor>> split_tensors;
 
     DCHECK_EQ(batch->task(0).context->num_outputs(), combined_outputs.size());
-    if (combined_outputs.size() != batch->task(0).context->num_outputs()) {
+    int combined_outputs_size = combined_outputs.size();
+    if (combined_outputs_size != batch->task(0).context->num_outputs()) {
       return errors::Internal("Wrong number of batched output tensors");
     }
 
     // Generate 'split_tensors' and populate the context outputs.
-    for (int i = 0; i < combined_outputs.size(); ++i) {
+    for (int i = 0, iter_limit = combined_outputs.size(); i < iter_limit; ++i) {
       const Tensor& output_tensor = combined_outputs[i];
       if (output_tensor.shape().dims() == 0) {
         return errors::FailedPrecondition(
             "Batched output tensor has 0 dimensions");
       }
-      if (output_tensor.shape().dim_size(0) != batch->size() + padding_size) {
+      if (output_tensor.shape().dim_size(0) !=
+          static_cast<long long int>(batch->size() + padding_size)) {
         return errors::FailedPrecondition(
             "Batched output tensor's 0th dimension does not equal the sum of "
             "the 0th dimension sizes of the input tensors");
@@ -460,11 +774,16 @@ class BatchResource : public ResourceBase {
             task_sizes_plus_optional_padding.size());
       }
 
+      // Ignore a possible final split_tensors entry containing the padding.
       for (int j = 0; j < batch->num_tasks(); ++j) {
         BatchTask& task = *(batch->mutable_task(j));
-        task.context->set_output(i, split_tensor.at(j));
-      }  // (Ignore a possible final split_tensors entry containing the
-         // padding.)
+        if (task.is_partial) {
+          std::vector<Tensor>& tensor_vector = (*task.output)[task.split_index];
+          tensor_vector[i] = std::move(split_tensor[j]);
+        } else {
+          task.context->set_output(i, split_tensor[j]);
+        }
+      }
     }
 
     return Status::OK();
@@ -474,6 +793,11 @@ class BatchResource : public ResourceBase {
     if (batch->empty()) {
       return;
     }
+
+    // We use the 'propagated_context' from one of the threads which setup one
+    // of the tasks. This will propagate any common context over all the threads
+    // which are running this Session, of which this BatchOp is a part.
+    WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
 
     OpKernelContext* last_task_context =
         batch->task(batch->num_tasks() - 1).context;
@@ -488,11 +812,17 @@ class BatchResource : public ResourceBase {
         return;
       }
       for (int i = 0; i < batch->num_tasks(); ++i) {
-        batch->mutable_task(i)->context->SetStatus(status);
+        if (batch->task(i).is_partial) {
+          batch->mutable_task(i)->status->Update(status);
+        } else {
+          batch->mutable_task(i)->context->SetStatus(status);
+        }
+
         batch->mutable_task(i)->done_callback();
       }
       cleanup_done = true;
     };
+
     auto finally =
         gtl::MakeCleanup([&cleanup_fn, &status] { cleanup_fn(status); });
 
@@ -508,12 +838,13 @@ class BatchResource : public ResourceBase {
       return;
     }
     FunctionLibraryRuntime::Options opts;
-    opts.step_id = last_task_context->step_id();
     opts.step_container = last_task_context->step_container();
     opts.cancellation_manager = last_task_context->cancellation_manager();
+    opts.collective_executor = last_task_context->collective_executor();
     opts.stats_collector = last_task_context->stats_collector();
     opts.rendezvous = last_task_context->rendezvous();
     opts.runner = last_task_context->runner();
+    opts.run_all_kernels_inline = last_task_context->run_all_kernels_inline();
 
     auto* flib = last_task_context->function_library();
     std::vector<Tensor> combined_outputs;
@@ -524,6 +855,12 @@ class BatchResource : public ResourceBase {
         batch->task(batch->num_tasks() - 1).captured_inputs;
     args.insert(args.end(), captured_inputs.begin(), captured_inputs.end());
 
+    uint64 current_time = EnvTime::NowNanos();
+    const string& model_name = GetModelName(last_task_context);
+    for (int i = 0; i < batch->num_tasks(); ++i) {
+      RecordBatchDelayMs((current_time - batch->task(i).start_time) * 1e-6,
+                         model_name);
+    }
     // Releases the cleanup method here, because the callback of the function
     // library runtime will handle it now.
     finally.release();
@@ -558,6 +895,8 @@ class BatchResource : public ResourceBase {
       return;
     }
 
+    WithContext wc(batch->task(batch->num_tasks() - 1).propagated_context);
+
     OpKernelContext* last_task_context =
         batch->task(batch->num_tasks() - 1).context;
     AsyncOpKernel::DoneCallback last_task_callback =
@@ -575,12 +914,12 @@ class BatchResource : public ResourceBase {
 
     // Process each input edge one at a time (the typical case has just one).
     for (int i = 0; i < num_input_edges; ++i) {
-      last_task_context->set_output(i, concatenated_tensors.at(i));
+      last_task_context->set_output(i, concatenated_tensors[i]);
 
       // Emit batch->num_tasks() - 1 empty output tensors.
       for (int task_idx = 0; task_idx < batch->num_tasks() - 1; ++task_idx) {
         const BatchTask& task = batch->task(task_idx);
-        TensorShape output_shape(task.inputs.at(i).shape());
+        TensorShape output_shape(task.inputs[i].shape());
         output_shape.set_dim(0, 0);
         Tensor* output = nullptr;
         OP_REQUIRES_OK_ASYNC(
@@ -682,7 +1021,7 @@ class BatchResource : public ResourceBase {
   // ones (with a time delay?); it's okay if they get recreated later).
   mutable mutex batcher_queues_mu_;
   std::map<string, std::unique_ptr<BatcherQueue>> batcher_queues_
-      GUARDED_BY(batcher_queues_mu_);
+      TF_GUARDED_BY(batcher_queues_mu_);
 
   std::vector<int32> allowed_batch_sizes_;
   FunctionLibraryRuntime::Handle fhandle_;
@@ -706,7 +1045,6 @@ class BatchFunctionKernel : public AsyncOpKernel {
     OP_REQUIRES_OK(c,
                    c->GetAttr("max_enqueued_batches", &max_enqueued_batches_));
     OP_REQUIRES_OK(c, c->GetAttr("allowed_batch_sizes", &allowed_batch_sizes_));
-    OP_REQUIRES_OK(c, ValidateAllowedBatchSizes());
 
     auto lib = c->function_library();
     OP_REQUIRES(c, lib != nullptr, errors::Internal("No function library"));
@@ -714,19 +1052,32 @@ class BatchFunctionKernel : public AsyncOpKernel {
     OP_REQUIRES_OK(c, c->GetAttr("f", &func));
     OP_REQUIRES_OK(
         c, lib->Instantiate(func.name(), AttrSlice(&func.attr()), &fhandle_));
+
+    if (c->HasAttr("enable_large_batch_splitting")) {
+      OP_REQUIRES_OK(c, c->GetAttr("enable_large_batch_splitting",
+                                   &enable_large_batch_splitting_));
+    } else {
+      enable_large_batch_splitting_ = false;
+    }
+
+    if (enable_large_batch_splitting_ && (!allowed_batch_sizes_.empty())) {
+      max_execution_batch_size_ = *allowed_batch_sizes_.rbegin();
+    } else {
+      max_execution_batch_size_ = max_batch_size_;
+    }
+    OP_REQUIRES_OK(c, ValidateAllowedBatchSizes());
   }
 
   bool IsExpensive() override { return false; }
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     BatchResource* br;
-    std::function<Status(BatchResource * *r)> creator = [this,
-                                                         c](BatchResource** r) {
+    std::function<Status(BatchResource**)> creator = [this](BatchResource** r) {
       std::unique_ptr<BatchResource> new_resource;
-      TF_RETURN_IF_ERROR(
-          BatchResource::Create(num_batch_threads_, max_batch_size_,
-                                batch_timeout_micros_, max_enqueued_batches_,
-                                allowed_batch_sizes_, fhandle_, &new_resource));
+      TF_RETURN_IF_ERROR(BatchResource::Create(
+          num_batch_threads_, max_batch_size_, batch_timeout_micros_,
+          max_enqueued_batches_, allowed_batch_sizes_, fhandle_,
+          enable_large_batch_splitting_, &new_resource));
       *r = new_resource.release();
       return Status::OK();
     };
@@ -754,10 +1105,14 @@ class BatchFunctionKernel : public AsyncOpKernel {
         return errors::InvalidArgument(
             "allowed_batch_sizes entries must be monotonically increasing");
       }
-      if (i == allowed_batch_sizes_.size() - 1 && size != max_batch_size_) {
+
+      if ((!enable_large_batch_splitting_) &&
+          (i == allowed_batch_sizes_.size() - 1) && (size != max_batch_size_)) {
         return errors::InvalidArgument(
-            "final entry in allowed_batch_sizes must equal max_batch_size");
+            "final entry in allowed_batch_sizes must equal max_batch_size when "
+            "enable_large_batch_splitting is False");
       }
+
       last_size = size;
     }
     return Status::OK();
@@ -769,10 +1124,12 @@ class BatchFunctionKernel : public AsyncOpKernel {
   string batcher_queue_;
   int32 num_batch_threads_;
   int32 max_batch_size_;
+  int32 max_execution_batch_size_;
   int32 batch_timeout_micros_;
   int32 max_enqueued_batches_;
   std::vector<int32> allowed_batch_sizes_;
   FunctionLibraryRuntime::Handle fhandle_;
+  bool enable_large_batch_splitting_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BatchFunction").Device(DEVICE_CPU),
@@ -801,16 +1158,15 @@ class BatchKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     BatchResource* br;
-    std::function<Status(BatchResource * *r)> creator =
-        [this](BatchResource** r) {
-          std::unique_ptr<BatchResource> new_resource;
-          TF_RETURN_IF_ERROR(BatchResource::Create(
-              num_batch_threads_, max_batch_size_, batch_timeout_micros_,
-              max_enqueued_batches_, allowed_batch_sizes_, kInvalidHandle,
-              &new_resource));
-          *r = new_resource.release();
-          return Status::OK();
-        };
+    std::function<Status(BatchResource**)> creator = [this](BatchResource** r) {
+      std::unique_ptr<BatchResource> new_resource;
+      TF_RETURN_IF_ERROR(BatchResource::Create(
+          num_batch_threads_, max_batch_size_, batch_timeout_micros_,
+          max_enqueued_batches_, allowed_batch_sizes_, kInvalidHandle, false,
+          &new_resource));
+      *r = new_resource.release();
+      return Status::OK();
+    };
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(
                              container_, shared_name_, &br, creator),
@@ -878,7 +1234,7 @@ class UnbatchResource : public ResourceBase {
     timeout_enforcer_ = nullptr;
   }
 
-  string DebugString() final { return "UnbatchResource"; }
+  string DebugString() const final { return "UnbatchResource"; }
 
   Status Compute(OpKernelContext* context, AsyncOpKernel::DoneCallback done) {
     const Tensor& data_t = context->input(0);
@@ -915,17 +1271,7 @@ class UnbatchResource : public ResourceBase {
         batch_keys.push_back(batch_indices(i, 0));
       }
 
-      const DataType type = data_t.dtype();
-      switch (type) {
-#define CASE(type)                                                          \
-  case DataTypeToEnum<type>::value:                                         \
-    TF_RETURN_IF_ERROR(Split<type>(context, data_t, sizes, &split_inputs)); \
-    break;
-        TF_CALL_ALL_TYPES(CASE);
-#undef CASE
-        default:
-          return errors::InvalidArgument("Unsupported data type: ", type);
-      }
+      TF_RETURN_IF_ERROR(Split(context, data_t, sizes, &split_inputs));
     }
 
     // Critical section.
@@ -1043,8 +1389,9 @@ class UnbatchResource : public ResourceBase {
 
   // Maps keyed by BatchKey of tensors waiting for callbacks and callbacks
   // waiting for tensors.
-  std::unordered_map<int64, WaitingTensor> waiting_tensors_ GUARDED_BY(mu_);
-  std::unordered_map<int64, WaitingCallback> waiting_callbacks_ GUARDED_BY(mu_);
+  std::unordered_map<int64, WaitingTensor> waiting_tensors_ TF_GUARDED_BY(mu_);
+  std::unordered_map<int64, WaitingCallback> waiting_callbacks_
+      TF_GUARDED_BY(mu_);
 
   // A thread that evicts waiting tensors and callbacks that have exceeded their
   // deadline.
@@ -1066,7 +1413,7 @@ class UnbatchKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     UnbatchResource* ubr;
-    std::function<Status(UnbatchResource * *r)> creator =
+    std::function<Status(UnbatchResource**)> creator =
         [this](UnbatchResource** r) {
           *r = new UnbatchResource(timeout_micros_);
           return Status::OK();
@@ -1094,13 +1441,13 @@ class UnbatchGradResource : public ResourceBase {
  public:
   UnbatchGradResource() {}
 
-  string DebugString() final { return "UnbatchGradResource"; }
+  string DebugString() const final { return "UnbatchGradResource"; }
 
   // Flushes the information for one batch, given its context and done
   // callback. Clears all information about it from the available_tensors_.
   Status OutputBatch(OpKernelContext* context,
                      const AsyncOpKernel::DoneCallback& done)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const Tensor& batch_index_t = context->input(1);
     auto batch_index =
         batch_index_t.shaped<int64, 2>({batch_index_t.dim_size(0), 3});
@@ -1252,8 +1599,8 @@ class UnbatchGradKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     UnbatchGradResource* ubr;
-    std::function<Status(UnbatchGradResource * *r)> creator =
-        [this](UnbatchGradResource** r) {
+    std::function<Status(UnbatchGradResource**)> creator =
+        [](UnbatchGradResource** r) {
           *r = new UnbatchGradResource();
           return Status::OK();
         };

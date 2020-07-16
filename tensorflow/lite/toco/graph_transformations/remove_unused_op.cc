@@ -58,7 +58,7 @@ namespace toco {
     if (found_output_as_rnn_state_array) {
       continue;
     }
-    for (const string& output_array : model->flags.output_arrays()) {
+    for (const std::string& output_array : model->flags.output_arrays()) {
       if (output == output_array) {
         return ::tensorflow::Status::OK();
       }
@@ -86,27 +86,7 @@ namespace toco {
 
   AddMessageF("Discarding %s because none of its outputs is used.",
               LogName(*op));
-
-  // At that point we know that none of the outputs is used, so we will
-  // definitely remove the node and all its outputs.
-
-  // Remove any input array that not the output of another op, and only used by
-  // this op.
-  for (const auto& input : op->inputs) {
-    if (!GetOpWithOutput(*model, input)) {
-      DeleteArrayIfUsedOnce(input, model);
-    }
-  }
-
-  // Remove the node and its now-unused output arrays.
-  for (const auto& output : op->outputs) {
-    // If the output array is the model's input array, don't remove that.
-    // That's the case when cropping a model at a given --input_array.
-    if (IsDiscardableArray(*model, output)) {
-      model->EraseArray(output);
-    }
-  }
-  model->operators.erase(it);
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

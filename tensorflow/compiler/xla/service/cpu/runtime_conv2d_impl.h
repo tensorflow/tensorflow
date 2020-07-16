@@ -26,15 +26,17 @@ namespace xla {
 
 template <typename EigenDevice, typename ScalarType>
 void EigenConvImpl(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
-                   ScalarType* rhs, int64 input_batch, int64 input_rows,
-                   int64 input_cols, int64 input_channels, int64 kernel_rows,
-                   int64 kernel_cols, int64 kernel_channels,
-                   int64 kernel_filters, int64 output_rows, int64 output_cols,
-                   int64 row_stride, int64 col_stride, int64 padding_top,
-                   int64 padding_bottom, int64 padding_left,
-                   int64 padding_right, int64 lhs_row_dilation,
-                   int64 lhs_col_dilation, int64 rhs_row_dilation,
-                   int64 rhs_col_dilation) {
+                   ScalarType* rhs, Eigen::Index input_batch,
+                   Eigen::Index input_rows, Eigen::Index input_cols,
+                   Eigen::Index input_channels, Eigen::Index kernel_rows,
+                   Eigen::Index kernel_cols, Eigen::Index kernel_channels,
+                   Eigen::Index kernel_filters, Eigen::Index output_rows,
+                   Eigen::Index output_cols, Eigen::Index row_stride,
+                   Eigen::Index col_stride, Eigen::Index padding_top,
+                   Eigen::Index padding_bottom, Eigen::Index padding_left,
+                   Eigen::Index padding_right, Eigen::Index lhs_row_dilation,
+                   Eigen::Index lhs_col_dilation, Eigen::Index rhs_row_dilation,
+                   Eigen::Index rhs_col_dilation) {
   const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
                          Eigen::Aligned>
       input(lhs, input_batch, input_rows, input_cols, input_channels);

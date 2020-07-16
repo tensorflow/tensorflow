@@ -50,6 +50,14 @@ indicates if the noise should be generated using a
 uniform distribution or a Gaussian distribution.
 END
   }
+  attr {
+    name: "noise"
+    description: <<END
+indicates if the noise should `uniform`, `gaussian`, or
+`zero`. The default is `uniform` which means the the noise type
+will be decided by `uniform_noise`.
+END
+  }
   summary: "Extracts a glimpse from the input tensor."
   description: <<END
 Returns a set of windows called glimpses extracted at location

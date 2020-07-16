@@ -24,6 +24,7 @@ import os
 
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.util.tf_export import tf_export
 
 _TF_CONFIG_ENV = 'TF_CONFIG'
 _SESSION_MASTER_KEY = 'session_master'
@@ -47,12 +48,42 @@ def _get_value_in_tfconfig(key, default=None):
   return tf_config[key] if key in tf_config else default
 
 
+@tf_export('distribute.cluster_resolver.TFConfigClusterResolver')
 class TFConfigClusterResolver(ClusterResolver):
-  """Implementation of a ClusterResolver which reads the TF_CONFIG EnvVar."""
+  """Implementation of a ClusterResolver which reads the TF_CONFIG EnvVar.
+
+  This is an implementation of cluster resolvers when using TF_CONFIG to set
+  information about the cluster. The cluster spec returned will be
+  initialized from the TF_CONFIG environment variable.
+
+  An example to set TF_CONFIG is:
+
+    ```Python
+    os.environ['TF_CONFIG'] = json.dumps({
+      'cluster': {
+          'worker': ["localhost:12345", "localhost:23456"]
+      },
+      'task': {'type': 'worker', 'index': 0}
+    })
+    ```
+
+  However, sometimes the container orchestration framework will set TF_CONFIG
+  for you. In this case, you can just create an instance without passing in any
+  arguments. You can find an example here to let Kuburnetes set TF_CONFIG for
+  you: https://github.com/tensorflow/ecosystem/tree/master/kubernetes. Then you
+  can use it with `tf.distribute.Strategy` as:
+
+    ```Python
+    # `TFConfigClusterResolver` is already the default one in the following
+    # strategy.
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=TFConfigClusterResolver())
+    ```
+  """
 
   def __init__(self,
                task_type=None,
-               task_index=None,
+               task_id=None,
                rpc_layer=None,
                environment=None):
     """Creates a new TFConfigClusterResolver.
@@ -60,14 +91,14 @@ class TFConfigClusterResolver(ClusterResolver):
     Args:
       task_type: (String, optional) Overrides the task type specified in the
         TF_CONFIG environment variable.
-      task_index: (Integer, optional) Overrides the task index specified in the
+      task_id: (Integer, optional) Overrides the task index specified in the
         TF_CONFIG environment variable.
       rpc_layer: (String, optional) Overrides the rpc layer TensorFlow uses.
       environment: (String, optional) Overrides the environment TensorFlow
         operates in.
     """
     self._task_type = task_type
-    self._task_index = task_index
+    self._task_id = task_id
     self._rpc_layer = rpc_layer
     self._environment = environment
 
@@ -75,25 +106,25 @@ class TFConfigClusterResolver(ClusterResolver):
   def task_type(self):
     if self._task_type is None:
       task_info = _get_value_in_tfconfig(_TASK_KEY, {})
-      return task_info['type'] if 'type' in task_info else None
+      return str(task_info['type']) if 'type' in task_info else None
     else:
-      return self._task_type
+      return str(self._task_type)
 
   @property
-  def task_index(self):
-    if self._task_type is None:
+  def task_id(self):
+    if self._task_id is None:
       task_info = _get_value_in_tfconfig(_TASK_KEY, {})
-      return task_info['index'] if 'index' in task_info else None
+      return int(task_info['index']) if 'index' in task_info else None
     else:
-      return self._task_index
+      return int(self._task_id)
 
   @task_type.setter
   def task_type(self, task_type):
     self._task_type = task_type
 
-  @task_index.setter
-  def task_index(self, task_index):
-    self._task_index = task_index
+  @task_id.setter
+  def task_id(self, task_id):
+    self._task_id = task_id
 
   @property
   def environment(self):
@@ -110,6 +141,15 @@ class TFConfigClusterResolver(ClusterResolver):
   def rpc_layer(self, rpc_layer):
     self._rpc_layer = rpc_layer
 
+  def num_accelerators(self,
+                       task_type=None,
+                       task_id=None,
+                       config_proto=None):
+    task_type = self.task_type if task_type is None else task_type
+    task_id = self.task_id if task_id is None else task_id
+    return super(TFConfigClusterResolver, self).num_accelerators(
+        task_type, task_id, config_proto)
+
   def cluster_spec(self):
     """Returns a ClusterSpec based on the TF_CONFIG environment variable.
 
@@ -121,13 +161,15 @@ class TFConfigClusterResolver(ClusterResolver):
       return ClusterSpec({})
     return ClusterSpec(tf_config['cluster'])
 
-  def master(self, task_type=None, task_index=None, rpc_layer=None):
+  def master(self, task_type=None, task_id=None, rpc_layer=None):
     """Returns the master address to use when creating a TensorFlow session.
+
+    Note: this is only useful for TensorFlow 1.x.
 
     Args:
       task_type: (String, optional) Overrides and sets the task_type of the
         master.
-      task_index: (Integer, optional) Overrides and sets the task id of the
+      task_id: (Integer, optional) Overrides and sets the task id of the
         master.
       rpc_layer: (String, optional) Overrides and sets the protocol over which
         TensorFlow nodes communicate with each other.
@@ -155,7 +197,8 @@ class TFConfigClusterResolver(ClusterResolver):
     # We try to auto-detect the task type and id, but uses the user-supplied one
     # where available
     task_type = task_type if task_type is not None else self.task_type
-    task_index = task_index if task_index is not None else self.task_index
+    task_id = task_id if task_id is not None else self.task_id
+    rpc_layer = rpc_layer if rpc_layer is not None else self.rpc_layer
 
-    return format_master_url(cluster_spec.task_address(task_type, task_index),
-                             self.rpc_layer)
+    return format_master_url(cluster_spec.task_address(task_type, task_id),
+                             rpc_layer)

@@ -32,10 +32,18 @@ class AdadeltaOptimizerTest(xla_test.XLATestCase):
 
   def testBasic(self):
     num_updates = 4  # number of ADADELTA steps to perform
-    for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
-        for grad in [0.2, 0.1, 0.01]:
-          for lr in [1.0, 0.5, 0.1]:
+    if "CPU" in self.device:
+      # To avoid timeout on CPU.
+      all_grad = [0.2, 0.01]
+      all_lr = [1.0, 0.1]
+    else:
+      all_grad = [0.2, 0.1, 0.01]
+      all_lr = [1.0, 0.5, 0.1]
+
+    for dtype in self.float_types | self.complex_types:
+      with self.session(), self.test_scope():
+        for grad in all_grad:
+          for lr in all_lr:
             var0_init = [1.0, 2.0]
             var1_init = [3.0, 4.0]
             var0 = resource_variable_ops.ResourceVariable(
@@ -68,20 +76,20 @@ class AdadeltaOptimizerTest(xla_test.XLATestCase):
             self.assertEqual(["accum", "accum_update"],
                              adadelta_opt.get_slot_names())
             slot[0] = adadelta_opt.get_slot(var0, "accum")
-            self.assertEquals(slot[0].get_shape(), var0.get_shape())
-            self.assertFalse(slot[0] in variables.trainable_variables())
+            self.assertEqual(slot[0].get_shape(), var0.get_shape())
+            self.assertNotIn(slot[0], variables.trainable_variables())
 
             slot_update[0] = adadelta_opt.get_slot(var0, "accum_update")
-            self.assertEquals(slot_update[0].get_shape(), var0.get_shape())
-            self.assertFalse(slot_update[0] in variables.trainable_variables())
+            self.assertEqual(slot_update[0].get_shape(), var0.get_shape())
+            self.assertNotIn(slot_update[0], variables.trainable_variables())
 
             slot[1] = adadelta_opt.get_slot(var1, "accum")
-            self.assertEquals(slot[1].get_shape(), var1.get_shape())
-            self.assertFalse(slot[1] in variables.trainable_variables())
+            self.assertEqual(slot[1].get_shape(), var1.get_shape())
+            self.assertNotIn(slot[1], variables.trainable_variables())
 
             slot_update[1] = adadelta_opt.get_slot(var1, "accum_update")
-            self.assertEquals(slot_update[1].get_shape(), var1.get_shape())
-            self.assertFalse(slot_update[1] in variables.trainable_variables())
+            self.assertEqual(slot_update[1].get_shape(), var1.get_shape())
+            self.assertNotIn(slot_update[1], variables.trainable_variables())
 
             # Fetch params to validate initial values
             self.assertAllClose(var0_init, self.evaluate(var0))

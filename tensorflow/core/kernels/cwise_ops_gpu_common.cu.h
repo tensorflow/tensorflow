@@ -13,22 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if !GOOGLE_CUDA
-#error This file must only be included when building with Cuda support
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
+#error This file must only be included when building with Cuda or ROCm support
 #endif
 
 #ifndef TENSORFLOW_CORE_KERNELS_CWISE_OPS_GPU_COMMON_CU_H_
 #define TENSORFLOW_CORE_KERNELS_CWISE_OPS_GPU_COMMON_CU_H_
 
-#define EIGEN_USE_GPU
-
+#define _USE_MATH_DEFINES
+#include <cmath>
 #include <complex>
 
+#define EIGEN_USE_GPU
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/platform/types.h"
 
 #include "tensorflow/core/platform/logging.h"
+
+#ifdef __HIP_DEVICE_COMPILE__
+// Provide ldexp float overload for HIP, it's missing in their headers.
+__device__ inline float ldexp(float x, int exp) { return ldexpf(x, exp); }
+#endif
+
 namespace tensorflow {
 namespace functor {
 

@@ -1,0 +1,19 @@
+path: "tensorflow.lite.experimental"
+tf_module {
+  member {
+    name: "nn"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "convert_op_hints_to_stubs"
+    argspec: "args=[\'session\', \'graph_def\', \'write_callback\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'<function <lambda> instance>\'], "
+  }
+  member_method {
+    name: "get_potentially_supported_ops"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load_delegate"
+    argspec: "args=[\'library\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

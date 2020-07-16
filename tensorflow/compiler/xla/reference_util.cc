@@ -18,10 +18,10 @@ limitations under the License.
 #include <array>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -31,50 +31,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-
-namespace {
-
-template <typename T>
-std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
-    const Array2D<T>& lhs, const Array2D<T>& rhs,
-    const std::function<void(
-        const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m, int64 n,
-        int64 k, int32 transpose_lhs, int32 transpose_rhs)>& impl_fn) {
-  CHECK_EQ(lhs.width(), rhs.height());
-  int m = lhs.height();
-  int n = rhs.width();
-  int k = lhs.width();
-  auto result = absl::make_unique<Array2D<T>>(m, n);
-  // Because Eigen is a header-oriented library, make sure that the Eigen code
-  // is the same as the code used by the CPU backend (otherwise the linker will
-  // randomly pick *some* definition).
-  impl_fn(
-      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
-      k,
-      /*transpose_lhs=*/0,
-      /*transpose_rhs=*/0);
-  return result;
-}
-
-}  // namespace
-
-/* static */ std::unique_ptr<Array2D<Eigen::half>> ReferenceUtil::MatmulArray2D(
-    const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs) {
-  return MatmulArray2DImpl<Eigen::half>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF16);
-}
-
-/* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MatmulArray2D(
-    const Array2D<float>& lhs, const Array2D<float>& rhs) {
-  return MatmulArray2DImpl<float>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF32);
-}
-
-/* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::MatmulArray2D(
-    const Array2D<double>& lhs, const Array2D<double>& rhs) {
-  return MatmulArray2DImpl<double>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
-}
 
 /* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::Array2DF32ToF64(
     const Array2D<float>& input) {
@@ -190,24 +146,24 @@ ReferenceUtil::ReduceWindow1DGeneric(
     const std::function<float(float, float)>& reduce_func,
     absl::Span<const int64> window, absl::Span<const int64> stride,
     absl::Span<const std::pair<int64, int64>> padding) {
-  std::vector<int64> dim_lengths{static_cast<int64>(operand.size())};
-  std::vector<int64> window_counts(window.size(), 0);
-  std::vector<int64> pad_low(window.size(), 0);
-  for (int64 i = 0; i < window.size(); ++i) {
-    int64 padded_width = padding[i].first + dim_lengths[i] + padding[i].second;
-    window_counts[i] =
-        window_util::StridedBound(padded_width, window[i], stride[i]);
-    pad_low[i] = padding[i].first;
-  }
-  auto result = absl::make_unique<std::vector<float>>(window_counts[0]);
+  CHECK_EQ(window.size(), 1);
+  CHECK_EQ(stride.size(), 1);
+  CHECK_EQ(padding.size(), 1);
+
+  int64 padded_width = padding[0].first + operand.size() + padding[0].second;
+  int64 stride_amount = stride[0];
+  int64 window_size = window[0];
+  int64 result_size =
+      window_util::StridedBound(padded_width, window_size, stride_amount);
+  int64 pad_low = padding[0].first;
+  auto result = absl::make_unique<std::vector<float>>(result_size);
 
   // Do a full 1D reduce window.
-  for (int64 i0 = 0; i0 < window_counts[0]; ++i0) {
-    int64 i0_base = i0 * stride[0] - pad_low[0];
-
+  for (int64 i0 = 0; i0 < result_size; ++i0) {
+    int64 i0_base = i0 * stride_amount - pad_low;
     float val = init;
-    for (int64 i0_win = 0; i0_win < window[0]; ++i0_win) {
-      if (i0_base + i0_win >= 0 && i0_base + i0_win < dim_lengths[0]) {
+    for (int64 i0_win = 0; i0_win < window_size; ++i0_win) {
+      if (i0_base + i0_win >= 0 && i0_base + i0_win < operand.size()) {
         val = reduce_func(val, operand[i0_base + i0_win]);
       }
     }
@@ -224,57 +180,6 @@ ReferenceUtil::ReduceWindow1DAdd(absl::Span<const float> operand, float init,
   const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
   std::vector<int64> dim_lengths{static_cast<int64>(operand.size())};
   return ReduceWindow1DGeneric(
-      operand, init, add_reduce, window, stride,
-      xla::MakePadding(dim_lengths, window, stride, padding));
-}
-
-/* static */ std::unique_ptr<Array2D<float>>
-ReferenceUtil::ReduceWindow2DGeneric(
-    const Array2D<float>& operand, float init,
-    const std::function<float(float, float)>& reduce_func,
-    absl::Span<const int64> window, absl::Span<const int64> stride,
-    absl::Span<const std::pair<int64, int64>> padding) {
-  std::vector<int64> dim_lengths{operand.height(), operand.width()};
-
-  std::vector<int64> window_counts(window.size(), 0);
-  std::vector<int64> pad_low(window.size(), 0);
-  for (int64 i = 0; i < window.size(); ++i) {
-    int64 padded_width = padding[i].first + dim_lengths[i] + padding[i].second;
-    window_counts[i] =
-        window_util::StridedBound(padded_width, window[i], stride[i]);
-    pad_low[i] = padding[i].first;
-  }
-  auto result =
-      absl::make_unique<Array2D<float>>(window_counts[0], window_counts[1]);
-
-  // Do a full 2D reduce window.
-  for (int64 i0 = 0; i0 < window_counts[0]; ++i0) {
-    for (int64 i1 = 0; i1 < window_counts[1]; ++i1) {
-      int64 i0_base = i0 * stride[0] - pad_low[0];
-      int64 i1_base = i1 * stride[1] - pad_low[1];
-
-      float val = init;
-      for (int64 i0_win = 0; i0_win < window[0]; ++i0_win) {
-        for (int64 i1_win = 0; i1_win < window[1]; ++i1_win) {
-          if (i0_base + i0_win >= 0 && i1_base + i1_win >= 0 &&
-              i0_base + i0_win < operand.n1() &&
-              i1_base + i1_win < operand.n2()) {
-            val = reduce_func(val, operand(i0_base + i0_win, i1_base + i1_win));
-          }
-        }
-      }
-      (*result)(i0, i1) = val;
-    }
-  }
-  return result;
-}
-
-/* static  */ std::unique_ptr<Array2D<float>> ReferenceUtil::ReduceWindow2DAdd(
-    const Array2D<float>& operand, float init, absl::Span<const int64> window,
-    absl::Span<const int64> stride, Padding padding) {
-  const auto add_reduce = [](float arg1, float arg2) { return arg1 + arg2; };
-  std::vector<int64> dim_lengths{operand.height(), operand.width()};
-  return ReduceWindow2DGeneric(
       operand, init, add_reduce, window, stride,
       xla::MakePadding(dim_lengths, window, stride, padding));
 }
@@ -557,10 +462,11 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   dim2.set_base_dilation(lhs_dilation.second);
   *window.add_dimensions() = dim2;
 
-  const Shape& shape = ShapeInference::InferConvolveShape(
-                           lhs_literal.shape(), rhs_literal.shape(),
-                           /*feature_group_count=*/1, window, dnums)
-                           .ConsumeValueOrDie();
+  const Shape& shape =
+      ShapeInference::InferConvolveShape(
+          lhs_literal.shape(), rhs_literal.shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums)
+          .ConsumeValueOrDie();
 
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
@@ -572,16 +478,16 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
       /*new_size=*/2, PrecisionConfig::DEFAULT);
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
-      window, dnums, precision_config));
+      /*batch_group_count=*/1, window, dnums, precision_config));
   HloModuleConfig config;
   HloModule module("ReferenceUtil", config);
   auto computation = module.AddEntryComputation(b.Build());
 
   HloEvaluator evaluator;
   Literal result_literal =
-      evaluator.Evaluate<const Literal*>(*computation, {}).ConsumeValueOrDie();
+      evaluator.Evaluate(*computation, {}).ConsumeValueOrDie();
 
-  CHECK_EQ(ShapeUtil::Rank(result_literal.shape()), 4);
+  CHECK_EQ(result_literal.shape().rank(), 4);
   auto result =
       absl::make_unique<Array4D<float>>(result_literal.shape().dimensions(0),
                                         result_literal.shape().dimensions(1),
@@ -634,24 +540,26 @@ ReferenceUtil::ReduceToRowArray2D(
     const std::function<float(float, float)>& reduce_function) {
   std::vector<float> result;
   CHECK_EQ(dims.size(), 3);
-  const std::set<int64> dim_set(dims.begin(), dims.end());
+  const absl::flat_hash_set<int64> dim_set(dims.begin(), dims.end());
   CHECK_EQ(dim_set.size(), 3);
-  for (int64 a0 = 0; a0 == 0 || (!dim_set.count(0) && a0 < array.n1()); ++a0) {
-    for (int64 a1 = 0; a1 == 0 || (!dim_set.count(1) && a1 < array.n2());
+  for (int64 a0 = 0; a0 == 0 || (!dim_set.contains(0) && a0 < array.n1());
+       ++a0) {
+    for (int64 a1 = 0; a1 == 0 || (!dim_set.contains(1) && a1 < array.n2());
          ++a1) {
-      for (int64 a2 = 0; a2 == 0 || (!dim_set.count(2) && a2 < array.n3());
+      for (int64 a2 = 0; a2 == 0 || (!dim_set.contains(2) && a2 < array.n3());
            ++a2) {
-        for (int64 a3 = 0; a3 == 0 || (!dim_set.count(3) && a3 < array.n4());
+        for (int64 a3 = 0; a3 == 0 || (!dim_set.contains(3) && a3 < array.n4());
              ++a3) {
           float accumulator = init;
-          for (int64 i0 = 0; i0 == 0 || (dim_set.count(0) && i0 < array.n1());
-               ++i0) {
-            for (int64 i1 = 0; i1 == 0 || (dim_set.count(1) && i1 < array.n2());
-                 ++i1) {
+          for (int64 i0 = 0;
+               i0 == 0 || (dim_set.contains(0) && i0 < array.n1()); ++i0) {
+            for (int64 i1 = 0;
+                 i1 == 0 || (dim_set.contains(1) && i1 < array.n2()); ++i1) {
               for (int64 i2 = 0;
-                   i2 == 0 || (dim_set.count(2) && i2 < array.n3()); ++i2) {
+                   i2 == 0 || (dim_set.contains(2) && i2 < array.n3()); ++i2) {
                 for (int64 i3 = 0;
-                     i3 == 0 || (dim_set.count(3) && i3 < array.n4()); ++i3) {
+                     i3 == 0 || (dim_set.contains(3) && i3 < array.n4());
+                     ++i3) {
                   // Handle zero-sized arrays.
                   if (array.n1() > 0 && array.n2() > 0 && array.n3() > 0 &&
                       array.n4() > 0) {

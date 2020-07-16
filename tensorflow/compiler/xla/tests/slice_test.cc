@@ -259,17 +259,31 @@ XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64>(GetParam()); }
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_F32) { Run<float>(GetParam()); }
+// TODO(b/69425338): The following tests are disable on GPU because they use
+// too much GPU memory.
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_F32)) {
+  Run<float>(GetParam());
+}
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_F64) { Run<double>(GetParam()); }
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_F64)) {
+  Run<double>(GetParam());
+}
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_U32) { Run<uint32>(GetParam()); }
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_U32)) {
+  Run<uint32>(GetParam());
+}
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_S32) { Run<int32>(GetParam()); }
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S32)) {
+  Run<int32>(GetParam());
+}
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_U64) { Run<uint64>(GetParam()); }
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_U64)) {
+  Run<uint64>(GetParam());
+}
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_S64) { Run<int64>(GetParam()); }
+XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S64)) {
+  Run<int64>(GetParam());
+}
 
 XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
 
@@ -315,8 +329,6 @@ INSTANTIATE_TEST_CASE_P(
     SliceR1TestDataToString
 );
 
-// TODO(b/69425338): This uses too much memory on GPU.
-#ifndef XLA_TEST_BACKEND_GPU
 INSTANTIATE_TEST_CASE_P(
     SliceR1TestBigSlicesInstantiation,
     SliceR1LargeTest,
@@ -330,7 +342,6 @@ INSTANTIATE_TEST_CASE_P(
     ),
     SliceR1TestDataToString
 );
-#endif
 
 INSTANTIATE_TEST_CASE_P(
     SliceStridedR1TestInstantiation,

@@ -53,7 +53,7 @@ struct WorkerEnv {
   // Note: Please use the device_mgr associated with your session if appropriate
   // instead of this one. Using this device_mgr does not support ClusterSpec
   // propagated sessions.
-  DeviceMgr* device_mgr = nullptr;
+  const DeviceMgr* device_mgr = nullptr;
 
   // A set of rendezvous keyed by step ids.
   RendezvousMgrInterface* rendezvous_mgr = nullptr;

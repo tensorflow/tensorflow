@@ -1,0 +1,46 @@
+# RUN: tf_tfl_translate -tf-input-arrays=input0,input1 -tf-input-shapes=4:4 -tf-input-data-types=DT_INT32,DT_INT32 -tf-output-arrays=output %s -o - --output-mlir -tf-custom-opdefs="name: 'BannaPotatoSaladWithColeslaw' input_arg: { name: 'a' type: DT_INT32 } input_arg: { name: 'b' type: DT_INT32 } output_arg: { name: 'c' type: DT_INT32 }" | FileCheck %s
+
+node {
+  name: "output"
+  op: "BannaPotatoSaladWithColeslaw"
+  input: "input0"
+  input: "input1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input0"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "input1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 27
+}
+
+# CHECK-LABEL: func @main
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<4xi32>, %[[ARG_1:[a-z0-9]+]]: tensor<4xi32>) -> tensor<*xi32>
+# CHECK-SAME:  control_outputs = ""
+# CHECK-SAME:  inputs = "input0,input1"
+# CHECK-SAME:  outputs = "output"
+# CHECK-NEXT:    %[[OP:[a-z0-9]+]] = "tf.BannaPotatoSaladWithColeslaw"(%[[ARG_0]], %[[ARG_1]]) {T = i32, device = ""} : (tensor<4xi32>, tensor<4xi32>) -> tensor<*xi32>
+# CHECK-NEXT:    return %[[OP]] : tensor<*xi32>
+# CHECK-NEXT:  }

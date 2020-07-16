@@ -36,7 +36,10 @@ class LayoutUtil {
  public:
   // Creates a layout with the given minor-to-major dimension order. (This is a
   // convenience function for protobuf construction.)
-  static Layout MakeLayout(absl::Span<const int64> minor_to_major);
+  static Layout MakeLayout(absl::Span<const int64> minor_to_major,
+                           absl::Span<const Tile> tiles = {},
+                           int64 element_size_in_bits = 0,
+                           int64 memory_space = 0);
 
   // Similar to MakeLayout, but take indices in reverse order.
   static Layout MakeLayoutFromMajorToMinor(
@@ -45,10 +48,6 @@ class LayoutUtil {
   // Returns a layout with descending ((i.e. {n, n-1, ..., 0}) minor-to-major
   // dimensions.
   static Layout MakeDescendingLayout(int64 rank);
-
-  // Creates a sparse layout with the given maximum number of elements. (This is
-  // a convenience function for protobuf construction.)
-  static Layout MakeSparseLayout(int64 max_sparse_elements);
 
   // Returns default layout for the given shape.
   static Layout GetDefaultLayoutForShape(const Shape& shape);
@@ -106,17 +105,6 @@ class LayoutUtil {
   //        more minor, and so on until dimension N-1 which is the minor.
   static bool IsMonotonicWithDim0Major(const Layout& layout);
 
-  // Returns whether the given Shape is an array (i.e. not a tuple) and has a
-  // sparse format layout.
-  static bool IsSparseArray(const Shape& shape);
-
-  // Returns whether the given Layout has a sparse format.
-  static bool IsSparse(const Layout& layout);
-
-  // Returns the maximum number of elements that can be stored in a sparse
-  // layout.
-  static int64 MaxSparseElements(const Layout& layout);
-
   // Returns whether the given shape has a layout. For tuple shapes, true is
   // returned only if all elements have layouts.
   static bool HasLayout(const Shape& shape);
@@ -161,10 +149,10 @@ class LayoutUtil {
   // so on. Then a logical dimension number l corresponds to the physical
   // dimension number MakeLogicalToPhysical(layout)[l].
   //
-  // As an example, consider physical dimension number 0, which by definition is
-  // the most major. Then l := Major(0) is the most major logical dimension. If
-  // v is the vector returned from this function, then v[l] == 0. So v maps the
-  // most major logical dimension l to the physical dimension number 0.
+  // In the returned vector, the first element represents the most major logical
+  // dimension. The element whose contents are 0 represents the most major
+  // physical dimension, and the element with contents (rank - 1) represents
+  // the most minor physical dimension.
   static std::vector<int64> MakeLogicalToPhysical(const Layout& layout);
 
   // Returns a human-readable string that represents the given layout.

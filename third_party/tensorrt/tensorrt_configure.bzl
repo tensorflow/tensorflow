@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Repository rule for TensorRT configuration.
 
 `tensorrt_configure` depends on the following environment variables:
@@ -9,208 +8,195 @@
 
 load(
     "//third_party/gpus:cuda_configure.bzl",
-    "auto_configure_fail",
+    "find_cuda_config",
+    "lib_name",
+    "make_copy_files_rule",
+)
+load(
+    "//third_party/remote_config:common.bzl",
+    "config_repo_label",
     "get_cpu_value",
-    "find_cuda_define",
-    "matches_version",
-    "symlink_genrule_for_dir",
+    "get_host_environ",
 )
 
 _TENSORRT_INSTALL_PATH = "TENSORRT_INSTALL_PATH"
+_TF_TENSORRT_CONFIG_REPO = "TF_TENSORRT_CONFIG_REPO"
 _TF_TENSORRT_VERSION = "TF_TENSORRT_VERSION"
+_TF_NEED_TENSORRT = "TF_NEED_TENSORRT"
 
-_TF_TENSORRT_LIBS = ["nvinfer"]
-_TF_TENSORRT_HEADERS = ["NvInfer.h", "NvUtils.h"]
+_TF_TENSORRT_LIBS = ["nvinfer", "nvinfer_plugin"]
+_TF_TENSORRT_HEADERS = ["NvInfer.h", "NvUtils.h", "NvInferPlugin.h"]
+_TF_TENSORRT_HEADERS_V6 = [
+    "NvInfer.h",
+    "NvUtils.h",
+    "NvInferPlugin.h",
+    "NvInferVersion.h",
+    "NvInferRuntime.h",
+    "NvInferRuntimeCommon.h",
+    "NvInferPluginUtils.h",
+]
 
 _DEFINE_TENSORRT_SONAME_MAJOR = "#define NV_TENSORRT_SONAME_MAJOR"
 _DEFINE_TENSORRT_SONAME_MINOR = "#define NV_TENSORRT_SONAME_MINOR"
 _DEFINE_TENSORRT_SONAME_PATCH = "#define NV_TENSORRT_SONAME_PATCH"
 
+def _at_least_version(actual_version, required_version):
+    actual = [int(v) for v in actual_version.split(".")]
+    required = [int(v) for v in required_version.split(".")]
+    return actual >= required
 
-def _headers_exist(repository_ctx, path):
-  """Returns whether all TensorRT header files could be found in 'path'.
+def _get_tensorrt_headers(tensorrt_version):
+    if _at_least_version(tensorrt_version, "6"):
+        return _TF_TENSORRT_HEADERS_V6
+    return _TF_TENSORRT_HEADERS
 
-  Args:
-    repository_ctx: The repository context.
-    path: The TensorRT include path to check.
-
-  Returns:
-    True if all TensorRT header files can be found in the path.
-  """
-  for h in _TF_TENSORRT_HEADERS:
-    if not repository_ctx.path("%s/%s" % (path, h)).exists:
-      return False
-  return True
-
-
-def _find_trt_header_dir(repository_ctx, trt_install_path):
-  """Returns the path to the directory containing headers of TensorRT.
-
-  Args:
-    repository_ctx: The repository context.
-    trt_install_path: The TensorRT library install directory.
-
-  Returns:
-    The path of the directory containing the TensorRT header.
-  """
-  if trt_install_path == "/usr/lib/x86_64-linux-gnu":
-    path = "/usr/include/x86_64-linux-gnu"
-    if _headers_exist(repository_ctx, path):
-      return path
-  if trt_install_path == "/usr/lib/aarch64-linux-gnu":
-    path = "/usr/include/aarch64-linux-gnu"
-    if _headers_exist(repository_ctx, path):
-      return path
-  path = str(repository_ctx.path("%s/../include" % trt_install_path).realpath)
-  if _headers_exist(repository_ctx, path):
-    return path
-  auto_configure_fail(
-      "Cannot find NvInfer.h with TensorRT install path %s" % trt_install_path)
-
-
-def _trt_lib_version(repository_ctx, trt_install_path):
-  """Detects the library (e.g. libnvinfer) version of TensorRT.
-
-  Args:
-    repository_ctx: The repository context.
-    trt_install_path: The TensorRT library install directory.
-
-  Returns:
-    A string containing the library version of TensorRT.
-  """
-  trt_header_dir = _find_trt_header_dir(repository_ctx, trt_install_path)
-  major_version = find_cuda_define(repository_ctx, trt_header_dir, "NvInfer.h",
-                                   _DEFINE_TENSORRT_SONAME_MAJOR)
-  minor_version = find_cuda_define(repository_ctx, trt_header_dir, "NvInfer.h",
-                                   _DEFINE_TENSORRT_SONAME_MINOR)
-  patch_version = find_cuda_define(repository_ctx, trt_header_dir, "NvInfer.h",
-                                   _DEFINE_TENSORRT_SONAME_PATCH)
-  full_version = "%s.%s.%s" % (major_version, minor_version, patch_version)
-  environ_version = repository_ctx.os.environ[_TF_TENSORRT_VERSION].strip()
-  if not matches_version(environ_version, full_version):
-    auto_configure_fail(
-        ("TensorRT library version detected from %s/%s (%s) does not match " +
-         "TF_TENSORRT_VERSION (%s). To fix this rerun configure again.") %
-        (trt_header_dir, "NvInfer.h", full_version, environ_version))
-  return environ_version
-
-
-def _find_trt_libs(repository_ctx, trt_install_path, trt_lib_version):
-  """Finds the given TensorRT library on the system.
-
-  Adapted from code contributed by Sami Kama (https://github.com/samikama).
-
-  Args:
-    repository_ctx: The repository context.
-    trt_install_path: The TensorRT library installation directory.
-    trt_lib_version: The version of TensorRT library files as returned
-      by _trt_lib_version.
-
-  Returns:
-    Map of library names to structs with the following fields:
-      src_file_path: The full path to the library found on the system.
-      dst_file_name: The basename of the target library.
-  """
-  objdump = repository_ctx.which("objdump")
-  result = {}
-  for lib in _TF_TENSORRT_LIBS:
-    dst_file_name = "lib%s.so.%s" % (lib, trt_lib_version)
-    src_file_path = repository_ctx.path("%s/%s" % (trt_install_path,
-                                                   dst_file_name))
-    if not src_file_path.exists:
-      auto_configure_fail(
-          "Cannot find TensorRT library %s" % str(src_file_path))
-    if objdump != None:
-      objdump_out = repository_ctx.execute([objdump, "-p", str(src_file_path)])
-      for line in objdump_out.stdout.splitlines():
-        if "SONAME" in line:
-          dst_file_name = line.strip().split(" ")[-1]
-    result.update({
-        lib:
-            struct(
-                dst_file_name=dst_file_name,
-                src_file_path=str(src_file_path.realpath))
-    })
-  return result
-
+def _tpl_path(repository_ctx, filename):
+    return repository_ctx.path(Label("//third_party/tensorrt:%s.tpl" % filename))
 
 def _tpl(repository_ctx, tpl, substitutions):
-  repository_ctx.template(tpl, Label("//third_party/tensorrt:%s.tpl" % tpl),
-                          substitutions)
-
+    repository_ctx.template(
+        tpl,
+        _tpl_path(repository_ctx, tpl),
+        substitutions,
+    )
 
 def _create_dummy_repository(repository_ctx):
-  """Create a dummy TensorRT repository."""
-  _tpl(repository_ctx, "build_defs.bzl", {"%{tensorrt_is_configured}": "False"})
-  substitutions = {
-      "%{tensorrt_genrules}": "",
-      "%{tensorrt_headers}": "",
-  }
-  for lib in _TF_TENSORRT_LIBS:
-    k = "%%{%s}" % lib.replace("nv", "nv_")
-    substitutions.update({k: ""})
-  _tpl(repository_ctx, "BUILD", substitutions)
+    """Create a dummy TensorRT repository."""
+    _tpl(repository_ctx, "build_defs.bzl", {"%{if_tensorrt}": "if_false"})
+    _tpl(repository_ctx, "BUILD", {
+        "%{copy_rules}": "",
+        "\":tensorrt_include\"": "",
+        "\":tensorrt_lib\"": "",
+    })
+    _tpl(repository_ctx, "tensorrt/include/tensorrt_config.h", {
+        "%{tensorrt_version}": "",
+    })
 
+    # Copy license file in non-remote build.
+    repository_ctx.template(
+        "LICENSE",
+        Label("//third_party/tensorrt:LICENSE"),
+        {},
+    )
+
+def enable_tensorrt(repository_ctx):
+    """Returns whether to build with TensorRT support."""
+    return int(get_host_environ(repository_ctx, _TF_NEED_TENSORRT, False))
+
+def _create_local_tensorrt_repository(repository_ctx):
+    # Resolve all labels before doing any real work. Resolving causes the
+    # function to be restarted with all previous state being lost. This
+    # can easily lead to a O(n^2) runtime in the number of labels.
+    # See https://github.com/tensorflow/tensorflow/commit/62bd3534525a036f07d9851b3199d68212904778
+    find_cuda_config_path = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_cuda_config.py.gz.base64"))
+    tpl_paths = {
+        "build_defs.bzl": _tpl_path(repository_ctx, "build_defs.bzl"),
+        "BUILD": _tpl_path(repository_ctx, "BUILD"),
+        "tensorrt/include/tensorrt_config.h": _tpl_path(repository_ctx, "tensorrt/include/tensorrt_config.h"),
+    }
+
+    config = find_cuda_config(repository_ctx, find_cuda_config_path, ["tensorrt"])
+    trt_version = config["tensorrt_version"]
+    cpu_value = get_cpu_value(repository_ctx)
+
+    # Copy the library and header files.
+    libraries = [lib_name(lib, cpu_value, trt_version) for lib in _TF_TENSORRT_LIBS]
+    library_dir = config["tensorrt_library_dir"] + "/"
+    headers = _get_tensorrt_headers(trt_version)
+    include_dir = config["tensorrt_include_dir"] + "/"
+    copy_rules = [
+        make_copy_files_rule(
+            repository_ctx,
+            name = "tensorrt_lib",
+            srcs = [library_dir + library for library in libraries],
+            outs = ["tensorrt/lib/" + library for library in libraries],
+        ),
+        make_copy_files_rule(
+            repository_ctx,
+            name = "tensorrt_include",
+            srcs = [include_dir + header for header in headers],
+            outs = ["tensorrt/include/" + header for header in headers],
+        ),
+    ]
+
+    # Set up config file.
+    repository_ctx.template(
+        "build_defs.bzl",
+        tpl_paths["build_defs.bzl"],
+        {"%{if_tensorrt}": "if_true"},
+    )
+
+    # Set up BUILD file.
+    repository_ctx.template(
+        "BUILD",
+        tpl_paths["BUILD"],
+        {"%{copy_rules}": "\n".join(copy_rules)},
+    )
+
+    # Copy license file in non-remote build.
+    repository_ctx.template(
+        "LICENSE",
+        Label("//third_party/tensorrt:LICENSE"),
+        {},
+    )
+
+    # Set up tensorrt_config.h, which is used by
+    # tensorflow/stream_executor/dso_loader.cc.
+    repository_ctx.template(
+        "tensorrt/include/tensorrt_config.h",
+        tpl_paths["tensorrt/include/tensorrt_config.h"],
+        {"%{tensorrt_version}": trt_version},
+    )
 
 def _tensorrt_configure_impl(repository_ctx):
-  """Implementation of the tensorrt_configure repository rule."""
-  if _TENSORRT_INSTALL_PATH not in repository_ctx.os.environ:
-    _create_dummy_repository(repository_ctx)
-    return
+    """Implementation of the tensorrt_configure repository rule."""
 
-  if (get_cpu_value(repository_ctx) != "Linux"):
-    auto_configure_fail("TensorRT is supported only on Linux.")
-  if _TF_TENSORRT_VERSION not in repository_ctx.os.environ:
-    auto_configure_fail("TensorRT library (libnvinfer) version is not set.")
-  trt_install_path = repository_ctx.os.environ[_TENSORRT_INSTALL_PATH].strip()
-  if not repository_ctx.path(trt_install_path).exists:
-    auto_configure_fail(
-        "Cannot find TensorRT install path %s." % trt_install_path)
+    if get_host_environ(repository_ctx, _TF_TENSORRT_CONFIG_REPO) != None:
+        # Forward to the pre-configured remote repository.
+        remote_config_repo = repository_ctx.os.environ[_TF_TENSORRT_CONFIG_REPO]
+        repository_ctx.template("BUILD", config_repo_label(remote_config_repo, ":BUILD"), {})
+        repository_ctx.template(
+            "build_defs.bzl",
+            config_repo_label(remote_config_repo, ":build_defs.bzl"),
+            {},
+        )
+        repository_ctx.template(
+            "tensorrt/include/tensorrt_config.h",
+            config_repo_label(remote_config_repo, ":tensorrt/include/tensorrt_config.h"),
+            {},
+        )
+        repository_ctx.template(
+            "LICENSE",
+            config_repo_label(remote_config_repo, ":LICENSE"),
+            {},
+        )
+        return
 
-  # Set up the symbolic links for the library files.
-  trt_lib_version = _trt_lib_version(repository_ctx, trt_install_path)
-  trt_libs = _find_trt_libs(repository_ctx, trt_install_path, trt_lib_version)
-  trt_lib_src = []
-  trt_lib_dest = []
-  for lib in trt_libs.values():
-    trt_lib_src.append(lib.src_file_path)
-    trt_lib_dest.append(lib.dst_file_name)
-  genrules = [
-      symlink_genrule_for_dir(repository_ctx, None, "tensorrt/lib/",
-                              "tensorrt_lib", trt_lib_src, trt_lib_dest)
-  ]
+    if not enable_tensorrt(repository_ctx):
+        _create_dummy_repository(repository_ctx)
+        return
 
-  # Set up the symbolic links for the header files.
-  trt_header_dir = _find_trt_header_dir(repository_ctx, trt_install_path)
-  src_files = [
-      "%s/%s" % (trt_header_dir, header) for header in _TF_TENSORRT_HEADERS
-  ]
-  dest_files = _TF_TENSORRT_HEADERS
-  genrules.append(
-      symlink_genrule_for_dir(repository_ctx, None, "tensorrt/include/",
-                              "tensorrt_include", src_files, dest_files))
+    _create_local_tensorrt_repository(repository_ctx)
 
-  # Set up config file.
-  _tpl(repository_ctx, "build_defs.bzl", {"%{tensorrt_is_configured}": "True"})
+_ENVIRONS = [
+    _TENSORRT_INSTALL_PATH,
+    _TF_TENSORRT_VERSION,
+    _TF_NEED_TENSORRT,
+    "TF_CUDA_PATHS",
+]
 
-  # Set up BUILD file.
-  substitutions = {
-      "%{tensorrt_genrules}": "\n".join(genrules),
-      "%{tensorrt_headers}": '":tensorrt_include"',
-  }
-  for lib in _TF_TENSORRT_LIBS:
-    k = "%%{%s}" % lib.replace("nv", "nv_")
-    v = '"tensorrt/lib/%s"' % trt_libs[lib].dst_file_name
-    substitutions.update({k: v})
-  _tpl(repository_ctx, "BUILD", substitutions)
-
+remote_tensorrt_configure = repository_rule(
+    implementation = _create_local_tensorrt_repository,
+    environ = _ENVIRONS,
+    remotable = True,
+    attrs = {
+        "environ": attr.string_dict(),
+    },
+)
 
 tensorrt_configure = repository_rule(
-    implementation=_tensorrt_configure_impl,
-    environ=[
-        _TENSORRT_INSTALL_PATH,
-        _TF_TENSORRT_VERSION,
-    ],
+    implementation = _tensorrt_configure_impl,
+    environ = _ENVIRONS + [_TF_TENSORRT_CONFIG_REPO],
 )
 """Detects and configures the local CUDA toolchain.
 

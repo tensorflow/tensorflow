@@ -44,8 +44,8 @@ namespace toco {
   if (tf_concat_op->type == OperatorType::kConcatV2) {
     axis_pos = tf_concat_op->inputs.size() - 1;
   }
-  const string axis_name = tf_concat_op->inputs[axis_pos];
-  std::vector<string> concat_input_names;
+  const std::string axis_name = tf_concat_op->inputs[axis_pos];
+  std::vector<std::string> concat_input_names;
   for (std::size_t i = 0; i < tf_concat_op->inputs.size(); i++) {
     if (i != axis_pos) {
       concat_input_names.push_back(tf_concat_op->inputs[i]);
@@ -72,16 +72,8 @@ namespace toco {
   concatenation_op->outputs = {tf_concat_op->outputs[0]};
   auto depth_concat_it = model->operators.emplace(concat_it, concatenation_op);
   CHECK_EQ(depth_concat_it->get(), concatenation_op);
-  // Update invalidated iterator
-  concat_it = depth_concat_it + 1;
-  CHECK_EQ(concat_it->get(), tf_concat_op);
 
-  // Remove the axis array if it is not used by anything else.
-  if (CountOpsWithInput(*model, axis_name) == 1) {
-    model->EraseArray(axis_name);
-  }
-  // Remove the TensorFlowConcat op
-  model->operators.erase(concat_it);
+  DeleteOpAndArrays(model, tf_concat_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

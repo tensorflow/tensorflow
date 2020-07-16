@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
+    name: "Asset"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Builder"
     mtype: "<type \'type\'>"
   }
@@ -26,6 +30,14 @@ tf_module {
   }
   member {
     name: "CLASSIFY_OUTPUT_SCORES"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "DEBUG_DIRECTORY"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "DEBUG_INFO_FILENAME_PB"
     mtype: "<type \'str\'>"
   }
   member {
@@ -83,6 +95,10 @@ tf_module {
   member {
     name: "SERVING"
     mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SaveOptions"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "TPU"
@@ -165,6 +181,10 @@ tf_module {
     argspec: "args=[\'sess\', \'tags\', \'export_dir\', \'import_scope\'], varargs=None, keywords=saver_kwargs, defaults=[\'None\'], "
   }
   member_method {
+    name: "load_v2"
+    argspec: "args=[\'export_dir\', \'tags\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "main_op_with_restore"
     argspec: "args=[\'restore_op_name\'], varargs=None, keywords=None, defaults=None"
   }
@@ -179,6 +199,10 @@ tf_module {
   member_method {
     name: "regression_signature_def"
     argspec: "args=[\'examples\', \'predictions\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'obj\', \'export_dir\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "simple_save"

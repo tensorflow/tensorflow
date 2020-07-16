@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/delegate.h"
 
+#include <memory>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -22,47 +23,80 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/lite/delegates/flex/kernel.h"
 #include "tensorflow/lite/delegates/flex/util.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
-namespace flex {
-namespace delegate {
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
-  // Get the nodes in the current execution plan. Interpreter owns this array.
-  TfLiteIntArray* plan;
-  TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan));
+// Corresponding weak declaration found in lite/interpreter_builder.cc.
+#if !defined(_WIN32)
+// If weak symbol is not supported (Windows), it can use
+// TF_AcquireFlexDelegate() path instead.
+TfLiteDelegateUniquePtr AcquireFlexDelegate() {
+  return tflite::FlexDelegate::Create();
+}
+#endif
 
-  // Add all custom ops starting with "Flex" to list of supported nodes.
-  std::vector<int> supported_nodes;
-  for (int node_index : TfLiteIntArrayView(plan)) {
-    TfLiteNode* node;
-    TfLiteRegistration* registration;
-    TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
-        context, node_index, &node, &registration));
+TfLiteDelegateUniquePtr FlexDelegate::Create(
+    std::unique_ptr<FlexDelegate> base_delegate) {
+  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
+                       "Created TensorFlow Lite delegate for select TF ops.");
+  if (base_delegate == nullptr) {
+    base_delegate.reset(new FlexDelegate());
+  }
+  auto flex_delegate = TfLiteDelegateFactory::Create(std::move(base_delegate));
+  flex_delegate->CopyFromBufferHandle =
+      [](TfLiteContext* context, TfLiteDelegate* delegate,
+         TfLiteBufferHandle buffer_handle,
+         TfLiteTensor* tensor) -> TfLiteStatus {
+    return reinterpret_cast<FlexDelegate*>(delegate->data_)
+        ->CopyFromBufferHandle(context, buffer_handle, tensor);
+  };
+  flex_delegate->flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
+  return flex_delegate;
+}
 
-    if (IsFlexOp(registration->custom_name)) {
-      supported_nodes.push_back(node_index);
-    }
+TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
+  // If the TensorFlow Lite thread count is explicitly configured, use it,
+  // otherwise rely on the default TensorFlow threading behavior.
+  tensorflow::SessionOptions session_options;
+  if (context->recommended_num_threads > 0) {
+    session_options.config.set_intra_op_parallelism_threads(
+        context->recommended_num_threads);
   }
 
-  // Request TFLite to partition the graph and make kernels for each independent
-  // node sub set.
-  TfLiteIntArray* size_and_nodes =
-      ConvertVectorToTfLiteIntArray(supported_nodes);
-  context->ReplaceNodeSubsetsWithDelegateKernels(context, GetKernel(),
-                                                 size_and_nodes, delegate);
-  TfLiteIntArrayFree(size_and_nodes);
+  auto status = delegate_data_.Prepare(session_options);
+  if (!status.ok()) {
+    context->ReportError(context, "Failed to initialize TensorFlow context: %s",
+                         status.error_message().c_str());
+    return kTfLiteError;
+  }
+
   return kTfLiteOk;
 }
 
-TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
-                                  TfLiteDelegate* delegate,
-                                  TfLiteBufferHandle buffer_handle,
-                                  TfLiteTensor* output) {
-  BufferMap* buffer_map =
-      reinterpret_cast<DelegateData*>(delegate->data_)->GetBufferMap(context);
+const char* FlexDelegate::Name() const {
+  static constexpr char kName[] = "TfLiteFlexDelegate";
+  return kName;
+}
+
+bool FlexDelegate::IsNodeSupportedByDelegate(
+    const TfLiteRegistration* registration, const TfLiteNode* node,
+    TfLiteContext* context) const {
+  return IsFlexOp(registration->custom_name);
+}
+
+std::unique_ptr<SimpleDelegateKernelInterface>
+FlexDelegate::CreateDelegateKernelInterface() {
+  return std::unique_ptr<SimpleDelegateKernelInterface>(
+      new tflite::flex::DelegateKernel());
+}
+
+TfLiteStatus FlexDelegate::CopyFromBufferHandle(
+    TfLiteContext* context, TfLiteBufferHandle buffer_handle,
+    TfLiteTensor* output) {
+  flex::BufferMap* buffer_map = delegate_data_.GetBufferMap(context);
 
   if (!buffer_map->HasTensor(buffer_handle)) {
     context->ReportError(context, "Invalid tensor index %d.", buffer_handle);
@@ -80,7 +114,7 @@ TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
     }
     DynamicBuffer dynamic_buffer;
 
-    auto tf_data = t.flat<string>();
+    auto tf_data = t.flat<tensorflow::tstring>();
     for (int i = 0; i < t.NumElements(); ++i) {
       dynamic_buffer.AddString(tf_data(i).data(), tf_data(i).size());
     }
@@ -105,38 +139,16 @@ TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-}  // namespace delegate
-}  // namespace flex
-
-// Corresponding weak declaration found in lite/model.cc.
-std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>
-AcquireFlexDelegate() {
-  return std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
-      tflite::FlexDelegate::Create().release(), [](TfLiteDelegate* delegate) {
-        delete reinterpret_cast<tflite::FlexDelegate*>(delegate);
-      });
-}
-
-std::unique_ptr<FlexDelegate> FlexDelegate::Create() {
-  std::unique_ptr<flex::DelegateData> delegate_data;
-  if (!flex::DelegateData::Create(&delegate_data).ok()) {
-    fprintf(stderr, "Unable to initialize TensorFlow context.\n");
-    return nullptr;
-  }
-
-  return std::unique_ptr<FlexDelegate>(
-      new FlexDelegate(std::move(delegate_data)));
-}
-
-FlexDelegate::FlexDelegate(std::unique_ptr<flex::DelegateData> delegate_data)
-    : TfLiteDelegate(TfLiteDelegateCreate()),
-      delegate_data_(std::move(delegate_data)) {
-  data_ = delegate_data_.get();
-  Prepare = &flex::delegate::Prepare;
-  CopyFromBufferHandle = &flex::delegate::CopyFromBufferHandle;
-  flags = kTfLiteDelegateFlagsAllowDynamicTensors;
-}
-
-FlexDelegate::~FlexDelegate() {}
-
 }  // namespace tflite
+
+// Exported C interface function which is used by AcquireFlexDelegate() at
+// interpreter_build.cc. To export the function name globally, the function name
+// must be matched with patterns in tf_version_script.lds
+extern "C" {
+#if defined(_WIN32)
+__declspec(dllexport)
+#endif
+    tflite::TfLiteDelegateUniquePtr TF_AcquireFlexDelegate() {
+  return tflite::FlexDelegate::Create();
+}
+}  // extern "C"

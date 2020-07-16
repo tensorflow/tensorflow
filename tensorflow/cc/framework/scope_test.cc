@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/framework/scope.h"
+
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -143,6 +145,16 @@ TEST(ScopeTest, ControlDeps) {
   EXPECT_EQ(c.control_deps().size(), 2);
   Scope c_c = c.WithControlDependencies({Operation()});
   EXPECT_EQ(c_c.control_deps().size(), 3);
+}
+
+TEST(ScopeTest, CreateOutput) {
+  Scope root = Scope::NewRootScope();
+  Output a = ops::Placeholder(root.WithOpName("a"), DT_FLOAT);
+  Output add;
+  ASSERT_TRUE(
+      CreateOutputWithScope("Add", {a, a}, root.WithOpName("add"), &add).ok());
+  EXPECT_EQ(add.node()->name(), "add");
+  EXPECT_EQ(add.node()->type_string(), "Add");
 }
 
 }  // namespace tensorflow

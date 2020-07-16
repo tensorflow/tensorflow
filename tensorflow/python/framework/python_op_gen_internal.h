@@ -33,6 +33,8 @@ bool IsPythonReserved(const string& s);
 bool IsOpWithUnderscorePrefix(const string& s);
 
 // Add a _ to the end of s if necessary to avoid a Python keyword or built-in.
+// Also convert namespace characters ('>') to '_' because python does not
+// support '>' in names
 string AvoidPythonReserved(const string& s);
 
 // Convert an AttrValue with type `type` to the Python representation for
@@ -69,7 +71,7 @@ class ParamNames {
 class GenPythonOp {
  public:
   GenPythonOp(const OpDef& op_def, const ApiDef& api_def,
-              const string& function_name);
+              const string& function_name, bool add_type_annotations_);
   virtual ~GenPythonOp();
 
   virtual string Code();
@@ -96,6 +98,7 @@ class GenPythonOp {
   const OpDef& op_def_;
   const ApiDef& api_def_;
   const string function_name_;
+  bool add_type_annotations_;
   const int num_outs_;
 
   // Return value from Code() is prelude_ + result_.

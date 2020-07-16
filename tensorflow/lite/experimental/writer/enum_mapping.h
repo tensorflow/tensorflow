@@ -29,7 +29,7 @@ inline ActivationFunctionType TfLiteActivationToSchemaActivation(
       return ActivationFunctionType_NONE;
     case kTfLiteActRelu:
       return ActivationFunctionType_RELU;
-    case kTfLiteActRelu1:
+    case kTfLiteActReluN1To1:
       return ActivationFunctionType_RELU_N1_TO_1;
     case kTfLiteActRelu6:
       return ActivationFunctionType_RELU6;
@@ -62,10 +62,16 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_FLOAT32;  // TODO(aselle): Consider an error.
     case kTfLiteFloat32:
       return TensorType_FLOAT32;
+    case kTfLiteFloat16:
+      return TensorType_FLOAT16;
+    case kTfLiteFloat64:
+      return TensorType_FLOAT64;
     case kTfLiteInt32:
       return TensorType_INT32;
     case kTfLiteUInt8:
       return TensorType_UINT8;
+    case kTfLiteInt8:
+      return TensorType_INT8;
     case kTfLiteInt64:
       return TensorType_INT64;
     case kTfLiteString:
@@ -76,6 +82,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_INT16;
     case kTfLiteComplex64:
       return TensorType_COMPLEX64;
+    case kTfLiteComplex128:
+      return TensorType_COMPLEX128;
   }
   // TODO(aselle): consider an error
 }
@@ -111,6 +119,30 @@ inline LSHProjectionType LSHProjectionTypeToSchema(
       return LSHProjectionType_DENSE;
   }
 }
+
+inline MirrorPadMode MirrorPaddingModeToSchema(TfLiteMirrorPaddingMode mode) {
+  switch (mode) {
+    case kTfLiteMirrorPaddingUnknown:
+      return MirrorPadMode_REFLECT;  // TODO(aselle): consider an error
+    case kTfLiteMirrorPaddingReflect:
+      return MirrorPadMode_REFLECT;
+    case kTfLiteMirrorPaddingSymmetric:
+      return MirrorPadMode_SYMMETRIC;
+  }
+}
+
+inline CombinerType CombinerTypeToSchema(TfLiteCombinerType type) {
+  switch (type) {
+    case kTfLiteCombinerTypeSum:
+      return CombinerType_SUM;
+    case kTfLiteCombinerTypeMean:
+      return CombinerType_MEAN;
+    case kTfLiteCombinerTypeSqrtn:
+      return CombinerType_SQRTN;
+  }
+}
+
+// int
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_WRITER_ENUM_MAPPING_H_

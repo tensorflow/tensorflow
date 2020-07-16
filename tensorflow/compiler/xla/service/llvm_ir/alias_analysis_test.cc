@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
+
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -29,7 +30,7 @@ class AliasAnalysisTest : public CpuCodegenTest {};
 
 void FakeCustomCallTarget(float* out, float** in) {}
 
-REGISTER_CUSTOM_CALL_TARGET(FakeCustomCallTarget);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(FakeCustomCallTarget);
 
 TEST_F(AliasAnalysisTest, EmbeddedComputationParamsMayAliasTemps) {
   const char* hlo_string = R"(
@@ -46,7 +47,7 @@ condition {
   condition.state = f32[] parameter(0)
   addend = f32[] custom-call(condition.state), custom_call_target="FakeCustomCallTarget"
   add = f32[] add(addend, condition.state)
-  ROOT greater-than = pred[] greater-than(const.100, add)
+  ROOT greater-than = pred[] compare(const.100, add), direction=GT
 }
 
 ENTRY while3 {
@@ -57,14 +58,14 @@ ENTRY while3 {
 
   CompileAndVerifyIr(hlo_string, R"(
 ; CHECK-LABEL: @body(i8* %retval
-; CHECK: %[[add_result:.*]] = fadd fast float %[[fadd_lhs:.*]], %[[fadd_rhs:.*]]
-; CHECK: store float %[[add_result]], float* %[[store_dest:.*]], !alias.scope ![[alias_scope_md_for_store:[0-9]+]]
+; CHECK: %[[add_result:.*]] = fadd reassoc nsz contract  float %[[fadd_lhs:.*]], %[[fadd_rhs:.*]]
+; CHECK: store float %[[add_result]], float* %[[store_dest:.*]], align 4, !alias.scope ![[alias_scope_md_for_store:[0-9]+]]
 ;
 ; CHECK-LABEL: @condition(i8* %retval, i8* noalias %run_options, i8** noalias %params
 ; CHECK: %[[cond_state_buf_ptr:.*]] = getelementptr inbounds i8*, i8** %buffer_table, i64 0
 ; CHECK: %[[cond_state_buf_untyped:.*]] = load i8*, i8** %[[cond_state_buf_ptr]]
 ; CHECK: %[[cond_state_buf_typed:.*]] = bitcast i8* %[[cond_state_buf_untyped]] to float*
-; CHECK: load float, float* %[[cond_state_buf_typed]], !alias.scope ![[alias_scope_md_for_store]], !noalias ![[noalias_md_for_load:.*]]
+; CHECK: load float, float* %[[cond_state_buf_typed]], align 4, !alias.scope ![[alias_scope_md_for_store]], !noalias ![[noalias_md_for_load:.*]]
 ;
 ; CHECK-LABEL: @while3(
 

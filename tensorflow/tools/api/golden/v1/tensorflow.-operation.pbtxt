@@ -39,10 +39,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "traceback_with_start_lines"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "type"
     mtype: "<type \'property\'>"
   }

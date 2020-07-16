@@ -43,9 +43,7 @@ namespace tensorflow {
 // Region naming:
 // Region naming is up to the application, all of them starts from
 // kMemmappedPackagePrefix. The default graph usually has name
-// kMemmappedPackageDefaultGraphDef; for more details see the conversion
-// utility
-// third_party/tensorflow/contrib/util/convert_graphdef_memmapped_format.cc
+// kMemmappedPackageDefaultGraphDef;
 //
 // A "frozen" GraphDef can be converted into this format using
 // tensorflow/contrib/util/convert_graphdef_memmapped_format
@@ -53,19 +51,11 @@ class MemmappedFileSystem : public FileSystem {
  public:
   // Memmapped regions use this prefix to distinguish from
   // the filesystem.
-#if defined(_MSC_VER)
-  static constexpr char* kMemmappedPackagePrefix =
-#else
-  static constexpr char kMemmappedPackagePrefix[] =
-#endif
+  static constexpr const char kMemmappedPackagePrefix[] =
       "memmapped_package://";
 
-// The default graphdef in the package.
-#if defined(_MSC_VER)
-  static constexpr char* kMemmappedPackageDefaultGraphDef =
-#else
-  static constexpr char kMemmappedPackageDefaultGraphDef[] =
-#endif
+  // The default graphdef in the package.
+  static constexpr const char kMemmappedPackageDefaultGraphDef[] =
       "memmapped_package://.";
 
   MemmappedFileSystem();

@@ -24,14 +24,20 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
 
 class TensorSpecTest(test_util.TensorFlowTestCase):
+
+  def testDefaultDType(self):
+    desc = tensor_spec.TensorSpec([1])
+    self.assertEqual(desc.dtype, dtypes.float32)
 
   def testAcceptsNumpyDType(self):
     desc = tensor_spec.TensorSpec([1], np.float32)
@@ -85,8 +91,12 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     self.assertFalse(desc.is_compatible_with(ints))
 
   def testName(self):
-    desc = tensor_spec.TensorSpec([1], dtypes.float32, name="beep")
-    self.assertEqual(desc.name, "beep")
+    # Note: "_" isn't a valid tensor name, but it is a valid python symbol
+    # name; and tf.function constructs TensorSpecs using function argument
+    # names.
+    for name in ["beep", "foo/bar:0", "a-b_c/d", "_"]:
+      desc = tensor_spec.TensorSpec([1], dtypes.float32, name=name)
+      self.assertEqual(desc.name, name)
 
   def testRepr(self):
     desc1 = tensor_spec.TensorSpec([1], dtypes.float32, name="beep")
@@ -142,15 +152,31 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     desc = tensor_spec.TensorSpec([1, 5], dtypes.float32, "test")
     self.assertEqual(pickle.loads(pickle.dumps(desc)), desc)
 
+  @test_util.deprecated_graph_mode_only
+  def testTypeSpecFromValue(self):
+    g = ops.Graph()
+    with g.as_default():
+      v1 = np.array([1, 2, 3], np.int32)
+      t1 = constant_op.constant(v1)
+
+      ops_before = g.get_operations()
+
+      expected = tensor_spec.TensorSpec([3], dtypes.int32)
+      self.assertEqual(expected, type_spec.type_spec_from_value(v1))
+      self.assertEqual(expected, type_spec.type_spec_from_value(t1))
+
+      # Check that creating TypeSpecs did not require building new Tensors.
+      self.assertLen(g.get_operations(), len(ops_before))
+
 
 class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
 
   def testInvalidMinimum(self):
-    with self.assertRaisesRegexp(ValueError, "not compatible"):
+    with self.assertRaisesRegex(ValueError, "not compatible"):
       tensor_spec.BoundedTensorSpec((3, 5), dtypes.uint8, (0, 0, 0), (1, 1))
 
   def testInvalidMaximum(self):
-    with self.assertRaisesRegexp(ValueError, "not compatible"):
+    with self.assertRaisesRegex(ValueError, "not compatible"):
       tensor_spec.BoundedTensorSpec((3, 5), dtypes.uint8, 0, (1, 1, 1))
 
   def testMinimumMaximumAttributes(self):
@@ -164,9 +190,9 @@ class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
   def testNotWriteableNP(self):
     spec = tensor_spec.BoundedTensorSpec(
         (1, 2, 3), dtypes.float32, 0, (5, 5, 5))
-    with self.assertRaisesRegexp(ValueError, "read-only"):
+    with self.assertRaisesRegex(ValueError, "read-only"):
       spec.minimum[0] = -1
-    with self.assertRaisesRegexp(ValueError, "read-only"):
+    with self.assertRaisesRegex(ValueError, "read-only"):
       spec.maximum[0] = 100
 
   def testReuseSpec(self):

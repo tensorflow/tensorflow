@@ -23,10 +23,35 @@ namespace xla {
 StatusOr<bool>
 BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
     HloInstruction* batch_dot) {
+  // This pass assumes the lhs and rhs batch dimensions are equal and strictly
+  // ascending.
+  const auto& is_iota = [](absl::Span<const int64> dims) {
+    for (int64 i = 0; i < dims.size(); ++i) {
+      if (dims[i] != i) {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (!absl::c_equal(
+          batch_dot->dot_dimension_numbers().lhs_batch_dimensions(),
+          batch_dot->dot_dimension_numbers().rhs_batch_dimensions()) ||
+      !is_iota(AsInt64Slice(
+          batch_dot->dot_dimension_numbers().lhs_batch_dimensions()))) {
+    return false;
+  }
+
   const DotDimensionNumbers& dim_numbers = batch_dot->dot_dimension_numbers();
   HloInstruction *lhs = batch_dot->mutable_operand(0),
                  *rhs = batch_dot->mutable_operand(1);
   const Shape& lhs_shape = lhs->shape();
+
+  // A dot with no contracting dims will be rewritten into a multiply by
+  // AlgebraicSimplifier. Dots with multiple contracting dims are currently
+  // unsupported.
+  if (dim_numbers.lhs_contracting_dimensions_size() != 1) {
+    return false;
+  }
 
   std::vector<int64> degenerate_dims;
   for (int64 batch_dim : dim_numbers.lhs_batch_dimensions()) {

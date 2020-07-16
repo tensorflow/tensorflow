@@ -1,0 +1,39 @@
+op {
+  graph_op_name: "InfeedEnqueue"
+  visibility: HIDDEN
+  in_arg {
+    name: "input"
+    description: <<END
+A tensor that will be provided using the infeed mechanism.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of elements in the tensor.
+END
+  }
+  attr {
+    name: "shape"
+    description: <<END
+The shape of the tensor.
+END
+  }
+  attr {
+    name: "layout"
+    description: <<END
+A vector holding the requested layout in minor-to-major sequence.
+If a layout attribute is passed, but its values are all -1, the layout will
+be computed by the infeed operation.
+END
+  }
+  attr {
+    name: "device_ordinal"
+    description: <<END
+The TPU device to use. This should be -1 when the Op
+is running on a TPU device, and >= 0 when the Op is running on the CPU
+device.
+END
+  }
+  summary: "An op which feeds a single Tensor value into the computation."
+}

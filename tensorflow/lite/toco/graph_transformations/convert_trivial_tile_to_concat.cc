@@ -52,7 +52,7 @@ namespace toco {
   // It then just becomes a concat along that dimension.
   int non_one_dims = 0;
   int concat_axis = 0;
-  for (int i = 0; i < multiples.size(); ++i) {
+  for (size_t i = 0; i < multiples.size(); ++i) {
     if (multiples[i] != 1) {
       ++non_one_dims;
       concat_axis = i;
@@ -86,10 +86,8 @@ namespace toco {
   }
 
   // Replace the operator in the graph.
-  const auto concat_it = model->operators.emplace(tile_it, concat_op);
-  tile_it = concat_it + 1;
-  CHECK_EQ(tile_it->get(), tile_op);
-  model->operators.erase(tile_it);
+  model->operators.emplace(tile_it, concat_op);
+  DeleteOpAndArrays(model, tile_op);
 
   *modified = true;
   return ::tensorflow::Status::OK();

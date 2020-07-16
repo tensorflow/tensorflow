@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "InvGrad"
+  endpoint {
+    name: "nn.InvGrad"
+  }
+}

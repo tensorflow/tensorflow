@@ -17,17 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.ops import unique
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class UniqueTest(test_base.DatasetTestBase):
+class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _testSimpleHelper(self, dtype, test_cases):
     """Test the `unique()` transformation on a list of test cases.
@@ -44,21 +45,15 @@ class UniqueTest(test_base.DatasetTestBase):
     current_test_case = []
     dataset = dataset_ops.Dataset.from_generator(lambda: current_test_case,
                                                  dtype).apply(unique.unique())
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
-      for test_case, expected in test_cases:
-        current_test_case = test_case
-        self.evaluate(iterator.initializer)
-        for element in expected:
-          if dtype == dtypes.string:
-            element = compat.as_bytes(element)
-          self.assertAllEqual(element, self.evaluate(next_element))
-        with self.assertRaises(errors.OutOfRangeError):
-          self.evaluate(next_element)
+    for test_case, expected in test_cases:
+      current_test_case = test_case
+      self.assertDatasetProduces(dataset, [
+          compat.as_bytes(element) if dtype == dtypes.string else element
+          for element in expected
+      ])
 
-  @test_util.run_deprecated_v1
+  @combinations.generate(test_base.graph_only_combinations())
   def testSimpleInt(self):
     for dtype in [dtypes.int32, dtypes.int64]:
       self._testSimpleHelper(dtype, [
@@ -71,7 +66,7 @@ class UniqueTest(test_base.DatasetTestBase):
           ([[1, 1], [1, 1], [2, 2], [3, 3], [1, 1]], [[1, 1], [2, 2], [3, 3]]),
       ])
 
-  @test_util.run_deprecated_v1
+  @combinations.generate(test_base.graph_only_combinations())
   def testSimpleString(self):
     self._testSimpleHelper(dtypes.string, [
         ([], []),

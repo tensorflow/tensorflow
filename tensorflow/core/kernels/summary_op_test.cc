@@ -60,7 +60,7 @@ TEST_F(SummaryScalarOpTest, SimpleFloat) {
   MakeOp(DT_FLOAT);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({3}), {"tag1", "tag2", "tag3"});
+  AddInputFromArray<tstring>(TensorShape({3}), {"tag1", "tag2", "tag3"});
   AddInputFromArray<float>(TensorShape({3}), {1.0f, -0.73f, 10000.0f});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -68,7 +68,7 @@ TEST_F(SummaryScalarOpTest, SimpleFloat) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   EXPECT_SummaryMatches(summary, R"(
       value { tag: 'tag1' simple_value: 1.0 }
       value { tag: 'tag2' simple_value: -0.73 }
@@ -80,7 +80,7 @@ TEST_F(SummaryScalarOpTest, SimpleDouble) {
   MakeOp(DT_DOUBLE);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({3}), {"tag1", "tag2", "tag3"});
+  AddInputFromArray<tstring>(TensorShape({3}), {"tag1", "tag2", "tag3"});
   AddInputFromArray<double>(TensorShape({3}), {1.0, -0.73, 10000.0});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -88,7 +88,7 @@ TEST_F(SummaryScalarOpTest, SimpleDouble) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   EXPECT_SummaryMatches(summary, R"(
       value { tag: 'tag1' simple_value: 1.0 }
       value { tag: 'tag2' simple_value: -0.73 }
@@ -100,7 +100,7 @@ TEST_F(SummaryScalarOpTest, SimpleHalf) {
   MakeOp(DT_HALF);
 
   // Feed and run
-  AddInputFromList<string>(TensorShape({3}), {"tag1", "tag2", "tag3"});
+  AddInputFromList<tstring>(TensorShape({3}), {"tag1", "tag2", "tag3"});
   AddInputFromList<Eigen::half>(TensorShape({3}), {1.0, -2.0, 10000.0});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -108,7 +108,7 @@ TEST_F(SummaryScalarOpTest, SimpleHalf) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   EXPECT_SummaryMatches(summary, R"(
       value { tag: 'tag1' simple_value: 1.0 }
       value { tag: 'tag2' simple_value: -2.0 }
@@ -120,21 +120,21 @@ TEST_F(SummaryScalarOpTest, Error_MismatchedSize) {
   MakeOp(DT_FLOAT);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({2}), {"tag1", "tag2"});
+  AddInputFromArray<tstring>(TensorShape({2}), {"tag1", "tag2"});
   AddInputFromArray<float>(TensorShape({3}), {1.0f, -0.73f, 10000.0f});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "not the same shape")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "not the same shape")) << s;
 }
 
 TEST_F(SummaryScalarOpTest, Error_WrongDimsTags) {
   MakeOp(DT_FLOAT);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({2, 1}), {"tag1", "tag2"});
+  AddInputFromArray<tstring>(TensorShape({2, 1}), {"tag1", "tag2"});
   AddInputFromArray<float>(TensorShape({2}), {1.0f, -0.73f});
   Status s = RunOpKernel();
   EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "tags and values not the same shape"))
+      absl::StrContains(s.ToString(), "tags and values not the same shape"))
       << s;
 }
 
@@ -142,11 +142,11 @@ TEST_F(SummaryScalarOpTest, Error_WrongDimsValues) {
   MakeOp(DT_FLOAT);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({2}), {"tag1", "tag2"});
+  AddInputFromArray<tstring>(TensorShape({2}), {"tag1", "tag2"});
   AddInputFromArray<float>(TensorShape({2, 1}), {1.0f, -0.73f});
   Status s = RunOpKernel();
   EXPECT_TRUE(
-      str_util::StrContains(s.ToString(), "tags and values not the same shape"))
+      absl::StrContains(s.ToString(), "tags and values not the same shape"))
       << s;
 }
 
@@ -168,7 +168,7 @@ TEST_F(SummaryHistoOpTest, SimpleFloat) {
   MakeOp(DT_FLOAT);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({}), {"taghisto"});
+  AddInputFromArray<tstring>(TensorShape({}), {"taghisto"});
   AddInputFromArray<float>(TensorShape({3, 2}),
                            {0.1f, -0.7f, 4.1f, 4., 5.f, 4.f});
   TF_ASSERT_OK(RunOpKernel());
@@ -177,7 +177,7 @@ TEST_F(SummaryHistoOpTest, SimpleFloat) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   ASSERT_EQ(summary.value_size(), 1);
   EXPECT_EQ(summary.value(0).tag(), "taghisto");
   histogram::Histogram histo;
@@ -197,7 +197,7 @@ TEST_F(SummaryHistoOpTest, SimpleDouble) {
   MakeOp(DT_DOUBLE);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({}), {"taghisto"});
+  AddInputFromArray<tstring>(TensorShape({}), {"taghisto"});
   AddInputFromArray<double>(TensorShape({3, 2}), {0.1, -0.7, 4.1, 4., 5., 4.});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -205,7 +205,7 @@ TEST_F(SummaryHistoOpTest, SimpleDouble) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   ASSERT_EQ(summary.value_size(), 1);
   EXPECT_EQ(summary.value(0).tag(), "taghisto");
   histogram::Histogram histo;
@@ -225,7 +225,7 @@ TEST_F(SummaryHistoOpTest, SimpleHalf) {
   MakeOp(DT_HALF);
 
   // Feed and run
-  AddInputFromList<string>(TensorShape({}), {"taghisto"});
+  AddInputFromList<tstring>(TensorShape({}), {"taghisto"});
   AddInputFromList<Eigen::half>(TensorShape({3, 2}),
                                 {0.1, -0.7, 4.1, 4., 5., 4.});
   TF_ASSERT_OK(RunOpKernel());
@@ -234,7 +234,7 @@ TEST_F(SummaryHistoOpTest, SimpleHalf) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
   ASSERT_EQ(summary.value_size(), 1);
   EXPECT_EQ(summary.value(0).tag(), "taghisto");
   histogram::Histogram histo;
@@ -254,20 +254,20 @@ TEST_F(SummaryHistoOpTest, Error_WrongDimsTags) {
   MakeOp(DT_FLOAT);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({2, 1}), {"tag1", "tag2"});
+  AddInputFromArray<tstring>(TensorShape({2, 1}), {"tag1", "tag2"});
   AddInputFromArray<float>(TensorShape({2}), {1.0f, -0.73f});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "tags must be scalar")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "tags must be scalar")) << s;
 }
 
 TEST_F(SummaryHistoOpTest, Error_TooManyTagValues) {
   MakeOp(DT_FLOAT);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({2}), {"tag1", "tag2"});
+  AddInputFromArray<tstring>(TensorShape({2}), {"tag1", "tag2"});
   AddInputFromArray<float>(TensorShape({2, 1}), {1.0f, -0.73f});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "tags must be scalar")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "tags must be scalar")) << s;
 }
 
 // --------------------------------------------------------------------------
@@ -299,7 +299,7 @@ TEST_F(SummaryMergeOpTest, Simple) {
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
       "value { tag: \"tag4\" simple_value: 11.0 }", &s3));
 
-  AddInputFromArray<string>(
+  AddInputFromArray<tstring>(
       TensorShape({3}),
       {s1.SerializeAsString(), s2.SerializeAsString(), s3.SerializeAsString()});
   TF_ASSERT_OK(RunOpKernel());
@@ -308,7 +308,7 @@ TEST_F(SummaryMergeOpTest, Simple) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
 
   EXPECT_SummaryMatches(summary,
                         "value { tag: \"tag1\" simple_value: 1.0 } "
@@ -333,16 +333,16 @@ TEST_F(SummaryMergeOpTest, Simple_MultipleInputs) {
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
       "value { tag: \"tag4\" simple_value: 11.0 }", &s3));
 
-  AddInputFromArray<string>(TensorShape({}), {s1.SerializeAsString()});
-  AddInputFromArray<string>(TensorShape({}), {s2.SerializeAsString()});
-  AddInputFromArray<string>(TensorShape({}), {s3.SerializeAsString()});
+  AddInputFromArray<tstring>(TensorShape({}), {s1.SerializeAsString()});
+  AddInputFromArray<tstring>(TensorShape({}), {s2.SerializeAsString()});
+  AddInputFromArray<tstring>(TensorShape({}), {s3.SerializeAsString()});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output size.
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
 
   EXPECT_SummaryMatches(summary,
                         "value { tag: \"tag1\" simple_value: 1.0 } "
@@ -363,10 +363,10 @@ TEST_F(SummaryMergeOpTest, Error_MismatchedSize) {
   Summary s2;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
       "value { tag: \"tagduplicate\" simple_value: 1.0 } ", &s2));
-  AddInputFromArray<string>(TensorShape({2}),
-                            {s1.SerializeAsString(), s2.SerializeAsString()});
+  AddInputFromArray<tstring>(TensorShape({2}),
+                             {s1.SerializeAsString(), s2.SerializeAsString()});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), "Duplicate tag")) << s;
+  EXPECT_TRUE(absl::StrContains(s.ToString(), "Duplicate tag")) << s;
 }
 
 }  // namespace

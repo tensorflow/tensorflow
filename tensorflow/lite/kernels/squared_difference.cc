@@ -12,14 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include <stddef.h>
+#include <stdint.h>
+
+#include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/binary_function.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -60,7 +64,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
   output->type = input2->type;
 
   data->requires_broadcast = !HaveSameShapes(input1, input2);
@@ -95,6 +99,7 @@ void EvalSquaredDifference(TfLiteContext* context, TfLiteNode* node,
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  ruy::profiler::ScopeLabel label("SquaredDifference");
 
   const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
   const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
@@ -105,10 +110,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   } else if (output->type == kTfLiteInt32) {
     EvalSquaredDifference<int32_t>(context, node, data, input1, input2, output);
   } else {
-    context->ReportError(context,
-                         "SquaredDifference only supports FLOAT32, INT32 and "
-                         "quantized UINT8 now, got %d.",
-                         output->type);
+    context->ReportError(
+        context,
+        "SquaredDifference only supports FLOAT32 and INT32 now, got %d.",
+        output->type);
     return kTfLiteError;
   }
 

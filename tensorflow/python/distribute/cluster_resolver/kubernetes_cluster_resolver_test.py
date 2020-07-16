@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.distribute.cluster_resolver import KubernetesClusterResolver
+from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver import KubernetesClusterResolver
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -119,9 +119,9 @@ class KubernetesClusterResolverTest(test.TestCase):
         override_client=_mock_kubernetes_client(
             {'job-name=tensorflow': ret}))
     cluster_resolver.task_type = 'worker'
-    cluster_resolver.task_index = 0
+    cluster_resolver.task_id = 0
     self.assertEqual(cluster_resolver.task_type, 'worker')
-    self.assertEqual(cluster_resolver.task_index, 0)
+    self.assertEqual(cluster_resolver.task_id, 0)
     self.assertEqual(cluster_resolver.master(), 'grpc://10.1.2.3:8470')
     self.assertEqual(cluster_resolver.master('worker', 2),
                      'grpc://10.1.2.5:8470')
@@ -134,7 +134,7 @@ class KubernetesClusterResolverTest(test.TestCase):
             {'job-name=tensorflow': ret}))
 
     error_msg = 'Pod "tensorflow-abc123" is not running; phase: "Failed"'
-    with self.assertRaisesRegexp(RuntimeError, error_msg):
+    with self.assertRaisesRegex(RuntimeError, error_msg):
       cluster_resolver.cluster_spec()
 
   def testMultiplePodSelectorsAndWorkers(self):

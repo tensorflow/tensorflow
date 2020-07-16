@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.tile."""
+"""Tests for ragged_array_ops.tile."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,13 +24,13 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import ragged
-from tensorflow.python.ops.ragged import ragged_test_util
+from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedTileOpTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedTileOpTest(test_util.TensorFlowTestCase,
                        parameterized.TestCase):
 
   @parameterized.parameters([
@@ -189,7 +189,7 @@ class RaggedTileOpTest(ragged_test_util.RaggedTensorTestCase,
                      multiples,
                      expected,
                      ragged_rank=None):
-    rt = ragged.constant(rt_input, ragged_rank)
+    rt = ragged_factory_ops.constant(rt_input, ragged_rank)
 
     expected_shape = [
         None if dim is None else dim * multiple
@@ -203,21 +203,21 @@ class RaggedTileOpTest(ragged_test_util.RaggedTensorTestCase,
         const_multiples, shape=[len(multiples)])
 
     for multiples_tensor in (const_multiples, non_const_multiples):
-      tiled = ragged.tile(rt, multiples_tensor)
+      tiled = ragged_array_ops.tile(rt, multiples_tensor)
       self.assertEqual(tiled.ragged_rank, rt.ragged_rank)
       self.assertEqual(tiled.shape.ndims, rt.shape.ndims)
       if multiples_tensor is const_multiples:
         self.assertEqual(tiled.shape.as_list(), expected_shape)
-      self.assertRaggedEqual(tiled, expected)
+      self.assertAllEqual(tiled, expected)
 
   def testRaggedTileWithTensorInput(self):
     # When the input is a `Tensor`, ragged_tile just delegates to tf.tile.
     dt = constant_op.constant([[1, 2], [3, 4]])
-    tiled = ragged.tile(dt, [3, 2])
+    tiled = ragged_array_ops.tile(dt, [3, 2])
     expected = [[1, 2, 1, 2], [3, 4, 3, 4],
                 [1, 2, 1, 2], [3, 4, 3, 4],
                 [1, 2, 1, 2], [3, 4, 3, 4]]  # pyformat: disable
-    self.assertRaggedEqual(tiled, expected)
+    self.assertAllEqual(tiled, expected)
 
 
 if __name__ == '__main__':

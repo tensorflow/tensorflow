@@ -32,8 +32,8 @@ namespace gpu {
 // require multiple kernel launches or library calls.
 class SequentialThunk : public Thunk {
  public:
-  SequentialThunk(std::vector<std::unique_ptr<Thunk>> thunks,
-                  const HloInstruction* hlo);
+  SequentialThunk(ThunkInfo thunk_info,
+                  std::vector<std::unique_ptr<Thunk>> thunks);
   SequentialThunk(const SequentialThunk&) = delete;
   SequentialThunk& operator=(const SequentialThunk&) = delete;
 
@@ -41,9 +41,7 @@ class SequentialThunk : public Thunk {
 
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   // The list of sub-thunks.

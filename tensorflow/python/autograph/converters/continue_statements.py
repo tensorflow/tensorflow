@@ -20,7 +20,9 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
+from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis.annos import NodeAnno
 
 
@@ -29,11 +31,30 @@ class _Continue(object):
   def __init__(self):
     self.used = False
     self.control_var_name = None
-    self.create_guard = False
-    self.guard_created = False
 
   def __repr__(self):
-    return 'used: %s, var: %s' % (self.used, self.control_var_name)
+    return '<_Continue(used: {}, var: {})>'.format(self.used,
+                                                   self.control_var_name)
+
+
+class _Block(object):
+  """Tracks information about lexical blocks as they are visited in the AST.
+
+  Mainly, this object tracks the creation of block guards that replace
+  `continue` statements (e.g. `if not continue_:`).
+
+  Attributes:
+    create_guard_current: bool, whether to create a guard for the current
+      statement.
+    create_guard_next: bool, whether to create a guard for the next
+      statement.
+    is_loop_type: bool, whether this block is the body of a loop.
+  """
+
+  def __init__(self):
+    self.is_loop_type = False
+    self.create_guard_current = False
+    self.create_guard_next = False
 
 
 class ContinueCanonicalizationTransformer(converter.Base):
@@ -41,6 +62,14 @@ class ContinueCanonicalizationTransformer(converter.Base):
 
   def visit_Continue(self, node):
     self.state[_Continue].used = True
+    for block in reversed(self.state[_Block].stack):
+      # See ContinueCanonicalizationTest.test_multiple_continues for an example
+      # it's necessary to create guards for all enclosing affected blocks, not
+      # just that of the current block.
+      block.create_guard_next = True
+      if block.is_loop_type:
+        # continue only affects the innermost loop
+        break
     template = """
       var_name = True
     """
@@ -48,35 +77,13 @@ class ContinueCanonicalizationTransformer(converter.Base):
         template, var_name=self.state[_Continue].control_var_name)
 
   def _postprocess_statement(self, node):
-    # Example of how the state machine below works:
-    #
-    #   1| stmt           # State: Continue_.used = False
-    #    |                # Action: none
-    #   2| if cond:
-    #   3|   continue     # State: Continue_.used = True,
-    #    |                #        Continue_.guard_created = False,
-    #    |                #        Continue_.create_guard = False
-    #    |                # Action: Continue_.create_guard = True
-    #   4| stmt           # State: Continue_.used = True,
-    #    |                #        Continue_.guard_created = False,
-    #    |                #        Continue_.create_guard = True
-    #    |                # Action: create `if not continue_used`,
-    #    |                #         set Continue_.guard_created = True
-    #   5| stmt           # State: Continue_.used = True,
-    #    |                #        Continue_.guard_created = True
-    #    |                # Action: none (will be wrapped under previously
-    #    |                #         created if node)
-
     if self.state[_Continue].used:
-      if self.state[_Continue].guard_created:
-        return node, None
-
-      elif not self.state[_Continue].create_guard:
-        self.state[_Continue].create_guard = True
-        return node, None
-
-      else:
-        self.state[_Continue].guard_created = True
+      block = self.state[_Block]
+      should_wrap_current = block.create_guard_current
+      # After processing propagate whether to guard the next statement
+      block.create_guard_current = block.create_guard_next
+      block.create_guard_next = False
+      if should_wrap_current:
         template = """
           if not var_name:
             original_node
@@ -90,6 +97,8 @@ class ContinueCanonicalizationTransformer(converter.Base):
 
   def _visit_loop_body(self, node, nodes):
     self.state[_Continue].enter()
+    self.state[_Block].enter()
+    self.state[_Block].is_loop_type = True
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     continue_var = self.ctx.namer.new_symbol('continue_', scope.referenced)
     self.state[_Continue].control_var_name = continue_var
@@ -103,14 +112,21 @@ class ContinueCanonicalizationTransformer(converter.Base):
       control_var_init = templates.replace(template, var_name=continue_var)
       nodes = control_var_init + nodes
 
+    self.state[_Block].exit()
     self.state[_Continue].exit()
+    return nodes
+
+  def _visit_non_loop_body(self, nodes):
+    self.state[_Block].enter()
+    nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
+    self.state[_Block].exit()
     return nodes
 
   def visit_While(self, node):
     node.test = self.visit(node.test)
     node.body = self._visit_loop_body(node, node.body)
     # A continue in the else clause applies to the containing scope.
-    node.orelse = self.visit_block(node.orelse)
+    node.orelse = self._visit_non_loop_body(node.orelse)
     return node
 
   def visit_For(self, node):
@@ -118,11 +134,35 @@ class ContinueCanonicalizationTransformer(converter.Base):
     node.iter = self.generic_visit(node.iter)
     node.body = self._visit_loop_body(node, node.body)
     # A continue in the else clause applies to the containing scope.
-    node.orelse = self.visit_block(node.orelse)
+    node.orelse = self._visit_non_loop_body(node.orelse)
+    return node
+
+  def visit_If(self, node):
+    node.body = self._visit_non_loop_body(node.body)
+    node.orelse = self._visit_non_loop_body(node.orelse)
+    return node
+
+  def visit_With(self, node):
+    node.items = self.visit_block(node.items)
+    node.body = self._visit_non_loop_body(node.body)
+    return node
+
+  def visit_Try(self, node):
+    node.body = self._visit_non_loop_body(node.body)
+    node.orelse = self._visit_non_loop_body(node.orelse)
+    # In Python 3.8 and later continue is allowed in finally blocks
+    node.finalbody = self._visit_non_loop_body(node.finalbody)
+    node.handlers = self.visit_block(node.handlers)
+    return node
+
+  def visit_ExceptHandler(self, node):
+    node.body = self._visit_non_loop_body(node.body)
     return node
 
 
 def transform(node, ctx):
-  transformer = ContinueCanonicalizationTransformer(ctx)
-  node = transformer.visit(node)
+  node = qual_names.resolve(node)
+  node = activity.resolve(node, ctx, None)
+
+  node = ContinueCanonicalizationTransformer(ctx).visit(node)
   return node

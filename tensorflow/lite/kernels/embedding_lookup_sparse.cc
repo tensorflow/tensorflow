@@ -62,14 +62,16 @@ limitations under the License.
 //
 //   When indices are out of bound, the op will not succeed.
 
+#include <stdint.h>
+
 #include <algorithm>
 #include <cmath>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -107,7 +109,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Mark the output as a dynamic tensor.
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
   output->allocation_type = kTfLiteDynamic;
 
   return kTfLiteOk;
@@ -176,7 +178,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int output_size = lookup_size * embedding_size;
   TfLiteTensorRealloc(output_size * sizeof(float), output);
 
-  tensor_utils::ZeroVector(output->data.f, output_size);
+  float* output_ptr = GetTensorData<float>(output);
+  const float* weights_ptr = GetTensorData<float>(weights);
+  const float* value_ptr = GetTensorData<float>(value);
+
+  std::fill_n(output_ptr, output_size, 0.0f);
 
   // Keep track of the current bucket for aggregation/combination.
   int current_output_offset = 0;
@@ -209,7 +215,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     if (output_offset != current_output_offset) {
       FinalizeAggregation(params->combiner, num_elements, current_total_weight,
                           current_squares_weight, embedding_size,
-                          &output->data.f[current_output_offset]);
+                          &output_ptr[current_output_offset]);
 
       // Track next bucket.
       num_elements = 0;
@@ -221,19 +227,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     // Add element to aggregation.
     ++num_elements;
     const int example_embedding_offset = idx * embedding_size;
-    const float w = weights->data.f[i];
+    const float w = weights_ptr[i];
     current_squares_weight += w * w;
     current_total_weight += w;
     for (int k = 0; k < embedding_size; k++) {
-      output->data.f[current_output_offset + k] +=
-          (value->data.f[example_embedding_offset + k] * w);
+      output_ptr[current_output_offset + k] +=
+          value_ptr[example_embedding_offset + k] * w;
     }
   }
 
   // Finalize last bucket.
   FinalizeAggregation(params->combiner, num_elements, current_total_weight,
                       current_squares_weight, embedding_size,
-                      &output->data.f[current_output_offset]);
+                      &GetTensorData<float>(output)[current_output_offset]);
 
   return kTfLiteOk;
 }

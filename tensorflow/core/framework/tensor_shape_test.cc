@@ -479,7 +479,7 @@ TensorShapeIterOld TensorShapeOld::end() const {
 
 string TensorShapeOld::DebugString() const {
   return strings::StrCat(
-      "[", str_util::Join(gtl::ArraySlice<int64>(dim_sizes_), ","), "]");
+      "[", absl::StrJoin(gtl::ArraySlice<int64>(dim_sizes_), ","), "]");
 }
 
 string TensorShapeOld::DebugString(const TensorShapeProto& proto) {
@@ -683,6 +683,15 @@ static std::vector<int64> MakeSizes(int arg) {
   }
   return sizes;
 }
+
+static void BM_TensorShape_Init(int iters, int arg) {
+  auto sizes = MakeSizes(arg);
+  while (--iters > 0) {
+    TensorShape shape(sizes);
+    tensorflow::testing::DoNotOptimize(shape.num_elements());
+  }
+}
+BENCHMARK(BM_TensorShape_Init)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
 
 static void BM_TensorShape_Assign(int iters, int arg) {
   TensorShape s(MakeSizes(arg));

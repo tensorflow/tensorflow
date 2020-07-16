@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import importer
@@ -29,6 +28,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import quantize_training
 from tensorflow.python.training import saver as saver_module
 
 
@@ -42,10 +42,10 @@ class PywrapQuantizeTrainingTest(test.TestCase):
       b = constant_op.constant(7.0, shape=[1, 1])
       c = math_ops.matmul(a, b, name='matmul')
 
-      self.assertEquals(c.eval(), 42.0)
-      self.assertEquals(len(sess.graph_def.node), 3)
+      self.assertEqual(c.eval(), 42.0)
+      self.assertEqual(len(sess.graph_def.node), 3)
 
-      result = pywrap_tensorflow.do_quantize_training_on_graphdef(
+      result = quantize_training.do_quantize_training_on_graphdef(
           sess.graph_def, 8)
 
       # We just want to guarantee that some rewrite happened.
@@ -53,7 +53,7 @@ class PywrapQuantizeTrainingTest(test.TestCase):
 
   # Test that save/restoring works for EMA variables generated in the
   # quantized training rewrite.
-  @test_util.run_v1_only('b/120545219')
+  @test_util.run_v1_only('The API is only expect to work with v1 session mode.')
   def testQuantizedSaveRestore(self):
     save_path = os.path.join(self.get_temp_dir(), 'quantized_save_restore')
 
@@ -68,7 +68,7 @@ class PywrapQuantizeTrainingTest(test.TestCase):
 
       saver = saver_module.Saver({'b': b})
 
-      result = pywrap_tensorflow.do_quantize_training_on_graphdef(
+      result = quantize_training.do_quantize_training_on_graphdef(
           sess.graph_def, 8)
 
     with ops.Graph().as_default() as g, session.Session(graph=g) as sess:
@@ -89,13 +89,13 @@ class PywrapQuantizeTrainingTest(test.TestCase):
       # When we restore the saved variabled, the quantization variables should
       # be restored as well.
       saver.restore(sess, save_path)
-      self.assertEquals(7.0, sess.run(g.get_tensor_by_name('b:0')))
-      self.assertEquals(6.0, sess.run(g.get_tensor_by_name('a/Min/Variable:0')))
-      self.assertEquals(6.0, sess.run(g.get_tensor_by_name('a/Max/Variable:0')))
-      self.assertEquals(7.0,
-                        sess.run(g.get_tensor_by_name('b/read/Min/Variable:0')))
-      self.assertEquals(7.0,
-                        sess.run(g.get_tensor_by_name('b/read/Max/Variable:0')))
+      self.assertEqual(7.0, sess.run(g.get_tensor_by_name('b:0')))
+      self.assertEqual(6.0, sess.run(g.get_tensor_by_name('a/Min/Variable:0')))
+      self.assertEqual(6.0, sess.run(g.get_tensor_by_name('a/Max/Variable:0')))
+      self.assertEqual(7.0,
+                       sess.run(g.get_tensor_by_name('b/read/Min/Variable:0')))
+      self.assertEqual(7.0,
+                       sess.run(g.get_tensor_by_name('b/read/Max/Variable:0')))
 
 
 if __name__ == '__main__':

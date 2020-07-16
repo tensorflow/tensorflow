@@ -1,6 +1,70 @@
 path: "tensorflow.initializers"
 tf_module {
   member {
+    name: "Constant"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "GlorotNormal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "GlorotUniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "HeNormal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "HeUniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Identity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Initializer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LecunNormal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LecunUniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Ones"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Orthogonal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RandomNormal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RandomUniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TruncatedNormal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "VarianceScaling"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Zeros"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "constant"
     mtype: "<type \'type\'>"
   }
@@ -13,7 +77,23 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "he_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "he_uniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "identity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "lecun_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "lecun_uniform"
     mtype: "<type \'type\'>"
   }
   member {
@@ -37,10 +117,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "uniform_unit_scaling"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "variance_scaling"
     mtype: "<type \'type\'>"
   }
@@ -49,19 +125,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member_method {
-    name: "he_normal"
-    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    name: "deserialize"
+    argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "he_uniform"
-    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    name: "get"
+    argspec: "args=[\'identifier\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "lecun_normal"
-    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "lecun_uniform"
-    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    name: "serialize"
+    argspec: "args=[\'initializer\'], varargs=None, keywords=None, defaults=None"
   }
 }

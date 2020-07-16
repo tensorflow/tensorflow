@@ -17,10 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -32,7 +35,8 @@ from tensorflow.python.platform import test
 
 
 class ParallelMapDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def setUp(self):
     self._tensor_slice_len = 7
@@ -61,12 +65,10 @@ class ParallelMapDatasetSerializationTest(
     return (dataset_ops.Dataset.from_tensor_slices(components).map(
         _map_fn, num_parallel_calls=3).repeat(self._num_epochs).prefetch(5))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSaveRestoreCore(self):
     for ds_fn in [self._build_ds, self._build_ds_with_prefetch]:
-      self.run_core_tests(
-          ds_fn,
-          lambda: ds_fn(multiplier=15.0),  # pylint: disable=cell-var-from-loop
-          self._num_outputs)
+      self.run_core_tests(ds_fn, self._num_outputs)
 
   def testSaveStatefulFunction(self):
 
@@ -74,13 +76,14 @@ class ParallelMapDatasetSerializationTest(
 
       def _map_fn(x):
         return random_ops.random_uniform(
-            (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
+            (), 0, 10, dtype=dtypes.int32) * math_ops.cast(x, dtypes.int32)
 
       return dataset_ops.Dataset.range(100).map(
           _map_fn, num_parallel_calls=2).prefetch(2)
 
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+    self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCaptureVariableInMapFn(self):
 
     def _build_ds():
@@ -90,8 +93,9 @@ class ParallelMapDatasetSerializationTest(
           lambda _: counter_var.assign_add(1),
           num_parallel_calls=2).prefetch(2))
 
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+    self.verify_error_on_save(_build_ds, 15, errors.FailedPreconditionError)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCaptureConstantInMapFn(self):
 
     def _build_ds():
@@ -99,8 +103,9 @@ class ParallelMapDatasetSerializationTest(
       return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
           lambda x: x + constant_var, num_parallel_calls=2).prefetch(2))
 
-    self.run_core_tests(_build_ds, None, 10)
+    self.run_core_tests(_build_ds, 10)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCaptureDefunInMapFn(self):
     num_outputs = 100
 
@@ -108,13 +113,14 @@ class ParallelMapDatasetSerializationTest(
 
       @function.Defun(dtypes.int64)
       def defun_fn(x):
-        return constant_op.constant(1000) + math_ops.to_int32(x)
+        return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
 
       return dataset_ops.Dataset.range(num_outputs).map(
           defun_fn, num_parallel_calls=2).prefetch(2)
 
-    self.run_core_tests(_build_ds, None, num_outputs)
+    self.run_core_tests(_build_ds, num_outputs)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testBuildDefunInMapFn(self):
     num_outputs = 100
 
@@ -125,14 +131,15 @@ class ParallelMapDatasetSerializationTest(
 
         @function.Defun(dtypes.int32)
         def defun_fn_deep(x):
-          return constant_op.constant(1000) + math_ops.to_int32(x)
+          return constant_op.constant(1000) + math_ops.cast(x, dtypes.int32)
 
-        return constant_op.constant(11000) + defun_fn_deep(math_ops.to_int32(x))
+        return constant_op.constant(11000) + defun_fn_deep(
+            math_ops.cast(x, dtypes.int32))
 
       return dataset_ops.Dataset.range(num_outputs).map(
           defun_fn, num_parallel_calls=2).prefetch(2)
 
-    self.run_core_tests(_build_ds, None, num_outputs)
+    self.run_core_tests(_build_ds, num_outputs)
 
 
 if __name__ == "__main__":

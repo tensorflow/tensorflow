@@ -28,9 +28,9 @@ from tensorflow.python.data.experimental.ops import threadpool
 from tensorflow.python.data.experimental.ops import unique
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
@@ -53,14 +53,12 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
             lambda x: script_ops.py_func(get_thread_id, [x], dtypes.int64),
             num_parallel_calls=32).apply(unique.unique()))
     dataset = override_threadpool_fn(dataset)
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    next_element = iterator.get_next()
+    next_element = self.getNext(dataset, requires_initialization=True)
 
-    self.evaluate(iterator.initializer)
     thread_ids = []
     try:
       while True:
-        thread_ids.append(self.evaluate(next_element))
+        thread_ids.append(self.evaluate(next_element()))
     except errors.OutOfRangeError:
       pass
     self.assertLen(thread_ids, len(set(thread_ids)))
@@ -71,18 +69,13 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
       # perform work.
       self.assertLessEqual(len(thread_ids), num_threads)
 
-  @parameterized.named_parameters(
-      ("1", 1, None),
-      ("2", 2, None),
-      ("3", 4, None),
-      ("4", 8, None),
-      ("5", 16, None),
-      ("6", 4, -1),
-      ("7", 4, 0),
-      ("8", 4, 1),
-      ("9", 4, 4),
-  )
-  @test_util.run_deprecated_v1
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              num_threads=[1, 2, 4, 8, 16], max_intra_op_parallelism=[None]) +
+          combinations.combine(
+              num_threads=[4], max_intra_op_parallelism=[-1, 0, 4])))
   def testNumThreadsDeprecated(self, num_threads, max_intra_op_parallelism):
 
     def override_threadpool_fn(dataset):
@@ -95,21 +88,17 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
 
     self._testNumThreadsHelper(num_threads, override_threadpool_fn)
 
-  @parameterized.named_parameters(
-      ("1", 1, None),
-      ("2", 2, None),
-      ("3", 4, None),
-      ("4", 8, None),
-      ("5", 16, None),
-      ("6", None, 0),
-      ("7", None, 1),
-      ("8", None, 4),
-      ("9", 4, 0),
-      ("10", 4, 1),
-      ("11", 4, 4),
-      ("12", None, None),
-  )
-  @test_util.run_deprecated_v1
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              num_threads=[1, 2, 4, 8, 16], max_intra_op_parallelism=[None]) +
+          combinations.combine(
+              num_threads=[None], max_intra_op_parallelism=[0, 1, 4]) +
+          combinations.combine(
+              num_threads=[4], max_intra_op_parallelism=[0, 1, 4]) +
+          combinations.combine(
+              num_threads=[None], max_intra_op_parallelism=[None])))
   def testNumThreads(self, num_threads, max_intra_op_parallelism):
 
     def override_threadpool_fn(dataset):
@@ -124,13 +113,14 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
 
     self._testNumThreadsHelper(num_threads, override_threadpool_fn)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMaxIntraOpParallelismAsGraphDefInternal(self):
     dataset = dataset_ops.Dataset.from_tensors(0)
     dataset = dataset_ops._MaxIntraOpParallelismDataset(dataset, 1)
     graph = graph_pb2.GraphDef().FromString(
         self.evaluate(dataset._as_serialized_graph()))
     self.assertTrue(
-        any([node.op != "MaxIntraOpParallelismDataset" for node in graph.node]))
+        any(node.op != "MaxIntraOpParallelismDataset" for node in graph.node))
 
 
 if __name__ == "__main__":

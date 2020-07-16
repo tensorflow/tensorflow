@@ -30,13 +30,25 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('sort')
+@dispatch.add_dispatch_support
 def sort(values, axis=-1, direction='ASCENDING', name=None):
   """Sorts a tensor.
+  
+  Usage:
 
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.sort(a,axis=-1,direction='ASCENDING',name=None)
+  c = tf.keras.backend.eval(b)
+  # Here, c = [  1.     2.8   10.    26.9   62.3  166.32]
+  ```
+  
   Args:
     values: 1-D or higher numeric `Tensor`.
     axis: The axis along which to sort. The default is -1, which sorts the last
@@ -57,6 +69,7 @@ def sort(values, axis=-1, direction='ASCENDING', name=None):
 
 
 @tf_export('argsort')
+@dispatch.add_dispatch_support
 def argsort(values, axis=-1, direction='ASCENDING', stable=False, name=None):
   """Returns the indices of a tensor that give its sorted order along an axis.
 
@@ -64,6 +77,16 @@ def argsort(values, axis=-1, direction='ASCENDING', stable=False, name=None):
   `tf.sort(values)`. For higher dimensions, the output has the same shape as
   `values`, but along the given axis, values represent the index of the sorted
   element in that slice of the tensor at the given position.
+  
+  Usage:
+
+  ```python
+  import tensorflow as tf
+  a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+  b = tf.argsort(a,axis=-1,direction='ASCENDING',stable=False,name=None)
+  c = tf.keras.backend.eval(b)
+  # Here, c = [0 3 1 2 5 4]
+  ```
 
   Args:
     values: 1-D or higher numeric `Tensor`.
@@ -111,7 +134,7 @@ def _sort_or_argsort(values, axis, direction, return_argsort):
   # Axis must be an integer, not a Tensor.
   axis = framework_ops.convert_to_tensor(axis, name='axis')
   axis_static = tensor_util.constant_value(axis)
-  if axis.shape.ndims != 0 or axis_static is None:
+  if axis.shape.ndims not in (None, 0) or axis_static is None:
     raise ValueError('axis must be a constant scalar')
   axis_static = int(axis_static)  # Avoids NumPy casting error
 
@@ -161,18 +184,8 @@ def _descending_sort(values, axis, return_argsort=False):
           name='transposition')
     else:
       # Generate the transposition array from the tensors.
-      transposition = array_ops.concat(
-          [
-              # Axes up to axis are unchanged.
-              math_ops.range(axis),
-              # Swap axis and rank - 1.
-              [rank - 1],
-              # Axes in [axis + 1, rank - 1) are unchanged.
-              math_ops.range(axis + 1, rank - 1),
-              # Swap axis and rank - 1.
-              [axis]
-          ],
-          axis=0)
+      transposition = array_ops.tensor_scatter_update(
+          math_ops.range(rank), [[axis], [rank-1]], [rank-1, axis])
     top_k_input = array_ops.transpose(values, transposition)
 
   values, indices = nn_ops.top_k(top_k_input, k)

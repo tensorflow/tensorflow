@@ -18,12 +18,12 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -34,11 +34,15 @@ namespace tensorflow {
 
 /*static*/ ProcessState* ProcessState::singleton() {
   static ProcessState* instance = new ProcessState;
+  static absl::once_flag f;
+  absl::call_once(f, []() {
+    AllocatorFactoryRegistry::singleton()->process_state_ = instance;
+  });
+
   return instance;
 }
 
-ProcessState::ProcessState() : numa_enabled_(false) {
-}
+ProcessState::ProcessState() : numa_enabled_(false) {}
 
 string ProcessState::MemDesc::DebugString() {
   return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index,
@@ -72,7 +76,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
     }
     Allocator* allocator = nullptr;
     SubAllocator* sub_allocator =
-        (alloc_visitors_defined || use_bfc_allocator)
+        (numa_enabled_ || alloc_visitors_defined || use_bfc_allocator)
             ? new BasicCPUAllocator(
                   numa_enabled_ ? numa_node : port::kNUMANoAffinity,
                   cpu_alloc_visitors_, cpu_free_visitors_)
@@ -93,7 +97,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
                            "bfc_cpu_allocator_for_gpu" /*name*/);
       VLOG(2) << "Using BFCAllocator with memory limit of "
               << cpu_mem_limit_in_mb << " MB for ProcessState CPU allocator";
-    } else if (alloc_visitors_defined) {
+    } else if (sub_allocator) {
       DCHECK(sub_allocator);
       allocator =
           new PoolAllocator(100 /*pool_size_limit*/, true /*auto_resize*/,
@@ -103,7 +107,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
               << " numa_node=" << numa_node;
     } else {
       DCHECK(!sub_allocator);
-      allocator = cpu_allocator();
+      allocator = cpu_allocator_base();
     }
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging
@@ -138,13 +142,16 @@ void ProcessState::AddCPUFreeVisitor(SubAllocator::Visitor visitor) {
 void ProcessState::TestOnlyReset() {
   mutex_lock lock(mu_);
   // Don't delete this value because it's static.
-  Allocator* default_cpu_allocator = cpu_allocator();
+  Allocator* default_cpu_allocator = cpu_allocator_base();
   mem_desc_map_.clear();
   for (Allocator* a : cpu_allocators_) {
     if (a != default_cpu_allocator) delete a;
   }
   cpu_allocators_.clear();
-  gtl::STLDeleteElements(&cpu_al_);
+  for (Allocator* a : cpu_al_) {
+    delete a;
+  }
+  cpu_al_.clear();
 }
 
 }  // namespace tensorflow

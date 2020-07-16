@@ -1,0 +1,78 @@
+ARG ROOT_CONTAINER_TAG=devel
+ARG ROOT_CONTAINER=tensorflow/tensorflow
+
+FROM ${ROOT_CONTAINER}:${ROOT_CONTAINER_TAG}
+
+LABEL maintainer="Clayne Robison <clayne.b.robison@intel.com>"
+
+# These parameters can be overridden
+ARG PYTHON="python"
+ARG WHL_DIR="/tmp/pip"
+ARG PIP="pip"
+ARG TARGET_PLATFORM="haswell"
+ARG CONFIG_V2_DISABLE=""
+ARG CONFIG_BFLOAT16_BUILD=""
+ARG ENABLE_SECURE_BUILD
+ARG BAZEL_VERSION=""
+ARG ENABLE_DNNL1=""
+ARG ENABLE_HOROVOD=""
+ARG OPENMPI_VERSION=""
+ARG OPENMPI_DOWNLOAD_URL=""
+ARG HOROVOD_VERSION=""
+ARG TF_NIGHTLY_FLAG=""
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Upgrade Bazel version if argument is passed
+RUN if [ "${BAZEL_VERSION}" != "" ]; then \
+        curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+        chmod +x bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+        ./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+        rm -rf bazel-$BAZEL_VERSION-installer-linux-x86_64.sh; \
+    fi
+
+# Download and build TensorFlow from the latest sources found in the root container
+# make sure that if they pass in a tag, that it is loaded or we'll get an error
+WORKDIR /
+
+COPY tensorflow/ /tensorflow/
+
+WORKDIR /tensorflow
+
+RUN yes "" | ${PYTHON} configure.py
+
+ENV CI_BUILD_PYTHON ${PYTHON}
+
+# This script detects the version of gcc in the container, sets the appropriate
+# compiler flags based on parameters
+ADD set-build-env.py .
+RUN ${PYTHON} set-build-env.py -p ${TARGET_PLATFORM} -f /root/.mkl.bazelrc \
+    ${CONFIG_V2_DISABLE} ${ENABLE_SECURE_BUILD} ${CONFIG_BFLOAT16_BUILD} ${ENABLE_DNNL1}
+
+# Pull the compiler flags we just wrote into root user's .bazelrc file
+RUN echo "import /root/.mkl.bazelrc" >>/root/.bazelrc
+
+# Install futures>=0.17.1 for Python2.7 compatibility mode
+RUN ${PIP} install future>=0.17.1
+
+RUN bazel --bazelrc=/root/.bazelrc build -c opt \
+    tensorflow/tools/pip_package:build_pip_package && \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package "${TF_NIGHTLY_FLAG}" "${WHL_DIR}" && \
+    ${PIP} --no-cache-dir install --upgrade "${WHL_DIR}"/*.whl && \
+    rm -rf /root/.cache
+    # Clean up Bazel cache when done.
+
+# Install OpenMPI/Horovod
+COPY install_openmpi_horovod.sh .
+RUN if [ "${ENABLE_HOROVOD}" = "yes" ]; then \
+        chmod +x install_openmpi_horovod.sh && \
+        OPENMPI_VERSION=${OPENMPI_VERSION} OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL} HOROVOD_VERSION=${HOROVOD_VERSION} ./install_openmpi_horovod.sh && \
+        rm -rf install_openmpi_horovod.sh; \
+    fi
+
+# TensorBoard
+EXPOSE 6006
+# IPython
+EXPOSE 8888
+
+WORKDIR /root

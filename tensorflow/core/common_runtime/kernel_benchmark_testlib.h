@@ -29,7 +29,10 @@ limitations under the License.
 namespace tensorflow {
 
 class Device;
+class FunctionLibraryRuntime;
+class ProcessFunctionLibraryRuntime;
 struct SessionOptions;
+class StaticDeviceMgr;
 
 namespace test {
 
@@ -46,21 +49,29 @@ class Benchmark {
   void Run(int iters);
 
   // If "g" contains send/recv nodes, before each execution, we send
-  // inputs to the corresponding recv nodes in the graph, after each
-  // execution, we recv outputs from the corresponding send nodes in
+  // inputs to the corresponding recv keys in the graph, after each
+  // execution, we recv outputs from the corresponding send keys in
   // the graph. In the benchmark, we throw away values returned by the
   // graph.
-  void RunWithArgs(const std::vector<std::pair<const Node*, Tensor>>& inputs,
-                   const std::vector<const Node*>& outputs, int iters);
+  void RunWithRendezvousArgs(
+      const std::vector<std::pair<string, Tensor>>& inputs,
+      const std::vector<string>& outputs, int iters);
 
  private:
-  thread::ThreadPool* pool_ = nullptr;
-  std::unique_ptr<Device> device_ = nullptr;
+  thread::ThreadPool* pool_ = nullptr;  // Not owned.
+  Device* device_ = nullptr;            // Not owned.
   Rendezvous* rendez_ = nullptr;
+  std::unique_ptr<StaticDeviceMgr> device_mgr_;
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  FunctionLibraryRuntime* flr_;  // Not owned.
   std::unique_ptr<Executor> exec_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Benchmark);
 };
+
+// Returns the rendezvous key associated with the given Send/Recv node.
+string GetRendezvousKey(const Node* node);
 
 }  // end namespace test
 }  // end namespace tensorflow

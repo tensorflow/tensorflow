@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -67,23 +68,24 @@ class ChannelTracker {
   // Bumps the next_channel_ number and returns the allocated number
   // wrapped in a ChannelHandle.
   ChannelHandle AllocateHandle(ChannelHandle::ChannelType type)
-      EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
 
   Status RegisterSendInternal(const ChannelHandle& handle)
-      EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
 
   Status RegisterRecvInternal(const ChannelHandle& handle)
-      EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
 
   // Guards the channel mapping.
   tensorflow::mutex channel_mutex_;
 
   // The next sequence number to assign to a channel.
-  int64 next_channel_ GUARDED_BY(channel_mutex_);
+  int64 next_channel_ TF_GUARDED_BY(channel_mutex_);
 
   // Mapping from ChannelHandle value to the corresponding registered
   // Channel object.
-  std::map<int64, Channel> opaque_to_channel_ GUARDED_BY(channel_mutex_);
+  absl::flat_hash_map<int64, Channel> opaque_to_channel_
+      TF_GUARDED_BY(channel_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ChannelTracker);
 };

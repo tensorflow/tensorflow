@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package tensorflow;
+
+option cc_enable_arenas = true;
+option java_outer_classname = "VerifierConfigProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+
+// The config for graph verifiers.
+message VerifierConfig {
+  enum Toggle {
+    DEFAULT = 0;
+    ON = 1;
+    OFF = 2;
+  }
+
+  // Deadline for completion of all verification i.e. all the Toggle ON
+  // verifiers must complete execution within this time.
+  int64 verification_timeout_in_ms = 1;
+
+  // Perform structural validation on a tensorflow graph. Default is OFF.
+  Toggle structure_verifier = 2;
+
+  // Next tag: 3
+}

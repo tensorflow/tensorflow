@@ -61,17 +61,23 @@ namespace llvm_ir {
 //   output[i] = pred ? tuple_on_true[i] : tuple_on_false[i]
 void EmitTupleSelect(const IrArray& select, const IrArray& pred,
                      llvm::Value* on_true, llvm::Value* on_false,
-                     llvm::IRBuilder<>* b, llvm::Module* module);
+                     llvm::IRBuilder<>* b);
 
 // A tuple is an array of pointers, one for each operand. Each pointer points to
 // the output buffer of its corresponding operand.
 void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
-               llvm::IRBuilder<>* b, llvm::Module* module);
+               llvm::IRBuilder<>* b);
+
+// Emits one alloca for each element in the tuple of shape tuple_shape,
+// returns the emitted allocas.
+// Precondition: tuple_shape should be a tuple of scalars.
+std::vector<llvm::Value*> EmitTupleAllocasAtFunctionEntry(
+    const Shape& tuple_shape, llvm::IRBuilder<>* b);
 
 // Similar to EmitTuple above, except that the output buffers are provided in
 // the form of IrArray.
 void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
-               llvm::IRBuilder<>* b, llvm::Module* module);
+               llvm::IRBuilder<>* b);
 
 // A tuple is an array of pointers, one for each operand. Each pointer points to
 // the output buffer of its corresponding operand. A GetTupleElement instruction
@@ -79,7 +85,7 @@ void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
 // Returns an llvm value representing a pointer to the tuple element buffer.
 llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
                                  int alignment, llvm::Value* operand,
-                                 llvm::IRBuilder<>* b, llvm::Module* module);
+                                 llvm::IRBuilder<>* b);
 }  // namespace llvm_ir
 }  // namespace xla
 

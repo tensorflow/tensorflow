@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "WholeFileReaderV2"
+  endpoint {
+    name: "io.WholeFileReader"
+  }
+}

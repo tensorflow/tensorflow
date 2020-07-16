@@ -2,5 +2,6 @@ op {
   graph_op_name: "SdcaOptimizer"
   endpoint {
     name: "train.sdca_optimizer"
+    deprecation_version: 2
   }
 }

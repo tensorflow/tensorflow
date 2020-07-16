@@ -18,11 +18,66 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph.h"
 
-// Utility functions shared between functionalize cond and while.
+// Utility functions shared between functionalize cond and while
+// or used by other graph optimization passes.
 
 namespace tensorflow {
+
+using NodeFilter = std::function<bool(const Node*)>;
+
+// Information about a loop argument.
+struct WhileLoopArg {
+  // Every loop argument has an Enter node.
+  Node* enter;
+
+  // Is the loop argument a loop-invariant value? Taken from the `is_constant`
+  // attribute on the Enter node.
+  bool is_loop_invariant;
+
+  // If 'is_loop_invariant' is true, the following are all nullptr. Non-constant
+  // arguments must have all of the following nodes:
+  Node* merge = nullptr;
+  Node* switch_node = nullptr;
+  Node* next_iteration = nullptr;
+  Node* exit = nullptr;
+};
+
+// Information about a loop frame.
+struct WhileLoopFrame {
+  string name;
+
+  // Pointer to the parent frame. The root frame has a pointer to itself.
+  WhileLoopFrame* parent = nullptr;
+  int num_children = 0;
+
+  // Arguments to this loop.
+  std::vector<WhileLoopArg> args;
+
+  // The loop condition of the loop. There should be exactly one loop condition
+  // in every loop.
+  Node* loop_cond = nullptr;
+
+  // Set of nodes that belong to the loop frame.
+  std::unordered_set<Node*> nodes;
+
+  // After `ExtractWhileLoopFrames` this is true if for all control flow nodes
+  // of this frame `node_filter` returns true, i.e., the frame should be
+  // functionalized, and false otherwise.
+  bool should_be_functionalized = true;
+};
+
+// Extracts v1 while loops within a graph and creates a map of
+// <ControlFLowInfo.name, WhileLoopFrame>.
+// If `node_filter` is defined, then we keep track of frames that should be
+// functionalized according to the filter (see comment for
+// `FunctionalizeControlFlow` for more details about node filters).
+Status ExtractWhileLoopFrames(
+    const std::vector<ControlFlowInfo>& cf_info, const Graph* graph,
+    std::unordered_map<string, WhileLoopFrame>* frames,
+    const NodeFilter& node_filter = {});
 
 // Check that the graph has no cycle containing the given node.
 Status CheckNodeNotInCycle(const Node* node, const int num_nodes);

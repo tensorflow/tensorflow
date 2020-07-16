@@ -25,7 +25,7 @@ import sys
 import threading
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import pywrap_tensorflow as print_mdl
+from tensorflow.python import _pywrap_tfprof as print_mdl
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -115,23 +115,23 @@ class ProfileContext(object):
 
   ```python
     # Trace steps 100~200, profile at [150, 200] and dump profile at 200.
-    with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
-                                          trace_steps=range(100, 200, 3),
-                                          dump_steps=[200]) as pctx:
+    with profile_context.ProfileContext('/tmp/train_dir',
+                                        trace_steps=range(100, 200, 3),
+                                        dump_steps=[200]) as pctx:
       opts = tf.profiler.ProfileOptionBuilder.time_and_memory()
       pctx.add_auto_profiling('op', opts, [150, 200])
       train_loop().
 
     # Tracing only.
-    with tf.contrib.tfprof.ProfileContext('/tmp/train_dir') as pctx:
+    with profile_context.tfprof.ProfileContext('/tmp/train_dir') as pctx:
       # Run train/eval loop for at least few hundred steps. Profiles will be
       # dumped to train_dir. Use web UI or command line to do profiling.
       train_loop().
 
     # When session object is available, do explicit trace, profile and dump.
-    with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
-                                          trace_steps=[],
-                                          dump_steps=[]) as pctx:
+    with profile_context.ProfileContext('/tmp/train_dir',
+                                        trace_steps=[],
+                                        dump_steps=[]) as pctx:
       opts = tf.profiler.ProfileOptionBuilder.time_and_memory()
       pctx.trace_next_step()
       _ = session.run(train_op)

@@ -110,6 +110,11 @@ class BFloat16Propagation : public HloModulePass {
   // Precondition: hlo->opcode() == kWhile
   void DetermineWhileComputationsPrecision(HloInstruction* while_hlo);
 
+  // Special handling in the opportunity-finding pass for conditional branches.
+  //
+  // Precondition: hlo->opcode() == kConditional
+  void DetermineConditionalComputationsPrecision(HloInstruction* cond);
+
   // The set of HloInstructions that have been visited in the
   // opportunity-finding pass.
   absl::flat_hash_set<const HloInstruction*>

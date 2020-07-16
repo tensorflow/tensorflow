@@ -2,6 +2,7 @@ path: "tensorflow.estimator.BaselineRegressor"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.baseline.BaselineRegressorV2\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"
@@ -21,7 +22,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'model_dir\', \'label_dimension\', \'weight_column\', \'optimizer\', \'config\', \'loss_reduction\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'Ftrl\', \'None\', \'weighted_sum_over_batch_size\'], "
+    argspec: "args=[\'self\', \'model_dir\', \'label_dimension\', \'weight_column\', \'optimizer\', \'config\', \'loss_reduction\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'Ftrl\', \'None\', \'sum_over_batch_size\'], "
   }
   member_method {
     name: "eval_dir"

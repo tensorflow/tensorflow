@@ -23,7 +23,11 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 
 
-def map_defun(fn, elems, output_dtypes, output_shapes):
+def map_defun(fn,
+              elems,
+              output_dtypes,
+              output_shapes,
+              max_intra_op_parallelism=1):
   """Map a function on the list of tensors unpacked from `elems` on dimension 0.
 
   Args:
@@ -35,8 +39,10 @@ def map_defun(fn, elems, output_dtypes, output_shapes):
     elems: A list of tensors.
     output_dtypes: A list of dtypes corresponding to the output types of the
       function.
-    output_shapes: A list of `TensorShape`s corresponding to the output
-      shapes from each invocation of the function on slices of inputs.
+    output_shapes: A list of `TensorShape`s corresponding to the output shapes
+      from each invocation of the function on slices of inputs.
+    max_intra_op_parallelism: An integer. If positive, sets the max parallelism
+      limit of each function call to this.
 
   Raises:
     ValueError: if any of the inputs are malformed.
@@ -58,4 +64,5 @@ def map_defun(fn, elems, output_dtypes, output_shapes):
   elems = [ops.convert_to_tensor(e) for e in elems]
   output_shapes = [tensor_shape.TensorShape(s) for s in output_shapes]
   return gen_dataset_ops.map_defun(elems, concrete_fn.captured_inputs,
-                                   output_dtypes, output_shapes, concrete_fn)
+                                   output_dtypes, output_shapes, concrete_fn,
+                                   max_intra_op_parallelism)

@@ -47,7 +47,7 @@ Status MemmappedFileSystemWriter::SaveTensor(const Tensor& tensor,
   }
   // Adds pad for correct alignment after memmapping.
   TF_RETURN_IF_ERROR(AdjustAlignment(Allocator::kAllocatorAlignment));
-  AddToDirectoryElement(element_name);
+  AddToDirectoryElement(element_name, tensor_data.size());
   const auto result = output_file_->Append(tensor_data);
   if (result.ok()) {
     output_file_offset_ += tensor_data.size();
@@ -69,8 +69,8 @@ Status MemmappedFileSystemWriter::SaveProtobuf(
         MemmappedFileSystem::kMemmappedPackagePrefix,
         " and include [A-Za-z0-9_.]");
   }
-  AddToDirectoryElement(element_name);
   const string encoded = message.SerializeAsString();
+  AddToDirectoryElement(element_name, encoded.size());
   const auto res = output_file_->Append(encoded);
   if (res.ok()) {
     output_file_offset_ += encoded.size();
@@ -124,11 +124,13 @@ Status MemmappedFileSystemWriter::AdjustAlignment(uint64 alignment) {
   return Status::OK();
 }
 
-void MemmappedFileSystemWriter::AddToDirectoryElement(const string& name) {
+void MemmappedFileSystemWriter::AddToDirectoryElement(const string& name,
+                                                      uint64 length) {
   MemmappedFileSystemDirectoryElement* new_directory_element =
       directory_.add_element();
   new_directory_element->set_offset(output_file_offset_);
   new_directory_element->set_name(name);
+  new_directory_element->set_length(length);
 }
 
 }  // namespace tensorflow

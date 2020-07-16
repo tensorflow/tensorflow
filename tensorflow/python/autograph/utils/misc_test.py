@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph.utils.misc import alias_tensors
+from tensorflow.python.autograph.utils import misc
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops.variables import Variable
@@ -31,7 +33,7 @@ class MiscTest(test.TestCase):
   def test_alias_single_tensor(self):
     a = constant(1)
 
-    new_a = alias_tensors(a)
+    new_a = misc.alias_tensors(a)
     self.assertFalse(new_a is a)
     with self.cached_session() as sess:
       self.assertEqual(1, self.evaluate(new_a))
@@ -43,7 +45,7 @@ class MiscTest(test.TestCase):
     s = 'a'
     l = [1, 2, 3]
 
-    new_a, new_v, new_s, new_l = alias_tensors(a, v, s, l)
+    new_a, new_v, new_s, new_l = misc.alias_tensors(a, v, s, l)
 
     self.assertFalse(new_a is a)
     self.assertTrue(new_v is v)
@@ -51,6 +53,21 @@ class MiscTest(test.TestCase):
     self.assertTrue(new_l is l)
     with self.cached_session() as sess:
       self.assertEqual(1, self.evaluate(new_a))
+
+  def test_get_range_len(self):
+    get_range_as_graph = def_function.function(misc.get_range_len)
+    test_range = [(i, constant_op.constant(i)) for i in range(-3, 3)]
+    results = []
+    for i, ti in test_range:
+      for j, tj in test_range:
+        for k, tk in test_range:
+          if k == 0:
+            continue
+          results.append(((i, j, k), get_range_as_graph(ti, tj, tk)))
+
+    for (i, j, k), result_tensor in results:
+      self.assertEqual(
+          len(list(range(i, j, k))), self.evaluate(result_tensor))
 
 
 if __name__ == '__main__':

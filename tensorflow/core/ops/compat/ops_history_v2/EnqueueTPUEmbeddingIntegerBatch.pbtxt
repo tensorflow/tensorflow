@@ -1,0 +1,26 @@
+op {
+  name: "EnqueueTPUEmbeddingIntegerBatch"
+  input_arg {
+    name: "batch"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  input_arg {
+    name: "mode_override"
+    type: DT_STRING
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "device_ordinal"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  is_stateful: true
+}

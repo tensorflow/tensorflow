@@ -56,7 +56,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
   void RetireStepId(int64 graph_key, int64 step_id) override;
 
  protected:
-  CollectiveExecutor* Create(int64 step_id) override;
+  virtual CollectiveExecutor* Create(int64 step_id) override;
 
   WorkerCacheInterface* const worker_cache_;  // Not owned.
   const string task_name_;
@@ -78,7 +78,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
 
   mutex sequence_mu_;
   gtl::FlatMap<int64, GraphKeySequence*> sequence_table_
-      GUARDED_BY(sequence_mu_);
+      TF_GUARDED_BY(sequence_mu_);
 };
 
 }  // namespace tensorflow

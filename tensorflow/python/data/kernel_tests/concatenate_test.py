@@ -17,20 +17,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class ConcatenateTest(test_base.DatasetTestBase):
+class ConcatenateTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcatenateDataset(self):
     input_components = (
         np.tile(np.array([[1], [2], [3], [4]]), 20),
@@ -45,8 +46,10 @@ class ConcatenateTest(test_base.DatasetTestBase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
     concatenated = input_dataset.concatenate(dataset_to_concatenate)
-    self.assertEqual(concatenated.output_shapes, (tensor_shape.TensorShape(
-        [20]), tensor_shape.TensorShape([15]), tensor_shape.TensorShape([])))
+    self.assertEqual(
+        dataset_ops.get_legacy_output_shapes(concatenated),
+        (tensor_shape.TensorShape([20]), tensor_shape.TensorShape([15]),
+         tensor_shape.TensorShape([])))
 
     get_next = self.getNext(concatenated)
 
@@ -62,6 +65,7 @@ class ConcatenateTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcatenateDatasetDifferentShape(self):
     input_components = (
         np.tile(np.array([[1], [2], [3], [4]]), 20),
@@ -76,7 +80,9 @@ class ConcatenateTest(test_base.DatasetTestBase):
     concatenated = input_dataset.concatenate(dataset_to_concatenate)
     self.assertEqual(
         [ts.as_list()
-         for ts in nest.flatten(concatenated.output_shapes)], [[20], [None]])
+         for ts in nest.flatten(
+             dataset_ops.get_legacy_output_shapes(concatenated))],
+        [[20], [None]])
     get_next = self.getNext(concatenated)
     for i in range(9):
       result = self.evaluate(get_next())
@@ -90,6 +96,7 @@ class ConcatenateTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcatenateDatasetDifferentStructure(self):
     input_components = (
         np.tile(np.array([[1], [2], [3], [4]]), 5),
@@ -103,9 +110,10 @@ class ConcatenateTest(test_base.DatasetTestBase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegexp(TypeError, "have different types"):
+    with self.assertRaisesRegex(TypeError, "have different types"):
       input_dataset.concatenate(dataset_to_concatenate)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcatenateDatasetDifferentKeys(self):
     input_components = {
         "foo": np.array([[1], [2], [3], [4]]),
@@ -120,9 +128,10 @@ class ConcatenateTest(test_base.DatasetTestBase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegexp(TypeError, "have different types"):
+    with self.assertRaisesRegex(TypeError, "have different types"):
       input_dataset.concatenate(dataset_to_concatenate)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testConcatenateDatasetDifferentType(self):
     input_components = (
         np.tile(np.array([[1], [2], [3], [4]]), 5),
@@ -135,7 +144,7 @@ class ConcatenateTest(test_base.DatasetTestBase):
     dataset_to_concatenate = dataset_ops.Dataset.from_tensor_slices(
         to_concatenate_components)
 
-    with self.assertRaisesRegexp(TypeError, "have different types"):
+    with self.assertRaisesRegex(TypeError, "have different types"):
       input_dataset.concatenate(dataset_to_concatenate)
 
 

@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
 
 # TODO(b/31222613): These ops may be differentiable, and there may be
@@ -44,7 +45,7 @@ def _GetGradSource(op_or_tensor):
 
   TensorArray gradient calls use an accumulator TensorArray object.  If
   multiple gradients are calculated and run in the same session, the multiple
-  gradient nodes may accidentally flow throuth the same accumulator TensorArray.
+  gradient nodes may accidentally flow through the same accumulator TensorArray.
   This double counting breaks the TensorArray gradient flow.
 
   The solution is to identify which gradient call this particular
@@ -72,7 +73,11 @@ def _GetGradSource(op_or_tensor):
   if not grad_pos:
     raise ValueError(
         "Expected op/tensor name to start with gradients (excluding scope)"
-        ", got: %s" % op_or_tensor.name)
+        ", got: {}. This means that a tf.gradients op with this op in its "
+        "dependency path has a custom name that does not start with "
+        "'gradients'. Please make sure all calls to tf.gradients that have "
+        "non-empty 'name' arguments use names that start with "
+        "'gradients'.".format(op_or_tensor.name))
   return "/".join(name_tokens[:grad_pos[-1] + 1])
 
 
@@ -126,6 +131,12 @@ def _TensorArrayWriteGrad(op, flow):
   index = op.inputs[1]
   dtype = op.get_attr("T")
   grad_source = _GetGradSource(flow)
+  flow_out = array_ops.identity(op.outputs[0], "flow_out")
+  # Avoid a race condition where the TensorArrayGrad op is executed before the
+  # final TensorArrayWrite by adding a control dependency on the output flow of
+  # the write to the input flow to the TensorArrayGrad.
+  with ops.control_dependencies([flow_out]):
+    flow = array_ops.identity(flow, "write_barrier")
   g = (tensor_array_ops.TensorArray(dtype=dtype, handle=handle, flow=flow,
                                     colocate_with_first_write_call=False)
        .grad(source=grad_source, flow=flow))
@@ -181,6 +192,12 @@ def _TensorArrayScatterGrad(op, flow):
   indices = op.inputs[1]
   dtype = op.get_attr("T")
   grad_source = _GetGradSource(flow)
+  flow_out = array_ops.identity(op.outputs[0], "flow_out")
+  # Avoid a race condition where the TensorArrayGrad op is executed before the
+  # TensorArrayScatter by adding a control dependency on the output flow of
+  # the scatter to the input flow to the TensorArrayGrad.
+  with ops.control_dependencies([flow_out]):
+    flow = array_ops.identity(flow, "write_barrier")
   g = (tensor_array_ops.TensorArray(dtype=dtype, handle=handle, flow=flow,
                                     colocate_with_first_write_call=False)
        .grad(source=grad_source, flow=flow))
@@ -236,6 +253,12 @@ def _TensorArraySplitGrad(op, flow):
   handle = op.inputs[0]
   dtype = op.get_attr("T")
   grad_source = _GetGradSource(flow)
+  flow_out = array_ops.identity(op.outputs[0], "flow_out")
+  # Avoid a race condition where the TensorArrayGrad op is executed before the
+  # TensorArraySplit by adding a control dependency on the output flow of
+  # the split to the input flow to the TensorArrayGrad.
+  with ops.control_dependencies([flow_out]):
+    flow = array_ops.identity(flow, "write_barrier")
   g = (tensor_array_ops.TensorArray(dtype=dtype, handle=handle, flow=flow,
                                     colocate_with_first_write_call=False)
        .grad(source=grad_source, flow=flow))

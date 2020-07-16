@@ -79,6 +79,7 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     const HloInstruction& hlo, int64 operand_index) {
   switch (hlo.opcode()) {
     case HloOpcode::kAbs:
+    case HloOpcode::kAllGather:
     case HloOpcode::kAllToAll:
     case HloOpcode::kBroadcast:
     case HloOpcode::kClamp:
@@ -105,6 +106,8 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
       return operand_index == 0;
     case HloOpcode::kDynamicUpdateSlice:
       return operand_index == 0 || operand_index == 1;
+    case HloOpcode::kGather:
+      return operand_index == 0;
     case HloOpcode::kSelect:
     case HloOpcode::kTupleSelect:
       return operand_index == 1 || operand_index == 2;

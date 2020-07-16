@@ -89,7 +89,7 @@ void SigNode::ComputeTopoHash0() {
   topo_hash_.clear();
   last_hashed_nodes_ = next_hashed_nodes_ = node_mask_;
 
-  // TODO(babkin): include the attrbutes too, as an option.
+  // TODO(babkin): include the attributes too, as an option.
   size_t hval = std::hash<string>()(opcode());
 
   // Getting the topology of the links in to the hash early should get more

@@ -64,7 +64,7 @@ bool IsZero(const Scope& scope, const Output& grad) {
 // Multiply after broadcasting vec to match dimensions of mat.
 //   Args:
 //     vec: A 1-D tensor of dimension [D0]
-//     mat: A 2-D tensor of dimesnion [D0, D1]
+//     mat: A 2-D tensor of dimension [D0, D1]
 //
 //   Returns:
 //     A tensor of dimension [D0, D1], the result fo vec * mat.

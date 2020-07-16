@@ -35,7 +35,6 @@ import gast
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import transformer
-from tensorflow.python.autograph.pyct.static_analysis import annos
 
 
 class Definition(object):
@@ -46,10 +45,12 @@ class Definition(object):
 
   Attributes:
     param_of: Optional[ast.AST]
+    directives: Dict, optional definition annotations
   """
 
   def __init__(self):
     self.param_of = None
+    self.directives = {}
 
   def __repr__(self):
     return '%s[%d]' % (self.__class__.__name__, id(self))
@@ -114,10 +115,6 @@ class Analyzer(cfg.GraphVisitor):
   def __init__(self, graph, definition_factory):
     self._definition_factory = definition_factory
     super(Analyzer, self).__init__(graph)
-    # This allows communicating that nodes have extra reaching definitions,
-    # e.g. those that a function closes over.
-    self.extra_in = {}
-
     self.gen_map = {}
 
   def init_state(self, _):
@@ -126,7 +123,7 @@ class Analyzer(cfg.GraphVisitor):
   def visit_node(self, node):
     prev_defs_out = self.out[node]
 
-    defs_in = _NodeState(self.extra_in.get(node.ast_node, None))
+    defs_in = _NodeState()
     for n in node.prev:
       defs_in |= self.out[n]
 
@@ -136,10 +133,19 @@ class Analyzer(cfg.GraphVisitor):
       # their ids are used in equality checks.
       if node not in self.gen_map:
         node_symbols = {}
-        for s in node_scope.modified:
+        # Every binding operation (assign, nonlocal, global, etc.) counts as a
+        # definition, with the exception of del, which only deletes without
+        # creating a new variable.
+        newly_defined = ((node_scope.bound | node_scope.globals) -
+                         node_scope.deleted)
+        for s in newly_defined:
           def_ = self._definition_factory()
-          if s in node_scope.params:
-            def_.param_of = weakref.ref(node_scope.params[s])
+          node_symbols[s] = def_
+        # Every param receives a definition. Params are not necessarily
+        # considered as "modified".
+        for s, p in node_scope.params.items():
+          def_ = self._definition_factory()
+          def_.param_of = weakref.ref(p)
           node_symbols[s] = def_
         self.gen_map[node] = _NodeState(node_symbols)
 
@@ -147,22 +153,16 @@ class Analyzer(cfg.GraphVisitor):
       kill = node_scope.modified | node_scope.deleted
       defs_out = gen | (defs_in - kill)
 
+      gen = self.gen_map[node]
+      defs_out = gen | (defs_in - kill)
+
     else:
-      # Nodes that don't have a scope annotation are assumed not to touch any
-      # symbols.
-      # This Name node below is a literal name, e.g. False
-      # This can also happen if activity.py forgot to annotate the node with a
-      # scope object.
-      assert isinstance(
-          node.ast_node,
-          (gast.Name, gast.Break, gast.Continue, gast.Raise)), (node.ast_node,
-                                                                node)
+      assert self.can_ignore(node), (node.ast_node, node)
       defs_out = defs_in
 
     self.in_[node] = defs_in
     self.out[node] = defs_out
 
-    # TODO(mdan): Move this to the superclass?
     return prev_defs_out != defs_out
 
 
@@ -180,6 +180,7 @@ class TreeAnnotator(transformer.Base):
 
   def __init__(self, source_info, graphs, definition_factory):
     super(TreeAnnotator, self).__init__(source_info)
+    self.allow_skips = False
     self.definition_factory = definition_factory
     self.graphs = graphs
     self.current_analyzer = None
@@ -189,39 +190,16 @@ class TreeAnnotator(transformer.Base):
     parent_analyzer = self.current_analyzer
     subgraph = self.graphs[node]
 
-    # Preorder tree processing:
-    #  1. if this is a child function, the parent was already analyzed and it
-    #     has the proper state value for the subgraph's entry
-    #  2. analyze the current function body
-    #  2. recursively walk the subtree; child functions will be processed
     analyzer = Analyzer(subgraph, self.definition_factory)
-    if parent_analyzer is not None:
-      # Wire the state between the two subgraphs' analyzers.
-      parent_out_state = parent_analyzer.out[parent_analyzer.graph.index[node]]
-      # Exception: symbols modified in the child function are local to it
-      body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
-      parent_out_state -= body_scope.modified
-      analyzer.extra_in[node.args] = parent_out_state
-
-    # Complete the analysis for the local function and annotate its body.
     analyzer.visit_forward()
 
     # Recursively process any remaining subfunctions.
     self.current_analyzer = analyzer
-    # Note: not visiting name, decorator_list and returns because they don't
-    # apply to this anlysis.
-    # TODO(mdan): Should we still process the function name?
     node.args = self.visit(node.args)
     node.body = self.visit_block(node.body)
     self.current_analyzer = parent_analyzer
 
     return node
-
-  def visit_nonlocal(self, node):
-    raise NotImplementedError()
-
-  def visit_global(self, node):
-    raise NotImplementedError()
 
   def visit_Name(self, node):
     if self.current_analyzer is None:
@@ -232,7 +210,8 @@ class TreeAnnotator(transformer.Base):
     analyzer = self.current_analyzer
     cfg_node = self.current_cfg_node
 
-    assert cfg_node is not None, 'name node outside of any statement?'
+    assert cfg_node is not None, ('name node, %s, outside of any statement?'
+                                  % node.id)
 
     qn = anno.getanno(node, anno.Basic.QN)
     if isinstance(node.ctx, gast.Load):
@@ -275,6 +254,16 @@ class TreeAnnotator(transformer.Base):
     self._aggregate_predecessors_defined_in(node)
     return self.generic_visit(node)
 
+  def visit_Try(self, node):
+    self._aggregate_predecessors_defined_in(node)
+    return self.generic_visit(node)
+
+  def visit_ExceptHandler(self, node):
+    self._aggregate_predecessors_defined_in(node)
+    # TODO(mdan): Also track the exception type / name symbols.
+    node.body = self.visit_block(node.body)
+    return node
+
   def visit(self, node):
     parent = self.current_cfg_node
 
@@ -287,7 +276,7 @@ class TreeAnnotator(transformer.Base):
     return node
 
 
-def resolve(node, source_info, graphs, definition_factory):
+def resolve(node, source_info, graphs, definition_factory=Definition):
   """Resolves reaching definitions for each symbol.
 
   Args:

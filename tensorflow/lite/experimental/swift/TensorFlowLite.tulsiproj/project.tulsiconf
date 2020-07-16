@@ -1,0 +1,17 @@
+{
+  "configDefaults" : {
+    "optionSet" : {
+      "ProjectPrioritizesSwift" : {
+        "p" : "YES"
+      },
+      "SwiftForcesdSYMs" : {
+        "p" : "NO"
+      }
+    }
+  },
+  "projectName" : "TensorFlowLite",
+  "packages" : [
+    "tensorflow/lite/experimental/swift"
+  ],
+  "workspaceRoot" : "../../../../.."
+}

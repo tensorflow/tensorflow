@@ -28,6 +28,7 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import function
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
@@ -289,6 +290,28 @@ class SimpleMetaGraphTest(test.TestCase):
       # A single instance of Variable is shared among the collections:
       self.assertIs(global_vars[0], trainable_vars[0])
 
+  @test_util.run_deprecated_v1
+  def testMetricVariablesCollectionLoadsBytesList(self):
+    with ops.Graph().as_default() as graph1:
+      v1 = variables.Variable(
+          [1, 2, 3], shape=[3], dtype=dtypes.float64, name="v")
+
+    orig_meta_graph, _ = meta_graph.export_scoped_meta_graph(graph=graph1)
+
+    # Copy bytes list from global variables collection to metric variables.
+    orig_meta_graph.collection_def[ops.GraphKeys.METRIC_VARIABLES].CopyFrom(
+        orig_meta_graph.collection_def["variables"])
+
+    with ops.Graph().as_default() as graph2:
+      meta_graph.import_scoped_meta_graph(orig_meta_graph)
+      var_list = graph2.get_collection(ops.GraphKeys.METRIC_VARIABLES)
+      self.assertEqual(len(var_list), 1)
+      v2 = var_list[0]
+      self.assertIsInstance(v2, variables.Variable)
+      self.assertEqual(v1.name, v2.name)
+      self.assertEqual(v1.dtype, v2.dtype)
+      self.assertEqual(v1.shape, v2.shape)
+
 
 class ScopedMetaGraphTest(test.TestCase):
 
@@ -384,13 +407,13 @@ class ScopedMetaGraphTest(test.TestCase):
       new_image = constant_op.constant(
           1.2, dtypes.float32, shape=[100, 28], name="images")
 
-    with self.assertRaisesRegexp(ValueError, "Graph contains unbound inputs"):
+    with self.assertRaisesRegex(ValueError, "Graph contains unbound inputs"):
       meta_graph.import_scoped_meta_graph(
           os.path.join(test_dir, exported_filenames[0]),
           graph=graph,
           import_scope="new_hidden1")
 
-    with self.assertRaisesRegexp(ValueError, "Graph contains unbound inputs"):
+    with self.assertRaisesRegex(ValueError, "Graph contains unbound inputs"):
       meta_graph.import_scoped_meta_graph(
           os.path.join(test_dir, exported_filenames[0]),
           graph=graph,
@@ -707,6 +730,29 @@ class ScopedMetaGraphTest(test.TestCase):
     test_util.assert_meta_graph_protos_equal(self, orig_meta_graph,
                                              new_meta_graph)
 
+  def testExportDebugInfo(self):
+    graph1 = ops.Graph()
+    with graph1.as_default():
+      with ops.name_scope("hidden1/hidden2/hidden3"):
+        images = constant_op.constant(
+            1.0, dtypes.float32, shape=[3, 2], name="images")
+        weights1 = variables.Variable([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+                                      name="weights")
+        biases1 = resource_variable_ops.ResourceVariable(
+            [0.1] * 3, name="biases")
+        nn_ops.relu(math_ops.matmul(images, weights1) + biases1, name="relu")
+    func_named_operations = []
+    for op in graph1.get_operations():
+      func_named_operations.append(("", op))
+    debug_info_def = error_interpolation.create_graph_debug_info_def(
+        func_named_operations)
+
+    # The unique file names in all the stack traces should be larger or equal
+    # than 1.
+    self.assertTrue(len(debug_info_def.files) >= 1)
+    # All the nodes from the exported graphdef are included.
+    self.assertEqual(len(debug_info_def.traces), len(graph1.get_operations()))
+
   # Verifies that we can export a subgraph in a nested name scope containing a
   # "hidden1/hidden2" and import it into "new_hidden1/new_hidden2" in a new
   # graph.
@@ -757,8 +803,6 @@ class ScopedMetaGraphTest(test.TestCase):
         b"loc:@new_hidden1/new_hidden2/hidden3/biases",
         b"loc:@new_hidden1/new_hidden2/hidden3/weights"
     ]
-    for n, e in zip(nodes, expected):
-      self.assertEqual([e], graph2.get_operation_by_name(n).get_attr("_class"))
 
   @test_util.run_deprecated_v1
   def testExportNestedNames(self):
@@ -785,7 +829,7 @@ class ScopedMetaGraphTest(test.TestCase):
 
     graph2 = ops.Graph()
     with graph2.as_default():
-      with self.assertRaisesRegexp(ValueError, "Graph contains unbound inputs"):
+      with self.assertRaisesRegex(ValueError, "Graph contains unbound inputs"):
         meta_graph.import_scoped_meta_graph(
             orig_meta_graph, import_scope="new_hidden1")
 
@@ -908,7 +952,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
               "python/framework/testdata/metrics_export_meta_graph.pb"))
       self.assertEqual(len(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)),
                        2)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           AttributeError, "'Tensor' object has no attribute 'initializer'"):
         initializer = variables.local_variables_initializer()
 
@@ -916,7 +960,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
 class ExportImportAcrossScopesTest(test.TestCase):
 
   @test_util.run_deprecated_v1
-  def testPartionedVariables(self):
+  def testPartitionedVariables(self):
 
     def make_graph_with_partitioned_variables(use_resource):
       variable_scope.get_variable(

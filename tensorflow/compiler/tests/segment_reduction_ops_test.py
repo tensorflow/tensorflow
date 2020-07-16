@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
@@ -32,7 +33,7 @@ class SegmentReductionOpsTest(xla_test.XLATestCase):
   """Test cases for segment reduction ops."""
 
   def _segmentReduction(self, op, data, indices, num_segments):
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       d = array_ops.placeholder(data.dtype, shape=data.shape)
       if isinstance(indices, int):
         i = array_ops.placeholder(np.int32, shape=[])

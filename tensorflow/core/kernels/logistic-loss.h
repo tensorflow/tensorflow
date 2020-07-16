@@ -43,7 +43,7 @@ class LogisticLossUpdater : public DualLossUpdater {
     return 0.5 * (1 + tanh(x)) / label;
   }
 
-  // Dual of logisitic loss function.
+  // Dual of logistic loss function.
   // https://en.wikipedia.org/wiki/Convex_conjugate
   double ComputeDualLoss(const double current_dual, const double example_label,
                          const double example_weight) const final {
@@ -69,12 +69,12 @@ class LogisticLossUpdater : public DualLossUpdater {
     if (y_wx > 0) {
       // 0 + log(e^(0) + e^(-ywx - 0))
       // log(1 + e^(-ywx))
-      return log(1 + exp(-y_wx)) * example_weight;
+      return log1p(exp(-y_wx)) * example_weight;
     }
     // -ywx + log(e^(ywx) + e^(-ywx + ywx))
     // log(e^(ywx) + e^(0)) - ywx
     // log(1 + e^(ywx)) - ywx
-    return (log(1 + exp(y_wx)) - y_wx) * example_weight;
+    return (log1p(exp(y_wx)) - y_wx) * example_weight;
   }
 
   // Derivative of logistic loss

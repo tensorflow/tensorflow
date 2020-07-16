@@ -1,4 +1,14 @@
 op {
   graph_op_name: "Sin"
-  summary: "Computes sin of x element-wise."
+  summary: "Computes sine of x element-wise."
+  description: <<END
+  Given an input tensor, this function computes sine of every
+  element in the tensor. Input range is `(-inf, inf)` and
+  output range is `[-1,1]`.
+
+  ```python
+  x = tf.constant([-float("inf"), -9, -0.5, 1, 1.2, 200, 10, float("inf")])
+  tf.math.sin(x) ==> [nan -0.4121185 -0.47942555 0.84147096 0.9320391 -0.87329733 -0.54402107 nan]
+  ```
+END
 }

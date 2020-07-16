@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RadialConstraint"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "UnitNorm"
     mtype: "<type \'type\'>"
   }
@@ -30,6 +34,10 @@ tf_module {
   }
   member {
     name: "non_neg"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "radial_constraint"
     mtype: "<type \'type\'>"
   }
   member {

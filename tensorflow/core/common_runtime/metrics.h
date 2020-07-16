@@ -16,12 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_METRICS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_METRICS_H_
 
-#include "tensorflow/core/platform/types.h"
+// TODO(jsimsa): Remove this forwarding header once all users are migrated to
+// using the one in framework.
 
-namespace tensorflow {
-
-void UpdateGraphExecTime(const uint64 running_time_usecs);
-
-}  // namespace tensorflow
+#include "tensorflow/core/framework/metrics.h"
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_METRICS_H_

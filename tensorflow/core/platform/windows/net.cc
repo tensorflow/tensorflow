@@ -15,18 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/platform/net.h"
 
-#include <cstdlib>
-#include <unordered_set>
-
 #include <sys/types.h>
 #include <winsock2.h>
 
+#include <cstdlib>
+#include <unordered_set>
+
+#include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/windows/error.h"
+#include "tensorflow/core/platform/windows/error_windows.h"
 
 #undef ERROR
-
-#pragma comment(lib, "Ws2_32.lib")
 
 namespace tensorflow {
 namespace internal {
@@ -44,8 +43,7 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   CHECK_GE(*port, 0);
   CHECK_LE(*port, 65535);
   if (sock == INVALID_SOCKET) {
-    LOG(ERROR) << "socket() failed: "
-               << GetWindowsErrorMessage(WSAGetLastError());
+    LOG(ERROR) << "socket() failed: " << WindowsWSAGetLastErrorMessage();
     return false;
   }
 
@@ -54,8 +52,7 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   int result = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
                           reinterpret_cast<const char*>(&one), sizeof(one));
   if (result == SOCKET_ERROR) {
-    LOG(ERROR) << "setsockopt() failed: "
-               << GetWindowsErrorMessage(WSAGetLastError());
+    LOG(ERROR) << "setsockopt() failed: " << WindowsWSAGetLastErrorMessage();
     closesocket(sock);
     return false;
   }
@@ -67,7 +64,7 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   result = bind(sock, (struct sockaddr*)&addr, sizeof(addr));
   if (result == SOCKET_ERROR) {
     LOG(WARNING) << "bind(port=" << *port
-                 << ") failed: " << GetWindowsErrorMessage(WSAGetLastError());
+                 << ") failed: " << WindowsWSAGetLastErrorMessage();
     closesocket(sock);
     return false;
   }
@@ -75,8 +72,7 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   // Get the bound port number.
   result = getsockname(sock, (struct sockaddr*)&addr, &addr_len);
   if (result == SOCKET_ERROR) {
-    LOG(WARNING) << "getsockname() failed: "
-                 << GetWindowsErrorMessage(WSAGetLastError());
+    LOG(WARNING) << "getsockname() failed: " << WindowsWSAGetLastErrorMessage();
     closesocket(sock);
     return false;
   }

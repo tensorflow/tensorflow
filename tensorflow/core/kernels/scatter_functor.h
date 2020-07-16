@@ -20,12 +20,13 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
@@ -198,17 +199,58 @@ struct ScatterFunctor {
 
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 struct ScatterFunctorBase {
-  Index operator()(OpKernelContext* c, const Device& d,
-                   typename TTypes<T>::Matrix params,
-                   typename TTypes<T>::ConstMatrix updates,
-                   typename TTypes<Index>::ConstFlat indices) {
-    // indices and params sizes were validated in DoCompute().
+  Index ParallelExecute(OpKernelContext* c, const Device& d,
+                        typename TTypes<T>::Matrix params,
+                        typename TTypes<T>::ConstMatrix updates,
+                        typename TTypes<Index>::ConstFlat indices) {
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
-    for (Index i = 0; i < N; i++) {
+    const Index kMaxLocks = 1024;
+    const Index entries_per_lock = (limit + kMaxLocks - 1) / kMaxLocks;
+    // To reduce the number of locks and the memory usage, we divide the whole
+    // index space into kMaxLocks regions with each lock serializing access to
+    // a region.
+    mutex accessed[kMaxLocks];
+    std::atomic<Index> bad_index(-1);
+    auto ParallelScatter = [&](Index start, Index end) {
+      for (Index i = start; i < end; ++i) {
+        // Grab the index and check its validity.  Do this carefully,
+        // to avoid checking the value and grabbing it again from
+        // memory a second time (a security risk since it may change in
+        // between).
+        const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, limit)) {
+          bad_index = i;
+          return;
+        }
+        const Index lock_id = index / entries_per_lock;
+        // Copy last Ndim-1 dimensions of updates[i] to params[index]
+        {
+          mutex_lock l(accessed[lock_id]);
+          scatter_op::internal::Assign<op>::Run(params.template chip<0>(index),
+                                                updates.template chip<0>(i));
+        }
+      }
+    };
+    const float kMovingCost = 2.5f;
+    float shard_cost = kMovingCost * params.dimension(1);
+    const DeviceBase::CpuWorkerThreads& worker_threads =
+        *(c->device()->tensorflow_cpu_worker_threads());
+    Shard(worker_threads.num_threads, worker_threads.workers, N, shard_cost,
+          ParallelScatter);  // TODO: Come up with a good cost estimate.
+    return bad_index;
+  }
+  Index SerialExecute(OpKernelContext* c, const Device& d,
+                      typename TTypes<T>::Matrix params,
+                      typename TTypes<T>::ConstMatrix updates,
+                      typename TTypes<Index>::ConstFlat indices) {
+    const Index N = static_cast<Index>(indices.size());
+    const Index limit = static_cast<Index>(params.dimension(0));
+    for (Index i = 0; i < N; ++i) {
       // Grab the index and check its validity.  Do this carefully,
       // to avoid checking the value and grabbing it again from
-      // memory a second time (a security risk since it may change in between).
+      // memory a second time (a security risk since it may change in
+      // between).
       const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
       if (!FastBoundsCheck(index, limit)) return i;
       // Copy last Ndim-1 dimensions of updates[i] to params[index]
@@ -216,6 +258,37 @@ struct ScatterFunctorBase {
                                             updates.template chip<0>(i));
     }
     return -1;
+  }
+
+  Index operator()(OpKernelContext* c, const Device& d,
+                   typename TTypes<T>::Matrix params,
+                   typename TTypes<T>::ConstMatrix updates,
+                   typename TTypes<Index>::ConstFlat indices) {
+#ifdef PLATFORM_GOOGLE
+    // The parallel version is significantly slower internally. Only call the
+    // serial version for now.
+    // TODO(penporn): Avoid locking in parallelization (sort beforehand).
+    return SerialExecute(c, d, params, updates, indices);
+#else
+    // indices and params sizes were validated in DoCompute().
+    const Index N = static_cast<Index>(indices.size());
+    const Index limit = static_cast<Index>(params.dimension(0));
+    const Index min_n_threshold = 1024;
+    const Index ser_par_ratio = 10000;
+    // For parallelizing the updates, duplicate entries need to be handled
+    // correctly. Multiple updates to the same index has to be serialized.
+    // This can lead to lock contention which may nullify the benefits of
+    // parallelization. Assuming uniform random distribution of the indices, we
+    // come up with a rough heuristic and determine whether the updates execute
+    // serially or parallelly. Also if 'N' is small, overheads of parallel
+    // execution outweigh its benefits and hence we check the value of N.
+    const bool execute_serial =
+        ((N < min_n_threshold) || ((N / limit) > ser_par_ratio));
+    if (execute_serial)
+      return SerialExecute(c, d, params, updates, indices);
+    else
+      return ParallelExecute(c, d, params, updates, indices);
+#endif  // PLATFORM_GOOGLE
   }
 };
 
@@ -289,7 +362,7 @@ struct ScatterFunctorBase<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
     // indices and params sizes were validated in DoCompute().
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
-    if (!std::is_same<T, string>::value) {
+    if (!std::is_same<T, tstring>::value) {
       for (Index i = 0; i < N; i++) {
         // Grab the index and check its validity.  Do this carefully,
         // to avoid checking the value and grabbing it again from

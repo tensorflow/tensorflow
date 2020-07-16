@@ -7,6 +7,14 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "dynamic_size"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "element_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "flow"
     mtype: "<type \'property\'>"
   }

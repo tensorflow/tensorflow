@@ -35,7 +35,7 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
   return it;
 }
 
-bool ValidateSourceOp(const Model& model, const string& array_name,
+bool ValidateSourceOp(const Model& model, const std::string& array_name,
                       OperatorType op_type, Operator** source_op) {
   if (op_type == OperatorType::kNone) {
     CHECK(!source_op);
@@ -147,10 +147,24 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
   if (final_output_mul->type != OperatorType::kMul) {
     return ::tensorflow::Status::OK();
   }
+  // final_output_mul->outputs[0] would be one of the two outputs of our
+  // LstmCell. Exit if it does not already have a data type.
+  // We won't be able to propagate data types through a fused LstmCell.
+  if (model->GetArray(final_output_mul->outputs[0]).data_type ==
+      ArrayDataType::kNone) {
+    return ::tensorflow::Status::OK();
+  }
   Operator *state_output_tanh, *fc_output_sig;
   if (!MatchOperatorInputs(*final_output_mul, *model, OperatorType::kTanh,
                            &state_output_tanh, OperatorType::kLogistic,
                            &fc_output_sig)) {
+    return ::tensorflow::Status::OK();
+  }
+  // state_output_tanh->inputs[0] would be one of the two outputs of our
+  // LstmCell. Exit if it does not already have a data type.
+  // We won't be able to propagate data types through a fused LstmCell.
+  if (model->GetArray(state_output_tanh->inputs[0]).data_type ==
+      ArrayDataType::kNone) {
     return ::tensorflow::Status::OK();
   }
 
@@ -170,7 +184,7 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
                            &state_remember_mul)) {
     return ::tensorflow::Status::OK();
   }
-  const string prev_state = state_forget_mul->inputs[0];
+  const std::string prev_state = state_forget_mul->inputs[0];
 
   // State forget gate
   Operator* state_forget_sig;
@@ -257,51 +271,38 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
               LogName(*lstm_cell_op));
 
   // Create temp arrays used internally during runtime.
-  const string base_name(FindLongestCommonPrefix(
+  const std::string base_name(FindLongestCommonPrefix(
       lstm_cell_op->outputs[LstmCellOperator::STATE_OUTPUT],
       lstm_cell_op->outputs[LstmCellOperator::ACTIV_OUTPUT]));
-  const string& concat_temp_array_name =
+  const std::string& concat_temp_array_name =
       AvailableArrayName(*model, base_name + "concat_temp");
-  model->GetOrCreateArray(concat_temp_array_name);
+  auto& concat_temp_array = model->GetOrCreateArray(concat_temp_array_name);
+  concat_temp_array.data_type =
+      model->GetArray(concat_inputs->outputs[0]).data_type;
   lstm_cell_op->outputs[LstmCellOperator::CONCAT_TEMP] = concat_temp_array_name;
-  const string& activ_temp_array_name =
+  const std::string& activ_temp_array_name =
       AvailableArrayName(*model, base_name + "activ_temp");
-  model->GetOrCreateArray(activ_temp_array_name);
+  auto& activ_temp_array = model->GetOrCreateArray(activ_temp_array_name);
+  activ_temp_array.data_type =
+      model->GetArray(fully_connected->outputs[0]).data_type;
   lstm_cell_op->outputs[LstmCellOperator::ACTIV_TEMP] = activ_temp_array_name;
   AddMessageF("Created temp outputs %s and %s on operator %s",
               concat_temp_array_name, activ_temp_array_name,
               LogName(*lstm_cell_op));
 
-  // Delete arrays and operators replaced by the LSTM cell operator. Order is
-  // important - DeleteArrayIfUnused() only succeeds if dependent operators
-  // have been removed first. Start at the output and work towards the input.
-  model->operators.erase(FindOperator(model, *final_output_mul));
-  DeleteArrayIfUnused(state_output_tanh->outputs[0], model);
-  DeleteArrayIfUnused(fc_output_sig->outputs[0], model);
-  model->operators.erase(FindOperator(model, *state_output_tanh));
-  model->operators.erase(FindOperator(model, *fc_output_sig));
-  model->operators.erase(FindOperator(model, *state_combine_add));
-  DeleteArrayIfUnused(state_forget_mul->outputs[0], model);
-  DeleteArrayIfUnused(state_remember_mul->outputs[0], model);
-  model->operators.erase(FindOperator(model, *state_forget_mul));
-  model->operators.erase(FindOperator(model, *state_remember_mul));
-  DeleteArrayIfUnused(state_forget_sig->outputs[0], model);
-  DeleteArrayIfUnused(state_info_tanh->outputs[0], model);
-  DeleteArrayIfUnused(state_remember_sig->outputs[0], model);
-  model->operators.erase(FindOperator(model, *state_forget_sig));
-  model->operators.erase(FindOperator(model, *state_info_tanh));
-  model->operators.erase(FindOperator(model, *state_remember_sig));
-  DeleteArrayIfUnused(fc_output_split->outputs[0], model);
-  DeleteArrayIfUnused(fc_output_split->outputs[1], model);
-  DeleteArrayIfUnused(fc_output_split->outputs[2], model);
-  DeleteArrayIfUnused(fc_output_split->outputs[3], model);
-  string dims_array = fc_output_split->inputs[0];
-  model->operators.erase(FindOperator(model, *fc_output_split));
-  DeleteArrayIfUnused(dims_array, model);
-  DeleteArrayIfUnused(fully_connected->outputs[0], model);
-  model->operators.erase(FindOperator(model, *fully_connected));
-  DeleteArrayIfUnused(concat_inputs->outputs[0], model);
-  model->operators.erase(FindOperator(model, *concat_inputs));
+  DeleteOpAndArrays(model, final_output_mul);
+  DeleteOpAndArrays(model, state_output_tanh);
+  DeleteOpAndArrays(model, fc_output_sig);
+  DeleteOpAndArrays(model, state_combine_add);
+  DeleteOpAndArrays(model, state_forget_mul);
+  DeleteOpAndArrays(model, state_remember_mul);
+  DeleteOpAndArrays(model, state_forget_sig);
+  DeleteOpAndArrays(model, state_info_tanh);
+  DeleteOpAndArrays(model, state_remember_sig);
+  DeleteOpAndArrays(model, fc_output_split);
+  DeleteOpAndArrays(model, fully_connected);
+  DeleteOpAndArrays(model, concat_inputs);
+
   *modified = true;
   return ::tensorflow::Status::OK();
 }

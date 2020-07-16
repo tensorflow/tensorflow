@@ -32,6 +32,11 @@ void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input);
 void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
              TF_Buffer* attr_value_proto, TF_Status* status);
 
+// Clears the attr in the node_def Protocol Buffer and sets a status upon
+// completion.
+void ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
+               TF_Status* status);
+
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device);
 
 // Updates 'dst' to consume 'new_src'.

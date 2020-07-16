@@ -1,6 +1,4 @@
 op {
   graph_op_name: "MaxPool3D"
-  endpoint {
-    name: "nn.max_pool3d"
-  }
+  visibility: HIDDEN
 }

@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace wav {
@@ -34,12 +34,13 @@ Status ReadString(const string& data, int expected_length, string* value,
 
 TEST(WavIO, BadArguments) {
   float audio[] = {0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f};
-  string result;
+  tstring result;
 
   EXPECT_EQ(error::INVALID_ARGUMENT,
             EncodeAudioAsS16LEWav(nullptr, 44100, 2, 3, &result).code());
-  EXPECT_EQ(error::INVALID_ARGUMENT,
-            EncodeAudioAsS16LEWav(audio, 44100, 2, 3, nullptr).code());
+  EXPECT_EQ(
+      error::INVALID_ARGUMENT,
+      EncodeAudioAsS16LEWav(audio, 44100, 2, 3, (tstring*)nullptr).code());
 
   const size_t kuint32max_plus_one = static_cast<size_t>(kuint32max) + 1;
   const size_t kuint16max_plus_one = static_cast<size_t>(kuint16max) + 1;
@@ -204,7 +205,7 @@ TEST(WavIO, ChunkSizeOverflow) {
       wav_data_string, &decoded_audio, &decoded_sample_count,
       &decoded_channel_count, &decoded_sample_rate);
   EXPECT_FALSE(decode_status.ok());
-  EXPECT_TRUE(str_util::StrContains(decode_status.error_message(), "too large"))
+  EXPECT_TRUE(absl::StrContains(decode_status.error_message(), "too large"))
       << decode_status.error_message();
 }
 

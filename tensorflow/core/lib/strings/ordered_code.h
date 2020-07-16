@@ -39,8 +39,9 @@ limitations under the License.
 #define TENSORFLOW_LIB_STRINGS_ORDERED_CODE_H__
 
 #include <string>
-#include "tensorflow/core/lib/core/stringpiece.h"
+
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

@@ -1,0 +1,21 @@
+op {
+  graph_op_name: "CSRSparseMatrixToSparseTensor"
+  visibility: HIDDEN
+  in_arg {
+    name: "sparse_matrix"
+    description: "A (possibly batched) CSRSparseMatrix."
+  }
+  out_arg {
+    name: "indices"
+    description: "SparseTensor indices."
+  }
+  out_arg {
+    name: "values"
+    description: "SparseTensor values."
+  }
+  out_arg {
+    name: "dense_shape"
+    description: "SparseTensor dense shape."
+  }
+  summary: "Converts a (possibly batched) CSRSparesMatrix to a SparseTensor."
+}

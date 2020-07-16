@@ -18,19 +18,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util as tf_test_util
-from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
-@keras_parameterized.run_all_keras_modes
-class SimpleRNNLayerTest(keras_parameterized.TestCase):
+@combinations.generate(combinations.keras_mode_combinations())
+class SimpleRNNLayerTest(test.TestCase, parameterized.TestCase):
 
   def test_return_sequences_SimpleRNN(self):
     num_samples = 2
@@ -43,6 +47,20 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  @tf_test_util.run_v2_only
+  def test_float64_SimpleRNN(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        keras.layers.SimpleRNN,
+        kwargs={'units': units,
+                'return_sequences': True,
+                'dtype': 'float64'},
+        input_shape=(num_samples, timesteps, embedding_dim),
+        input_dtype='float64')
+
   def test_dynamic_behavior_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -51,7 +69,7 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     layer = keras.layers.SimpleRNN(units, input_shape=(None, embedding_dim))
     model = keras.models.Sequential()
     model.add(layer)
-    model.compile(RMSPropOptimizer(0.01), 'mse')
+    model.compile('rmsprop', 'mse')
     x = np.random.random((num_samples, timesteps, embedding_dim))
     y = np.random.random((num_samples, units))
     model.train_on_batch(x, y)
@@ -99,7 +117,6 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
     self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_with_masking_layer_SimpleRNN(self):
     layer_class = keras.layers.SimpleRNN
     inputs = np.random.random((2, 3, 4))
@@ -108,8 +125,7 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     model = keras.models.Sequential()
     model.add(keras.layers.Masking(input_shape=(3, 4)))
     model.add(layer_class(units=5, return_sequences=True, unroll=False))
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=RMSPropOptimizer(0.01))
+    model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_from_config_SimpleRNN(self):
@@ -118,6 +134,34 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
       l1 = layer_class(units=1, stateful=stateful)
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
+
+  def test_deep_copy_SimpleRNN(self):
+    cell = keras.layers.SimpleRNNCell(5)
+    copied_cell = copy.deepcopy(cell)
+    self.assertEqual(copied_cell.units, 5)
+    self.assertEqual(cell.get_config(), copied_cell.get_config())
+
+  def test_regularizers_SimpleRNN(self):
+    embedding_dim = 4
+    layer_class = keras.layers.SimpleRNN
+    layer = layer_class(
+        5,
+        return_sequences=False,
+        weights=None,
+        input_shape=(None, embedding_dim),
+        kernel_regularizer=keras.regularizers.l1(0.01),
+        recurrent_regularizer=keras.regularizers.l1(0.01),
+        bias_regularizer='l2',
+        activity_regularizer='l1')
+    layer.build((None, None, 2))
+    self.assertLen(layer.losses, 3)
+
+    x = keras.backend.variable(np.ones((2, 3, 2)))
+    layer(x)
+    if context.executing_eagerly():
+      self.assertLen(layer.losses, 4)
+    else:
+      self.assertLen(layer.get_losses_for(x), 1)
 
   def test_statefulness_SimpleRNN(self):
     num_samples = 2
@@ -136,8 +180,10 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     layer = layer_class(
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
-    model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                  loss='mse')
+    model.compile(
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 
@@ -181,29 +227,14 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
 
     np.testing.assert_allclose(out7, out6, atol=1e-5)
 
+  def test_get_initial_states(self):
+    batch_size = 4
+    cell = keras.layers.SimpleRNNCell(20)
+    initial_state = cell.get_initial_state(
+        batch_size=batch_size, dtype=dtypes.float32)
+    _, state = cell(np.ones((batch_size, 20), dtype=np.float32), initial_state)
+    self.assertEqual(state.shape, initial_state.shape)
 
-class SimpleRNNLayerGraphOnlyTest(test.TestCase):
-
-  # b/120919032
-  @tf_test_util.run_deprecated_v1
-  def test_regularizers_SimpleRNN(self):
-    embedding_dim = 4
-    layer_class = keras.layers.SimpleRNN
-    layer = layer_class(
-        5,
-        return_sequences=False,
-        weights=None,
-        input_shape=(None, embedding_dim),
-        kernel_regularizer=keras.regularizers.l1(0.01),
-        recurrent_regularizer=keras.regularizers.l1(0.01),
-        bias_regularizer='l2',
-        activity_regularizer='l1')
-    layer.build((None, None, 2))
-    self.assertEqual(len(layer.losses), 3)
-
-    x = keras.backend.variable(np.ones((2, 3, 2)))
-    layer(x)
-    self.assertEqual(len(layer.get_losses_for(x)), 1)
 
 if __name__ == '__main__':
   test.main()

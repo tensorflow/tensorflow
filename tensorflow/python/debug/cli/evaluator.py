@@ -55,7 +55,7 @@ def _parse_debug_tensor_name(debug_tensor_name):
       `None`.
     node_name: Name of the node.
     output_slot: Output slot index as an `int`.
-    debug_op: If the debug op suffix exists, the debug op name; otheriwse,
+    debug_op: If the debug op suffix exists, the debug op name; otherwise,
       `None`.
     exec_index: Execution index (applicable to cases in which a debug tensor
       is computed multiple times in a `tf.Session.run` call, e.g., due to
@@ -113,7 +113,7 @@ class ExpressionEvaluator(object):
       dump: an instance of `DebugDumpDir`.
     """
     self._dump = dump
-    self._cached_tensor_values = dict()
+    self._cached_tensor_values = {}
 
   def evaluate(self, expression):
     """Parse an expression.

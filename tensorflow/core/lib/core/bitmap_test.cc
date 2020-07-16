@@ -71,7 +71,7 @@ TEST(BitmapTest, FirstUnset) {
         // Fill rest with a pattern of 0 followed by q 1s.
         while (i < n) {
           i++;
-          for (int j = 0; j < q && i < n; j++, i++) {
+          for (size_t j = 0; j < q && i < n; j++, i++) {
             one_count++;
             bitmap.set(i);
           }

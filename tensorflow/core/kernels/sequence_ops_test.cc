@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -112,6 +113,27 @@ TEST_F(LinSpaceOpTest, Simple_D32) {
   Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
   test::FillValues<float>(&expected, {3.0, 5.0, 7.0});
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
+TEST_F(LinSpaceOpTest, Exact_Endpoints) {
+  MakeOp(DT_FLOAT, DT_INT32);
+
+  // Feed and run. The particular values 0., 1., and 42 are chosen to test that
+  // the last value is not calculated via an intermediate delta as (1./41)*41,
+  // because for IEEE 32-bit floats that returns 0.99999994 != 1.0.
+  AddInputFromArray<float>(TensorShape({}), {0.0});
+  AddInputFromArray<float>(TensorShape({}), {1.0});
+  AddInputFromArray<int32>(TensorShape({}), {42});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output
+  Tensor output = *GetOutput(0);
+  float expected_start = 0.0;
+  float start = output.flat<float>()(0);
+  EXPECT_EQ(expected_start, start) << expected_start << " vs. " << start;
+  float expected_stop = 1.0;
+  float stop = output.flat<float>()(output.NumElements() - 1);
+  EXPECT_EQ(expected_stop, stop) << expected_stop << " vs. " << stop;
 }
 
 TEST_F(LinSpaceOpTest, Single_D64) {

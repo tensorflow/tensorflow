@@ -12,13 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
+
+#include <stdint.h>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -57,11 +64,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  // TODO(ahentz): Our current implementations rely on the inputs being 4D.
+  // TODO(ahentz): Our current implementations rely on the input being 4D,
+  // and the size being 1D tensor with exactly 2 elements.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
+  TF_LITE_ENSURE_TYPES_EQ(context, size->type, kTfLiteInt32);
+  TF_LITE_ENSURE_EQ(context, size->dims->data[0], 2);
 
-  TF_LITE_ENSURE_EQ(context, size->type, kTfLiteInt32);
   output->type = input->type;
 
   if (!IsConstantTensor(size)) {
@@ -87,6 +96,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   tflite::ResizeNearestNeighborParams op_params;
   op_params.align_corners = params->align_corners;
+  op_params.half_pixel_centers = params->half_pixel_centers;
 
   if (output->type == kTfLiteFloat32) {
     reference_ops::ResizeNearestNeighbor(
@@ -106,9 +116,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTensorShape(size), GetTensorData<int32>(size),
           GetTensorShape(output), GetTensorData<uint8_t>(output));
     }
+  } else if (output->type == kTfLiteInt8) {
+    reference_ops::ResizeNearestNeighbor(
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(size), GetTensorData<int32>(size),
+        GetTensorShape(output), GetTensorData<int8_t>(output));
   } else {
-    context->ReportError(context, "Output type is %d, requires float or uint8.",
-                         output->type);
+    TF_LITE_KERNEL_LOG(context,
+                       "Output type is %s, requires float, uint8 or int8.",
+                       TfLiteTypeGetName(output->type));
     return kTfLiteError;
   }
 

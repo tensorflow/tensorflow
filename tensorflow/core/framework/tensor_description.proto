@@ -1,14 +1,16 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/allocation_description.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "TensorDescriptionProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/types.proto";
-import "tensorflow/core/framework/tensor_shape.proto";
-import "tensorflow/core/framework/allocation_description.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/tensor_description_go_proto";
 
 message TensorDescription {
   // Data type of tensor elements
@@ -19,4 +21,4 @@ message TensorDescription {
 
   // Information about the size and allocator used for the data
   AllocationDescription allocation_description = 4;
-};
+}

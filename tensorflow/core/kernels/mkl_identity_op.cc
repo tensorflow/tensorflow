@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 #ifdef INTEL_MKL
 
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -23,8 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-
-#include "mkldnn.hpp"
 #include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
@@ -52,14 +51,17 @@ class MklIdentityOp : public OpKernel {
   bool IsExpensive() override { return false; }
 };
 
-#define REGISTER_MKL_CPU(T)                                         \
-  REGISTER_KERNEL_BUILDER(Name("_MklIdentity")                      \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklIdentityOp<CPUDevice, T>);
+#define REGISTER_MKL_CPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklIdentity")                                     \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklIdentityOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU);
+TF_CALL_bfloat16(REGISTER_MKL_CPU);
 #undef REGISTER_MKL_CPU
 }  // namespace tensorflow
+
 #endif  // INTEL_MKL

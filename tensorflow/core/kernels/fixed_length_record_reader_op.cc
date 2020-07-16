@@ -77,7 +77,7 @@ class FixedLengthRecordReader : public ReaderBase {
     return Status::OK();
   }
 
-  Status ReadLocked(string* key, string* value, bool* produced,
+  Status ReadLocked(tstring* key, tstring* value, bool* produced,
                     bool* at_end) override {
     // We will always "hop" the hop_bytes_ except the first record
     // where record_number_ == 0

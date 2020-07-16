@@ -26,7 +26,20 @@ import org.junit.runners.JUnit4;
 public final class TensorFlowLiteTest {
 
   @Test
+  @SuppressWarnings("deprecation")
   public void testVersion() {
     assertThat(TensorFlowLite.version()).isEqualTo("3");
+  }
+
+  @Test
+  public void testSchemaVersion() {
+    assertThat(TensorFlowLite.schemaVersion()).isEqualTo("3");
+  }
+
+  @Test
+  public void testRuntimeVersion() {
+    // Unlike the schema version, which should almost never change, the runtime version can change
+    // with some frequency, so simply ensure that it's non-empty and doesn't fail.
+    assertThat(TensorFlowLite.runtimeVersion()).isNotEmpty();
   }
 }

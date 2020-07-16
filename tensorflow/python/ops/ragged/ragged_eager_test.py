@@ -21,12 +21,12 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import ragged
-from tensorflow.python.ops.ragged import ragged_test_util
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import googletest
 
 
-class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedTensorTest(test_util.TensorFlowTestCase,
                        parameterized.TestCase):
 
   @parameterized.parameters([
@@ -35,15 +35,15 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
       dict(pylist=[[[1, 2], [3, 4]], [[5, 6], [], [7, 8]]], ragged_rank=1),
   ])
   def testRaggedTensorToList(self, pylist, ragged_rank=None):
-    rt = ragged.constant(pylist, ragged_rank)
-    self.assertRaggedEqual(rt, pylist)
+    rt = ragged_factory_ops.constant(pylist, ragged_rank)
+    self.assertAllEqual(rt, pylist)
 
   @parameterized.parameters([
       dict(pylist=[[b'a', b'b'], [b'c']]),
       dict(pylist=[[[1, 2], [3]], [[4, 5, 6], [], [7]]]),
   ])
   def testRaggedTensorStr(self, pylist):
-    rt = ragged.constant(pylist)
+    rt = ragged_factory_ops.constant(pylist)
     self.assertEqual(str(rt), '<tf.RaggedTensor %s>' % pylist)
 
 

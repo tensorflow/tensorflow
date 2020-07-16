@@ -197,7 +197,7 @@ class LatencyBenchmark {
 
  private:
   // Resets all mutable state, including the scheduler and latency measurements.
-  void ResetState() LOCKS_EXCLUDED(mu_);
+  void ResetState() TF_LOCKS_EXCLUDED(mu_);
 
   // Processes a batch of tasks. (Invoked by 'scheduler_' on one of its batch
   // threads.)
@@ -225,10 +225,10 @@ class LatencyBenchmark {
 
   // A histogram of the task latencies, i.e. queue time plus processing time, in
   // milliseconds.
-  Histogram task_latency_millis_histogram_ GUARDED_BY(mu_);
+  Histogram task_latency_millis_histogram_ TF_GUARDED_BY(mu_);
 
   // A histogram of the batch sizes.
-  Histogram batch_size_histogram_ GUARDED_BY(mu_);
+  Histogram batch_size_histogram_ TF_GUARDED_BY(mu_);
 };
 
 LatencyBenchmark::LatencyBenchmark(

@@ -50,7 +50,7 @@ bool Slice(SliceOperator const& op, Array const& input_array,
   CHECK_LE(size.size(), 4);
   std::vector<int> begin = op.begin;
   std::vector<int> end;
-  for (int i = 0; i < begin.size(); ++i) {
+  for (size_t i = 0; i < begin.size(); ++i) {
     int dim_size = size[i];
     if (dim_size == -1) {
       // -1 means the rest of the dimension.
@@ -158,15 +158,7 @@ bool Slice(SliceOperator const& op, Array const& input_array,
       break;
   }
 
-  // Erase input array if no longer used.
-  if (IsDiscardableArray(*model, op->inputs[0]) &&
-      CountOpsWithInput(*model, op->inputs[0]) == 1) {
-    model->EraseArray(op->inputs[0]);
-  }
-
-  // Erase the operator
-  model->operators.erase(it);
-
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

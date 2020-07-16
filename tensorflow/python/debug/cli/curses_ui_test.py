@@ -19,12 +19,14 @@ from __future__ import print_function
 
 import argparse
 import curses
+import os
 import tempfile
 import threading
 
 import numpy as np
 from six.moves import queue
 
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_test_utils
 from tensorflow.python.debug.cli import curses_ui
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -40,7 +42,7 @@ def string_to_codes(cmd):
 
 def codes_to_string(cmd_code):
   # Omit non-ASCII key codes.
-  return "".join([chr(code) for code in cmd_code if code < 256])
+  return "".join(chr(code) for code in cmd_code if code < 256)
 
 
 class MockCursesUI(curses_ui.CursesUI):
@@ -81,7 +83,10 @@ class MockCursesUI(curses_ui.CursesUI):
     # Observer for toast messages.
     self.toasts = []
 
-    curses_ui.CursesUI.__init__(self)
+    curses_ui.CursesUI.__init__(
+        self,
+        config=cli_config.CLIConfig(
+            config_file_path=os.path.join(tempfile.mkdtemp(), ".tfdbg_config")))
 
     # Override the default path to the command history file to avoid test
     # concurrency issues.
@@ -1527,8 +1532,8 @@ class CursesTest(test_util.TensorFlowTestCase):
 class ScrollBarTest(test_util.TensorFlowTestCase):
 
   def testConstructorRaisesExceptionForNotEnoughHeight(self):
-    with self.assertRaisesRegexp(
-        ValueError, r"Insufficient height for ScrollBar \(2\)"):
+    with self.assertRaisesRegex(ValueError,
+                                r"Insufficient height for ScrollBar \(2\)"):
       curses_ui.ScrollBar(0, 0, 1, 1, 0, 0)
 
   def testLayoutIsEmptyForZeroRow(self):

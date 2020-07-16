@@ -36,6 +36,9 @@ std::shared_ptr<RamFileBlockCache::Block> RamFileBlockCache::Lookup(
   auto entry = block_map_.find(key);
   if (entry != block_map_.end()) {
     if (BlockNotStale(entry->second)) {
+      if (cache_stats_ != nullptr) {
+        cache_stats_->RecordCacheHitBlockSize(entry->second->data.size());
+      }
       return entry->second;
     } else {
       // Remove the stale block and continue.
@@ -104,7 +107,9 @@ Status RamFileBlockCache::MaybeFetch(const Key& key,
           mutex_lock l(mu_);
           // Do not update state if the block is already to be evicted.
           if (block->timestamp != 0) {
-            cache_size_ += block->data.size();
+            // Use capacity() instead of size() to account for all  memory
+            // used by the cache.
+            cache_size_ += block->data.capacity();
             // Put to beginning of LRA list.
             lra_list_.erase(block->lra_iterator);
             lra_list_.push_front(key);
@@ -129,10 +134,15 @@ Status RamFileBlockCache::MaybeFetch(const Key& key,
         size_t bytes_transferred;
         status.Update(block_fetcher_(key.first, key.second, block_size_,
                                      block->data.data(), &bytes_transferred));
+        if (cache_stats_ != nullptr) {
+          cache_stats_->RecordCacheMissBlockSize(bytes_transferred);
+        }
         block->mu.lock();  // Reacquire the lock immediately afterwards
         if (status.ok()) {
           block->data.resize(bytes_transferred, 0);
-          block->data.shrink_to_fit();
+          // Shrink the data capacity to the actual size used.
+          // NOLINTNEXTLINE: shrink_to_fit() may not shrink the capacity.
+          std::vector<char>(block->data).swap(block->data);
           downloaded_block = true;
           block->state = FetchState::FINISHED;
         } else {
@@ -161,7 +171,7 @@ Status RamFileBlockCache::Read(const string& filename, size_t offset, size_t n,
   if (n == 0) {
     return Status::OK();
   }
-  if (!IsCacheEnabled()) {
+  if (!IsCacheEnabled() || (n > max_bytes_)) {
     // The cache is effectively disabled, so we pass the read through to the
     // fetcher without breaking it up into blocks.
     return block_fetcher_(filename, offset, n, buffer, bytes_transferred);
@@ -285,7 +295,7 @@ void RamFileBlockCache::RemoveBlock(BlockMap::iterator entry) {
   entry->second->timestamp = 0;
   lru_list_.erase(entry->second->lru_iterator);
   lra_list_.erase(entry->second->lra_iterator);
-  cache_size_ -= entry->second->data.size();
+  cache_size_ -= entry->second->data.capacity();
   block_map_.erase(entry);
 }
 

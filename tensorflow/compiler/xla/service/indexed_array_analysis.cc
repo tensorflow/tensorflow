@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
-namespace gtl = ::tensorflow::gtl;
 
 namespace {
 using Analysis = IndexedArrayAnalysis;
@@ -103,7 +102,7 @@ Status IndexedArrayAnalysis::TraverseAndPopulateCache(
 
   do {
     const HloInstruction* instr = stack.back();
-    if (cache_.count(instr)) {
+    if (cache_.contains(instr)) {
       stack.pop_back();
       continue;
     }
@@ -111,9 +110,9 @@ Status IndexedArrayAnalysis::TraverseAndPopulateCache(
     switch (FindOrDie(dfs_state_map, instr)) {
       case kDiscovered: {
         for (const HloInstruction* operand : instr->operands()) {
-          if (!cache_.count(operand)) {
+          if (!cache_.contains(operand)) {
             stack.push_back(operand);
-            CHECK(!dfs_state_map.count(operand) ||
+            CHECK(!dfs_state_map.contains(operand) ||
                   dfs_state_map[operand] == kDiscovered);
             dfs_state_map[operand] = kDiscovered;
           }
@@ -887,7 +886,7 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseBinaryOp(HloOpcode opcode,
 
   // To figure out the broadcast dimensions for the (constant) source for the
   // scalar-indexed node, we "simulate" the index transformation done by the
-  // existing broadcsat:
+  // existing broadcast:
   enum class IndexComponent { Broadcasted, NotBroadcasted };
   std::vector<IndexComponent> simulated_index(
       broadcast_instr->shape().dimensions_size(), IndexComponent::Broadcasted);
@@ -965,7 +964,7 @@ IndexedArrayAnalysis::ComputeArrayForElementwiseUnaryOp(HloOpcode opcode,
   return Construct<ScalarIndexedConstantArray>(
       new_source, scalar_indexed_const->indices(),
       scalar_indexed_const->source_dim(),
-      ArraySliceToVector(scalar_indexed_const->output_dims()),
+      SpanToVector(scalar_indexed_const->output_dims()),
       scalar_indexed_const->shape());
 }
 
@@ -1002,7 +1001,7 @@ bool CanFoldDotIntoIndexedArray(
     absl::Span<const int64> contracting_dims,
     absl::Span<const int64> batch_dims) {
   absl::optional<int64> non_contracting_non_batch_dim =
-      GetOnlyNonContractingNonBatchDim(ShapeUtil::Rank(indexed_array->shape()),
+      GetOnlyNonContractingNonBatchDim(indexed_array->shape().rank(),
                                        contracting_dims, batch_dims);
   if (!non_contracting_non_batch_dim.has_value()) {
     VLOG(3) << tag << ": multiple or no non-contracting non-batch dimensions";
@@ -1015,7 +1014,7 @@ bool CanFoldDotIntoIndexedArray(
     return false;
   }
 
-  int64 indexed_array_rank = ShapeUtil::Rank(indexed_array->shape());
+  int64 indexed_array_rank = indexed_array->shape().rank();
   if (indexed_array->source_dim() < (indexed_array_rank - 2)) {
     // This restriction can be lifted by inserting reshape nodes.
     VLOG(3) << tag
@@ -1043,7 +1042,7 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedLhs(
     return nullptr;
   }
 
-  int64 lhs_rank = ShapeUtil::Rank(lhs->shape());
+  int64 lhs_rank = lhs->shape().rank();
   DotDimensionNumbers new_dim_numbers = dim_numbers;
   new_dim_numbers.set_lhs_contracting_dimensions(
       0, lhs->source_dim() == (lhs_rank - 1) ? (lhs_rank - 2) : (lhs_rank - 1));
@@ -1061,7 +1060,7 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedLhs(
   ConstantArray* new_source = Construct<ConstantArray>(literal_for_new_source);
   return Construct<ScalarIndexedConstantArray>(
       new_source, lhs->indices(), new_source_dim,
-      ArraySliceToVector(lhs->output_dims()), shape);
+      SpanToVector(lhs->output_dims()), shape);
 }
 
 StatusOr<Analysis::Array*>
@@ -1078,7 +1077,7 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedRhs(
     return nullptr;
   }
 
-  int64 rhs_rank = ShapeUtil::Rank(rhs->shape());
+  int64 rhs_rank = rhs->shape().rank();
 
   DotDimensionNumbers new_dim_numbers = dim_numbers;
   new_dim_numbers.set_rhs_contracting_dimensions(
@@ -1097,7 +1096,7 @@ IndexedArrayAnalysis::ComputeArrayForDotWithIndexedRhs(
   ConstantArray* new_source = Construct<ConstantArray>(literal_for_new_source);
   return Construct<ScalarIndexedConstantArray>(
       new_source, rhs->indices(), new_source_dim,
-      ArraySliceToVector(rhs->output_dims()), shape);
+      SpanToVector(rhs->output_dims()), shape);
 }
 
 StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForDot(

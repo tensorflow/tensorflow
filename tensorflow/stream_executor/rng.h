@@ -40,8 +40,8 @@ namespace rng {
 // thread-hostility.
 class RngSupport {
  public:
-  static const int kMinSeedBytes = 16;
-  static const int kMaxSeedBytes = INT_MAX;
+  static constexpr int kMinSeedBytes = 16;
+  static constexpr int kMaxSeedBytes = INT_MAX;
 
   // Releases any random-number-generation resources associated with this
   // support object in the underlying platform implementation.

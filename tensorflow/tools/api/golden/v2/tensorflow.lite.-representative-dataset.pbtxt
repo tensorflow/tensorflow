@@ -1,0 +1,9 @@
+path: "tensorflow.lite.RepresentativeDataset"
+tf_class {
+  is_instance: "<class \'tensorflow.lite.python.lite.RepresentativeDataset\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'input_gen\'], varargs=None, keywords=None, defaults=None"
+  }
+}

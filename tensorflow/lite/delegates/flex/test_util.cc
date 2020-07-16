@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/test_util.h"
 
 #include "absl/memory/memory.h"
-#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
-#include "tensorflow/lite/string.h"
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace flex {
@@ -39,9 +39,9 @@ std::vector<string> FlexModelTest::GetStringValues(int tensor_index) const {
   std::vector<string> result;
 
   TfLiteTensor* tensor = interpreter_->tensor(tensor_index);
-  auto num_strings = GetStringCount(tensor->data.raw);
+  auto num_strings = GetStringCount(tensor);
   for (size_t i = 0; i < num_strings; ++i) {
-    auto ref = GetString(tensor->data.raw, i);
+    auto ref = GetString(tensor, i);
     result.push_back(string(ref.str, ref.len));
   }
 
@@ -90,6 +90,8 @@ void FlexModelTest::AddTensors(int num_tensors, const std::vector<int>& inputs,
 
 void FlexModelTest::AddTfLiteMulOp(const std::vector<int>& inputs,
                                    const std::vector<int>& outputs) {
+  ++next_op_index_;
+
   static TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
   reg.builtin_code = BuiltinOperator_MUL;
   reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
@@ -114,6 +116,9 @@ void FlexModelTest::AddTfLiteMulOp(const std::vector<int>& inputs,
 
 void FlexModelTest::AddTfOp(TfOpType op, const std::vector<int>& inputs,
                             const std::vector<int>& outputs) {
+  tf_ops_.push_back(next_op_index_);
+  ++next_op_index_;
+
   auto attr = [](const string& key, const string& value) {
     return " attr{ key: '" + key + "' value {" + value + "}}";
   };

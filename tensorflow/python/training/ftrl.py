@@ -29,11 +29,14 @@ from tensorflow.python.util.tf_export import tf_export
 class FtrlOptimizer(optimizer.Optimizer):
   """Optimizer that implements the FTRL algorithm.
 
-  See this [paper](
-  https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
-  This version has support for both online L2 (the L2 penalty given in the paper
-  above) and shrinkage-type L2 (which is the addition of an L2 penalty to the
-  loss function).
+  This version has support for both online L2 (McMahan et al., 2013) and
+  shrinkage-type L2, which is the addition of an L2 penalty
+  to the loss function.
+
+  References:
+    Ad-click prediction:
+      [McMahan et al., 2013](https://dl.acm.org/citation.cfm?id=2488200)
+      ([pdf](https://dl.acm.org/ft_gateway.cfm?id=2488200&ftid=1388399&dwn=1&CFID=32233078&CFTOKEN=d60fe57a294c056a-CB75C374-F915-E7A6-1573FBBC7BF7D526))
   """
 
   def __init__(self,
@@ -53,8 +56,7 @@ class FtrlOptimizer(optimizer.Optimizer):
       learning_rate: A float value or a constant float `Tensor`.
       learning_rate_power: A float value, must be less or equal to zero.
         Controls how the learning rate decreases during training. Use zero for
-        a fixed learning rate. See section 3.1 in the
-        [paper](https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
+        a fixed learning rate. See section 3.1 in (McMahan et al., 2013).
       initial_accumulator_value: The starting value for accumulators.
         Only zero or positive values are allowed.
       l1_regularization_strength: A float value, must be greater than or
@@ -84,6 +86,11 @@ class FtrlOptimizer(optimizer.Optimizer):
 
     Raises:
       ValueError: If one of the arguments is invalid.
+
+    References:
+      Ad-click prediction:
+        [McMahan et al., 2013](https://dl.acm.org/citation.cfm?id=2488200)
+        ([pdf](https://dl.acm.org/ft_gateway.cfm?id=2488200&ftid=1388399&dwn=1&CFID=32233078&CFTOKEN=d60fe57a294c056a-CB75C374-F915-E7A6-1573FBBC7BF7D526))
     """
     super(FtrlOptimizer, self).__init__(use_locking, name)
 
@@ -125,11 +132,10 @@ class FtrlOptimizer(optimizer.Optimizer):
   def _create_slots(self, var_list):
     # Create the "accum" and "linear" slots.
     for v in var_list:
-      with ops.colocate_with(v):
-        val = constant_op.constant(
-            self._initial_accumulator_value, dtype=v.dtype, shape=v.get_shape())
-        self._get_or_make_slot(v, val, "accum", self._accum_name or self._name)
-        self._zeros_slot(v, "linear", self._linear_name or self._name)
+      val = constant_op.constant(
+          self._initial_accumulator_value, dtype=v.dtype, shape=v.get_shape())
+      self._get_or_make_slot(v, val, "accum", self._accum_name or self._name)
+      self._zeros_slot(v, "linear", self._linear_name or self._name)
 
   def _prepare(self):
     self._learning_rate_tensor = ops.convert_to_tensor(

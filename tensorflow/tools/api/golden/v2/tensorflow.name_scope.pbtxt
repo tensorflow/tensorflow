@@ -1,6 +1,6 @@
 path: "tensorflow.name_scope"
 tf_class {
-  is_instance: "<class \'tensorflow.python.framework.ops.name_scope\'>"
+  is_instance: "<class \'tensorflow.python.framework.ops.name_scope_v2\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "name"
@@ -8,6 +8,6 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\', \'default_name\', \'values\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
   }
 }

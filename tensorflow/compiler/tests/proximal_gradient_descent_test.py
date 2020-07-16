@@ -32,7 +32,7 @@ from tensorflow.python.training import proximal_gradient_descent
 class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
 
   def testResourceProximalGradientDescentwithoutRegularization(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       var0 = resource_variable_ops.ResourceVariable([0.0, 0.0])
       var1 = resource_variable_ops.ResourceVariable([0.0, 0.0])
       grads0 = constant_op.constant([0.1, 0.2])
@@ -40,7 +40,7 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
       opt = proximal_gradient_descent.ProximalGradientDescentOptimizer(
           3.0, l1_regularization_strength=0.0, l2_regularization_strength=0.0)
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertAllClose([0.0, 0.0], self.evaluate(var0))
       self.assertAllClose([0.0, 0.0], self.evaluate(var1))
@@ -53,7 +53,7 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
       self.assertAllClose(np.array([-0.09, -0.18]), self.evaluate(var1))
 
   def testProximalGradientDescentwithoutRegularization2(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0])
       var1 = resource_variable_ops.ResourceVariable([4.0, 3.0])
       grads0 = constant_op.constant([0.1, 0.2])
@@ -62,7 +62,7 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
       opt = proximal_gradient_descent.ProximalGradientDescentOptimizer(
           3.0, l1_regularization_strength=0.0, l2_regularization_strength=0.0)
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertAllClose([1.0, 2.0], self.evaluate(var0))
       self.assertAllClose([4.0, 3.0], self.evaluate(var1))
@@ -75,7 +75,7 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
       self.assertAllClose(np.array([3.91, 2.82]), self.evaluate(var1))
 
   def testProximalGradientDescentWithL1(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0])
       var1 = resource_variable_ops.ResourceVariable([4.0, 3.0])
       grads0 = constant_op.constant([0.1, 0.2])
@@ -84,7 +84,7 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
       opt = proximal_gradient_descent.ProximalGradientDescentOptimizer(
           3.0, l1_regularization_strength=0.001, l2_regularization_strength=0.0)
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertAllClose([1.0, 2.0], self.evaluate(var0))
       self.assertAllClose([4.0, 3.0], self.evaluate(var1))
@@ -97,7 +97,7 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
       self.assertAllClose(np.array([3.67, 2.37]), self.evaluate(var1))
 
   def testProximalGradientDescentWithL1_L2(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0])
       var1 = resource_variable_ops.ResourceVariable([4.0, 3.0])
       grads0 = constant_op.constant([0.1, 0.2])
@@ -106,7 +106,7 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
       opt = proximal_gradient_descent.ProximalGradientDescentOptimizer(
           3.0, l1_regularization_strength=0.001, l2_regularization_strength=2.0)
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertAllClose([1.0, 2.0], self.evaluate(var0))
       self.assertAllClose([4.0, 3.0], self.evaluate(var1))
@@ -125,7 +125,7 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
     grads1 = constant_op.constant([0.01, 0.02])
 
     update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
 
     self.assertAllClose([1.0, 2.0], self.evaluate(var0))
     self.assertAllClose([3.0, 4.0], self.evaluate(var1))
@@ -137,14 +137,14 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
     return self.evaluate(var0), self.evaluate(var1)
 
   def testEquivGradientDescentwithoutRegularization(self):
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       val0, val1 = self.applyOptimizer(
           proximal_gradient_descent.ProximalGradientDescentOptimizer(
               3.0,
               l1_regularization_strength=0.0,
               l2_regularization_strength=0.0))
 
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       val2, val3 = self.applyOptimizer(
           gradient_descent.GradientDescentOptimizer(3.0))
 

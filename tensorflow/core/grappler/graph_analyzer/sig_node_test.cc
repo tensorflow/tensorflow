@@ -986,7 +986,7 @@ TEST_F(SignatureTest, ComputeOneRoundLinear) {
   EXPECT_THAT(hash_size, ElementsAre(4, 5, 5, 6, 6));
 }
 
-// On a linear topology where the cental node has been already marked as unique
+// On a linear topology where the central node has been already marked as unique
 // (yeah, not a very realistic case but tests the situations when the
 // disconnected subgraphs get created).
 TEST_F(SignatureTest, ComputeOneRoundSplitLinear) {

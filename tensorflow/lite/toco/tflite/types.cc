@@ -25,7 +25,7 @@ DataBuffer::FlatBufferOffset CopyStringToBuffer(
     const Array& array, flatbuffers::FlatBufferBuilder* builder) {
   const auto& src_data = array.GetBuffer<ArrayDataType::kString>().data;
   ::tflite::DynamicBuffer dyn_buffer;
-  for (const string& str : src_data) {
+  for (const std::string& str : src_data) {
     dyn_buffer.AddString(str.c_str(), str.length());
   }
   char* tensor_buffer;
@@ -37,7 +37,7 @@ DataBuffer::FlatBufferOffset CopyStringToBuffer(
 }
 
 // vector<bool> may be implemented using a bit-set, so we can't just
-// reinterpret_cast, accesing it data as vector<bool> and let flatbuffer
+// reinterpret_cast, accessing its data as vector<bool> and let flatbuffer
 // CreateVector handle it.
 // Background: https://isocpp.org/blog/2012/11/on-vectorbool
 DataBuffer::FlatBufferOffset CopyBoolToBuffer(
@@ -58,12 +58,12 @@ DataBuffer::FlatBufferOffset CopyBuffer(
 
 void CopyStringFromBuffer(const ::tflite::Buffer& buffer, Array* array) {
   auto* src_data = reinterpret_cast<const char*>(buffer.data()->data());
-  std::vector<string>* dst_data =
+  std::vector<std::string>* dst_data =
       &array->GetMutableBuffer<ArrayDataType::kString>().data;
   int32_t num_strings = ::tflite::GetStringCount(src_data);
   for (int i = 0; i < num_strings; i++) {
     ::tflite::StringRef str_ref = ::tflite::GetString(src_data, i);
-    string this_str(str_ref.str, str_ref.len);
+    std::string this_str(str_ref.str, str_ref.len);
     dst_data->push_back(this_str);
   }
 }

@@ -42,6 +42,17 @@ client_terminated: If set to true, this indicates that the node was added
   locally by the caller.
 )doc");
 
+REGISTER_OP("Send")
+    .Input("tensor: T")
+    .Attr("T: type")
+    .Attr("tensor_name: string")
+    .Attr("send_device: string")
+    .Attr("send_device_incarnation: int")
+    .Attr("recv_device: string")
+    .Attr("client_terminated: bool = false")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
 REGISTER_OP("_Recv")
     .Output("tensor: tensor_type")
     .Attr("tensor_type: type")
@@ -65,6 +76,17 @@ client_terminated: If set to true, this indicates that the node was added
   in which case the corresponding send or recv is expected to be managed
   locally by the caller.
 )doc");
+
+REGISTER_OP("Recv")
+    .Output("tensor: tensor_type")
+    .Attr("tensor_type: type")
+    .Attr("tensor_name: string")
+    .Attr("send_device: string")
+    .Attr("send_device_incarnation: int")
+    .Attr("recv_device: string")
+    .Attr("client_terminated: bool = false")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("_HostSend")
     .Input("tensor: T")
@@ -106,8 +128,8 @@ REGISTER_OP("_HostRecv")
     .Doc(R"doc(
 Receives the named tensor from send_device on recv_device.
 
-_HostRecv requires its input on host memory whereas _Recv requires its
-input on device memory.
+_HostRecv produces its output on host memory whereas _Recv produces its
+output on device memory.
 
 tensor: The tensor to receive.
 tensor_name: The name of the tensor to receive.

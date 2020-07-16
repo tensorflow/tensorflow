@@ -18,14 +18,15 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 namespace {
 
-constexpr std::array<DataType, 5> kMatmulTypes = {
-    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64}};
+constexpr std::array<DataType, 6> kMatmulTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128}};
 
 class MatMulOp : public XlaOpKernel {
  public:
@@ -67,9 +68,9 @@ class MatMulOp : public XlaOpKernel {
 
     OP_REQUIRES(ctx,
                 a_shape.dim_size(first_index) == b_shape.dim_size(second_index),
-                errors::InvalidArgument("Matrix size-compatible: In[0]: ",
-                                        a_shape.DebugString(), ", In[1]: ",
-                                        b_shape.DebugString()));
+                errors::InvalidArgument(
+                    "Matrix size-incompatible: In[0]: ", a_shape.DebugString(),
+                    ", In[1]: ", b_shape.DebugString()));
 
     xla::XlaOp a = ctx->Input(0);
     xla::XlaOp b = ctx->Input(1);
@@ -81,9 +82,7 @@ class MatMulOp : public XlaOpKernel {
         b = xla::ConvertElementType(b, xla::F32);
       }
     }
-    auto lhs = (transpose_a_) ? xla::Transpose(a, {1, 0}) : a;
-    auto rhs = (transpose_b_) ? xla::Transpose(b, {1, 0}) : b;
-    ctx->SetOutput(0, xla::Dot(lhs, rhs));
+    ctx->SetOutput(0, xla::BatchDot(a, transpose_a_, b, transpose_b_));
   }
 
  private:

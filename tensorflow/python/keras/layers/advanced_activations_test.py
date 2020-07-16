@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.keras import keras_parameterized
@@ -74,12 +76,12 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
       self.assertTrue('Relu6' in keras.layers.ReLU(max_value=6)(x).name)
 
   def test_relu_with_invalid_arg(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'max_value of Relu layer cannot be negative value: -10'):
       testing_utils.layer_test(keras.layers.ReLU,
                                kwargs={'max_value': -10},
                                input_shape=(2, 3, 4))
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'negative_slope of Relu layer cannot be negative value: -2'):
       with self.cached_session():
@@ -87,6 +89,16 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
             keras.layers.ReLU,
             kwargs={'negative_slope': -2},
             input_shape=(2, 3, 4))
+
+  @keras_parameterized.run_with_all_model_types
+  def test_layer_as_activation(self):
+    layer = keras.layers.Dense(1, activation=keras.layers.ReLU())
+    model = testing_utils.get_model_from_layers([layer], input_shape=(10,))
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2)
 
 
 if __name__ == '__main__':

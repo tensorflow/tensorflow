@@ -18,41 +18,50 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import gc
+import numpy as np
 import os
 import threading
 import weakref
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
-from tensorflow.python.framework import common_shapes
+from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import config
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import resources
+from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.gradients  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
-
-ops._set_call_cpp_shape_fn(common_shapes.call_cpp_shape_fn)
 
 
 class ResourceTest(test_util.TensorFlowTestCase):
@@ -71,17 +80,18 @@ class ResourceTest(test_util.TensorFlowTestCase):
           handle=handle,
           create_op=test_ops.resource_create_op(handle),
           is_initialized_op=test_ops.resource_initialized_op(handle))
-      self.assertEquals(
+      self.assertEqual(
           len(
               resources.report_uninitialized_resources(
                   resources.shared_resources()).eval()), 1)
       resources.initialize_resources(resources.shared_resources()).run()
-      self.assertEquals(
+      self.assertEqual(
           len(
               resources.report_uninitialized_resources(
                   resources.shared_resources()).eval()), 0)
 
 
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
 class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
   def testShape(self):
@@ -93,13 +103,45 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual([1, 2, 3], t.get_shape())
 
   def testIterable(self):
+    if not context.executing_eagerly():
+      self.skipTest("Eager-mode test")
     op = ops.Operation(
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
-    self.assertTrue(isinstance(t, ops.Tensor))
-    with self.assertRaisesRegexp(TypeError, "iter"):
-      for _ in t:
-        pass
+    with self.assertRaisesRegex(TypeError, "Cannot iterate"):
+      iter(t)
+
+  def testIterableGraph(self):
+    if context.executing_eagerly():
+      self.skipTest("Graph-mode test")
+
+    op = ops.Operation(
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
+    t = op.outputs[0]
+    with self.assertRaisesRegex(TypeError, "iterating.*not allowed in Graph"):
+      next(iter(t))
+    with self.assertRaisesRegex(TypeError, "iterating.*AutoGraph did convert"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
+        next(iter(t))
+    with self.assertRaisesRegex(TypeError, "iterating.*AutoGraph is disabled"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
+        next(iter(t))
+
+  def testImplicitBool(self):
+    op = ops.Operation(
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.bool])
+    t = op.outputs[0]
+    with self.assertRaisesRegex(TypeError,
+                                "using.*as a.*bool.*not allowed in Graph"):
+      bool(t)
+    with self.assertRaisesRegex(TypeError,
+                                "using.*as a.*bool.*AutoGraph did convert"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.ENABLED):
+        bool(t)
+    with self.assertRaisesRegex(TypeError,
+                                "using.*as a.*bool.*AutoGraph is disabled"):
+      with ag_ctx.ControlStatusCtx(ag_ctx.Status.DISABLED):
+        bool(t)
 
   def testAddShape(self):
     with self.cached_session():
@@ -130,48 +172,318 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
       a = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       b = array_ops.ones([])
       c = a + b
-      self.assertEqual(tensor_shape.scalar(), c.shape)
+      self.assertEqual(tensor_shape.TensorShape([]), c.shape)
 
   @test_util.run_deprecated_v1
   def testShapeFunctionError(self):
     with self.cached_session():
       a = array_ops.ones([1, 2, 3])
       b = array_ops.ones([4, 5, 6])
-      with self.assertRaisesRegexp(
-          ValueError,
-          r"Dimensions must be equal, but are 2 and 5 for 'add' \(op: 'Add'\) "
-          r"with input shapes: \[1,2,3\], \[4,5,6\]."):
+      with self.assertRaisesRegex(
+          ValueError, r"Dimensions must be equal, but are 2 and 5 for .*add"
+          r".*Add(V2)?.* with input shapes: \[1,2,3\], \[4,5,6\]."):
         _ = a + b
 
+  def testNumpyArray(self):
+    with ops.Graph().as_default():
+      x = array_ops.ones((3, 4), name="test_ones")
 
+    with self.assertRaisesRegex(NotImplementedError,
+                                r"Cannot convert a symbolic.+test_ones"):
+      np.array(x)
+
+    with self.assertRaisesRegex(TypeError, "not well defined.+test_ones"):
+      len(x)
+
+    # EagerTensors should still behave as numpy arrays.
+    with context.eager_mode():
+      x = array_ops.ones((3, 4))
+
+    self.assertAllEqual(x, np.ones((3, 4)))
+    self.assertAllEqual(np.array(x), np.ones((3, 4)))
+    self.assertEqual(len(x), 3)
+
+  def testRef(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertEqual(x1.ref(), x1.ref())
+    self.assertEqual(x2.ref(), x2.ref())
+    self.assertEqual(x1.ref(), x2.ref())
+    self.assertEqual(y.ref(), y.ref())
+    self.assertEqual(z.ref(), z.ref())
+    self.assertEqual(w.ref(), w.ref())
+
+    self.assertNotEqual(x1.ref(), y.ref())
+    self.assertNotEqual(x1.ref(), z.ref())
+    self.assertNotEqual(x1.ref(), w.ref())
+    self.assertNotEqual(y.ref(), z.ref())
+    self.assertNotEqual(y.ref(), w.ref())
+    self.assertNotEqual(z.ref(), w.ref())
+
+  def testRefDeref(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertIs(x1, x1.ref().deref())
+    self.assertIs(x2, x2.ref().deref())
+    self.assertIs(x1, x2.ref().deref())
+    self.assertIs(x2, x1.ref().deref())
+    self.assertIs(y, y.ref().deref())
+    self.assertIs(z, z.ref().deref())
+
+    self.assertIsNot(x1, y.ref().deref())
+    self.assertIsNot(x1, z.ref().deref())
+    self.assertIsNot(x1, w.ref().deref())
+    self.assertIsNot(y, z.ref().deref())
+    self.assertIsNot(y, w.ref().deref())
+    self.assertIsNot(z, w.ref().deref())
+
+  def testRefInSet(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertEqual(x1.ref(), x2.ref())
+
+    tensor_set = {
+        x1.ref(),
+        x2.ref(),
+        y.ref(),
+        z.ref(),
+        w.ref(),
+    }
+
+    self.assertEqual(len(tensor_set), 4)
+    self.assertIn(x1.ref(), tensor_set)
+    self.assertIn(x2.ref(), tensor_set)
+    self.assertIn(y.ref(), tensor_set)
+    self.assertIn(z.ref(), tensor_set)
+    self.assertIn(w.ref(), tensor_set)
+
+  def testRefInDict(self):
+    x1 = constant_op.constant(3)
+    x2 = x1
+    y = constant_op.constant(3)
+    z = constant_op.constant([6, 10])
+    w = variables.Variable(5)
+
+    self.assertEqual(x1.ref(), x2.ref())
+
+    tensor_dict = {
+        x1.ref(): "x1",
+        y.ref(): "y",
+        z.ref(): "z",
+        w.ref(): "w",
+    }
+
+    self.assertEqual(len(tensor_dict), 4)
+
+    # Overwriting x1
+    tensor_dict[x2.ref()] = "x2"
+    self.assertEqual(len(tensor_dict), 4)
+
+    self.assertEqual(tensor_dict[x1.ref()], "x2")
+    self.assertEqual(tensor_dict[x2.ref()], "x2")
+    self.assertEqual(tensor_dict[y.ref()], "y")
+    self.assertEqual(tensor_dict[z.ref()], "z")
+    self.assertEqual(tensor_dict[w.ref()], "w")
+
+  def testTensorRefStrong(self):
+    x = constant_op.constant(1.)
+    x_ref = x.ref()
+    del x
+    self.assertIsNotNone(x_ref.deref())
+
+  def testVariableRefStrong(self):
+    x = variables.Variable(1.)
+    x_ref = x.ref()
+    del x
+    self.assertIsNotNone(x_ref.deref())
+
+
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
+@test_util.run_all_in_graph_and_eager_modes
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_in_graph_and_eager_modes
   def testToTensor(self):
     values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
     indices = constant_op.constant([0, 2])
+    x = ops.IndexedSlices(values, indices)
+    with self.assertRaises(ValueError):
+      tensor = ops.convert_to_tensor(x, name="tensor")
+    self.assertEqual(tensor_shape.TensorShape(None), x.shape)
+
     dense_shape = constant_op.constant([3, 2])
-    x = ops.IndexedSlices(values, indices, dense_shape)
-    tensor = ops.convert_to_tensor(x, name="tensor")
+    y = ops.IndexedSlices(values, indices, dense_shape)
+    tensor = ops.convert_to_tensor(y, name="tensor")
+    self.assertAllEqual(tensor.shape, y.shape)
     self.assertAllEqual(self.evaluate(tensor), [[2, 3], [0, 0], [5, 7]])
 
-  @test_util.run_deprecated_v1
-  def testNegation(self):
-    with self.cached_session():
-      values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
-      indices = constant_op.constant([0, 2])
-      x = -ops.IndexedSlices(values, indices)
-      self.assertAllEqual(x.values.eval(), [[-2, -3], [-5, -7]])
-      self.assertAllEqual(x.indices.eval(), [0, 2])
+  @test_util.run_gpu_only
+  def testEagerCopy(self):
+    with context.eager_mode():
+      var = variables.Variable([[0.0], [0.0], [0.0], [0.0]], name="tensor")
+      with backprop.GradientTape() as tape:
+        a = array_ops.gather(array_ops.gather(var, [0, 1]), [0, 1])
+        b = array_ops.gather(array_ops.gather(var, [2, 3]), [0, 1])
+        r = special_math_ops.einsum("ij,ij->i", a, b)
+      g = tape.gradient(r, [var])[0]
+      values = g.values if isinstance(g, ops.IndexedSlices) else g
+      self.assertAllEqual(values.get_shape(), [4, 1])
 
-  @test_util.run_deprecated_v1
+  def testNegation(self):
+    values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
+    indices = constant_op.constant([0, 2])
+    x = -ops.IndexedSlices(values, indices)
+    self.assertAllEqual(x.values, [[-2, -3], [-5, -7]])
+    self.assertAllEqual(x.indices, [0, 2])
+
   def testScalarMul(self):
-    with self.cached_session():
-      values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
-      indices = constant_op.constant([0, 2])
-      x = math_ops.scalar_mul(-2, ops.IndexedSlices(values, indices))
-      self.assertAllEqual(x.values.eval(), [[-4, -6], [-10, -14]])
-      self.assertAllEqual(x.indices.eval(), [0, 2])
+    values = constant_op.constant([2, 3, 5, 7], shape=[2, 2])
+    indices = constant_op.constant([0, 2])
+    x = math_ops.scalar_mul(-2, ops.IndexedSlices(values, indices))
+    self.assertAllEqual(x.values, [[-4, -6], [-10, -14]])
+    self.assertAllEqual(x.indices, [0, 2])
+
+
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
+@test_util.run_all_in_graph_and_eager_modes
+class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
+                            parameterized.TestCase):
+
+  def assertAllTensorsEqual(self, list1, list2):
+    self.assertLen(list1, len(list2))
+    for (t1, t2) in zip(list1, list2):
+      self.assertAllEqual(t1, t2)
+
+  def testConstruction(self):
+    spec1 = indexed_slices.IndexedSlicesSpec()
+    self.assertEqual(spec1._shape.rank, None)
+    self.assertEqual(spec1._values_dtype, dtypes.float32)
+    self.assertEqual(spec1._indices_dtype, dtypes.int64)
+    self.assertEqual(spec1._dense_shape_dtype, None)
+    self.assertEqual(spec1._indices_shape.as_list(), [None])
+
+    spec2 = indexed_slices.IndexedSlicesSpec([None, None], dtypes.string,
+                                             dtypes.int32, dtypes.int64, [10])
+    self.assertEqual(spec2._shape.as_list(), [None, None])
+    self.assertEqual(spec2._values_dtype, dtypes.string)
+    self.assertEqual(spec2._indices_dtype, dtypes.int32)
+    self.assertEqual(spec2._dense_shape_dtype, dtypes.int64)
+    self.assertEqual(spec2._indices_shape.as_list(), [10])
+
+  def testValueType(self):
+    spec1 = indexed_slices.IndexedSlicesSpec()
+    self.assertEqual(spec1.value_type, ops.IndexedSlices)
+
+  @parameterized.parameters([
+      (indexed_slices.IndexedSlicesSpec(),
+       (tensor_shape.TensorShape(None), dtypes.float32, dtypes.int64, None,
+        tensor_shape.TensorShape([None]))),
+      (indexed_slices.IndexedSlicesSpec(shape=[5, None, None]),
+       (tensor_shape.TensorShape([5, None, None]), dtypes.float32,
+        dtypes.int64, None, tensor_shape.TensorShape([None]))),
+      (indexed_slices.IndexedSlicesSpec(
+          dtype=dtypes.int32, dense_shape_dtype=dtypes.int64),
+       (tensor_shape.TensorShape(None), dtypes.int32, dtypes.int64,
+        dtypes.int64, tensor_shape.TensorShape([None]))),
+      (indexed_slices.IndexedSlicesSpec(indices_shape=[100]),
+       (tensor_shape.TensorShape(None), dtypes.float32, dtypes.int64, None,
+        tensor_shape.TensorShape([100]))),
+  ])  # pyformat: disable
+  def testSerialize(self, spec, expected):
+    serialization = spec._serialize()
+    # TensorShape has an unconventional definition of equality, so we can't use
+    # assertEqual directly here.  But repr() is deterministic and lossless for
+    # the expected values, so we can use that instead.
+    self.assertEqual(repr(serialization), repr(expected))
+
+  @parameterized.parameters([
+      (indexed_slices.IndexedSlicesSpec(dtype=dtypes.string), (
+          tensor_spec.TensorSpec(None, dtypes.string),
+          tensor_spec.TensorSpec([None], dtypes.int64),
+      )),
+      (indexed_slices.IndexedSlicesSpec(
+          dtype=dtypes.string, dense_shape_dtype=dtypes.int32), (
+              tensor_spec.TensorSpec(None, dtypes.string),
+              tensor_spec.TensorSpec([None], dtypes.int64),
+              tensor_spec.TensorSpec([None], dtypes.int32),
+          )),
+      (indexed_slices.IndexedSlicesSpec(
+          shape=[5, 10, 15], dense_shape_dtype=dtypes.int32), (
+              tensor_spec.TensorSpec([None, 10, 15], dtypes.float32),
+              tensor_spec.TensorSpec([None], dtypes.int64),
+              tensor_spec.TensorSpec([3], dtypes.int32),
+          )),
+      (indexed_slices.IndexedSlicesSpec(
+          shape=[5, 10, 15], dense_shape_dtype=dtypes.int32,
+          indices_shape=[20]), (
+              tensor_spec.TensorSpec([20, 10, 15], dtypes.float32),
+              tensor_spec.TensorSpec([20], dtypes.int64),
+              tensor_spec.TensorSpec([3], dtypes.int32),
+          )),
+  ])
+  def testComponentSpecs(self, spec, expected):
+    self.assertEqual(spec._component_specs, expected)
+
+  @parameterized.parameters([
+      {
+          "spec": indexed_slices.IndexedSlicesSpec(),
+          "values": [3.0, 5.0],
+          "indices": [5, 10]
+      },
+      {
+          "spec":
+              indexed_slices.IndexedSlicesSpec(dense_shape_dtype=dtypes.int32),
+          "values": [3.0, 5.0],
+          "indices": [5, 10],
+          "dense_shape": [100]
+      },
+  ])
+  def testToFromComponents(self, spec, indices, values, dense_shape=None):
+    x = ops.IndexedSlices(indices, values, dense_shape)
+    actual_components = spec._to_components(x)
+    if dense_shape is None:
+      self.assertAllTensorsEqual(actual_components, [indices, values])
+    else:
+      self.assertAllTensorsEqual(actual_components,
+                                 [indices, values, dense_shape])
+    st_reconstructed = spec._from_components(actual_components)
+    self.assertAllEqual(x.indices, st_reconstructed.indices)
+    self.assertAllEqual(x.values, st_reconstructed.values)
+    if dense_shape is None:
+      self.assertIs(st_reconstructed.dense_shape, None)
+    else:
+      self.assertAllEqual(x.dense_shape, st_reconstructed.dense_shape)
+
+  @test_util.run_v1_only("IndexedSlicesValue is deprecated in v2")
+  def testFromNumpyComponents(self):
+    indices = np.array([3, 8])
+    values = np.array([1.0, 9.0])
+    dense_shape = np.array([100])
+
+    spec1 = indexed_slices.IndexedSlicesSpec(dense_shape_dtype=dtypes.int32)
+    st1 = spec1._from_components((values, indices, dense_shape))
+    self.assertIsInstance(st1, indexed_slices.IndexedSlicesValue)
+    self.assertAllEqual(st1.indices, indices)
+    self.assertAllEqual(st1.values, values)
+    self.assertAllEqual(st1.dense_shape, dense_shape)
+
+    spec2 = indexed_slices.IndexedSlicesSpec()
+    st2 = spec2._from_components((values, indices))
+    self.assertIsInstance(st2, indexed_slices.IndexedSlicesValue)
+    self.assertAllEqual(st2.indices, indices)
+    self.assertAllEqual(st2.values, values)
+    self.assertIs(st2.dense_shape, None)
 
 
 class NodeDefConstructorTest(test_util.TensorFlowTestCase):
@@ -179,13 +491,6 @@ class NodeDefConstructorTest(test_util.TensorFlowTestCase):
   def testNoArgs(self):
     nodedef = ops._NodeDef("None", "bar")
     self.assertProtoEquals("op: 'None' name: 'bar'", nodedef)
-
-  def testArgs(self):
-    nodedef = ops._NodeDef("foo", "bar", device="/device:baz:*")
-    self.assertProtoEquals("op:'foo' name:'bar' device:'/device:baz:*'",
-                           nodedef)
-    nodedef = ops._NodeDef("foo", "bar", device=pydev.DeviceSpec(job="j"))
-    self.assertProtoEquals("op:'foo' name:'bar' device:'/job:j'", nodedef)
 
 
 def _apply_op(g, *args, **kwargs):
@@ -196,6 +501,7 @@ def _apply_op(g, *args, **kwargs):
     return op.outputs
 
 
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
 class OperationTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
@@ -265,12 +571,6 @@ class OperationTest(test_util.TensorFlowTestCase):
     input:'myop1' input:'myop2:1' input:'myop2:1'
     """, op3.node_def)
 
-  def testDeviceFromNodeDef(self):
-    op = ops.Operation(
-        ops._NodeDef("None", "myop", device="/job:goo/device:GPU:0"),
-        ops.Graph(), [], [])
-    self.assertEqual("/job:goo/device:GPU:0", op.device)
-
   def testDeviceObject(self):
     op = ops.Operation(ops._NodeDef("None", "myop"), ops.Graph(), [], [])
     op._set_device("/job:goo/device:GPU:0")
@@ -289,7 +589,7 @@ class OperationTest(test_util.TensorFlowTestCase):
         ops._NodeDef("RefOutputFloatOutput", "op1"), g, [],
         [dtypes.float32_ref, dtypes.float32])
     self.assertProtoEquals("op:'RefOutputFloatOutput' name:'op1'", op1.node_def)
-    self.assertEquals([], list(op1.inputs))
+    self.assertEqual([], list(op1.inputs))
     ref_t, nonref_t = op1.values()
     # NOTE(mrry): Must specify input_types to preserve ref-typed input.
     op2 = ops.Operation(
@@ -299,7 +599,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertProtoEquals(
         "op:'RefInputFloatInput' name:'op2' input:'op1' input:'op1:1'",
         op2.node_def)
-    self.assertEquals([ref_t, nonref_t], list(op2.inputs))
+    self.assertEqual([ref_t, nonref_t], list(op2.inputs))
     op3 = ops.Operation(
         ops._NodeDef("TwoFloatInputs", "op3"), g, [ref_t, nonref_t], [])
     self.assertProtoEquals(
@@ -396,6 +696,14 @@ class OperationTest(test_util.TensorFlowTestCase):
       ops.convert_to_tensor(values, dtype=dtypes.int64)
 
   @test_util.run_in_graph_and_eager_modes
+  def testConvertToLongLongTensorType(self):
+    tensor = ops.convert_to_tensor(
+        # Get a numpy array of dtype NPY_LONGLONG
+        np.prod(constant_op.constant([1])._shape_tuple()),
+        dtype=dtypes.int64)
+    self.assertEqual(dtypes.int64, tensor.dtype)
+
+  @test_util.run_in_graph_and_eager_modes
   def testConvertToTensorFromInvalidTensor(self):
     tensor = constant_op.constant(42.0, dtype=dtypes.float32)
     with self.assertRaises(ValueError):
@@ -405,8 +713,8 @@ class OperationTest(test_util.TensorFlowTestCase):
   def testNoConvert(self):
     # Operation cannot be converted to Tensor.
     op = control_flow_ops.no_op()
-    with self.assertRaisesRegexp(TypeError,
-                                 r"Can't convert Operation '.*' to Tensor"):
+    with self.assertRaisesRegex(TypeError,
+                                r"Can't convert Operation '.*' to Tensor"):
       ops.convert_to_tensor(op)
 
   def testStr(self):
@@ -441,7 +749,7 @@ class OperationTest(test_util.TensorFlowTestCase):
                      [tensor_util.make_tensor_proto(1, dtypes.int32)])
 
     type_val = op.get_attr("type_val")
-    # First check that type_val is a DType, because the assertEquals will work
+    # First check that type_val is a DType, because the assertEqual will work
     # no matter what since DType overrides __eq__
     self.assertIsInstance(type_val, dtypes.DType)
     self.assertEqual(type_val, dtypes.int32)
@@ -459,7 +767,7 @@ class OperationTest(test_util.TensorFlowTestCase):
                      attr_value_pb2.NameAttrList(name="MyFunc"))
 
     # Try fetching missing attr
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Operation 'FuncAttr' has no attr named 'FakeAttr'."):
       op.get_attr("FakeAttr")
 
@@ -522,7 +830,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       y.op._add_control_input(x.op)  # pylint: disable=protected-access
       x.op._add_control_input(y.op)  # pylint: disable=protected-access
     with self.session(graph=graph) as sess:
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           "Graph is invalid, contains a cycle with 2 nodes"):
         self.evaluate(x)
@@ -535,25 +843,25 @@ class OperationTest(test_util.TensorFlowTestCase):
       z = x + y
 
     z.op._update_input(0, y)  # pylint: disable=protected-access
-    self.assertEquals(list(z.op.inputs), [y, y])
-    self.assertEquals(x.consumers(), [])
-    self.assertEquals(y.consumers(), [z.op, z.op])
+    self.assertEqual(list(z.op.inputs), [y, y])
+    self.assertEqual(x.consumers(), [])
+    self.assertEqual(y.consumers(), [z.op, z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(self.evaluate(z), 4)
+      self.assertEqual(self.evaluate(z), 4)
 
     z.op._update_input(0, x)  # pylint: disable=protected-access
-    self.assertEquals(list(z.op.inputs), [x, y])
-    self.assertEquals(x.consumers(), [z.op])
-    self.assertEquals(y.consumers(), [z.op])
+    self.assertEqual(list(z.op.inputs), [x, y])
+    self.assertEqual(x.consumers(), [z.op])
+    self.assertEqual(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(self.evaluate(z), 3)
+      self.assertEqual(self.evaluate(z), 3)
 
     z.op._update_input(1, y)  # pylint: disable=protected-access
-    self.assertEquals(list(z.op.inputs), [x, y])
-    self.assertEquals(x.consumers(), [z.op])
-    self.assertEquals(y.consumers(), [z.op])
+    self.assertEqual(list(z.op.inputs), [x, y])
+    self.assertEqual(x.consumers(), [z.op])
+    self.assertEqual(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(self.evaluate(z), 3)
+      self.assertEqual(self.evaluate(z), 3)
 
   def testUpdateInputGraphError(self):
     g_0 = ops.Graph()
@@ -563,7 +871,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     with g_1.as_default():
       y = constant_op.constant(2)
       z = y * 2
-      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+      with self.assertRaisesRegex(ValueError, "must be from the same graph"):
         z.op._update_input(0, x)  # pylint: disable=protected-access
 
   def testUpdateInputTypeError(self):
@@ -575,7 +883,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       z = y + w
       z.op._update_input(0, x)  # pylint: disable=protected-access
     with session.Session(graph=g) as sess:
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           "Input 0 of node add was passed string from Const_1:0 incompatible "
           "with expected int32"):
@@ -588,7 +896,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       x = constant_op.constant(0, shape=[3, 1])
       y = constant_op.constant(1, shape=[2, 2])
       z = w + x
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         errors.InvalidArgumentError,
         r"Cannot update edge, incompatible shapes: \[2,2\] and \[3,1\]"):
       z.op._update_input(0, y)  # pylint: disable=protected-access
@@ -597,22 +905,22 @@ class OperationTest(test_util.TensorFlowTestCase):
     g = ops.Graph()
     with g.as_default():
       x = constant_op.constant(1)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         errors.OutOfRangeError,
         r"Cannot update edge. Input index \[1\] is greater than the number of "
-        r"total inputs \[0\]."
-    ):
+        r"total inputs \[0\]."):
       x.op._update_input(1, x)  # pylint: disable=protected-access
 
   @test_util.enable_control_flow_v2
   @test_util.run_v1_only("b/120545219")
   def testAddWhileInput(self):
+
     @eager_function.defun
     def test():
       output = control_flow_ops.while_loop(lambda x: x < 3, lambda x: x + 1,
                                            [1])
-      while_op = output.op.inputs[0].op
-      self.assertEqual(while_op.type, "While")
+      while_op = output.op
+      self.assertEqual(while_op.type, "StatelessWhile")
       orig_num_inputs = len(while_op.inputs)
 
       # Make sure we can handle the while op having a control input.
@@ -621,8 +929,9 @@ class OperationTest(test_util.TensorFlowTestCase):
       new_input1 = constant_op.constant(1.0)
       new_input2 = constant_op.constant(True)
 
-      while_op._set_type_list_attr("T",
-                                   [t.dtype for t in while_op.inputs] +
+      # Clear output shapes to bypass shape checking.
+      while_op._set_shape_list_attr("output_shapes", [])
+      while_op._set_type_list_attr("T", [t.dtype for t in while_op.inputs] +
                                    [new_input1.dtype, new_input2.dtype])
 
       while_op._add_while_inputs([new_input1, new_input2])
@@ -631,7 +940,7 @@ class OperationTest(test_util.TensorFlowTestCase):
         while_op._add_while_inputs([new_input2])
       self.assertEqual(len(while_op.inputs), orig_num_inputs + 2)  # pylint: disable=g-deprecated-assert
 
-    test()
+      test()
 
   @test_util.run_deprecated_v1
   def testOpDef(self):
@@ -643,7 +952,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(x.op.op_def.input_arg), 0)
     self.assertEqual(len(x.op.op_def.output_arg), 1)
 
-    self.assertEqual(z.op.op_def.name, "Add")
+    self.assertRegex(z.op.op_def.name, "Add(V2)?")
     self.assertEqual(len(z.op.op_def.input_arg), 2)
     self.assertEqual(len(z.op.op_def.output_arg), 1)
 
@@ -654,7 +963,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       x = constant_op.constant(1)
     with g_1.as_default():
       y = constant_op.constant(2)
-      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+      with self.assertRaisesRegex(ValueError, "must be from the same graph"):
         y * x  # pylint: disable=pointless-statement
 
   def testInputsAreImmutable(self):
@@ -662,8 +971,8 @@ class OperationTest(test_util.TensorFlowTestCase):
     with g.as_default():
       x = test_ops.int_output()
       op = test_ops.int_input_int_output(x, name="myop").op
-    with self.assertRaisesRegexp(
-        AttributeError, "'_InputList' object has no attribute 'append'"):
+    with self.assertRaisesRegex(AttributeError,
+                                "'tuple' object has no attribute 'append'"):
       op.inputs.append(None)
 
 
@@ -764,7 +1073,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op.name, "myop")
     self.assertEqual(op.type, "Identity")
     self.assertEqual(len(op.outputs), 1)
-    self.assertEqual(op.outputs[0].shape, tensor_shape.matrix(2, 3))
+    self.assertEqual(op.outputs[0].shape, tensor_shape.TensorShape([2, 3]))
 
   def testUniqueName(self):
     g = ops.Graph()
@@ -1002,6 +1311,18 @@ class NameStackTest(test_util.TensorFlowTestCase):
     self.assertEqual("bar_2", g.unique_name("bar", mark_as_used=False))
     self.assertEqual("bar_2", g.unique_name("bar"))
 
+  def testBackslashAndDashRegex(self):
+    # GitHub issue 39019, all should pass
+    g = ops.Graph()
+    with g.name_scope("n_CatCntc-campaign\\c_campaign"):
+      pass
+    with g.name_scope("foo"):
+      with g.name_scope("n_CatCntc-campaign\\c_campaign"):
+        pass
+    with g.name_scope("n_CatCntc-campaign\\c_campaign"):
+      with g.name_scope("foo"):
+        pass
+
   @test_util.run_deprecated_v1
   def testNameAndVariableScope(self):
     with self.cached_session() as sess:
@@ -1122,6 +1443,7 @@ class NameTest(test_util.TensorFlowTestCase):
                        g.create_op("FloatOutput", [], [dtypes.float32]).name)
 
 
+@test_util.disable_tfrt("Device API are not supported yet. b/156188344")
 class DeviceTest(test_util.TensorFlowTestCase):
 
   def testNoDevice(self):
@@ -1137,8 +1459,8 @@ class DeviceTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       with ops.device("/device:CPU:0"):
         t = constant_op.constant(1.0)
-        self.assertRegexpMatches(t.device, "/device:CPU:0")
-        self.assertRegexpMatches(t.backing_device, "/device:CPU:0")
+        self.assertRegex(t.device, "/device:CPU:0")
+        self.assertRegex(t.backing_device, "/device:CPU:0")
 
   def testDevicePartialString(self):
     g = ops.Graph()
@@ -1294,6 +1616,22 @@ class DeviceTest(test_util.TensorFlowTestCase):
       node { name: "FloatOutput_3" op: "FloatOutput"
              device: "/device:CPU:5" }
     """, gd)
+
+  def testNestingErrorGraph(self):
+    g = ops.Graph()
+    scope = g.device("/device:GPU:8")
+    scope.__enter__()
+    with g.device("/device:GPU:9"):
+      with self.assertRaises(RuntimeError):
+        scope.__exit__(None, None, None)
+
+  def testNestingErrorEager(self):
+    with context.eager_mode():
+      scope = ops.device("/device:CPU:0")
+      scope.__enter__()
+      with ops.device(None):
+        with self.assertRaises(RuntimeError):
+          scope.__exit__(None, None, None)
 
   def testNoneClearsDefault(self):
     g = ops.Graph()
@@ -1563,8 +1901,8 @@ class MultithreadedGraphStateTest(test_util.TensorFlowTestCase):
 
     suffixes = ["", "_1", "_2"]
     for t, s in zip(threads, suffixes):
-      self.assertEquals("foo" + s + "/FloatOutput", t.result[0].name)
-      self.assertEquals("foo" + s + "/FloatOutput_1", t.result[1].name)
+      self.assertEqual("foo" + s + "/FloatOutput", t.result[0].name)
+      self.assertEqual("foo" + s + "/FloatOutput_1", t.result[1].name)
 
 
 class ObjectWithName(object):
@@ -1587,6 +1925,8 @@ class CollectionTest(test_util.TensorFlowTestCase):
     self.assertSequenceEqual(g.collections, ["key"])
     g.add_to_collection("other", "foo")
     self.assertSequenceEqual(sorted(g.collections), ["key", "other"])
+    self.assertSequenceEqual(
+        sorted(g.get_all_collection_keys()), ["key", "other"])
 
   def test_add_to_collection(self):
     g = ops.Graph()
@@ -1684,6 +2024,7 @@ class CollectionTest(test_util.TensorFlowTestCase):
       # Collections are ordered.
       self.assertEqual([90, 100], ops.get_collection("key"))
 
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   def test_defun(self):
     with context.eager_mode():
 
@@ -1751,7 +2092,7 @@ class RegistrationTest(test_util.TensorFlowTestCase):
       x = test_ops.float_output()
       with g.gradient_override_map({"CopyOp": "unknown_override"}):
         y = test_ops.copy_op(x)
-      with self.assertRaisesRegexp(LookupError, "unknown_override"):
+      with self.assertRaisesRegex(LookupError, "unknown_override"):
         ops.get_gradient_function(y.op)
 
 
@@ -1790,6 +2131,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
     # e should be dominated by c.
     self.assertEqual(e.op.control_inputs, [])
 
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
   @test_util.run_in_graph_and_eager_modes
   def testEager(self):
     def future():
@@ -1977,41 +2319,56 @@ class OpScopeTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNames(self):
-    with ops.name_scope("foo") as foo:
+    with ops.name_scope("foo", skip_on_eager=False) as foo:
       self.assertEqual("foo/", foo)
-      with ops.name_scope("foo2") as foo2:
+      with ops.name_scope("foo2", skip_on_eager=False) as foo2:
         self.assertEqual("foo/foo2/", foo2)
-      with ops.name_scope(None) as empty1:
+      with ops.name_scope(None, skip_on_eager=False) as empty1:
         self.assertEqual("", empty1)
-        with ops.name_scope("foo3") as foo3:
+        with ops.name_scope("foo3", skip_on_eager=False) as foo3:
           self.assertEqual("foo3/", foo3)
-      with ops.name_scope("") as empty2:
+      with ops.name_scope("", skip_on_eager=False) as empty2:
         self.assertEqual("", empty2)
-    with ops.name_scope("foo/") as outer_foo:
+    with ops.name_scope("foo/", skip_on_eager=False) as outer_foo:
       self.assertEqual("foo/", outer_foo)
-      with ops.name_scope("") as empty3:
+      with ops.name_scope("", skip_on_eager=False) as empty3:
         self.assertEqual("", empty3)
-      with ops.name_scope("foo4") as foo4:
+      with ops.name_scope("foo4", skip_on_eager=False) as foo4:
         self.assertEqual("foo/foo4/", foo4)
-      with ops.name_scope("foo5//") as foo5:
+      with ops.name_scope("foo5//", skip_on_eager=False) as foo5:
         self.assertEqual("foo5//", foo5)
-        with ops.name_scope("foo6") as foo6:
+        with ops.name_scope("foo6", skip_on_eager=False) as foo6:
           self.assertEqual("foo5//foo6/", foo6)
-      with ops.name_scope("/") as foo7:
+      with ops.name_scope("/", skip_on_eager=False) as foo7:
         self.assertEqual("/", foo7)
-      with ops.name_scope("//") as foo8:
+      with ops.name_scope("//", skip_on_eager=False) as foo8:
         self.assertEqual("//", foo8)
-      with ops.name_scope("a//b/c") as foo9:
+      with ops.name_scope("a//b/c", skip_on_eager=False) as foo9:
         self.assertEqual("foo/a//b/c/", foo9)
-    with ops.name_scope("a//b/c") as foo10:
+    with ops.name_scope("a//b/c", skip_on_eager=False) as foo10:
       self.assertEqual("a//b/c/", foo10)
 
   @test_util.run_in_graph_and_eager_modes
   def testEagerDefaultScopeName(self):
-    with ops.name_scope(None, "default") as scope:
+    with ops.name_scope(None, "default", skip_on_eager=False) as scope:
       self.assertEqual(scope, "default/")
-      with ops.name_scope(None, "default2") as scope2:
+      with ops.name_scope(None, "default2", skip_on_eager=False) as scope2:
         self.assertEqual(scope2, "default/default2/")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNameScopeV2IsReEntrant(self):
+    foo = ops.name_scope_v2("foo")
+    bar = ops.name_scope_v2("bar")
+    with foo as scope_name:
+      self.assertEqual("foo/", scope_name)
+      with foo as scope_name:
+        self.assertEqual("foo/foo/", scope_name)
+      with bar as scope_name:
+        self.assertEqual("foo/bar/", scope_name)
+        with foo as scope_name:
+          self.assertEqual("foo/bar/foo/", scope_name)
+    with bar as scope_name:
+      self.assertEqual("bar/", scope_name)
 
   @test_util.run_deprecated_v1
   def testNoScopeName(self):
@@ -2052,6 +2409,9 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with ops.name_scope(None, default_scope_name, [a, b]) as scope:
       self.assertEqual("%s/" % default_scope_name, scope)
       self.assertEqual(g0, ops.get_default_graph())
+    with self.assertRaises(TypeError):
+      with ops.name_scope(scope_name, [a, b]):
+        pass
 
   def _testGraphElements(self, graph_elements):
     scope_name = "my_scope"
@@ -2092,6 +2452,7 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     self._testGraphElements([a, variable, b])
 
 
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
 class InitScopeTest(test_util.TensorFlowTestCase):
 
   def testClearsControlDependencies(self):
@@ -2150,13 +2511,19 @@ class InitScopeTest(test_util.TensorFlowTestCase):
     with g0.as_default(), ops.device("CPU:0"):
       g1 = ops.Graph()
       g1._building_function = True  # pylint: disable=protected-access
-      with g1.as_default(), ops.device("GPU:0"):
+      with g1.as_default():
+        with ops.device("GPU:0"):
+          with ops.init_scope():
+            # init_scope should preserve device set under `g1`.
+            on_gpu = constant_op.constant(1.0)
+            self.assertEqual(on_gpu.device, "/device:GPU:0")
+          still_on_gpu = constant_op.constant(1.0)
+          self.assertEqual(still_on_gpu.device, "/device:GPU:0")
+        blank = constant_op.constant(1.0)
+        self.assertEqual(blank.device, "")
         with ops.init_scope():
-          # init_scope should preserve device set under `g1`.
-          on_gpu = constant_op.constant(1.0)
-          self.assertEqual(on_gpu.device, "/device:GPU:0")
-        still_on_gpu = constant_op.constant(1.0)
-        self.assertEqual(still_on_gpu.device, "/device:GPU:0")
+          now_on_cpu = constant_op.constant(1.0)
+          self.assertEqual(now_on_cpu.device, "/device:CPU:0")
       on_cpu = constant_op.constant(1.0)
       self.assertEqual(on_cpu.device, "/device:CPU:0")
 
@@ -2246,8 +2613,8 @@ class InitScopeTest(test_util.TensorFlowTestCase):
         # First ensure that graphs that are not building functions are
         # not escaped.
         function_with_variables("foo")
-        with self.assertRaisesRegexp(ValueError,
-                                     r"Variable foo already exists.*"):
+        with self.assertRaisesRegex(ValueError,
+                                    r"Variable foo already exists.*"):
           # This will fail because reuse is not set to True.
           function_with_variables("foo")
 
@@ -2324,7 +2691,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       function_graph = ops.Graph()
       with function_graph.as_default():
-        with ops.name_scope("inner"), ops.init_scope():
+        with ops.name_scope("inner", skip_on_eager=False), ops.init_scope():
           self.assertEqual(ops.get_name_scope(), "inner")
       self.assertEqual(ops.get_name_scope(), "")
 
@@ -2340,18 +2707,17 @@ class InitScopeTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       c = constant_op.constant(1.0)
       with ops.Graph().as_default():
-        with self.assertRaisesRegexp(
-            RuntimeError, "Attempting to capture an EagerTensor"):
+        with self.assertRaisesRegex(RuntimeError,
+                                    "Attempting to capture an EagerTensor"):
           math_ops.add(c, c)
         c2 = constant_op.constant(2.0)
-      with self.assertRaisesRegexp(
-          TypeError, "contains objects other than 'EagerTensor'"):
+      with self.assertRaisesRegex(TypeError, "Graph tensors"):
         math_ops.add(c2, c2)
 
   def testPreservesNameScopeInEagerExecution(self):
     with context.eager_mode():
       def foo():
-        with ops.name_scope("inner"), ops.init_scope():
+        with ops.name_scope("inner", skip_on_eager=False), ops.init_scope():
           if context.executing_eagerly():
             # A trailing slash is always appended when eager execution is
             # enabled.
@@ -2367,18 +2733,28 @@ class InitScopeTest(test_util.TensorFlowTestCase):
 
   def testExecutingEagerlyOutsideFunctions(self):
 
-    @eager_function.defun
+    @def_function.function
     def f():
       return ops.executing_eagerly_outside_functions()
+
+    with context.graph_mode():
+      self.assertFalse(ops.executing_eagerly_outside_functions())
+      with session.Session():
+        # Need self.evaluate for these as the return type of functions is
+        # tensors.
+        self.assertFalse(self.evaluate(f()))
 
     with context.eager_mode():
       self.assertTrue(ops.executing_eagerly_outside_functions())
       self.assertTrue(f())
-      g = ops.Graph()
-      with g.as_default():
+
+      with ops.Graph().as_default():
         self.assertFalse(ops.executing_eagerly_outside_functions())
+        with session.Session():
+          self.assertFalse(self.evaluate(f()))
 
 
+@test_util.disable_tfrt("Graph is not supported yet. b/156187905")
 class GraphTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -2405,17 +2781,22 @@ class GraphTest(test_util.TensorFlowTestCase):
 
   def testDefaultGraph(self):
     orig = ops.get_default_graph()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     g0 = ops.Graph()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     context_manager_0 = g0.as_default()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     with context_manager_0 as g0:
       self._AssertDefault(g0)
       with ops.Graph().as_default() as g1:
+        self.assertTrue(ops.has_default_graph())
         self._AssertDefault(g1)
       self._AssertDefault(g0)
     self._AssertDefault(orig)
+    self.assertFalse(ops.has_default_graph())
 
   def testPreventFeeding(self):
     g = ops.Graph()
@@ -2541,9 +2922,6 @@ class AttrScopeTest(test_util.TensorFlowTestCase):
       self.assertAllEqual((None, "bar"), a5)
       self.assertAllEqual(("foo", None), a6)
       self.assertAllEqual((None, None), a7)
-
-
-ops.RegisterShape("KernelLabel")(common_shapes.scalar_shape)
 
 
 class KernelLabelTest(test_util.TensorFlowTestCase):
@@ -2701,7 +3079,7 @@ class DeviceStackTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(three_list))
     func_description = three_list[0].obj
     expected_regex = r"device_func<.*ops_test.py, [0-9]+"
-    self.assertRegexpMatches(func_description, expected_regex)
+    self.assertRegex(func_description, expected_regex)
 
   @test_util.run_deprecated_v1
   def testDeviceAssignmentMetadataForGraphDeviceAndTfDeviceFunctions(self):
@@ -2715,8 +3093,7 @@ class DeviceStackTest(test_util.TensorFlowTestCase):
     two_metadata = const_two.op._device_assignments[0]
 
     # Verify both types of device assignment return the right stack info.
-    self.assertRegexpMatches("ops_test.py",
-                             os.path.basename(one_metadata.filename))
+    self.assertRegex("ops_test.py", os.path.basename(one_metadata.filename))
     self.assertEqual(one_metadata.filename, two_metadata.filename)
     self.assertEqual(one_metadata.lineno + 2, two_metadata.lineno)
 
@@ -2854,6 +3231,19 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
       b = variables.Variable([3.0], name="b")
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
 
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
+  def testColocateWithVariableInFunction(self):
+    v = variables.Variable(1.)
+
+    @def_function.function
+    def f():
+      with ops.colocate_with(v):
+        return array_ops.ones([], name="output")
+
+    f()
+    graph_def = f.get_concrete_function().graph.as_graph_def()
+    wrap_function.function_from_graph_def(graph_def, [], ["output"])
+
 
 class DeprecatedTest(test_util.TensorFlowTestCase):
 
@@ -2871,57 +3261,8 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
 
   def testGraphConstructionFail(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(NotImplementedError, self._error()):
+      with self.assertRaisesRegex(NotImplementedError, self._error()):
         test_ops.old()
-
-
-class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
-
-  def testSuccess(self):
-    op = ops.Operation(
-        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
-    t = op.outputs[0]
-    self.assertTrue(ops.is_dense_tensor_like(t))
-
-    v = variables.Variable([17])
-    self.assertTrue(ops.is_dense_tensor_like(v))
-
-  class BadClassNoName(object):
-    pass
-
-  class BadClassBadName(object):
-
-    def name(self):
-      pass
-
-  class BadClassNoDtype(object):
-
-    @property
-    def name(self):
-      pass
-
-  class BadClassBadDtype(object):
-
-    @property
-    def name(self):
-      pass
-
-    def dtype(self):
-      pass
-
-  def testBadClass(self):
-    with self.assertRaisesRegexp(TypeError, "`name`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassNoName)
-    with self.assertRaisesRegexp(TypeError, "`name`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassBadName)
-    with self.assertRaisesRegexp(TypeError, "`dtype`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassNoDtype)
-    with self.assertRaisesRegexp(TypeError, "`dtype`"):
-      ops.register_dense_tensor_like_type(
-          DenseTensorLikeTypeTest.BadClassBadDtype)
 
 
 class NameScopeTest(test_util.TensorFlowTestCase):
@@ -2971,43 +3312,143 @@ class NameScopeTest(test_util.TensorFlowTestCase):
           with ops.name_scope("_"):
             pass
 
-    self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
-
-
-class TracebackTest(test_util.TensorFlowTestCase):
-
-  @test_util.run_deprecated_v1
-  def testTracebackWithStartLines(self):
-    with self.cached_session() as sess:
-      a = constant_op.constant(2.0)
-      sess.run(
-          a,
-          options=config_pb2.RunOptions(
-              trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assertTrue(sess.graph.get_operations())
-
-      # Tests that traceback_with_start_lines is the same as traceback
-      # but includes one more element at the end.
-      for op in sess.graph.get_operations():
-        self.assertEquals(len(op.traceback), len(op.traceback_with_start_lines))
-        for frame, frame_with_start_line in zip(
-            op.traceback, op.traceback_with_start_lines):
-          self.assertEquals(5, len(frame_with_start_line))
-          self.assertEquals(frame, frame_with_start_line[:-1])
+    self.assertRaisesRegex(ValueError, "'_' is not a valid scope name", f)
 
 
 class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testBadArgumentsToEnableEagerExecution(self):
-    with self.assertRaisesRegexp(TypeError, "config must be a tf.ConfigProto"):
+    with self.assertRaisesRegex(TypeError, "config must be a tf.ConfigProto"):
       ops.enable_eager_execution(context.DEVICE_PLACEMENT_SILENT)
-    with self.assertRaisesRegexp(ValueError, "device_policy must be one of"):
+    with self.assertRaisesRegex(ValueError, "device_policy must be one of"):
       c = config_pb2.ConfigProto()
       ops.enable_eager_execution(c, c)
-    with self.assertRaisesRegexp(ValueError, "execution_mode must be one of"):
+    with self.assertRaisesRegex(ValueError, "execution_mode must be one of"):
       c = config_pb2.ConfigProto()
       ops.enable_eager_execution(c, execution_mode=c)
+
+
+class _TupleTensor(composite_tensor.CompositeTensor):
+  """`Tensor`-like `tuple`-like for custom `Tensor` conversion masquerading."""
+
+  def __init__(self, components):
+    super(_TupleTensor, self).__init__()
+    self._components = tuple(ops.convert_to_tensor(c) for c in components)
+
+  @property
+  def _type_spec(self):
+    return _TupleTensorSpec(type_spec.from_value(c) for c in self._components)
+
+  def __getitem__(self, key):
+    return self._components[key]
+
+  def __len__(self):
+    return len(self._components)
+
+  def __iter__(self):
+    return iter(self._components)
+
+
+class _TupleTensorSpec(type_spec.TypeSpec):
+
+  def __init__(self, specs):
+    self._specs = specs
+
+  value_type = property(lambda self: _TupleTensor)
+  _component_specs = property(lambda self: self._specs)
+
+  def _to_components(self, value):
+    return value._components
+
+  def _from_components(self, components):
+    return _TupleTensor(*components)
+
+  def _serialize(self):
+    return (self._specs,)
+
+
+class _MyTuple(object):
+  """Pretend user-side class for `ConvertToCompositeTensorTest ."""
+
+  def __init__(self, components):
+    super(_MyTuple, self).__init__()
+    self._components = tuple(components)
+
+  def __getitem__(self, key):
+    return self._components[key]
+
+  def __len__(self):
+    return len(self._components)
+
+  def __iter__(self):
+    return iter(self._components)
+
+
+ops.register_tensor_conversion_function(
+    _MyTuple, conversion_func=lambda x, *_, **__: _TupleTensor(x))
+
+
+class CustomConvertToCompositeTensorTest(test_util.TensorFlowTestCase):
+
+  @test_util.disable_tfrt("TODO(kkb): This makes Kokoro tests fail.")
+  def testCompositeTensorConversion(self):
+    """Tests that a user can register a CompositeTensor converter."""
+    x = _MyTuple((1, [2., 3.], [[4, 5], [6, 7]]))
+    y = ops.convert_to_tensor_or_composite(x)
+    self.assertFalse(tensor_util.is_tensor(y))
+    self.assertIsInstance(y, _TupleTensor)
+    self.assertLen(y, len(x))
+    for x_, y_ in zip(x, y):
+      self.assertIsInstance(y_, ops.Tensor)
+      self.assertTrue(tensor_util.is_tensor(y_))
+      self.assertAllEqual(x_, tensor_util.constant_value(y_))
+
+
+@test_util.disable_tfrt("Packing EagerTensors is not supported yet.")
+class PackEagerTensorTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(PackEagerTensorTest, self).setUp()
+    context._reset_context()
+    cpus = config.list_physical_devices("CPU")
+    # Set 2 virtual CPUs
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+    ])
+
+  def testPack(self):
+    with context.eager_mode():
+      with ops.device("CPU:0"):
+        var0 = resource_variable_ops.ResourceVariable(1.0)
+        c0 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+      with ops.device("CPU:1"):
+        var1 = resource_variable_ops.ResourceVariable(2.0)
+        var2 = resource_variable_ops.ResourceVariable([3.0])
+        c1 = constant_op.constant([9.0])
+
+      packed_var0 = ops.pack_eager_tensors([var0.handle, var1.handle])
+      self.assertTrue(packed_var0.is_packed)
+      self.assertEqual(packed_var0.dtype, var0.handle.dtype)
+      self.assertEqual(packed_var0.shape, var0.handle.shape)
+      self.assertEqual(packed_var0._handle_data, var0.handle._handle_data)
+      self.assertIn("COMPOSITE:0", packed_var0.device)
+      self.assertIn("COMPOSITE:0", packed_var0.backing_device)
+      with self.assertRaises(errors.InvalidArgumentError):
+        packed_var0.numpy()
+
+      # Different dtypes
+      with self.assertRaises(ValueError):
+        ops.pack_eager_tensors([var0.handle, c1])
+
+      # Different shapes
+      with self.assertRaises(ValueError):
+        ops.pack_eager_tensors([c0, c1])
+
+      # Different handle data
+      with self.assertRaises(ValueError):
+        ops.pack_eager_tensors([var0.handle, var2.handle])
 
 
 if __name__ == "__main__":

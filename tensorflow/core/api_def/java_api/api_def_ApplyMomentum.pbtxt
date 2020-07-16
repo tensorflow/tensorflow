@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ApplyMomentum"
+  endpoint {
+    name: "train.ApplyMomentum"
+  }
+}

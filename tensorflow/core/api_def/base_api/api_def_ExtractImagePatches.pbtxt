@@ -24,14 +24,14 @@ END
   attr {
     name: "strides"
     description: <<END
-1-D of length 4. How far the centers of two consecutive patches are in
+How far the centers of two consecutive patches are in
 the images. Must be: `[1, stride_rows, stride_cols, 1]`.
 END
   }
   attr {
     name: "rates"
     description: <<END
-1-D of length 4. Must be: `[1, rate_rows, rate_cols, 1]`. This is the
+Must be: `[1, rate_rows, rate_cols, 1]`. This is the
 input stride, specifying how far two consecutive patch samples are in the
 input. Equivalent to extracting patches with
 `patch_sizes_eff = patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by
@@ -43,14 +43,6 @@ END
     name: "padding"
     description: <<END
 The type of padding algorithm to use.
-
-We specify the size-related attributes as:
-
-```python
-      ksizes = [1, ksize_rows, ksize_cols, 1]
-      strides = [1, strides_rows, strides_cols, 1]
-      rates = [1, rates_rows, rates_cols, 1]
-```
 END
   }
   summary: "Extract `patches` from `images` and put them in the \"depth\" output dimension."

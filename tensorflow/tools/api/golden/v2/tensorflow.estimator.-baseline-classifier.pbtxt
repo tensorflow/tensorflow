@@ -2,6 +2,7 @@ path: "tensorflow.estimator.BaselineClassifier"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.baseline.BaselineClassifierV2\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"
@@ -21,7 +22,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'model_dir\', \'n_classes\', \'weight_column\', \'label_vocabulary\', \'optimizer\', \'config\', \'loss_reduction\'], varargs=None, keywords=None, defaults=[\'None\', \'2\', \'None\', \'None\', \'Ftrl\', \'None\', \'weighted_sum_over_batch_size\'], "
+    argspec: "args=[\'self\', \'model_dir\', \'n_classes\', \'weight_column\', \'label_vocabulary\', \'optimizer\', \'config\', \'loss_reduction\'], varargs=None, keywords=None, defaults=[\'None\', \'2\', \'None\', \'None\', \'Ftrl\', \'None\', \'sum_over_batch_size\'], "
   }
   member_method {
     name: "eval_dir"

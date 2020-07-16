@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tf.test.compute_gradient and tf.compute_gradient_error."""
+"""Tests for tf.compat.v1.test.compute_gradient and tf.compute_gradient_error."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -60,7 +60,7 @@ class GradientCheckerTest(test.TestCase):
       # checking gradients for x1
       error = gradient_checker.compute_gradient_error(x1, size, y, size)
     tf_logging.info("x1 error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   @test_util.run_deprecated_v1
   def testAddSimpleGPU(self):
@@ -75,7 +75,7 @@ class GradientCheckerTest(test.TestCase):
       # checking gradients for x1
       error = gradient_checker.compute_gradient_error(x1, size, y, size)
     tf_logging.info("x1 error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   @test_util.run_deprecated_v1
   def testAddCustomized(self):
@@ -94,7 +94,7 @@ class GradientCheckerTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(
           x2, size, y, size, x_init_value=x_init_value, delta=1e-2)
     tf_logging.info("x2 error = %f", error)
-    assert error < 1e-10
+    self.assertLess(error, 1e-10)
 
   @test_util.run_deprecated_v1
   def testGather(self):
@@ -112,7 +112,7 @@ class GradientCheckerTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(params, p_shape, y,
                                                       y_shape)
     tf_logging.info("gather error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   @test_util.run_deprecated_v1
   def testNestedGather(self):
@@ -134,7 +134,7 @@ class GradientCheckerTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(params, p_shape, y2,
                                                       y2_shape)
     tf_logging.info("nested gather error = %f", error)
-    assert error < 1e-4
+    self.assertLess(error, 1e-4)
 
   @test_util.run_deprecated_v1
   def testComplexMul(self):
@@ -149,7 +149,7 @@ class GradientCheckerTest(test.TestCase):
       self.assertAllEqual(correct, analytical)
       self.assertAllClose(correct, numerical, rtol=1e-4)
       self.assertLess(
-          gradient_checker.compute_gradient_error(x, size, y, size), 2e-4)
+          gradient_checker.compute_gradient_error(x, size, y, size), 3e-4)
 
   @test_util.run_deprecated_v1
   def testComplexConj(self):
@@ -182,9 +182,9 @@ class GradientCheckerTest(test.TestCase):
         with g.gradient_override_map({"Identity": "BadGrad"}):
           y = array_ops.identity(x)
         bad = r"Empty gradient has wrong shape: expected \(0, 3\), got \(3, 0\)"
-        with self.assertRaisesRegexp(ValueError, bad):
+        with self.assertRaisesRegex(ValueError, bad):
           gradient_checker.compute_gradient(x, (0, 3), y, (0, 3))
-        with self.assertRaisesRegexp(ValueError, bad):
+        with self.assertRaisesRegex(ValueError, bad):
           gradient_checker.compute_gradient_error(x, (0, 3), y, (0, 3))
 
   def testNaNGradFails(self):
@@ -196,7 +196,7 @@ class GradientCheckerTest(test.TestCase):
           error = gradient_checker.compute_gradient_error(x, (), y, ())
           # Typical test would assert error < max_err, so assert this test would
           # raise AssertionError, since NaN is not < 1.0.
-          with self.assertRaisesRegexp(AssertionError, "False is not true"):
+          with self.assertRaisesRegex(AssertionError, "False is not true"):
             self.assertTrue(error < 1.0)
 
 

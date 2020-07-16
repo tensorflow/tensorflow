@@ -34,14 +34,19 @@ class LayoutTest : public ::testing::Test {};
 TEST_F(LayoutTest, ToString) {
   EXPECT_EQ(Layout().ToString(), "invalid{}");
   EXPECT_EQ(Layout({4, 5, 6}).ToString(), "{4,5,6}");
-  EXPECT_EQ(Layout().set_format(SPARSE).set_max_sparse_elements(123).ToString(),
-            "sparse{123}");
   EXPECT_EQ(Layout({4, 5, 6}).ToString(), "{4,5,6}");
   EXPECT_EQ(Layout({3, 2, 1, 0}, {Tile({42, 123}), Tile({4, 5})}).ToString(),
-            "{3,2,1,0}");
+            "{3,2,1,0:T(42,123)(4,5)}");
   EXPECT_EQ(
       Layout({1, 0}, {Tile({2, 55})}).set_element_size_in_bits(42).ToString(),
-      "{1,0}");
+      "{1,0:T(2,55)E(42)}");
+  EXPECT_EQ(Layout({3, 2, 1, 0}, {Tile({42, 123}), Tile({4, 5})})
+                .set_memory_space(3)
+                .ToString(),
+            "{3,2,1,0:T(42,123)(4,5)S(3)}");
+  EXPECT_EQ(
+      Layout({1, 0}, {Tile({-2, 55})}).set_element_size_in_bits(42).ToString(),
+      "{1,0:T(Invalid value -2,55)E(42)}");
 }
 
 TEST_F(LayoutTest, StreamOut) {
@@ -56,11 +61,6 @@ TEST_F(LayoutTest, StreamOut) {
     oss << Layout({0, 1, 2});
     EXPECT_EQ(oss.str(), "{0,1,2}");
   }
-}
-
-TEST_F(LayoutTest, SparseLayoutMaxElements) {
-  EXPECT_EQ(LayoutUtil::MaxSparseElements(LayoutUtil::MakeSparseLayout(101)),
-            101);
 }
 
 TEST_F(LayoutTest, Equality) {
@@ -79,11 +79,21 @@ TEST_F(LayoutTest, Equality) {
             Layout({0, 1, 2}).set_element_size_in_bits(33));
   EXPECT_NE(Layout({0, 1, 2}).set_element_size_in_bits(33),
             Layout({0, 1, 2}).set_element_size_in_bits(7));
-  EXPECT_EQ(Layout().set_format(SPARSE), Layout().set_format(SPARSE));
-  EXPECT_EQ(Layout().set_format(SPARSE).set_max_sparse_elements(42),
-            Layout().set_format(SPARSE).set_max_sparse_elements(42));
-  EXPECT_NE(Layout().set_format(SPARSE).set_max_sparse_elements(42),
-            Layout().set_format(SPARSE).set_max_sparse_elements(24));
+  EXPECT_EQ(Layout({0, 1, 2}).set_memory_space(3),
+            Layout({0, 1, 2}).set_memory_space(3));
+  EXPECT_NE(Layout({0, 1, 2}).set_memory_space(1),
+            Layout({0, 1, 2}).set_memory_space(3));
+  EXPECT_FALSE(
+      Layout::Equal()(Layout({0, 1, 2}, {Tile({42, 44})}), Layout({0, 1, 2})));
+  EXPECT_TRUE(Layout::Equal().IgnoreTiles()(Layout({0, 1, 2}, {Tile({42, 44})}),
+                                            Layout({0, 1, 2})));
+  EXPECT_FALSE(
+      Layout::Equal()(Layout({0, 1, 2}, {}, 32), Layout({0, 1, 2}, {}, 1)));
+  EXPECT_TRUE(Layout::Equal().IgnoreElementSize()(Layout({0, 1, 2}, {}, 32),
+                                                  Layout({0, 1, 2}, {}, 1)));
+  EXPECT_TRUE(Layout::Equal().IgnoreMemorySpace()(
+      Layout({0, 1, 2}).set_memory_space(1),
+      Layout({0, 1, 2}).set_memory_space(3)));
 }
 
 TEST_F(LayoutTest, LayoutToFromProto) {
@@ -94,8 +104,6 @@ TEST_F(LayoutTest, LayoutToFromProto) {
 
   expect_unchanged(Layout());
   expect_unchanged(Layout({1, 3, 2, 0}));
-  expect_unchanged(Layout().set_format(SPARSE));
-  expect_unchanged(Layout().set_format(SPARSE).set_max_sparse_elements(123));
   expect_unchanged(Layout({0, 1}).set_element_size_in_bits(42));
   expect_unchanged(Layout({3, 2, 1, 0}, {Tile({42, 123}), Tile({4, 5})}));
 }

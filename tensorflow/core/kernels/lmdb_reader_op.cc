@@ -68,7 +68,7 @@ class LMDBReader : public ReaderBase {
     return Status::OK();
   }
 
-  Status ReadLocked(string* key, string* value, bool* produced,
+  Status ReadLocked(tstring* key, tstring* value, bool* produced,
                     bool* at_end) override {
     if (mdb_cursor_ == nullptr) {
       MDB_CHECK(mdb_cursor_open(mdb_txn_, mdb_dbi_, &mdb_cursor_));
@@ -82,9 +82,10 @@ class LMDBReader : public ReaderBase {
         return Status::OK();
       }
     }
-    *key = string(static_cast<const char*>(mdb_key_.mv_data), mdb_key_.mv_size);
-    *value = string(static_cast<const char*>(mdb_value_.mv_data),
-                    mdb_value_.mv_size);
+    *key =
+        tstring(static_cast<const char*>(mdb_key_.mv_data), mdb_key_.mv_size);
+    *value = tstring(static_cast<const char*>(mdb_value_.mv_data),
+                     mdb_value_.mv_size);
     *produced = true;
     return Status::OK();
   }

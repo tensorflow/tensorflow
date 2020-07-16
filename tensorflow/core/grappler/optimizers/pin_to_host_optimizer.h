@@ -38,22 +38,20 @@ string TryFindHostDevice(const gtl::FlatSet<string>& devices,
 // gpu->gpu->gpu may have been better/faster. We should probably fix this.
 class PinToHostOptimizer : public GraphOptimizer {
  public:
-  PinToHostOptimizer() : opt_level_(RewriterConfig::DEFAULT) {}
-  explicit PinToHostOptimizer(RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level) {}
+  PinToHostOptimizer() {}
+  explicit PinToHostOptimizer(RewriterConfig::Toggle opt_level) {}
 
   ~PinToHostOptimizer() override {}
 
   string name() const override { return "pin_to_host_optimizer"; };
+
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimized_graph, double result) override {}
-
- private:
-  RewriterConfig::Toggle opt_level_;
 };
 
 }  // end namespace grappler

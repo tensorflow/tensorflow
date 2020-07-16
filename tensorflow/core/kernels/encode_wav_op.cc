@@ -15,12 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/audio_ops.cc
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/wav/wav_io.h"
 
@@ -58,7 +58,7 @@ class EncodeWavOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    wav::EncodeAudioAsS16LEWav(
                        audio.flat<float>().data(), sample_rate, channel_count,
-                       sample_count, &output->scalar<string>()()));
+                       sample_count, &output->scalar<tstring>()()));
   }
 };
 REGISTER_KERNEL_BUILDER(Name("EncodeWav").Device(DEVICE_CPU), EncodeWavOp);

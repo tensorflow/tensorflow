@@ -1,12 +1,14 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/types.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "GraphTransferInfoProto";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/types.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/graph_transfer_info_go_proto";
 
 message GraphTransferNodeInput {
   int32 node_id = 1;
@@ -20,22 +22,22 @@ message GraphTransferNodeInfo {
   int32 padding_id = 5;
   int32 input_count = 6;
   int32 output_count = 7;
-};
+}
 message GraphTransferConstNodeInfo {
   string name = 1;
   int32 node_id = 2;
   repeated int64 shape = 3;
   bytes data = 4;
   DataType dtype = 5;
-};
+}
 message GraphTransferNodeInputInfo {
   int32 node_id = 1;
   repeated GraphTransferNodeInput node_input = 2;
-};
+}
 message GraphTransferNodeOutputInfo {
   int32 node_id = 1;
   repeated int32 max_byte_size = 2;
-};
+}
 message GraphTransferGraphInputNodeInfo {
   string name = 1;
   repeated int64 shape = 2;
@@ -66,4 +68,4 @@ message GraphTransferInfo {
   repeated GraphTransferGraphOutputNodeInfo graph_output_node_info = 6;
   // Destination of graph transfer
   Destination destination = 7;
-};
+}

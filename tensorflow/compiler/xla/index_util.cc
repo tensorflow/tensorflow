@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -120,6 +119,8 @@ namespace xla {
     int64 limit = shape.dimensions(dimno);
     if (indices[dimno] + 1 < limit) {
       indices[dimno]++;
+      // Whenever an index of a dimension is increased, it means that all
+      // following dimensions have maxed out, so they must go to 0.
       std::fill(indices.begin() + dimno + 1, indices.end(), 0);
       return true;
     }
@@ -141,7 +142,7 @@ namespace xla {
 
 /* static */ bool IndexUtil::IndexInBounds(const Shape& shape,
                                            absl::Span<const int64> index) {
-  int64 rank = ShapeUtil::Rank(shape);
+  int64 rank = shape.rank();
   if (rank != index.size()) {
     return false;
   }

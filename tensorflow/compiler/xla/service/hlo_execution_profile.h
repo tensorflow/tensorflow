@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_execution_profile_data.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -113,6 +114,9 @@ class HloExecutionProfile {
   // Record how many cycles this HLO took to execute.
   void SetCyclesTakenBy(const HloInstruction* hlo, uint64 cycles_taken);
 
+  // Record how many cycles this HLO took to execute.
+  void SetCyclesTakenBy(size_t index, uint64 cycles_taken);
+
   // Returns how many cycles this HLO took to execute.  Profiling information
   // may not be available for some instructions in which case zero is returned.
   uint64 GetCyclesTakenBy(const HloInstruction& hlo) const;
@@ -150,6 +154,8 @@ class HloExecutionProfile {
   const std::vector<int64>& profile_counters() const {
     return profile_counters_;
   }
+
+  HloExecutionProfileData ToProto() const;
 
  private:
   const HloProfilePrinterData& hlo_profile_printer_data_;

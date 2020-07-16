@@ -32,8 +32,8 @@ import shutil
 import tempfile
 import zipfile
 
-TF_NIGHTLY_REGEX = (r"(.+)tf_nightly(|_gpu)-(\d\.[\d]{1,2}"
-                    "\.\d.dev[\d]{0,8})-(.+)\.whl")
+TF_NIGHTLY_REGEX = (r"(.+)(tf_nightly.*)-(\d\.[\d]{1,2}"
+                    r"\.\d.dev[\d]{0,8})-(.+)\.whl")
 BINARY_STRING_TEMPLATE = "%s-%s-%s.whl"
 
 
@@ -43,7 +43,7 @@ def check_existence(filename):
     raise RuntimeError("%s not found." % filename)
 
 
-def copy_binary(directory, origin_tag, new_tag, version, gpu=False):
+def copy_binary(directory, origin_tag, new_tag, version, package):
   """Rename and copy binaries for different python versions.
 
   Arguments:
@@ -51,14 +51,10 @@ def copy_binary(directory, origin_tag, new_tag, version, gpu=False):
     origin_tag: str of the old python version tag
     new_tag: str of the new tag
     version: the version of the package
-    gpu: bool if its a gpu build or not
+    package: str, name of the package
 
   """
   print("Rename and copy binaries with %s to %s." % (origin_tag, new_tag))
-  if gpu:
-    package = "tf_nightly_gpu"
-  else:
-    package = "tf_nightly"
   origin_binary = BINARY_STRING_TEMPLATE % (package, version, origin_tag)
   new_binary = BINARY_STRING_TEMPLATE % (package, version, new_tag)
   zip_ref = zipfile.ZipFile(os.path.join(directory, origin_binary), "r")
@@ -83,6 +79,8 @@ def copy_binary(directory, origin_tag, new_tag, version, gpu=False):
     zip_these_files = [
         "%s-%s.dist-info" % (package, version),
         "%s-%s.data" % (package, version),
+        "tensorflow",
+        "tensorflow_core",
     ]
     for dirname in zip_these_files:
       for root, _, files in os.walk(dirname):
@@ -120,7 +118,7 @@ def main():
   check_existence(args.filename)
   regex_groups = re.search(TF_NIGHTLY_REGEX, args.filename)
   directory = regex_groups.group(1)
-  gpu = regex_groups.group(2)
+  package = regex_groups.group(2)
   version = regex_groups.group(3)
   origin_tag = regex_groups.group(4)
   old_py_ver = re.search(r"(cp\d\d)", origin_tag).group(1)
@@ -129,7 +127,7 @@ def main():
   new_tag = origin_tag.replace(old_py_ver, "cp" + args.new_py_ver)
 
   # Copy the binary with the info we have
-  copy_binary(directory, origin_tag, new_tag, version, gpu)
+  copy_binary(directory, origin_tag, new_tag, version, package)
 
 
 if __name__ == "__main__":

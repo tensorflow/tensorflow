@@ -60,7 +60,7 @@ int FillTensorWithTfLiteHexString(tensorflow::Tensor* tensor,
   int num_strings = values_as_string.empty() ? 0 : GetStringCount(s.data());
 
   if (num_strings == tensor->NumElements()) {
-    auto data = tensor->flat<string>();
+    auto data = tensor->flat<tensorflow::tstring>();
     for (size_t i = 0; i < num_strings; ++i) {
       auto ref = GetString(s.data(), i);
       data(i).assign(ref.str, ref.len);
@@ -87,7 +87,7 @@ string TensorDataToCsvString(const tensorflow::Tensor& tensor) {
 string TensorDataToTfLiteHexString(const tensorflow::Tensor& tensor) {
   DynamicBuffer dynamic_buffer;
 
-  auto data = tensor.flat<string>();
+  auto data = tensor.flat<tensorflow::tstring>();
   for (int i = 0; i < tensor.NumElements(); ++i) {
     dynamic_buffer.AddString(data(i).data(), data(i).size());
   }

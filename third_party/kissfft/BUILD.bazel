@@ -4,7 +4,7 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
+exports_files(["COPYING"])
 
 cc_library(
     name = "kiss_fftr_16",

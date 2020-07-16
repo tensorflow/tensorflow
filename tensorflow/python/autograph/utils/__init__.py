@@ -23,4 +23,3 @@ from tensorflow.python.autograph.utils.misc import alias_tensors
 from tensorflow.python.autograph.utils.py_func import wrap_py_func
 from tensorflow.python.autograph.utils.tensor_list import dynamic_list_append
 from tensorflow.python.autograph.utils.testing import fake_tf
-from tensorflow.python.autograph.utils.type_check import is_tensor

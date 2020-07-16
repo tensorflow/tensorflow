@@ -36,8 +36,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/png.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -94,9 +94,20 @@ void CommonFreeDecode(DecodeContext* context);
 // compression is in [-1,9], where 0 is fast and weak compression, 9 is slow
 // and strong, and -1 is the zlib default.
 
+template <typename T>
 bool WriteImageToBuffer(
     const void* image, int width, int height, int row_bytes, int num_channels,
+    int channel_bits, int compression, T* png_string,
+    const std::vector<std::pair<string, string> >* metadata);
+
+// Explicit instantiations defined in png_io.cc.
+extern template bool WriteImageToBuffer<string>(
+    const void* image, int width, int height, int row_bytes, int num_channels,
     int channel_bits, int compression, string* png_string,
+    const std::vector<std::pair<string, string> >* metadata);
+extern template bool WriteImageToBuffer<tstring>(
+    const void* image, int width, int height, int row_bytes, int num_channels,
+    int channel_bits, int compression, tstring* png_string,
     const std::vector<std::pair<string, string> >* metadata);
 
 }  // namespace png

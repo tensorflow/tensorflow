@@ -36,7 +36,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Base class for linear algebra operators.
-template <typename Scalar>
+template <class InputScalar, class OutputScalar = InputScalar>
 class LinearAlgebraOp : public OpKernel {
  public:
   explicit LinearAlgebraOp(OpKernelConstruction* context) : OpKernel(context) {}
@@ -109,10 +109,34 @@ class LinearAlgebraOp : public OpKernel {
   // and expect the kernel to perform the computation inplace.
   virtual bool EnableInputForwarding() const { return true; }
 
+  using InputMatrix = Eigen::Matrix<InputScalar, Eigen::Dynamic, Eigen::Dynamic,
+                                    Eigen::RowMajor>;
+  using InputConstMatrixMap = Eigen::Map<const InputMatrix>;
+  using InputMatrixMap = Eigen::Map<InputMatrix>;
+  using InputConstVectorMap =
+      Eigen::Map<const Eigen::Matrix<InputScalar, 1, Eigen::Dynamic>>;
+  using InputConstMatrixMaps = gtl::InlinedVector<InputConstMatrixMap, 4>;
+  using InputMatrixMaps = gtl::InlinedVector<InputMatrixMap, 4>;
+  using InputRealScalar = typename Eigen::NumTraits<InputScalar>::Real;
+
+  using OutputMatrix = Eigen::Matrix<OutputScalar, Eigen::Dynamic,
+                                     Eigen::Dynamic, Eigen::RowMajor>;
+  using OutputConstMatrixMap = Eigen::Map<const OutputMatrix>;
+  using OutputMatrixMap = Eigen::Map<OutputMatrix>;
+  using OutputConstVectorMap =
+      Eigen::Map<const Eigen::Matrix<OutputScalar, 1, Eigen::Dynamic>>;
+  using OutputConstMatrixMaps = gtl::InlinedVector<OutputConstMatrixMap, 4>;
+  using OutputMatrixMaps = gtl::InlinedVector<OutputMatrixMap, 4>;
+  using OutputRealScalar = typename Eigen::NumTraits<OutputScalar>::Real;
+
+  // backward compatibility
+  using Scalar = OutputScalar;
   using Matrix =
       Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
   using ConstMatrixMap = Eigen::Map<const Matrix>;
   using MatrixMap = Eigen::Map<Matrix>;
+  using ConstVectorMap =
+      Eigen::Map<const Eigen::Matrix<Scalar, 1, Eigen::Dynamic>>;
   using ConstMatrixMaps = gtl::InlinedVector<ConstMatrixMap, 4>;
   using MatrixMaps = gtl::InlinedVector<MatrixMap, 4>;
   using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
@@ -124,8 +148,8 @@ class LinearAlgebraOp : public OpKernel {
   // parallelized. The number of threads used is determined by a cost model from
   // the value returned by GetCostPerUnit().
   virtual void ComputeMatrix(OpKernelContext* context,
-                             const ConstMatrixMaps& inputs,
-                             MatrixMaps* outputs) = 0;
+                             const InputConstMatrixMaps& inputs,
+                             OutputMatrixMaps* outputs) = 0;
 
  private:
   using TensorInputs = gtl::InlinedVector<const Tensor*, 4>;
@@ -180,6 +204,7 @@ extern template class LinearAlgebraOp<complex128>;
   using MatrixMaps = typename Base::MatrixMaps;               \
   using ConstMatrixMap = typename Base::ConstMatrixMap;       \
   using ConstMatrixMaps = typename Base::ConstMatrixMaps;     \
+  using ConstVectorMap = typename Base::ConstVectorMap;       \
   using TensorShapes = typename Base::TensorShapes;
 
 #define REGISTER_LINALG_OP_CPU(OpName, OpClass, Scalar) \

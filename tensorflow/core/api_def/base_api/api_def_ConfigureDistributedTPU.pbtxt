@@ -1,0 +1,31 @@
+op {
+  graph_op_name: "ConfigureDistributedTPU"
+  visibility: HIDDEN
+  out_arg {
+    name: "topology"
+    description: <<END
+A serialized tensorflow.tpu.TopologyProto that describes the TPU
+topology.
+END
+  }
+  attr {
+    name: "embedding_config"
+    description: <<END
+Reserved. Do not use.
+END
+  }
+  attr {
+    name: "tpu_embedding_config"
+    description: <<END
+Serialized tensorflow.tpu.TPUEmbeddingConfiguration that
+describes the embedding lookups of the program.
+END
+  }
+  attr {
+    name: "is_global_init"
+    description: <<END
+Reserved. Do not use.
+END
+  }
+  summary: "Sets up the centralized structures for a distributed TPU system."
+}

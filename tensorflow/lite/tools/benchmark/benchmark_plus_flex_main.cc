@@ -15,21 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/testing/init_tensorflow.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace benchmark {
 
 int Main(int argc, char** argv) {
   ::tflite::InitTensorFlow();
-#ifdef TFLITE_CUSTOM_OPS_HEADER
-  TFLITE_LOG(INFO) << "STARTING with custom ops!";
-#else
   TFLITE_LOG(INFO) << "STARTING!";
-#endif
   BenchmarkTfLiteModel benchmark;
-  BenchmarkLoggingListener listener;
-  benchmark.AddListener(&listener);
   benchmark.Run(argc, argv);
   return 0;
 }

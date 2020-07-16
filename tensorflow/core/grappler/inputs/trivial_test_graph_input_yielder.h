@@ -30,7 +30,7 @@ class TrivialTestGraphInputYielder : public InputYielder {
  public:
   TrivialTestGraphInputYielder(int num_stages, int width, int tensor_size,
                                bool insert_queue,
-                               const std::vector<string>& device_names);
+                               const std::vector<std::string>& device_names);
   bool NextItem(GrapplerItem* item) override;
 
  private:
@@ -38,7 +38,7 @@ class TrivialTestGraphInputYielder : public InputYielder {
   const int width_;
   const int tensor_size_;
   const bool insert_queue_;
-  std::vector<string> device_names_;
+  std::vector<std::string> device_names_;
 };
 
 }  // end namespace grappler

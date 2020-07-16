@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -48,7 +51,7 @@ class FloorDivModel : public SingleOpModel {
   int output_;
 };
 
-TEST(PowOpModel, Simple) {
+TEST(FloorDivModel, Simple) {
   FloorDivModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
                                {TensorType_INT32, {1, 2, 2, 1}},
                                {TensorType_INT32, {}});
@@ -59,7 +62,7 @@ TEST(PowOpModel, Simple) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(5, 4, 3, 0));
 }
 
-TEST(PowOpModel, NegativeValue) {
+TEST(FloorDivModel, NegativeValue) {
   FloorDivModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
                                {TensorType_INT32, {1, 2, 2, 1}},
                                {TensorType_INT32, {}});
@@ -70,7 +73,7 @@ TEST(PowOpModel, NegativeValue) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(5, -5, 3, -2));
 }
 
-TEST(PowOpModel, BroadcastFloorDiv) {
+TEST(FloorDivModel, BroadcastFloorDiv) {
   FloorDivModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
                                {TensorType_INT32, {1}}, {TensorType_INT32, {}});
   model.PopulateTensor<int32_t>(model.input1(), {10, -9, -11, 7});
@@ -80,11 +83,37 @@ TEST(PowOpModel, BroadcastFloorDiv) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(-4, 3, 3, -3));
 }
 
+TEST(FloorDivModel, SimpleFloat) {
+  FloorDivModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
+                             {TensorType_FLOAT32, {1, 2, 2, 1}},
+                             {TensorType_FLOAT32, {}});
+  model.PopulateTensor<float>(model.input1(), {10.05, 9.09, 11.9, 3.01});
+  model.PopulateTensor<float>(model.input2(), {2.05, 2.03, 3.03, 4.03});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(4.0, 4.0, 3.0, 0.0));
+}
+
+TEST(FloorDivModel, NegativeValueFloat) {
+  FloorDivModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
+                             {TensorType_FLOAT32, {1, 2, 2, 1}},
+                             {TensorType_FLOAT32, {}});
+  model.PopulateTensor<float>(model.input1(), {10.03, -9.9, -11.0, 7.0});
+  model.PopulateTensor<float>(model.input2(), {2.0, 2.3, -3.0, -4.1});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(5.0, -5.0, 3.0, -2.0));
+}
+
+TEST(FloorDivModel, BroadcastFloorDivFloat) {
+  FloorDivModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
+                             {TensorType_FLOAT32, {1}},
+                             {TensorType_FLOAT32, {}});
+  model.PopulateTensor<float>(model.input1(), {10.03, -9.9, -11.0, 7.0});
+  model.PopulateTensor<float>(model.input2(), {-3.3});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(-4.0, 2.0, 3.0, -3.0));
+}
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

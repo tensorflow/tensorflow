@@ -19,6 +19,9 @@ namespace tensorflow {
 
 REGISTER6(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double, uint8,
           int32, bfloat16);
+REGISTER6(BinaryOp, CPU, "MulNoNan", functor::mul_no_nan, Eigen::half, float,
+          double, complex64, complex128, bfloat16);
+
 #if defined(__ANDROID_TYPES_SLIM__)
 // We only register the first type when we have multi-argument calls in the
 // case where we're trying to reduce executable size, but it turns out that the
@@ -26,8 +29,8 @@ REGISTER6(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double, uint8,
 REGISTER(BinaryOp, CPU, "Mul", functor::mul, int32);
 #endif  // __ANDROID_TYPES_SLIM__
 
-#if GOOGLE_CUDA
-REGISTER4(BinaryOp, GPU, "Mul", functor::mul, float, Eigen::half, double,
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER4(BinaryOp, GPU, "Mul", functor::mul, Eigen::half, float, double,
           uint8);
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -39,6 +42,11 @@ REGISTER_KERNEL_BUILDER(Name("Mul")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::mul<int32>>);
+#endif
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER5(BinaryOp, GPU, "MulNoNan", functor::mul_no_nan, Eigen::half, float,
+          double, complex64, complex128);
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL

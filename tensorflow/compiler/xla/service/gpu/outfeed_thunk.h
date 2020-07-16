@@ -32,17 +32,16 @@ class OutfeedThunk : public Thunk {
  public:
   // Constructs a OutfeedThunk that copies data to the host-side
   // outfeed queue from the buffers in the given shape tree.
-  OutfeedThunk(ShapeTree<BufferAllocation::Slice> outfeed_slices,
-               const HloInstruction* hlo_instruction);
+  OutfeedThunk(ThunkInfo thunk_info,
+               ShapeTree<BufferAllocation::Slice> outfeed_slices);
 
   OutfeedThunk(const OutfeedThunk&) = delete;
   OutfeedThunk& operator=(const OutfeedThunk&) = delete;
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   const ShapeTree<BufferAllocation::Slice> outfeed_slices_;
 };
 

@@ -1,14 +1,16 @@
+# Sample app for OVIC benchmarking.
+
 load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
 
-# Sample app for OVIC benchmarking.
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+)
 
 android_binary(
     name = "ovic_benchmarker_binary",
     srcs = [
         "OvicBenchmarkerActivity.java",
     ],
-    aapt_version = "aapt",
     assets = [
         "//tensorflow/lite/java/ovic/src/testdata:coco_labels.txt",
         "//tensorflow/lite/java/ovic/src/testdata:labels.txt",

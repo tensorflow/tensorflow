@@ -176,8 +176,9 @@ XLA_TEST_F(TupleTest, AddTupleElements) {
       {2.f, 4.f, 6.f},  // row 0
       {5.f, 7.f, 9.f},  // row 1
   });
-  ASSERT_TRUE(ShapeUtil::ShapeIs(vector_shape, F32, {3}));
-  ASSERT_TRUE(ShapeUtil::ShapeIs(matrix_shape, F32, {/*y=*/2, /*x=*/3}));
+  ASSERT_TRUE(ShapeUtil::Equal(vector_shape, ShapeUtil::MakeShape(F32, {3})));
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_shape,
+                               ShapeUtil::MakeShape(F32, {/*y=*/2, /*x=*/3})));
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
@@ -512,8 +513,7 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
 
 class TupleHloTest : public HloTestBase {};
 
-// Disabled on the interpreter because bitcast doesn't exist on the interpreter.
-XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
+XLA_TEST_F(TupleHloTest, BitcastAfterGTE) {
   const char* testcase = R"(
     HloModule m, is_scheduled=true
 
@@ -525,9 +525,7 @@ XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
       ROOT tuple.4 = (f32[1,3]{1,0}) tuple(copy)
     }
   )";
-  auto module =
-      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
-          .ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
   auto param =
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({1, 2, 3}));
   auto result = ExecuteNoHloPasses(std::move(module), {&param});
@@ -555,13 +553,11 @@ XLA_TEST_F(TupleHloTest,
       s = (f32[2],f32[2]) tuple-select(cond, tup0, tup1)
       gte = f32[2] get-tuple-element(s), index=0
       tuple = (f32[2]) tuple(gte)
-      token = token[] after-all()
-      ROOT outfeed = token[] outfeed(tuple, token)
+      token0 = token[] after-all()
+      ROOT outfeed = token[] outfeed(tuple, token0)
     }
   )";
-  auto module =
-      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
-          .ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
   auto param0 = LiteralUtil::CreateR1<float>({1, 2});
   auto param1 = LiteralUtil::CreateR1<float>({2, 3});
   auto param4 = LiteralUtil::CreateR0<bool>(false);
@@ -577,8 +573,40 @@ XLA_TEST_F(TupleHloTest,
       LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({2, 3}));
   auto literal = Literal::CreateFromShape(expected.shape());
   TF_EXPECT_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
-      backend().default_stream_executor(), expected.shape(), literal));
+      backend().default_stream_executor(), expected.shape(), &literal));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, literal));
+}
+
+XLA_TEST_F(TupleHloTest, TupleSelectOfSort) {
+  const char* testcase = R"(
+    HloModule sort
+
+    compare {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+    }
+
+    ENTRY Sort {
+      keys = f32[2]{0} iota(), iota_dimension=0
+      values = s32[2]{0} iota(), iota_dimension=0
+      preds = pred[] constant(true)
+      alt = (f32[2], s32[2]) parameter(0)
+
+      sorted = (f32[2]{0}, s32[2]{0}) sort(keys, values), dimensions={0},
+               to_apply=compare
+      ROOT selected = (f32[2], s32[2]) tuple-select(preds, sorted, alt)
+    }
+  )";
+  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto param = LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({2, 3}),
+                                           LiteralUtil::CreateR1<int>({3, 4}));
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({0, 1}), LiteralUtil::CreateR1<int>({0, 1}));
+  auto result = ExecuteAndTransfer(std::move(module), {&param});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 }  // namespace

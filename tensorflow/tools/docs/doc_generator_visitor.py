@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,7 +49,7 @@ class DocGeneratorVisitor(object):
   def set_root_name(self, root_name):
     """Sets the root name for subsequent __call__s."""
     self._root_name = root_name or ''
-    self._prefix = (root_name + '.') if root_name else ''
+    self._prefix = (six.ensure_str(root_name) + '.') if root_name else ''
 
   @property
   def index(self):
@@ -178,7 +179,7 @@ class DocGeneratorVisitor(object):
       A tuple of scores. When sorted the preferred name will have the lowest
       value.
     """
-    parts = name.split('.')
+    parts = six.ensure_str(name).split('.')
     short_name = parts[-1]
 
     container = self._index['.'.join(parts[:-1])]
@@ -194,10 +195,11 @@ class DocGeneratorVisitor(object):
       contrib_score = 1
 
     while parts:
-      parts.pop()
       container = self._index['.'.join(parts)]
       if tf_inspect.ismodule(container):
         break
+      parts.pop()
+
     module_length = len(parts)
     if len(parts) == 2:
       # `tf.submodule.thing` is better than `tf.thing`
@@ -238,10 +240,11 @@ class DocGeneratorVisitor(object):
       # We cannot use the duplicate mechanism for some constants, since e.g.,
       # id(c1) == id(c2) with c1=1, c2=1. This is unproblematic since constants
       # have no usable docstring and won't be documented automatically.
-      if (py_object is not None and
-          not isinstance(py_object, six.integer_types + six.string_types +
-                         (six.binary_type, six.text_type, float, complex, bool))
-          and py_object is not ()):  # pylint: disable=literal-comparison
+      singelton_types = (
+          six.integer_types + six.string_types +
+          (six.binary_type, six.text_type, float, complex, bool))
+      if (py_object not in (None, ()) and
+          not isinstance(py_object, singelton_types)):
         object_id = id(py_object)
         if object_id in reverse_index:
           master_name = reverse_index[object_id]

@@ -28,12 +28,6 @@ import java.util.Objects;
  */
 public final class Output<T> implements Operand<T> {
 
-  /** Handle to the idx-th output of the Operation {@code op}. */
-  public Output(Operation op, int idx) {
-    operation = op;
-    index = idx;
-  }
-
   /** Returns the Operation that will produce the tensor referred to by this Output. */
   public Operation op() {
     return operation;
@@ -52,6 +46,22 @@ public final class Output<T> implements Operand<T> {
   /** Returns the DataType of the tensor referred to by this Output. */
   public DataType dataType() {
     return operation.dtype(index);
+  }
+
+  /**
+   * Returns the tensor at this output.
+   *
+   * <p>This operation is only supported on the outputs of an operation executed eagerly. For graph
+   * environments, output tensors must be fetched by running a session, using {@link
+   * Session.Runner#fetch(Output)}.
+   *
+   * @return tensor
+   * @throws IllegalStateException if this output results from a graph
+   * @see EagerSession
+   */
+  @SuppressWarnings("unchecked")
+  public Tensor<T> tensor() {
+    return (Tensor<T>) operation.tensor(index);
   }
 
   @Override
@@ -83,6 +93,16 @@ public final class Output<T> implements Operand<T> {
         operation.type(), operation.name(), index, shape().toString(), dataType());
   }
 
-  private final Operation operation;
+  /** Handle to the idx-th output of the Operation {@code op}. */
+  Output(AbstractOperation op, int idx) {
+    operation = op;
+    index = idx;
+  }
+
+  long getUnsafeNativeHandle() {
+    return operation.getUnsafeNativeHandle(index);
+  }
+
+  private final AbstractOperation operation;
   private final int index;
 }

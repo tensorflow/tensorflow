@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_SCHEMA_BUILTIN_OPS_HEADER_GENERATOR_H_
 
 #include <iostream>
+#include <string>
 
 namespace tflite {
 namespace builtin_ops_header {

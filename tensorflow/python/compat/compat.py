@@ -23,16 +23,47 @@ from __future__ import division
 from __future__ import print_function
 
 import datetime
+import os
 
-from tensorflow.python import tf2
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import variable_scope
-
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2018, 12, 12)
+
+# This value changes every day with an automatic CL. It can be modified in code
+# via `forward_compatibility_horizon()` or with the environment variable
+# TF_FORWARD_COMPATIBILITY_DELTA_DAYS, which is added to the compatibility date.
+_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2020, 7, 15)
+_FORWARD_COMPATIBILITY_DELTA_DAYS_VAR_NAME = "TF_FORWARD_COMPATIBILITY_DELTA_DAYS"
+_FORWARD_COMPATIBILITY_DATE_NUMBER = None
+
+
+def _date_to_date_number(year, month, day):
+  return (year << 9) | (month << 5) | day
+
+
+def _update_forward_compatibility_date_number(date_to_override=None):
+  """Update the base date to compare in forward_compatible function."""
+
+  global _FORWARD_COMPATIBILITY_DATE_NUMBER
+
+  if date_to_override:
+    date = date_to_override
+  else:
+    date = _FORWARD_COMPATIBILITY_HORIZON
+    delta_days = os.getenv(_FORWARD_COMPATIBILITY_DELTA_DAYS_VAR_NAME)
+    if delta_days:
+      date += datetime.timedelta(days=int(delta_days))
+
+  if date < _FORWARD_COMPATIBILITY_HORIZON:
+    logging.warning("Trying to set the forward compatibility date to the past"
+                    " date %s. This will be ignored by TensorFlow." % (date))
+    return
+  _FORWARD_COMPATIBILITY_DATE_NUMBER = _date_to_date_number(
+      date.year, date.month, date.day)
+
+
+_update_forward_compatibility_date_number()
 
 
 @tf_export("compat.forward_compatible")
@@ -71,7 +102,7 @@ def forward_compatible(year, month, day):
     if compat.forward_compatible(year, month, day):
       # Can use the awesome new implementation.
       return gen_math_ops.my_new_awesome_add(inputs, name)
-    # To maintain forward compatibiltiy, use the old implementation.
+    # To maintain forward compatibility, use the old implementation.
     return gen_math_ops.add(inputs, name)
   ```
 
@@ -81,16 +112,18 @@ def forward_compatible(year, month, day):
   the code that adds the new operation is committed.
 
   Args:
-    year:  A year (e.g., 2018).
-    month: A month (1 <= month <= 12) in year.
-    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month.
+    year:  A year (e.g., 2018). Must be an `int`.
+    month: A month (1 <= month <= 12) in year. Must be an `int`.
+    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month. Must be an
+      `int`.
 
   Returns:
     True if the caller can expect that serialized TensorFlow graphs produced
     can be consumed by programs that are compiled with the TensorFlow library
     source code after (year, month, day).
   """
-  return _FORWARD_COMPATIBILITY_HORIZON > datetime.date(year, month, day)
+  return _FORWARD_COMPATIBILITY_DATE_NUMBER > _date_to_date_number(
+      year, month, day)
 
 
 @tf_export("compat.forward_compatibility_horizon")
@@ -123,55 +156,17 @@ def forward_compatibility_horizon(year, month, day):
        # Test that generate_graph_with_new_features() has an effect
   ```
 
-  Args :
-    year:  A year (e.g. 2018).
-    month: A month (1 <= month <= 12) in year.
-    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month.
+  Args:
+    year:  A year (e.g., 2018). Must be an `int`.
+    month: A month (1 <= month <= 12) in year. Must be an `int`.
+    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month. Must be an
+      `int`.
 
   Yields:
     Nothing.
   """
-  global _FORWARD_COMPATIBILITY_HORIZON
   try:
-    old_compat_date = _FORWARD_COMPATIBILITY_HORIZON
-    _FORWARD_COMPATIBILITY_HORIZON = datetime.date(year, month, day)
+    _update_forward_compatibility_date_number(datetime.date(year, month, day))
     yield
   finally:
-    _FORWARD_COMPATIBILITY_HORIZON = old_compat_date
-
-
-@tf_export(v1=["enable_v2_behavior"])
-def enable_v2_behavior():
-  """Enables TensorFlow 2.x behaviors.
-
-  This function can be called at the beginning of the program (before `Tensors`,
-  `Graphs` or other structures have been created, and before devices have been
-  initialized. It switches all global behaviors that are different between
-  TensorFlow 1.x and 2.x to behave as intended for 2.x.
-
-  This function is called in the main TensorFlow `__init__.py` file, user should
-  not need to call it, except during complex migrations.
-  """
-  tf2.enable()  # Switches TensorArrayV2 and control flow V2
-  ops.enable_eager_execution()
-  tensor_shape.enable_v2_tensorshape()  # Also switched by tf2
-  variable_scope.enable_resource_variables()
-
-
-@tf_export(v1=["disable_v2_behavior"])
-def disable_v2_behavior():
-  """Enables TensorFlow 2.x behaviors.
-
-  This function can be called at the beginning of the program (before `Tensors`,
-  `Graphs` or other structures have been created, and before devices have been
-  initialized. It switches all global behaviors that are different between
-  TensorFlow 1.x and 2.x to behave as intended for 1.x.
-
-  User can call this function to disable 2.x behavior during complex migrations.
-  """
-  tf2.disable()  # Switches TensorArrayV2 and control flow V2
-  ops.disable_eager_execution()
-  tensor_shape.disable_v2_tensorshape()  # Also switched by tf2
-  variable_scope.disable_resource_variables()
-
-
+    _update_forward_compatibility_date_number()

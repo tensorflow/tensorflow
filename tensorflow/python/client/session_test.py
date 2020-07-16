@@ -33,7 +33,9 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.framework import common_shapes
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as framework_device_lib
 from tensorflow.python.framework import dtypes
@@ -65,11 +67,6 @@ try:
   import attr  # pylint:disable=g-import-not-at-top
 except ImportError:
   attr = None
-
-
-# NOTE(mrry): Dummy shape registration for ops used in the tests, since they
-# don't have C++ op registrations on which to attach C++ shape fns.
-ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 
 class SessionTest(test_util.TensorFlowTestCase):
@@ -118,7 +115,7 @@ class SessionTest(test_util.TensorFlowTestCase):
             'CPU': 2, 'GPU': 0
         })) as sess:
       inp = constant_op.constant(10.0, name='W1')
-      self.assertAllEqual(inp.eval(), 10.0)
+      self.assertAllEqual(inp, 10.0)
 
       num_cpu_devices = 0
       num_gpu_devices = 0
@@ -136,30 +133,30 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session(
         config=config_pb2.ConfigProto(use_per_session_threads=True)):
       inp = constant_op.constant(10.0, name='W1')
-      self.assertAllEqual(inp.eval(), 10.0)
+      self.assertAllEqual(inp, 10.0)
 
   def testSessionInterOpThreadPool(self):
-    config = config_pb2.ConfigProto()
-    pool = config.session_inter_op_thread_pool.add()
-    with session.Session(config=config) as s:
+    config_pb = config_pb2.ConfigProto()
+    pool = config_pb.session_inter_op_thread_pool.add()
+    with session.Session(config=config_pb) as s:
       inp = constant_op.constant(10.0, name='W1')
       results = s.run([inp])
       self.assertAllEqual([10.0], results)
 
-    pool = config.session_inter_op_thread_pool.add()
+    pool = config_pb.session_inter_op_thread_pool.add()
     pool.num_threads = 1
-    with session.Session(config=config) as s:
+    with session.Session(config=config_pb) as s:
       inp = constant_op.constant(20.0, name='W2')
       results = s.run([inp])
       self.assertAllEqual([20.0], results)
 
-    pool = config.session_inter_op_thread_pool.add()
+    pool = config_pb.session_inter_op_thread_pool.add()
     pool.num_threads = 1
     pool.global_name = 't1'
     run_options = config_pb2.RunOptions()
     run_options.inter_op_thread_pool = (
-        len(config.session_inter_op_thread_pool) - 1)
-    with session.Session(config=config) as s:
+        len(config_pb.session_inter_op_thread_pool) - 1)
+    with session.Session(config=config_pb) as s:
       inp = constant_op.constant(30.0, name='W2')
       results = s.run([inp], options=run_options)
       self.assertAllEqual([30.0], results)
@@ -397,7 +394,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
       res = sess.run([[], tuple(), {}])
       self.assertTrue(isinstance(res, list))
-      self.assertEquals(3, len(res))
+      self.assertEqual(3, len(res))
       self.assertTrue(isinstance(res[0], list))
       self.assertEqual(0, len(res[0]))
       self.assertTrue(isinstance(res[1], tuple))
@@ -407,7 +404,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
       res = sess.run([[], tuple(), {}, a])
       self.assertTrue(isinstance(res, list))
-      self.assertEquals(4, len(res))
+      self.assertEqual(4, len(res))
       self.assertTrue(isinstance(res[0], list))
       self.assertEqual(0, len(res[0]))
       self.assertTrue(isinstance(res[1], tuple))
@@ -812,7 +809,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp = array_ops.sparse_placeholder(
           dtype=np.float32, shape=shape, name='placeholder1')
       self.assertAllEqual(sp.dense_shape.eval(session=s), shape)
-      self.assertAllEqual(tensor_util.constant_value(sp.dense_shape), shape)
+      self.assertAllEqual(tensor_util.constant_value(sp.shape), shape)
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
       sp_shape = array_ops.identity(sp.dense_shape)
@@ -1235,14 +1232,14 @@ class SessionTest(test_util.TensorFlowTestCase):
                               versions.GRAPH_DEF_VERSION_MIN_CONSUMER),
                              sess.graph_def)
       c = constant_op.constant(5.0, name='c')
-      self.assertEquals(len(sess.graph_def.node), 1)
+      self.assertEqual(len(sess.graph_def.node), 1)
       d = constant_op.constant(6.0, name='d')
-      self.assertEquals(len(sess.graph_def.node), 2)
-      self.assertAllEqual(c.eval(), 5.0)
-      self.assertAllEqual(d.eval(), 6.0)
+      self.assertEqual(len(sess.graph_def.node), 2)
+      self.assertAllEqual(c, 5.0)
+      self.assertAllEqual(d, 6.0)
       e = constant_op.constant(7.0, name='e')
-      self.assertEquals(len(sess.graph_def.node), 3)
-      self.assertAllEqual(e.eval(), 7.0)
+      self.assertEqual(len(sess.graph_def.node), 3)
+      self.assertAllEqual(e, 7.0)
 
   def testUseAfterClose(self):
     with session.Session() as sess:
@@ -1272,11 +1269,11 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testUseEmptyGraph(self):
     with session.Session() as sess:
-      with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
+      with self.assertRaisesRegex(RuntimeError, 'The Session graph is empty.'):
         sess.run([])
-      with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
+      with self.assertRaisesRegex(RuntimeError, 'The Session graph is empty.'):
         sess.run(())
-      with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
+      with self.assertRaisesRegex(RuntimeError, 'The Session graph is empty.'):
         sess.run({})
 
   @test_util.run_v1_only('b/120545219')
@@ -1302,10 +1299,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(1.0, shape=[1, 2])
       b = constant_op.constant(2.0, shape=[2, 3])
       c = math_ops.matmul(a, b)
-      self.assertAllEqual([[4.0, 4.0, 4.0]], c.eval())
+      self.assertAllEqual([[4.0, 4.0, 4.0]], c)
       d = constant_op.constant([1.0, 2.0, 3.0], shape=[3, 1])
       e = math_ops.matmul(c, d)
-      self.assertAllEqual([[24.0]], e.eval())
+      self.assertAllEqual([[24.0]], e)
       sess.close()
 
   @test_util.run_v1_only('b/120545219')
@@ -1519,11 +1516,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       feed_t = array_ops.placeholder(dtype=dtypes.float32)
       out_t = array_ops.identity(feed_t)
       feed_val = constant_op.constant(5.0)
-      with self.assertRaisesRegexp(TypeError, 'cannot be a tf.Tensor object'):
+      with self.assertRaisesRegex(TypeError, 'cannot be a tf.Tensor object'):
         sess.run(out_t, feed_dict={feed_t: feed_val})
-      with self.assertRaisesRegexp(TypeError, 'cannot be a tf.Tensor object'):
+      with self.assertRaisesRegex(TypeError, 'cannot be a tf.Tensor object'):
         out_t.eval(feed_dict={feed_t: feed_val})
-      with self.assertRaisesRegexp(TypeError, 'cannot be a tf.Tensor object'):
+      with self.assertRaisesRegex(TypeError, 'cannot be a tf.Tensor object'):
         out_t.op.run(feed_dict={feed_t: feed_val})
 
   def testFeedPrecisionLossError(self):
@@ -1535,11 +1532,11 @@ class SessionTest(test_util.TensorFlowTestCase):
 
       out_t = constant_op.constant(1.0)
 
-      with self.assertRaisesRegexp(TypeError,
-                                   'is not compatible with Tensor type'):
+      with self.assertRaisesRegex(TypeError,
+                                  'is not compatible with Tensor type'):
         sess.run(out_t, feed_dict={feed_int_implicit_int32: largest_int64})
-      with self.assertRaisesRegexp(TypeError,
-                                   'is not compatible with Tensor type'):
+      with self.assertRaisesRegex(TypeError,
+                                  'is not compatible with Tensor type'):
         sess.run(out_t, feed_dict={feed_int_explicit_int32: largest_int64})
 
   def testStringFetch(self):
@@ -1552,7 +1549,7 @@ class SessionTest(test_util.TensorFlowTestCase):
             [compat.as_bytes(str(i)) for i in xrange(size)],
             dtype=np.object).reshape(shape) if size > 0 else []
         c = constant_op.constant(c_list)
-        self.assertAllEqual(c.eval(), c_list)
+        self.assertAllEqual(c, c_list)
 
   def testStringFeed(self):
     with session.Session() as sess:
@@ -1601,7 +1598,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertEqual(c_list[i], out[i].decode('utf-8'))
 
   def testInvalidTargetFails(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         errors.NotFoundError,
         'No session factory registered for the given session options'):
       session.Session('INVALID_TARGET')
@@ -1665,12 +1662,12 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testFeedDictKeyException(self):
     with session.Session() as sess:
       a = constant_op.constant(1.0, dtypes.float32, name='a')
-      with self.assertRaisesRegexp(TypeError, 'Cannot interpret feed_dict'):
+      with self.assertRaisesRegex(TypeError, 'Cannot interpret feed_dict'):
         sess.run(a, feed_dict={'a': [2.0]})
 
   def testPerStepTrace(self):
     run_options = config_pb2.RunOptions(
-        trace_level=config_pb2.RunOptions.FULL_TRACE)
+        trace_level=config_pb2.RunOptions.SOFTWARE_TRACE)
     run_metadata = config_pb2.RunMetadata()
 
     with ops.device('/cpu:0'):
@@ -1687,11 +1684,11 @@ class SessionTest(test_util.TensorFlowTestCase):
             run_metadata=run_metadata)
 
         self.assertTrue(run_metadata.HasField('step_stats'))
-        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
+        self.assertEqual(len(run_metadata.step_stats.dev_stats), 1)
 
   def testRunOptionsRunMetadata(self):
     run_options = config_pb2.RunOptions(
-        trace_level=config_pb2.RunOptions.FULL_TRACE)
+        trace_level=config_pb2.RunOptions.SOFTWARE_TRACE)
     run_metadata = config_pb2.RunMetadata()
 
     with ops.device('/cpu:0'):
@@ -1712,7 +1709,7 @@ class SessionTest(test_util.TensorFlowTestCase):
             run_metadata=run_metadata)
 
         self.assertTrue(run_metadata.HasField('step_stats'))
-        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
+        self.assertEqual(len(run_metadata.step_stats.dev_stats), 1)
 
   def testFeedShapeCompatibility(self):
     with session.Session() as sess:
@@ -1720,10 +1717,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       new_shape = constant_op.constant([2, 2])
       reshaped_tensor = array_ops.reshape(some_tensor, new_shape)
 
-      with self.assertRaisesRegexp(ValueError, 'Cannot feed value of shape'):
+      with self.assertRaisesRegex(ValueError, 'Cannot feed value of shape'):
         sess.run(reshaped_tensor, feed_dict={some_tensor: [1.0, 2.0, 3.0]})
 
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           'Input to reshape is a tensor with 4 values, '
           'but the requested shape has 21'):
@@ -1738,21 +1735,21 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertTrue(a == a)
 
   def testInferShapesTrue(self):
-    config = config_pb2.ConfigProto(
+    config_pb = config_pb2.ConfigProto(
         graph_options=config_pb2.GraphOptions(infer_shapes=True))
     with ops.Graph().as_default(), ops.device('/cpu:0'):
       a = constant_op.constant([[1, 2]])
-      sess = session.Session(config=config)
+      sess = session.Session(config=config_pb)
       self.assertTrue('_output_shapes' in sess.graph_def.node[0].attr)
       # Avoid lint error regarding 'unused' var a.
       self.assertTrue(a == a)
 
   def testBuildCostModel(self):
     run_options = config_pb2.RunOptions()
-    config = config_pb2.ConfigProto(
+    config_pb = config_pb2.ConfigProto(
         allow_soft_placement=True,
         graph_options=config_pb2.GraphOptions(build_cost_model=100))
-    with session.Session(config=config) as sess:
+    with session.Session(config=config_pb) as sess:
       with ops.device('/device:GPU:0'):
         a = array_ops.placeholder(dtypes.float32, shape=[])
         b = math_ops.add(a, a)
@@ -1797,7 +1794,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     sess2_controller = sess2.as_default()
     sess2_controller.__enter__()
 
-    with self.assertRaisesRegexp(AssertionError, 'Nesting violated'):
+    with self.assertRaisesRegex(AssertionError, 'Nesting violated'):
       sess1_controller.__exit__(None, None, None)
 
     ops._default_session_stack.reset()
@@ -1821,17 +1818,17 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testReentry(self):
     sess = session.Session()
-    with self.assertRaisesRegexp(RuntimeError, 'not re-entrant'):
+    with self.assertRaisesRegex(RuntimeError, 'not re-entrant'):
       with sess:
         with sess:
           pass
 
   def testInvalidArgument(self):
-    with self.assertRaisesRegexp(TypeError, 'target must be a string'):
+    with self.assertRaisesRegex(TypeError, 'target must be a string'):
       session.Session(37)
-    with self.assertRaisesRegexp(TypeError, 'config must be a tf.ConfigProto'):
+    with self.assertRaisesRegex(TypeError, 'config must be a tf.ConfigProto'):
       session.Session(config=37)
-    with self.assertRaisesRegexp(TypeError, 'graph must be a tf.Graph'):
+    with self.assertRaisesRegex(TypeError, 'graph must be a tf.Graph'):
       session.Session(graph=37)
 
   @test_util.run_v1_only('b/120545219')
@@ -1842,8 +1839,8 @@ class SessionTest(test_util.TensorFlowTestCase):
 
     # Use a 10-second timeout, which should be longer than any
     # non-blocking enqueue_many op.
-    config = config_pb2.ConfigProto(operation_timeout_in_ms=10000)
-    with session.Session(config=config) as sess:
+    config_pb = config_pb2.ConfigProto(operation_timeout_in_ms=10000)
+    with session.Session(config=config_pb) as sess:
       for _ in range(num_epochs):
         sess.run(enqueue_op)
       self.assertEqual(sess.run(q.size()), num_epochs * 2)
@@ -1880,7 +1877,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       squared_eval = sess.partial_run(partial_run, squared_tensor)
       self.assertAllClose(np2 * np2, squared_eval)
 
-  @test_util.run_v1_only('b/120545219')
   def testDefaultLogDevicePlacement(self):
 
     class CaptureStderr(str):
@@ -1916,29 +1912,59 @@ class SessionTest(test_util.TensorFlowTestCase):
       def __str__(self):
         return self._output
 
-    # Passing the config to the server, but not the session should still result
-    # in logging device placement.
-    config = config_pb2.ConfigProto(log_device_placement=True)
-    server = server_lib.Server.create_local_server(config=config)
-    a = constant_op.constant(1)
-    b = constant_op.constant(2)
-    c = a + b
-    with session.Session(server.target) as sess:
+    context.set_log_device_placement(True)
+    if context.executing_eagerly():
       with CaptureStderr() as log:
-        sess.run(c)
-      # Ensure that we did log device placement.
-      self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in str(log),
-                      str(log))
+        a = constant_op.constant(1)
+        b = constant_op.constant(2)
+        c = a + b
+        # Ensure if the same kernel with the same arguments is executed then its
+        # execution is logged.
+        d = a + b
+    else:
+      # Passing the config to the server, but not the session should still
+      # result in logging device placement.
+      config_pb = config_pb2.ConfigProto(log_device_placement=True)
+      server = server_lib.Server.create_local_server(config=config_pb)
+      a = constant_op.constant(1)
+      b = constant_op.constant(2)
+      c = a + b
+      d = a + b
+      with session.Session(server.target) as sess:
+        with CaptureStderr() as log:
+          c, d = sess.run([c, d])
+
+    self.assertEqual(c, 3)
+    self.assertEqual(d, 3)
+    # Ensure that we did log device placement.
+    add_executions = [l for l in str(log).splitlines() if 'AddV2' in l]
+    self.assertEqual(len(add_executions), 2)
+
+    @def_function.function
+    def fn():
+      a = constant_op.constant(1)
+      b = constant_op.constant(2)
+      c = a + b
+      d = a + b
+      return c, d
+
+    with CaptureStderr() as log:
+      c, d = self.evaluate(fn())
+    self.assertEqual(c, 3)
+    self.assertEqual(d, 3)
+    # Ensure that we did log device placement.
+    add_executions = [l for l in str(log).splitlines() if 'AddV2' in l]
+    self.assertEqual(len(add_executions), 2)
 
   @test_util.run_v1_only('b/120545219')
   def testLocalMasterSessionTimeout(self):
     # Test that the timeout passed in a config to the session works correctly.
-    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
+    config_pb = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
     server = server_lib.Server.create_local_server()
     q = data_flow_ops.FIFOQueue(1, dtypes.float32)
     dequeued_t = q.dequeue()
 
-    with session.Session(server.target, config=config) as sess:
+    with session.Session(server.target, config=config_pb) as sess:
       # Intentionally do not run any enqueue_ops so that dequeue will block
       # until operation_timeout_in_ms.
       with self.assertRaises(errors.DeadlineExceededError):
@@ -1948,8 +1974,8 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testDefaultServerTimeout(self):
     # Test that the default server config timeout gets used when no Session
     # config is provided.
-    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
-    server = server_lib.Server.create_local_server(config=config)
+    config_pb = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
+    server = server_lib.Server.create_local_server(config=config_pb)
     q = data_flow_ops.FIFOQueue(1, dtypes.float32)
     dequeued_t = q.dequeue()
 
@@ -2035,9 +2061,18 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testAutoConvertAndCheckData(self):
     with self.cached_session() as sess:
       a = array_ops.placeholder(dtype=dtypes.string)
-      with self.assertRaisesRegexp(
-          TypeError, 'Type of feed value 1 with type <(\w+) \'int\'> is not'):
+      with self.assertRaisesRegex(
+          TypeError, r'Type of feed value 1 with type <(\w+) \'int\'> is not'):
         sess.run(a, feed_dict={a: 1})
+
+  @test_util.run_v1_only('b/120545219')
+  def testOptimizerOptions(self):
+    config.set_optimizer_experimental_options({'min_graph_nodes': -1})
+
+    with ops.Graph().as_default():
+      sess = session.Session()
+      self.assertEqual(
+          sess._config.graph_options.rewrite_options.min_graph_nodes, -1)
 
 
 if __name__ == '__main__':

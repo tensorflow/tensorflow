@@ -32,9 +32,35 @@ namespace tensorflow {
 class ExtractGlimpseOp : public OpKernel {
  public:
   explicit ExtractGlimpseOp(OpKernelConstruction* context) : OpKernel(context) {
+    const string& op = context->def().op();
+    version_ = (op == "ExtractGlimpse") ? 1 : 2;
     OP_REQUIRES_OK(context, context->GetAttr("normalized", &normalized_));
     OP_REQUIRES_OK(context, context->GetAttr("centered", &centered_));
-    OP_REQUIRES_OK(context, context->GetAttr("uniform_noise", &uniform_noise_));
+    bool uniform_noise = false;
+    string noise;
+    OP_REQUIRES_OK(context, context->GetAttr("uniform_noise", &uniform_noise));
+    OP_REQUIRES_OK(context, context->GetAttr("noise", &noise));
+    OP_REQUIRES(context,
+                !(uniform_noise && (!noise.empty() && noise != "uniform")),
+                errors::InvalidArgument("The uniform_noise and noise could not "
+                                        "be specified at the same time"));
+    if (noise.empty()) {
+      noise_ = uniform_noise ? Eigen::ExtractGlimpsesNoiseMode::UNIFORM
+                             : Eigen::ExtractGlimpsesNoiseMode::GAUSSIAN;
+    } else {
+      OP_REQUIRES(context,
+                  noise == "uniform" || noise == "gaussian" || noise == "zero",
+                  errors::InvalidArgument(
+                      "The noise could only be uniform, gaussian, or zero, got",
+                      noise));
+      if (noise == "uniform") {
+        noise_ = Eigen::ExtractGlimpsesNoiseMode::UNIFORM;
+      } else if (noise == "gaussian") {
+        noise_ = Eigen::ExtractGlimpsesNoiseMode::GAUSSIAN;
+      } else {
+        noise_ = Eigen::ExtractGlimpsesNoiseMode::ZERO;
+      }
+    }
   }
 
   // Expect input tensor of rank 4 with dimensions (batch_size, height, width,
@@ -93,21 +119,23 @@ class ExtractGlimpseOp : public OpKernel {
       // calling TensorFlow operates with (y,x) as indices.
       offset_vec.push_back(Eigen::IndexPair<float>(offset_x, offset_y));
     }
-
     output->tensor<float, 4>().swap_layout().device(
         context->eigen_cpu_device()) =
         Eigen::ExtractGlimpses(input.tensor<float, 4>().swap_layout(),
                                output_width, output_height, offset_vec,
-                               normalized_, centered_, uniform_noise_);
+                               normalized_, centered_, noise_, version_);
   }
 
  private:
   bool normalized_;
   bool centered_;
-  bool uniform_noise_;
+  Eigen::ExtractGlimpsesNoiseMode noise_;
+  int32 version_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExtractGlimpse").Device(DEVICE_CPU),
+                        ExtractGlimpseOp);
+REGISTER_KERNEL_BUILDER(Name("ExtractGlimpseV2").Device(DEVICE_CPU),
                         ExtractGlimpseOp);
 
 }  // end namespace tensorflow

@@ -97,10 +97,8 @@ class Dirichlet(distribution.Distribution):
   density.
 
   Samples of this distribution are reparameterized (pathwise differentiable).
-  The derivatives are computed using the approach described in the paper
-
-  [Michael Figurnov, Shakir Mohamed, Andriy Mnih.
-  Implicit Reparameterization Gradients, 2018](https://arxiv.org/abs/1805.08498)
+  The derivatives are computed using the approach described in
+  (Figurnov et al., 2018).
 
   #### Examples
 
@@ -155,6 +153,12 @@ class Dirichlet(distribution.Distribution):
   grads = tf.gradients(loss, alpha)
   ```
 
+  References:
+    Implicit Reparameterization Gradients:
+      [Figurnov et al., 2018]
+      (http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients)
+      ([pdf]
+      (http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients.pdf))
   """
 
   @deprecation.deprecated(
@@ -293,9 +297,8 @@ class Dirichlet(distribution.Distribution):
           array_ops.shape(mode),
           np.array(np.nan, dtype=self.dtype.as_numpy_dtype()),
           name="nan")
-      return array_ops.where(
-          math_ops.reduce_all(self.concentration > 1., axis=-1),
-          mode, nan)
+      return array_ops.where_v2(
+          math_ops.reduce_all(self.concentration > 1., axis=-1), mode, nan)
     return control_flow_ops.with_dependencies([
         check_ops.assert_less(
             array_ops.ones([], self.dtype),

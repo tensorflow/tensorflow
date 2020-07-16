@@ -49,6 +49,11 @@ class TestCluster {
   // returned.
   static Status MakeTestCluster(const SessionOptions& options, int n,
                                 std::unique_ptr<TestCluster>* out_cluster);
+
+  // As above, but allows overridding the server binary path via `binary_path`.
+  static Status MakeTestCluster(const string& binary_path,
+                                const SessionOptions& options, int n,
+                                std::unique_ptr<TestCluster>* out_cluster);
   ~TestCluster();
 
   // Returns a vector of string "<hostname>:<port>" pairs that may be

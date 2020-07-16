@@ -20,13 +20,17 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import six
 
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.conv_utils import convert_kernel
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util import deprecation
+from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.utils.get_source_inputs')
+@keras_export('keras.utils.get_source_inputs')
 def get_source_inputs(tensor, layer=None, node_index=None):
   """Returns the list of input tensors necessary to compute `tensor`.
 
@@ -51,21 +55,41 @@ def get_source_inputs(tensor, layer=None, node_index=None):
     return [tensor]
   else:
     node = layer._inbound_nodes[node_index]
-    if not node.inbound_layers:
+    if node.is_input:
       # Reached an Input layer, stop recursion.
-      return node.input_tensors
+      return nest.flatten(node.input_tensors)
     else:
       source_tensors = []
-      for i in range(len(node.inbound_layers)):
-        x = node.input_tensors[i]
-        layer = node.inbound_layers[i]
-        node_index = node.node_indices[i]
-        previous_sources = get_source_inputs(x, layer, node_index)
+      for layer, node_index, _, tensor in node.iterate_inbound():
+        previous_sources = get_source_inputs(tensor, layer, node_index)
         # Avoid input redundancy.
         for x in previous_sources:
-          if x not in source_tensors:
+          if all(x is not t for t in source_tensors):
             source_tensors.append(x)
       return source_tensors
+
+
+def validate_string_arg(input_data,
+                        allowable_strings,
+                        layer_name,
+                        arg_name,
+                        allow_none=False,
+                        allow_callables=False):
+  """Validates the correctness of a string-based arg."""
+  if allow_none and input_data is None:
+    return
+  elif allow_callables and callable(input_data):
+    return
+  elif isinstance(input_data,
+                  six.string_types) and input_data in allowable_strings:
+    return
+  else:
+    allowed_args = '`None`, ' if allow_none else ''
+    allowed_args += 'a `Callable`, ' if allow_callables else ''
+    allowed_args += 'or one of the following values: %s' % (allowable_strings,)
+    raise ValueError(("%s's %s arg received an invalid value %s. " +
+                      'Allowed values are %s.') %
+                     (layer_name, arg_name, input_data, allowed_args))
 
 
 def count_params(weights):
@@ -77,7 +101,12 @@ def count_params(weights):
   Returns:
       The total number of scalars composing the weights
   """
-  return int(sum(np.prod(p.get_shape().as_list()) for p in set(weights)))
+  unique_weights = object_identity.ObjectIdentitySet(weights)
+  weight_shapes = [w.shape.as_list() for w in unique_weights]
+  standardized_weight_shapes = [
+      [0 if w_i is None else w_i for w_i in w] for w in weight_shapes
+  ]
+  return int(sum(np.prod(p) for p in standardized_weight_shapes))
 
 
 def print_summary(model, line_length=None, positions=None, print_fn=None):
@@ -110,7 +139,8 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     nodes_by_depth = model._nodes_by_depth.values()
     nodes = []
     for v in nodes_by_depth:
-      if (len(v) > 1) or (len(v) == 1 and len(v[0].inbound_layers) > 1):
+      if (len(v) > 1) or (len(v) == 1 and
+                          len(nest.flatten(v[0].keras_inputs)) > 1):
         # if the model has multiple nodes
         # or if the nodes have multiple inbound_layers
         # the model is no longer sequential
@@ -159,6 +189,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       line += ' ' * (positions[i] - len(line))
     print_fn(line)
 
+  print_fn('Model: "{}"'.format(model.name))
   print_fn('_' * line_length)
   print_row(to_display, positions)
   print_fn('=' * line_length)
@@ -195,12 +226,10 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       if relevant_nodes and node not in relevant_nodes:
         # node is not part of the current network
         continue
-      for i in range(len(node.inbound_layers)):
-        inbound_layer = node.inbound_layers[i].name
-        inbound_node_index = node.node_indices[i]
-        inbound_tensor_index = node.tensor_indices[i]
-        connections.append(inbound_layer + '[' + str(inbound_node_index) +
-                           '][' + str(inbound_tensor_index) + ']')
+
+      for inbound_layer, node_index, tensor_index, _ in node.iterate_inbound():
+        connections.append('{}[{}][{}]'.format(inbound_layer.name, node_index,
+                                               tensor_index))
 
     name = layer.name
     cls_name = layer.__class__.__name__
@@ -229,7 +258,6 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     else:
       print_fn('_' * line_length)
 
-  model._check_trainable_weights_consistency()
   if hasattr(model, '_collected_trainable_weights'):
     trainable_count = count_params(model._collected_trainable_weights)
   else:
@@ -298,11 +326,16 @@ def gather_non_trainable_weights(trainable, sub_layers, extra_variables):
   return weights + non_trainable_extra_variables
 
 
-@tf_export('keras.utils.convert_all_kernels_in_model')
+@deprecation.deprecated('2020-06-23',
+                        'The Theano kernel format is legacy; '
+                        'this utility will be removed.')
+@keras_export('keras.utils.convert_all_kernels_in_model')
 def convert_all_kernels_in_model(model):
   """Converts all convolution kernels in a model from Theano to TensorFlow.
 
   Also works from TensorFlow to Theano.
+
+  This is used for converting legacy Theano-saved model files.
 
   Arguments:
       model: target model for the conversion.
@@ -361,3 +394,13 @@ def convert_dense_weights_data_format(dense,
       ki = np.transpose(ki, (1, 2, 0))  # first -> last
     kernel[:, i] = np.reshape(ki, (np.prod(previous_feature_map_shape),))
   dense.set_weights([kernel, bias])
+
+
+def is_builtin_layer(layer):
+  if not getattr(layer, '_keras_api_names', None):
+    return False
+
+  # Subclasses of `Layer` that are not exported inherit the export name
+  # of the base layer class.
+  return (layer._keras_api_names != ('keras.layers.Layer',) and
+          layer._keras_api_names_v1 != ('keras.layers.Layer',))

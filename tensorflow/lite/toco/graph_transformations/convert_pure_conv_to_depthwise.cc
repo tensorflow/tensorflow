@@ -92,11 +92,8 @@ namespace toco {
   depthwiseconv_op->stride_width = conv_op->stride_width;
   depthwiseconv_op->depth_multiplier = weights_array.shape().dims(0);
   // Replace the operator in the graph.
-  const auto depthwiseconv_it =
-      model->operators.emplace(conv_it, depthwiseconv_op);
-  conv_it = depthwiseconv_it + 1;
-  CHECK_EQ(conv_it->get(), conv_op);
-  model->operators.erase(conv_it);
+  model->operators.emplace(conv_it, depthwiseconv_op);
+  DeleteOpAndArrays(model, conv_op);
   // Shuffle the weights.
   const auto& weights_shape = weights_array.shape();
   auto& weights_buffer =

@@ -40,7 +40,7 @@ void Transpose(Model* model, const Array& input_array,
   CHECK(input_shape.dimensions_count() == output_shape.dimensions_count());
   const int dim = input_shape.dimensions_count();
   CHECK_LE(dim, 4);
-  CHECK(perm.size() >= dim);
+  CHECK(static_cast<int>(perm.size()) >= dim);
   for (int i = 0; i < dim; i++) {
     CHECK(perm[i] >= 0 && perm[i] < dim);
     CHECK(input_shape.dims(perm[i]) == output_shape.dims(i));
@@ -171,16 +171,7 @@ void Transpose(Model* model, const Array& input_array,
 
   AddMessageF("Resolving constant transpose of %s", LogName(*op));
 
-  // Erase input arrays if no longer used.
-  for (const auto& input : op->inputs) {
-    if (IsDiscardableArray(*model, input) &&
-        CountOpsWithInput(*model, input) == 1) {
-      model->EraseArray(input);
-    }
-  }
-
-  // Erase the operator.
-  model->operators.erase(it);
+  DeleteOpAndArrays(model, op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

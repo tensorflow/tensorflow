@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/proto_text_util.h"
 
+#include "absl/strings/escaping.h"
+
 namespace tensorflow {
 namespace strings {
 
@@ -51,7 +53,7 @@ bool ProtoParseStringLiteralFromScanner(Scanner* scanner, string* value) {
     return false;
   }
   ProtoSpaceAndComments(scanner);
-  return str_util::CUnescape(value_sp, value, nullptr /* error */);
+  return absl::CUnescape(value_sp, value, nullptr /* error */);
 }
 
 }  // namespace strings

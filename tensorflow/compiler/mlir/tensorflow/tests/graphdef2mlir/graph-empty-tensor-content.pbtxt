@@ -1,0 +1,35 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
+
+# This test is intended to verify the tensor_content field on import of an empty
+# tensor.
+# CHECK:  tf.Const
+# CHECK-SAME: value = dense<0.000000e+00>
+
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+}
+library {
+}
+versions {
+  producer: 29
+}

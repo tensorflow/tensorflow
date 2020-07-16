@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Cast"
+  endpoint {
+    name: "dtypes.Cast"
+  }
+}

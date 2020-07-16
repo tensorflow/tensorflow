@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/toco_port.h"
+#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/toco/toco_types.h"
 
 #include <gmock/gmock.h>
@@ -56,3 +57,10 @@ TEST(TocoPortTest, JoinPath) {
 }  // namespace
 }  // namespace port
 }  // namespace toco
+
+int main(int argc, char** argv) {
+  ::tflite::LogToStderr();
+  ::testing::InitGoogleTest(&argc, argv);
+  ::toco::port::InitGoogleWasDoneElsewhere();
+  return RUN_ALL_TESTS();
+}

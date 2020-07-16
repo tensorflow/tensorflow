@@ -19,13 +19,11 @@ from __future__ import print_function
 
 import glob
 import os
-import shutil
 import tempfile
 import threading
 
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
-from tensorflow.python.debug.lib import stepper
 from tensorflow.python.debug.wrappers import dumping_wrapper
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.debug.wrappers import hooks
@@ -33,6 +31,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -62,7 +61,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     ops.reset_default_graph()
     if os.path.isdir(self.session_root):
-      shutil.rmtree(self.session_root)
+      file_io.delete_recursively(self.session_root)
 
   def _assert_correct_run_subdir_naming(self, run_subdir):
     self.assertStartsWith(run_subdir, "run_")
@@ -74,7 +73,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     os.mkdir(dir_path)
     self.assertTrue(os.path.isdir(dir_path))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "session_root path points to a non-empty directory"):
       dumping_wrapper.DumpingDebugWrapperSession(
           session.Session(), session_root=self.session_root, log_usage=False)
@@ -84,8 +83,8 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     open(file_path, "a").close()  # Create the file
     self.assertTrue(gfile.Exists(file_path))
     self.assertFalse(gfile.IsDirectory(file_path))
-    with self.assertRaisesRegexp(ValueError,
-                                 "session_root path points to a file"):
+    with self.assertRaisesRegex(ValueError,
+                                "session_root path points to a file"):
       dumping_wrapper.DumpingDebugWrapperSession(
           session.Session(), session_root=file_path, log_usage=False)
 
@@ -162,7 +161,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def testUsingNonCallableAsWatchFnRaisesTypeError(self):
     bad_watch_fn = "bad_watch_fn"
-    with self.assertRaisesRegexp(TypeError, "watch_fn is not callable"):
+    with self.assertRaisesRegex(TypeError, "watch_fn is not callable"):
       dumping_wrapper.DumpingDebugWrapperSession(
           self.sess,
           session_root=self.session_root,
@@ -170,7 +169,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
           log_usage=False)
 
   def testDumpingWithLegacyWatchFnOnFetchesWorks(self):
-    """Use a watch_fn that returns different whitelists for different runs."""
+    """Use a watch_fn that returns different allowlists for different runs."""
 
     def watch_fn(fetches, feeds):
       del feeds
@@ -241,9 +240,9 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       del fetches, feeds
       return framework.WatchOptions(
           debug_ops=["DebugIdentity", "DebugNumericSummary"],
-          node_name_regex_whitelist=r"^v.*",
-          op_type_regex_whitelist=r".*",
-          tensor_dtype_regex_whitelist=".*_ref")
+          node_name_regex_allowlist=r"^v.*",
+          op_type_regex_allowlist=r".*",
+          tensor_dtype_regex_allowlist=".*_ref")
 
     sess = dumping_wrapper.DumpingDebugWrapperSession(
         self.sess,
@@ -289,14 +288,13 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       if watch_fn_state["run_counter"] % 2 == 1:
         # If odd-index run (1-based), watch every ref-type tensor.
         return framework.WatchOptions(
-            debug_ops="DebugIdentity",
-            tensor_dtype_regex_whitelist=".*_ref")
+            debug_ops="DebugIdentity", tensor_dtype_regex_allowlist=".*_ref")
       else:
         # If even-index run, watch nothing.
         return framework.WatchOptions(
             debug_ops="DebugIdentity",
-            node_name_regex_whitelist=r"^$",
-            op_type_regex_whitelist=r"^$")
+            node_name_regex_allowlist=r"^$",
+            op_type_regex_allowlist=r"^$")
 
     dumping_hook = hooks.DumpingDebugHook(
         self.session_root, watch_fn=counting_watch_fn, log_usage=False)
@@ -379,16 +377,6 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     dump = debug_data.DebugDumpDir(dump_dirs[0])
     self.assertEqual(1, dump.size)
     self.assertEqual("delta", dump.dumped_tensor_data[0].node_name)
-
-  def testCallingInvokeNodeStepperOnDumpingWrapperRaisesException(self):
-    sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root, log_usage=False)
-    node_stepper = stepper.NodeStepper(self.sess, self.inc_v)
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        r"NonInteractiveDebugWrapperSession does not support node-stepper "
-        r"mode\."):
-      sess.invoke_node_stepper(node_stepper)
 
   def testDumpingWrapperWithEmptyFetchWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(

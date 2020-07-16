@@ -20,19 +20,37 @@ from __future__ import print_function
 
 import os
 import shutil
+import types
+from unittest import mock
+
+import tensorflow as tf
 
 from tensorflow.python.platform import googletest
 from tensorflow.tools.docs import generate2
 
+# Make a mock tensorflow package that won't take too long to test.
+fake_tf = types.ModuleType('FakeTensorFlow')
+fake_tf.estimator = tf.estimator
+fake_tf.keras = tf.keras
+fake_tf.nn = tf.nn
+fake_tf.summary = tf.summary
+fake_tf.raw_ops = types.ModuleType('raw_ops')
+fake_tf.Module = tf.Module
+
+for name in sorted(dir(tf.raw_ops))[:5]:
+  setattr(fake_tf.raw_ops, name, getattr(tf.raw_ops, name))
+
 
 class Generate2Test(googletest.TestCase):
 
+  @mock.patch.object(generate2, 'tf', fake_tf)
   def test_end_to_end(self):
     output_dir = os.path.join(googletest.GetTempDir(), 'output')
     if os.path.exists(output_dir):
       shutil.rmtree(output_dir)
     os.makedirs(output_dir)
-    generate2.build_docs(output_dir=output_dir, code_url_prefix='')
+    with self.assertRaisesRegex(ValueError, '2000 files'):
+      generate2.build_docs(output_dir=output_dir, code_url_prefix='')
 
 
 if __name__ == '__main__':

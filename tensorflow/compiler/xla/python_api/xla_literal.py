@@ -48,9 +48,9 @@ def ConvertLiteralToNumpyArray(literal):
     #    on the LiteralProto's layout.
     layout_order = literal.shape.layout.minor_to_major
     numpy_shape = tuple(literal.shape.dimensions)
-    if layout_order == range(len(literal.shape.dimensions)):
+    if layout_order == list(range(len(literal.shape.dimensions))):
       numpy_reshaper = lambda arr: arr.reshape(numpy_shape, order='F')
-    elif layout_order == range(len(literal.shape.dimensions) - 1, -1, -1):
+    elif layout_order == list(range(len(literal.shape.dimensions) - 1, -1, -1)):
       numpy_reshaper = lambda arr: arr.reshape(numpy_shape, order='C')
     else:
       raise NotImplementedError('Unsupported layout: {0}'.format(layout_order))
@@ -69,7 +69,7 @@ def _ConvertNumpyArrayToLiteral(ndarray):
 
   if ndarray.ndim == 0:
     getattr(literal, type_record.literal_field_name).append(
-        _np.asscalar(ndarray.astype(type_record.literal_field_type)))
+        ndarray.astype(type_record.literal_field_type).item())
   else:
     # Ndarrays with boolean dtypes need special type conversion with protobufs
     if ndarray.dtype in {_np.bool_, _np.dtype('bool')}:

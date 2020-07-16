@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOCO_PYTHON_TOCO_PYTHON_API_H_
 
 #include <Python.h>
+
 #include <string>
 
 namespace toco {
@@ -25,12 +26,29 @@ namespace toco {
 // parameters (see relevant .protos for more information). Returns a string
 // representing the contents of the converted model. When extended_return
 // flag is set to true returns a dictionary that contains string representation
-// of the converted model and some statitics like arithmetic ops count.
+// of the converted model and some statistics like arithmetic ops count.
+// `debug_info_str` contains the `GraphDebugInfo` proto. When
+// `enable_mlir_converter` is True, use MLIR-based conversion instead of
+// TOCO conversion.
 PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
                       PyObject* toco_flags_proto_txt_raw,
                       PyObject* input_contents_txt_raw,
-                      bool extended_return = false);
+                      bool extended_return = false,
+                      PyObject* debug_info_txt_raw = nullptr,
+                      bool enable_mlir_converter = false);
 
+// Returns a list of names of all ops potentially supported by tflite.
+PyObject* TocoGetPotentiallySupportedOps();
+
+// Quantize the model with calibration data. Throw errors if `fully_quantize`
+// is specified by the calibration data are not sufficient to quantize the
+// model.
+PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
+                            bool fully_quantize, int inference_type);
+
+// Sparsifies model to encode sparse tensors with proper format. Throws error if
+// sparsification fails.
+PyObject* MlirSparsifyModel(PyObject* data);
 }  // namespace toco
 
 #endif  // TENSORFLOW_LITE_TOCO_PYTHON_TOCO_PYTHON_API_H_

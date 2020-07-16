@@ -13,33 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <stddef.h>
-#include <stdint.h>
-
 #ifndef TENSORFLOW_C_ENV_H_
 #define TENSORFLOW_C_ENV_H_
 
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/tf_file_statistics.h"
 
 // --------------------------------------------------------------------------
 // C API for tensorflow::Env.
-
-struct TF_WritableFileHandle;
-struct TF_StringStream;
-struct TF_Thread;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct TF_FileStatistics {
-  // The length of the file in bytes.
-  int64_t length;
-  // The last modified time in nanoseconds.
-  int64_t mtime_nsec;
-  // Whether the name refers to a directory.
-  bool is_directory;
-} TF_FileStatistics;
+typedef struct TF_WritableFileHandle TF_WritableFileHandle;
+typedef struct TF_StringStream TF_StringStream;
+typedef struct TF_Thread TF_Thread;
 
 typedef struct TF_ThreadOptions {
   // Thread stack size to use (in bytes), zero implies that the system default
@@ -158,6 +151,10 @@ TF_CAPI_EXPORT extern TF_StringStream* TF_GetChildren(const char* filename,
 // temporary storage. You can iterate through the list with TF_StringStreamNext.
 // The caller is responsible for freeing the list (see TF_StringStreamDone).
 TF_CAPI_EXPORT extern TF_StringStream* TF_GetLocalTempDirectories(void);
+
+// Creates a temporary file name with an extension.
+// The caller is responsible for freeing the returned pointer.
+TF_CAPI_EXPORT extern char* TF_GetTempFileName(const char* extension);
 
 // Returns the number of nanoseconds since the Unix epoch.
 TF_CAPI_EXPORT extern uint64_t TF_NowNanos(void);

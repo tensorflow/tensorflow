@@ -112,7 +112,7 @@ TEST_F(InfeedManagerTest, MultiThreaded) {
 
   const int32 length = 64;
 
-  pool.Schedule([xfeed]() {
+  pool.Schedule([length, &xfeed]() {
     // Spin for 100 milliseconds
     int64 start_micros = tensorflow::Env::Default()->NowMicros();
     while (true) {

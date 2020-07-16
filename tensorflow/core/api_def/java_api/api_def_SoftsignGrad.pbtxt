@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "SoftsignGrad"
+  endpoint {
+    name: "nn.SoftsignGrad"
+  }
+}

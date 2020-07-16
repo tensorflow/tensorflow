@@ -78,7 +78,7 @@ TEST_F(SummaryImageOpTest, ThreeGrayImagesOutOfFive4dInput) {
   MakeOp(3 /* max images */);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({}), {"tag"});
+  AddInputFromArray<tstring>(TensorShape({}), {"tag"});
   AddInputFromArray<float>(TensorShape({5, 2, 1, 1}),
                            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
   TF_ASSERT_OK(RunOpKernel());
@@ -87,7 +87,7 @@ TEST_F(SummaryImageOpTest, ThreeGrayImagesOutOfFive4dInput) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
 
   CheckAndRemoveEncodedImages(&summary);
   EXPECT_SummaryMatches(summary, R"(
@@ -101,7 +101,7 @@ TEST_F(SummaryImageOpTest, OneGrayImage4dInput) {
   MakeOp(1 /* max images */);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({}), {"tag"});
+  AddInputFromArray<tstring>(TensorShape({}), {"tag"});
   AddInputFromArray<float>(TensorShape({5 /*batch*/, 2, 1, 1 /*depth*/}),
                            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
   TF_ASSERT_OK(RunOpKernel());
@@ -110,7 +110,7 @@ TEST_F(SummaryImageOpTest, OneGrayImage4dInput) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
 
   CheckAndRemoveEncodedImages(&summary);
   EXPECT_SummaryMatches(summary, R"(
@@ -121,7 +121,7 @@ TEST_F(SummaryImageOpTest, OneColorImage4dInput) {
   MakeOp(1 /* max images */);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({}), {"tag"});
+  AddInputFromArray<tstring>(TensorShape({}), {"tag"});
   AddInputFromArray<float>(
       TensorShape({1 /*batch*/, 5 /*rows*/, 2 /*columns*/, 3 /*depth*/}),
       {
@@ -142,7 +142,7 @@ TEST_F(SummaryImageOpTest, OneColorImage4dInput) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
 
   CheckAndRemoveEncodedImages(&summary);
   EXPECT_SummaryMatches(summary, R"(

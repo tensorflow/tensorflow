@@ -63,6 +63,8 @@ string ToString(FilterTensorFormat format) {
       return "HWIO";
     case FORMAT_OIHW:
       return "OIHW";
+    case FORMAT_OHWI:
+      return "OHWI";
     case FORMAT_OIHW_VECT_I:
       return "OIHW_VECT_I";
     default:

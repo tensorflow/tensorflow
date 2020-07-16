@@ -42,7 +42,7 @@ struct PartitionOptions {
   // A function that returns the incarnation of a device given the
   // device's fullname. If not found, GetIncarnationFunc should return
   // kIllegalIncarnation.
-  static const uint64 kIllegalIncarnation = 0;
+  static constexpr uint64 kIllegalIncarnation = 0;
   typedef std::function<uint64(const string&)> GetIncarnationFunc;
   GetIncarnationFunc get_incarnation = nullptr;
 

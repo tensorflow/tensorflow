@@ -16,9 +16,10 @@ limitations under the License.
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "DevicePropertiesProtos";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 message DeviceProperties {
   // Device type (CPU, GPU, ...)

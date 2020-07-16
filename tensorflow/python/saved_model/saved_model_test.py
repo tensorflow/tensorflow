@@ -35,6 +35,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
@@ -43,6 +44,7 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import main_op
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.saved_model import utils
 from tensorflow.python.training import saver_test_utils
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
@@ -170,9 +172,8 @@ class SavedModelTest(SavedModelTestBase):
     export_dir = self._get_export_dir("test_bad_saved_model_file_format")
     # Attempt to load a SavedModel from an export directory that does not exist.
     with self.session(graph=ops.Graph()) as sess:
-      with self.assertRaisesRegexp(IOError,
-                                   "SavedModel file does not exist at: %s" %
-                                   export_dir):
+      with self.assertRaisesRegex(
+          IOError, "SavedModel file does not exist at: %s" % export_dir):
         loader.load(sess, ["foo"], export_dir)
 
     os.makedirs(export_dir)
@@ -181,8 +182,8 @@ class SavedModelTest(SavedModelTestBase):
     with open(path_to_pb, "w") as f:
       f.write("invalid content")
     with self.session(graph=ops.Graph()) as sess:
-      with self.assertRaisesRegexp(IOError, "Cannot parse file.*%s" %
-                                   constants.SAVED_MODEL_FILENAME_PB):
+      with self.assertRaisesRegex(
+          IOError, "Cannot parse file.*%s" % constants.SAVED_MODEL_FILENAME_PB):
         loader.load(sess, ["foo"], export_dir)
 
     # Cleanup the directory and start again.
@@ -195,8 +196,9 @@ class SavedModelTest(SavedModelTestBase):
     with open(path_to_pbtxt, "w") as f:
       f.write("invalid content")
     with self.session(graph=ops.Graph()) as sess:
-      with self.assertRaisesRegexp(IOError, "Cannot parse file.*%s" %
-                                   constants.SAVED_MODEL_FILENAME_PBTXT):
+      with self.assertRaisesRegex(
+          IOError,
+          "Cannot parse file.*%s" % constants.SAVED_MODEL_FILENAME_PBTXT):
         loader.load(sess, ["foo"], export_dir)
 
   @test_util.run_deprecated_v1
@@ -641,6 +643,19 @@ class SavedModelTest(SavedModelTestBase):
     export_dir = self._get_export_dir("test_signature_def_validation_coo_2")
     builder = saved_model_builder._SavedModelBuilder(export_dir)
     self._validate_outputs_tensor_info_accept(builder, tensor_with_coo)
+
+  @test_util.run_deprecated_v1
+  def testSignatureDefValidationSucceedsWithRagged(self):
+    ragged_tensor = ragged_factory_ops.constant([[1, 2], [3]])
+    tensor_with_ragged = utils.build_tensor_info(ragged_tensor)
+
+    export_dir = self._get_export_dir("test_signature_def_validation_ragged_1")
+    builder = saved_model_builder._SavedModelBuilder(export_dir)
+    self._validate_inputs_tensor_info_accept(builder, tensor_with_ragged)
+
+    export_dir = self._get_export_dir("test_signature_def_validation_ragged_2")
+    builder = saved_model_builder._SavedModelBuilder(export_dir)
+    self._validate_outputs_tensor_info_accept(builder, tensor_with_ragged)
 
   @test_util.run_deprecated_v1
   def testAssets(self):
@@ -1295,7 +1310,7 @@ class SavedModelTest(SavedModelTestBase):
     # does not have any attr values for the "TestAttr" node, and there is no
     # default specified in the TestAttr OpDef.
     sess = session.Session(graph=ops.Graph())
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "NodeDef missing attr 'T' from Op<name=TestAttr"):
       loader.load(sess, ["foo"], export_dir)
 
@@ -1319,13 +1334,8 @@ class SavedModelTest(SavedModelTestBase):
     # Loading the SavedModel via the loader must fail because there is no
     # OpKernel registered to handle T = double.
     sess = session.Session(graph=ops.Graph())
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        "No OpKernel was registered to support Op 'TestAttr' used by node "
-        "test_attr \\(defined at .*\\) with these attrs: \\[.*\\]\n"
-        "Registered devices:.*\n"
-        "Registered kernels:.*"
-    ):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "No OpKernel was registered.*DOUBLE"):
       loader.load(sess, ["foo"], export_dir)
 
 
@@ -1418,11 +1428,11 @@ class SavedModelV1Test(SavedModelTestBase):
       ops.add_to_collection(key, control_flow_ops.no_op())
       # ValueError should be raised since the LEGACY_INIT_OP_KEY collection
       # is not empty and we don't support multiple init ops.
-      with self.assertRaisesRegexp(ValueError, "Graph already contains"):
+      with self.assertRaisesRegex(ValueError, "Graph already contains"):
         builder.add_meta_graph_and_variables(
             sess, ["foo"], legacy_init_op=init_op)
       # We shouldn't be able to add as MAIN_OP, either.
-      with self.assertRaisesRegexp(ValueError, "Graph already contains"):
+      with self.assertRaisesRegex(ValueError, "Graph already contains"):
         builder.add_meta_graph_and_variables(sess, ["foo"], main_op=init_op)
 
   def testStripDefaultAttrs(self):

@@ -8,7 +8,23 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "autotune"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "autotune_buffers"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "autotune_cpu_budget"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "filter_fusion"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "filter_with_random_uniform_fusion"
     mtype: "<type \'property\'>"
   }
   member {
@@ -37,6 +53,10 @@ tf_class {
   }
   member {
     name: "noop_elimination"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "parallel_batch"
     mtype: "<type \'property\'>"
   }
   member {

@@ -118,9 +118,9 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         // someone changes the relevant codes in BFCAllocator.
         // Currently they are the same.
         if (node->name() == y->name()) {
-          EXPECT_EQ(13, cm->AllocationId(node, 0));
+          EXPECT_EQ(3, cm->AllocationId(node, 0));
         } else {
-          EXPECT_EQ(14, cm->AllocationId(node, 0));
+          EXPECT_EQ(4, cm->AllocationId(node, 0));
         }
       }
       EXPECT_LE(0, cm->MaxExecutionTime(node));

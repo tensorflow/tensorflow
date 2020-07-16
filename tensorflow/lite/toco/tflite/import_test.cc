@@ -60,7 +60,7 @@ class ImportTest : public ::testing::Test {
                                builder_.CreateString("tensor_one"), q);
     auto t2 =
         ::tflite::CreateTensor(builder_, builder_.CreateVector<int>({2, 1}),
-                               ::tflite::TensorType_FLOAT32, 2,
+                               ::tflite::TensorType_FLOAT32, 0,
                                builder_.CreateString("tensor_two"), q);
     return builder_.CreateVector(
         std::vector<Offset<::tflite::Tensor>>({t1, t2}));
@@ -134,9 +134,9 @@ class ImportTest : public ::testing::Test {
 
     input_model_ = ::tflite::GetModel(builder_.GetBufferPointer());
   }
-  string InputModelAsString() {
-    return string(reinterpret_cast<char*>(builder_.GetBufferPointer()),
-                  builder_.GetSize());
+  std::string InputModelAsString() {
+    return std::string(reinterpret_cast<char*>(builder_.GetBufferPointer()),
+                       builder_.GetSize());
   }
   flatbuffers::FlatBufferBuilder builder_;
   const ::tflite::Model* input_model_ = nullptr;

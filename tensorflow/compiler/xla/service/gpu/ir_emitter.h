@@ -81,7 +81,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleSend(HloInstruction* send) override;
@@ -89,7 +89,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleRecv(HloInstruction* recv) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleParameter(HloInstruction* parameter) override;
-  Status HandleReduce(HloInstruction* reduce) override;
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleSelect(HloInstruction* select) override;
@@ -125,22 +124,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     return bindings_.GetIrArray(inst, consumer, shape_index);
   }
   // A convenient helper for calling HloToIrBindings::GetBasePointer.
-  llvm::Value* GetBasePointer(const HloInstruction& inst) const {
-    return bindings_.GetBasePointer(inst);
+  llvm::Value* GetBasePointer(const HloInstruction& inst,
+                              ShapeIndexView shape_index = {}) const {
+    return bindings_.GetBasePointer(inst, shape_index);
   }
 
   // Generates the IrArray for each output of an hlo instruction and returns
   // a vector containing such IrArrays.
   std::vector<llvm_ir::IrArray> ConstructIrArrayForOutputs(
       const HloInstruction& hlo);
-
-  // A convenient helper for calling BufferAssignment::GetUniqueSlice.
-  BufferAllocation::Slice GetAllocationSlice(
-      const HloInstruction& hlo, const ShapeIndex& index = {}) const {
-    return ir_emitter_context_->buffer_assignment()
-        .GetUniqueSlice(&hlo, index)
-        .ConsumeValueOrDie();
-  }
 
   // Emit a singlethreaded or multithreaded loop that computes every element in
   // the result of the given HLO instruction. This produces a series of nested
@@ -185,7 +177,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
  protected:
   GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
-      HloInstruction* fusion) {
+      const HloInstruction* fusion) {
     return [=]() {
       std::vector<llvm_ir::IrArray> ir_arrays;
       ir_arrays.reserve(fusion->operand_count());
@@ -221,7 +213,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                        const llvm_ir::IrArray::Index& compare_keys_index,
                        const llvm_ir::IrArray& keys_array);
 
-  StatusOr<llvm::Value*> ComputeNestedElement(
+  StatusOr<std::vector<llvm::Value*>> ComputeNestedElement(
       const HloComputation& computation,
       absl::Span<llvm::Value* const> parameter_elements);
 

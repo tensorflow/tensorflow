@@ -51,7 +51,7 @@ class PriorityQueueOp : public TypedQueueOp {
 
  private:
   Status CreateResource(QueueInterface** ret) override
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     PriorityQueue* queue = new PriorityQueue(capacity_, component_types_,
                                              component_shapes_, cinfo_.name());
     return CreateTypedQueue(queue, ret);

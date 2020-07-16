@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace io {
@@ -61,7 +63,8 @@ typedef io::ZlibCompressionOptions CompressionOptions;
 void TestAllCombinations(CompressionOptions input_options,
                          CompressionOptions output_options) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/zlib_buffers_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   for (auto file_size : NumCopies()) {
     // Write to compressed file
     string data = GenTestString(file_size);
@@ -69,7 +72,7 @@ void TestAllCombinations(CompressionOptions input_options,
       for (auto output_buf_size : OutputBufferSizes()) {
         std::unique_ptr<WritableFile> file_writer;
         TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
-        string result;
+        tstring result;
 
         ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                              output_options);
@@ -112,7 +115,8 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
   CompressionOptions input_options = CompressionOptions::DEFAULT();
   CompressionOptions output_options = CompressionOptions::DEFAULT();
 
-  string fname = testing::TmpDir() + "/zlib_buffers_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   string data = GenTestString();
   std::unique_ptr<WritableFile> file_writer;
   string actual_result;
@@ -142,7 +146,7 @@ void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
                      input_options);
 
   for (int i = 0; i < num_writes; i++) {
-    string decompressed_output;
+    tstring decompressed_output;
     TF_ASSERT_OK(in.ReadNBytes(data.size(), &decompressed_output));
     strings::StrAppend(&actual_result, decompressed_output);
   }
@@ -160,7 +164,8 @@ TEST(ZlibBuffers, MultipleWriteCallsWithFlush) {
 
 TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/zlib_buffers_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   CompressionOptions output_options = CompressionOptions::DEFAULT();
   CompressionOptions input_options = CompressionOptions::DEFAULT();
   int input_buf_size = 200, output_buf_size = 200;
@@ -171,7 +176,7 @@ TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
   string data = GenTestString(10);
   std::unique_ptr<WritableFile> file_writer;
   TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
-  string result;
+  tstring result;
   ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                        output_options);
   TF_ASSERT_OK(out.Init());
@@ -212,7 +217,8 @@ void WriteCompressedFile(Env* env, const string& fname, int input_buf_size,
 void TestTell(CompressionOptions input_options,
               CompressionOptions output_options) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/zlib_buffers_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   for (auto file_size : NumCopies()) {
     string data = GenTestString(file_size);
     for (auto input_buf_size : InputBufferSizes()) {
@@ -229,8 +235,8 @@ void TestTell(CompressionOptions input_options,
         ZlibInputStream in(input_stream.get(), input_buf_size, output_buf_size,
                            input_options);
 
-        string first_half(data, 0, data.size() / 2);
-        string bytes_read;
+        tstring first_half(string(data, 0, data.size() / 2));
+        tstring bytes_read;
 
         // Read the first half of the uncompressed file and expect that Tell()
         // returns half the uncompressed length of the file.
@@ -240,7 +246,7 @@ void TestTell(CompressionOptions input_options,
 
         // Read the remaining half of the uncompressed file and expect that
         // Tell() points past the end of file.
-        string second_half;
+        tstring second_half;
         TF_ASSERT_OK(
             in.ReadNBytes(data.size() - first_half.size(), &second_half));
         EXPECT_EQ(in.Tell(), data.size());
@@ -256,7 +262,8 @@ void TestTell(CompressionOptions input_options,
 void TestSkipNBytes(CompressionOptions input_options,
                     CompressionOptions output_options) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/zlib_buffers_test";
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
   for (auto file_size : NumCopies()) {
     string data = GenTestString(file_size);
     for (auto input_buf_size : InputBufferSizes()) {
@@ -283,12 +290,49 @@ void TestSkipNBytes(CompressionOptions input_options,
 
         // Expect that second half is read correctly and Tell() returns past
         // end of file after reading complete file.
-        string bytes_read;
+        tstring bytes_read;
         TF_ASSERT_OK(in.ReadNBytes(second_half.size(), &bytes_read));
         EXPECT_EQ(bytes_read, second_half);
         EXPECT_EQ(in.Tell(), data.size());
       }
     }
+  }
+}
+
+void TestSoftErrorOnDecompress(CompressionOptions input_options) {
+  Env* env = Env::Default();
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
+
+  input_options.soft_fail_on_error = true;
+
+  std::unique_ptr<WritableFile> file_writer;
+  TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
+  TF_ASSERT_OK(file_writer->Append("nonsense non-gzip data"));
+  TF_ASSERT_OK(file_writer->Flush());
+  TF_ASSERT_OK(file_writer->Close());
+
+  // Test `ReadNBytes` returns an error.
+  {
+    std::unique_ptr<RandomAccessFile> file_reader;
+    TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
+    std::unique_ptr<RandomAccessInputStream> input_stream(
+        new RandomAccessInputStream(file_reader.get()));
+    ZlibInputStream in(input_stream.get(), 100, 100, input_options);
+
+    tstring unused;
+    EXPECT_TRUE(errors::IsDataLoss(in.ReadNBytes(5, &unused)));
+  }
+
+  // Test `SkipNBytes` returns an error.
+  {
+    std::unique_ptr<RandomAccessFile> file_reader;
+    TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
+    std::unique_ptr<RandomAccessInputStream> input_stream(
+        new RandomAccessInputStream(file_reader.get()));
+    ZlibInputStream in(input_stream.get(), 100, 100, input_options);
+
+    EXPECT_TRUE(errors::IsDataLoss(in.SkipNBytes(5)));
   }
 }
 
@@ -314,6 +358,18 @@ TEST(ZlibInputStream, SkipNBytesRawDeflate) {
 
 TEST(ZlibInputStream, SkipNBytesGzip) {
   TestSkipNBytes(CompressionOptions::GZIP(), CompressionOptions::GZIP());
+}
+
+TEST(ZlibInputStream, TestSoftErrorOnDecompressDefaultOptions) {
+  TestSoftErrorOnDecompress(CompressionOptions::DEFAULT());
+}
+
+TEST(ZlibInputStream, TestSoftErrorOnDecompressRaw) {
+  TestSoftErrorOnDecompress(CompressionOptions::RAW());
+}
+
+TEST(ZlibInputStream, TestSoftErrorOnDecompressGzip) {
+  TestSoftErrorOnDecompress(CompressionOptions::GZIP());
 }
 
 }  // namespace io

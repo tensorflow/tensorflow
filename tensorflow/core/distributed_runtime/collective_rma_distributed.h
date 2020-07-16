@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COLLECTIVE_RMA_DISTRIBUTED_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COLLECTIVE_RMA_DISTRIBUTED_H_
+
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 
 namespace tensorflow {
 class WorkerCacheInterface;
@@ -23,11 +25,11 @@ class WorkerCacheInterface;
 // Extend CollectiveRemoteAccessLocal with access to remote peers.
 class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
  public:
-  CollectiveRemoteAccessDistributed(const DeviceMgr* dev_mgr,
-                                    DeviceResolverInterface* dev_resolver,
-                                    WorkerCacheInterface* worker_cache,
-                                    int64 step_id)
-      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
+  CollectiveRemoteAccessDistributed(
+      const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
+      std::shared_ptr<UnboundedWorkQueue> work_queue,
+      WorkerCacheInterface* worker_cache, int64 step_id)
+      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
         worker_cache_(worker_cache) {}
 
   ~CollectiveRemoteAccessDistributed() override {}

@@ -38,7 +38,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import util
 
 
 class LatestCheckpointWithRelativePaths(test.TestCase):
@@ -76,11 +76,11 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
 
         with self.cached_session() as sess:
           unused_a = variables.Variable(0.0)  # So that Saver saves something.
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
 
           # Should fail.
           saver = saver_module.Saver(sharded=False)
-          with self.assertRaisesRegexp(ValueError, "collides with"):
+          with self.assertRaisesRegex(ValueError, "collides with"):
             saver.save(sess, filepath)
 
           # Succeeds: the file will be named "checkpoint-<step>".
@@ -123,7 +123,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           save = saver_module.Saver({"v0": v0})
 
           # Record a short training history.
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           save.save(sess, filepath, global_step=0)
           self.evaluate(inc)
           save.save(sess, filepath, global_step=1)
@@ -136,7 +136,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
 
           # Create a new saver.
           save = saver_module.Saver({"v0": v0})
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
 
           # Get the most recent checkpoint name from the training history file.
           name = checkpoint_management.latest_checkpoint(traindir)
@@ -278,7 +278,7 @@ class SaverUtilsTest(test.TestCase):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
         with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           saver = saver_module.Saver(sharded=sharded, write_version=version)
 
           path = os.path.join(self._base_dir, "%s-%s" % (sharded, version))
@@ -297,7 +297,7 @@ class SaverUtilsTest(test.TestCase):
     for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
       with self.session(graph=ops_lib.Graph()) as sess:
         unused_v = variables.Variable(1.0, name="v")
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         saver = saver_module.Saver(write_version=version)
         prefixes.append(
             saver.save(sess, os.path.join(self._base_dir, str(version))))
@@ -312,7 +312,7 @@ class SaverUtilsTest(test.TestCase):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
         with self.session(graph=ops_lib.Graph()) as sess:
           unused_v = variables.Variable(1.0, name="v")
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           saver = saver_module.Saver(sharded=sharded, write_version=version)
 
           path = os.path.join(self._base_dir, "%s-%s" % (sharded, version))
@@ -507,7 +507,7 @@ class CheckpointManagerTest(test.TestCase):
     with test.mock.patch.object(logging, "warning") as mock_log:
       second_manager = checkpoint_management.CheckpointManager(
           checkpoint, directory, max_to_keep=1)
-      self.assertRegexpMatches(
+      self.assertRegex(
           str(mock_log.call_args),
           "behind the last preserved checkpoint timestamp")
     # We should err on the side of keeping checkpoints around when we're not
@@ -557,6 +557,115 @@ class CheckpointManagerTest(test.TestCase):
     state = checkpoint_management.get_checkpoint_state(directory)
     # Only the most recent two checkpoints are saved
     self.assertEqual([path, last_path], state.all_model_checkpoint_paths)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCustomCheckpointPrefix(self):
+    directory = self.get_temp_dir()
+    checkpoint = util.Checkpoint()
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=2, checkpoint_name="ckpt_name")
+    path = manager.save(checkpoint_number=5)
+    self.assertEqual(os.path.basename(path), "ckpt_name-5")
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=2)
+    path = manager.save(checkpoint_number=5)
+    self.assertEqual(os.path.basename(path), "ckpt-5")
+
+  @test_util.run_in_graph_and_eager_modes
+  def testRestoreOrInitialize(self):
+    directory = self.get_temp_dir()
+
+    # Create a checkpoint for initializing.
+    init_prefix = os.path.join(directory, "init")
+    init_v = variables.Variable(2.0)
+    init_ckpt = util.Checkpoint(v=init_v)
+    self.evaluate(init_v.initializer)
+    init_path = init_ckpt.save(init_prefix)
+
+    # Create the checkpoint manager.
+    ckpt_dir = os.path.join(directory, "ckpt")
+    v = variables.Variable(1.0)
+    checkpoint = util.Checkpoint(v=v)
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint,
+        ckpt_dir,
+        max_to_keep=None,
+        init_fn=lambda: checkpoint.restore(init_path).run_restore_ops())
+    self.evaluate(v.initializer)
+
+    # First call should call `init_fn`.
+    self.assertIsNone(manager.restore_or_initialize())
+    self.assertEqual(2.0, self.evaluate(v))
+
+    # Save a checkpoint and second call should restore from the checkpoints.
+    manager.save()
+    self.assertIsNotNone(manager.restore_or_initialize())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCheckpointInterval(self):
+    v = variables.Variable(1.0)
+    step_counter = variables.Variable(0)
+    self.evaluate([v.initializer, step_counter.initializer])
+    checkpoint = util.Checkpoint(v=v)
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint,
+        self.get_temp_dir(),
+        max_to_keep=None,
+        step_counter=step_counter,
+        checkpoint_interval=2)
+
+    # step_counter: 0, save an initial checkpoint.
+    path = manager.save(check_interval=True)
+    self.assertTrue(checkpoint_management.checkpoint_exists(path))
+
+    # step_counter: 1, no checkpoint saved.
+    self.evaluate(step_counter.assign_add(1))
+    path = manager.save(check_interval=True)
+    self.assertIsNone(path)
+
+    # step_counter: 2, checkpoint saved.
+    self.evaluate(step_counter.assign_add(1))
+    path = manager.save(check_interval=True)
+    self.assertTrue(checkpoint_management.checkpoint_exists(path))
+
+    # no checkpoint saved when calling `save` with the same step counter.
+    path = manager.save(check_interval=True)
+    self.assertIsNone(path)
+
+    # step_counter: 3, no checkpoint saved.
+    self.evaluate(step_counter.assign_add(1))
+    path = manager.save(check_interval=True)
+    self.assertIsNone(path)
+
+    # Always save the checkpoint.
+    path = manager.save(check_interval=False)
+    self.assertTrue(checkpoint_management.checkpoint_exists(path))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCheckpointIntervalWithRestore(self):
+    directory = self.get_temp_dir()
+    v = variables.Variable(1.0)
+    step_counter = variables.Variable(0)
+    self.evaluate([v.initializer, step_counter.initializer])
+
+    # Prepare a checkpoint.
+    checkpoint = util.Checkpoint(v=v)
+    checkpoint.save(os.path.join(directory, "ckpt"))
+
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint,
+        directory,
+        max_to_keep=None,
+        step_counter=step_counter,
+        checkpoint_interval=2)
+
+    # Restore from the checkpoint.
+    self.assertIsNotNone(manager.restore_or_initialize())
+
+    # step_counter: 0, no checkpoint saved because it is restored from the
+    # checkpoint with the same step.
+    path = manager.save()
+    self.assertIsNone(path)
 
 
 if __name__ == "__main__":

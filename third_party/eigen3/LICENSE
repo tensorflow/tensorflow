@@ -533,10 +533,12 @@ Following applies to:
 ./Eigen/src/MetisSupport/MetisSupport.h
 ./Eigen/StdVector
 ./Eigen/Core
+./Eigen/OrderingMethods
 ./Eigen/SparseLU
 ./Eigen/StdList
 ./Eigen/StdDeque
 ./Eigen/SparseCholesky
+./Eigen/SparseCore
 ./scripts/relicense.py
 ./scripts/relicense.py
 ./blas/BandTriangularSolver.h

@@ -41,7 +41,7 @@ class MomentumOptimizerTest(xla_test.XLATestCase):
 
   def testBasic(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -50,14 +50,14 @@ class MomentumOptimizerTest(xla_test.XLATestCase):
             learning_rate=2.0, momentum=0.9)
         mom_update = mom_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Check we have slots
         self.assertEqual(["momentum"], mom_opt.get_slot_names())
         slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         self.assertFalse(slot0 in variables.trainable_variables())
         slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
         self.assertFalse(slot1 in variables.trainable_variables())
 
         # Fetch params to validate initial values
@@ -101,7 +101,7 @@ class MomentumOptimizerTest(xla_test.XLATestCase):
 
   def testNesterovMomentum(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([0.1, 0.2], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([0.3, 0.4], dtype=dtype)
         var0_np = np.array([0.1, 0.2], dtype=dtype)
@@ -114,7 +114,7 @@ class MomentumOptimizerTest(xla_test.XLATestCase):
         mom_op = momentum_lib.MomentumOptimizer(
             learning_rate=0.1, momentum=0.9, use_nesterov=True)
         opt_op = mom_op.minimize(cost, global_step, [var0, var1])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(1, 5):
           opt_op.run()
           var0_np, accum0_np = self._update_nesterov_momentum_numpy(
@@ -126,7 +126,7 @@ class MomentumOptimizerTest(xla_test.XLATestCase):
 
   def testTensorLearningRateAndMomentum(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -136,14 +136,14 @@ class MomentumOptimizerTest(xla_test.XLATestCase):
             momentum=constant_op.constant(0.9))
         mom_update = mom_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Check we have slots
         self.assertEqual(["momentum"], mom_opt.get_slot_names())
         slot0 = mom_opt.get_slot(var0, "momentum")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         self.assertFalse(slot0 in variables.trainable_variables())
         slot1 = mom_opt.get_slot(var1, "momentum")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
         self.assertFalse(slot1 in variables.trainable_variables())
 
         # Fetch params to validate initial values

@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 	"unsafe"
 )
@@ -71,43 +72,56 @@ type Device struct {
 	MemoryLimitBytes int64
 }
 
-// Return list of devices associated with a Session
-func (s *Session) ListDevices() ([]Device, error) {
-	var devices []Device
-
-	status := newStatus()
-	devices_list := C.TF_SessionListDevices(s.c, status.c)
-	if err := status.Err(); err != nil {
-		return nil, fmt.Errorf("SessionListDevices() failed: %v", err)
+// String describes d and implements fmt.Stringer.
+func (d Device) String() string {
+	memStr := "no memory limit"
+	if d.MemoryLimitBytes >= 0 {
+		memStr = fmt.Sprintf("memory limit %d bytes", d.MemoryLimitBytes)
 	}
-	defer C.TF_DeleteDeviceList(devices_list)
+	return fmt.Sprintf("(Device: name \"%s\", type %s, %s)", d.Name, d.Type, memStr)
+}
 
-	for i := 0; i < int(C.TF_DeviceListCount(devices_list)); i++ {
-		device_name := C.TF_DeviceListName(devices_list, C.int(i), status.c)
+func deviceSliceFromDeviceList(list *C.TF_DeviceList) ([]Device, error) {
+	var devices []Device
+	status := newStatus()
+
+	for i := 0; i < int(C.TF_DeviceListCount(list)); i++ {
+		name := C.TF_DeviceListName(list, C.int(i), status.c)
 		if err := status.Err(); err != nil {
 			return nil, fmt.Errorf("DeviceListName(index=%d) failed: %v", i, err)
 		}
 
-		device_type := C.TF_DeviceListType(devices_list, C.int(i), status.c)
+		deviceType := C.TF_DeviceListType(list, C.int(i), status.c)
 		if err := status.Err(); err != nil {
 			return nil, fmt.Errorf("DeviceListType(index=%d) failed: %v", i, err)
 		}
 
-		memory_limit_bytes := C.TF_DeviceListMemoryBytes(devices_list, C.int(i), status.c)
+		memoryLimitBytes := C.TF_DeviceListMemoryBytes(list, C.int(i), status.c)
 		if err := status.Err(); err != nil {
 			return nil, fmt.Errorf("DeviceListMemoryBytes(index=%d) failed: %v", i, err)
 		}
 
 		device := Device{
-			Name:             C.GoString(device_name),
-			Type:             C.GoString(device_type),
-			MemoryLimitBytes: int64(memory_limit_bytes),
+			Name:             C.GoString(name),
+			Type:             C.GoString(deviceType),
+			MemoryLimitBytes: int64(memoryLimitBytes),
 		}
 
 		devices = append(devices, device)
 	}
 
 	return devices, nil
+}
+
+// ListDevices returns the list of devices associated with a Session.
+func (s *Session) ListDevices() ([]Device, error) {
+	status := newStatus()
+	devicesList := C.TF_SessionListDevices(s.c, status.c)
+	if err := status.Err(); err != nil {
+		return nil, fmt.Errorf("SessionListDevices() failed: %v", err)
+	}
+	defer C.TF_DeleteDeviceList(devicesList)
+	return deviceSliceFromDeviceList(devicesList)
 }
 
 // Run the graph with the associated session starting with the supplied feeds
@@ -346,16 +360,56 @@ type cRunArgs struct {
 	targets      []*C.TF_Operation
 }
 
+type feedsort struct {
+	feeds       []C.TF_Output
+	feedTensors []*C.TF_Tensor
+}
+
+func (f *feedsort) Less(i, j int) bool {
+	// Ideally we would sort on the output names. But that's not easy for us to
+	// do efficiently as loads of Go name strings would be created from the C
+	// strings and destroyed. But we can sort on the addresses of the operation
+	// names. This won't sort alphabetically, but for a given set of feeds it
+	// should give consistent results from one run to the next.
+	ni := uintptr(unsafe.Pointer(C.TF_OperationName(f.feeds[i].oper)))
+	nj := uintptr(unsafe.Pointer(C.TF_OperationName(f.feeds[j].oper)))
+	if ni == nj {
+		// if the names are the same the index may differ
+		return f.feeds[i].index < f.feeds[j].index
+	}
+	return ni < nj
+}
+
+func (f *feedsort) Swap(i, j int) {
+	f.feeds[i], f.feeds[j] = f.feeds[j], f.feeds[i]
+	f.feedTensors[i], f.feedTensors[j] = f.feedTensors[j], f.feedTensors[i]
+}
+
+func (f *feedsort) Len() int {
+	return len(f.feeds)
+}
+
 func newCRunArgs(feeds map[Output]*Tensor, fetches []Output, targets []*Operation) *cRunArgs {
 	c := &cRunArgs{
 		fetches:      make([]C.TF_Output, len(fetches)),
 		fetchTensors: make([]*C.TF_Tensor, len(fetches)),
 		targets:      make([]*C.TF_Operation, len(targets)),
 	}
+	// Go map iteration order is random. So our list of input names will be
+	// random for each Run. This interacts badly with the TF core code which
+	// builds a executor cache key from these names in the order we provide
+	// them. We'll eventually enumerate every possible order and store it in the
+	// executor cache. With n inputs that's n! entries. That gets very big very
+	// quickly.
 	for o, t := range feeds {
 		c.feeds = append(c.feeds, o.c())
 		c.feedTensors = append(c.feedTensors, t.c)
 	}
+	if len(c.feeds) > 1 {
+		fs := feedsort{feeds: c.feeds, feedTensors: c.feedTensors}
+		sort.Sort(&fs)
+	}
+
 	for i, o := range fetches {
 		c.fetches[i] = o.c()
 	}

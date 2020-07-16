@@ -29,6 +29,34 @@ limitations under the License.
 
 namespace tensorflow {
 
+// The TestReportFile provides a file abstraction for TF tests to use.
+class TestReportFile {
+ public:
+  // Create a TestReportFile with the test name 'test_name'.
+  TestReportFile(const string& fname, const string& test_name);
+
+  // Initialize the TestReportFile.  If the reporting env flag is set,
+  // try to create the reporting file.  Fails if the file already exists.
+  Status Initialize();
+
+  // Append the report file w/ 'content'.
+  Status Append(const string& content);
+
+  // Close the report file.
+  Status Close();
+
+  bool IsClosed() const { return closed_; }
+
+  ~TestReportFile() { Close().IgnoreError(); }  // Autoclose in destructor.
+
+ private:
+  bool closed_;
+  string fname_;
+  string test_name_;
+  std::unique_ptr<WritableFile> log_file_;
+  TF_DISALLOW_COPY_AND_ASSIGN(TestReportFile);
+};
+
 // The TestReporter writes test / benchmark output to binary Protobuf files when
 // the environment variable "TEST_REPORT_FILE_PREFIX" is defined.
 //
@@ -91,10 +119,7 @@ class TestReporter {
     const char* fname_ptr = getenv(kTestReporterEnv);
     return (fname_ptr != nullptr) ? fname_ptr : "";
   }
-  bool closed_;
-  string fname_;
-  string test_name_;
-  std::unique_ptr<WritableFile> log_file_;
+  TestReportFile report_file_;
   BenchmarkEntry benchmark_entry_;
   TF_DISALLOW_COPY_AND_ASSIGN(TestReporter);
 };

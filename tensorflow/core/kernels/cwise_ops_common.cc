@@ -57,11 +57,23 @@ BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
       in1(ctx->input(1)),
       bcast(BCast::FromShape(in0.shape()), BCast::FromShape(in1.shape())) {
   if (!bcast.IsValid()) {
+    bool incompatible_shape_error;
+    bool has_attr =
+        TryGetNodeAttr(ctx->op_kernel().def(), "incompatible_shape_error",
+                       &(incompatible_shape_error));
+    if (has_attr && !incompatible_shape_error) {
+      const string& op = ctx->op_kernel().type_string();
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
+      result = (op == "NotEqual");
+      return;
+    }
+
     ctx->SetStatus(errors::InvalidArgument(
         "Incompatible shapes: ", in0.shape().DebugString(), " vs. ",
         in1.shape().DebugString()));
     return;
   }
+
   const TensorShape output_shape = BCast::ToShape(bcast.output_shape());
   out_num_elements = output_shape.num_elements();
   in0_num_elements = in0.NumElements();

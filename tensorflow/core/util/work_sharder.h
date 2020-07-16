@@ -23,9 +23,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-// DEPRECATED: Prefer threadpool->TransformRangeConcurrently, which allows you
-// to directly specify the shard size. Use this function only if you want to
-// manually cap parallelism.
+// DEPRECATED: Prefer threadpool->ParallelFor with SchedulingStrategy, which
+// allows you to specify the strategy for choosing shard sizes, including using
+// a fixed shard size. Use this function only if you want to manually cap
+// parallelism.
+//
 // Shards the "total" unit of work assuming each unit of work having
 // roughly "cost_per_unit". Each unit of work is indexed 0, 1, ...,
 // total - 1. Each shard contains 1 or more units of work and the

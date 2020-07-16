@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -81,17 +82,26 @@ struct GrapplerItem {
   // fetch nodes, keep_ops, init_ops.
   std::unordered_set<string> NodesToPreserve() const;
 
-  // Restrict types of optimizations that are allowed for this GrapplerItem.
-  struct AllowedOptimizations {
+  struct OptimizationOptions {
     // Is it allowed to add nodes to the graph that do not have registered
     // gradient function.
-    bool non_differentiable_rewrites = true;
+    bool allow_non_differentiable_rewrites = true;
 
-    // By default we are allowed to prune ops with side-effects from the main
-    // graph if they are not in transitive fanin of the fetch nodes. If we are
-    // optimizing a graph that was instantiated by a function definition, we
-    // must keep all side effects intact.
-    bool prune_ops_with_side_effects = true;
+    // Tensorflow function execution semantics is slightly different from the
+    // main Tensorflow graph, and we need to make sure that we do not change it
+    // by running Grappler optimizer passes. One main difference is that
+    // functions do not prune ops with side-effects and dataset-output ops (see
+    // PruneFunctionBody in common_runtime/function.cc).
+    bool allow_pruning_stateful_and_dataset_ops = true;
+
+    // If true Grappler will optimize the main graph, and also all functions in
+    // the graph function library (function can't be polymorphic, it can't have
+    // undefined type parameters in the function signature, or placeholder
+    // attributes in the function body).
+    bool optimize_function_library = true;
+
+    // Mark the grapper optimization run in eager mode or not.
+    bool is_eager_mode = false;
   };
 
   const std::unordered_set<string>& devices() const;
@@ -108,8 +118,8 @@ struct GrapplerItem {
   // Clears a set of available devices.
   void ClearDevices();
 
-  const AllowedOptimizations& allowed_optimizations() const;
-  AllowedOptimizations& allowed_optimizations();
+  const OptimizationOptions& optimization_options() const;
+  OptimizationOptions& optimization_options();
 
  private:
   // TODO(ezhulenev) Make GrapplerItem a class and hide all public data members.
@@ -120,19 +130,8 @@ struct GrapplerItem {
   // Example of a fully defined name: "/job:work/replica:1/task:1/device:CPU:0"
   std::unordered_set<string> devices_;
 
-  AllowedOptimizations allowed_optimizations_;
+  OptimizationOptions optimization_options_;
 };
-
-// Return the transitive fanin of a set of terminal nodes.
-std::vector<const NodeDef*> ComputeTransitiveFanin(
-    const GraphDef& graph, const std::vector<string>& terminal_nodes);
-
-// Return the transitive fanin of a set of terminal nodes. Sets 'ill_formed' to
-// true if one of the node is missing in the graph, or some node inputs don't
-// exist.
-std::vector<const NodeDef*> ComputeTransitiveFanin(
-    const GraphDef& graph, const std::vector<string>& terminal_nodes,
-    bool* ill_formed);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

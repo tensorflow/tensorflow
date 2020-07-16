@@ -28,7 +28,7 @@ class NowSecondsEnv : public EnvWrapper {
   NowSecondsEnv() : EnvWrapper(Env::Default()) {}
 
   /// The current (fake) timestamp.
-  uint64 NowSeconds() override {
+  uint64 NowSeconds() const override {
     mutex_lock lock(mu_);
     return now_;
   }
@@ -40,7 +40,7 @@ class NowSecondsEnv : public EnvWrapper {
   }
 
   /// Guards access to now_.
-  mutex mu_;
+  mutable mutex mu_;
 
   /// The NowSeconds() value that this Env will return.
   uint64 now_ = 1;

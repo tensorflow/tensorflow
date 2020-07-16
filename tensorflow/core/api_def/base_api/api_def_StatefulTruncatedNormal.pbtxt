@@ -1,0 +1,40 @@
+op {
+  graph_op_name: "StatefulTruncatedNormal"
+  visibility: HIDDEN
+  in_arg {
+    name: "resource"
+    description: <<END
+The handle of the resource variable that stores the state of the RNG.
+END
+  }
+  in_arg {
+    name: "algorithm"
+    description: <<END
+The RNG algorithm.
+END
+  }
+  in_arg {
+    name: "shape"
+    description: <<END
+The shape of the output tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Random values with specified shape.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the output.
+END
+  }
+  summary: "Outputs random values from a truncated normal distribution."
+  description: <<END
+The generated values follow a normal distribution with mean 0 and standard
+deviation 1, except that values whose magnitude is more than 2 standard
+deviations from the mean are dropped and re-picked.
+END
+}

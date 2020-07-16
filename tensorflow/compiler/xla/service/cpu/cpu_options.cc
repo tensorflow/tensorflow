@@ -23,8 +23,9 @@ namespace {
 
 const char* const kXlaOptimizeForSizeCpuOption = "xla_cpu_optimize_for_size";
 const char* const kLlvmIrDotTilingFactor = "xla_llvm_dot_tiling_factor";
-const char* const kXlaEnableExperimentalLlvmIrGemm =
-    "xla_enable_experimental_llvm_ir_gemm";
+const char* const kXlaForceEnableExperimentalLlvmIrGemm =
+    "xla_force_enable_experimental_llvm_ir_gemm";
+const char* const kXlaUseLinalgForDot = "xla_use_linalg_for_dot";
 const char* const kLlvmIrGemmTileSize = "xla_llvm_ir_gemm_tile_size";
 
 }  // namespace
@@ -57,10 +58,16 @@ absl::optional<int64> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
   return absl::nullopt;
 }
 
-bool EnableExperimentalLlvmIrGemm(const HloModuleConfig& config) {
+bool ForceEnableExperimentalLlvmIrGemm(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
-  return extra_options_map.count(kXlaEnableExperimentalLlvmIrGemm) > 0;
+  return extra_options_map.count(kXlaForceEnableExperimentalLlvmIrGemm) > 0;
+}
+
+bool UseLinalgForDot(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kXlaUseLinalgForDot) > 0;
 }
 
 static absl::string_view RemoveSuffix(absl::string_view str,

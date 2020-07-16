@@ -82,10 +82,16 @@ class TraceableStackTest(test_util.TensorFlowTestCase):
     t_stack.push_obj('hope')
 
     expected_lifo_peek = ['hope', 42.0]
-    self.assertEqual(expected_lifo_peek, t_stack.peek_objs())
+    self.assertEqual(expected_lifo_peek, list(t_stack.peek_objs()))
 
     self.assertEqual('hope', t_stack.pop_obj())
     self.assertEqual(42.0, t_stack.pop_obj())
+
+  def testPushPeekTopObj(self):
+    t_stack = traceable_stack.TraceableStack()
+    t_stack.push_obj(42.0)
+    t_stack.push_obj('hope')
+    self.assertEqual('hope', t_stack.peek_top_obj())
 
   def testPushPopPreserveLifoOrdering(self):
     t_stack = traceable_stack.TraceableStack()

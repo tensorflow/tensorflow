@@ -20,9 +20,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
@@ -30,11 +32,12 @@ from tensorflow.python.platform import test
 linalg = linalg_lib
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SquareLinearOperatorFullMatrixTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
@@ -70,14 +73,13 @@ class SquareLinearOperatorFullMatrixTest(
     # Auto-detected.
     self.assertTrue(operator.is_square)
 
-  @test_util.run_deprecated_v1
   def test_assert_non_singular_raises_if_cond_too_big_but_finite(self):
     with self.cached_session():
       tril = linear_operator_test_util.random_tril_matrix(
           shape=(50, 50), dtype=np.float32)
       diag = np.logspace(-2, 2, 50).astype(np.float32)
       tril = array_ops.matrix_set_diag(tril, diag)
-      matrix = math_ops.matmul(tril, tril, transpose_b=True).eval()
+      matrix = self.evaluate(math_ops.matmul(tril, tril, transpose_b=True))
       operator = linalg.LinearOperatorFullMatrix(matrix)
       with self.assertRaisesOpError("Singular matrix"):
         # Ensure that we have finite condition number...just HUGE.
@@ -102,14 +104,21 @@ class SquareLinearOperatorFullMatrixTest(
       with self.assertRaisesOpError("not equal to its adjoint"):
         operator.assert_self_adjoint().run()
 
+  @test_util.disable_xla("Assert statements in kernels not supported in XLA")
   def test_assert_positive_definite(self):
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(matrix, is_self_adjoint=True)
     with self.cached_session():
-      with self.assertRaisesOpError("Cholesky decomposition was not success"):
+      with self.assertRaises(errors.InvalidArgumentError):
         operator.assert_positive_definite().run()
 
+  def test_tape_safe(self):
+    matrix = variables_module.Variable([[2.]])
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    self.check_tape_safe(operator)
 
+
+@test_util.run_all_in_graph_and_eager_modes
 class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest.
@@ -121,18 +130,18 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
   def setUp(self):
     # Increase from 1e-6 to 1e-5.  This reduction in tolerance happens,
     # presumably, because we are taking a different code path in the operator
-    # and the matrix.  The operator uses a Choleksy, the matrix uses standard
+    # and the matrix.  The operator uses a Cholesky, the matrix uses standard
     # solve.
     self._atol[dtypes.float32] = 1e-5
     self._rtol[dtypes.float32] = 1e-5
     self._atol[dtypes.float64] = 1e-10
     self._rtol[dtypes.float64] = 1e-10
 
-  @property
-  def _dtypes_to_test(self):
+  @staticmethod
+  def dtypes_to_test():
     return [dtypes.float32, dtypes.float64]
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
 
@@ -171,6 +180,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     self.assertTrue(operator._can_use_cholesky)
     self.assertTrue(operator.is_square)
 
+  @test_util.disable_xla("Assert statements in kernels not supported in XLA")
   def test_assert_non_singular(self):
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
@@ -189,6 +199,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
       with self.assertRaisesOpError("not equal to its adjoint"):
         operator.assert_self_adjoint().run()
 
+  @test_util.disable_xla("Assert statements in kernels not supported in XLA")
   def test_assert_positive_definite(self):
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
@@ -199,12 +210,22 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
       with self.assertRaisesOpError(""):
         operator.assert_positive_definite().run()
 
+  def test_tape_safe(self):
+    matrix = variables_module.Variable([[2.]])
+    operator = linalg.LinearOperatorFullMatrix(
+        matrix, is_self_adjoint=True, is_positive_definite=True)
+    self.check_tape_safe(operator)
 
+
+@test_util.run_all_in_graph_and_eager_modes
 class NonSquareLinearOperatorFullMatrixTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+    del ensure_self_adjoint_and_pd
     shape = list(build_info.shape)
     matrix = linear_operator_test_util.random_normal(shape, dtype=dtype)
 
@@ -228,9 +249,18 @@ class NonSquareLinearOperatorFullMatrixTest(
     self.assertFalse(operator.is_square)
 
   def test_matrix_must_have_at_least_two_dims_or_raises(self):
-    with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
+    with self.assertRaisesRegex(ValueError, "at least 2 dimensions"):
       linalg.LinearOperatorFullMatrix([1.])
+
+  def test_tape_safe(self):
+    matrix = variables_module.Variable([[2., 1.]])
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    self.check_tape_safe(operator)
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(SquareLinearOperatorFullMatrixTest)
+  linear_operator_test_util.add_tests(NonSquareLinearOperatorFullMatrixTest)
+  linear_operator_test_util.add_tests(
+      SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest)
   test.main()

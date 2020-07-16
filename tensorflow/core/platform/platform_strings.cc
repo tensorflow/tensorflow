@@ -15,13 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/platform/platform_strings.h"
 
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
-
 #include <string>
 #include <vector>
-
-#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
@@ -54,7 +52,9 @@ int GetPlatformStrings(const std::string& path,
     }
 
     result = (ferror(ifp) == 0) ? 0 : errno;
-    fclose(ifp);
+    if (fclose(ifp) != 0) {
+      result = errno;
+    }
   } else {
     result = errno;
   }

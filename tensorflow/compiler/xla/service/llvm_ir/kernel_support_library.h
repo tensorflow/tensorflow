@@ -203,12 +203,11 @@ class KernelSupportLibrary {
   //     `true_block_generator()`;
   //   else
   //      `false_block_generator()`;
+  // The else is skipped if false_block_generator is null.
   Status IfWithStatus(
       absl::string_view name, llvm::Value* condition,
       const std::function<Status()>& true_block_generator,
-      const std::function<Status()>& false_block_generator = []() -> Status {
-        return Status::OK();
-      });
+      const std::function<Status()>& false_block_generator = nullptr);
 
   Status IfWithStatus(
       llvm::Value* condition,
@@ -220,26 +219,32 @@ class KernelSupportLibrary {
                         false_block_generator);
   }
 
-  void If(
-      llvm::Value* condition, const std::function<void()>& true_block_generator,
-      const std::function<void()>& false_block_generator = []() {}) {
+  void If(llvm::Value* condition,
+          const std::function<void()>& true_block_generator,
+          const std::function<void()>& false_block_generator = nullptr) {
     If("", condition, true_block_generator, false_block_generator);
   }
 
-  void If(
-      absl::string_view name, llvm::Value* condition,
-      const std::function<void()>& true_block_generator,
-      const std::function<void()>& false_block_generator = []() {}) {
-    TF_CHECK_OK(IfWithStatus(
-        name, condition,
-        [&]() {
-          true_block_generator();
-          return Status::OK();
-        },
-        [&]() {
-          false_block_generator();
-          return Status::OK();
-        }));
+  void If(absl::string_view name, llvm::Value* condition,
+          const std::function<void()>& true_block_generator,
+          const std::function<void()>& false_block_generator = nullptr) {
+    if (false_block_generator != nullptr) {
+      TF_CHECK_OK(IfWithStatus(
+          name, condition,
+          [&]() {
+            true_block_generator();
+            return Status::OK();
+          },
+          [&]() {
+            false_block_generator();
+            return Status::OK();
+          }));
+    } else {
+      TF_CHECK_OK(IfWithStatus(name, condition, [&]() {
+        true_block_generator();
+        return Status::OK();
+      }));
+    }
   }
 
   using ArgumentVector = absl::Span<llvm::Value* const>;
@@ -263,33 +268,33 @@ class KernelSupportLibrary {
   // in a nullptr llvm::Value* in its position to `kernel_body_generator`.
   // Currently we only support at most one nullptr value in `arguments`.
   static void EmitAndCallOutlinedKernel(
-      bool enable_fast_math, bool optimize_for_size, llvm::IRBuilder<>* b,
+      const HloModuleConfig& module_config, llvm::IRBuilder<>* b,
       absl::string_view kernel_name, ArgumentVector arguments,
       const std::function<void(ArgumentVector)>& kernel_body_generator);
 
   // Thin wrappers around the more general EmitAndCallOutlinedKernel above.
   static void EmitAndCallOutlinedKernel(
-      bool enable_fast_math, bool optimize_for_size, llvm::IRBuilder<>* b,
+      const HloModuleConfig& module_config, llvm::IRBuilder<>* b,
       absl::string_view kernel_name, llvm::Value* arg0, llvm::Value* arg1,
       llvm::Value* arg2,
       const std::function<void(llvm::Value*, llvm::Value*, llvm::Value*)>&
           kernel_body_generator) {
-    EmitAndCallOutlinedKernel(
-        enable_fast_math, optimize_for_size, b, kernel_name, {arg0, arg1, arg2},
-        [&](ArgumentVector args) {
-          kernel_body_generator(args[0], args[1], args[2]);
-        });
+    EmitAndCallOutlinedKernel(module_config, b, kernel_name, {arg0, arg1, arg2},
+                              [&](ArgumentVector args) {
+                                kernel_body_generator(args[0], args[1],
+                                                      args[2]);
+                              });
   }
 
   static void EmitAndCallOutlinedKernel(
-      bool enable_fast_math, bool optimize_for_size, llvm::IRBuilder<>* b,
+      const HloModuleConfig& module_config, llvm::IRBuilder<>* b,
       absl::string_view kernel_name, llvm::Value* arg0, llvm::Value* arg1,
       llvm::Value* arg2, llvm::Value* arg3,
       const std::function<void(llvm::Value*, llvm::Value*, llvm::Value*,
                                llvm::Value*)>& kernel_body_generator) {
     EmitAndCallOutlinedKernel(
-        enable_fast_math, optimize_for_size, b, kernel_name,
-        {arg0, arg1, arg2, arg3}, [&](ArgumentVector args) {
+        module_config, b, kernel_name, {arg0, arg1, arg2, arg3},
+        [&](ArgumentVector args) {
           kernel_body_generator(args[0], args[1], args[2], args[3]);
         });
   }

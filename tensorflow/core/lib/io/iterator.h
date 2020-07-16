@@ -27,7 +27,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_IO_ITERATOR_H_
 
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 namespace table {

@@ -17,18 +17,15 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_PATH_H_
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace port {
 
-using tensorflow::io::Dirname;
-
 namespace internal {
 // TODO(rspringer): Move to cc/implementation file.
 // Not part of the public API.
-string JoinPathImpl(std::initializer_list<absl::string_view> paths);
+std::string JoinPathImpl(std::initializer_list<absl::string_view> paths);
 }  // namespace internal
 
 // Join multiple paths together.
@@ -50,7 +47,7 @@ string JoinPathImpl(std::initializer_list<absl::string_view> paths);
 // string path = file::JoinPath("/var/log", dirname, filename);
 // string path = file::JoinPath(FLAGS_test_srcdir, filename);
 template <typename... T>
-inline string JoinPath(const T&... args) {
+inline std::string JoinPath(const T&... args) {
   return internal::JoinPathImpl({args...});
 }
 

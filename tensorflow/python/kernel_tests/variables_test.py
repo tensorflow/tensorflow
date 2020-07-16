@@ -21,13 +21,16 @@ from __future__ import print_function
 import functools
 import operator
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -41,7 +44,12 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import compat
 
 
-class VariablesTestCase(test.TestCase):
+class VariablesTestCase(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_deprecated_v1
+  def testDistributeStrategy(self):
+    v = variables.VariableV1(0.0)
+    self.assertIsNone(v._distribute_strategy)
 
   @test_util.run_v1_only("b/120545219")
   def testInitialization(self):
@@ -102,11 +110,22 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(
           self.evaluate(rnd) + self.evaluate(dep) + 2.0, self.evaluate(depdep))
 
+  @test_util.run_deprecated_v1
+  def testCyclicInitializer(self):
+    with self.cached_session():
+      cyclic = control_flow_ops.while_loop(
+          cond=lambda i: i < 10,
+          body=lambda i: i + 1,
+          loop_vars=(constant_op.constant(0),))
+      initial_value = variables._try_guard_against_uninitialized_dependencies(
+          "test", cyclic)
+      self.assertIs(initial_value, cyclic)
+
   def testIterable(self):
-    with self.assertRaisesRegexp(TypeError, "not iterable"):
+    with self.assertRaisesRegex(TypeError, "not iterable"):
       for _ in variables.Variable(0.0):
         pass
-    with self.assertRaisesRegexp(TypeError, "not iterable"):
+    with self.assertRaisesRegex(TypeError, "not iterable"):
       for _ in variables.Variable([0.0, 1.0]):
         pass
 
@@ -148,6 +167,24 @@ class VariablesTestCase(test.TestCase):
       self.evaluate(four)
       self.assertAllClose(4.0, self.evaluate(var))
 
+  def testAssignDifferentShapesEagerNotAllowed(self):
+    with context.eager_mode():
+      var = variables.Variable(np.zeros(shape=[1, 1]))
+      with self.assertRaisesRegex(ValueError, "Shapes.*and.*are incompatible"):
+        var.assign(np.zeros(shape=[2, 2]))
+
+  @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
+  @test_util.run_in_graph_and_eager_modes
+  def testAssignDifferentShapesAllowed(self):
+    var = variables.Variable(np.zeros(shape=[1, 1]),
+                             shape=tensor_shape.TensorShape(None))
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(np.zeros(shape=[1, 1]), var.read_value())
+    self.evaluate(var.assign(np.zeros(shape=[2, 2])))
+    self.assertAllEqual(np.zeros(shape=[2, 2]), var.read_value())
+
+  @test_util.disable_tfrt("GetHostSize() is not expected to be called with "
+                          "string type. b/156761465")
   def testZeroSizeStringAssign(self):
     with self.cached_session() as sess:
       array = variables.VariableV1(
@@ -236,10 +273,10 @@ class VariablesTestCase(test.TestCase):
       self.evaluate(v2.initializer)
       self.assertEqual([2], self.evaluate(v2))
       # v0 should still be uninitialized.
-      with self.assertRaisesRegexp(errors_impl.OpError, "uninitialized"):
+      with self.assertRaisesRegex(errors_impl.OpError, "uninitialized"):
         self.evaluate(v0)
       # We should not be able to run 'add' yet.
-      with self.assertRaisesRegexp(errors_impl.OpError, "uninitialized"):
+      with self.assertRaisesRegex(errors_impl.OpError, "uninitialized"):
         self.evaluate(add)
       # If we initialize v0 we should be able to run 'add'.
       self.evaluate(v0.initializer)
@@ -256,7 +293,7 @@ class VariablesTestCase(test.TestCase):
       v = variables.Variable(initial_value=zero)
       return (i + 1, v.read_value())
 
-    with self.assertRaisesRegexp(ValueError, "inside a control-flow"):
+    with self.assertRaisesRegex(ValueError, "inside a control-flow"):
       control_flow_ops.while_loop(cond, body, [0, 0])
 
   @test_util.run_deprecated_v1
@@ -286,7 +323,6 @@ class VariablesTestCase(test.TestCase):
   def testCachingDevice(self):
     with self.cached_session():
       var = variables.Variable(2.0)
-      self.assertEqual(var.device, var.value().device)
       self.assertEqual(var.device, var.initialized_value().device)
 
       var_cached = variables.Variable(2.0, caching_device="/job:foo")
@@ -533,6 +569,25 @@ class VariablesTestCase(test.TestCase):
           variables.Variable(variable_def=trainable_variable.to_proto())
           .trainable)
 
+  def testSynchronizationAndAggregationSaved(self):
+    with ops.Graph().as_default():
+      original_variable = variables.Variable(
+          initial_value=constant_op.constant(10.0),
+          synchronization=variables.VariableSynchronization.NONE,
+          aggregation=variables.VariableAggregationV2.ONLY_FIRST_REPLICA)
+      self.assertEqual(variables.VariableSynchronization.NONE,
+                       original_variable.synchronization)
+      self.assertEqual(variables.VariableAggregation.ONLY_FIRST_REPLICA,
+                       original_variable.aggregation)
+
+      laundered = variables.Variable(
+          variable_def=original_variable.to_proto())
+      self.assertEqual(
+          variables.VariableSynchronization.NONE,
+          laundered.synchronization)
+      self.assertEqual(variables.VariableAggregationV2.ONLY_FIRST_REPLICA,
+                       laundered.aggregation)
+
   @test_util.run_deprecated_v1
   def testLoad(self):
     with self.cached_session():
@@ -557,6 +612,22 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual(v.name, "foo/bar:0")
     with ops.get_default_graph().as_default():
       create_variable()
+
+  @parameterized.parameters(variables.VariableV1, variables.Variable)
+  def testTrainableVariable(self, cls):
+    v1 = cls(1.0)
+    self.assertEqual(True, v1.trainable)
+
+    v2 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ)
+    self.assertEqual(False, v2.trainable)
+
+    v3 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ,
+             trainable=True)
+    self.assertEqual(True, v3.trainable)
+
+    v4 = cls(1.0, synchronization=variables.VariableSynchronization.ON_READ,
+             trainable=False)
+    self.assertEqual(False, v4.trainable)
 
 
 class IsInitializedTest(test.TestCase):
@@ -673,7 +744,7 @@ class PartitionedVariableTest(test.TestCase):
 
   def testPartitionedVariableFailures(self):
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(ValueError, "empty"):
+      with self.assertRaisesRegex(ValueError, "empty"):
         variables.PartitionedVariable(
             name="fail",
             shape=2,
@@ -681,7 +752,7 @@ class PartitionedVariableTest(test.TestCase):
             variable_list=[],
             partitions=[])
 
-      with self.assertRaisesRegexp(ValueError, "must have a save_slice_info"):
+      with self.assertRaisesRegex(ValueError, "must have a save_slice_info"):
         v0 = variables.Variable([0])
         partitions = [1]
         variables.PartitionedVariable(
@@ -691,7 +762,7 @@ class PartitionedVariableTest(test.TestCase):
             variable_list=[v0],
             partitions=partitions)
 
-      with self.assertRaisesRegexp(ValueError, "full shapes must match"):
+      with self.assertRaisesRegex(ValueError, "full shapes must match"):
         v0 = variables.Variable([0])
         v1 = variables.Variable([1])
         v0._set_save_slice_info(
@@ -707,7 +778,7 @@ class PartitionedVariableTest(test.TestCase):
             variable_list=[v1, v0],
             partitions=partitions)
 
-      with self.assertRaisesRegexp(ValueError, "must be positive"):
+      with self.assertRaisesRegex(ValueError, "must be positive"):
         v0 = variables.Variable([0])
         v0._set_save_slice_info(
             variables.Variable.SaveSliceInfo(v0.name, [2], [0], [1]))
@@ -822,6 +893,30 @@ class VariableContainerTest(test.TestCase):
     self.assertEqual(compat.as_bytes("l1"), v3.op.get_attr("container"))
     self.assertEqual(compat.as_bytes(""), v4.op.get_attr("container"))
 
+
+class AggregationModesTest(test.TestCase):
+
+  def testV1V2Equal(self):
+    v1 = variables.VariableAggregation
+    v2 = variables.VariableAggregationV2
+
+    self.assertEqual(v1.NONE, v2.NONE)
+    self.assertEqual(v1.SUM, v2.SUM)
+    self.assertEqual(v1.MEAN, v2.MEAN)
+    self.assertEqual(v1.ONLY_FIRST_REPLICA, v2.ONLY_FIRST_REPLICA)
+    self.assertEqual(v1.ONLY_FIRST_TOWER, v2.ONLY_FIRST_REPLICA)
+
+    self.assertEqual(v2.NONE, v1.NONE)
+    self.assertEqual(v2.SUM, v1.SUM)
+    self.assertEqual(v2.MEAN, v1.MEAN)
+    self.assertEqual(v2.ONLY_FIRST_REPLICA, v1.ONLY_FIRST_REPLICA)
+    self.assertEqual(v2.ONLY_FIRST_REPLICA, v1.ONLY_FIRST_TOWER)
+
+    self.assertEqual(hash(v1.NONE), hash(v2.NONE))
+    self.assertEqual(hash(v1.SUM), hash(v2.SUM))
+    self.assertEqual(hash(v1.MEAN), hash(v2.MEAN))
+    self.assertEqual(hash(v1.ONLY_FIRST_REPLICA), hash(v2.ONLY_FIRST_REPLICA))
+    self.assertEqual(hash(v1.ONLY_FIRST_TOWER), hash(v2.ONLY_FIRST_REPLICA))
 
 if __name__ == "__main__":
   test.main()

@@ -44,6 +44,15 @@ The type of padding algorithm to use.
 END
   }
   attr {
+    name: "explicit_paddings"
+    description: <<END
+If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+dimension, the amount of padding inserted before and after the dimension is
+`explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+`padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+END
+  }
+  attr {
     name: "data_format"
     description: <<END
 Specify the data format of the input and output data. With the

@@ -74,7 +74,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_RELU_KERNELS);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ELU_KERNELS);
 #undef REGISTER_ELU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                                    \
@@ -105,9 +105,7 @@ namespace functor {
   extern template struct Relu6Grad<GPUDevice, T>;                              \
                                                                                \
   template <>                                                                  \
-  void LeakyRelu<GPUDevice, T>::operator()(                                    \
-      const GPUDevice& d, typename TTypes<T>::ConstTensor features, T alpha,   \
-      typename TTypes<T>::Tensor activations);                                 \
+  void LeakyRelu<GPUDevice, T>::operator()(LeakyReluArgs args);                \
   extern template struct LeakyRelu<GPUDevice, T>;                              \
                                                                                \
   template <>                                                                  \
@@ -143,11 +141,13 @@ namespace functor {
       typename TTypes<T>::Tensor backprops);                                   \
   extern template struct SeluGrad<GPUDevice, T>;
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
 void Relu<GPUDevice, qint8>::operator()(
     const GPUDevice& d, typename TTypes<qint8>::ConstTensor features,
     typename TTypes<qint8>::Tensor activations);
 extern template struct Relu<GPUDevice, qint8>;
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 }  // namespace functor
@@ -209,7 +209,7 @@ REGISTER_KERNEL_BUILDER(
     Name("Relu").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     ReluOp<GPUDevice, qint8>);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 // Registration of the GPU implementations.

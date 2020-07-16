@@ -47,7 +47,7 @@ class CostModelManager {
 
  private:
   mutex mu_;
-  CostModelMap cost_models_ GUARDED_BY(mu_);
+  CostModelMap cost_models_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

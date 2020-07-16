@@ -110,13 +110,13 @@ TEST_F(ScopedAllocatorMgrTest, PopulateFields) {
   InitTensor();
   PopulateFields();
   EXPECT_EQ(0, fields_[0].offset);
-  EXPECT_EQ(512 * sizeof(float), fields_[0].bytes);
+  EXPECT_EQ(512 * sizeof(float), fields_[0].bytes_requested);
   EXPECT_EQ(scope_id_ + 1, fields_[0].scope_id);
   EXPECT_EQ(512 * sizeof(float), fields_[1].offset);
-  EXPECT_EQ(9 * sizeof(float), fields_[1].bytes);
+  EXPECT_EQ(9 * sizeof(float), fields_[1].bytes_requested);
   EXPECT_EQ(scope_id_ + 2, fields_[1].scope_id);
   EXPECT_EQ(521 * sizeof(float) + AlignmentPadding(), fields_[2].offset);
-  EXPECT_EQ(512 * sizeof(float), fields_[2].bytes);
+  EXPECT_EQ(512 * sizeof(float), fields_[2].bytes_requested);
   EXPECT_EQ(scope_id_ + 3, fields_[2].scope_id);
 }
 
@@ -185,9 +185,10 @@ TEST_F(ScopedAllocatorMgrTest, AllocatorInitFail) {
   fields_.resize(1);
   fields_[0].scope_id = scope_id_ + 1;
   fields_[0].offset = 0;
-  fields_[0].bytes = backing_tensor_shape_.num_elements() * 2 * sizeof(float);
-  // fields[0].offset + fields[0].bytes is larger than the size of the backing
-  // tensor, so this check should fail
+  fields_[0].bytes_requested =
+      backing_tensor_shape_.num_elements() * 2 * sizeof(float);
+  // fields[0].offset + fields[0].bytes_requested is larger than the size of the
+  // backing tensor, so this check should fail
   EXPECT_DEATH(Status s = AddScopedAllocator(1, scope_id_), "");
 }
 

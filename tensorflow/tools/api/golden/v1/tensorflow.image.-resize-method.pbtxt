@@ -1,6 +1,6 @@
 path: "tensorflow.image.ResizeMethod"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.image_ops_impl.ResizeMethod\'>"
+  is_instance: "<class \'tensorflow.python.ops.image_ops_impl.ResizeMethodV1\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "AREA"

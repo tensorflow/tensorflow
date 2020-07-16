@@ -35,7 +35,7 @@ class HloDomainVerifier::RunContext {
 
  private:
   // If the verifier caller passed an empty vector for kinds, we collect all the
-  // avalable domain types.
+  // available domain types.
   Status PopulateDomainKinds();
 
   HloModule* module_;
@@ -67,7 +67,7 @@ Status HloDomainVerifier::RunContext::Run() {
   TF_RETURN_IF_ERROR(PopulateDomainKinds());
   for (HloComputation* computation : module_->computations()) {
     for (auto& kind : verifier_->kinds_) {
-      // First create the domain instruciton sets. A domain instruction set is
+      // First create the domain instruction sets. A domain instruction set is
       // the set of instructions whose edges never cross a kDomain instruction.
       TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDomainMap> domain_map,
                           HloDomainMap::Create(computation, kind));

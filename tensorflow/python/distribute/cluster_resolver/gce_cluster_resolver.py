@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Implementation of Cluster Resolvers for GCE Instance Groups."""
+"""Implementation of ClusterResolvers for GCE instance groups."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,6 +20,8 @@ from __future__ import print_function
 
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.util.tf_export import tf_export
+
 
 _GOOGLE_API_CLIENT_INSTALLED = True
 try:
@@ -29,18 +31,38 @@ except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False
 
 
-def _format_master_url(master, rpc_layer=None):
-  return '%s://%s' % (rpc_layer, master) if rpc_layer else master
-
-
-class GceClusterResolver(ClusterResolver):
-  """Cluster Resolver for Google Compute Engine.
+@tf_export('distribute.cluster_resolver.GCEClusterResolver')
+class GCEClusterResolver(ClusterResolver):
+  """ClusterResolver for Google Compute Engine.
 
   This is an implementation of cluster resolvers for the Google Compute Engine
   instance group platform. By specifying a project, zone, and instance group,
   this will retrieve the IP address of all the instances within the instance
-  group and return a Cluster Resolver object suitable for use for distributed
+  group and return a ClusterResolver object suitable for use for distributed
   TensorFlow.
+
+  Note: this cluster resolver cannot retrieve `task_type`, `task_id` or
+  `rpc_layer`. To use it with some distribution strategies like
+  `tf.distribute.experimental.MultiWorkerMirroredStrategy`, you will need to
+  specify `task_type` and `task_id` in the constructor.
+
+  Usage example with tf.distribute.Strategy:
+
+    ```Python
+    # On worker 0
+    cluster_resolver = GCEClusterResolver("my-project", "us-west1",
+                                          "my-instance-group",
+                                          task_type="worker", task_id=0)
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=cluster_resolver)
+
+    # On worker 1
+    cluster_resolver = GCEClusterResolver("my-project", "us-west1",
+                                          "my-instance-group",
+                                          task_type="worker", task_id=1)
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=cluster_resolver)
+    ```
   """
 
   def __init__(self,
@@ -49,13 +71,13 @@ class GceClusterResolver(ClusterResolver):
                instance_group,
                port,
                task_type='worker',
-               task_index=0,
+               task_id=0,
                rpc_layer='grpc',
                credentials='default',
                service=None):
-    """Creates a new GceClusterResolver object.
+    """Creates a new GCEClusterResolver object.
 
-    This takes in a few parameters and creates a GceClusterResolver project. It
+    This takes in a few parameters and creates a GCEClusterResolver project. It
     will then use these parameters to query the GCE API for the IP addresses of
     each instance in the instance group.
 
@@ -66,7 +88,7 @@ class GceClusterResolver(ClusterResolver):
       port: Port of the listening TensorFlow server (default: 8470)
       task_type: Name of the TensorFlow job this GCE instance group of VM
         instances belong to.
-      task_index: The task index for this particular VM, within the GCE
+      task_id: The task index for this particular VM, within the GCE
         instance group. In particular, every single instance should be assigned
         a unique ordinal index within an instance group manually so that they
         can be distinguished from each other.
@@ -85,7 +107,7 @@ class GceClusterResolver(ClusterResolver):
     self._zone = zone
     self._instance_group = instance_group
     self._task_type = task_type
-    self._task_index = task_index
+    self._task_id = task_id
     self._rpc_layer = rpc_layer
     self._port = port
     self._credentials = credentials
@@ -149,12 +171,12 @@ class GceClusterResolver(ClusterResolver):
     worker_list.sort()
     return ClusterSpec({self._task_type: worker_list})
 
-  def master(self, task_type=None, task_index=None, rpc_layer=None):
+  def master(self, task_type=None, task_id=None, rpc_layer=None):
     task_type = task_type if task_type is not None else self._task_type
-    task_index = task_index if task_index is not None else self._task_index
+    task_id = task_id if task_id is not None else self._task_id
 
-    if task_type is not None and task_index is not None:
-      master = self.cluster_spec().task_address(task_type, task_index)
+    if task_type is not None and task_id is not None:
+      master = self.cluster_spec().task_address(task_type, task_id)
       if rpc_layer or self._rpc_layer:
         return '%s://%s' % (rpc_layer or self._rpc_layer, master)
       else:
@@ -167,28 +189,18 @@ class GceClusterResolver(ClusterResolver):
     return self._task_type
 
   @property
-  def task_index(self):
-    return self._task_index
+  def task_id(self):
+    return self._task_id
 
   @task_type.setter
   def task_type(self, task_type):
     raise RuntimeError(
-        'You cannot reset the task_type of the GceClusterResolver after it has '
+        'You cannot reset the task_type of the GCEClusterResolver after it has '
         'been created.')
 
-  @task_index.setter
-  def task_index(self, task_index):
-    self._task_index = task_index
-
-  @property
-  def environment(self):
-    """Returns the current environment which TensorFlow is running in.
-
-    For users in the GCE environment, the environment property is always an
-    empty string, and Google users will not use this ClusterResolver for running
-    on internal systems.
-    """
-    return ''
+  @task_id.setter
+  def task_id(self, task_id):
+    self._task_id = task_id
 
   @property
   def rpc_layer(self):

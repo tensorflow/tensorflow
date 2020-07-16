@@ -26,34 +26,19 @@ from __future__ import print_function
 
 import json
 import os
+import re
 import sys
+import numpy as np
 
-from tensorflow.python.platform import resource_loader
-
-# Schema to use for flatbuffers
-_SCHEMA = "third_party/tensorflow/lite/schema/schema.fbs"
-
-# TODO(angerson): fix later when rules are simplified..
-_SCHEMA = resource_loader.get_path_to_datafile("../schema/schema.fbs")
-_BINARY = resource_loader.get_path_to_datafile("../../../flatbuffers/flatc")
-# Account for different package positioning internal vs. external.
-if not os.path.exists(_BINARY):
-  _BINARY = resource_loader.get_path_to_datafile(
-      "../../../../flatbuffers/flatc")
-
-if not os.path.exists(_SCHEMA):
-  raise RuntimeError("Sorry, schema file cannot be found at %r" % _SCHEMA)
-if not os.path.exists(_BINARY):
-  raise RuntimeError("Sorry, flatc is not available at %r" % _BINARY)
-
+from tensorflow.lite.python import schema_py_generated as schema_fb
 
 # A CSS description for making the visualizer
 _CSS = """
 <html>
 <head>
 <style>
-body {font-family: sans-serif; background-color: #ffaa00;}
-table {background-color: #eeccaa;}
+body {font-family: sans-serif; background-color: #fa0;}
+table {background-color: #eca;}
 th {background-color: black; color: white;}
 h1 {
   background-color: ffaa00;
@@ -61,9 +46,17 @@ h1 {
   color: black;
 }
 
+svg {
+  margin: 10px;
+  border: 2px;
+  border-style: solid;
+  border-color: black;
+  background: white;
+}
+
 div {
   border-radius: 5px;
-  background-color: #ffeecc;
+  background-color: #fec;
   padding:5px;
   margin:5px;
 }
@@ -83,7 +76,11 @@ div {
 }
 
 .edges line {
-  stroke: #333333;
+  stroke: #333;
+}
+
+text {
+  font-weight: bold;
 }
 
 .nodes text {
@@ -102,27 +99,38 @@ div {
 
 _D3_HTML_TEMPLATE = """
   <script>
-    // Build graph data
-    var graph = %s;
-
-    var svg = d3.select("#subgraph%d");
-    var width = svg.attr("width");
-    var height = svg.attr("height");
-    var color = d3.scaleOrdinal(d3.schemeCategory20);
-
-    var simulation = d3.forceSimulation()
-        .force("link", d3.forceLink().id(function(d) {return d.id;}))
-        .force("charge", d3.forceManyBody())
-        .force("center", d3.forceCenter(0.5 * width, 0.5 * height));
-
-
     function buildGraph() {
+      // Build graph data
+      var graph = %s;
+
+      var svg = d3.select("#subgraph%d")
+      var width = svg.attr("width");
+      var height = svg.attr("height");
+      // Make the graph scrollable.
+      svg = svg.call(d3.zoom().on("zoom", function() {
+        svg.attr("transform", d3.event.transform);
+      })).append("g");
+
+
+      var color = d3.scaleOrdinal(d3.schemeDark2);
+
+      var simulation = d3.forceSimulation()
+          .force("link", d3.forceLink().id(function(d) {return d.id;}))
+          .force("charge", d3.forceManyBody())
+          .force("center", d3.forceCenter(0.5 * width, 0.5 * height));
+
       var edge = svg.append("g").attr("class", "edges").selectAll("line")
-        .data(graph.edges).enter().append("line")
+        .data(graph.edges).enter().append("path").attr("stroke","black").attr("fill","none")
+
       // Make the node group
       var node = svg.selectAll(".nodes")
         .data(graph.nodes)
         .enter().append("g")
+        .attr("x", function(d){return d.x})
+        .attr("y", function(d){return d.y})
+        .attr("transform", function(d) {
+          return "translate( " + d.x + ", " + d.y + ")"
+        })
         .attr("class", "nodes")
           .call(d3.drag()
               .on("start", function(d) {
@@ -136,30 +144,86 @@ _D3_HTML_TEMPLATE = """
                 if (!d3.event.active) simulation.alphaTarget(0);
                 d.fx = d.fy = null;
               }));
-      // Within the group, draw a circle for the node position and text
+      // Within the group, draw a box for the node position and text
       // on the side.
-      node.append("circle")
-          .attr("r", "5px")
-          .attr("fill", function(d) { return color(d.group); })
-      node.append("text")
-          .attr("dx", 8).attr("dy", 5).text(function(d) { return d.name; });
-      // Setup force parameters and update position callback
-      simulation.nodes(graph.nodes).on("tick", forceSimulationUpdated);
-      simulation.force("link").links(graph.edges);
 
-      function forceSimulationUpdated() {
-        // Update edges.
-        edge.attr("x1", function(d) {return d.source.x;})
-            .attr("y1", function(d) {return d.source.y;})
-            .attr("x2", function(d) {return d.target.x;})
-            .attr("y2", function(d) {return d.target.y;});
-        // Update node positions
-        node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+      var node_width = 150;
+      var node_height = 30;
+
+      node.append("rect")
+          .attr("r", "5px")
+          .attr("width", node_width)
+          .attr("height", node_height)
+          .attr("rx", function(d) { return d.group == 1 ? 1 : 10; })
+          .attr("stroke", "#000000")
+          .attr("fill", function(d) { return d.group == 1 ? "#dddddd" : "#000000"; })
+      node.append("text")
+          .text(function(d) { return d.name; })
+          .attr("x", 5)
+          .attr("y", 20)
+          .attr("fill", function(d) { return d.group == 1 ? "#000000" : "#eeeeee"; })
+      // Setup force parameters and update position callback
+
+
+      var node = svg.selectAll(".nodes")
+        .data(graph.nodes);
+
+      // Bind the links
+      var name_to_g = {}
+      node.each(function(data, index, nodes) {
+        console.log(data.id)
+        name_to_g[data.id] = this;
+      });
+
+      function proc(w, t) {
+        return parseInt(w.getAttribute(t));
       }
-    }
+      edge.attr("d", function(d) {
+        function lerp(t, a, b) {
+          return (1.0-t) * a + t * b;
+        }
+        var x1 = proc(name_to_g[d.source],"x") + node_width /2;
+        var y1 = proc(name_to_g[d.source],"y") + node_height;
+        var x2 = proc(name_to_g[d.target],"x") + node_width /2;
+        var y2 = proc(name_to_g[d.target],"y");
+        var s = "M " + x1 + " " + y1
+            + " C " + x1 + " " + lerp(.5, y1, y2)
+            + " " + x2 + " " + lerp(.5, y1, y2)
+            + " " + x2  + " " + y2
+      return s;
+    });
+
+  }
   buildGraph()
 </script>
 """
+
+
+def TensorTypeToName(tensor_type):
+  """Converts a numerical enum to a readable tensor type."""
+  for name, value in schema_fb.TensorType.__dict__.items():
+    if value == tensor_type:
+      return name
+  return None
+
+
+def BuiltinCodeToName(code):
+  """Converts a builtin op code enum to a readable name."""
+  for name, value in schema_fb.BuiltinOperator.__dict__.items():
+    if value == code:
+      return name
+  return None
+
+
+def NameListToString(name_list):
+  """Converts a list of integers to the equivalent ASCII string."""
+  if isinstance(name_list, str):
+    return name_list
+  else:
+    result = ""
+    for val in name_list:
+      result = result + chr(int(val))
+    return result
 
 
 class OpCodeMapper(object):
@@ -168,14 +232,14 @@ class OpCodeMapper(object):
   def __init__(self, data):
     self.code_to_name = {}
     for idx, d in enumerate(data["operator_codes"]):
-      self.code_to_name[idx] = d["builtin_code"]
+      self.code_to_name[idx] = BuiltinCodeToName(d["builtin_code"])
 
   def __call__(self, x):
     if x not in self.code_to_name:
       s = "<UNKNOWN>"
     else:
       s = self.code_to_name[x]
-    return "%s (opcode=%d)" % (s, x)
+    return "%s (%d)" % (s, x)
 
 
 class DataSizeMapper(object):
@@ -200,9 +264,11 @@ class TensorMapper(object):
     for i in x:
       tensor = self.data["tensors"][i]
       html += str(i) + " "
-      html += tensor["name"] + " "
-      html += str(tensor["type"]) + " "
-      html += (repr(tensor["shape"]) if "shape" in tensor else "[]") + "<br>"
+      html += NameListToString(tensor["name"]) + " "
+      html += TensorTypeToName(tensor["type"]) + " "
+      html += (repr(tensor["shape"]) if "shape" in tensor else "[]")
+      html += (repr(tensor["shape_signature"])
+               if "shape_signature" in tensor else "[]") + "<br>"
     html += "</span>"
     html += repr(x)
     html += "</span>"
@@ -221,39 +287,46 @@ def GenerateGraph(subgraph_idx, g, opcode_mapper):
   edges = []
   nodes = []
   first = {}
-  pixel_mult = 50  # TODO(aselle): multiplier for initial placement
+  second = {}
+  pixel_mult = 200  # TODO(aselle): multiplier for initial placement
+  width_mult = 170  # TODO(aselle): multiplier for initial placement
   for op_index, op in enumerate(g["operators"]):
+
     for tensor_input_position, tensor_index in enumerate(op["inputs"]):
       if tensor_index not in first:
-        first[tensor_index] = (
-            op_index * pixel_mult,
-            tensor_input_position * pixel_mult - pixel_mult / 2)
+        first[tensor_index] = ((op_index - 0.5 + 1) * pixel_mult,
+                               (tensor_input_position + 1) * width_mult)
       edges.append({
           "source": TensorName(tensor_index),
           "target": OpName(op_index)
       })
-    for tensor_index in op["outputs"]:
+    for tensor_output_position, tensor_index in enumerate(op["outputs"]):
+      if tensor_index not in second:
+        second[tensor_index] = ((op_index + 0.5 + 1) * pixel_mult,
+                                (tensor_output_position + 1) * width_mult)
       edges.append({
           "target": TensorName(tensor_index),
           "source": OpName(op_index)
       })
+
     nodes.append({
         "id": OpName(op_index),
         "name": opcode_mapper(op["opcode_index"]),
         "group": 2,
         "x": pixel_mult,
-        "y": op_index * pixel_mult
+        "y": (op_index + 1) * pixel_mult
     })
   for tensor_index, tensor in enumerate(g["tensors"]):
     initial_y = (
-        first[tensor_index] if tensor_index in first else len(g["operators"]))
+        first[tensor_index] if tensor_index in first else
+        second[tensor_index] if tensor_index in second else (0, 0))
 
     nodes.append({
         "id": TensorName(tensor_index),
-        "name": "%s (%d)" % (tensor["name"], tensor_index),
+        "name": "%r (%d)" % (getattr(tensor, "shape", []), tensor_index),
         "group": 1,
-        "x": 2,
-        "y": initial_y
+        "x": initial_y[1],
+        "y": initial_y[0]
     })
   graph_str = json.dumps({"nodes": nodes, "edges": edges})
 
@@ -271,6 +344,7 @@ def GenerateTableHtml(items, keys_to_print, display_index=True):
       i.e. the displayed html cell will have the string returned by
       `mapping_fn(items[0][key])`.
     display_index: add a column which is the index of each row in `items`.
+
   Returns:
     An html table.
   """
@@ -298,6 +372,50 @@ def GenerateTableHtml(items, keys_to_print, display_index=True):
   return html
 
 
+def CamelCaseToSnakeCase(camel_case_input):
+  """Converts an identifier in CamelCase to snake_case."""
+  s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", camel_case_input)
+  return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
+
+def FlatbufferToDict(fb, preserve_as_numpy):
+  """Converts a hierarchy of FB objects into a nested dict.
+
+  We avoid transforming big parts of the flat buffer into python arrays. This
+  speeds conversion from ten minutes to a few seconds on big graphs.
+
+  Args:
+    fb: a flat buffer structure. (i.e. ModelT)
+    preserve_as_numpy: true if all downstream np.arrays should be preserved.
+      false if all downstream np.array should become python arrays
+  Returns:
+    A dictionary representing the flatbuffer rather than a flatbuffer object.
+  """
+  if isinstance(fb, int) or isinstance(fb, float) or isinstance(fb, str):
+    return fb
+  elif hasattr(fb, "__dict__"):
+    result = {}
+    for attribute_name in dir(fb):
+      attribute = fb.__getattribute__(attribute_name)
+      if not callable(attribute) and attribute_name[0] != "_":
+        snake_name = CamelCaseToSnakeCase(attribute_name)
+        preserve = True if attribute_name == "buffers" else preserve_as_numpy
+        result[snake_name] = FlatbufferToDict(attribute, preserve)
+    return result
+  elif isinstance(fb, np.ndarray):
+    return fb if preserve_as_numpy else fb.tolist()
+  elif hasattr(fb, "__len__"):
+    return [FlatbufferToDict(entry, preserve_as_numpy) for entry in fb]
+  else:
+    return fb
+
+
+def CreateDictFromFlatbuffer(buffer_data):
+  model_obj = schema_fb.Model.GetRootAsModel(buffer_data, 0)
+  model = schema_fb.ModelT.InitFromObj(model_obj)
+  return FlatbufferToDict(model, preserve_as_numpy=False)
+
+
 def CreateHtmlFile(tflite_input, html_output):
   """Given a tflite model in `tflite_input` file, produce html description."""
 
@@ -306,18 +424,9 @@ def CreateHtmlFile(tflite_input, html_output):
   if not os.path.exists(tflite_input):
     raise RuntimeError("Invalid filename %r" % tflite_input)
   if tflite_input.endswith(".tflite") or tflite_input.endswith(".bin"):
-
-    # Run convert
-    cmd = (
-        _BINARY + " -t "
-        "--strict-json --defaults-json -o /tmp {schema} -- {input}".format(
-            input=tflite_input, schema=_SCHEMA))
-    print(cmd)
-    os.system(cmd)
-    real_output = ("/tmp/" + os.path.splitext(
-        os.path.split(tflite_input)[-1])[0] + ".json")
-
-    data = json.load(open(real_output))
+    with open(tflite_input, "rb") as file_handle:
+      file_data = bytearray(file_handle.read())
+    data = CreateDictFromFlatbuffer(file_data)
   elif tflite_input.endswith(".json"):
     data = json.load(open(tflite_input))
   else:
@@ -327,8 +436,8 @@ def CreateHtmlFile(tflite_input, html_output):
   html += "<h1>TensorFlow Lite Model</h2>"
 
   data["filename"] = tflite_input  # Avoid special case
-  toplevel_stuff = [("filename", None), ("version", None), ("description",
-                                                            None)]
+  toplevel_stuff = [("filename", None), ("version", None),
+                    ("description", None)]
 
   html += "<table>\n"
   for key, mapping in toplevel_stuff:
@@ -339,7 +448,9 @@ def CreateHtmlFile(tflite_input, html_output):
 
   # Spec on what keys to display
   buffer_keys_to_display = [("data", DataSizeMapper())]
-  operator_keys_to_display = [("builtin_code", None), ("custom_code", None)]
+  operator_keys_to_display = [("builtin_code", BuiltinCodeToName),
+                              ("custom_code", None),
+                              ("version", None)]
 
   for subgraph_idx, g in enumerate(data["subgraphs"]):
     # Subgraph local specs on what to display
@@ -347,21 +458,22 @@ def CreateHtmlFile(tflite_input, html_output):
     tensor_mapper = TensorMapper(g)
     opcode_mapper = OpCodeMapper(data)
     op_keys_to_display = [("inputs", tensor_mapper), ("outputs", tensor_mapper),
-                          ("builtin_options", None), ("opcode_index",
-                                                      opcode_mapper)]
-    tensor_keys_to_display = [("name", None), ("type", None), ("shape", None),
-                              ("buffer", None), ("quantization", None)]
+                          ("builtin_options", None),
+                          ("opcode_index", opcode_mapper)]
+    tensor_keys_to_display = [("name", NameListToString),
+                              ("type", TensorTypeToName), ("shape", None),
+                              ("shape_signature", None), ("buffer", None),
+                              ("quantization", None)]
 
     html += "<h2>Subgraph %d</h2>\n" % subgraph_idx
 
     # Inputs and outputs.
     html += "<h3>Inputs/Outputs</h3>\n"
-    html += GenerateTableHtml(
-        [{
-            "inputs": g["inputs"],
-            "outputs": g["outputs"]
-        }], [("inputs", tensor_mapper), ("outputs", tensor_mapper)],
-        display_index=False)
+    html += GenerateTableHtml([{
+        "inputs": g["inputs"],
+        "outputs": g["outputs"]
+    }], [("inputs", tensor_mapper), ("outputs", tensor_mapper)],
+                              display_index=False)
 
     # Print the tensors.
     html += "<h3>Tensors</h3>\n"
@@ -372,7 +484,7 @@ def CreateHtmlFile(tflite_input, html_output):
     html += GenerateTableHtml(g["operators"], op_keys_to_display)
 
     # Visual graph.
-    html += "<svg id='subgraph%d' width='960' height='1600'></svg>\n" % (
+    html += "<svg id='subgraph%d' width='1600' height='900'></svg>\n" % (
         subgraph_idx,)
     html += GenerateGraph(subgraph_idx, g, opcode_mapper)
     html += "</div>"
@@ -387,7 +499,8 @@ def CreateHtmlFile(tflite_input, html_output):
 
   html += "</body></html>\n"
 
-  open(html_output, "w").write(html)
+  with open(html_output, "w") as output_file:
+    output_file.write(html)
 
 
 def main(argv):

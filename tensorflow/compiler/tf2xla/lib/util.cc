@@ -54,6 +54,9 @@ xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
     case xla::C64:
       return xla::ConstantR0<xla::complex64>(builder, value);
       break;
+    case xla::C128:
+      return xla::ConstantR0<xla::complex128>(builder, value);
+      break;
     default:
       LOG(FATAL) << "unhandled element type " << type;
   }
@@ -66,6 +69,9 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
     case xla::U8:
       literal = xla::LiteralUtil::CreateR0<uint8>(value);
       break;
+    case xla::U16:
+      literal = xla::LiteralUtil::CreateR0<uint16>(value);
+      break;
     case xla::U32:
       literal = xla::LiteralUtil::CreateR0<uint32>(value);
       break;
@@ -74,6 +80,9 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
       break;
     case xla::S8:
       literal = xla::LiteralUtil::CreateR0<int8>(value);
+      break;
+    case xla::S16:
+      literal = xla::LiteralUtil::CreateR0<int16>(value);
       break;
     case xla::S32:
       literal = xla::LiteralUtil::CreateR0<int32>(value);
@@ -90,11 +99,11 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
     case xla::C64:
       literal = xla::LiteralUtil::CreateR0<complex64>(value);
       break;
+    case xla::C128:
+      literal = xla::LiteralUtil::CreateR0<complex128>(value);
+      break;
     case xla::PRED:
       LOG(FATAL) << "pred element type is not integral";
-    case xla::S16:
-    case xla::U16:
-      LOG(FATAL) << "u16/s16 literals not yet implemented";
     case xla::BF16:
       literal =
           xla::LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(value));
@@ -105,7 +114,7 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
       break;
     case xla::TUPLE:
       LOG(FATAL) << "tuple element type is not integral";
-    case xla::OPAQUE:
+    case xla::OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type is not integral";
     default:
       LOG(FATAL) << "unhandled element type " << type;

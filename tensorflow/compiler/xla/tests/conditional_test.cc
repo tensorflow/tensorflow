@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <random>
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -169,6 +170,11 @@ class ConditionalOpTest : public ClientLibraryTestBase {
   ErrorSpec error_spec_{0.001};
 };
 
+// Test fixture to run indexed conditional (switch/case) tests with varying
+// number of branches.
+class CaseOpTest : public ConditionalOpTest,
+                   public ::testing::WithParamInterface<int> {};
+
 // Test true and false computations that do not take any parameters.
 XLA_TEST_F(ConditionalOpTest, Parameters0) {
   XlaBuilder builder(TestName());
@@ -182,6 +188,36 @@ XLA_TEST_F(ConditionalOpTest, Parameters0) {
   ComputeAndCompareR0<float>(&builder, 56.0f, {pred_arg.get()}, error_spec_);
 }
 
+// Test branch computations that do not take any parameters.
+XLA_TEST_P(CaseOpTest, Parameters0) {
+  int num_branches = GetParam();
+  for (int bi = -1; bi <= num_branches; ++bi) {
+    SCOPED_TRACE(bi);
+    XlaBuilder builder(TestName());
+    XlaOp branch_index;
+    auto branch_index_arg = CreateR0Parameter<int32>(bi, 0, "branch_index_arg",
+                                                     &builder, &branch_index);
+    auto operand = Tuple(&builder, {});
+
+    std::vector<XlaOp> operands(num_branches, operand);
+    std::vector<XlaComputation> branches;
+    branches.reserve(num_branches);
+    std::vector<const XlaComputation*> branches_p(num_branches);
+    for (int i = 0; i < num_branches; ++i) {
+      branches.emplace_back(
+          CreateR0ConstantComputation(static_cast<float>(i) * 10));
+      branches_p[i] = &branches[i];
+    }
+    Conditional(branch_index, branches_p, operands);
+
+    float expected = 10 * static_cast<float>((bi < 0 || bi >= num_branches)
+                                                 ? num_branches - 1
+                                                 : bi);
+    ComputeAndCompareR0<float>(&builder, expected, {branch_index_arg.get()},
+                               error_spec_);
+  }
+}
+
 // Test true and false computations that take in 1 parameter.
 XLA_TEST_F(ConditionalOpTest, Parameters1) {
   XlaBuilder builder(TestName());
@@ -193,6 +229,45 @@ XLA_TEST_F(ConditionalOpTest, Parameters1) {
   Conditional(pred, operand1, identity, operand2, identity);
 
   ComputeAndCompareR0<float>(&builder, 12.0f, {pred_arg.get()}, error_spec_);
+}
+
+// Test branch computations that take in 1 parameter.
+XLA_TEST_P(CaseOpTest, Parameters1) {
+  int num_branches = GetParam();
+  for (int bi = -1; bi <= num_branches; ++bi) {
+    SCOPED_TRACE(bi);
+    XlaBuilder builder(TestName());
+    XlaOp branch_index;
+    auto branch_index_arg = CreateR0Parameter<int32>(bi, 0, "branch_index_arg",
+                                                     &builder, &branch_index);
+
+    auto make_branch = [&builder, this](int i) {
+      auto sb = builder.CreateSubBuilder(absl::StrCat("branch_", i));
+      Add(ConstantR0<float>(sb.get(), static_cast<float>(i)),
+          Parameter(sb.get(), 0, r0f32_, "p0"));
+      return sb->BuildAndNoteError();
+    };
+    std::vector<XlaComputation> branches;
+    branches.reserve(num_branches);
+    std::vector<const XlaComputation*> branches_p(num_branches);
+    std::vector<XlaOp> operands;
+    operands.reserve(num_branches);
+    std::vector<float> expecteds(num_branches);
+    for (int i = 0; i < num_branches; ++i) {
+      branches.emplace_back(make_branch(i));
+      branches_p[i] = &branches[i];
+      auto fi = static_cast<float>(i);
+      operands.emplace_back(ConstantR0<float>(&builder, 10 * fi + 7));
+      expecteds[i] = 10 * fi + 7 + fi;
+    }
+
+    Conditional(branch_index, branches_p, operands);
+    float expected = (bi < 0 || bi >= num_branches)
+                         ? expecteds[num_branches - 1]
+                         : expecteds[bi];
+    ComputeAndCompareR0<float>(&builder, expected, {branch_index_arg.get()},
+                               error_spec_);
+  }
 }
 
 // Test conditional with two different computations in the true and false cases
@@ -330,6 +405,46 @@ XLA_TEST_F(ConditionalOpTest, Parameters2ArrayTrueBranch) {
   ComputeAndCompareR1<float>(&builder, {34.0f, 67.0f}, {pred_arg.get()},
                              error_spec_);
 }
+
+// Test branch computations that take in 2 array parameters.
+XLA_TEST_P(CaseOpTest, Parameters2Array) {
+  int num_branches = GetParam();
+  for (int bi = -1; bi <= num_branches; ++bi) {
+    SCOPED_TRACE(bi);
+    XlaBuilder builder(TestName());
+    XlaOp branch_index;
+    auto branch_index_arg =
+        CreateR0Parameter<int32>(bi, 0, "pred", &builder, &branch_index);
+    auto operand1 = ConstantR1<float>(&builder, {24.0f, 56.0f});
+    auto operand2 = ConstantR1<float>(&builder, {10.0f, 11.0f});
+    auto operands = Tuple(&builder, {operand1, operand2});
+    auto make_branch = [&builder, this](int i) {
+      auto sb = builder.CreateSubBuilder(absl::StrCat("branch_", i));
+      auto p = Parameter(sb.get(), 0, tuple_2_r1s2f32_, "p0");
+      Add(Mul(ConstantR0<float>(sb.get(), static_cast<float>(i)),
+              GetTupleElement(p, 0)),
+          GetTupleElement(p, 1));
+      return sb->BuildAndNoteError();
+    };
+    std::vector<XlaComputation> branches;
+    branches.reserve(num_branches);
+    std::vector<const XlaComputation*> branches_p(num_branches);
+    for (int i = 0; i < num_branches; ++i) {
+      branches.emplace_back(make_branch(i));
+      branches_p[i] = &branches[i];
+    }
+    Conditional(branch_index, branches_p,
+                std::vector<XlaOp>(num_branches, operands));
+    auto modified_bi = static_cast<float>(
+        (bi < 0 || bi >= num_branches) ? num_branches - 1 : bi);
+    ComputeAndCompareR1<float>(
+        &builder, {24.0f * modified_bi + 10, 56.0f * modified_bi + 11},
+        {branch_index_arg.get()}, error_spec_);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(CaseOpTest_Instantiation, CaseOpTest,
+                         ::testing::Values(1, 2, 3, 4, 5));
 
 // Test true and false computations that take in 2 array parameters and
 // predicate is false.
@@ -582,8 +697,8 @@ XLA_TEST_F(ConditionalOpTest, ShapeMismatch) {
   auto result = builder.Build();
   EXPECT_FALSE(result.ok());
   EXPECT_THAT(result.status().error_message(),
-              ::testing::HasSubstr("true_operand must match the shape of the "
-                                   "only parameter of true_computation"));
+              ::testing::HasSubstr("operand 0 must match the shape of the "
+                                   "only parameter of branch computation 0"));
 }
 
 XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {

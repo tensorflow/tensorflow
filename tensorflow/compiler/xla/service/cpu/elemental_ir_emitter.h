@@ -44,6 +44,16 @@ class CpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                   llvm::Value* value) override;
 
+  StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name) override {
+    return ir_emitter_->EmitThreadLocalCall(callee, parameters, name);
+  }
+
+  bool fast_min_max() override {
+    return hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max();
+  }
+
   IrEmitter* ir_emitter_;
 };
 

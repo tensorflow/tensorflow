@@ -27,6 +27,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace thread {
+
+struct ThreadPoolOptions;
+
+}
+
 /// @addtogroup core
 /// @{
 
@@ -87,6 +93,14 @@ class ClientSession {
              const std::vector<Operation>& run_outputs,
              std::vector<Tensor>* outputs, RunMetadata* run_metadata) const;
 
+  /// Same as above. Additionally allows user to provide custom threadpool
+  /// implementation via ThreadPoolOptions.
+  Status Run(const RunOptions& run_options, const FeedType& inputs,
+             const std::vector<Output>& fetch_outputs,
+             const std::vector<Operation>& run_outputs,
+             std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+             const thread::ThreadPoolOptions& threadpool_options) const;
+
   /// \brief A handle to a subgraph, created with
   /// `ClientSession::MakeCallable()`.
   typedef int64 CallableHandle;
@@ -109,6 +123,20 @@ class ClientSession {
                      const std::vector<Tensor>& feed_tensors,
                      std::vector<Tensor>* fetch_tensors,
                      RunMetadata* run_metadata);
+
+  /// \brief Invokes the subgraph named by `handle` with the given options and
+  /// input tensors.
+  ///
+  /// The order of tensors in `feed_tensors` must match the order of names in
+  /// `CallableOptions::feed()` and the order of tensors in `fetch_tensors` will
+  /// match the order of names in `CallableOptions::fetch()` when this subgraph
+  /// was created.
+  /// NOTE: This API is still experimental and may change.
+  Status RunCallable(CallableHandle handle,
+                     const std::vector<Tensor>& feed_tensors,
+                     std::vector<Tensor>* fetch_tensors,
+                     RunMetadata* run_metadata,
+                     const thread::ThreadPoolOptions& options);
 
   /// \brief Releases resources associated with the given `handle` in this
   /// session.

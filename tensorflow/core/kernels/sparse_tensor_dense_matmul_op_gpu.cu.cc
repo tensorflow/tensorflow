@@ -13,30 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
-
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
-__global__ void SparseTensorDenseMatMulKernel(int nnz, int m, int b_rows,
-                                              int b_cols, int p,
-                                              const Tindices* a_indices,
-                                              const T* a_values, const T* b,
-                                              T* out) {
+__global__ void SparseTensorDenseMatMulKernel(
+    int nnz, int m, int b_rows, int b_cols, int p,
+    const Tindices* __restrict__ a_indices, const T* __restrict__ a_values,
+    const T* __restrict__ b, T* __restrict__ out) {
   // out_{ij} = sum_k {a_ik b_kj}
   // out = A * B', out_{ij} = sum_k {a_ik (b')_kj}; b'_{kj} = b_{jk}
   const int n = (ADJ_B) ? b_cols : b_rows;
-  CUDA_1D_KERNEL_LOOP(index, nnz * p) {
+  GPU_1D_KERNEL_LOOP(index, nnz * p) {
     const int a_ix = index / p;
     const int j = index % p;
     const int i = ldg(a_indices + 2 * a_ix + ((ADJ_A) ? 1 : 0));
@@ -47,7 +45,7 @@ __global__ void SparseTensorDenseMatMulKernel(int nnz, int m, int b_rows,
     // out[i, j]
     T* out_location = out + i * p + j;
     if (!FastBoundsCheck(k, n)) {
-      CudaAtomicAdd(out_location, std::numeric_limits<T>::quiet_NaN());
+      GpuAtomicAdd(out_location, std::numeric_limits<T>::quiet_NaN());
       continue;
     }
 
@@ -56,7 +54,7 @@ __global__ void SparseTensorDenseMatMulKernel(int nnz, int m, int b_rows,
 
     // b_value == (ADJ_B) ? b[j, k] : b[k, j]
     const T b_value = ldg(b + ((ADJ_B) ? j * b_cols + k : k * b_cols + j));
-    CudaAtomicAdd(out_location, a_value * b_value);
+    GpuAtomicAdd(out_location, a_value * b_value);
   }
 }
 
@@ -79,12 +77,13 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
 
     // TODO(ebrevdo): Should this be alpha * nnz instead of
     // out.size()?  Perhaps p * nnz ?
-    CudaLaunchConfig config = GetCudaLaunchConfig(p * nnz, d);
+    GpuLaunchConfig config = GetGpuLaunchConfig(p * nnz, d);
 
-    SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            nnz, m, b_rows, b_cols, p, a_indices.data(), a_values.data(),
-            b.data(), out.data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B>,
+        config.block_count, config.thread_per_block, 0, d.stream(), nnz, m,
+        b_rows, b_cols, p, a_indices.data(), a_values.data(), b.data(),
+        out.data()));
 
     return Status::OK();
   }
@@ -108,4 +107,4 @@ DEFINE(float, int64);
 
 }  // end namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

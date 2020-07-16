@@ -2,7 +2,6 @@ path: "tensorflow.estimator.LinearRegressor"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.linear.LinearRegressor\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
-  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"

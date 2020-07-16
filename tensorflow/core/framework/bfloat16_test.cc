@@ -23,6 +23,37 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+TEST(Bfloat16Test, ZeroRepresentations) {
+  ASSERT_EQ(bfloat16{0.0f}, bfloat16{0.0f});
+  ASSERT_EQ(bfloat16{-0.0f}, bfloat16{0.0f});
+  ASSERT_EQ(bfloat16{-0.0f}, bfloat16{-0.0f});
+  ASSERT_EQ(bfloat16{0.0f}.value, 0x0000);
+  ASSERT_EQ(bfloat16{-0.0f}.value, 0x8000);
+}
+
+TEST(Bfloat16Test, FlushDenormalsToZero) {
+  for (float denorm = -std::numeric_limits<float>::denorm_min();
+       denorm < std::numeric_limits<float>::denorm_min();
+       denorm = std::nextafterf(denorm, 1.0f)) {
+    bfloat16 bf_trunc =
+        bfloat16(Eigen::bfloat16_impl::truncate_to_bfloat16(denorm));
+    ASSERT_EQ(static_cast<float>(bf_trunc), 0.0f);
+    if (std::signbit(denorm)) {
+      ASSERT_EQ(bf_trunc.value, 0x8000) << denorm;
+    } else {
+      ASSERT_EQ(bf_trunc.value, 0x0000) << denorm;
+    }
+    bfloat16 bf_round =
+        bfloat16(Eigen::bfloat16_impl::float_to_bfloat16_rtne(denorm));
+    ASSERT_EQ(static_cast<float>(bf_round), 0.0f);
+    if (std::signbit(denorm)) {
+      ASSERT_EQ(bf_round.value, 0x8000) << denorm;
+    } else {
+      ASSERT_EQ(bf_round.value, 0x0000) << denorm;
+    }
+  }
+}
+
 TEST(Bfloat16Test, DefaultValueIsZero) {
   EXPECT_EQ(0.0f, static_cast<float>(bfloat16()));
 }
@@ -59,15 +90,18 @@ class Bfloat16Test : public ::testing::Test,
                      public ::testing::WithParamInterface<Bfloat16TestParam> {};
 
 TEST_P(Bfloat16Test, TruncateTest) {
-  bfloat16 truncated = bfloat16::truncate_to_bfloat16((GetParam().input));
+  bfloat16 truncated =
+      bfloat16(Eigen::bfloat16_impl::truncate_to_bfloat16((GetParam().input)));
 
   if (std::isnan(GetParam().input)) {
     EXPECT_TRUE(std::isnan(float(truncated)) || std::isinf(float(truncated)));
     return;
   }
+
   EXPECT_EQ(GetParam().expected_truncation, float(truncated));
 
-  bfloat16 rounded = bfloat16::round_to_bfloat16((GetParam().input));
+  bfloat16 rounded = bfloat16(
+      Eigen::bfloat16_impl::float_to_bfloat16_rtne((GetParam().input)));
   if (std::isnan(GetParam().input)) {
     EXPECT_TRUE(std::isnan(float(rounded)) || std::isinf(float(rounded)));
     return;
@@ -75,7 +109,7 @@ TEST_P(Bfloat16Test, TruncateTest) {
   EXPECT_EQ(GetParam().expected_rounding, float(rounded));
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     Bfloat16Test_Instantiation, Bfloat16Test,
     ::testing::Values(
         Bfloat16TestParam{
@@ -114,14 +148,16 @@ INSTANTIATE_TEST_CASE_P(
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b1000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000),
             BinaryToFloat(0, 0b10000000, 0b1001000, 0b0000000000000000)},
+        // The following two floats are denormals and will be flushed
+        // to zero.
         Bfloat16TestParam{
             BinaryToFloat(0, 0b00000000, 0b1001000, 0b1000000000000000),
-            BinaryToFloat(0, 0b00000000, 0b1001000, 0b0000000000000000),
-            BinaryToFloat(0, 0b00000000, 0b1001000, 0b0000000000000000)},
+            BinaryToFloat(0, 0b00000000, 0b0000000, 0b0000000000000000),
+            BinaryToFloat(0, 0b00000000, 0b0000000, 0b0000000000000000)},
         Bfloat16TestParam{
             BinaryToFloat(0, 0b00000000, 0b1111111, 0b1100000000000000),
-            BinaryToFloat(0, 0b00000000, 0b1111111, 0b0000000000000000),
-            BinaryToFloat(0, 0b00000001, 0b0000000, 0b0000000000000000)}));
+            BinaryToFloat(0, 0b00000000, 0b0000000, 0b0000000000000000),
+            BinaryToFloat(0, 0b00000000, 0b0000000, 0b0000000000000000)}));
 
 TEST(Bfloat16Test, Conversion) {
   float a[100];
@@ -140,9 +176,13 @@ TEST(Bfloat16Test, Conversion) {
 }
 
 TEST(Bfloat16Test, Epsilon) {
-  EXPECT_LT(1.0f, static_cast<float>(bfloat16::epsilon() + bfloat16(1.0f)));
-  EXPECT_EQ(1.0f, static_cast<float>((bfloat16::epsilon() / bfloat16(2.0f)) +
-                                     bfloat16(1.0f)));
+  EXPECT_LT(1.0f,
+            static_cast<float>(Eigen::NumTraits<Eigen::bfloat16>::epsilon() +
+                               bfloat16(1.0f)));
+  EXPECT_EQ(1.0f,
+            static_cast<float>((Eigen::NumTraits<Eigen::bfloat16>::epsilon() /
+                                bfloat16(2.0f)) +
+                               bfloat16(1.0f)));
 }
 
 TEST(Bfloat16Test, Negate) {
@@ -168,6 +208,33 @@ static void BM_FloatToBFloat16(int iters) {
   delete[] out;
 }
 BENCHMARK(BM_FloatToBFloat16);
+
+void RoundFloatToBFloat16(const float* src, bfloat16* dst, int64 size) {
+  for (; size != 0; size--) {
+    dst[size] = bfloat16(src[size]);
+  }
+}
+
+static void BM_RoundFloatToBFloat16(int iters) {
+  testing::StopTiming();
+  static const int N = 32 << 20;
+  const int64 tot = static_cast<int64>(iters) * N;
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * (sizeof(float) + sizeof(bfloat16)));
+
+  float* inp = new float[N];
+  bfloat16* out = new bfloat16[N];
+
+  testing::StartTiming();
+  while (iters--) {
+    RoundFloatToBFloat16(inp, out, N);
+    tensorflow::testing::DoNotOptimize(inp);
+    tensorflow::testing::DoNotOptimize(out);
+  }
+  delete[] inp;
+  delete[] out;
+}
+BENCHMARK(BM_RoundFloatToBFloat16);
 
 static void BM_BFloat16ToFloat(int iters) {
   testing::StopTiming();

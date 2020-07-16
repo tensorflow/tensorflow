@@ -33,16 +33,17 @@ are added onto an existing tensor (as opposed to a variable). If the memory
 for the existing tensor cannot be re-used, a copy is made and updated.
 
 `indices` is an integer tensor containing indices into a new tensor of shape
-`shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+`tensor.shape`.  The last dimension of `indices` can be at most the rank of
+`tensor.shape`:
 
-    indices.shape[-1] <= shape.rank
+    indices.shape[-1] <= tensor.shape.rank
 
 The last dimension of `indices` corresponds to indices into elements
-(if `indices.shape[-1] = shape.rank`) or slices
-(if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
-`shape`.  `updates` is a tensor with shape
+(if `indices.shape[-1] = tensor.shape.rank`) or slices
+(if `indices.shape[-1] < tensor.shape.rank`) along dimension
+`indices.shape[-1]` of `tensor.shape`.  `updates` is a tensor with shape
 
-    indices.shape[:-1] + shape[indices.shape[-1]:]
+    indices.shape[:-1] + tensor.shape[indices.shape[-1]:]
 
 The simplest form of tensor_scatter_add is to add individual elements to a
 tensor by index. For example, say we want to add 4 elements in a rank-1
@@ -54,9 +55,8 @@ In Python, this scatter add operation would look like this:
     indices = tf.constant([[4], [3], [1], [7]])
     updates = tf.constant([9, 10, 11, 12])
     tensor = tf.ones([8], dtype=tf.int32)
-    updated = tf.tensor_scatter_add(tensor, indices, updates)
-    with tf.Session() as sess:
-      print(sess.run(scatter))
+    updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+    print(updated)
 ```
 
 The resulting tensor would look like this:
@@ -75,10 +75,9 @@ In Python, this scatter add operation would look like this:
                             [7, 7, 7, 7], [8, 8, 8, 8]],
                            [[5, 5, 5, 5], [6, 6, 6, 6],
                             [7, 7, 7, 7], [8, 8, 8, 8]]])
-    tensor = tf.ones([4, 4, 4])
-    updated = tf.tensor_scatter_add(tensor, indices, updates)
-    with tf.Session() as sess:
-      print(sess.run(scatter))
+    tensor = tf.ones([4, 4, 4],dtype=tf.int32)
+    updated = tf.tensor_scatter_nd_add(tensor, indices, updates)
+    print(updated)
 ```
 
 The resulting tensor would look like this:

@@ -25,10 +25,7 @@ b) Release control to an external (i.e., non-Session) object before and after
    launching a UI to let users inspect the intermediate tensors and partition
    graphs from the run() call.
 
-c) (To be implemented) Intercept a run() call and give control to DebugStepper
-   to let it perform stepping / continuing-to actions on the graph.
-
-b) (To be implemented in a future CL) Enter an instruction loop to let an
+c) (To be implemented in a future CL) Enter an instruction loop to let an
    external object (e.g., remote client) launch run() and cont() calls
    remotely.
 
@@ -47,7 +44,7 @@ b) (To be implemented in a future CL) Enter an instruction loop to let an
 3) The callback handles the request and returns a OnSessionInitResponse
    object with an action field, directing the wrapper session what to do next.
 
-If the action field in the OnSessionInitResponse is PROCEED, the constuctor
+If the action field in the OnSessionInitResponse is PROCEED, the constructor
 returns. Control is released back to the caller of the constructor, which can
 invoke run() method of wrapper session with the same syntax as a non-wrapped
 session, e.g.,:
@@ -70,17 +67,9 @@ A1) Right at the start of each run() call, the on_run_start() callback is
 
     If the action is NON_DEBUG_RUN, a non-debug (normal) run will ensue.
 
-    If the action is INVOKE_STEPPER, no run() call will be issued to the
-    wrapped session. But instead, a DebugStepper (i.e., "continuation
-    debugger") will be used to perform stepping / continue-to actions on
-    the graph.
-
-TODO(cais): The event loop for the DebugStepper will request additional
-   callbacks including on_cont_start() and on_cont_end(). Add those.
-
 A2) Right before the run() returns, the on_run_end() callback is invoked,
     with an OnRunEndRequest object as the argument, which carries information
-    including the actual action performed in the warpper run() call and the
+    including the actual action performed in the wrapper run() call and the
     run_metadata from the run() call.
 
 However, if the action field in OnSessionInitResponse is
@@ -93,9 +82,7 @@ B1) Callback on_instr_start() is invoked. The callback will return an
     OnInstrStartResponse object with an action field which can order one of
     the following actions:
         i) a run() call with fetches, feeds and debug_urls specified.
-       ii) a DebugStepper cont() call with target specified.
-      iii) value overrides in the cached tensors from the DebugStepper.
-       iv) exit the instruction loop.
+       ii) exit the instruction loop.
 
 B2) The wrapper session carries out the action specified above.
 
@@ -120,12 +107,12 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_utils
-from tensorflow.python.debug.lib import stepper
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import monitored_session
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 
 # Helper function.
@@ -234,10 +221,6 @@ class OnRunStartAction(object):
   # Run without debug tensor-watching.
   NON_DEBUG_RUN = "non_debug_run"
 
-  # Instead of running the fetches as a whole, as would normally happen, invoke
-  # the (to-be-implemented) debug stepper.
-  # TODO(cais): Remove "to-be-implemented".
-  INVOKE_STEPPER = "invoke_stepper"
 
 
 class OnRunStartResponse(object):
@@ -251,9 +234,9 @@ class OnRunStartResponse(object):
                action,
                debug_urls,
                debug_ops="DebugIdentity",
-               node_name_regex_whitelist=None,
-               op_type_regex_whitelist=None,
-               tensor_dtype_regex_whitelist=None,
+               node_name_regex_allowlist=None,
+               op_type_regex_allowlist=None,
+               tensor_dtype_regex_allowlist=None,
                tolerate_debug_op_creation_failures=False):
     """Constructor of `OnRunStartResponse`.
 
@@ -264,10 +247,10 @@ class OnRunStartResponse(object):
         during the run() call.
       debug_ops: (`str` or `list` of `str`) Debug op(s) to be used by the
         debugger.
-      node_name_regex_whitelist: Regular-expression whitelist for node
+      node_name_regex_allowlist: Regular-expression allowlist for node
         name.
-      op_type_regex_whitelist: Regular-expression whitelist for op type.
-      tensor_dtype_regex_whitelist: Regular-expression whitelist for tensor
+      op_type_regex_allowlist: Regular-expression allowlist for op type.
+      tensor_dtype_regex_allowlist: Regular-expression allowlist for tensor
         dtype.
       tolerate_debug_op_creation_failures: Whether debug op creation failures
         are to be tolerated.
@@ -281,9 +264,9 @@ class OnRunStartResponse(object):
 
     self.debug_ops = debug_ops
 
-    self.node_name_regex_whitelist = node_name_regex_whitelist
-    self.op_type_regex_whitelist = op_type_regex_whitelist
-    self.tensor_dtype_regex_whitelist = tensor_dtype_regex_whitelist
+    self.node_name_regex_allowlist = node_name_regex_allowlist
+    self.op_type_regex_allowlist = op_type_regex_allowlist
+    self.tensor_dtype_regex_allowlist = tensor_dtype_regex_allowlist
     self.tolerate_debug_op_creation_failures = (
         tolerate_debug_op_creation_failures)
 
@@ -339,9 +322,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
   methods such as on_session_init, on_run_start and on_run_end.
   """
 
-  # TODO(cais): Add on_cont_start and on_cont_end callbacks once the stepper is
-  # is available.
-
   def __init__(self, sess, thread_name_filter=None,
                pass_through_operrors=False):
     """Constructor of `BaseDebugWrapperSession`.
@@ -349,7 +329,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
     Args:
       sess: An (unwrapped) TensorFlow session instance. It should be a subtype
         of `BaseSession` or `tf.MonitoredSession`.
-      thread_name_filter: Regular-expression filter (whitelist) for name(s) of
+      thread_name_filter: Regular-expression filter (allowlist) for name(s) of
         thread(s) on which the wrapper session will be active. This regular
         expression is used in a start-anchored fashion on the thread name, i.e.,
         by applying the `match` method of the compiled pattern. The default
@@ -396,7 +376,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
     self._default_session_context_manager = None
 
     # A cache for callables created from CallableOptions.
-    self._cached_callables_from_options = dict()
+    self._cached_callables_from_options = {}
 
   @property
   def graph(self):
@@ -460,7 +440,19 @@ class BaseDebugWrapperSession(session.SessionInterface):
           "but are used simultaneously.")
 
     self.increment_run_call_count()
-    empty_fetches = not nest.flatten(fetches)
+
+    def is_empty(x):
+      """Check whether a possibly nested structure is empty."""
+      if not nest.is_nested(x):
+        return False
+      if isinstance(x, collections_abc.Mapping):
+        return is_empty(list(x.values()))
+      for item in x:
+        if not is_empty(item):
+          return False
+      return True
+
+    empty_fetches = is_empty(fetches)
     if empty_fetches:
       tf_logging.info(
           "Due to empty fetches, tfdbg Session wrapper is letting a "
@@ -487,106 +479,29 @@ class BaseDebugWrapperSession(session.SessionInterface):
     _check_type(run_start_resp, OnRunStartResponse)
 
     if run_start_resp.action == OnRunStartAction.DEBUG_RUN:
-      # Decorate RunOption to fill in debugger tensor watch specifications.
-      decorated_run_options = None
-      if callable_options:
-        callable_options_id = id(callable_options)
-        if callable_options_id not in self._cached_callables_from_options:
-          # Make a copy of callable_options to avoid mutating it.
-          new_callable_options = config_pb2.CallableOptions()
-          new_callable_options.CopyFrom(callable_options)
-          decorated_run_options = new_callable_options.run_options
-      else:
-        decorated_run_options = options or config_pb2.RunOptions()
-
-      run_metadata = run_metadata or config_pb2.RunMetadata()
-
-      if decorated_run_options:
-        self._decorate_run_options_for_debug(
-            decorated_run_options,
-            run_start_resp.debug_urls,
-            debug_ops=run_start_resp.debug_ops,
-            node_name_regex_whitelist=run_start_resp.node_name_regex_whitelist,
-            op_type_regex_whitelist=run_start_resp.op_type_regex_whitelist,
-            tensor_dtype_regex_whitelist=(
-                run_start_resp.tensor_dtype_regex_whitelist),
-            tolerate_debug_op_creation_failures=(
-                run_start_resp.tolerate_debug_op_creation_failures))
-
-      # Invoke the run() method of the wrapped Session. Catch any TensorFlow
-      # runtime errors.
-      tf_error = None
-      try:
-        if callable_runner:
-          retvals = callable_runner(*callable_runner_args,
-                                    options=decorated_run_options,
-                                    run_metadata=run_metadata)
-        elif callable_options:
-          # pylint:disable=protected-access
-          if callable_options_id in self._cached_callables_from_options:
-            callable_object = self._cached_callables_from_options[
-                callable_options_id]
-          else:
-            callable_object = self._sess._make_callable_from_options(
-                new_callable_options)
-            self._cached_callables_from_options[
-                callable_options_id] = callable_object
-          # pylint:enable=protected-access
-          retvals = callable_object(
-              *callable_runner_args, run_metadata=run_metadata)
-        else:
-          retvals = self._sess.run(fetches,
-                                   feed_dict=feed_dict,
-                                   options=decorated_run_options,
-                                   run_metadata=run_metadata)
-      except errors.OpError as op_error:
-        if self._pass_through_operrors:
-          raise op_error
-        tf_error = op_error
-        retvals = op_error
-
-      run_end_req = OnRunEndRequest(
-          run_start_resp.action,
-          run_metadata=run_metadata,
-          client_graph_def=self._sess.graph.as_graph_def(),
-          tf_error=tf_error)
-
+      retvals, run_end_req = self._run_with_debugging(
+          run_start_resp, fetches, feed_dict, options, run_metadata,
+          callable_runner, callable_runner_args, callable_options)
     elif run_start_resp.action == OnRunStartAction.PROFILE_RUN:
-      decorated_run_options = options or config_pb2.RunOptions()
-      run_metadata = run_metadata or config_pb2.RunMetadata()
-      self._decorate_run_options_for_profile(decorated_run_options)
-      if callable_runner:
-        retvals = callable_runner(*callable_runner_args,
-                                  options=decorated_run_options,
-                                  run_metadata=run_metadata)
-      else:
-        retvals = self._sess.run(fetches,
-                                 feed_dict=feed_dict,
-                                 options=decorated_run_options,
-                                 run_metadata=run_metadata)
-      run_end_req = OnRunEndRequest(
-          run_start_resp.action,
-          run_metadata=run_metadata,
-          client_graph_def=self._sess.graph.as_graph_def())
-    elif (run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN or
-          run_start_resp.action == OnRunStartAction.INVOKE_STEPPER):
-      if callable_runner:
-        raise NotImplementedError(
-            "Stepper mode is not implemented for callables created by "
-            "Session.make_callable().")
-
-      if run_start_resp.action == OnRunStartAction.INVOKE_STEPPER:
-        with stepper.NodeStepper(
-            self._sess, fetches, feed_dict) as node_stepper:
-          retvals = self.invoke_node_stepper(
-              node_stepper, restore_variable_values_on_exit=True)
-
+      retvals, run_end_req = self._run_with_profiling(
+          run_start_resp, fetches, feed_dict, options, run_metadata,
+          callable_runner, callable_runner_args, callable_options)
+    elif run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN:
       # Invoke run() method of the wrapped session.
-      retvals = self._sess.run(
-          fetches,
-          feed_dict=feed_dict,
-          options=options,
-          run_metadata=run_metadata)
+      if callable_runner:
+        retvals = callable_runner(*callable_runner_args)
+      elif callable_options:
+        # pylint:disable=protected-access
+        callable_object = self._sess._make_callable_from_options(
+            callable_options)
+        # pylint:enable=protected-access
+        retvals = callable_object(*callable_runner_args)
+      else:
+        retvals = self._sess.run(
+            fetches,
+            feed_dict=feed_dict,
+            options=options,
+            run_metadata=run_metadata)
 
       # Prepare arg for the on-run-end callback.
       run_end_req = OnRunEndRequest(run_start_resp.action)
@@ -600,6 +515,125 @@ class BaseDebugWrapperSession(session.SessionInterface):
     # Currently run_end_resp is only a placeholder. No action is taken on it.
 
     return retvals
+
+  def _run_with_debugging(self,
+                          run_start_resp,
+                          fetches,
+                          feed_dict,
+                          options,
+                          run_metadata,
+                          callable_runner,
+                          callable_runner_args,
+                          callable_options):
+    """Perform a session.run() or callable with debugging."""
+    # Decorate RunOption to fill in debugger tensor watch specifications.
+    decorated_run_options = None
+    if callable_options:
+      callable_options_id = id(callable_options)
+      if callable_options_id not in self._cached_callables_from_options:
+        # Make a copy of callable_options to avoid mutating it.
+        new_callable_options = config_pb2.CallableOptions()
+        new_callable_options.CopyFrom(callable_options)
+        decorated_run_options = new_callable_options.run_options
+    else:
+      decorated_run_options = options or config_pb2.RunOptions()
+
+    run_metadata = run_metadata or config_pb2.RunMetadata()
+
+    if decorated_run_options:
+      self._decorate_run_options_for_debug(
+          decorated_run_options,
+          run_start_resp.debug_urls,
+          debug_ops=run_start_resp.debug_ops,
+          node_name_regex_allowlist=(run_start_resp.node_name_regex_allowlist),
+          op_type_regex_allowlist=run_start_resp.op_type_regex_allowlist,
+          tensor_dtype_regex_allowlist=(
+              run_start_resp.tensor_dtype_regex_allowlist),
+          tolerate_debug_op_creation_failures=(
+              run_start_resp.tolerate_debug_op_creation_failures))
+
+    # Invoke the run() method of the wrapped Session. Catch any TensorFlow
+    # runtime errors.
+    tf_error = None
+    try:
+      if callable_runner:
+        retvals = callable_runner(*callable_runner_args,
+                                  options=decorated_run_options,
+                                  run_metadata=run_metadata)
+      elif callable_options:
+        # pylint:disable=protected-access
+        if callable_options_id in self._cached_callables_from_options:
+          callable_object = self._cached_callables_from_options[
+              callable_options_id]
+        else:
+          callable_object = self._sess._make_callable_from_options(
+              new_callable_options)
+          self._cached_callables_from_options[
+              callable_options_id] = callable_object
+        # pylint:enable=protected-access
+        retvals = callable_object(
+            *callable_runner_args, run_metadata=run_metadata)
+      else:
+        retvals = self._sess.run(fetches,
+                                 feed_dict=feed_dict,
+                                 options=decorated_run_options,
+                                 run_metadata=run_metadata)
+    except errors.OpError as op_error:
+      if self._pass_through_operrors:
+        raise op_error
+      tf_error = op_error
+      retvals = op_error
+
+    return retvals, OnRunEndRequest(
+        run_start_resp.action,
+        run_metadata=run_metadata,
+        client_graph_def=self._sess.graph.as_graph_def(),
+        tf_error=tf_error)
+
+  def _run_with_profiling(self,
+                          run_start_resp,
+                          fetches,
+                          feed_dict,
+                          options,
+                          run_metadata,
+                          callable_runner,
+                          callable_runner_args,
+                          callable_options):
+    """Perform a session.run() or callable with profiling."""
+    # Decorate RunOption to fill in debugger tensor watch specifications.
+    decorated_run_options = None
+    if callable_options:
+      callable_options_id = id(callable_options)
+      if callable_options_id not in self._cached_callables_from_options:
+        # Make a copy of callable_options to avoid mutating it.
+        new_callable_options = config_pb2.CallableOptions()
+        new_callable_options.CopyFrom(callable_options)
+        decorated_run_options = new_callable_options.run_options
+    else:
+      decorated_run_options = options or config_pb2.RunOptions()
+    self._decorate_run_options_for_profile(decorated_run_options)
+
+    run_metadata = run_metadata or config_pb2.RunMetadata()
+    if callable_runner:
+      retvals = callable_runner(*callable_runner_args,
+                                options=decorated_run_options,
+                                run_metadata=run_metadata)
+    elif callable_options:
+      # pylint:disable=protected-access
+      callable_object = self._sess._make_callable_from_options(
+          new_callable_options)
+      # pylint:enable=protected-access
+      retvals = callable_object(
+          *callable_runner_args, run_metadata=run_metadata)
+    else:
+      retvals = self._sess.run(fetches,
+                               feed_dict=feed_dict,
+                               options=decorated_run_options,
+                               run_metadata=run_metadata)
+    return retvals, OnRunEndRequest(
+        run_start_resp.action,
+        run_metadata=run_metadata,
+        client_graph_def=self._sess.graph.as_graph_def())
 
   def _is_disabled_thread(self):
     thread_name = threading.current_thread().name or ""
@@ -672,9 +706,9 @@ class BaseDebugWrapperSession(session.SessionInterface):
       run_options,
       debug_urls,
       debug_ops="DebugIdentity",
-      node_name_regex_whitelist=None,
-      op_type_regex_whitelist=None,
-      tensor_dtype_regex_whitelist=None,
+      node_name_regex_allowlist=None,
+      op_type_regex_allowlist=None,
+      tensor_dtype_regex_allowlist=None,
       tolerate_debug_op_creation_failures=False):
     """Modify a RunOptions object for debug tensor watching.
 
@@ -686,10 +720,10 @@ class BaseDebugWrapperSession(session.SessionInterface):
       debug_urls: (list of str) debug URLs to be entered in run_options.
         debug_tensor_watch_opts.
       debug_ops: (str or list of str) debug op(s) to be used by the debugger.
-      node_name_regex_whitelist: Regular-expression whitelist for node
+      node_name_regex_allowlist: Regular-expression allowlist for node
         name.
-      op_type_regex_whitelist: Regular-expression whitelist for op type.
-      tensor_dtype_regex_whitelist: Regular-expression whitelist for tensor
+      op_type_regex_allowlist: Regular-expression allowlist for op type.
+      tensor_dtype_regex_allowlist: Regular-expression allowlist for tensor
         dtype.
       tolerate_debug_op_creation_failures: Whether debug op creation failures
         are to be tolerated.
@@ -701,9 +735,9 @@ class BaseDebugWrapperSession(session.SessionInterface):
         self._sess.graph,
         debug_urls=debug_urls,
         debug_ops=debug_ops,
-        node_name_regex_whitelist=node_name_regex_whitelist,
-        op_type_regex_whitelist=op_type_regex_whitelist,
-        tensor_dtype_regex_whitelist=tensor_dtype_regex_whitelist,
+        node_name_regex_allowlist=node_name_regex_allowlist,
+        op_type_regex_allowlist=op_type_regex_allowlist,
+        tensor_dtype_regex_allowlist=tensor_dtype_regex_allowlist,
         tolerate_debug_op_creation_failures=tolerate_debug_op_creation_failures,
         reset_disk_byte_usage=(self._run_call_count == 1 or
                                self._is_disk_usage_reset_each_run()))
@@ -748,9 +782,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
     Returns:
       An instance of `OnRunStartResponse`, carrying information to
-        1) direct the wrapper session to perform a specified action (e.g., run
-          with or without debug tensor watching, invoking the stepper.)
-        2) debug URLs used to watch the tensors.
+        debug URLs used to watch the tensors.
     """
 
   @abc.abstractmethod
@@ -788,28 +820,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
   def close(self):
     self._sess.close()
 
-  # TODO(cais): Add _node_name_regex_whitelist and
-  #   _node_op_type_regex_whitelist.
-
-  def invoke_node_stepper(self,
-                          node_stepper,
-                          restore_variable_values_on_exit=True):
-    """Callback invoked when the client intends to step through graph nodes.
-
-    Args:
-      node_stepper: (stepper.NodeStepper) An instance of NodeStepper to be used
-        in this stepping session.
-      restore_variable_values_on_exit: (bool) Whether any variables whose values
-        have been altered during this node-stepper invocation should be restored
-        to their old values when this invocation ends.
-
-    Returns:
-      The same return values as the `Session.run()` call on the same fetches as
-        the NodeStepper.
-    """
-    raise NotImplementedError(
-        self.__class__.__name__ + " does not support node-stepper mode.")
-
+  # TODO(cais): Add _node_name_regex_allowlist and
+  #   _node_op_type_regex_allowlist.
 
   def should_stop(self):
     if hasattr(self._sess, "should_stop"):
@@ -825,9 +837,9 @@ class WatchOptions(object):
 
   def __init__(self,
                debug_ops=None,
-               node_name_regex_whitelist=None,
-               op_type_regex_whitelist=None,
-               tensor_dtype_regex_whitelist=None,
+               node_name_regex_allowlist=None,
+               op_type_regex_allowlist=None,
+               tensor_dtype_regex_allowlist=None,
                tolerate_debug_op_creation_failures=False):
     """Constructor of WatchOptions: Debug watch options.
 
@@ -835,17 +847,17 @@ class WatchOptions(object):
 
     Args:
       debug_ops: (`str` or `list of str`) Debug ops to be used.
-      node_name_regex_whitelist: Regular-expression whitelist for node_name,
+      node_name_regex_allowlist: Regular-expression allowlist for node_name,
         e.g., `"(weight_[0-9]+|bias_.*)"`
-      op_type_regex_whitelist: Regular-expression whitelist for the op type of
+      op_type_regex_allowlist: Regular-expression allowlist for the op type of
         nodes, e.g., `"(Variable|Add)"`.
-        If both `node_name_regex_whitelist` and `op_type_regex_whitelist`
+        If both `node_name_regex_allowlist` and `op_type_regex_allowlist`
         are set, the two filtering operations will occur in a logical `AND`
         relation. In other words, a node will be included if and only if it
-        hits both whitelists.
-      tensor_dtype_regex_whitelist: Regular-expression whitelist for Tensor
+        hits both allowlists.
+      tensor_dtype_regex_allowlist: Regular-expression allowlist for Tensor
         data type, e.g., `"^int.*"`.
-        This whitelist operates in logical `AND` relations to the two whitelists
+        This allowlist operates in logical `AND` relations to the two allowlists
         above.
       tolerate_debug_op_creation_failures: (`bool`) whether debug op creation
         failures (e.g., due to dtype incompatibility) are to be tolerated by not
@@ -855,19 +867,19 @@ class WatchOptions(object):
       self.debug_ops = debug_ops
     else:
       self.debug_ops = ["DebugIdentity"]
-    self.node_name_regex_whitelist = node_name_regex_whitelist
-    self.op_type_regex_whitelist = op_type_regex_whitelist
-    self.tensor_dtype_regex_whitelist = tensor_dtype_regex_whitelist
+    self.node_name_regex_allowlist = node_name_regex_allowlist
+    self.op_type_regex_allowlist = op_type_regex_allowlist
+    self.tensor_dtype_regex_allowlist = tensor_dtype_regex_allowlist
     self.tolerate_debug_op_creation_failures = (
         tolerate_debug_op_creation_failures)
 
   def __repr__(self):
-    return ("WatchOptions(debug_ops=%r, node_name_regex_whitelist=%r, "
-            "op_type_regex_whitelist=%r, tensor_dtype_regex_whitelist=%r, "
-            "tolerate_debug_op_creation_failures=%r)" % (
-                self.debug_ops, self.node_name_regex_whitelist,
-                self.op_type_regex_whitelist, self.tensor_dtype_regex_whitelist,
-                self.tolerate_debug_op_creation_failures))
+    return ("WatchOptions(debug_ops=%r, node_name_regex_allowlist=%r, "
+            "op_type_regex_allowlist=%r, tensor_dtype_regex_allowlist=%r, "
+            "tolerate_debug_op_creation_failures=%r)" %
+            (self.debug_ops, self.node_name_regex_allowlist,
+             self.op_type_regex_allowlist, self.tensor_dtype_regex_allowlist,
+             self.tolerate_debug_op_creation_failures))
 
 
 class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
@@ -939,14 +951,14 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
         OnRunStartAction.DEBUG_RUN,
         debug_urls,
         debug_ops=watch_opts.debug_ops,
-        node_name_regex_whitelist=watch_opts.node_name_regex_whitelist,
-        op_type_regex_whitelist=watch_opts.op_type_regex_whitelist,
-        tensor_dtype_regex_whitelist=watch_opts.tensor_dtype_regex_whitelist,
+        node_name_regex_allowlist=watch_opts.node_name_regex_allowlist,
+        op_type_regex_allowlist=watch_opts.op_type_regex_allowlist,
+        tensor_dtype_regex_allowlist=watch_opts.tensor_dtype_regex_allowlist,
         tolerate_debug_op_creation_failures=(
             watch_opts.tolerate_debug_op_creation_failures))
 
   def _prepare_run_watch_config(self, fetches, feed_dict):
-    """Get the debug_urls, and node/op whitelists for the current run() call.
+    """Get the debug_urls, and node/op allowlists for the current run() call.
 
     Args:
       fetches: Same as the `fetches` argument to `Session.run()`.
@@ -956,7 +968,7 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
       debug_urls: (str or list of str) Debug URLs for the current run() call.
         Currently, the list consists of only one URL that is a file:// URL.
       watch_options: (WatchOptions) The return value of a watch_fn, containing
-        options including debug_ops, and whitelists.
+        options including debug_ops, and allowlists.
     """
 
     debug_urls = self.prepare_run_debug_urls(fetches, feed_dict)
@@ -974,11 +986,3 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
     """See doc of BaseDebugWrapperSession.on_run_end."""
 
     return OnRunEndResponse()
-
-  def invoke_node_stepper(self,
-                          node_stepper,
-                          restore_variable_values_on_exit=True):
-    """See doc of BaseDebugWrapperSession.invoke_node_stepper."""
-
-    raise NotImplementedError(
-        "NonInteractiveDebugWrapperSession does not support node-stepper mode.")

@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
-
 #include "tensorflow/core/common_runtime/constant_folding.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -79,7 +78,7 @@ Status ShapeForPlaceholder(const TransformFuncContext& context,
   *result = {};
 
   // Check to see if we have been given a default for all placeholders.
-  if (context.params.count("type")) {
+  if (context.params.count("shape")) {
     if (context.params.at("shape").size() != 1) {
       return errors::InvalidArgument(
           "You must pass no more than one default 'shape' to "
@@ -90,10 +89,10 @@ Status ShapeForPlaceholder(const TransformFuncContext& context,
   }
 
   // See if there's a particular type specified for this placeholder.
-  if (context.params.count("name") || context.params.count("type_for_name")) {
+  if (context.params.count("name") || context.params.count("shape_for_name")) {
     if (!context.params.count("name") ||
-        !context.params.count("type_for_name") ||
-        (context.params.at("type_for_name").size() !=
+        !context.params.count("shape_for_name") ||
+        (context.params.at("shape_for_name").size() !=
          context.params.at("name").size())) {
       return errors::InvalidArgument(
           "You must pass a 'shape_for_name' arg for every 'name', e.g. "

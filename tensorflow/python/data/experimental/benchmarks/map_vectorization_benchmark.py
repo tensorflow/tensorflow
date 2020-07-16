@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
-from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
@@ -115,31 +114,27 @@ class MapVectorizationBenchmark(test.Benchmark):
 
   def _compare(self, input_dataset, map_fn, batch_size, input_size, str_id):
     num_elems = int(np.sum([np.prod(x) for x in input_size]))
-    name_template = "{}__batch_size_{}_input_element_size_{}_{}"
+    name_template = "{}_batch_size_{}_input_element_size_{}_{}"
 
-    base_dataset = input_dataset.map(map_fn).batch(batch_size)
+    unoptimized_dataset = input_dataset.map(map_fn).batch(batch_size)
 
     options = dataset_ops.Options()
-    opt_options = optimization_options.OptimizationOptions()
-    # Disable default map_and_batch_fusion optimization
-    opt_options.map_and_batch_fusion = False
-    options.experimental_optimization = opt_options
-    base_dataset = base_dataset.with_options(options)
+    options.experimental_optimization.apply_default_optimizations = False
+    unoptimized_dataset = unoptimized_dataset.with_options(options)
+    unoptimized_next = dataset_ops.make_one_shot_iterator(
+        unoptimized_dataset).get_next()
 
-    unoptimized_op = dataset_ops.make_one_shot_iterator(base_dataset).get_next()
-
-    optimized_options = dataset_ops.Options()
-    opt_options = optimization_options.OptimizationOptions()
-    opt_options.map_vectorization = True
-    optimized_options.experimental_optimization = opt_options
-    optimized = base_dataset.with_options(optimized_options)
-    optimized_op = dataset_ops.make_one_shot_iterator(optimized).get_next()
+    options = dataset_ops.Options()
+    options.experimental_optimization.map_vectorization.enabled = True
+    optimized_dataset = unoptimized_dataset.with_options(options)
+    optimized_next = dataset_ops.make_one_shot_iterator(
+        optimized_dataset).get_next()
 
     unoptimized_time = self._run(
-        unoptimized_op,
+        unoptimized_next,
         name=name_template.format(str_id, batch_size, num_elems, "unoptimized"))
     optimized_time = self._run(
-        optimized_op,
+        optimized_next,
         name=name_template.format(str_id, batch_size, num_elems, "optimized"))
 
     print("Batch size: {}\n"
@@ -149,32 +144,32 @@ class MapVectorizationBenchmark(test.Benchmark):
                                  (unoptimized_time / optimized_time)))
 
   # Known cheap functions
-  def benchmarkIdentity(self):
+  def benchmark_identity(self):
     self._benchmark_helper(lambda *args: [array_ops.identity(x) for x in args],
                            "identity")
 
-  def benchmarkAddConst(self):
+  def benchmark_add_const(self):
     self._benchmark_helper(lambda *args: [x + 1 for x in args], "add_const")
 
-  def benchmarkReturnConst(self):
+  def benchmark_return_const(self):
     self._benchmark_helper(lambda *args: [constant_op.constant(2)], "ret_const")
 
-  def benchmarkSelect(self):
+  def benchmark_select(self):
     self._benchmark_helper(lambda *args: args[0], "select")
 
-  def benchmarkCast(self):
+  def benchmark_cast(self):
     self._benchmark_helper(
-        lambda *args: [math_ops.cast(x, dtypes.float64) for x in args], "cast")
+        lambda *args: [math_ops.cast(x, dtypes.float32) for x in args], "cast")
 
-  def benchmarkReshape(self):
+  def benchmark_reshape(self):
     self._benchmark_helper(
         lambda *args: [array_ops.reshape(x, (-1, 30)) for x in args], "reshape")
 
-  def benchmarkDecodeCSV(self):
+  def benchmark_decode_csv(self):
     csv_fn, csv_factory = _generate_csv_test_case()
     self._benchmark_helper(csv_fn, "decode_csv", lambda: [csv_factory()])
 
-  def benchmarkParseSingleExample(self):
+  def benchmark_parse_single_example(self):
     # NOTE: Since we haven't implemented a vectorizer for "SerializeSparse",
     # this function is only naively vectorized.
     parse_fn, parse_factory = _generate_parse_single_example_test_case()
@@ -196,7 +191,8 @@ class MapVectorizationBenchmark(test.Benchmark):
       base_dataset = base_dataset.repeat()
       input_size = [
           tuple(shape.as_list())
-          for shape in nest.flatten(base_dataset.output_shapes)
+          for shape in nest.flatten(
+              dataset_ops.get_legacy_output_shapes(base_dataset))
       ]
       self._compare(base_dataset, map_fn, batch_size, input_size, str_id)
 

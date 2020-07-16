@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Declarations for 1D FFT routines in third_party/fft2d/fft.
+// Declarations for 1D FFT routines in third_party/fft2d/fft2d.
 
 #ifndef FFT2D_FFT_H__
 #define FFT2D_FFT_H__

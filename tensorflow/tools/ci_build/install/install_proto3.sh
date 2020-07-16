@@ -17,7 +17,7 @@
 # Install protobuf3.
 
 # Select protobuf version.
-PROTOBUF_VERSION="3.6.0"
+PROTOBUF_VERSION="3.6.1"
 protobuf_ver_flat=$(echo $PROTOBUF_VERSION | sed 's/\.//g' | sed 's/^0*//g')
 local_protobuf_ver=$(protoc --version)
 local_protobuf_ver_flat=$(echo $local_protobuf_ver | sed 's/\.//g' | sed 's/^0*//g')

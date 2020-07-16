@@ -20,13 +20,18 @@ from __future__ import print_function
 import gzip
 import os
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
 class CsvDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def setUp(self):
     self._num_cols = 7
@@ -61,11 +66,11 @@ class CsvDatasetSerializationTest(
 
     return readers.CsvDataset(filename, **kwargs).repeat(self._num_epochs)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializationCore(self):
     defs = [[0]] * self._num_cols
     self.run_core_tests(
         lambda: self.ds_func(record_defaults=defs, buffer_size=2),
-        lambda: self.ds_func(record_defaults=defs, buffer_size=12),
         self._num_outputs)
 
 

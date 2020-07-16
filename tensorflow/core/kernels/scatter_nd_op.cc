@@ -16,17 +16,17 @@ limitations under the License.
 // See docs in ../ops/state_ops.cc.
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
@@ -48,6 +48,19 @@ typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
+
+// Returns true if the three tensors have valid number of elements
+// If shape_input has 0 elements, then we need to have indices and updates with
+// exactly 0 elements too, otherwise we should error. If indices has 0 elements
+// then updates should also have 0 elements, otherwise we should error.
+bool ValidEmptyOutputShape(int64 num_inputs, int64 num_indices,
+                           int64 num_updates) {
+  if (num_indices == 0 && num_updates == 0) {
+    return true;  // regardless of num_inputs ?= 0, covers both cases
+  }
+  // now we want all 3 tensors to have values
+  return (num_inputs != 0 && num_indices != 0 && num_updates != 0);
+}
 
 template <typename Device, typename T, typename Index>
 class ScatterNdOp : public OpKernel {
@@ -77,12 +90,12 @@ class ScatterNdOp : public OpKernel {
     OP_REQUIRES_OK(c,
                    TensorShapeUtils::MakeShape(vec.data(), vec.size(), &shape));
 
-    OP_REQUIRES(
-        c,
-        (shape.num_elements() > 0 || (indices.shape().num_elements() == 0 &&
-                                      updates.shape().num_elements() == 0)),
-        errors::InvalidArgument(
-            "Indices and updates specified for empty output shape"));
+    OP_REQUIRES(c,
+                ValidEmptyOutputShape(shape_input.NumElements(),
+                                      indices.shape().num_elements(),
+                                      updates.shape().num_elements()),
+                errors::InvalidArgument(
+                    "Indices and updates specified for empty output shape"));
 
     const int64 outer_dims = indices.shape().dims() - 1;
 
@@ -148,12 +161,12 @@ class TensorScatterOp : public OpKernel {
 
     TensorShape shape = input.shape();
 
-    OP_REQUIRES(
-        c,
-        (shape.num_elements() > 0 || (indices.shape().num_elements() == 0 &&
-                                      updates.shape().num_elements() == 0)),
-        errors::InvalidArgument(
-            "Indices and updates specified for empty output shape"));
+    OP_REQUIRES(c,
+                ValidEmptyOutputShape(shape.num_elements(),
+                                      indices.shape().num_elements(),
+                                      updates.shape().num_elements()),
+                errors::InvalidArgument(
+                    "Indices and updates specified for empty output shape"));
 
     const int64 outer_dims = indices.shape().dims() - 1;
 
@@ -184,7 +197,7 @@ class TensorScatterOp : public OpKernel {
     }
 
     std::unique_ptr<Tensor> forwarded_input = c->forward_input(
-        2, 0, input.dtype(), shape, DEVICE_MEMORY, AllocatorAttributes());
+        0, 0, input.dtype(), shape, DEVICE_MEMORY, AllocatorAttributes());
 
     if (forwarded_input == nullptr) {
       // We were not able to forward the input, so we deep copy the tensor and
@@ -202,6 +215,8 @@ class TensorScatterOp : public OpKernel {
       OP_REQUIRES_OK(c, functor::DoScatterNd<Device, T, Index, op>(
                             c, indices, updates, shape, forwarded_input.get(),
                             false /*allocate*/));
+
+      c->set_output(0, *forwarded_input);
     }
   }
 };
@@ -215,6 +230,9 @@ class ScatterNdUpdateOp : public OpKernel {
     const DataType dt_ref = DataTypeToEnum<T>::ref();
     const DataType index_t = DataTypeToEnum<Index>::v();
     dtype_ = c->input_type(0);
+    // If we are updating a resource, we always use the exclusive lock.
+    // For ref types, we lock based on the use_locking parameter
+    // Otherwise, we don't mutate the input tensor (we copy-on-write if needed).
     if (c->input_type(0) == DT_RESOURCE) {
       // TODO(apassos): what to validate here?
     } else if (IsRefType(c->input_type(0))) {
@@ -228,10 +246,9 @@ class ScatterNdUpdateOp : public OpKernel {
 
   void Compute(OpKernelContext* c) override {
     if (dtype_ == DT_RESOURCE) {
-      Var* v;
+      core::RefCountPtr<Var> v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
-      core::ScopedUnref scoped_unref(v);
-      OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v));
+      OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
       mutex_lock m(*v->mu());
       DoCompute(c);
     } else if (use_exclusive_lock_) {
@@ -256,7 +273,7 @@ class ScatterNdUpdateOp : public OpKernel {
     TensorShape params_shape;
 
     if (dtype_ == DT_RESOURCE) {
-      Var* v;
+      core::RefCountPtr<Var> v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
       Tensor* t = v->tensor();
       params = *t;
@@ -338,7 +355,9 @@ class ScatterNdUpdateOp : public OpKernel {
   REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdSub",            \
                                     scatter_nd_op::UpdateOp::SUB);        \
   REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                             \
-      type, dev, "ResourceScatterNdAdd", scatter_nd_op::UpdateOp::ADD);
+      type, dev, "ResourceScatterNdAdd", scatter_nd_op::UpdateOp::ADD);   \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                             \
+      type, dev, "ResourceScatterNdSub", scatter_nd_op::UpdateOp::SUB);
 
 #define REGISTER_SCATTER_ND(type, dev) \
   REGISTER_SCATTER_ND_KERNEL(type, dev, "ScatterNd");
@@ -349,6 +368,16 @@ class ScatterNdUpdateOp : public OpKernel {
   REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                         \
       type, dev, "ResourceScatterNdUpdate", scatter_nd_op::UpdateOp::ASSIGN);
 
+#define REGISTER_SCATTER_ND_MIN_MAX(type, dev)                          \
+  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdMax",          \
+                                    scatter_nd_op::UpdateOp::MAX);      \
+  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdMin",          \
+                                    scatter_nd_op::UpdateOp::MIN);      \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                           \
+      type, dev, "ResourceScatterNdMin", scatter_nd_op::UpdateOp::MIN); \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                           \
+      type, dev, "ResourceScatterNdMax", scatter_nd_op::UpdateOp::MAX);
+
 // Registers CPU kernels.
 #define REGISTER_SCATTER_ND_ADD_SUB_CPU(type) \
   REGISTER_SCATTER_ND_ADD_SUB(type, CPU);
@@ -356,16 +385,21 @@ class ScatterNdUpdateOp : public OpKernel {
 #define REGISTER_SCATTER_ND_UPDATE_CPU(type) \
   REGISTER_SCATTER_ND_UPDATE(type, CPU);
 
+#define REGISTER_SCATTER_ND_MIN_MAX_CPU(type) \
+  REGISTER_SCATTER_ND_MIN_MAX(type, CPU);
+
 #define REGISTER_SCATTER_ND_CPU(type) REGISTER_SCATTER_ND(type, CPU);
 #define REGISTER_SCATTER_ND_GPU(type) REGISTER_SCATTER_ND(type, GPU);
 
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_ADD_SUB_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_CPU);
-TF_CALL_string(REGISTER_SCATTER_ND_CPU);
+TF_CALL_tstring(REGISTER_SCATTER_ND_CPU);
+TF_CALL_tstring(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_ADD_SUB_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_UPDATE_TYPE_INDEX_TYPE(type, index_type, \
                                                           dev)              \
@@ -392,6 +426,22 @@ TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
                           TensorScatterOp<dev##Device, type, index_type,      \
                                           scatter_nd_op::UpdateOp::SUB>)
 
+#define REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE(type, index_type, dev) \
+  REGISTER_KERNEL_BUILDER(Name("TensorScatterMin")                            \
+                              .Device(DEVICE_##dev)                           \
+                              .TypeConstraint<type>("T")                      \
+                              .TypeConstraint<index_type>("Tindices"),        \
+                          TensorScatterOp<dev##Device, type, index_type,      \
+                                          scatter_nd_op::UpdateOp::MIN>)
+
+#define REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE(type, index_type, dev) \
+  REGISTER_KERNEL_BUILDER(Name("TensorScatterMax")                            \
+                              .Device(DEVICE_##dev)                           \
+                              .TypeConstraint<type>("T")                      \
+                              .TypeConstraint<index_type>("Tindices"),        \
+                          TensorScatterOp<dev##Device, type, index_type,      \
+                                          scatter_nd_op::UpdateOp::MAX>)
+
 #define REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU(type)                    \
   REGISTER_SCATTER_ND_TENSOR_UPDATE_TYPE_INDEX_TYPE(type, int32, CPU); \
   REGISTER_SCATTER_ND_TENSOR_UPDATE_TYPE_INDEX_TYPE(type, int64, CPU);
@@ -404,6 +454,14 @@ TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
   REGISTER_SCATTER_ND_TENSOR_SUB_TYPE_INDEX_TYPE(type, int32, CPU); \
   REGISTER_SCATTER_ND_TENSOR_SUB_TYPE_INDEX_TYPE(type, int64, CPU);
 
+#define REGISTER_SCATTER_ND_TENSOR_MIN_CPU(type)                    \
+  REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE(type, int32, CPU); \
+  REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE(type, int64, CPU);
+
+#define REGISTER_SCATTER_ND_TENSOR_MAX_CPU(type)                    \
+  REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE(type, int32, CPU); \
+  REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE(type, int64, CPU);
+
 #define REGISTER_SCATTER_ND_TENSOR_CPU(type)   \
   REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU(type); \
   REGISTER_SCATTER_ND_TENSOR_ADD_CPU(type);    \
@@ -411,14 +469,17 @@ TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
 
 // Register TensorScatterUpdate/Add/Sub for all number types.
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_TENSOR_CPU);
+// Register min/max operations only for Real number types
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_TENSOR_MIN_CPU);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_TENSOR_MAX_CPU);
 // Register only TensorScatterUpdate for string/bool types as well.
-TF_CALL_string(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
+TF_CALL_tstring(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
 
 #undef REGISTER_SCATTER_ND_TENSOR_CPU
 
 // Registers GPU kernels.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_SCATTER_ND_ADD_SUB_GPU(type) \
   REGISTER_SCATTER_ND_ADD_SUB(type, GPU);
@@ -426,15 +487,22 @@ TF_CALL_bool(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
 #define REGISTER_SCATTER_ND_UPDATE_GPU(type) \
   REGISTER_SCATTER_ND_UPDATE(type, GPU);
 
+#define REGISTER_SCATTER_ND_MIN_MAX_GPU(type) \
+  REGISTER_SCATTER_ND_MIN_MAX(type, GPU);
+
 #define REGISTER_SCATTER_ND_ALL_GPU(type) \
   REGISTER_SCATTER_ND_ADD_SUB_GPU(type);  \
   REGISTER_SCATTER_ND_UPDATE_GPU(type);   \
   REGISTER_SCATTER_ND_GPU(type);
 
+// TODO(b/155931747): Use HostMemory for int32
 TF_CALL_int32(REGISTER_SCATTER_ND_ALL_GPU);
+TF_CALL_int32(REGISTER_SCATTER_ND_MIN_MAX_GPU);
+TF_CALL_int64(REGISTER_SCATTER_ND_ALL_GPU);
+TF_CALL_int64(REGISTER_SCATTER_ND_MIN_MAX_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ND_ALL_GPU);
-TF_CALL_complex64(REGISTER_SCATTER_ND_ALL_GPU);
-TF_CALL_complex128(REGISTER_SCATTER_ND_ALL_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_SCATTER_ND_ALL_GPU);
 
 #undef REGISTER_SCATTER_ND_ALL_GPU
 
@@ -445,12 +513,19 @@ TF_CALL_complex128(REGISTER_SCATTER_ND_ALL_GPU);
 #define REGISTER_SCATTER_ND_UPDATE_SYCL(type) \
   REGISTER_SCATTER_ND_UPDATE(type, SYCL);
 
+#define REGISTER_SCATTER_ND_MIN_MAX_GPU(type) \
+  REGISTER_SCATTER_ND_MIN_MAX(type, SYCL);
+
 TF_CALL_int32(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
 TF_CALL_int32(REGISTER_SCATTER_ND_UPDATE_SYCL);
+TF_CALL_int32(REGISTER_SCATTER_ND_MIN_MAX_SYCL);
 TF_CALL_bool(REGISTER_SCATTER_ND_UPDATE_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_MIN_MAX_SYCL);
+
 #undef REGISTER_SCATTER_ND_ADD_SUB_SYCL
+#undef REGISTER_SCATTER_ND_MIN_MAX_SYCL
 #undef REGISTER_SCATTER_ND_UPDATE_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
@@ -466,17 +541,36 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
   REGISTER_SCATTER_ND_TENSOR_SUB_TYPE_INDEX_TYPE(type, int32, GPU); \
   REGISTER_SCATTER_ND_TENSOR_SUB_TYPE_INDEX_TYPE(type, int64, GPU);
 
+#define REGISTER_SCATTER_ND_TENSOR_MIN_GPU(type)                    \
+  REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE(type, int32, GPU); \
+  REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE(type, int64, GPU);
+
+#define REGISTER_SCATTER_ND_TENSOR_MAX_GPU(type)                    \
+  REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE(type, int32, GPU); \
+  REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE(type, int64, GPU);
+
 #define REGISTER_SCATTER_ND_TENSOR_GPU(type)   \
   REGISTER_SCATTER_ND_TENSOR_ADD_GPU(type);    \
   REGISTER_SCATTER_ND_TENSOR_UPDATE_GPU(type); \
   REGISTER_SCATTER_ND_TENSOR_SUB_GPU(type);
 
+#define REGISTER_SCATTER_ND_TENSOR_GPU_MIN_MAX(type) \
+  REGISTER_SCATTER_ND_TENSOR_MIN_GPU(type);          \
+  REGISTER_SCATTER_ND_TENSOR_MAX_GPU(type);
+
+TF_CALL_int64(REGISTER_SCATTER_ND_TENSOR_GPU);
+TF_CALL_int64(REGISTER_SCATTER_ND_TENSOR_GPU_MIN_MAX);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_TENSOR_GPU);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_TENSOR_GPU_MIN_MAX);
+TF_CALL_COMPLEX_TYPES(REGISTER_SCATTER_ND_TENSOR_GPU);
 
 #undef REGISTER_SCATTER_ND_ADD
 #undef REGISTER_SCATTER_ND_ADD_SUB
 #undef REGISTER_SCATTER_ND_ADD_SUB_CPU
 #undef REGISTER_SCATTER_ND_ADD_SUB_GPU
+#undef REGISTER_SCATTER_ND_MIN_MAX
+#undef REGISTER_SCATTER_ND_MIN_MAX_CPU
+#undef REGISTER_SCATTER_ND_MIN_MAX_GPU
 #undef REGISTER_SCATTER_ND_UPDATE
 #undef REGISTER_SCATTER_ND_UPDATE_CPU
 #undef REGISTER_SCATTER_ND_UPDATE_GPU
@@ -488,12 +582,16 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_TENSOR_GPU);
 #undef REGISTER_SCATTER_ND_TENSOR_UPDATE_TYPE_INDEX_TYPE
 #undef REGISTER_SCATTER_ND_TENSOR_ADD_TYPE_INDEX_TYPE
 #undef REGISTER_SCATTER_ND_TENSOR_SUB_TYPE_INDEX_TYPE
+#undef REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE
+#undef REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE
 #undef REGISTER_SCATTER_ND_TENSOR_UPDATE_GPU
 #undef REGISTER_SCATTER_ND_TENSOR_ADD_GPU
 #undef REGISTER_SCATTER_ND_TENSOR_SUB_GPU
+#undef REGISTER_SCATTER_ND_TENSOR_MIN_GPU
+#undef REGISTER_SCATTER_ND_TENSOR_MAX_GPU
 #undef REGISTER_SCATTER_ND_TENSOR_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 // Check whether updates.shape = indices.shape[:batch_dim] +
@@ -546,8 +644,9 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
                                    "got shape: ", params_shape.DebugString());
   }
 
-  if (!(params_shape.num_elements() > 0 ||
-        (indices.NumElements() == 0 && updates.NumElements() == 0))) {
+  if (!ValidEmptyOutputShape(params_shape.num_elements(),
+                             indices_shape.num_elements(),
+                             updates_shape.num_elements())) {
     return errors::InvalidArgument(
         "Indices and updates specified for empty output.  indices shape: ",
         indices.shape().DebugString());
@@ -709,7 +808,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
     slice_shape.RemoveLastDims(1);
     return errors::InvalidArgument(
         "indices", SliceDebugString(slice_shape, bad_i), " = [",
-        str_util::Join(
+        absl::StrJoin(
             gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
         "] does not index into shape ", shape.DebugString());
   }
@@ -717,7 +816,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
 }
 }  // namespace functor
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, IXDIM)           \
@@ -745,21 +844,32 @@ namespace functor {
   DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::ADD);    \
   DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::SUB)
 
+#define DECLARE_GPU_SPECS_INDEX_MIN_MAX(T, Index)                     \
+  DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::MIN); \
+  DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::MAX)
+
 #define DECLARE_GPU_SPECS(T)         \
   DECLARE_GPU_SPECS_INDEX(T, int32); \
   DECLARE_GPU_SPECS_INDEX(T, int64)
 
-TF_CALL_int32(DECLARE_GPU_SPECS);
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
-TF_CALL_complex64(DECLARE_GPU_SPECS);
-TF_CALL_complex128(DECLARE_GPU_SPECS);
+#define DECLARE_GPU_SPECS_MIN_MAX(T)         \
+  DECLARE_GPU_SPECS_INDEX_MIN_MAX(T, int32); \
+  DECLARE_GPU_SPECS_INDEX_MIN_MAX(T, int64)
 
+TF_CALL_int32(DECLARE_GPU_SPECS);
+TF_CALL_int32(DECLARE_GPU_SPECS_MIN_MAX);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS_MIN_MAX);
+TF_CALL_COMPLEX_TYPES(DECLARE_GPU_SPECS);
+
+#undef DECLARE_GPU_SPECS_MIN_MAX
 #undef DECLARE_GPU_SPECS
+#undef DECLARE_GPU_SPECS_INDEX_MIN_MAX
 #undef DECLARE_GPU_SPECS_INDEX
 #undef DECLARE_GPU_SPECS_INDEX_OP
 
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

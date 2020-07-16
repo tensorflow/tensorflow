@@ -34,17 +34,16 @@ class InfeedThunk : public Thunk {
  public:
   // Constructs a InfeedThunk that copies data from the on-device
   // infeed queue into the buffers in the given shape tree.
-  InfeedThunk(const ShapeTree<BufferAllocation::Slice>& infeed_slices,
-              const HloInstruction* hlo_instruction);
+  InfeedThunk(ThunkInfo thunk_info,
+              const ShapeTree<BufferAllocation::Slice>& infeed_slices);
 
   InfeedThunk(const InfeedThunk&) = delete;
   InfeedThunk& operator=(const InfeedThunk&) = delete;
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   const ShapeTree<BufferAllocation::Slice> infeed_slices_;
 };
 

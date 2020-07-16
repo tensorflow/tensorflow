@@ -1,0 +1,11 @@
+op {
+  name: "DatasetFromGraph"
+  input_arg {
+    name: "graph_def"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+}

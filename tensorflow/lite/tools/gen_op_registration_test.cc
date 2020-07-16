@@ -32,11 +32,11 @@ class GenOpRegistrationTest : public ::testing::Test {
     }
   }
 
-  std::vector<string> builtin_ops_;
-  std::vector<string> custom_ops_;
+  std::map<string, std::pair<int, int>> builtin_ops_;
+  std::map<string, std::pair<int, int>> custom_ops_;
 };
 
-TEST_F(GenOpRegistrationTest, TestNonExistantFiles) {
+TEST_F(GenOpRegistrationTest, TestNonExistentFiles) {
   ReadOps("/tmp/tflite_model_1234");
   EXPECT_EQ(builtin_ops_.size(), 0);
   EXPECT_EQ(custom_ops_.size(), 0);
@@ -44,8 +44,27 @@ TEST_F(GenOpRegistrationTest, TestNonExistantFiles) {
 
 TEST_F(GenOpRegistrationTest, TestModels) {
   ReadOps("tensorflow/lite/testdata/test_model.bin");
-  EXPECT_THAT(builtin_ops_, ElementsAreArray({"CONV_2D"}));
-  EXPECT_THAT(custom_ops_, ElementsAreArray({"testing_op"}));
+  RegisteredOpMap builtin_expected{{"CONV_2D", {1, 1}}};
+  RegisteredOpMap custom_expected{{"testing_op", {1, 1}}};
+  EXPECT_THAT(builtin_ops_, ElementsAreArray(builtin_expected));
+  EXPECT_THAT(custom_ops_, ElementsAreArray(custom_expected));
+}
+
+TEST_F(GenOpRegistrationTest, TestVersionedModels) {
+  ReadOps("tensorflow/lite/testdata/test_model_versioned_ops.bin");
+  RegisteredOpMap builtin_expected{{"CONV_2D", {3, 3}}};
+  RegisteredOpMap custom_expected{{"testing_op", {2, 2}}};
+  EXPECT_THAT(builtin_ops_, ElementsAreArray(builtin_expected));
+  EXPECT_THAT(custom_ops_, ElementsAreArray(custom_expected));
+}
+
+TEST_F(GenOpRegistrationTest, TestBothModels) {
+  ReadOps("tensorflow/lite/testdata/test_model.bin");
+  ReadOps("tensorflow/lite/testdata/test_model_versioned_ops.bin");
+  RegisteredOpMap builtin_expected{{"CONV_2D", {1, 3}}};
+  RegisteredOpMap custom_expected{{"testing_op", {1, 2}}};
+  EXPECT_THAT(builtin_ops_, ElementsAreArray(builtin_expected));
+  EXPECT_THAT(custom_ops_, ElementsAreArray(custom_expected));
 }
 
 TEST_F(GenOpRegistrationTest, TestEmptyModels) {
@@ -81,7 +100,7 @@ TEST_F(GenOpRegistrationTest, TestNormalizeCustomOpName) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: FLAGS_logtostderr = true;
+  // On Linux, add: absl::SetFlag(&FLAGS_logtostderr, true);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

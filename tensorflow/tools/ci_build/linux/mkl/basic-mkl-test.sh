@@ -26,4 +26,12 @@ function upsearch () {
 # Set up WORKSPACE.
 WORKSPACE="${WORKSPACE:-$(upsearch WORKSPACE)}"
 
-BUILD_TAG=mkl-ci-test CI_BUILD_USER_FORCE_BADNAME=yes ${WORKSPACE}/tensorflow/tools/ci_build/ci_build.sh cpu tensorflow/tools/ci_build/linux/cpu/run_mkl.sh
+OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
+if [[ ! -z ${OMP_NUM_THREADS} ]]; then
+    if [[ ${OMP_NUM_THREADS} -gt 112 ]] || [[ ${OMP_NUM_THREADS} < 0 ]]; then
+        >&2 echo "Usage: OMP_NUM_THREADS value should be between 0 and 112"
+        exit 1
+    fi
+fi
+
+BUILD_TAG=mkl-ci-test CI_BUILD_USER_FORCE_BADNAME=yes ${WORKSPACE}/tensorflow/tools/ci_build/ci_build.sh cpu OMP_NUM_THREADS=${OMP_NUM_THREADS} tensorflow/tools/ci_build/linux/cpu/run_mkl.sh

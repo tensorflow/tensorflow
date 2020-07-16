@@ -71,7 +71,7 @@ class AssignOpTest(test.TestCase):
       var_value, op_value = self._initAssignSubFetch(x, y, use_gpu=False)
       self.assertAllEqual(x - y, var_value)
       self.assertAllEqual(x - y, op_value)
-      if test.is_built_with_cuda() and dtype in [np.float32, np.float64]:
+      if test.is_built_with_gpu_support() and dtype in [np.float32, np.float64]:
         var_value, op_value = self._initAssignFetch(x, y, use_gpu=True)
         self.assertAllEqual(y, var_value)
         self.assertAllEqual(y, op_value)
@@ -93,13 +93,13 @@ class AssignOpTest(test.TestCase):
       p = variables.VariableV1([1])
       a = state_ops.assign(p, data, validate_shape=False)
       a.op.run()
-      self.assertAllEqual(p.eval(), self.evaluate(data))
+      self.assertAllEqual(p, self.evaluate(data))
 
       # Assign to yet another shape
       data2 = array_ops.fill([10, 10], 1)
       a2 = state_ops.assign(p, data2, validate_shape=False)
       a2.op.run()
-      self.assertAllEqual(p.eval(), self.evaluate(data2))
+      self.assertAllEqual(p, self.evaluate(data2))
 
   @test_util.run_v1_only("b/120545219")
   def testInitRequiredAssignAdd(self):

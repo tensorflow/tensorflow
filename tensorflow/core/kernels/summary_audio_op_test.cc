@@ -81,7 +81,7 @@ TEST_F(SummaryAudioOpTest, Basic3D) {
   MakeOp(kMaxOutputs);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({}), {"tag"});
+  AddInputFromArray<tstring>(TensorShape({}), {"tag"});
   AddInputFromArray<float>(TensorShape({4, 2, 2}),
                            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
@@ -93,7 +93,7 @@ TEST_F(SummaryAudioOpTest, Basic3D) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
 
   CheckAndRemoveEncodedAudio(&summary);
   EXPECT_SummaryMatches(summary, R"(
@@ -115,7 +115,7 @@ TEST_F(SummaryAudioOpTest, Basic2D) {
   MakeOp(kMaxOutputs);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({}), {"tag"});
+  AddInputFromArray<tstring>(TensorShape({}), {"tag"});
   AddInputFromArray<float>(TensorShape({4, 4}),
                            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
@@ -127,7 +127,7 @@ TEST_F(SummaryAudioOpTest, Basic2D) {
   Tensor* out_tensor = GetOutput(0);
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
-  ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
+  ParseProtoUnlimited(&summary, out_tensor->scalar<tstring>()());
 
   CheckAndRemoveEncodedAudio(&summary);
   EXPECT_SummaryMatches(summary, R"(
