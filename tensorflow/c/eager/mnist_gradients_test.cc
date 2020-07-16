@@ -584,9 +584,13 @@ TEST_P(CppGradients, TestMNISTForward2) {
  
   // Run the Forward Pass
   std::vector<AbstractTensorHandle*> outputs(2);
+<<<<<<< HEAD
   Status s = RunModel(MNISTForwardModel, ctx.get(), {X.get(), W1.get(), W2.get(), y.get()},
                absl::MakeSpan(outputs),
                /*use_function=*/!std::get<2>(GetParam()), registry);
+=======
+  Status s = MNISTForwardModel(ctx.get(), {X.get(), W1.get(), W2.get(), y.get()}, absl::MakeSpan(outputs), registry);
+>>>>>>> 37eefa1df8... Adding tests for matmul grad, memory error
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   // Verify the Results
@@ -597,6 +601,10 @@ TEST_P(CppGradients, TestMNISTForward2) {
   float result_data[6] = {0};
   memcpy(&result_data[0], TF_TensorData(scores_tensor), TF_TensorByteSize(scores_tensor));
   
+<<<<<<< HEAD
+=======
+  //float expected_scores [6] = {0f, 12.0f, -1.0f, -17.0f, 16.8f, -28.0f};
+>>>>>>> 37eefa1df8... Adding tests for matmul grad, memory error
   float expected_scores [6] = {3.6f, -6.0f, 10.2f, -17.0f, 16.8f, -28.0f};
   float tolerance = 1e-3;
   for(int j = 0; j < 6; j++){
@@ -630,7 +638,10 @@ Status MatMulTransposeModel(AbstractContext* ctx,
  
   TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
+<<<<<<< HEAD
   tape->Watch(ToId(X));
+=======
+>>>>>>> 37eefa1df8... Adding tests for matmul grad, memory error
   tape->Watch(ToId(W1));  // Watch W1.
   std::vector<AbstractTensorHandle*> temp_outputs(1);
 
@@ -671,11 +682,15 @@ TEST_P(CppGradients, TestMatMulTranspose) {
   
   // Run the MatMul Op
   std::vector<AbstractTensorHandle*> outputs(1);
+<<<<<<< HEAD
   
   Status s = RunModel(MatMulTransposeModel, ctx.get(), {X.get(), W1.get()},
                absl::MakeSpan(outputs),
                /*use_function=*/!std::get<2>(GetParam()), registry);
 
+=======
+  Status s = MatMulTransposeModel(ctx.get(), {X.get(), W1.get()}, absl::MakeSpan(outputs), registry);
+>>>>>>> 37eefa1df8... Adding tests for matmul grad, memory error
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   
   // Verify the Results
@@ -686,6 +701,10 @@ TEST_P(CppGradients, TestMatMulTranspose) {
   float result_data[6] = {0};
   memcpy(&result_data[0], TF_TensorData(scores_tensor), TF_TensorByteSize(scores_tensor));
   
+<<<<<<< HEAD
+=======
+  
+>>>>>>> 37eefa1df8... Adding tests for matmul grad, memory error
   float expected_scores [6] = {13.0f, 18.0f, 17.0f, 24.0f, 21.0f, 30.0f};
   float tolerance = 1e-3;
 
@@ -695,6 +714,7 @@ TEST_P(CppGradients, TestMatMulTranspose) {
   
 }
 
+<<<<<<< HEAD
 // Test Model to verify ReluGrad functionality
 Status ReluGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
@@ -907,6 +927,8 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
   TF_DeleteTensor(dX_tensor);
 }
 
+=======
+>>>>>>> 37eefa1df8... Adding tests for matmul grad, memory error
 
 // TODO(b/160888630): Enable this test with mlir after AddInputList is
 // supported. It is needed for AddN op which is used for gradient aggregation.
