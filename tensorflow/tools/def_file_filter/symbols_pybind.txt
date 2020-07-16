@@ -99,8 +99,8 @@ tensorflow::data::GrpcDataServerBase::Join
 tensorflow::data::GrpcDataServerBase::Start
 tensorflow::data::GrpcDataServerBase::Stop
 tensorflow::data::GrpcDataServerBase::BoundPort
-tensorflow::data::MasterGrpcDataServer::NumWorkers
-tensorflow::data::NewMasterServer
+tensorflow::data::DispatchGrpcDataServer::NumWorkers
+tensorflow::data::NewDispatchServer
 tensorflow::data::NewWorkerServer
 
 [protos_all]  # device_lib, dtypes

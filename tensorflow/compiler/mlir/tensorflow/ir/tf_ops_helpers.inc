@@ -21,7 +21,7 @@ limitations under the License.
 // Propagates underscore and device attributes from src to dst.
 // TODO(b/158769932): This should be a general feature instead post some policy
 // discussion.
-static void PropagateAttributes(Operation *src, Operation *dst) {
+static void PropagateDeviceAndInternalAttrs(Operation *src, Operation *dst) {
   auto device = mlir::Identifier::get("device", src->getContext());
   for (auto named_attr : src->getAttrs()) {
     if (*named_attr.first.begin() == '_' || named_attr.first == device)

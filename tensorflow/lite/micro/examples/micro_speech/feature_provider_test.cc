@@ -24,14 +24,13 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestFeatureProvider) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   int8_t feature_data[kFeatureElementCount];
   FeatureProvider feature_provider(kFeatureElementCount, feature_data);
 
   int how_many_new_slices = 0;
   TfLiteStatus populate_status = feature_provider.PopulateFeatureData(
-      error_reporter, /* last_time_in_ms= */ 0, /* time_in_ms= */ 10000,
+      &micro_error_reporter, /* last_time_in_ms= */ 0, /* time_in_ms= */ 10000,
       &how_many_new_slices);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, populate_status);
   TF_LITE_MICRO_EXPECT_EQ(kFeatureSliceCount, how_many_new_slices);

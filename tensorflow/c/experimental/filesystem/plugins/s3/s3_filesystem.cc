@@ -14,14 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/filesystem/plugins/s3/s3_filesystem.h"
 
+#include <aws/core/config/AWSProfileConfigLoader.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/experimental/filesystem/plugins/s3/aws_crypto.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for S3 environments.
 // This filesystem will support `s3://` URI schemes.
+constexpr char kS3ClientAllocationTag[] = "S3ClientAllocation";
+constexpr int64_t kS3TimeoutMsec = 300000;  // 5 min
+
+constexpr char kExecutorTag[] = "TransferManagerExecutorAllocation";
+constexpr int kExecutorPoolSize = 25;
 
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
@@ -49,6 +58,123 @@ static void ParseS3Path(const Aws::String& fname, bool object_empty_ok,
   if (object->empty() && !object_empty_ok) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "S3 path doesn't contain an object name.");
+  }
+}
+
+static Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
+  ABSL_CONST_INIT static absl::Mutex cfg_lock(absl::kConstInit);
+  static bool init(false);
+  static Aws::Client::ClientConfiguration cfg;
+
+  absl::MutexLock l(&cfg_lock);
+
+  if (!init) {
+    const char* endpoint = getenv("S3_ENDPOINT");
+    if (endpoint) cfg.endpointOverride = Aws::String(endpoint);
+    const char* region = getenv("AWS_REGION");
+    // TODO (yongtang): `S3_REGION` should be deprecated after 2.0.
+    if (!region) region = getenv("S3_REGION");
+    if (region) {
+      cfg.region = Aws::String(region);
+    } else {
+      // Load config file (e.g., ~/.aws/config) only if AWS_SDK_LOAD_CONFIG
+      // is set with a truthy value.
+      const char* load_config_env = getenv("AWS_SDK_LOAD_CONFIG");
+      std::string load_config =
+          load_config_env ? absl::AsciiStrToLower(load_config_env) : "";
+      if (load_config == "true" || load_config == "1") {
+        Aws::String config_file;
+        // If AWS_CONFIG_FILE is set then use it, otherwise use ~/.aws/config.
+        const char* config_file_env = getenv("AWS_CONFIG_FILE");
+        if (config_file_env) {
+          config_file = config_file_env;
+        } else {
+          const char* home_env = getenv("HOME");
+          if (home_env) {
+            config_file = home_env;
+            config_file += "/.aws/config";
+          }
+        }
+        Aws::Config::AWSConfigFileProfileConfigLoader loader(config_file);
+        loader.Load();
+        auto profiles = loader.GetProfiles();
+        if (!profiles["default"].GetRegion().empty())
+          cfg.region = profiles["default"].GetRegion();
+      }
+    }
+    const char* use_https = getenv("S3_USE_HTTPS");
+    if (use_https) {
+      if (use_https[0] == '0')
+        cfg.scheme = Aws::Http::Scheme::HTTP;
+      else
+        cfg.scheme = Aws::Http::Scheme::HTTPS;
+    }
+    const char* verify_ssl = getenv("S3_VERIFY_SSL");
+    if (verify_ssl) {
+      if (verify_ssl[0] == '0')
+        cfg.verifySSL = false;
+      else
+        cfg.verifySSL = true;
+    }
+    // if these timeouts are low, you may see an error when
+    // uploading/downloading large files: Unable to connect to endpoint
+    int64_t timeout;
+    cfg.connectTimeoutMs =
+        absl::SimpleAtoi(getenv("S3_CONNECT_TIMEOUT_MSEC"), &timeout)
+            ? timeout
+            : kS3TimeoutMsec;
+    cfg.requestTimeoutMs =
+        absl::SimpleAtoi(getenv("S3_REQUEST_TIMEOUT_MSEC"), &timeout)
+            ? timeout
+            : kS3TimeoutMsec;
+    const char* ca_file = getenv("S3_CA_FILE");
+    if (ca_file) cfg.caFile = Aws::String(ca_file);
+    const char* ca_path = getenv("S3_CA_PATH");
+    if (ca_path) cfg.caPath = Aws::String(ca_path);
+    init = true;
+  }
+  return cfg;
+};
+
+static void GetS3Client(tf_s3_filesystem::S3File* s3_file) {
+  absl::MutexLock l(&s3_file->initialization_lock);
+
+  if (s3_file->s3_client.get() == nullptr) {
+    Aws::SDKOptions options;
+    options.cryptoOptions.sha256Factory_create_fn = []() {
+      return Aws::MakeShared<tf_s3_filesystem::AWSSHA256Factory>(
+          tf_s3_filesystem::AWSCryptoAllocationTag);
+    };
+    options.cryptoOptions.sha256HMACFactory_create_fn = []() {
+      return Aws::MakeShared<tf_s3_filesystem::AWSSHA256HmacFactory>(
+          tf_s3_filesystem::AWSCryptoAllocationTag);
+    };
+    options.cryptoOptions.secureRandomFactory_create_fn = []() {
+      return Aws::MakeShared<tf_s3_filesystem::AWSSecureRandomFactory>(
+          tf_s3_filesystem::AWSCryptoAllocationTag);
+    };
+    Aws::InitAPI(options);
+
+    // The creation of S3Client disables virtual addressing:
+    //   S3Client(clientConfiguration, signPayloads, useVirtualAddressing =
+    //   true)
+    // The purpose is to address the issue encountered when there is an `.`
+    // in the bucket name. Due to TLS hostname validation or DNS rules,
+    // the bucket may not be resolved. Disabling of virtual addressing
+    // should address the issue. See GitHub issue 16397 for details.
+    s3_file->s3_client = Aws::MakeShared<Aws::S3::S3Client>(
+        kS3ClientAllocationTag, GetDefaultClientConfig(),
+        Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false);
+  }
+}
+
+static void GetExecutor(tf_s3_filesystem::S3File* s3_file) {
+  absl::MutexLock l(&s3_file->initialization_lock);
+
+  if (s3_file->executor.get() == nullptr) {
+    s3_file->executor =
+        Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(
+            kExecutorTag, kExecutorPoolSize);
   }
 }
 

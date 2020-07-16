@@ -57,11 +57,11 @@ Status MergeVarHandleOps(const string& device, absl::Span<Node* const> nodes,
   std::vector<PartialTensorShape> shapes(num_var_handles);
   for (int i = 0; i < num_var_handles; ++i) {
     TF_RETURN_IF_ERROR(
-        GetNodeAttr(nodes[i]->attrs(), "container", &containers[i]));
+        GetNodeAttribute(nodes[i]->attrs(), "container", &containers[i]));
     TF_RETURN_IF_ERROR(
-        GetNodeAttr(nodes[i]->attrs(), "shared_name", &names[i]));
-    TF_RETURN_IF_ERROR(GetNodeAttr(nodes[i]->attrs(), "dtype", &dtypes[i]));
-    TF_RETURN_IF_ERROR(GetNodeAttr(nodes[i]->attrs(), "shape", &shapes[i]));
+        GetNodeAttribute(nodes[i]->attrs(), "shared_name", &names[i]));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(nodes[i]->attrs(), "dtype", &dtypes[i]));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(nodes[i]->attrs(), "shape", &shapes[i]));
   }
   NodeDefBuilder builder(graph->NewName(strings::StrCat(
                              "VarHandles_", MergedOpFingerprint(nodes))),
@@ -100,7 +100,7 @@ Status MergeReadVariableOps(Node* handle_op, Node* control_node,
 
   DataTypeVector dtypes(num_reads);
   for (int i = 0; i < num_reads; ++i) {
-    TF_RETURN_IF_ERROR(GetNodeAttr(nodes[i]->attrs(), "dtype", &dtypes[i]));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(nodes[i]->attrs(), "dtype", &dtypes[i]));
   }
   NodeDef node_def;
   node_def.set_name(graph->NewName(

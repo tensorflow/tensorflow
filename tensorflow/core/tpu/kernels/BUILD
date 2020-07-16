@@ -523,6 +523,7 @@ cc_library(
     deps = [
         ":tpu_program_c_api_hdrs",
         ":tpu_util_c_api_hdrs",
+        "//tensorflow/core/tpu:libtftpu_header",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )

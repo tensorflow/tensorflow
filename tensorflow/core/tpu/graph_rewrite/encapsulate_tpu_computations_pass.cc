@@ -57,7 +57,7 @@ const char* const kPivotForClusterAttr = "_pivot_for_cluster";
 
 // Finds the `index` of an _Arg or _Retval node.
 Status GetIndexAttr(const Node& n, int num_args, int* index) {
-  TF_RETURN_IF_ERROR(GetNodeAttr(n.attrs(), "index", index));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n.attrs(), "index", index));
   if (*index < 0 || *index >= num_args) {
     return errors::InvalidArgument("Invalid ", n.type_string(), " number ",
                                    *index);
@@ -86,7 +86,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     bool ret =
         arg_source_tensors.at(index).node->type_string() == kTPUReplicatedInput;
     if (is_packed) {
-      if (!ret || !GetNodeAttr(arg_source_tensors.at(index).node->attrs(),
+      if (!ret || !GetNodeAttribute(arg_source_tensors.at(index).node->attrs(),
                                "is_packed", is_packed)
                        .ok()) {
         *is_packed = false;
@@ -104,7 +104,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       return -1;
     }
     int replicated_index;
-    TF_CHECK_OK(GetNodeAttr(arg_source_tensors.at(index).node->attrs(), "index",
+    TF_CHECK_OK(GetNodeAttribute(arg_source_tensors.at(index).node->attrs(), "index",
                             &replicated_index));
 
     return replicated_index;
@@ -112,7 +112,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 
   auto is_guaranteed_constant = [&](const Node& n) {
     bool guaranteed_constant = false;
-    if (!GetNodeAttr(n.attrs(), "_is_guaranteed_constant", &guaranteed_constant)
+    if (!GetNodeAttribute(n.attrs(), "_is_guaranteed_constant", &guaranteed_constant)
              .ok()) {
       return false;
     }
@@ -160,7 +160,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       // overrides num_cores_per_replica.
       std::vector<int> shape;
       TF_RETURN_IF_ERROR(
-          GetNodeAttr(metadata_node->attrs(), "computation_shape", &shape));
+          GetNodeAttribute(metadata_node->attrs(), "computation_shape", &shape));
       if (!shape.empty()) {
         int64 num_cores_per_replica = 1LL;
         for (int dim : shape) {
@@ -427,13 +427,13 @@ Status MoveHeadOutsideCompilationToHost(
   TF_RETURN_IF_ERROR(xla_node->input_edges(&input_edges));
 
   std::vector<DataType> input_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->attrs(), "Tinputs", &input_types));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->attrs(), "Tinputs", &input_types));
   int num_distributed_vars;
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->attrs(), "num_distributed_variables",
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->attrs(), "num_distributed_variables",
                                  &num_distributed_vars));
   int num_replicas;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(xla_node->attrs(), "num_replicas", &num_replicas));
+      GetNodeAttribute(xla_node->attrs(), "num_replicas", &num_replicas));
   int old_num_per_replica_inputs =
       (input_types.size() - num_distributed_vars) / num_replicas;
   VLOG(5) << "old_num_per_replica_inputs: " << old_num_per_replica_inputs;
@@ -458,7 +458,7 @@ Status MoveHeadOutsideCompilationToHost(
         // Either e->src() is _Arg node, or it's in `node_images`.
         if (e->src()->IsArg()) {
           int index;
-          TF_RETURN_IF_ERROR(GetNodeAttr(e->src()->attrs(), "index", &index));
+          TF_RETURN_IF_ERROR(GetNodeAttribute(e->src()->attrs(), "index", &index));
           const int new_index =
               (index < old_num_per_replica_inputs)
                   ? (old_num_per_replica_inputs * replica_id + index)
@@ -511,11 +511,11 @@ Status MoveHeadOutsideCompilationToHost(
   // Process input edges for XLA node.
   int num_variables;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(xla_node->attrs(), "NumVariables", &num_variables));
+      GetNodeAttribute(xla_node->attrs(), "NumVariables", &num_variables));
   std::vector<DataType> broadcast_input_types, guaranteed_constant_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->attrs(), "Tbroadcast_inputs",
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->attrs(), "Tbroadcast_inputs",
                                  &broadcast_input_types));
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->attrs(), "Tguaranteed_constants",
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->attrs(), "Tguaranteed_constants",
                                  &guaranteed_constant_types));
   int num_other_inputs = num_distributed_vars + num_variables +
                          broadcast_input_types.size() +
@@ -623,7 +623,7 @@ Status MoveHeadOutsideCompilationToHost(
   for (Node* n : xla_graph->nodes()) {
     if (n->IsArg()) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), "index", &index));
       if (index >= old_num_per_replica_inputs) {
         index += new_arg_types.size();
         n->ClearAttr("index");
@@ -661,9 +661,9 @@ Status MoveHeadOutsideCompilationToHost(
   for (Node* n : oc_nodes_at_head) {
     bool is_lifted_arg;
     string outside_compilation_attr;
-    if (!TryGetNodeAttr(n->def(), kXlaIsLiftedArgAttrName, &is_lifted_arg) ||
-        !TryGetNodeAttr(n->def(), kOutsideCompilationAttr,
-                        &outside_compilation_attr)) {
+    if (!TryGetNodeAttribute(n->def(), kXlaIsLiftedArgAttrName, &is_lifted_arg) ||
+        !TryGetNodeAttribute(n->def(), kOutsideCompilationAttr,
+                             &outside_compilation_attr)) {
       continue;
     }
 
@@ -671,7 +671,7 @@ Status MoveHeadOutsideCompilationToHost(
     NodeDefBuilder ph_builder(absl::StrCat("placeholder_", n->name()),
                               "Placeholder");
     DataType dtype;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtype));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "T", &dtype));
     ph_builder.Attr("dtype", dtype);
     ph_builder.Attr(kXlaIsLiftedArgAttrName, true);
     ph_builder.Attr(kOutsideCompilationAttr, outside_compilation_attr);
@@ -685,7 +685,7 @@ Status MoveHeadOutsideCompilationToHost(
     TF_RETURN_IF_ERROR(n->input_node(0, &input_node));
     TF_RET_CHECK(input_node->type_string() == "_Arg");
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(input_node->def(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(input_node->def(), "index", &index));
     // TODO(b/74023706): for now we only support resource input (e.g. summary
     // writer), which is non-replicated input. Support replicated input as
     // well.
@@ -735,28 +735,28 @@ Status RemoveUnusedXlaInput(const string& xla_func_name, Graph* g,
                             Graph* xla_graph, Node* xla_node) {
   // Find unused _Arg nodes, and remove them.
   std::vector<DataType> input_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->def(), "Tinputs", &input_types));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->def(), "Tinputs", &input_types));
   std::vector<int> mirrored_variable_indices;
   if (xla_node->attrs().Find(TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR) !=
       nullptr) {
-    TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->def(),
+    TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->def(),
                                    TPUREPLICATE_MIRRORED_VAR_INDICES_ATTR,
                                    &mirrored_variable_indices));
   }
   std::vector<DataType> broadcast_input_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->def(), "Tbroadcast_inputs",
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->def(), "Tbroadcast_inputs",
                                  &broadcast_input_types));
   std::vector<DataType> guaranteed_constant_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->def(), "Tguaranteed_constants",
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->def(), "Tguaranteed_constants",
                                  &guaranteed_constant_types));
   int num_variables;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(xla_node->def(), "NumVariables", &num_variables));
+      GetNodeAttribute(xla_node->def(), "NumVariables", &num_variables));
   int num_replicas;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(xla_node->def(), "num_replicas", &num_replicas));
+      GetNodeAttribute(xla_node->def(), "num_replicas", &num_replicas));
   int num_distributed_vars;
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->attrs(), "num_distributed_variables",
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->attrs(), "num_distributed_variables",
                                  &num_distributed_vars));
   int num_per_replica_inputs =
       (input_types.size() - num_distributed_vars) / num_replicas;
@@ -779,7 +779,7 @@ Status RemoveUnusedXlaInput(const string& xla_func_name, Graph* g,
 
     num_args++;
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "index", &index));
     if (has_output) {
       arg_nodes_to_update.push_back(n);
       continue;
@@ -810,7 +810,7 @@ Status RemoveUnusedXlaInput(const string& xla_func_name, Graph* g,
   }
   for (Node* n : arg_nodes_to_update) {
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "index", &index));
     n->ClearAttr("index");
     n->AddAttr("index", arg_index_mapping[index]);
   }
@@ -1024,10 +1024,10 @@ Status MoveTailOutsideCompilationToHost(
   }
   std::vector<DataType> output_types;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(xla_node->attrs(), "output_types", &output_types));
+      GetNodeAttribute(xla_node->attrs(), "output_types", &output_types));
   int num_replicas;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(xla_node->attrs(), "num_replicas", &num_replicas));
+      GetNodeAttribute(xla_node->attrs(), "num_replicas", &num_replicas));
   int old_num_replicated_outputs = output_types.size() / num_replicas;
   int new_num_replicated_outputs =
       old_num_replicated_outputs + oc_input_edges.size();
@@ -1106,7 +1106,7 @@ Status MoveTailOutsideCompilationToHost(
         // Either e->dst() is _Retval, or it's in `node_images`.
         if (e->dst()->IsRetval()) {
           int index;
-          TF_RETURN_IF_ERROR(GetNodeAttr(e->dst()->attrs(), "index", &index));
+          TF_RETURN_IF_ERROR(GetNodeAttribute(e->dst()->attrs(), "index", &index));
           for (const auto& output :
                replicated_outputs[replica_id * old_num_replicated_outputs +
                                   index]) {
@@ -1190,7 +1190,7 @@ Status MoveTailOutsideCompilationToHost(
     NodeDefBuilder builder(absl::StrCat("placeholder_", n->name()),
                            "Placeholder");
     DataType dtype;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtype));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "T", &dtype));
     builder.Attr("dtype", dtype);
     builder.Attr(kXlaIsPlaceholderForTailOcAttrName, true);
     NodeDef def;
@@ -1215,13 +1215,13 @@ Status ReplaceArgUsedByOutsideCompilationWithPlaceholder(
     const string& outside_compilation_attr_name, const string& xla_func_name,
     Graph* g, Graph* xla_graph, Node* xla_node) {
   std::vector<DataType> input_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->attrs(), "Tinputs", &input_types));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->attrs(), "Tinputs", &input_types));
   int num_distributed_vars;
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->attrs(), "num_distributed_variables",
-                                 &num_distributed_vars));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->attrs(), "num_distributed_variables",
+                                      &num_distributed_vars));
   int num_replicas;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(xla_node->attrs(), "num_replicas", &num_replicas));
+      GetNodeAttribute(xla_node->attrs(), "num_replicas", &num_replicas));
   int num_per_replica_inputs =
       (input_types.size() - num_distributed_vars) / num_replicas;
 
@@ -1231,7 +1231,7 @@ Status ReplaceArgUsedByOutsideCompilationWithPlaceholder(
     }
 
     DataType dtype;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "T", &dtype));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "T", &dtype));
     // TODO(b/74023706): enable moving normal data tensors.
     if (dtype != DT_RESOURCE) {
       continue;
@@ -1259,7 +1259,7 @@ Status ReplaceArgUsedByOutsideCompilationWithPlaceholder(
 
     // Build an IdentityN node to record inputs for this _Arg node.
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "index", &index));
     string oc_identifier = absl::StrCat("oc_only_arg_", index);
     NodeDefBuilder id_builder(absl::StrCat(oc_identifier, "_inputs"),
                               "IdentityN");
@@ -1309,8 +1309,8 @@ Status ReplaceArgUsedByOutsideCompilationWithPlaceholder(
       ph_builder.Attr("dtype", dtype);
 
       string outside_compilation_attr;
-      TF_RETURN_IF_ERROR(GetNodeAttr(e->dst()->def(), kOutsideCompilationAttr,
-                                     &outside_compilation_attr));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(e->dst()->def(), kOutsideCompilationAttr,
+                                          &outside_compilation_attr));
       ph_builder.Attr(kOutsideCompilationAttr, outside_compilation_attr);
       ph_builder.Attr(kXlaOutsideCompilationInputsAttrName, oc_identifier);
       ph_builder.Attr(kXlaIsPlaceholderForArg, true);
@@ -1344,10 +1344,10 @@ Status RemoveUnusedXlaOutput(const string& xla_func_name, Graph* g,
   // Find unused _Retval nodes, and remove them.
   std::vector<DataType> output_types;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(xla_node->def(), "output_types", &output_types));
+      GetNodeAttribute(xla_node->def(), "output_types", &output_types));
   int num_replicas;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(xla_node->def(), "num_replicas", &num_replicas));
+      GetNodeAttribute(xla_node->def(), "num_replicas", &num_replicas));
   int num_replicated_outputs = output_types.size() / num_replicas;
   std::set<int> ret_indices_to_remove;
   std::vector<Node*> ret_nodes_to_update, nodes_to_remove;
@@ -1368,7 +1368,7 @@ Status RemoveUnusedXlaOutput(const string& xla_func_name, Graph* g,
     }
 
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "index", &index));
     ret_indices_to_remove.insert(index);
     nodes_to_remove.push_back(e->src());
     nodes_to_remove.push_back(n);
@@ -1390,7 +1390,7 @@ Status RemoveUnusedXlaOutput(const string& xla_func_name, Graph* g,
   }
   for (Node* n : ret_nodes_to_update) {
     int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), "index", &index));
     n->ClearAttr("index");
     n->AddAttr("index", ret_index_mapping[index]);
   }
@@ -1455,17 +1455,17 @@ Status RemoveEdgesBetweenArgAndRetval(const string& xla_func_name, Graph* g,
   // Collect data edges between _Arg and _Retval.
   int num_replicas;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(xla_node->def(), "num_replicas", &num_replicas));
+      GetNodeAttribute(xla_node->def(), "num_replicas", &num_replicas));
   std::vector<DataType> input_types;
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->def(), "Tinputs", &input_types));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->def(), "Tinputs", &input_types));
   int num_distributed_vars;
-  TF_RETURN_IF_ERROR(GetNodeAttr(xla_node->attrs(), "num_distributed_variables",
+  TF_RETURN_IF_ERROR(GetNodeAttribute(xla_node->attrs(), "num_distributed_variables",
                                  &num_distributed_vars));
   int old_num_per_replica_inputs =
       (input_types.size() - num_distributed_vars) / num_replicas;
   std::vector<DataType> output_types;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(xla_node->def(), "output_types", &output_types));
+      GetNodeAttribute(xla_node->def(), "output_types", &output_types));
   int old_num_outputs = output_types.size() / num_replicas;
   std::vector<const Edge*> edges;
   for (const Edge* e : xla_graph->edges()) {
@@ -1492,9 +1492,9 @@ Status RemoveEdgesBetweenArgAndRetval(const string& xla_func_name, Graph* g,
   TF_RETURN_IF_ERROR(xla_node->input_edges(&input_edges));
   for (const Edge* e : edges) {
     int arg_index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(e->src()->def(), "index", &arg_index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(e->src()->def(), "index", &arg_index));
     int ret_index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(e->dst()->def(), "index", &ret_index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(e->dst()->def(), "index", &ret_index));
 
     for (int replica_id = 0; replica_id < num_replicas; replica_id++) {
       int input_index;
@@ -1579,7 +1579,7 @@ Status RenameClustersWithDuplicatedNames(Graph* g) {
       continue;
     }
     string cluster_name;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), kTPUReplicateAttr, &cluster_name));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->def(), kTPUReplicateAttr, &cluster_name));
     cluster_name_to_metadata_nodes[cluster_name].push_back(n);
     cluster_names.insert(cluster_name);
   }
@@ -1619,7 +1619,7 @@ Status RenameClustersWithDuplicatedNames(Graph* g) {
 
         string cluster_name;
         for (const Edge* e : n->out_edges()) {
-          if (GetNodeAttr(e->dst()->def(), kTPUReplicateAttr, &cluster_name)
+          if (GetNodeAttribute(e->dst()->def(), kTPUReplicateAttr, &cluster_name)
                   .ok() &&
               cluster_name == iter.first &&
               visited.find(e->dst()) == visited.end()) {
@@ -1647,7 +1647,7 @@ xla::StatusOr<std::unique_ptr<FunctionBody>> InstantiateAssociatedFunction(
     FunctionLibraryDefinition* fld) {
   std::unique_ptr<FunctionBody> fbody;
   NameAttrList func_attr_list;
-  TF_RETURN_IF_ERROR(GetNodeAttr(n.def(), function_name_attr, &func_attr_list));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(n.def(), function_name_attr, &func_attr_list));
   const FunctionDef* fdef = fld->Find(func_attr_list.name());
   if (fdef == nullptr) {
     return errors::Internal("Cannot find ", function_name_attr, " function",
@@ -1664,7 +1664,7 @@ xla::StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForIfNode(
     const Node& if_node, FunctionLibraryDefinition* fld) {
   absl::flat_hash_set<int> args_to_lift_indices;
   std::vector<DataType> dtypes;
-  TF_RETURN_IF_ERROR(GetNodeAttr(if_node.def(), "Tin", &dtypes));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(if_node.def(), "Tin", &dtypes));
 
   int num_args = dtypes.size();
 
@@ -1727,7 +1727,7 @@ xla::StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForWhileNode(
   // DT_RESOURCE inputs are candidates.
   absl::flat_hash_set<int> result;
   std::vector<DataType> dtypes;
-  TF_RETURN_IF_ERROR(GetNodeAttr(while_node->def(), "T", &dtypes));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(while_node->def(), "T", &dtypes));
   for (int i = 0; i < dtypes.size(); i++) {
     // TODO(b/74023706): enable non resource inputs as well.
     if (dtypes[i] == DT_RESOURCE) {
@@ -1737,7 +1737,7 @@ xla::StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForWhileNode(
 
   // Remove inputs that are used in cond func.
   NameAttrList cond_func;
-  TF_RETURN_IF_ERROR(GetNodeAttr(while_node->def(), "cond", &cond_func));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(while_node->def(), "cond", &cond_func));
   const FunctionDef* cond_fdef = fld->Find(cond_func.name());
   if (cond_fdef == nullptr) {
     return errors::Internal("Cannot find cond function ", cond_func.name(),
@@ -1757,7 +1757,7 @@ xla::StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForWhileNode(
 
   // Remove inputs that are not loop invariant.
   NameAttrList body_func;
-  TF_RETURN_IF_ERROR(GetNodeAttr(while_node->def(), "body", &body_func));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(while_node->def(), "body", &body_func));
   const FunctionDef* body_fdef = fld->Find(body_func.name());
   if (body_fdef == nullptr) {
     return errors::Internal("Cannot find body function ", body_func.name(),
@@ -1928,8 +1928,8 @@ Status RemoveArgsToLiftFromFunctionBody(
 
     for (const Edge* e : out_edges_to_oc) {
       string outside_compilation_cluster;
-      TF_RETURN_IF_ERROR(GetNodeAttr(e->dst()->def(), kOutsideCompilationAttr,
-                                     &outside_compilation_cluster));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(e->dst()->def(), kOutsideCompilationAttr,
+                                          &outside_compilation_cluster));
       NodeDefBuilder ph_builder(fbody->graph->NewName("lifted_arg"),
                                 "Placeholder");
       ph_builder.Attr("dtype", arg_dtypes[i]);
@@ -2098,7 +2098,7 @@ Status LiftOutsideCompilationOnlyArgsFromWhileNode(
       args_to_lift, g, while_node));
 
   std::vector<DataType> dtypes;
-  TF_RETURN_IF_ERROR(GetNodeAttr(while_node->def(), "T", &dtypes));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(while_node->def(), "T", &dtypes));
 
   absl::flat_hash_map<int, int> index_mapping =
       ArgIndexMapping(dtypes.size(), args_to_lift);
@@ -2165,7 +2165,7 @@ Status LiftOutsideCompilationOnlyArgsFromIfNode(Graph* g, Node* if_node,
   if (args_to_lift.empty()) return Status::OK();
 
   std::vector<DataType> dtypes;
-  TF_RETURN_IF_ERROR(GetNodeAttr(if_node->def(), "Tin", &dtypes));
+  TF_RETURN_IF_ERROR(GetNodeAttribute(if_node->def(), "Tin", &dtypes));
 
   absl::flat_hash_map<int, int> index_mapping;
   int new_index = 0;
@@ -2236,7 +2236,7 @@ Status LiftOutsideCompilationOnlyArgsFromCallNode(
     func.set_name(call_node->type_string());
     *func.mutable_attr() = call_node->def().attr();
   } else if (call_node->IsPartitionedCall()) {
-    TF_RETURN_IF_ERROR(GetNodeAttr(call_node->def(), "f", &func));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(call_node->def(), "f", &func));
   } else {
     TF_RET_CHECK(call_node->type_string() ==
                  FunctionLibraryDefinition::kGradientOp);
@@ -2294,7 +2294,7 @@ Status LiftOutsideCompilationOnlyArgsFromCallNode(
   node_def.set_op(new_func_name);
   if (call_node->IsPartitionedCall()) {
     NameAttrList f;
-    TF_RETURN_IF_ERROR(GetNodeAttr(call_node->def(), "f", &f));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(call_node->def(), "f", &f));
     *node_def.mutable_attr() = f.attr();
   } else if (fld->Contains(call_node->type_string())) {
     *node_def.mutable_attr() = call_node->def().attr();
@@ -2374,7 +2374,7 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
           &func_rewritten));
       if (func_rewritten) {
         NameAttrList f;
-        TF_RETURN_IF_ERROR(GetNodeAttr(call_node->def(), "f", &f));
+        TF_RETURN_IF_ERROR(GetNodeAttribute(call_node->def(), "f", &f));
         f.set_name(new_func_name);
         call_node->ClearAttr("f");
         call_node->AddAttr("f", f);
@@ -2509,8 +2509,8 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
   std::vector<Node*> guarantee_const_nodes;
   for (Node* n : graph->nodes()) {
     string name;
-    if (TryGetNodeAttr(n->attrs(), kTPUReplicateAttr, &name) &&
-        !TryGetNodeAttr(n->attrs(), kOutsideCompilationAttr, &name)) {
+    if (TryGetNodeAttribute(n->attrs(), kTPUReplicateAttr, &name) &&
+        !TryGetNodeAttribute(n->attrs(), kOutsideCompilationAttr, &name)) {
       replicate_nodes.push_back(n);
     } else if (n->type_string() == "GuaranteeConst") {
       guarantee_const_nodes.push_back(n);
@@ -2563,18 +2563,18 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
   for (Node* replicate : replicate_nodes) {
     int num_replicas;
     TF_RETURN_IF_ERROR(
-        GetNodeAttr(replicate->attrs(), "num_replicas", &num_replicas));
+        GetNodeAttribute(replicate->attrs(), "num_replicas", &num_replicas));
     int variable_start_index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(replicate->attrs(), "_variable_start_index",
-                                   &variable_start_index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(replicate->attrs(), "_variable_start_index",
+                                        &variable_start_index));
     int guaranteed_const_start_index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(replicate->attrs(),
-                                   "_guaranteed_const_start_index",
-                                   &guaranteed_const_start_index));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(replicate->attrs(),
+                                        "_guaranteed_const_start_index",
+                                        &guaranteed_const_start_index));
 
     if (HasNodeAttr(replicate->def(), "use_tpu")) {
       bool use_tpu;
-      TF_RETURN_IF_ERROR(GetNodeAttr(replicate->attrs(), "use_tpu", &use_tpu));
+      TF_RETURN_IF_ERROR(GetNodeAttribute(replicate->attrs(), "use_tpu", &use_tpu));
       if (!use_tpu) {
         LOG(WARNING) << "use_tpu=false attr on a TPUReplicate node is ignored.";
       }
@@ -2593,18 +2593,18 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
       // replicas.
       int input_num_replicas;
       TF_RETURN_IF_ERROR(
-          GetNodeAttr(in_edges[pos]->src()->attrs(), "N", &input_num_replicas));
+          GetNodeAttribute(in_edges[pos]->src()->attrs(), "N", &input_num_replicas));
 
       bool is_mirrored_variable;
-      CHECK(GetNodeAttr(in_edges[pos]->src()->attrs(), "is_mirrored_variable",
-                        &is_mirrored_variable)
+      CHECK(GetNodeAttribute(in_edges[pos]->src()->attrs(), "is_mirrored_variable",
+                             &is_mirrored_variable)
                 .ok());
       if (is_mirrored_variable) {
         mirrored_variable_indices.push_back(pos);
       }
 
       bool is_packed = false;
-      GetNodeAttr(in_edges[pos]->src()->attrs(), "is_packed", &is_packed)
+      GetNodeAttribute(in_edges[pos]->src()->attrs(), "is_packed", &is_packed)
           .IgnoreError();
 
       bool is_distributed_variable =
@@ -2850,7 +2850,7 @@ Status ExtractOutsideCompilationPass::ProcessHeadTailOutsideCompilation(
   absl::node_hash_map<string, Node*> pivots;
   string cluster_name;
   for (Node* node : g->nodes()) {
-    if (TryGetNodeAttr(node->attrs(), kPivotForClusterAttr, &cluster_name)) {
+    if (TryGetNodeAttribute(node->attrs(), kPivotForClusterAttr, &cluster_name)) {
       pivots[cluster_name] = node;
     }
   }
@@ -2950,11 +2950,11 @@ Status ExtractOutsideCompilationPass::Run(
 
     string func_attr = iter->second;
     NameAttrList func;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), func_attr, &func));
+    TF_RETURN_IF_ERROR(GetNodeAttribute(n->attrs(), func_attr, &func));
 
     std::vector<string> core_list;
     TF_RETURN_IF_ERROR(
-        GetNodeAttr(n->attrs(), "host_compute_core", &core_list));
+        GetNodeAttribute(n->attrs(), "host_compute_core", &core_list));
     std::map<string, int> host_compute_core;
     TF_RETURN_IF_ERROR(ParseHostComputeCoreList(core_list, &host_compute_core));
 

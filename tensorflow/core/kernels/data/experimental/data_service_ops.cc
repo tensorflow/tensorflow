@@ -53,7 +53,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(
       ctx, AsGraphDef(ctx, dataset, std::move(serialization_ctx), &graph_def));
 
-  DataServiceMasterClient client(address, protocol);
+  DataServiceDispatcherClient client(address, protocol);
   int64 dataset_id;
   OP_REQUIRES_OK(ctx, client.RegisterDataset(graph_def, &dataset_id));
 

@@ -133,7 +133,7 @@ def _concat(prefix, suffix, static=False):
       raise ValueError("prefix tensor must be either a scalar or vector, "
                        "but saw tensor: %s" % p)
   else:
-    p = tensor_shape.as_shape(prefix)
+    p = tensor_shape.TensorShape(prefix)
     p_static = p.as_list() if p.ndims is not None else None
     p = (
         constant_op.constant(p.as_list(), dtype=dtypes.int32)
@@ -147,14 +147,14 @@ def _concat(prefix, suffix, static=False):
       raise ValueError("suffix tensor must be either a scalar or vector, "
                        "but saw tensor: %s" % s)
   else:
-    s = tensor_shape.as_shape(suffix)
+    s = tensor_shape.TensorShape(suffix)
     s_static = s.as_list() if s.ndims is not None else None
     s = (
         constant_op.constant(s.as_list(), dtype=dtypes.int32)
         if s.is_fully_defined() else None)
 
   if static:
-    shape = tensor_shape.as_shape(p_static).concatenate(s_static)
+    shape = tensor_shape.TensorShape(p_static).concatenate(s_static)
     shape = shape.as_list() if shape.ndims is not None else None
   else:
     if p is None or s is None:

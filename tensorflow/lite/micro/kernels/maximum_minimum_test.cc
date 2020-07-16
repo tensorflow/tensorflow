@@ -74,7 +74,7 @@ void TestMaxMinFloat(tflite::BuiltinOperator op,
 
   for (int i = 0; i < output_dims_count; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
-                              1e-5);
+                              1e-5f);
   }
 }
 

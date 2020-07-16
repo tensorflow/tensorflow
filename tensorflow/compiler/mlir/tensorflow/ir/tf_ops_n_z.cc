@@ -695,7 +695,8 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
   // First tensor dimension is dynamic.
   auto arg_ty = tensor.getType().dyn_cast<ShapedType>();
-  if (!arg_ty || arg_ty.getNumDynamicDims() != 1 || !arg_ty.isDynamicDim(0))
+  if (!arg_ty || !arg_ty.hasRank() || arg_ty.getNumDynamicDims() != 1 ||
+      !arg_ty.isDynamicDim(0))
     return {};
 
   // Argument tensor rank is equal to the number of packed dimensions.

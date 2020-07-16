@@ -371,11 +371,11 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
 }
 
 /* static */ void TpuCompileOpKernelCommon::ExitCountdown(
-    OpKernelContext* ctx, std::shared_ptr<std::atomic<bool>> done) {
+    Env* env, std::shared_ptr<std::atomic<bool>> done) {
   const int kSleepSeconds = 300;
   LOG(INFO) << "TpuCompileOp was cancelled. Sleeping for " << kSleepSeconds
             << " seconds to give time for TPUCompileOp to finished.";
-  ctx->env()->SleepForMicroseconds(kSleepSeconds * 1000000);
+  env->SleepForMicroseconds(kSleepSeconds * 1000000);
   if (done->load()) {
     // If the TPUCompileOp has finished, then terminate peacefully.
     return;
@@ -562,7 +562,8 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
 
         // Sleep and exit in another thread so the cancellation manager can
         // continue running callbacks.
-        ctx->env()->SchedClosure([ctx, done]() { ExitCountdown(ctx, done); });
+        Env* env = ctx->env();
+        env->SchedClosure([env, done]() { ExitCountdown(env, done); });
       });
 
   // If the RPC was cancelled before we registered the cancellation callback,

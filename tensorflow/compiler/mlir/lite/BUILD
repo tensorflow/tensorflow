@@ -25,7 +25,6 @@ package_group(
 filegroup(
     name = "tensorflow_lite_ops_td_files",
     srcs = [
-        "experimental/tfl_hardware_interfaces.td",
         "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
@@ -482,7 +481,6 @@ gentbl(
     td_srcs = [
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
-        "experimental/tfl_hardware_interfaces.td",
         "ir/tfl_op_interfaces.td",
     ],
 )

@@ -38,10 +38,6 @@ static const int kOutputElements = 4;
 static const int kOutputShape[] = {4, 2, 1, 1, 2};
 static const float kGoldenData[] = {6, 7, 18, 19};
 
-static TfLiteReducerParams params = {
-    true  // keep_dims
-};
-
 template <typename T>
 TfLiteStatus ValidateReduceGoldens(TfLiteTensor* tensors, int tensors_size,
                                    const T* expected_output_data,
@@ -135,11 +131,15 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(MeanFloat4DKeepDims) {
   float output_data[tflite::testing::kOutputElements];
 
+  TfLiteReducerParams params = {
+      true  // keep_dims
+  };
+
   tflite::testing::TestMeanFloatInput4D(
       tflite::testing::kInputShape4D, tflite::testing::kInputData4D,
       tflite::testing::kAxisShape, tflite::testing::kAxisData,
       tflite::testing::kOutputShape, tflite::testing::kGoldenData, output_data,
-      &tflite::testing::params);
+      &params);
 }
 
 TF_LITE_MICRO_TEST(MeanFloat4DWithoutKeepDims) {
