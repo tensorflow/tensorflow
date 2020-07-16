@@ -86,7 +86,7 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
 MemmappedFileSystem::MemmappedFileSystem() {}
 
-Status MemmappedFileSystem::FileExists(const string& fname) {
+Status MemmappedFileSystem::FileExists(const string& fname/*, TransactionToken* token */) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -98,7 +98,7 @@ Status MemmappedFileSystem::FileExists(const string& fname) {
 }
 
 Status MemmappedFileSystem::NewRandomAccessFile(
-    const string& filename, std::unique_ptr<RandomAccessFile>* result) {
+    const string& filename, std::unique_ptr<RandomAccessFile>* result/*, TransactionToken* token */) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -113,7 +113,7 @@ Status MemmappedFileSystem::NewRandomAccessFile(
 }
 
 Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& filename, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    const string& filename, std::unique_ptr<ReadOnlyMemoryRegion>* result/*, TransactionToken* token */) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -127,7 +127,7 @@ Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
   return Status::OK();
 }
 
-Status MemmappedFileSystem::GetFileSize(const string& filename, uint64* size) {
+Status MemmappedFileSystem::GetFileSize(const string& filename, uint64* size/*, TransactionToken* token */) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -139,7 +139,7 @@ Status MemmappedFileSystem::GetFileSize(const string& filename, uint64* size) {
   return Status::OK();
 }
 
-Status MemmappedFileSystem::Stat(const string& fname, FileStatistics* stat) {
+Status MemmappedFileSystem::Stat(const string& fname, FileStatistics* stat/*, TransactionToken* token */) {
   uint64 size;
   auto status = GetFileSize(fname, &size);
   if (status.ok()) {
@@ -149,40 +149,40 @@ Status MemmappedFileSystem::Stat(const string& fname, FileStatistics* stat) {
 }
 
 Status MemmappedFileSystem::NewWritableFile(const string& filename,
-                                            std::unique_ptr<WritableFile>* wf) {
+                                            std::unique_ptr<WritableFile>* wf/*, TransactionToken* token */) {
   return errors::Unimplemented("memmapped format doesn't support writing");
 }
 
 Status MemmappedFileSystem::NewAppendableFile(
-    const string& filename, std::unique_ptr<WritableFile>* result) {
+    const string& filename, std::unique_ptr<WritableFile>* result/*, TransactionToken* token */) {
   return errors::Unimplemented("memmapped format doesn't support writing");
 }
 
 Status MemmappedFileSystem::GetChildren(const string& filename,
-                                        std::vector<string>* strings) {
+                                        std::vector<string>* strings/*, TransactionToken* token */) {
   return errors::Unimplemented("memmapped format doesn't support GetChildren");
 }
 
 Status MemmappedFileSystem::GetMatchingPaths(const string& pattern,
-                                             std::vector<string>* results) {
+                                             std::vector<string>* results/*, TransactionToken* token */) {
   return errors::Unimplemented(
       "memmapped format doesn't support GetMatchingPaths");
 }
 
-Status MemmappedFileSystem::DeleteFile(const string& filename) {
+Status MemmappedFileSystem::DeleteFile(const string& filename/*, TransactionToken* token */) {
   return errors::Unimplemented("memmapped format doesn't support DeleteFile");
 }
 
-Status MemmappedFileSystem::CreateDir(const string& dirname) {
+Status MemmappedFileSystem::CreateDir(const string& dirname/*, TransactionToken* token */) {
   return errors::Unimplemented("memmapped format doesn't support CreateDir");
 }
 
-Status MemmappedFileSystem::DeleteDir(const string& dirname) {
+Status MemmappedFileSystem::DeleteDir(const string& dirname/*, TransactionToken* token */) {
   return errors::Unimplemented("memmapped format doesn't support DeleteDir");
 }
 
 Status MemmappedFileSystem::RenameFile(const string& filename_from,
-                                       const string& filename_to) {
+                                       const string& filename_to/*, TransactionToken* token */) {
   return errors::Unimplemented("memmapped format doesn't support RenameFile");
 }
 
