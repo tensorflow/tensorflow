@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/data/service/grpc_master_impl.h"
+#include "tensorflow/core/data/service/grpc_dispatcher_impl.h"
 
 #include "grpcpp/server_context.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -25,18 +25,18 @@ using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 using ::grpc::Status;
 
-GrpcMasterImpl::GrpcMasterImpl(ServerBuilder* server_builder,
-                               const std::string& protocol)
+GrpcDispatcherImpl::GrpcDispatcherImpl(ServerBuilder* server_builder,
+                                       const std::string& protocol)
     : impl_(protocol) {
   server_builder->RegisterService(this);
-  VLOG(1) << "Registered data service master";
+  VLOG(1) << "Registered data service dispatcher";
 }
 
-#define HANDLER(method)                                         \
-  Status GrpcMasterImpl::method(ServerContext* context,         \
-                                const method##Request* request, \
-                                method##Response* response) {   \
-    return ToGrpcStatus(impl_.method(request, response));       \
+#define HANDLER(method)                                             \
+  Status GrpcDispatcherImpl::method(ServerContext* context,         \
+                                    const method##Request* request, \
+                                    method##Response* response) {   \
+    return ToGrpcStatus(impl_.method(request, response));           \
   }
 HANDLER(RegisterWorker);
 HANDLER(WorkerUpdate);
