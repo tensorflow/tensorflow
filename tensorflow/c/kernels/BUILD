@@ -84,7 +84,7 @@ cc_library(
     srcs = ["tensor_shape_utils.cc",],
     hdrs = ["tensor_shape_utils.h",],
     deps = [ "//tensorflow/c:tf_tensor",], 
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
 )
 
 tf_cc_test(
@@ -116,7 +116,8 @@ filegroup(
 
 filegroup(
     name = "android_all_ops",
-    srcs = ["ops/bitcast.cc", 
-            "ops/summary.cc"
+    srcs = [
+        "ops/bitcast.cc", 
+        "ops/summary.cc"
     ],
 )

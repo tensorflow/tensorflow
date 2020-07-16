@@ -23,36 +23,37 @@ limitations under the License.
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
 
+namespace {
+
 // Struct that stores the status and TF_Tensor inputs to the opkernel. 
 // Used to delete tensor and status in its destructor upon kernel return. 
-namespace {
-  struct Params { 
-    TF_Tensor* tags; 
-    TF_Tensor* values; 
-    TF_Status* status; 
-    Params(TF_OpKernelContext* ctx) : tags(nullptr), 
-                                      values(nullptr), 
-                                      status(nullptr) {
-      status = TF_NewStatus();
-      TF_GetInput(ctx, 0, &tags, status);
-      if (TF_GetCode(status) == TF_OK) { 
-        TF_GetInput(ctx, 1, &values, status);
-      }
-    }; 
-    ~Params() { 
-      TF_DeleteStatus(status); 
-      TF_DeleteTensor(tags); 
-      TF_DeleteTensor(values);
+struct Params { 
+  TF_Tensor* tags; 
+  TF_Tensor* values; 
+  TF_Status* status; 
+  Params(TF_OpKernelContext* ctx) : tags(nullptr), 
+                                    values(nullptr), 
+                                    status(nullptr) {
+    status = TF_NewStatus();
+    TF_GetInput(ctx, 0, &tags, status);
+    if (TF_GetCode(status) == TF_OK) { 
+      TF_GetInput(ctx, 1, &values, status);
     }
   }; 
-} 
+  ~Params() { 
+    TF_DeleteStatus(status); 
+    TF_DeleteTensor(tags); 
+    TF_DeleteTensor(values);
+  }
+}; 
+
 
 // dummy functions used for kernel registration 
-static void* ScalarSummaryOp_Create(TF_OpKernelConstruction* ctx) {
+void* ScalarSummaryOp_Create(TF_OpKernelConstruction* ctx) {
   return nullptr; 
 }
 
-static void ScalarSummaryOp_Delete(void* kernel) {
+void ScalarSummaryOp_Delete(void* kernel) {
   return;
 }
 
@@ -60,10 +61,10 @@ static void ScalarSummaryOp_Delete(void* kernel) {
 bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2);
 // Returns a string representation of a single tag or empty string if there 
 // are multiple tags 
-static tensorflow::string SingleTag(TF_Tensor* tags); 
+tensorflow::string SingleTag(TF_Tensor* tags); 
 
 template<typename T>
-static void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
+void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   Params params(ctx);
   if (TF_GetCode(params.status) != TF_OK){ 
     TF_OpKernelContext_Failure(ctx, params.status);
@@ -105,7 +106,7 @@ static void ScalarSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
   TF_DeleteTensor(summary_tensor);
 }
 
-bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2){ 
+bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2) { 
   if (TF_NumDims(tensor1) != TF_NumDims(tensor2)) {
     return false; 
   }
@@ -117,7 +118,7 @@ bool IsSameSize(TF_Tensor* tensor1, TF_Tensor* tensor2){
   return true; 
 }
 
-static tensorflow::string SingleTag(TF_Tensor* tags){ 
+tensorflow::string SingleTag(TF_Tensor* tags) { 
   if (TF_TensorElementCount(tags) == 1) { 
     const char* single_tag = static_cast<tensorflow::tstring*>(
         TF_TensorData(tags))->c_str(); 
@@ -150,7 +151,7 @@ void RegisterScalarSummaryOpKernel() {
 
 // A dummy static variable initialized by a lambda whose side-effect is to
 // register the ScalarSummary kernel.                                                          
-TF_ATTRIBUTE_UNUSED static bool  IsScalarSummaryOpKernelRegistered = []() {                  
+TF_ATTRIBUTE_UNUSED bool  IsScalarSummaryOpKernelRegistered = []() {                  
   if (SHOULD_REGISTER_OP_KERNEL("ScalarSummary")) {                                                                           
     RegisterScalarSummaryOpKernel<tensorflow::int64>();    
     RegisterScalarSummaryOpKernel<tensorflow::uint64>();       
@@ -166,5 +167,6 @@ TF_ATTRIBUTE_UNUSED static bool  IsScalarSummaryOpKernelRegistered = []() {
     RegisterScalarSummaryOpKernel<double>();                                  
   }                                                                           
   return true;                                                                
-}();                                                                          
+}();          
 
+} // namespace

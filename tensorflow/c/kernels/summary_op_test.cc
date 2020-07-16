@@ -32,10 +32,9 @@ class DummyDevice : public DeviceBase {
 };
 
 // Helper for comparing ouput and expected output
-static void EXPECT_SummaryMatches(const Summary& actual,
-                                  const string& expected_str) {
+void ExpectSummaryMatches(const Summary& actual, const string& expected_str) {
   Summary expected;
-  (protobuf::TextFormat::ParseFromString(expected_str, &expected));
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(expected_str, &expected));
   EXPECT_EQ(expected.DebugString(), actual.DebugString());
 }
 
@@ -77,8 +76,9 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_summary,
   ASSERT_EQ(expected_code, ctx.status().code());
   if (expected_code == error::OK){ 
     Summary summary; 
-    ParseProtoUnlimited(&summary, ctx.mutable_output(0)->scalar<tstring>()());
-    EXPECT_SummaryMatches(summary, expected_summary);
+    ASSERT_TRUE(ParseProtoUnlimited(&summary, ctx.mutable_output(0)->
+        scalar<tstring>()()));
+    ExpectSummaryMatches(summary, expected_summary);
     
   } 
 }
@@ -133,7 +133,6 @@ TEST(ScalarSummaryOpTest, SimpleHalf) {
 }
 
 TEST(ScalarSummaryOpTest, Error_WrongDimsTags) {
-  int vectorSize = 3; 
   Tensor tags(DT_STRING, {2, 1}); 
   Tensor values(DT_FLOAT, {2}); 
   tags.matrix<tstring>()(0, 0) = "tag1";
