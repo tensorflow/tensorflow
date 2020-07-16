@@ -60,6 +60,8 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   bool ShouldRegisterTpuDeviceToDeviceCopy() override;
 
+  const tensorflow::tpu::TpuTopologyPtr GetTopologyPtr() override;
+
   bool Initialized() const override;
 
   Status Initialize(

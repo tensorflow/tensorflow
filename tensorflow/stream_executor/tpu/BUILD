@@ -286,3 +286,14 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
 )
+
+cc_library(
+    name = "tpu_topology_external",
+    srcs = ["tpu_topology.cc"],
+    hdrs = ["tpu_topology.h"],
+    deps = [
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
+    ],
+)

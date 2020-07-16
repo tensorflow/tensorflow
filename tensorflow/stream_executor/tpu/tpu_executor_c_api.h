@@ -149,6 +149,7 @@ SE_PlatformId TpuPlatform_Id(SE_Platform* platform);
 int64_t TpuPlatform_VisibleDeviceCount(SE_Platform* platform);
 int64_t TpuPlatform_TpuMemoryLimit(SE_Platform* platform);
 bool TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy(SE_Platform* platform);
+void* TpuPlatform_GetTopologyPtr(SE_Platform* platform);
 
 void TpuExecutor_Init(SE_StreamExecutor* executor, int device_ordinal,
                       SE_DeviceOptions* device_options, SE_Status* status);
@@ -296,6 +297,22 @@ int64_t HardwareLayout_ShapeSize(XLA_Shape* shape);
 XLA_ComputationPlacer* TpuComputationPlacer_New();
 void TpuComputationPlacer_Free(XLA_ComputationPlacer* placer);
 
+int TpuTopology_LogicalDevicesPerHost(void* tpu_topology,
+                                      TpuCoreTypeEnum tpu_core_type);
+int TpuTopology_LogicalDevicesPerChip(void* tpu_topology,
+                                      TpuCoreTypeEnum tpu_core_type);
+int TpuTopology_ChipBounds_X(void* tpu_topology);
+int TpuTopology_ChipBounds_Y(void* tpu_topology);
+int TpuTopology_ChipBounds_Z(void* tpu_topology);
+bool TpuTopology_HasChip(void* tpu_topology, int x, int y, int z);
+void* TpuTopology_Core(void* tpu_topology, int x, int y, int z,
+                       TpuCoreTypeEnum tpu_core_type, int index);
+int TpuCoreLocation_ChipCoordinates_X(void* tpu_core_location);
+int TpuCoreLocation_ChipCoordinates_Y(void* tpu_core_location);
+int TpuCoreLocation_ChipCoordinates_Z(void* tpu_core_location);
+int TpuCoreLocation_Index(void* tpu_core_location);
+int TpuCoreLocation_Id(void* tpu_core_location);
+
 struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_Free);
@@ -306,6 +323,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_VisibleDeviceCount);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_TpuMemoryLimit);
   TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy);
+  TFTPU_ADD_FN_IN_STRUCT(TpuPlatform_GetTopologyPtr);
+
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Init);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_Free);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_PlatformDeviceCount);
@@ -387,6 +406,19 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_Free);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerHost);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerChip);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_X);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Y);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Z);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_HasChip);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Core);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates_X);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates_Y);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates_Z);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Index);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Id);
 };
 }
 

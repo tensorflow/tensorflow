@@ -67,6 +67,7 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuPlatform_VisibleDeviceCount);
   TFTPU_SET_FN(executor_fn, TpuPlatform_TpuMemoryLimit);
   TFTPU_SET_FN(executor_fn, TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy);
+  TFTPU_SET_FN(executor_fn, TpuPlatform_GetTopologyPtr);
 
   TFTPU_SET_FN(executor_fn, TpuExecutor_Init);
   TFTPU_SET_FN(executor_fn, TpuExecutor_Free);
@@ -149,6 +150,19 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
 
   TFTPU_SET_FN(executor_fn, TpuComputationPlacer_New);
   TFTPU_SET_FN(executor_fn, TpuComputationPlacer_Free);
+
+  TFTPU_SET_FN(executor_fn, TpuTopology_LogicalDevicesPerHost);
+  TFTPU_SET_FN(executor_fn, TpuTopology_LogicalDevicesPerChip);
+  TFTPU_SET_FN(executor_fn, TpuTopology_ChipBounds_X);
+  TFTPU_SET_FN(executor_fn, TpuTopology_ChipBounds_Y);
+  TFTPU_SET_FN(executor_fn, TpuTopology_ChipBounds_Z);
+  TFTPU_SET_FN(executor_fn, TpuTopology_HasChip);
+  TFTPU_SET_FN(executor_fn, TpuTopology_Core);
+  TFTPU_SET_FN(executor_fn, TpuCoreLocation_ChipCoordinates_X);
+  TFTPU_SET_FN(executor_fn, TpuCoreLocation_ChipCoordinates_Y);
+  TFTPU_SET_FN(executor_fn, TpuCoreLocation_ChipCoordinates_Z);
+  TFTPU_SET_FN(executor_fn, TpuCoreLocation_Index);
+  TFTPU_SET_FN(executor_fn, TpuCoreLocation_Id);
 
   return tensorflow::Status::OK();
 }
