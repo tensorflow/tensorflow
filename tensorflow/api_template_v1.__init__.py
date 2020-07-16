@@ -156,4 +156,25 @@ if _running_from_pip_package():
     if _fi.file_exists(_plugin_dir):
       _ll.load_library(_plugin_dir)
 
+# Delete modules that should be hidden from dir().
+# Don't fail if these modules are not available.
+# For e.g. this file will be originally placed under tensorflow/_api/v1 which
+# does not have 'python', 'core' directories. Then, it will be copied
+# to tensorflow/ which does have these two directories.
+
+# pylint: disable=undefined-variable
+try:
+  del python
+except NameError:
+  pass
+try:
+  del core
+except NameError:
+  pass
+try:
+  del compiler
+except NameError:
+  pass
+
+
 # __all__ PLACEHOLDER

@@ -33,6 +33,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
+from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
@@ -225,7 +226,7 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
   @combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.all_strategies,
-          optimizer_fn=strategy_combinations.optimizers_v2,
+          optimizer_fn=optimizer_combinations.optimizers_v2,
           mode=['eager'],
           iteration_type=['iterator', 'dataset'],
           inside_func=[False, True],

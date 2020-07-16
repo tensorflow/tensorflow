@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -148,7 +147,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // DiscardEntryRef on every element of entries.
   void DiscardEntryRefs(gtl::ArraySlice<CompiledSubgraph*> entries);
 
-  string DebugString() const override { return "TpuCompilationCacheBase"; }
+  std::string DebugString() const override { return "TpuCompilationCacheBase"; }
 
  protected:
   std::string ConstructCompilationCacheKey(const TpuCompilationCacheKey& key) {

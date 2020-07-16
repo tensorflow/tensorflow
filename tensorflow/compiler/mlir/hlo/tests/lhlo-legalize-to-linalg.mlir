@@ -329,7 +329,7 @@ func @constant(%value: memref<i32>) {
   return
 }
 // CHECK: %[[CONSTANT:.*]] = constant 10 : i32
-// CHECK: store %[[CONSTANT]], %{{.*}}[] : memref<i32>
+// CHECK: affine.store %[[CONSTANT]], %{{.*}}[] : memref<i32>
 
 // -----
 

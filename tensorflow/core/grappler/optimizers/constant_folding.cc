@@ -2331,11 +2331,16 @@ Status ConstantFolding::SimplifyPad(const GraphProperties& properties,
   if (GetTensorFromConstNode(node->input(1), &paddings)) {
     // The node is replaceable iff all values in paddings are 0.
     bool replaceable = true;
-    // The operation requires it to be int32 value so we don't check for
-    // 1nt64.
-    const auto flatten = paddings.flat<int32>();
-    for (int j = 0; replaceable && j < flatten.size(); ++j) {
-      replaceable &= flatten(j) == 0;
+    if (paddings.dtype() == DT_INT32) {
+      const auto flatten = paddings.flat<int32>();
+      for (int j = 0; replaceable && j < flatten.size(); ++j) {
+        replaceable &= flatten(j) == 0;
+      }
+    } else {
+      const auto flatten = paddings.flat<int64>();
+      for (int j = 0; replaceable && j < flatten.size(); ++j) {
+        replaceable &= flatten(j) == 0;
+      }
     }
     if (replaceable) {
       ReplaceOperationWithIdentity(0, properties, node, optimized_graph);

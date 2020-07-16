@@ -67,6 +67,10 @@ constexpr TfLiteType typeToTfLiteType<std::complex<float>>() {
   return kTfLiteComplex64;
 }
 template <>
+constexpr TfLiteType typeToTfLiteType<std::complex<double>>() {
+  return kTfLiteComplex128;
+}
+template <>
 constexpr TfLiteType typeToTfLiteType<std::string>() {
   return kTfLiteString;
 }

@@ -267,6 +267,7 @@ std::string GenerateConvolutionTransposedCode(
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
     const OperationDef& definition, const CLDevice& device)
     : GPUOperation(definition) {
+  work_group_size_ = int3(8, 4, 1);
   if (device.IsPowerVR()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
   } else if (device.IsNvidia() || device.IsIntel()) {
@@ -281,16 +282,12 @@ ConvolutionTransposed4x4::ConvolutionTransposed4x4(
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
     ConvolutionTransposed4x4&& operation)
     : GPUOperation(std::move(operation)),
-      weights_upload_type_(operation.weights_upload_type_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+      weights_upload_type_(operation.weights_upload_type_) {}
 
 ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
     ConvolutionTransposed4x4&& operation) {
   if (this != &operation) {
     std::swap(weights_upload_type_, operation.weights_upload_type_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -321,9 +318,7 @@ absl::Status ConvolutionTransposed4x4::Compile(
 absl::Status ConvolutionTransposed4x4::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
   RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(args_.SetInt("filter_offset", 4 * 16 * src_[0]->Slices()));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetInt("filter_offset", 4 * 16 * src_[0]->Slices());
 }
 
 int3 ConvolutionTransposed4x4::GetGridSize() const {
@@ -331,11 +326,6 @@ int3 ConvolutionTransposed4x4::GetGridSize() const {
   const int grid_y = DivideRoundUp(dst_[0]->Height() + 2, 2);
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status ConvolutionTransposed4x4::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 bool IsConvolutionTransposed4x4Supported(

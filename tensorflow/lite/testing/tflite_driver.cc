@@ -78,7 +78,7 @@ unique_void_ptr make_type_erased_array(size_t size) {
 }
 
 bool IsQuantized(const TfLiteTensor& tensor) {
-  if (tensor.type != kTfLiteInt8) return false;
+  if (tensor.type != kTfLiteInt8 && tensor.type != kTfLiteInt16) return false;
 
   if (tensor.quantization.params != nullptr) {
     auto* quantization =
@@ -127,12 +127,34 @@ class TfLiteDriver::DataExpectation {
     return error_is_large;
   }
 
+  bool CompareTwoValuesHelper(double v1, double v2) {
+    double diff = std::abs(v1 - v2);
+    bool error_is_large = false;
+    // For very small numbers, try absolute error, otherwise go with
+    // relative.
+    if (std::abs(v2) < relative_threshold_) {
+      error_is_large = (diff > absolute_threshold_);
+    } else {
+      error_is_large = (diff > relative_threshold_ * std::abs(v2));
+    }
+    return error_is_large;
+  }
+
   bool CompareTwoValues(std::complex<float> v1, std::complex<float> v2) {
     return CompareTwoValues(v1.real(), v2.real()) ||
            CompareTwoValues(v1.imag(), v2.imag());
   }
 
+  bool CompareTwoValues(std::complex<double> v1, std::complex<double> v2) {
+    return CompareTwoValues(v1.real(), v2.real()) ||
+           CompareTwoValues(v1.imag(), v2.imag());
+  }
+
   bool CompareTwoValues(float v1, float v2) {
+    return CompareTwoValuesHelper(v1, v2);
+  }
+
+  bool CompareTwoValues(double v1, double v2) {
     return CompareTwoValuesHelper(v1, v2);
   }
 
@@ -263,13 +285,22 @@ bool TfLiteDriver::DataExpectation::QuantizedCheck(bool verbose,
   const int32_t zero_point = quantization->zero_point->data[0];
 
   bool good_result = true;
-  for (int i = 0; i < tensor.bytes; i++) {
-    const int32_t computed = tensor.data.int8[i];
+  int int_size = tensor.type == kTfLiteInt8 ? 1 : 2;
+  for (int i = 0; i < tensor.bytes / int_size; i++) {
+    int32_t computed =
+        tensor.type == kTfLiteInt8 ? tensor.data.int8[i] : tensor.data.i16[i];
     const float dequantized =
         static_cast<float>(scale * (computed - zero_point));
+    int error_multiplier = quantization_error_multiplier_;
+    // If we are doing int16 symmetric quantization of activations, we need to
+    // bump up the potential error. Since the weights are quantized to 8 bits
+    // and the activations are 16bits, the output is could be getting
+    // effectively 8bit error instead of 16bit error. So we need to multiply the
+    // error mulitplier by 255 (the difference in number of values between a
+    // 16bit and 8bit number)
+    if (tensor.type == kTfLiteInt16) error_multiplier *= 255;
     const float reference = Value<float>(data_.get(), i);
-    if (std::abs(dequantized - reference) >
-        quantization_error_multiplier_ * scale) {
+    if (std::abs(dequantized - reference) > error_multiplier * scale) {
       if (verbose) {
         std::cerr << "  index " << i << ": got " << dequantized
                   << ", but expected " << reference << std::endl;
@@ -297,6 +328,8 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
       return TypedCheck<uint8_t, float>(verbose, tensor);
     case kTfLiteInt8:
       return TypedCheck<int8_t, float>(verbose, tensor);
+    case kTfLiteInt16:
+      return TypedCheck<int16_t, float>(verbose, tensor);
     case kTfLiteBool:
       return TypedCheck<bool, float>(verbose, tensor);
     case kTfLiteString:
@@ -304,6 +337,9 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
     case kTfLiteComplex64:
       return TypedCheck<std::complex<float>, std::complex<float>>(verbose,
                                                                   tensor);
+    case kTfLiteComplex128:
+      return TypedCheck<std::complex<double>, std::complex<double>>(verbose,
+                                                                    tensor);
     default:
       fprintf(stderr, "Unsupported type %d in Check\n", tensor.type);
       return false;
@@ -433,6 +469,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
       SetTensorData(values, tensor->data.raw);
       break;
     }
+    case kTfLiteInt16: {
+      const auto& values = testing::Split<int16_t>(csv_values, ",");
+      if (!CheckSizes<int16_t>(tensor->bytes, values.size())) return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     case kTfLiteBool: {
       const auto& values = testing::Split<bool>(csv_values, ",");
       if (!CheckSizes<bool>(tensor->bytes, values.size())) return;
@@ -498,6 +540,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
     case kTfLiteInt8:
       expected_output_[id]->SetData<int8_t>(csv_values);
       break;
+    case kTfLiteInt16:
+      expected_output_[id]->SetData<int16_t>(csv_values);
+      break;
     case kTfLiteBool:
       expected_output_[id]->SetData<bool>(csv_values);
       break;
@@ -506,6 +551,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       break;
     case kTfLiteComplex64:
       expected_output_[id]->SetData<std::complex<float>>(csv_values);
+      break;
+    case kTfLiteComplex128:
+      expected_output_[id]->SetData<std::complex<double>>(csv_values);
       break;
     default:
       Invalidate(absl::StrCat("Unsupported tensor type ",
@@ -589,6 +637,8 @@ string TfLiteDriver::ReadOutput(int id) {
       return Join(tensor->data.uint8, num_elements, ",");
     case kTfLiteInt8:
       return Join(tensor->data.int8, num_elements, ",");
+    case kTfLiteInt16:
+      return Join(tensor->data.i16, num_elements, ",");
     case kTfLiteBool:
       return JoinDefault(tensor->data.b, num_elements, ",");
     default:

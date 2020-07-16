@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/ring_alg.h"
 
 #include <stdlib.h>
+
 #include <atomic>
 #include <functional>
 #include <utility>
@@ -240,7 +241,8 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   return Status::OK();
 }
 
-Status RingAlg::InitializeCollectiveContext(CollectiveContext* col_ctx) {
+Status RingAlg::InitializeCollectiveContext(
+    std::shared_ptr<CollectiveContext> col_ctx) {
   DCHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;
   col_params_ = &col_ctx->col_params;

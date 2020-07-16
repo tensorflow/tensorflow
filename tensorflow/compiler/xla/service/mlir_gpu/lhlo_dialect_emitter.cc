@@ -202,15 +202,14 @@ LhloDialectEmitter::LhloDialectEmitter(
       mlir_module_(mlir_module),
       builder_(mlir_module_.getContext()),
       buffer_assignment_(assignment),
-      platform_(platform),
-      thunk_sequence_(new ThunkSequence()) {
+      platform_(platform) {
   LLVMDialect* llvmDialect =
       mlir_module.getContext()->getRegisteredDialect<LLVMDialect>();
   pointer_size_ = llvmDialect->getLLVMModule().getDataLayout().getPointerSize();
 }
 
 void LhloDialectEmitter::AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
-  thunk_sequence_->push_back(std::move(thunk));
+  thunk_sequence_.push_back(std::move(thunk));
 }
 
 StatusOr<BufferAllocation::Slice> LhloDialectEmitter::MaybeGetAllocationSlice(
@@ -224,12 +223,6 @@ int64 LhloDialectEmitter::ByteSizeOf(const Shape& shape) const {
 
 absl::string_view LhloDialectEmitter::platform_name() const {
   return platform_->Name();
-}
-
-Status LhloDialectEmitter::EmitComputation(
-    const HloComputation& computation,
-    absl::Span<HloInstruction* const> ordering) {
-  return computation.AcceptOrdered(this, ordering);
 }
 
 StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(

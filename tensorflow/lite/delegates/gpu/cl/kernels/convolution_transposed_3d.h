@@ -38,10 +38,10 @@ namespace cl {
 class ConvolutionTransposed3D : public GPUOperation {
  public:
   ConvolutionTransposed3D() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
-
   absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   ConvolutionTransposed3D(ConvolutionTransposed3D&& operation);
@@ -65,9 +65,6 @@ class ConvolutionTransposed3D : public GPUOperation {
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
 
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
   bool weights_are_buffer_;
 
   int3 kernel_size_;
@@ -75,9 +72,6 @@ class ConvolutionTransposed3D : public GPUOperation {
   int3 padding_;
 
   int4 block_size_ = int4(1, 1, 1, 1);  // WHDS
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 template <DataType T>

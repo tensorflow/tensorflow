@@ -102,8 +102,6 @@ class KerasTensor(object):
 
     self._type_spec = type_spec
     self._inferred_shape_value = inferred_shape_value
-    if name is None and hasattr(type_spec, 'name'):
-      name = type_spec.name
     self._name = name
 
   @property
@@ -150,7 +148,7 @@ class KerasTensor(object):
           "compatible with supplied shape %s" %
           (self.shape, shape))
     else:
-      self._internal_type_spec._shape = shape  # pylint: disable=protected-access
+      self._type_spec._shape = shape  # pylint: disable=protected-access
 
   @property
   def dtype(self):

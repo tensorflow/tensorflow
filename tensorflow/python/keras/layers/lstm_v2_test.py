@@ -813,6 +813,34 @@ class LSTMV2Test(keras_parameterized.TestCase):
       model.compile(loss='mse', optimizer='sgd')
       model.fit(dataset)
 
+  def test_with_fully_masked_inputs(self):
+    num_samples = 8
+    timestep = 5
+    embedding_dim = 4
+    vocab_size = 20
+    units = 2
+
+    inputs = np.random.randint(0, vocab_size, size=(num_samples, timestep))
+    # Set the first inputs to be fully zero.
+    inputs[0, :] = 0.0
+
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.Embedding(
+            vocab_size,
+            embedding_dim,
+            mask_zero=True,
+            input_length=timestep,
+            batch_input_shape=(num_samples, timestep)))
+    layer = rnn.LSTM(units)
+    model.add(layer)
+    model.compile(
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    # Make sure it doesn't crash with cudnn kernel.
+    model.predict(inputs)
+
 
 @keras_parameterized.run_all_keras_modes(config=_config)
 class LSTMGraphRewriteTest(keras_parameterized.TestCase):

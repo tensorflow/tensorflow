@@ -21,9 +21,9 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
-include "mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
-include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
+include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
+include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_utils.td"
+include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
 
 def HLO_Dialect : Dialect {
   let name = "mhlo";
@@ -76,6 +76,7 @@ def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
   // TODO(b/130357376): Iota has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def HLO_DynamicIotaOp: HLO_Op<"dynamic_iota", [NoSideEffect]> {

@@ -302,7 +302,9 @@ class GenericTranspiler(object):
       user_context: An opaque object (may be None) that is forwarded to
         transform_ast, through the ctx.user_context argument.
     Returns:
-      Any. By default it returns the output of transform_ast.
+      Tuple[Any, Any]. By default it returns the output of transform_ast,
+      together with a `transformer.Context` containing information about the
+      transformation process.
     """
     future_features = inspect_utils.getfutureimports(fn)
     node, source = parser.parse_entity(fn, future_features=future_features)
@@ -322,22 +324,9 @@ class GenericTranspiler(object):
     context = transformer.Context(entity_info, namer, user_context)
 
     node = self._erase_arg_defaults(node)
-    node = self.transform_ast(node, context)
+    result = self.transform_ast(node, context)
 
-    if isinstance(node, gast.Lambda):
-      node = gast.Assign(
-          targets=[
-              gast.Name(
-                  new_name,
-                  ctx=gast.Store(),
-                  annotation=None,
-                  type_comment=None)
-          ],
-          value=node)
-    else:
-      node.name = new_name
-
-    return node, context
+    return result, context
 
 
 class PyToPy(GenericTranspiler):
@@ -453,6 +442,19 @@ class PyToPy(GenericTranspiler):
           logging.log(1, '%s is not cached for subkey %s', fn, cache_subkey)
           # TODO(mdan): Confusing overloading pattern. Fix.
           nodes, ctx = super(PyToPy, self).transform_function(fn, user_context)
+
+          if isinstance(nodes, gast.Lambda):
+            nodes = gast.Assign(
+                targets=[
+                    gast.Name(
+                        ctx.info.name,
+                        ctx=gast.Store(),
+                        annotation=None,
+                        type_comment=None)
+                ],
+                value=nodes)
+          else:
+            nodes.name = ctx.info.name
 
           if logging.has_verbosity(2):
             logging.log(2, 'Transformed %s:\n\n%s\n', fn, parser.unparse(nodes))

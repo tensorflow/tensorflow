@@ -230,11 +230,35 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "whitelisted_flex_ops_lib",
+    name = "allowlisted_flex_ops_lib",
     srcs = [
         "allowlisted_flex_ops.cc",
     ],
     hdrs = [
         "allowlisted_flex_ops.h",
+        "allowlisted_flex_ops_internal.h",
     ],
+)
+
+tf_cc_test(
+    name = "allowlisted_flex_ops_test",
+    size = "small",
+    srcs = [
+        "allowlisted_flex_ops_test.cc",
+    ],
+    deps = [
+        ":delegate",
+        ":allowlisted_flex_ops_lib",
+        "@com_google_googletest//:gtest",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }),
 )

@@ -70,12 +70,8 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//learning/brain/contrib/...",
-        "//learning/brain/research/...",
-        "//learning/faster_training/...",
         "//tensorflow/...",
         "//tensorflow_text/...",
-        "//third_party/car/...",
     ],
 )
 
@@ -817,9 +813,10 @@ cc_library(
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
-        "//tensorflow:android_x86": [],
-        "//tensorflow:arm_any": [],
+        "//tensorflow:android": [],
+        "//tensorflow:arm": [],
         "//tensorflow:ios": [],
+        "//tensorflow:linux_aarch64": [],
         "//tensorflow:linux_ppc64le": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
@@ -831,9 +828,10 @@ cc_library(
         "//third_party/eigen3",
         "//tensorflow/core/platform:dynamic_annotations",
     ] + select({
-        "//tensorflow:android_x86": [],
-        "//tensorflow:arm_any": [],
+        "//tensorflow:android": [],
+        "//tensorflow:arm": [],
         "//tensorflow:ios": [],
+        "//tensorflow:linux_aarch64": [],
         "//tensorflow:linux_ppc64le": [],
         "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
     }),
@@ -1506,7 +1504,7 @@ tf_kernel_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:ragged_to_dense_util",
+        "//tensorflow/core/util:ragged_to_dense_util",
     ],
 )
 
@@ -3222,8 +3220,8 @@ tf_cc_test(
     name = "eigen_mkldnn_contraction_kernel_test",
     size = "small",
     srcs = select({
-        "//tensorflow:android_x86": [],
-        "//tensorflow:arm_any": [],
+        "//tensorflow:android": [],
+        "//tensorflow:arm": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         ":no_mkldnn_contraction_kernel": [],
@@ -6907,6 +6905,7 @@ filegroup(
         "queue_op.cc",
         "queue_ops.cc",
         "ragged_range_op.cc",
+        "ragged_tensor_to_tensor_op.cc",
         "random_op.cc",
         "random_op_cpu.h",
         "random_poisson_op.cc",
