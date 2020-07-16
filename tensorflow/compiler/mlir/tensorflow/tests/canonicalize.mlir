@@ -755,6 +755,27 @@ func @foldFill() -> (tensor<3x2x1xf32>, tensor<*xf32>, tensor<*xcomplex<f32>>) {
   return %2, %3, %4 : tensor<3x2x1xf32>, tensor<*xf32>, tensor<*xcomplex<f32>>
 }
 
+// CHECK-LABEL: foldIf
+func @foldIf(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tensor<f32>) {
+  %0 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %1 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+
+  // CHECK: %0 = "tf.PartitionedCall"(%arg0, %arg1)
+  // CHECK-SAME: device = "noodle"
+  // CHECK-SAME: f = @sub
+  %2 = "tf.If"(%0, %arg0, %arg1) {then_branch = @add, else_branch = @sub, output_shapes = [#tf.shape<>], device = "noodle", is_stateless = true} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: %1 = "tf.StatefulPartitionedCall"(%0, %arg1)
+  // CHECK-SAME: _underscore_attr = "something"
+  // CHECK-SAME: f = @add
+  %3 = "tf.If"(%1, %2, %arg1) {then_branch = @add, else_branch = @sub, output_shapes = [#tf.shape<>], _underscore_attr = "something", is_stateless = false} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  // CHECK: %2 = "tf.If"
+  %4 = "tf.If"(%arg2, %3, %arg1) {then_branch = @add, else_branch = @sub, is_stateless = false} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  // CHECK: return %2
+  return %4 : tensor<f32>
+}
+
 // CHECK-LABEL: foldCase
 func @foldCase(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   %2 = constant dense<1> : tensor<i32>

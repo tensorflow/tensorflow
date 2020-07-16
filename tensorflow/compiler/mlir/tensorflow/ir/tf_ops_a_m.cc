@@ -463,7 +463,7 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
   auto call_op = rewriter.create<PartitionedCallOp>(
       op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
       /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-  PropagateAttributes(op.getOperation(), call_op);
+  PropagateDeviceAndInternalAttrs(op.getOperation(), call_op);
   rewriter.replaceOp(op, call_op.getResults());
   return success();
 }
@@ -1613,6 +1613,56 @@ static LogicalResult Verify(IfOp op) {
                         else_result_type, result_type, i));
   }
   return success();
+}
+
+class FoldConstantIfOp : public OpRewritePattern<TF::IfOp> {
+ public:
+  explicit FoldConstantIfOp(MLIRContext *context)
+      : OpRewritePattern<TF::IfOp>(context) {}
+  LogicalResult matchAndRewrite(TF::IfOp op,
+                                PatternRewriter &rewriter) const override;
+
+ private:
+  template <typename T>
+  struct CallOpType {
+    using CallOp = T;
+  };
+};
+
+LogicalResult FoldConstantIfOp::matchAndRewrite(
+    TF::IfOp op, PatternRewriter &rewriter) const {
+  // Extract the constant cond value.
+  DenseIntElementsAttr cond_attr;
+  if (!matchPattern(op.cond(), m_Constant(&cond_attr))) return failure();
+
+  // Cond value must be a scalar.
+  if (cond_attr.getNumElements() != 1) return failure();
+
+  // Select a branch function.
+  bool cond = cond_attr.getSplatValue<BoolAttr>().getValue();
+  FlatSymbolRefAttr func = cond ? op.then_branchAttr() : op.else_branchAttr();
+
+  // Replace IfOp with PartitionedCallOp or StatefulPartitionedCallOp.
+  auto rewrite = [&](auto op_type) {
+    auto empty = rewriter.getStringAttr("");
+    auto call_op = rewriter.create<typename decltype(op_type)::CallOp>(
+        op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
+        /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
+    PropagateDeviceAndInternalAttrs(op.getOperation(), call_op);
+    rewriter.replaceOp(op, call_op.getResults());
+  };
+
+  if (op.is_stateless())
+    rewrite(CallOpType<PartitionedCallOp>{});
+  else
+    rewrite(CallOpType<StatefulPartitionedCallOp>{});
+
+  return success();
+}
+
+void IfOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                       MLIRContext *context) {
+  results.insert<FoldConstantIfOp>(context);
 }
 
 //===----------------------------------------------------------------------===//
