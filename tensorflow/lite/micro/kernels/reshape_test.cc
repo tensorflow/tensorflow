@@ -46,8 +46,8 @@ void TestReshapeImpl(TfLiteContext* context, TfLiteNode* node,
   node->custom_initial_data = nullptr;
   node->custom_initial_data_size = 0;
 
-  TF_LITE_MICRO_EXPECT_EQ(registration->init, nullptr);
-  TF_LITE_MICRO_EXPECT_EQ(registration->free, nullptr);
+  TF_LITE_MICRO_EXPECT(registration->init == nullptr);
+  TF_LITE_MICRO_EXPECT(registration->free == nullptr);
 
   if (registration->prepare) {
     // Error can happen either in Prepare or eval stage.
@@ -64,14 +64,14 @@ void TestReshapeImpl(TfLiteContext* context, TfLiteNode* node,
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(context, node));
 
-  const int output_dims_count = ElementCount(*output_tensor->dims);
   const T* output_data = GetTensorData<T>(output_tensor);
-  for (int i = 0; i < expected_output.size(); ++i) {
+  for (size_t i = 0; i < expected_output.size(); ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_output.begin()[i], output_data[i],
                               1e-5f);
   }
-  TF_LITE_MICRO_EXPECT_EQ(expected_dims.size(), output_tensor->dims->size);
-  for (int i = 0; i < expected_dims.size(); ++i) {
+  TF_LITE_MICRO_EXPECT_EQ(expected_dims.size(),
+                          static_cast<size_t>(output_tensor->dims->size));
+  for (size_t i = 0; i < expected_dims.size(); ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_dims.begin()[i],
                               output_tensor->dims->data[i], 1e-5f);
   }
