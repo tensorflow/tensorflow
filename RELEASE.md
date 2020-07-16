@@ -42,7 +42,7 @@
 
 ### TF Core:
   * Set `tf2_behavior` to 1 to enable V2 for early loading cases.
-  * Add execute_fn_for_device function to dynamically choose the implementation based on underlying device placement.
+  * Add `execute_fn_for_device function` to dynamically choose the implementation based on underlying device placement.
   * Eager:
     * Add `reduce_logsumexp` benchmark with experiment compile.
     * Give `EagerTensor`s a meaningful `__array__` implementation.
@@ -82,11 +82,10 @@
     * Update `tf.vectorized_map` to support vectorizing `tf.while_loop` and TensorList operations.
     * `tf.custom_gradient` can now be applied to functions that accept nested structures of `tensors` as inputs (instead of just a list of tensors). Note that Python structures such as tuples and lists now won't be treated as tensors, so if you still want them to be treated that way, you need to wrap them with `tf.convert_to_tensor`.
     * No lowering on gradient case op when input is `DeviceIndex` op.
-    * Fix in c_api `DEFINE_GETATTR`.
     * Extend the ragged version of `tf.gather` to support `batch_dims` and `axis` args.
     * Update `tf.map_fn` to support RaggedTensors and SparseTensors.
     * Deprecate `tf.group`. It is not useful in eager mode.
-    * Add a new variant of `FTRL` allowing a learning rate of zero.
+    * Add CPU and GPU implementation of modified variation of [`FTRL`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/raw_ops/ApplyFtrl)/[`FTRLV2`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/raw_ops/ApplyFtrlV2) that can triggerred by `multiply_linear_by_lr` allowing a learning rate of zero. 
     
 ### `tf.data`: 
   * `tf.data.experimental.dense_to_ragged_batch` works correctly with tuples.
@@ -128,7 +127,6 @@
   * Clean up `BatchNormalization` layer's `trainable` property to act like standard python state when it's used inside `tf.functions` (frozen at tracing time), instead of acting like a pseudo-variable whose updates *kind of sometimes* get reflected in already-traced `tf.function` traces.
   * Add the `Conv1DTranspose` layer.
   * Refine the semantics of `SensitivitySpecificityBase` derived metrics. See the updated API docstrings for [`tf.keras.metrics.SensitivityAtSpecificity`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/keras/metrics/SensitivityAtSpecificity) and [`tf.keras.metrics.SpecificityAtSensitivty`](https://www.tensorflow.org/versions/r2.3/api_docs/python/tf/keras/metrics/SpecificityAtSensitivity). 
-  * Blacklist Case op from callback
 
 ### `tf.lite`:
   * Converter
@@ -176,7 +174,7 @@
   * Added `tf.sysconfig.get_build_info()`. Returns a dict that describes the currently installed TensorFlow package, e.g. the NVIDIA CUDA and NVIDIA CuDNN versions that the package was built to support.
   
 ### Profiler
-    * Fix a subtle use-after-free issue in `XStatVisitor::RefValue()`.
+  * Fix a subtle use-after-free issue in `XStatVisitor::RefValue()`.
   
 ### TPU Enhancements
   * Adds 3D mesh support in TPU configurations ops.
