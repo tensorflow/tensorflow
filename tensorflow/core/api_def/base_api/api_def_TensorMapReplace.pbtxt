@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "TensorMapReplace"
+  summary: "Returns a map that is the 'input_handle' after replacing the existing key value with the given value."
+  description: <<END
+input_handle: the original map
+output_handle: the map with key and value inserted
+key: the key whose value will be replaced
+value: the value to replace the original value
+END
+}

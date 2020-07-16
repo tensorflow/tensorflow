@@ -58,7 +58,7 @@ REGISTER_OP("TensorMapErase")
     .Input("input_handle: variant")
     .Input("key: element_dtype")
     .Output("output_handle: variant")
-    .Output("tensor: element_dtype")
+    .Output("value: element_dtype")
     .Attr("element_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       DataType element_dtype;
