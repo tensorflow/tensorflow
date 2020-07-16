@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_program_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_util_c_api.h"
+#include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 
 extern "C" {
@@ -26,12 +27,22 @@ typedef struct XLA_DeviceAssignment {
   size_t size;
 } XLA_DeviceAssignment;
 
-void TpuExecutable_LoadProgramAndEnqueueToStream(
+TFTPU_CAPI_EXPORT void TpuExecutable_LoadProgramAndEnqueueToStream(
     const XLA_TpuProgram* program, SE_DeviceMemoryBase* arguments,
     size_t arguments_len, SE_DeviceMemoryBase* result,
     SE_DeviceMemoryBase* cross_program_prefetch_addr, int32_t rng_seed,
     XLA_DeviceAssignment* device_assignment, SE_Stream* stream,
     SE_Status* status);
+
+TFTPU_CAPI_EXPORT void HardwareLayout_HostShapeToDeviceShape(
+    XLA_Shape* host_shape, XLA_Shape* device_shape);
+TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSize(XLA_Shape* shape);
+
+struct TfTpu_ExecuteApiFn {
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_LoadProgramAndEnqueueToStream);
+  TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_HostShapeToDeviceShape);
+  TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSize);
+};
 
 }  // extern "C"
 

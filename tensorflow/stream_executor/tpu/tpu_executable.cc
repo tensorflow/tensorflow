@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
@@ -80,10 +79,11 @@ Status TpuExecutable::LoadProgramAndEnqueueToStream(
       run_options.run_options().stream()->implementation());
   StatusHelper status;
 
-  TpuExecutable_LoadProgramAndEnqueueToStream(
-      core_program_, arguments_bases, arguments.size(), &result_base,
-      (cross_program_prefetch_addr.has_value() ? &prefetch_base : nullptr),
-      rng_seed, &c_dev_assign, stream, status.c_status);
+  tensorflow::tpu::ExecuteApiFn()
+      ->TpuExecutable_LoadProgramAndEnqueueToStreamFn(
+          core_program_, arguments_bases, arguments.size(), &result_base,
+          (cross_program_prefetch_addr.has_value() ? &prefetch_base : nullptr),
+          rng_seed, &c_dev_assign, stream, status.c_status);
 
   if (dev_assign != nullptr) {
     stream_executor::tpu::SerializedProto_Free(dev_assign_serialized);
@@ -96,7 +96,7 @@ Shape TpuExecutable::HostShapeToDeviceShape(const Shape& host_shape) {
   XLA_Shape c_host_shape;
   XLA_Shape c_device_shape;
   TpuConversions::XlaShapeToCShape(host_shape, &c_host_shape);
-  tensorflow::tpu::ExecutorApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
+  tensorflow::tpu::ExecuteApiFn()->HardwareLayout_HostShapeToDeviceShapeFn(
       &c_host_shape, &c_device_shape);
   Shape device_shape = TpuConversions::CShapeToXlaShape(&c_device_shape);
   TpuConversions::CShapeCleanup(&c_host_shape);
@@ -108,7 +108,7 @@ int64 TpuExecutable::ShapeSize(const Shape& shape) {
   XLA_Shape c_shape;
   TpuConversions::XlaShapeToCShape(shape, &c_shape);
   int64 size =
-      tensorflow::tpu::ExecutorApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
+      tensorflow::tpu::ExecuteApiFn()->HardwareLayout_ShapeSizeFn(&c_shape);
   TpuConversions::CShapeCleanup(&c_shape);
   return size;
 }
