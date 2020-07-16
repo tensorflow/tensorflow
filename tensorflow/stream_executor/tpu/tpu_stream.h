@@ -54,6 +54,8 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return status.status();
   }
 
+  SE_Stream* se_stream() { return stream_; }
+
  private:
   SE_Stream* stream_;
 };

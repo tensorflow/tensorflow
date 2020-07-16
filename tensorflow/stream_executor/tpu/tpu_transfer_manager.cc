@@ -117,7 +117,7 @@ void TpuTransferManager::TransferLiteralFromDevice(
 
   tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralFromDeviceFn(
       manager_,
-      TpuPlatform::GetRegisteredPlatform()->stream_map()->at(
+      TpuPlatform::GetRegisteredPlatform()->LookupStream(
           stream->implementation()),
       &c_device_buffer, &c_literal, TransferLiteralFromDeviceTrampoline, state);
   TpuConversions::CShapedBufferCleanup(&c_device_buffer);
