@@ -1340,24 +1340,24 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
                                           _cli_config_from_temp_file())
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Input argument filter_name cannot be empty."):
+    with self.assertRaisesRegex(ValueError,
+                                "Input argument filter_name cannot be empty."):
       analyzer.add_tensor_filter("", lambda datum, tensor: True)
 
   def testAddTensorFilterNonStrName(self):
     analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
                                           _cli_config_from_temp_file())
 
-    with self.assertRaisesRegexp(
-        TypeError,
-        "Input argument filter_name is expected to be str, ""but is not"):
+    with self.assertRaisesRegex(
+        TypeError, "Input argument filter_name is expected to be str, "
+        "but is not"):
       analyzer.add_tensor_filter(1, lambda datum, tensor: True)
 
   def testAddGetTensorFilterNonCallable(self):
     analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
                                           _cli_config_from_temp_file())
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, "Input argument filter_callable is expected to be callable, "
         "but is not."):
       analyzer.add_tensor_filter("foo_filter", "bar")
@@ -1367,8 +1367,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
                                           _cli_config_from_temp_file())
 
     analyzer.add_tensor_filter("foo_filter", lambda datum, tensor: True)
-    with self.assertRaisesRegexp(ValueError,
-                                 "There is no tensor filter named \"bar\""):
+    with self.assertRaisesRegex(ValueError,
+                                "There is no tensor filter named \"bar\""):
       analyzer.get_tensor_filter("bar")
 
   def _findSourceLine(self, annotated_source, line_number):
@@ -1578,9 +1578,9 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   def testListSourceWithCompiledPythonSourceWorks(self):
     def fake_list_source_files_against_dump(dump,
-                                            path_regex_whitelist=None,
-                                            node_name_regex_whitelist=None):
-      del dump, path_regex_whitelist, node_name_regex_whitelist
+                                            path_regex_allowlist=None,
+                                            node_name_regex_allowlist=None):
+      del dump, path_regex_allowlist, node_name_regex_allowlist
       return [("compiled_1.pyc", False, 10, 20, 30, 4),
               ("compiled_2.pyo", False, 10, 20, 30, 5),
               ("uncompiled.py", False, 10, 20, 30, 6)]

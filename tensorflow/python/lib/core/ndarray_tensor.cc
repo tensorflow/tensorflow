@@ -245,29 +245,17 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
 // the buffer. The caller takes ownership of the buffer.
 Status EncodePyBytesArray(PyArrayObject* array, tensorflow::int64 nelems,
                           size_t* size, void** buffer) {
-  // Compute bytes needed for encoding.
-  *size = 0;
-  TF_RETURN_IF_ERROR(
-      PyBytesArrayMap(array, [&size](const char* ptr, Py_ssize_t len) {
-        *size += sizeof(tensorflow::uint64) +
-                 tensorflow::core::VarintLength(len) + len;
-      }));
   // Encode all strings.
-  std::unique_ptr<char[]> base_ptr(new char[*size]);
-  char* base = base_ptr.get();
-  char* data_start = base + sizeof(tensorflow::uint64) * nelems;
-  char* dst = data_start;  // Where next string is encoded.
-  tensorflow::uint64* offsets = reinterpret_cast<tensorflow::uint64*>(base);
+  *size = nelems * sizeof(tensorflow::tstring);
+  std::unique_ptr<tensorflow::tstring[]> base_ptr(
+      new tensorflow::tstring[nelems]);
+  tensorflow::tstring* dst = base_ptr.get();
 
-  TF_RETURN_IF_ERROR(PyBytesArrayMap(
-      array, [&data_start, &dst, &offsets](const char* ptr, Py_ssize_t len) {
-        *offsets = (dst - data_start);
-        offsets++;
-        dst = tensorflow::core::EncodeVarint64(dst, len);
-        memcpy(dst, ptr, len);
-        dst += len;
+  TF_RETURN_IF_ERROR(
+      PyBytesArrayMap(array, [&dst](const char* ptr, Py_ssize_t len) {
+        dst->assign(ptr, len);
+        dst++;
       }));
-  CHECK_EQ(dst, base + *size);
   *buffer = base_ptr.release();
   return Status::OK();
 }
@@ -275,37 +263,18 @@ Status EncodePyBytesArray(PyArrayObject* array, tensorflow::int64 nelems,
 Status CopyTF_TensorStringsToPyArray(const TF_Tensor* src, uint64 nelems,
                                      PyArrayObject* dst) {
   const void* tensor_data = TF_TensorData(src);
-  const size_t tensor_size = TF_TensorByteSize(src);
-  const char* limit = static_cast<const char*>(tensor_data) + tensor_size;
   DCHECK(tensor_data != nullptr);
   DCHECK_EQ(TF_STRING, TF_TensorType(src));
 
-  const uint64* offsets = static_cast<const uint64*>(tensor_data);
-  const size_t offsets_size = sizeof(uint64) * nelems;
-  const char* data = static_cast<const char*>(tensor_data) + offsets_size;
+  const tstring* tstr = static_cast<const tstring*>(tensor_data);
 
-  const size_t expected_tensor_size =
-      (limit - static_cast<const char*>(tensor_data));
-  if (expected_tensor_size - tensor_size) {
-    return errors::InvalidArgument(
-        "Invalid/corrupt TF_STRING tensor: expected ", expected_tensor_size,
-        " bytes of encoded strings for the tensor containing ", nelems,
-        " strings, but the tensor is encoded in ", tensor_size, " bytes");
-  }
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   auto iter = make_safe(PyArray_IterNew(reinterpret_cast<PyObject*>(dst)));
   for (int64 i = 0; i < nelems; ++i) {
-    const char* start = data + offsets[i];
-    const char* ptr = nullptr;
-    size_t len = 0;
-
-    TF_StringDecode(start, limit - start, &ptr, &len, status.get());
-    if (TF_GetCode(status.get()) != TF_OK) {
-      return errors::InvalidArgument(TF_Message(status.get()));
-    }
-
-    auto py_string = make_safe(PyBytes_FromStringAndSize(ptr, len));
+    const tstring& tstr_i = tstr[i];
+    auto py_string =
+        make_safe(PyBytes_FromStringAndSize(tstr_i.data(), tstr_i.size()));
     if (py_string == nullptr) {
       return errors::Internal(
           "failed to create a python byte array when converting element #", i,
@@ -551,14 +520,14 @@ Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
           static_cast<tensorflow::DataType>(dtype), dims.data(), dims.size(),
           encoded, size, convert_string,
           [](void* data, size_t len, void* arg) {
-            delete[] reinterpret_cast<char*>(data);
+            delete[] reinterpret_cast<tensorflow::tstring*>(data);
           },
           nullptr)});
     } else {
       *ret = make_safe(TF_NewTensor(
           dtype, dims.data(), dims.size(), encoded, size,
           [](void* data, size_t len, void* arg) {
-            delete[] reinterpret_cast<char*>(data);
+            delete[] reinterpret_cast<tensorflow::tstring*>(data);
           },
           nullptr));
     }

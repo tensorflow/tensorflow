@@ -4277,6 +4277,13 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(const NnApi* nnapi,
   delegate_data_.max_number_delegated_partitions =
       options.max_number_delegated_partitions;
   delegate_data_.allow_fp16 = options.allow_fp16;
+  delegate_data_.execution_priority = options.execution_priority;
+  delegate_data_.max_compilation_timeout_duration_ns =
+      options.max_compilation_timeout_duration_ns;
+  delegate_data_.max_execution_timeout_duration_ns =
+      options.max_execution_timeout_duration_ns;
+  delegate_data_.max_execution_loop_timeout_duration_ns =
+      options.max_execution_loop_timeout_duration_ns;
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
   Prepare = DoPrepare;
@@ -4307,6 +4314,13 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.max_number_delegated_partitions =
       delegate_data->max_number_delegated_partitions;
   options.allow_fp16 = delegate_data->allow_fp16;
+  options.execution_priority = delegate_data->execution_priority;
+  options.max_compilation_timeout_duration_ns =
+      delegate_data->max_compilation_timeout_duration_ns;
+  options.max_execution_timeout_duration_ns =
+      delegate_data->max_execution_timeout_duration_ns;
+  options.max_execution_loop_timeout_duration_ns =
+      delegate_data->max_execution_loop_timeout_duration_ns;
   return options;
 }
 
@@ -4512,7 +4526,7 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
     } else {
       // If no accelerator is specified, only use NNAPI if an accelerator is
       // available. Any available accelerator will make the device_count larger
-      // than 1. More sophisticated check and whitelisting can be added later.
+      // than 1. More sophisticated check and allowlisting can be added later.
       uint32_t device_count = 0;
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
           context, nnapi->ANeuralNetworks_getDeviceCount(&device_count),

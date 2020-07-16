@@ -16,14 +16,20 @@ limitations under the License.
 
 package tensorflow
 
-// #include <stdlib.h>
-// #include <string.h>
-// #include "tensorflow/c/c_api.h"
+/*
+#include <stdlib.h>
+#include <string.h>
+#include "tensorflow/c/c_api.h"
+
+void toNewTString(_GoString_ gstr, TF_TString *tstr) {
+    TF_TString_Init(tstr);
+    TF_TString_Copy(tstr, _GoStringPtr(gstr), _GoStringLen(gstr));
+}
+*/
 import "C"
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"math/bits"
@@ -79,9 +85,7 @@ func NewTensor(value interface{}) (*Tensor, error) {
 	nflattened := numElements(shape)
 	nbytes := typeOf(dataType, nil).Size() * uintptr(nflattened)
 	if dataType == String {
-		// TF_STRING tensors are encoded as an array of 8-byte offsets
-		// followed by string data. See c_api.h.
-		nbytes = uintptr(nflattened*8 + int64(byteSizeOfEncodedStrings(val)))
+		nbytes = uintptr(nflattened) * C.sizeof_TF_TString
 	}
 	var shapePtr *C.int64_t
 	if len(shape) > 0 {
@@ -94,34 +98,25 @@ func NewTensor(value interface{}) (*Tensor, error) {
 	runtime.SetFinalizer(t, (*Tensor).finalize)
 	raw := tensorData(t.c)
 	buf := bytes.NewBuffer(raw[:0:len(raw)])
-	if dataType != String {
-		if isAllArray(val.Type()) {
-			// We have arrays all the way down, or just primitive types. We can
-			// just copy the memory in as it is all contiguous.
-			if err := copyPtr(buf, unpackEFace(value).data, int(val.Type().Size())); err != nil {
-				return nil, err
-			}
-		} else {
-			// When there are slices involved the memory for each leaf slice may
-			// not be contiguous with the others or in the order we might
-			// expect, so we need to work our way down to each slice of
-			// primitives and copy them individually
-			if err := encodeTensorWithSlices(buf, val, shape); err != nil {
-				return nil, err
-			}
-		}
 
-		if uintptr(buf.Len()) != nbytes {
-			return nil, bug("NewTensor incorrectly calculated the size of a tensor with type %v and shape %v as %v bytes instead of %v", dataType, shape, nbytes, buf.Len())
-		}
-	} else {
-		e := stringEncoder{offsets: buf, data: raw[nflattened*8:], status: newStatus()}
-		if err := e.encode(reflect.ValueOf(value), shape); err != nil {
+	if isAllArray(val.Type()) {
+		// We have arrays all the way down, or just primitive types. We can
+		// just copy the memory in as it is all contiguous.
+		if err := copyPtr(buf, unpackEFace(value).data, int(val.Type().Size())); err != nil {
 			return nil, err
 		}
-		if int64(buf.Len()) != nflattened*8 {
-			return nil, bug("invalid offset encoding for TF_STRING tensor with shape %v (got %v, want %v)", shape, buf.Len(), nflattened*8)
+	} else {
+		// When there are slices involved the memory for each leaf slice may
+		// not be contiguous with the others or in the order we might
+		// expect, so we need to work our way down to each slice of
+		// primitives and copy them individually
+		if err := encodeTensorWithSlices(buf, val, shape); err != nil {
+			return nil, err
 		}
+	}
+
+	if uintptr(buf.Len()) != nbytes {
+		return nil, bug("NewTensor incorrectly calculated the size of a tensor with type %v and shape %v as %v bytes instead of %v", dataType, shape, nbytes, buf.Len())
 	}
 	return t, nil
 }
@@ -131,6 +126,8 @@ func NewTensor(value interface{}) (*Tensor, error) {
 // contiguous in RAM.
 func isAllArray(typ reflect.Type) bool {
 	switch typ.Kind() {
+	case reflect.String:
+		return false
 	case reflect.Slice:
 		return false
 	case reflect.Array:
@@ -312,58 +309,16 @@ func setSliceInSlice(slice reflect.Value, index int, content sliceHeader) {
 
 // decodeOneDimString decodes a string tensor into a one-dimensional []string.
 func decodeOneDimString(raw []byte, nStrings int) ([]string, error) {
-	// Start by making an array of all the strings
 	strs := make([]string, nStrings)
-	// The first nStrings * 8 bytes of raw are offsets into the second half of
-	// the raw data. This second half is where the strings are encoded.
-	offsets := (*(*[]int64)(unsafe.Pointer(&raw)))[:nStrings]
+	tstrs := (*(*[]C.TF_TString)(unsafe.Pointer(&raw)))[:nStrings]
 
-	// Reset raw after the offsets. Now the offsets will work relative to raw
-	raw = raw[nStrings*8:]
-	// Next we work out the final length of the string data so we can copy the
-	// good data out of raw (which is owned by the C tensor and won't be safe
-	// to access if the tensor is freed)
-	r := bytes.NewReader(raw)
-	var totalLength int
-	for _, offset := range offsets {
-		// At each offset we should find a varint length of a string.
-		// Errors here should mean the tensor is corrupt.
-		if _, err := r.Seek(offset, io.SeekStart); err != nil {
-			return nil, err
-		}
-		l, err := binary.ReadUvarint(r)
-		if err != nil {
-			return nil, err
-		}
-		totalLength += int(l)
+	for i, tstr := range tstrs {
+		dst := C.TF_TString_GetDataPointer(&tstr)
+		dstLen := C.TF_TString_GetSize(&tstr)
+
+		strs[i] = C.GoStringN(dst, C.int(dstLen))
 	}
 
-	// Lets allocate a big buffer to carry our string data.
-	stringData := make([]byte, 0, totalLength)
-	// Now copy the string data across into our new buffer, keeping track of the
-	// location of each string in the strs slice.
-	var cursor int
-	for i, offset := range offsets {
-		// At each offset we should find a varint length. Read it
-		if _, err := r.Seek(offset, io.SeekStart); err != nil {
-			return nil, err
-		}
-		l, err := binary.ReadUvarint(r)
-		if err != nil {
-			return nil, err
-		}
-
-		// Then copy the actual string into our large buffer
-		target := stringData[cursor : cursor+int(l)]
-		if _, err := r.Read(target); err != nil {
-			return nil, err
-		}
-		// Track where this string data is.
-		strs[i] = *(*string)(unsafe.Pointer(&target))
-		cursor += int(l)
-	}
-
-	// So now we have a big slice of strings
 	return strs, nil
 }
 
@@ -469,26 +424,6 @@ func numElements(shape []int64) int64 {
 	return n
 }
 
-// byteSizeOfEncodedStrings returns the size of the encoded strings in val.
-// val MUST be a string, or a container (array/slice etc.) of strings.
-// Tensorflow encodes strings as the varint encoded length followed by the
-// string bytes. We could call into the C library to do this but cgo has a heavy
-// overhead. So we just do that calculation in Go
-func byteSizeOfEncodedStrings(val reflect.Value) int {
-	if val.Kind() == reflect.String {
-		return sizeVarUint(uint64(val.Len())) + val.Len()
-	}
-	if val.Kind() != reflect.Slice && val.Kind() != reflect.Array {
-		panic(fmt.Sprintf("unexpected type %s", val.Type()))
-	}
-	// Otherwise must be an array or slice.
-	var size int
-	for i := 0; i < val.Len(); i++ {
-		size += byteSizeOfEncodedStrings(val.Index(i))
-	}
-	return size
-}
-
 // sizeVarUint determines how many bytes it would take to encode the int v as
 // an unsigned varint
 func sizeVarUint(v uint64) int {
@@ -509,12 +444,18 @@ func encodeTensorWithSlices(w *bytes.Buffer, v reflect.Value, shape []int64) err
 		if v.Len() != expected {
 			return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
 		}
+	} else if v.Kind() == reflect.String {
+		s := v.Interface().(string)
+		var tstr C.TF_TString
+		C.toNewTString(s, &tstr)
+		ptr := unsafe.Pointer(&tstr)
+		return copyPtr(w, ptr, C.sizeof_TF_TString)
 	} else if v.Kind() != reflect.Array {
 		return fmt.Errorf("unsupported type %v", v.Type())
 	}
 
 	// Once we have just a single dimension we can just copy the data
-	if len(shape) == 1 && v.Len() > 0 {
+	if len(shape) == 1 && v.Len() > 0 && v.Index(0).Kind() != reflect.String {
 		elt := v.Index(0)
 		if !elt.CanAddr() {
 			panic("cannot take address")
@@ -554,45 +495,6 @@ func copyPtr(w *bytes.Buffer, ptr unsafe.Pointer, l int) error {
 	}))
 	_, err := w.Write(b)
 	return err
-}
-
-type stringEncoder struct {
-	offsets *bytes.Buffer
-	data    []byte
-	offset  uint64
-	status  *status
-}
-
-func (e *stringEncoder) encode(v reflect.Value, shape []int64) error {
-	if v.Kind() == reflect.String {
-		if err := copyPtr(e.offsets, unsafe.Pointer(&e.offset), int(unsafe.Sizeof(e.offset))); err != nil {
-			return err
-		}
-		// A string is encoded as the varint length followed by the string bytes.
-		// We do this in Go to avoid the considerable overhead of a cgo call into
-		// the tensorflow library
-		s := v.String()
-		n := binary.PutUvarint(e.data[e.offset:], uint64(len(s)))
-		e.offset += uint64(n)
-		n = copy(e.data[e.offset:], s)
-		e.offset += uint64(n)
-		return nil
-	}
-
-	if v.Kind() == reflect.Slice {
-		expected := int(shape[0])
-		if v.Len() != expected {
-			return fmt.Errorf("mismatched slice lengths: %d and %d", v.Len(), expected)
-		}
-	}
-
-	subShape := shape[1:]
-	for i := 0; i < v.Len(); i++ {
-		if err := e.encode(v.Index(i), subShape); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func bug(format string, args ...interface{}) error {

@@ -33,6 +33,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.datasets import mnist
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
@@ -104,7 +105,7 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
 
     num_workers = 4
 
-    def proc_func():
+    def proc_func(model_path):
       global_batch_size = per_worker_batch_size * num_workers
       strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
       with strategy.scope():
@@ -127,10 +128,47 @@ class MultiWorkerTutorialTest(parameterized.TestCase, test.TestCase):
           steps_per_epoch=20,
           callbacks=callbacks)
 
+      def _is_chief(task_type, task_id):
+        return task_type == 'chief' or (task_type == 'worker' and task_id == 0)
+
+      def _get_temp_dir(dirpath, task_id):
+        base_dirpath = 'workertemp_' + str(task_id)
+        temp_dir = os.path.join(dirpath, base_dirpath)
+        file_io.recursive_create_dir_v2(temp_dir)
+        return temp_dir
+
+      def write_filepath(filepath, task_type, task_id):
+        dirpath = os.path.dirname(filepath)
+        base = os.path.basename(filepath)
+        if not _is_chief(task_type, task_id):
+          dirpath = _get_temp_dir(dirpath, task_id)
+        return os.path.join(dirpath, base)
+
+      task_type, task_id = (strategy.cluster_resolver.task_type,
+                            strategy.cluster_resolver.task_id)
+      write_model_path = write_filepath(model_path, task_type, task_id)
+
+      multi_worker_model.save(write_model_path)
+      if not _is_chief(task_type, task_id):
+        file_io.delete_recursively_v2(os.path.dirname(write_model_path))
+
+      # Make sure chief finishes saving before non-chief's assertions.
+      multi_process_runner.barrier().wait()
+
+      if not file_io.file_exists(model_path):
+        raise RuntimeError()
+      if file_io.file_exists(write_model_path) != _is_chief(task_type, task_id):
+        raise RuntimeError()
+
+      loaded_model = keras.saving.save.load_model(model_path)
+      loaded_model.fit(multi_worker_dataset, epochs=2, steps_per_epoch=20)
+
+    model_path = os.path.join(self.get_temp_dir(), 'ckpt.tf')
     with test_util.skip_if_error(self, errors_impl.UnavailableError):
       mpr_result = multi_process_runner.run(
           proc_func,
           multi_worker_test_base.create_cluster_spec(num_workers=num_workers),
+          args=(model_path,),
           list_stdout=True)
 
     def extract_accuracy(worker_id, input_string):

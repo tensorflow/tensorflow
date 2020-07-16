@@ -53,7 +53,6 @@ class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
 void RemoveQuantizationAdaptorOps(FuncOp func) {
   mlir::OpBuilder builder(func.getBody());
   auto& bb = func.front();
-  auto* terminator = bb.getTerminator();
 
   int num_args = bb.getNumArguments();
   llvm::SmallVector<Type, 4> input_types;
@@ -99,13 +98,15 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
   }
 
   // Edit the return ops and remove the dequantize ops in place.
+  auto* terminator = bb.getTerminator();
   int num_return_operands = terminator->getNumOperands();
   llvm::SmallVector<Type, 4> output_types;
   output_types.reserve(num_return_operands);
   for (int i = 0; i != num_return_operands; ++i) {
     auto returned_value = terminator->getOperand(i);
     Operation* returned_op = returned_value.getDefiningOp();
-    if (returned_op && llvm::isa<DequantizeOp>(returned_op)) {
+    if (returned_op && returned_op->hasOneUse() &&
+        llvm::isa<DequantizeOp>(returned_op)) {
       auto dequantize_op = llvm::cast<DequantizeOp>(returned_op);
       Value dequantized_result = dequantize_op.input();
       output_types.push_back(dequantized_result.getType());

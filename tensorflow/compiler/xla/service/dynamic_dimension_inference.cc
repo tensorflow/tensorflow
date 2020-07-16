@@ -1602,6 +1602,17 @@ Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
       custom_call_handler_);
 }
 
+void DynamicDimensionInference::ReplaceAllDynamicDimensionUsesWith(
+    HloInstruction* replace, HloInstruction* with) {
+  CHECK(Shape::Equal()(replace->shape(), ShapeUtil::MakeScalarShape(S32)));
+  CHECK(Shape::Equal()(with->shape(), ShapeUtil::MakeScalarShape(S32)));
+  for (auto& kv : dynamic_mapping_) {
+    if (kv.second == replace) {
+      kv.second = with;
+    }
+  }
+}
+
 Status DynamicDimensionInference::ForwardDynamicSize(HloInstruction* inst,
                                                      HloInstruction* new_inst,
                                                      const ShapeIndex& index) {

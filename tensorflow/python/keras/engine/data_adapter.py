@@ -272,15 +272,8 @@ class TensorLikeDataAdapter(DataAdapter):
 
     inputs = pack_x_y_sample_weight(x, y, sample_weights)
 
-    num_samples = set(int(i.shape[0]) for i in nest.flatten(inputs))
-    if len(num_samples) > 1:
-      msg = "Data cardinality is ambiguous:\n"
-      for label, data in zip(["x", "y", "sample_weight"], inputs):
-        msg += "  {} sizes: {}\n".format(
-            label, ", ".join(str(i.shape[0]) for i in nest.flatten(data)))
-      msg += "Please provide data which shares the same first dimension."
-      raise ValueError(msg)
-    num_samples = num_samples.pop()
+    num_samples = set(int(i.shape[0]) for i in nest.flatten(inputs)).pop()
+    _check_data_cardinality(inputs)
 
     # If batch_size is not passed but steps is, calculate from the input data.
     # Default to 32 for backwards compat.
@@ -1527,11 +1520,23 @@ def single_batch_iterator(strategy,
   else:
     data = (x, y, sample_weight)
 
+  _check_data_cardinality(data)
   dataset = dataset_ops.DatasetV2.from_tensors(data)
   if class_weight:
     dataset = dataset.map(_make_class_weight_map_fn(class_weight))
   dataset = strategy.experimental_distribute_dataset(dataset)
   return iter(dataset)
+
+
+def _check_data_cardinality(data):
+  num_samples = set(int(i.shape[0]) for i in nest.flatten(data))
+  if len(num_samples) > 1:
+    msg = "Data cardinality is ambiguous:\n"
+    for label, single_data in zip(["x", "y", "sample_weight"], data):
+      msg += "  {} sizes: {}\n".format(
+          label, ", ".join(str(i.shape[0]) for i in nest.flatten(single_data)))
+    msg += "Make sure all arrays contain the same number of samples."
+    raise ValueError(msg)
 
 
 def _scipy_sparse_to_sparse_tensor(t):

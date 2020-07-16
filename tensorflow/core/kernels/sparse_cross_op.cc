@@ -101,7 +101,7 @@ class KeyedSparseTensorColumn : public ColumnInterface<InternalType> {
 
  private:
   const Tensor& values_;
-  uint64 key_[2];
+  tensorflow::uint64 key_[2];
   std::vector<int64> feature_counts_;
   std::vector<int64> feature_start_indices_;
 };
@@ -201,7 +201,7 @@ class KeyedDenseTensorColumn : public ColumnInterface<InternalType> {
 
  private:
   const Tensor& tensor_;
-  uint64 key_[2];
+  tensorflow::uint64 key_[2];
 };
 
 // InternalType is int64 only when using HashCrosser.

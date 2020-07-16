@@ -51,8 +51,8 @@ class SaverLargeVariableTest(test.TestCase):
               var.op.name: var
           }, write_version=saver_pb2.SaverDef.V1)
       var.initializer.run()
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Tensor slice is too large to serialize"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "Tensor slice is too large to serialize"):
         save.save(sess, save_path)
 
 

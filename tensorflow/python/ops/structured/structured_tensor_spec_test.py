@@ -90,7 +90,7 @@ class StructuredTensorSpecTest(test_util.TensorFlowTestCase,
        r'field_specs must be a dictionary with TypeSpec values\.'),
   ])
   def testConstructionErrors(self, shape, field_specs, error):
-    with self.assertRaisesRegexp(TypeError, error):
+    with self.assertRaisesRegex(TypeError, error):
       structured_tensor.StructuredTensorSpec(shape, field_specs)
 
   def testValueType(self):

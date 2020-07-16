@@ -125,6 +125,19 @@ Status HashTensor(const Tensor& tensor, uint64* hash);
 // the same between TensorFlow builds.
 Status HashGraph(const GraphDef& graph, uint64* hash);
 
+// Writes dataset elements to the checkpoint writer using the given key prefix.
+// The elements can be read back by passing the same key prefix to
+// ReadElementsFromCheckpoint. Only one list of elements can be written under
+// the same key_prefix.
+Status WriteElementsToCheckpoint(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements);
+
+// Reads dataset elements from the checkpoint reader using the given key prefix.
+Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
+                                  StringPiece key_prefix,
+                                  std::vector<std::vector<Tensor>>* elements);
+
 // Dataset op level determinism policy.
 class DeterminismPolicy {
  public:

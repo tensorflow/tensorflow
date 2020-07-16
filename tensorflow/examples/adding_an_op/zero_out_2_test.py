@@ -33,13 +33,13 @@ class ZeroOut2Test(tf.test.TestCase):
   def test(self):
     with self.cached_session():
       result = zero_out_op_2.zero_out([5, 4, 3, 2, 1])
-      self.assertAllEqual(result.eval(), [5, 0, 0, 0, 0])
+      self.assertAllEqual(result, [5, 0, 0, 0, 0])
 
   @test_util.run_deprecated_v1
   def test_2d(self):
     with self.cached_session():
       result = zero_out_op_2.zero_out([[6, 5, 4], [3, 2, 1]])
-      self.assertAllEqual(result.eval(), [[6, 0, 0], [0, 0, 0]])
+      self.assertAllEqual(result, [[6, 0, 0], [0, 0, 0]])
 
   @test_util.run_deprecated_v1
   def test_grad(self):

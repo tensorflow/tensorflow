@@ -42,10 +42,10 @@ namespace cl {
 class ConvTexture : public GPUOperation {
  public:
   ConvTexture() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
-
   absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   ConvTexture(ConvTexture&& operation);
@@ -89,9 +89,6 @@ class ConvTexture : public GPUOperation {
                             absl::Span<T> dst_0, absl::Span<T> dst_1,
                             absl::Span<T> dst_2, absl::Span<T> dst_3);
 
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
   int2 kernel_size_;
   int2 stride_;
   int2 padding_;
@@ -103,9 +100,6 @@ class ConvTexture : public GPUOperation {
   bool different_weights_for_height_;
 
   int3 block_size_ = int3(2, 2, 2);
-
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 template <DataType T>

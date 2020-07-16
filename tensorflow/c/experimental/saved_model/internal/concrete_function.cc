@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/public/concrete_function.h"
 
+#include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
 #include "tensorflow/c/experimental/saved_model/internal/concrete_function_type.h"
 #include "tensorflow/c/experimental/saved_model/internal/function_metadata_type.h"
 #include "tensorflow/c/experimental/saved_model/internal/tensorhandle_list_type.h"
+#include "tensorflow/c/tf_status_internal.h"
+#include "tensorflow/core/platform/status.h"
 
 extern "C" {
 
@@ -34,8 +37,11 @@ const TF_TensorHandleList* TF_ConcreteFunctionGetCaptures(
   return tensorflow::wrap(&tensorflow::unwrap(func)->GetCaptures());
 }
 
-TFE_Op* TF_ConcreteFunctionGetCallOp(TF_ConcreteFunction* func) {
-  return tensorflow::wrap(tensorflow::unwrap(func)->GetCallOp());
+TFE_Op* TF_ConcreteFunctionGetCallOp(TF_ConcreteFunction* func,
+                                     TF_Status* status) {
+  tensorflow::ImmediateOpPtr call_op(nullptr);
+  status->status = tensorflow::unwrap(func)->GetCallOp(&call_op);
+  return tensorflow::wrap(call_op.release());
 }
 
 }  // end extern "C"

@@ -127,8 +127,10 @@ absl::Status PopulateQuantParams(const TfLiteTensor& tensor,
 int GetNumberOfRuntimeInputsForNode(const TfLiteContext* context,
                                     const TfLiteNode* tflite_node) {
   int number_of_runtime_inputs = 0;
-  for (int i = 0; i < tflite_node->inputs->size; i++) {
-    if (!IsConstantTensor(&context->tensors[tflite_node->inputs->data[i]])) {
+  for (int i = 0; i < NumInputs(tflite_node); i++) {
+    const TfLiteTensor* tensor =
+        GetOptionalInputTensor(context, tflite_node, i);
+    if (tensor != nullptr && !IsConstantTensor(tensor)) {
       number_of_runtime_inputs++;
     }
   }
@@ -137,19 +139,8 @@ int GetNumberOfRuntimeInputsForNode(const TfLiteContext* context,
 
 int GetNumberOfConstInputsForNode(const TfLiteContext* context,
                                   const TfLiteNode* tflite_node) {
-  return tflite_node->inputs->size -
+  return NumInputs(tflite_node) -
          GetNumberOfRuntimeInputsForNode(context, tflite_node);
-}
-
-int GetNumberOfRuntimeOutputsForNode(const TfLiteContext* context,
-                                     const TfLiteNode* tflite_node) {
-  int number_of_runtime_outputs = 0;
-  for (int i = 0; i < tflite_node->outputs->size; i++) {
-    if (!IsConstantTensor(&context->tensors[tflite_node->outputs->data[i]])) {
-      number_of_runtime_outputs++;
-    }
-  }
-  return number_of_runtime_outputs;
 }
 
 absl::Status CheckInputsOutputs(const TfLiteContext* context,
@@ -162,12 +153,11 @@ absl::Status CheckInputsOutputs(const TfLiteContext* context,
         "Expected ", runtime_inputs, " runtime input tensor(s), but node has ",
         runtime_inputs_from_model, " runtime input(s)."));
   }
-  const int runtime_outputs =
-      GetNumberOfRuntimeOutputsForNode(context, tflite_node);
-  if (runtime_outputs != outputs) {
+  const int outputs_from_model = NumOutputs(tflite_node);
+  if (outputs_from_model != outputs) {
     return absl::InternalError(absl::StrCat("Expected ", outputs,
                                             " output tensor(s), but node has ",
-                                            runtime_outputs, " output(s)."));
+                                            outputs_from_model, " output(s)."));
   }
   return absl::OkStatus();
 }

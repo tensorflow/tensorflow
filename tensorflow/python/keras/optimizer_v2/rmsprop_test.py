@@ -35,7 +35,6 @@ from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -112,8 +111,8 @@ class RMSpropOptimizerTest(test.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         grads1_np = np.array([0.01, 0.2], dtype=dtype.as_numpy_dtype)
 
-        var0 = resource_variable_ops.ResourceVariable(var0_np, dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable(var1_np, dtype=dtype)
+        var0 = variables.Variable(var0_np, dtype=dtype)
+        var1 = variables.Variable(var1_np, dtype=dtype)
         grads0 = constant_op.constant(grads0_np, dtype=dtype)
         grads1 = constant_op.constant(grads1_np, dtype=dtype)
         opt = rmsprop.RMSprop(
@@ -187,8 +186,8 @@ class RMSpropOptimizerTest(test.TestCase):
       var1_np = np.array([3.0, 4.0])
       grads1_np = np.array([0.01, 0.2])
 
-      var0 = resource_variable_ops.ResourceVariable(var0_np)
-      var1 = resource_variable_ops.ResourceVariable(var1_np)
+      var0 = variables.Variable(var0_np)
+      var1 = variables.Variable(var1_np)
       grads0 = constant_op.constant(grads0_np)
       grads1 = constant_op.constant(grads1_np)
       learning_rate = 0.01
@@ -259,8 +258,8 @@ class RMSpropOptimizerTest(test.TestCase):
       var1_np = np.array([3.0, 4.0])
       grads1_np = np.array([0.01, 0.2])
 
-      var0 = resource_variable_ops.ResourceVariable(var0_np)
-      var1 = resource_variable_ops.ResourceVariable(var1_np)
+      var0 = variables.Variable(var0_np)
+      var1 = variables.Variable(var1_np)
       grads0 = constant_op.constant(grads0_np)
       grads1 = constant_op.constant(grads1_np)
       learning_rate = 0.01
@@ -328,7 +327,7 @@ class RMSpropOptimizerTest(test.TestCase):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     with ops.Graph().as_default():
       for dtype in _DATA_TYPES:
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
         def loss():
@@ -355,7 +354,7 @@ class RMSpropOptimizerTest(test.TestCase):
       for dtype in _DATA_TYPES:
         if test_util.is_xla_enabled() and dtype.is_complex:
           self.skipTest("b/143578550")
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
         def loss():
@@ -462,8 +461,8 @@ class RMSpropOptimizerTest(test.TestCase):
   def testCallableParams(self):
     with context.eager_mode():
       for dtype in _DATA_TYPES:
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
 
@@ -556,10 +555,8 @@ class SlotColocationTest(test.TestCase, parameterized.TestCase):
   def testRunMinimizeOnGPUForCPUVariables(self, use_resource):
     with ops.device("/device:CPU:0"):
       if use_resource:
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                      dtype=dtypes.float32)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0],
-                                                      dtype=dtypes.float32)
+        var0 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtypes.float32)
       else:
         var0 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
         var1 = variables.Variable([3.0, 4.0], dtype=dtypes.float32)

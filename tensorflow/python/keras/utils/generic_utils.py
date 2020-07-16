@@ -476,7 +476,7 @@ def has_arg(fn, name, accept_all=False):
   arg_spec = tf_inspect.getfullargspec(fn)
   if accept_all and arg_spec.varkw is not None:
     return True
-  return name in arg_spec.args
+  return name in arg_spec.args or name in arg_spec.kwonlyargs
 
 
 @keras_export('keras.utils.Progbar')
