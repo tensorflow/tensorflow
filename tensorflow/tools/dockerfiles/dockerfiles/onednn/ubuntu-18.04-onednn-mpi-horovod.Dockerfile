@@ -1,4 +1,4 @@
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,16 +19,14 @@
 # throughout. Please refer to the TensorFlow dockerfiles documentation
 # for more information.
 
-ARG UBUNTU_VERSION=18.04
+ARG UBUNTU_VERSION=20.04
 
 FROM ubuntu:${UBUNTU_VERSION} as base
-
-RUN apt-get update && apt-get install -y curl
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     python3 \
     python3-pip
 
@@ -50,45 +48,26 @@ ARG TF_PACKAGE=tensorflow
 ARG TF_PACKAGE_VERSION=
 RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
-# install libnuma, openssh, wget
-RUN ( apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-        libnuma-dev \
-        openssh-server \
-        openssh-client \
-        wget && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* ) || \
-    ( yum -y update && yum -y install \
-            numactl-devel \
-            openssh-server \
-            openssh-clients \
-            wget && \
-    yum clean all ) || \
-    ( echo "Unsupported Linux distribution. Aborting!" && exit 1 )
+ARG DEBIAN_FRONTEND="noninteractive"
 
-# Install Open MPI
-# download realese version from official website as openmpi github master is not always stable
-ARG OPENMPI_VERSION=openmpi-4.0.0
-ARG OPENMPI_DOWNLOAD_URL=https://www.open-mpi.org/software/ompi/v4.0/downloads/openmpi-4.0.0.tar.gz
-RUN mkdir /tmp/openmpi && \
-    cd /tmp/openmpi && \
-    wget ${OPENMPI_DOWNLOAD_URL} && \
-    tar zxf ${OPENMPI_VERSION}.tar.gz && \
-    cd ${OPENMPI_VERSION} && \
-    ./configure --enable-orterun-prefix-by-default && \
-    make -j $(nproc) all && \
-    make install && \
-    ldconfig && \
-    rm -rf /tmp/openmpi
+# install libnuma, openssh, wget
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+    libopenmpi-dev \
+    openmpi-bin \
+    openmpi-common \
+    openssh-client \
+    openssh-server && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create a wrapper for OpenMPI to allow running as root by default
-RUN mv /usr/local/bin/mpirun /usr/local/bin/mpirun.real && \
-    echo '#!/bin/bash' > /usr/local/bin/mpirun && \
-    echo 'mpirun.real --allow-run-as-root "$@"' >> /usr/local/bin/mpirun && \
-    chmod a+x /usr/local/bin/mpirun
+RUN mv /usr/bin/mpirun /usr/bin/mpirun.real && \
+    echo '#!/bin/bash' > /usr/bin/mpirun && \
+    echo 'mpirun.real --allow-run-as-root "$@"' >> /usr/bin/mpirun && \
+    chmod a+x /usr/bin/mpirun
 
 # Configure OpenMPI to run good defaults:
-RUN echo "btl_tcp_if_exclude = lo,docker0" >> /usr/local/etc/openmpi-mca-params.conf
+RUN echo "btl_tcp_if_exclude = lo,docker0" >> /etc/openmpi/openmpi-mca-params.conf
 
 # Install OpenSSH for MPI to communicate between containers
 RUN mkdir -p /var/run/sshd
@@ -99,8 +78,21 @@ RUN cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_confi
     mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
 
 # Install Horovod
-ARG HOROVOD_VERSION=0.16.4
-RUN python3 -m pip install --no-cache-dir horovod==${HOROVOD_VERSION}
+ARG HOROVOD_WITHOUT_PYTORCH=1
+ARG HOROVOD_WITHOUT_MXNET=1
+ARG HOROVOD_WITH_TENSORFLOW=1
+ARG HOROVOD_VERSION=
+
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+    build-essential \
+    g++-8 \
+    gcc-8 \
+    python3-dev
+
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-7 700 --slave /usr/bin/g++ g++ /usr/bin/g++-7 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 800 --slave /usr/bin/g++ g++ /usr/bin/g++-8
+
+RUN python3 -m pip install --no-cache-dir horovod${HOROVOD_VERSION:+==${HOROVOD_VERSION}}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

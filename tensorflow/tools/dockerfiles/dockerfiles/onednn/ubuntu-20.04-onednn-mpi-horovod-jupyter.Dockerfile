@@ -21,39 +21,7 @@
 
 ARG UBUNTU_VERSION=20.04
 
-FROM ubuntu:${UBUNTU_VERSION} AS base
-
-ARG DEBIAN_FRONTEND="noninteractive"
-
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-        build-essential \
-        curl \
-        git \
-        libcurl3-dev \
-        libfreetype6-dev \
-        libhdf5-serial-dev \
-        libzmq3-dev \
-        pkg-config \
-        rsync \
-        software-properties-common \
-        sudo \
-        unzip \
-        zip \
-        zlib1g-dev \
-        openjdk-8-jdk \
-        openjdk-8-jre-headless \
-        && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-ENV CI_BUILD_PYTHON python
-
-# CACHE_STOP is used to rerun future commands, otherwise cloning tensorflow will be cached and will not pull the most recent version
-ARG CACHE_STOP=1
-# Check out TensorFlow source code if --build-arg CHECKOUT_TF_SRC=1
-ARG CHECKOUT_TF_SRC=0
-ARG TF_BRANCH=master
-RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git --branch "${TF_BRANCH}" --single-branch /tensorflow_src || true
+FROM ubuntu:${UBUNTU_VERSION} as base
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
@@ -79,16 +47,62 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/bin/python3
 
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    curl
+# Options:
+#   tensorflow
+#   tensorflow-gpu
+#   tf-nightly
+#   tf-nightly-gpu
+# Set --build-arg TF_PACKAGE_VERSION=1.11.0rc0 to install a specific version.
+# Installs the latest version by default.
+ARG TF_PACKAGE=tensorflow
+ARG TF_PACKAGE_VERSION=
+RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
-# Install bazel
-ARG BAZEL_VERSION=3.1.0
-RUN mkdir /bazel && \
-    curl -fSsL -o /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
-    curl -fSsL -o /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
-    bash /bazel/installer.sh && \
-    rm -f /bazel/installer.sh
+ARG DEBIAN_FRONTEND="noninteractive"
+
+# install libnuma, openssh, wget
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+    libopenmpi-dev \
+    openmpi-bin \
+    openmpi-common \
+    openssh-client \
+    openssh-server && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a wrapper for OpenMPI to allow running as root by default
+RUN mv /usr/bin/mpirun /usr/bin/mpirun.real && \
+    echo '#!/bin/bash' > /usr/bin/mpirun && \
+    echo 'mpirun.real --allow-run-as-root "$@"' >> /usr/bin/mpirun && \
+    chmod a+x /usr/bin/mpirun
+
+# Configure OpenMPI to run good defaults:
+RUN echo "btl_tcp_if_exclude = lo,docker0" >> /etc/openmpi/openmpi-mca-params.conf
+
+# Install OpenSSH for MPI to communicate between containers
+RUN mkdir -p /var/run/sshd
+
+# Allow OpenSSH to talk to containers without asking for confirmation
+RUN cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_config.new && \
+    echo "    StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new && \
+    mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
+
+# Install Horovod
+ARG HOROVOD_WITHOUT_PYTORCH=1
+ARG HOROVOD_WITHOUT_MXNET=1
+ARG HOROVOD_WITH_TENSORFLOW=1
+ARG HOROVOD_VERSION=
+
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+    build-essential \
+    g++-8 \
+    gcc-8 \
+    ${PYTHON}-dev
+
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 100 --slave /usr/bin/g++ g++ /usr/bin/g++-9 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 800 --slave /usr/bin/g++ g++ /usr/bin/g++-8
+
+RUN python3 -m pip install --no-cache-dir horovod${HOROVOD_VERSION:+==${HOROVOD_VERSION}}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

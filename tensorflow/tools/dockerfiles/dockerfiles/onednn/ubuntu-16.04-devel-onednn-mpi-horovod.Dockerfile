@@ -57,27 +57,17 @@ RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/t
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
-ARG PYTHON=python3
 
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    curl \
-    software-properties-common
+    python3 \
+    python3-pip
 
-RUN add-apt-repository ppa:deadsnakes/ppa
-
-RUN apt-get install -y --no-install-recommends --fix-missing \
-    ${PYTHON}
-
-RUN curl -fSsL https://bootstrap.pypa.io/get-pip.py | python3.7
-RUN ${PYTHON} -m pip --no-cache-dir install --upgrade \
+RUN python3 -m pip --no-cache-dir install --upgrade \
     pip \
     setuptools
 
 # Some TF tools expect a "python" binary
-RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
-    ln -sf $(which ${PYTHON}) /usr/local/bin/python3 && \
-    ln -sf $(which ${PYTHON}) /usr/bin/python && \
-    ln -sf $(which ${PYTHON}) /usr/bin/python3
+RUN ln -s $(which python3) /usr/local/bin/python
 
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     curl
@@ -90,19 +80,39 @@ RUN mkdir /bazel && \
     bash /bazel/installer.sh && \
     rm -f /bazel/installer.sh
 
+ARG DEBIAN_FRONTEND="noninteractive"
+
+# install libnuma, openssh, wget
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+    libopenmpi-dev \
+    openmpi-bin \
+    openmpi-common \
+    openssh-client \
+    openssh-server && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a wrapper for OpenMPI to allow running as root by default
+RUN mv /usr/bin/mpirun /usr/bin/mpirun.real && \
+    echo '#!/bin/bash' > /usr/bin/mpirun && \
+    echo 'mpirun.real --allow-run-as-root "$@"' >> /usr/bin/mpirun && \
+    chmod a+x /usr/bin/mpirun
+
+# Configure OpenMPI to run good defaults:
+RUN echo "btl_tcp_if_exclude = lo,docker0" >> /etc/openmpi/openmpi-mca-params.conf
+
+# Install OpenSSH for MPI to communicate between containers
+RUN mkdir -p /var/run/sshd
+
+# Allow OpenSSH to talk to containers without asking for confirmation
+RUN cat /etc/ssh/ssh_config | grep -v StrictHostKeyChecking > /etc/ssh/ssh_config.new && \
+    echo "    StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new && \
+    mv /etc/ssh/ssh_config.new /etc/ssh/ssh_config
+
+# Check out horovod source code if --build-arg CHECKOUT_HOROVOD_SRC=1
+ARG CHECKOUT_HOROVOD_SRC=0
+ARG HOROVOD_BRANCH=master
+RUN test "${CHECKOUT_HOROVOD_SRC}" -eq 1 && git clone --branch "${HOROVOD_BRANCH}" --single-branch --recursive https://github.com/uber/horovod.git /horovod_src || true
+
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
-
-RUN python3 -m pip install --no-cache-dir jupyter matplotlib
-# Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
-RUN python3 -m pip install --no-cache-dir jupyter_http_over_ws ipykernel==5.1.1 nbformat==4.4.0
-RUN jupyter serverextension enable --py jupyter_http_over_ws
-
-RUN mkdir -p /tf/ && chmod -R a+rwx /tf/
-RUN mkdir /.local && chmod a+rwx /.local
-WORKDIR /tf
-EXPOSE 8888
-
-RUN python3 -m ipykernel.kernelspec
-
-CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/tf --ip 0.0.0.0 --no-browser --allow-root"]
