@@ -12,23 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for exporting symbols."""
+"""Tests using module `tf.experimental.numpy` via an alias."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.util import tf_export
+import numpy as onp
+import tensorflow as tf
 
 
-def public_name(np_fun_name):
-  return "experimental.numpy." + np_fun_name
+np = tf.experimental.numpy
 
 
-def np_export(np_fun_name):
-  return tf_export.tf_export(public_name(np_fun_name), v1=[])
+class PublicSymbolTest(tf.test.TestCase):
+
+  def testSimple(self):
+    a = 0.1
+    b = 0.2
+    self.assertAllClose(onp.add(a, b), np.add(a, b))
 
 
-def np_export_constant(module_name, name, value):
-  np_export(name).export_constant(module_name, name)
-  return value
+if __name__ == "__main__":
+  tf.compat.v1.enable_eager_execution()
+  tf.test.main()

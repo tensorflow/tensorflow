@@ -56,6 +56,7 @@ from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import numpy_ops
 from tensorflow.python.ops import ragged
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import stateful_random_ops
