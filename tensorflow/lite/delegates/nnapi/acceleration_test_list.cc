@@ -306,9 +306,9 @@ QuantizeOpTest/INT8,30
 -ConstInt8MeanOpTest.QuantizedDifferentScale
 ConstUint8(Max|Min)OpTest/.+,29
 ConstUint8(Mean)OpTest/.+
-Constint8(Mean|Max|Min)OpTest/.+,29
-ConstMeanOpTest.+/.+Int8
-MeanOpTest.+/.+Int8
+-ConstInt8(Max|Min)OpTest/.+,29
+-ConstMeanOpTest.*/.+
+-MeanOpTestQuantized.*/.+
 ConstFloat(Sum|Prod|Max|Min)OpTest/NotKeepDims,29
 ConstFloat(Sum|Prod|Max|Min)OpTest/KeepDims,29
 ConstFloat(Mean|Any)OpTest/NotKeepDims
