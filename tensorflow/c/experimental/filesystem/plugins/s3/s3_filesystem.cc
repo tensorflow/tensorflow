@@ -42,6 +42,8 @@ constexpr uint64_t kS3MultiPartDownloadChunkSize = 50 * 1024 * 1024;  // 50 MB
 constexpr size_t kDownloadRetries = 3;
 constexpr size_t kUploadRetries = 3;
 
+constexpr size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;  // 1 MB
+
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
 
@@ -55,6 +57,9 @@ static inline void TF_SetStatusFromAWSError(
       break;
     case Aws::Http::HttpResponseCode::REQUESTED_RANGE_NOT_SATISFIABLE:
       TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
+      break;
+    case Aws::Http::HttpResponseCode::NOT_FOUND:
+      TF_SetStatus(status, TF_NOT_FOUND, error.GetMessage().c_str());
       break;
     default:
       TF_SetStatus(
@@ -507,6 +512,64 @@ void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
   file->plugin_file = new tf_writable_file::S3File(
       bucket, object, s3_file->s3_client,
       s3_file->transfer_managers[Aws::Transfer::TransferDirection::UPLOAD]);
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_WritableFile* file, TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+  GetTransferManager(Aws::Transfer::TransferDirection::UPLOAD, s3_file);
+
+  // We need to delete `file->plugin_file` in case of errors.
+  std::unique_ptr<TF_WritableFile, void (*)(TF_WritableFile*)> writer(
+      file, [](TF_WritableFile* file) {
+        if (file != nullptr && file->plugin_file != nullptr) {
+          tf_writable_file::Cleanup(file);
+        }
+      });
+  writer->plugin_file = new tf_writable_file::S3File(
+      bucket, object, s3_file->s3_client,
+      s3_file->transfer_managers[Aws::Transfer::TransferDirection::UPLOAD]);
+  TF_SetStatus(status, TF_OK, "");
+
+  // Wraping inside a `std::unique_ptr` to prevent memory-leaking.
+  std::unique_ptr<TF_RandomAccessFile, void (*)(TF_RandomAccessFile*)> reader(
+      new TF_RandomAccessFile, [](TF_RandomAccessFile* file) {
+        if (file != nullptr) {
+          tf_random_access_file::Cleanup(file);
+          delete file;
+        }
+      });
+  NewRandomAccessFile(filesystem, path, reader.get(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  uint64_t offset = 0;
+  std::string buffer(kS3ReadAppendableFileBufferSize, {});
+  while (true) {
+    auto read = tf_random_access_file::Read(reader.get(), offset,
+                                            kS3ReadAppendableFileBufferSize,
+                                            &buffer[0], status);
+    if (TF_GetCode(status) == TF_NOT_FOUND) {
+      break;
+    } else if (TF_GetCode(status) == TF_OK) {
+      offset += read;
+      tf_writable_file::Append(file, buffer.c_str(), read, status);
+      if (TF_GetCode(status) != TF_OK) return;
+    } else if (TF_GetCode(status) == TF_OUT_OF_RANGE) {
+      offset += read;
+      tf_writable_file::Append(file, buffer.c_str(), read, status);
+      if (TF_GetCode(status) != TF_OK) return;
+      break;
+    } else {
+      return;
+    }
+  }
+  writer.release();
   TF_SetStatus(status, TF_OK, "");
 }
 
