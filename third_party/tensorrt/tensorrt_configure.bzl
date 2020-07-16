@@ -88,13 +88,14 @@ def _create_local_tensorrt_repository(repository_ctx):
     # function to be restarted with all previous state being lost. This
     # can easily lead to a O(n^2) runtime in the number of labels.
     # See https://github.com/tensorflow/tensorflow/commit/62bd3534525a036f07d9851b3199d68212904778
+    find_cuda_config_path = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_cuda_config.py.gz.base64"))
     tpl_paths = {
         "build_defs.bzl": _tpl_path(repository_ctx, "build_defs.bzl"),
         "BUILD": _tpl_path(repository_ctx, "BUILD"),
         "tensorrt/include/tensorrt_config.h": _tpl_path(repository_ctx, "tensorrt/include/tensorrt_config.h"),
     }
 
-    config = find_cuda_config(repository_ctx, ["tensorrt"])
+    config = find_cuda_config(repository_ctx, find_cuda_config_path, ["tensorrt"])
     trt_version = config["tensorrt_version"]
     cpu_value = get_cpu_value(repository_ctx)
 
@@ -190,16 +191,12 @@ remote_tensorrt_configure = repository_rule(
     remotable = True,
     attrs = {
         "environ": attr.string_dict(),
-        "_find_cuda_config": attr.label(default = "@org_tensorflow//third_party/gpus:find_cuda_config.py"),
     },
 )
 
 tensorrt_configure = repository_rule(
     implementation = _tensorrt_configure_impl,
     environ = _ENVIRONS + [_TF_TENSORRT_CONFIG_REPO],
-    attrs = {
-        "_find_cuda_config": attr.label(default = "@org_tensorflow//third_party/gpus:find_cuda_config.py"),
-    },
 )
 """Detects and configures the local CUDA toolchain.
 
