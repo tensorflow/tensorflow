@@ -2321,5 +2321,25 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
       # if training is not passed at runtime
       self.assertAllEqual(network(x), _call(x, None))
 
+
+class InputsOutputsErrorTest(keras_parameterized.TestCase):
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_input_error(self):
+    inputs = input_layer_lib.Input((10,))
+    outputs = layers.Dense(10)(inputs)
+    with self.assertRaisesRegex(
+        TypeError, "('Keyword argument not understood:', 'input')"):
+      models.Model(input=inputs, outputs=outputs)
+
+  @testing_utils.enable_v2_dtype_behavior
+  def test_output_error(self):
+    inputs = input_layer_lib.Input((10,))
+    outputs = layers.Dense(10)(inputs)
+    with self.assertRaisesRegex(
+        TypeError, "('Keyword argument not understood:', 'output')"):
+      models.Model(inputs=inputs, output=outputs)
+
+
 if __name__ == '__main__':
   test.main()
