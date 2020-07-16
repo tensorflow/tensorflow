@@ -64,17 +64,11 @@ def _label(file):
     return Label("//third_party/nccl:{}".format(file))
 
 def _create_local_nccl_repository(repository_ctx):
-    # Resolve all labels before doing any real work. Resolving causes the
-    # function to be restarted with all previous state being lost. This
-    # can easily lead to a O(n^2) runtime in the number of labels.
-    # See https://github.com/tensorflow/tensorflow/commit/62bd3534525a036f07d9851b3199d68212904778
-    find_cuda_config_path = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_cuda_config.py.gz.base64"))
-
     nccl_version = get_host_environ(repository_ctx, _TF_NCCL_VERSION, "")
     if nccl_version:
         nccl_version = nccl_version.split(".")[0]
 
-    cuda_config = find_cuda_config(repository_ctx, find_cuda_config_path, ["cuda"])
+    cuda_config = find_cuda_config(repository_ctx, ["cuda"])
     cuda_version = cuda_config["cuda_version"].split(".")
     cuda_major = cuda_version[0]
     cuda_minor = cuda_version[1]
@@ -96,7 +90,7 @@ def _create_local_nccl_repository(repository_ctx):
         )
     else:
         # Create target for locally installed NCCL.
-        config = find_cuda_config(repository_ctx, find_cuda_config_path, ["nccl"])
+        config = find_cuda_config(repository_ctx, ["nccl"])
         config_wrap = {
             "%{nccl_version}": config["nccl_version"],
             "%{nccl_header_dir}": config["nccl_include_dir"],
@@ -145,12 +139,20 @@ remote_nccl_configure = repository_rule(
     remotable = True,
     attrs = {
         "environ": attr.string_dict(),
+        "_find_cuda_config": attr.label(
+            default = Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+        ),
     },
 )
 
 nccl_configure = repository_rule(
     implementation = _nccl_autoconf_impl,
     environ = _ENVIRONS,
+    attrs = {
+        "_find_cuda_config": attr.label(
+            default = Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+        ),
+    },
 )
 """Detects and configures the NCCL configuration.
 
