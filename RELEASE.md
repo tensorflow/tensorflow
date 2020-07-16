@@ -38,6 +38,11 @@
 * `tf.data`:
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
   the complement of `select_cols`; at most one of these should be specified.
+    * We have implemented an optimization which reorders data-discarding
+      transformations such as `take` and `shard` to happen earlier in the
+      dataset when it is safe to do so. The optimization can be disabled via
+      the `experimental_optimization.reorder_data_discarding_ops` dataset
+      option.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:
