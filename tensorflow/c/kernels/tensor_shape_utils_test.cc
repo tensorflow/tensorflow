@@ -23,11 +23,25 @@ limitations under the License.
 
 namespace tensorflow { 
 
-template <typename T> 
-void TestShapeMatch(T shape) {
+namespace {
+
+// A wrapper that will automatically delete the allocated TF_Tensor 
+// once out of scope. 
+struct TF_TensorWrapper { 
+	TF_Tensor* tf_tensor; 
+	TF_TensorWrapper(TF_Tensor* tensor){ 
+		tf_tensor = tensor; 
+	}
+	~TF_TensorWrapper() { 
+		TF_DeleteTensor(tf_tensor); 
+	}
+}; 
+
+void TestShapeMatch(TensorShape shape) {
 	Tensor tensor(DT_FLOAT, shape); 
 	Status status; 
 	TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, &status); 
+	TF_TensorWrapper tensor_wrapper = TF_TensorWrapper(tf_tensor); 
 	ASSERT_TRUE(status.ok()) << status.ToString();
 	ASSERT_EQ(tensor.shape().DebugString(), ShapeDebugString(tf_tensor)); 
 }
@@ -40,4 +54,5 @@ TEST(ShapeDebugString, ScalarShape) {
 	TestShapeMatch(TensorShape({})); 
 }
 
+} // namespace
 } // namespace tensorflow
