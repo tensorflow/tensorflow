@@ -407,13 +407,13 @@ class ScopedMetaGraphTest(test.TestCase):
       new_image = constant_op.constant(
           1.2, dtypes.float32, shape=[100, 28], name="images")
 
-    with self.assertRaisesRegexp(ValueError, "Graph contains unbound inputs"):
+    with self.assertRaisesRegex(ValueError, "Graph contains unbound inputs"):
       meta_graph.import_scoped_meta_graph(
           os.path.join(test_dir, exported_filenames[0]),
           graph=graph,
           import_scope="new_hidden1")
 
-    with self.assertRaisesRegexp(ValueError, "Graph contains unbound inputs"):
+    with self.assertRaisesRegex(ValueError, "Graph contains unbound inputs"):
       meta_graph.import_scoped_meta_graph(
           os.path.join(test_dir, exported_filenames[0]),
           graph=graph,
@@ -829,7 +829,7 @@ class ScopedMetaGraphTest(test.TestCase):
 
     graph2 = ops.Graph()
     with graph2.as_default():
-      with self.assertRaisesRegexp(ValueError, "Graph contains unbound inputs"):
+      with self.assertRaisesRegex(ValueError, "Graph contains unbound inputs"):
         meta_graph.import_scoped_meta_graph(
             orig_meta_graph, import_scope="new_hidden1")
 
@@ -952,7 +952,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
               "python/framework/testdata/metrics_export_meta_graph.pb"))
       self.assertEqual(len(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)),
                        2)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           AttributeError, "'Tensor' object has no attribute 'initializer'"):
         initializer = variables.local_variables_initializer()
 

@@ -23,7 +23,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_factory.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
+#include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_config_c_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
@@ -67,6 +70,16 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
 
 }  // namespace
 
+Status CreateTpuCompilationCache(
+    ResourceMgr* rmgr, tpu::TpuCompilationCacheInterface** compilation_cache) {
+  return rmgr->LookupOrCreate<tpu::TpuCompilationCacheInterface>(
+      rmgr->default_container(), tpu::kCompilationCacheResourceName,
+      compilation_cache, [&](tpu::TpuCompilationCacheInterface** new_cache) {
+        *new_cache = tpu::GetCompilationCacheCreateFn()();
+        return Status::OK();
+      });
+}
+
 void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "ConfigureDistributedTpuOp";
   XLA_SCOPED_LOGGING_TIMER("ConfigureDistributedTpuOp");
@@ -98,9 +111,15 @@ void ConfigureDistributedTpuOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuMeshStateInterface>(
                           rmgr, tpu::kTpuMeshStateInterfaceResourceName));
 
+  // Create the subgraph compilation cache and put it in the local resource
+  // manager.
+  tpu::TpuCompilationCacheInterface* compilation_cache;
+  OP_REQUIRES_OK(ctx, CreateTpuCompilationCache(rmgr, &compilation_cache));
+  core::ScopedUnref compilation_cache_ref(compilation_cache);
+
   tpu::ConfigApiFn()->ConfigureDistributedTpuOp_DoWorkFn(
       num_devices_per_host.size(), num_devices_per_host.data(),
-      &host_config_output_size, &host_config_output, status);
+      compilation_cache, &host_config_output_size, &host_config_output, status);
 
   auto* tpu_mesh = tpu::TpuMeshStateInterface::Create();
   OP_REQUIRES_OK(
@@ -228,6 +247,14 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, rmgr->Create(rmgr->default_container(),
                                      tpu::kTpuMeshStateInterfaceResourceName,
                                      mesh_state_interface));
+  }
+
+  if (enable_whole_mesh_compilations_) {
+    // If this is a whole mesh compilation mode, create the compilation cache,
+    // if missing.
+    tpu::TpuCompilationCacheInterface* compilation_cache;
+    OP_REQUIRES_OK(ctx, CreateTpuCompilationCache(rmgr, &compilation_cache));
+    compilation_cache->Unref();
   }
 
   tpu::ConfigApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(

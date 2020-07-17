@@ -25,8 +25,8 @@ from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.types import core
 from tensorflow.python.util import nest
 
 
@@ -39,6 +39,7 @@ def gather(strategy, value):
     strategy: a `tf.distribute.Strategy`.
     value: a nested structure of n-dim `tf.distribute.DistributedValue` of
       `tf.Tensor`, or of a `tf.Tensor` if the strategy only has one replica.
+      Cannot contain tf.sparse.SparseTensor.
 
   Returns:
     a (n+1)-dim `tf.Tensor`.
@@ -50,8 +51,7 @@ def _gather(strategy, value):
   """Gathers a single value."""
   # pylint: disable=protected-access
   if not isinstance(value, values.DistributedValues):
-    assert isinstance(value, core.Tensor)
-    value = values.PerReplica([value])
+    value = values.PerReplica([ops.convert_to_tensor(value)])
   if not isinstance(strategy.extended,
                     collective_all_reduce_strategy.CollectiveAllReduceExtended):
     return array_ops.stack(value._values)

@@ -2206,6 +2206,22 @@ TEST(RawApiTest, TestMetricsFetch) {
   }
 }
 
+TEST(RawApiTest, TestMemoryInfo) {
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  Output result = ops::XRTMemoryInfo(root);
+  TF_ASSERT_OK(root.status());
+
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(session.Run({result}, &outputs));
+  ASSERT_EQ(outputs.size(), 1);
+
+  xrt::MemoryInfo mem_info;
+  EXPECT_TRUE(ParseFromTString(outputs[0].scalar<tstring>()(), &mem_info));
+  EXPECT_GT(mem_info.kb_total(), 0);
+  EXPECT_GT(mem_info.kb_free(), 0);
+}
+
 }  // namespace
 
 }  // namespace tensorflow

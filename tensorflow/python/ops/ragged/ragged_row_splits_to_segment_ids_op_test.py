@@ -39,16 +39,15 @@ class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(segment_ids, [])
 
   def testErrors(self):
-    self.assertRaisesRegexp(ValueError, r'Invalid row_splits: \[\]',
-                            segment_id_ops.row_splits_to_segment_ids, [])
-    self.assertRaisesRegexp(
-        ValueError, r'splits must have dtype int32 or int64',
-        segment_id_ops.row_splits_to_segment_ids,
-        constant_op.constant([0.5]))
-    self.assertRaisesRegexp(ValueError, r'Shape \(\) must have rank 1',
-                            segment_id_ops.row_splits_to_segment_ids, 0)
-    self.assertRaisesRegexp(ValueError, r'Shape \(1, 1\) must have rank 1',
-                            segment_id_ops.row_splits_to_segment_ids, [[0]])
+    self.assertRaisesRegex(ValueError, r'Invalid row_splits: \[\]',
+                           segment_id_ops.row_splits_to_segment_ids, [])
+    self.assertRaisesRegex(ValueError, r'splits must have dtype int32 or int64',
+                           segment_id_ops.row_splits_to_segment_ids,
+                           constant_op.constant([0.5]))
+    self.assertRaisesRegex(ValueError, r'Shape \(\) must have rank 1',
+                           segment_id_ops.row_splits_to_segment_ids, 0)
+    self.assertRaisesRegex(ValueError, r'Shape \(1, 1\) must have rank 1',
+                           segment_id_ops.row_splits_to_segment_ids, [[0]])
 
 
 if __name__ == '__main__':

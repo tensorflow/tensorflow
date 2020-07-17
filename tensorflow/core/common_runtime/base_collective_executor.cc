@@ -271,13 +271,12 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
     DCHECK_EQ(nullptr, col_impl);
     return;
   }
-  CollectiveContext* col_ctx =
-      new CollectiveContext(this, dev_mgr_, ctx, CtxParams(ctx), col_params,
-                            exec_key, step_id_, input, output);
+  auto col_ctx = std::make_shared<CollectiveContext>(
+      this, dev_mgr_, ctx, CtxParams(ctx), col_params, exec_key, step_id_,
+      input, output);
   status = col_impl->InitializeCollectiveContext(col_ctx);
   if (!status.ok()) {
     done_safe(status);
-    delete col_ctx;
     delete col_impl;
     return;
   }
@@ -293,7 +292,6 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
         profiler::TraceMeLevel::kInfo);
     col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
       done_safe(s);
-      delete col_ctx;
       delete col_impl;
     });
   });
@@ -311,7 +309,8 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
     // TODO(xldrx): Share the timeout watchdog thread among collectives.
     SchedNonBlockingClosureAfter(
         timeout_microseconds, [is_callback_called, done] {
-          if (!is_callback_called->load()) {
+          auto should_call_callback = !is_callback_called->exchange(true);
+          if (should_call_callback) {
             auto status =
                 Status(error::DEADLINE_EXCEEDED,
                        "Collective has timed out waiting for other workers.");

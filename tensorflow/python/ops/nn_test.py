@@ -626,7 +626,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
           partitioner=partitioned_variables.fixed_size_partitioner(num_shards),
           initializer=constant_op.constant(biases))
       with self.session(graph=g) as sess:
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         return self.evaluate([list(sharded_weights), list(sharded_biases)])
 
   def testShapes(self):
@@ -1027,7 +1027,7 @@ class LeakyReluTest(test_lib.TestCase):
     inputs = constant_op.constant(inputs)
 
     outputs = nn_ops.leaky_relu(inputs)
-    self.assertEquals(inputs.shape, outputs.shape)
+    self.assertEqual(inputs.shape, outputs.shape)
 
     inputs, outputs = self.evaluate([inputs, outputs])
 

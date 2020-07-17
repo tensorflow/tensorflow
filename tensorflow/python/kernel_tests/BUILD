@@ -1468,13 +1468,6 @@ cuda_py_test(
     name = "cast_op_test",
     size = "small",
     srcs = ["cast_op_test.py"],
-    tags = [
-        "no_windows",
-        "noasan",
-        "noguitar",
-        "notap",
-        "optonly",
-    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

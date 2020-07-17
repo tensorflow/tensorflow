@@ -399,7 +399,8 @@ class CollectiveImplementationInterface {
   // Called from CollectiveExecutor right before calling Run().  The
   // CollectiveContext passed in must outlive the CollectiveImplementation
   // object.
-  virtual Status InitializeCollectiveContext(CollectiveContext* col_ctx) = 0;
+  virtual Status InitializeCollectiveContext(
+      std::shared_ptr<CollectiveContext> col_ctx) = 0;
 
   // Performs collective implementation specific group initialization.  The
   // intention is to do group-specific initialization of runtime details for the

@@ -32,7 +32,7 @@ TEST(TimespanTests, NonInstantSpanIncludesSingleTimeTests) {
   XEventBuilder event_builder = xline_builder.AddEvent(
       *xplane_builder.GetOrCreateEventMetadata("1st event"));
   event_builder.AddStatValue(
-      *xplane_builder.GetOrCreateStatMetadata("int stat"), 1234LL);
+      *xplane_builder.GetOrCreateStatMetadata("int stat"), int64{1234});
   event_builder.AddStatValue(
       *xplane_builder.GetOrCreateStatMetadata("string stat"),
       std::string("abc"));
@@ -50,7 +50,7 @@ TEST(TimespanTests, NonInstantSpanIncludesSingleTimeTests) {
       EXPECT_EQ(xevent.Name(), "1st event");
       xevent.ForEachStat([&](const XStatVisitor& stat) {
         if (stat.Name() == "int stat") {
-          EXPECT_EQ(stat.IntValue(), 1234LL);
+          EXPECT_EQ(stat.IntValue(), int64{1234});
           num_stats++;
         } else if (stat.Name() == "string stat") {
           EXPECT_EQ(stat.StrOrRefValue(), "abc");

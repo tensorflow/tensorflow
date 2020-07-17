@@ -143,19 +143,16 @@ int4 GetOffset(const SliceAttributes& attr, int src_width, int src_height,
 
 StridedSlice::StridedSlice(const OperationDef& definition,
                            const SliceAttributes& attr)
-    : GPUOperation(definition), attributes_(attr), work_group_size_(8, 4, 1) {}
+    : GPUOperation(definition), attributes_(attr) {
+  work_group_size_ = int3(8, 4, 1);
+}
 
 StridedSlice::StridedSlice(StridedSlice&& operation)
-    : GPUOperation(std::move(operation)),
-      attributes_(operation.attributes_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : GPUOperation(std::move(operation)), attributes_(operation.attributes_) {}
 
 StridedSlice& StridedSlice::operator=(StridedSlice&& operation) {
   if (this != &operation) {
     attributes_ = operation.attributes_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -188,8 +185,7 @@ absl::Status StridedSlice::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("stride_y", attributes_.strides.h));
   RETURN_IF_ERROR(args_.SetInt("stride_z", attributes_.strides.c));
   RETURN_IF_ERROR(args_.SetInt("stride_b", attributes_.strides.b));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return absl::OkStatus();
 }
 
 int3 StridedSlice::GetGridSize() const {
@@ -197,16 +193,6 @@ int3 StridedSlice::GetGridSize() const {
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status StridedSlice::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status StridedSlice::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 StridedSlice CreateStridedSlice(const OperationDef& definition,

@@ -30,7 +30,11 @@ namespace {
 
 // Ensure memory doesn't expand more that 3%:
 constexpr float kAllocationThreshold = 0.03;
-constexpr float kAllocationTailMiscCeiling = 1024;
+
+// TODO(b/160617245): Record persistent allocations to provide a more accurate
+// number here.
+constexpr float kAllocationTailMiscCeiling = 2 * 1024;
+
 const bool kIs64BitSystem = (sizeof(void*) == 8);
 
 constexpr int kKeywordModelTensorArenaSize = 22 * 1024;
@@ -42,14 +46,14 @@ constexpr int kKeywordModelNodeAndRegistrationCount = 15;
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
 //
-// Run this test with '--copt=-DTF_LITE_MICRO_OPTIMIZED_RUNTIME' to get
-// optimized memory runtime values:
+// Run this test with '--copt=-DTF_LITE_STATIC_MEMORY' to get optimized memory
+// runtime values:
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kKeywordModelTotalSize = 18080;
-constexpr int kKeywordModelTailSize = 17408;
+constexpr int kKeywordModelTotalSize = 18192;
+constexpr int kKeywordModelTailSize = 17520;
 #else
-constexpr int kKeywordModelTotalSize = 21040;
-constexpr int kKeywordModelTailSize = 20368;
+constexpr int kKeywordModelTotalSize = 21152;
+constexpr int kKeywordModelTailSize = 20480;
 #endif
 constexpr int kKeywordModelHeadSize = 672;
 constexpr int kKeywordModelTfLiteTensorVariableBufferDataSize = 10240;
@@ -65,11 +69,11 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kTestConvModelTotalSize = 10784;
-constexpr int kTestConvModelTailSize = 3040;
+constexpr int kTestConvModelTotalSize = 10816;
+constexpr int kTestConvModelTailSize = 3072;
 #else
-constexpr int kTestConvModelTotalSize = 11680;
-constexpr int kTestConvModelTailSize = 3936;
+constexpr int kTestConvModelTotalSize = 11712;
+constexpr int kTestConvModelTailSize = 3968;
 #endif
 constexpr int kTestConvModelHeadSize = 7744;
 constexpr int kTestConvModelTfLiteTensorQuantizationDataSize = 768;
@@ -91,7 +95,8 @@ void EnsureAllocatedSizeThreshold(const char* allocation_type, size_t actual,
   // TODO(b/158651472): Better auditing of non-64 bit systems:
   if (kIs64BitSystem) {
     // 64-bit systems should check floor and ceiling to catch memory savings:
-    TF_LITE_MICRO_EXPECT_NEAR(actual, expected, kAllocationThreshold);
+    TF_LITE_MICRO_EXPECT_NEAR(actual, expected,
+                              expected * kAllocationThreshold);
     if (actual != expected) {
       TF_LITE_REPORT_ERROR(micro_test::reporter,
                            "%s threshold failed: %d != %d", allocation_type,
@@ -160,7 +165,6 @@ void ValidateModelAllocationThresholds(
                            sizeof(tflite::NodeAndRegistration) *
                                thresholds.node_and_registration_count +
                            thresholds.op_runtime_data_size;
-
   TF_LITE_MICRO_EXPECT_LE(thresholds.tail_alloc_size - tail_est_length,
                           kAllocationTailMiscCeiling);
 }
