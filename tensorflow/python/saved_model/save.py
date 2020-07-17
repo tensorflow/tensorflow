@@ -1143,6 +1143,6 @@ def _build_meta_graph(obj,
                       options,
                       meta_graph_def=None):
   """Creates a MetaGraph under a SaveContext."""
-  with save_context.save_context():
+  with save_context.save_context(options):
     return _build_meta_graph_impl(obj, export_dir, signatures, options,
                                   meta_graph_def)
