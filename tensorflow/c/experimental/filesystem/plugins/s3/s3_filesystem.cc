@@ -673,6 +673,43 @@ int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
   return stats.length;
 }
 
+void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
+                                     const char* path,
+                                     TF_ReadOnlyMemoryRegion* region,
+                                     TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, true, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+  GetTransferManager(Aws::Transfer::TransferDirection::UPLOAD, s3_file);
+
+  auto size = GetFileSize(filesystem, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  if (size == 0)
+    return TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
+
+  std::unique_ptr<char[]> data(new char[size]);
+  // Wraping inside a `std::unique_ptr` to prevent memory-leaking.
+  std::unique_ptr<TF_RandomAccessFile, void (*)(TF_RandomAccessFile*)> reader(
+      new TF_RandomAccessFile, [](TF_RandomAccessFile* file) {
+        if (file != nullptr) {
+          tf_random_access_file::Cleanup(file);
+          delete file;
+        }
+      });
+  NewRandomAccessFile(filesystem, path, reader.get(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto read =
+      tf_random_access_file::Read(reader.get(), 0, size, data.get(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  region->plugin_memory_region = new tf_read_only_memory_region::S3MemoryRegion(
+      {std::move(data), static_cast<uint64_t>(read)});
+  TF_SetStatus(status, TF_OK, "");
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_s3_filesystem
