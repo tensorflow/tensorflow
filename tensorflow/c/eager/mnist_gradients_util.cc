@@ -64,15 +64,13 @@ Status MatMul(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(matmul_op->AddInput(inputs[0]));
   TF_RETURN_IF_ERROR(matmul_op->AddInput(inputs[1]));
 
-  matmul_op->SetAttrBool("transpose_a", transpose_a);
-  matmul_op->SetAttrBool("transpose_b", transpose_b);
+  TF_RETURN_IF_ERROR(matmul_op->SetAttrBool("transpose_a", transpose_a));
+  TF_RETURN_IF_ERROR(matmul_op->SetAttrBool("transpose_b", transpose_b));
   
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(matmul_op->Execute(outputs, &num_retvals));
   return Status::OK();
 }
-
-
 
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,
