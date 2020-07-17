@@ -1400,9 +1400,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     >>> outputs = tf.keras.layers.Dense(1)(x)
     >>> model = tf.keras.Model(inputs, outputs)
     >>> # Activity regularization.
+    >>> len(model.losses)
+    0
     >>> model.add_loss(tf.abs(tf.reduce_mean(x)))
-    >>> model.losses
-    [<tf.Tensor 'Abs:0' shape=() dtype=float32>]
+    >>> len(model.losses)
+    1
 
     >>> inputs = tf.keras.Input(shape=(10,))
     >>> d = tf.keras.layers.Dense(10, kernel_initializer='ones')

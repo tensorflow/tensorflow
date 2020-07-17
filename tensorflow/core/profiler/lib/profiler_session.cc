@@ -110,10 +110,10 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
   // 3. Sort each plane of the XSpace
   profiler::SortXSpace(space);
   // 4. Grouping (i.e. marking step number) events in the XSpace.
-  profiler::EventGroupNameMap event_group_name_map;
-  profiler::GroupTfEvents(space, &event_group_name_map);
+  profiler::GroupMetadataMap group_metadata_map;
+  profiler::GroupTfEvents(space, &group_metadata_map);
   // 5. Generated miscellaneous derived time lines for device planes.
-  profiler::GenerateDerivedTimeLines(event_group_name_map, space);
+  profiler::GenerateDerivedTimeLines(group_metadata_map, space);
 #endif
 
   return Status::OK();

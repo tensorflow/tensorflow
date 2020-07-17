@@ -60,7 +60,8 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
         CostAnalysisPrefetchIntervalPicker(
             *cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
-            /*max_async_copy_to_overlap_ratio=*/10.0));
+            /*max_async_copy_to_overlap_ratio=*/10.0,
+            /*preferred_async_copy_to_overlap_ratio=*/1.5));
     return AssignMemorySpace(
         module, /*max_outstanding_async_copies=*/-1,
         MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
@@ -4043,6 +4044,219 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTest) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 0);
+}
+
+// For testing purposes, we define a cost analysis where we can control the
+// elapsed times of each HLO and asynchronous copy.
+class FakeMemorySpaceAssignmentCostAnalysis
+    : public MemorySpaceAssignmentCostAnalysis {
+ public:
+  static StatusOr<std::unique_ptr<FakeMemorySpaceAssignmentCostAnalysis>>
+  Create(const HloCostAnalysis& cost_analysis, const HloModule& module) {
+    TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(&module));
+    TF_ASSIGN_OR_RETURN(auto hlo_live_range,
+                        HloLiveRange::Run(module.schedule(), *alias_analysis,
+                                          module.entry_computation()));
+    auto call_graph = CallGraph::Build(&module);
+    return absl::WrapUnique(new FakeMemorySpaceAssignmentCostAnalysis(
+        cost_analysis, /*async_copy_bandwidth_bytes_per_second=*/1,
+        /*alternate_mem_bandwidth_bytes_per_second=*/1,
+        std::move(alias_analysis), std::move(hlo_live_range),
+        std::move(call_graph)));
+  }
+
+  float GetInstructionElapsed(
+      const HloInstruction& instruction) const override {
+    return 1.0;
+  }
+
+  float GetInstructionElapsedInAlternateMemory(
+      const HloInstruction& instruction,
+      absl::optional<int64> operand_in_alternate_mem,
+      bool output_in_alternate_mem) const override {
+    if (operand_in_alternate_mem) {
+      return 0.5;
+    } else {
+      return 1.0;
+    }
+  }
+
+  float GetAsyncCopyElapsed(const Shape& shape) const override { return 3.0; }
+
+ protected:
+  FakeMemorySpaceAssignmentCostAnalysis(
+      const HloCostAnalysis& cost_analysis,
+      float async_copy_bandwidth_bytes_per_second,
+      float alternate_mem_bandwidth_bytes_per_second,
+      std::unique_ptr<HloAliasAnalysis> alias_analysis,
+      std::unique_ptr<HloLiveRange> hlo_live_range,
+      std::unique_ptr<CallGraph> call_graph)
+      : MemorySpaceAssignmentCostAnalysis(
+            cost_analysis, async_copy_bandwidth_bytes_per_second,
+            alternate_mem_bandwidth_bytes_per_second, std::move(alias_analysis),
+            std::move(hlo_live_range), std::move(call_graph)) {}
+};
+
+using CostAnalysisPrefetchIntervalPickerTest = HloTestBase;
+
+TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)
+    a = f32[2,4] negate(param0)
+    b = f32[2,4] negate(a)
+    c = f32[2,4] negate(b)
+    d = f32[2,4] negate(c)
+    e = f32[2,4] negate(d)
+    f = f32[2,4] negate(e)
+    g = f32[2,4] negate(f)
+    h = f32[2,4] negate(g)
+    i = f32[2,4] negate(h)
+    j = f32[2,4] negate(i)
+    k = f32[2,4] negate(j)
+    l = f32[2,4] negate(k)
+    m = f32[2,4] negate(l)
+    n = f32[2,4] negate(m)
+    o = f32[2,4] negate(n)
+    p = f32[2,4] negate(o)
+    q = f32[2,4] negate(p)
+    r = f32[2,4] negate(q)
+    s = f32[2,4] negate(r)
+    t = f32[2,4] negate(s)
+    u = f32[2,4] negate(t)
+    ROOT v = f32[2,4] add(u, param0)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
+                          FakeMemorySpaceAssignmentCostAnalysis::Create(
+                              hlo_cost_analysis, *module));
+  CostAnalysisPrefetchIntervalPicker interval_picker(
+      *cost_analysis,
+      /*min_async_copy_to_overlap_ratio=*/1.0,
+      /*max_async_copy_to_overlap_ratio=*/4.0,
+      /*preferred_async_copy_to_overlap_ratio=*/2.0);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
+  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/22);
+
+  // Expect that the first interval is (15, 22), which has elapsed time of 6.0,
+  // twice of the async copy elased (3.0). Then we expect that intervals will be
+  // visited in alternating increasing and decreasing orders until hitting the
+  // min and max async copy overlap ratios, which are the intervals (18, 22)
+  // and (9, 22) respectively.
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 15);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 16);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 14);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 17);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 13);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 18);  // Min async overlap ratio reached.
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 12);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 11);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 10);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 9);  // Max async overlap ratio reached.
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_TRUE(interval_picker.Done());
+
+  // Expect that if the time between start_time and end_time is too short, there
+  // won't be any available intervals.
+  interval_picker.Begin(use, /*start_time=*/19, /*end_time=*/22);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_TRUE(interval_picker.Done());
+}
+
+TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  while_condition {
+    param1 = (f32[2,4]) parameter(0)    // 19
+    ROOT cond = pred[] constant(true)   // 20
+  }
+
+  while_body {
+    param2 = (f32[2,4]) parameter(0)    // 21
+    gte2 = f32[2,4] get-tuple-element(param2), index=0  // 22
+    add = f32[2,4] add(gte2, gte2)      // 23
+    ROOT tuple2 = (f32[2,4]) tuple(add) // 24
+  }
+
+  ENTRY Entry {
+    param0 = f32[2,4] parameter(0)  // 0
+    a = f32[2,4] negate(param0)     // 1
+    b = f32[2,4] negate(a)          // 2
+    c = f32[2,4] negate(b)          // 3
+    d = f32[2,4] negate(c)          // 4
+    e = f32[2,4] negate(d)          // 5
+    f = f32[2,4] negate(e)          // 6
+    g = f32[2,4] negate(f)          // 7
+    h = f32[2,4] negate(g)          // 8
+    i = f32[2,4] negate(h)          // 9
+    j = f32[2,4] negate(i)          // 10
+    k = f32[2,4] negate(j)          // 11
+    l = f32[2,4] negate(k)          // 12
+    m = f32[2,4] negate(l)          // 13
+    n = f32[2,4] negate(m)          // 14
+    o = f32[2,4] negate(n)          // 15
+    p = f32[2,4] negate(o)          // 16
+    q = f32[2,4] negate(p)          // 17
+    tuple = (f32[2,4]) tuple(q)     // 18
+    while = (f32[2,4]) while(tuple), condition=while_condition, body=while_body  // 25
+    gte1 = f32[2,4] get-tuple-element(while), index=0  // 26
+    r = f32[2,4] negate(gte1)       // 27
+    s = f32[2,4] negate(r)          // 28
+    t = f32[2,4] negate(s)          // 29
+    u = f32[2,4] negate(t)          // 30
+    ROOT v = f32[2,4] add(u, param0)  // 31
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloCostAnalysis hlo_cost_analysis(ShapeSize);
+  TF_ASSERT_OK_AND_ASSIGN(auto cost_analysis,
+                          FakeMemorySpaceAssignmentCostAnalysis::Create(
+                              hlo_cost_analysis, *module));
+  CostAnalysisPrefetchIntervalPicker interval_picker(
+      *cost_analysis,
+      /*min_async_copy_to_overlap_ratio=*/1.0,
+      /*max_async_copy_to_overlap_ratio=*/12.0,
+      /*preferred_async_copy_to_overlap_ratio=*/2.0);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
+  interval_picker.Begin(use, /*start_time=*/0, /*end_time=*/31);
+
+  // Because there are while loop computations between [19, 24], we ensure that
+  // the interval picker avoids this interval.
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 25);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 26);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 18);
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 27);  // Min async overlap ratio reached.
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_EQ(interval_picker.Next(), 17);  // Max async overlap ratio reached.
+  LOG(INFO) << interval_picker.ToDebugString();
+  EXPECT_TRUE(interval_picker.Done());
 }
 
 }  // namespace

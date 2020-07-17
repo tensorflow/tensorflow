@@ -37,8 +37,11 @@ namespace cl {
 class FullyConnected : public GPUOperation {
  public:
   FullyConnected() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-
+  absl::Status Tune(const TuningParameters& params) override {
+    return absl::OkStatus();
+  }
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
   absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
@@ -60,9 +63,6 @@ class FullyConnected : public GPUOperation {
   template <DataType T, typename S>
   void RearrangeWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                         absl::Span<S> dst);
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(0, 0, 0);
 };
 
 template <DataType T>

@@ -80,8 +80,8 @@ class ThunkSchedule {
   // `thunk`.
   //
   // Precondition: `operand` is a non-trivial (i.e. excluding
-  // thunk.hlo_instruction() itself) transitive operand of
-  // thunk.hlo_instruction().
+  // thunk.hlo_instruction_ itself) transitive operand of
+  // thunk.hlo_instruction_.
   void AddDependenciesOnTransitiveOperands(
       const Thunk& thunk, const HloInstruction& operand,
       const absl::flat_hash_map<const HloInstruction*, Thunk*>& hlo_to_thunk);

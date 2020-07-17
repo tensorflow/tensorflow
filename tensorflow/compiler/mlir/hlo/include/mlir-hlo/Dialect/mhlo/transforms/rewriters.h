@@ -38,6 +38,9 @@ void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
 void PopulateComplexLoweringPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
+void PopulateOptimizeMHLOPatterns(MLIRContext *context,
+                                  OwningRewritePatternList *patterns);
+
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                MLIRContext *ctx);
 

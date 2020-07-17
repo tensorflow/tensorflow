@@ -122,8 +122,8 @@ TFLite GPU for Android C/C++ uses the [Bazel](https://bazel.io) build system.
 The delegate can be built, for example, using the following command:
 
 ```sh
-bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:gl_delegate                  # for static library
-bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_gl.so  # for dynamic library
+bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:delegate                           # for static library
+bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so  # for dynamic library
 ```
 
 ### iOS (Swift)

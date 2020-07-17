@@ -395,8 +395,6 @@ struct FoldTrivalRequantizeOp : public OpRewritePattern<RQ> {
 
     llvm::SmallVector<Type, 4> new_output_types;
     for (auto result : def->getResults()) {
-      result.getUsers().begin()->dump();
-      op.dump();
       if (result.hasOneUse() && *result.getUsers().begin() == op) {
         new_output_types.push_back(op.qtype());
       } else {
@@ -502,6 +500,13 @@ void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
 bool RemoveRedundantStatsOps(mlir::FuncOp func,
                              OpQuantSpecGetter op_quant_spec_getter);
 
+// Given quantization parameters for int8, compute the quantization parameters
+// for uint if it is required, and wrap the result in an UniformQuantizedType.
+quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
+                                                Type tensor_type, double scale,
+                                                int64_t zero_point,
+                                                int64_t storage_min = -128,
+                                                int64_t storage_max = 127);
 }  // namespace quant
 }  // namespace mlir
 

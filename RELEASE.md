@@ -11,10 +11,9 @@
 * C-API functions `TF_StringDecode`, `TF_StringEncode`, and
   `TF_StringEncodedSize` are no longer relevant and have been removed; see
   core/platform/ctstring.h for string access/modification in C.
-* In batching library, rename parameter
-  SharedBatchScheduler::QueueOptions::max_batch_size to a more accurate name
-  (input_batch_size_limit) for a recent feature to enable split of large batch
-  sizes.
+* Removed `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
+* `tensorflow.python`, `tensorflow.core` and `tensorflow.compiler` modules are
+    now hidden. These modules are not part of TensorFlow public API.
 
 ## Known Caveats
 
@@ -24,6 +23,7 @@
 
 * <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 * <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* A new module named `tf.experimental.numpy` is added, which is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases. See tensorflow/python/ops/numpy_ops/README.md for details of what are supported and what are the differences with NumPy.
 
 ## Bug Fixes and Other Changes
 
@@ -31,7 +31,10 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 * TF Core:
-    * <ADD RELEASE NOTES HERE>
+  * <ADD RELEASE NOTES HERE>
+  * `tf.types.experimental.TensorLike` is a new `Union` type that can be used as
+    type annotation for variables representing a Tensor or a value that can be
+    converted to Tensor by `tf.convert_to_tensor`.
 * `tf.data`:
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
   the complement of `select_cols`; at most one of these should be specified.

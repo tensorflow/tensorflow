@@ -32,45 +32,32 @@ cc_library(
     textual_hdrs = ["include/mlir/IR/DialectSymbolRegistry.def"],
 )
 
-gentbl(
-    name = "OpAsmInterfacesIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-op-interface-decls",
-            "include/mlir/IR/OpAsmInterface.h.inc",
-        ),
-        (
-            "-gen-op-interface-defs",
-            "include/mlir/IR/OpAsmInterface.cpp.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/IR/OpAsmInterface.td",
-    td_srcs = [
-        ":OpBaseTdFiles",
-    ],
-)
-
-gentbl(
-    name = "SymbolInterfacesIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-op-interface-decls",
-            "include/mlir/IR/SymbolInterfaces.h.inc",
-        ),
-        (
-            "-gen-op-interface-defs",
-            "include/mlir/IR/SymbolInterfaces.cpp.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/IR/SymbolInterfaces.td",
-    td_srcs = [
-        ":OpBaseTdFiles",
-    ],
-)
+[
+    gentbl(
+        name = name + "IncGen",
+        strip_include_prefix = "include",
+        tbl_outs = [
+            (
+                "-gen-op-interface-decls",
+                "include/mlir/IR/" + name + ".h.inc",
+            ),
+            (
+                "-gen-op-interface-defs",
+                "include/mlir/IR/" + name + ".cpp.inc",
+            ),
+        ],
+        tblgen = ":mlir-tblgen",
+        td_file = "include/mlir/IR/" + name + ".td",
+        td_srcs = [
+            ":OpBaseTdFiles",
+        ],
+    )
+    for name in [
+        "OpAsmInterface",
+        "RegionKindInterface",
+        "SymbolInterfaces",
+    ]
+]
 
 cc_library(
     name = "IR",
@@ -88,7 +75,8 @@ cc_library(
         ":CallOpInterfacesIncGen",
         ":DialectSymbolRegistry",
         ":InferTypeOpInterfaceIncGen",
-        ":OpAsmInterfacesIncGen",
+        ":OpAsmInterfaceIncGen",
+        ":RegionKindInterfaceIncGen",
         ":SideEffectInterfacesIncGen",
         ":Support",
         ":SymbolInterfacesIncGen",
@@ -157,6 +145,7 @@ filegroup(
     name = "OpBaseTdFiles",
     srcs = [
         "include/mlir/Dialect/Affine/IR/AffineOpsBase.td",
+        "include/mlir/Dialect/StandardOps/IR/StandardOpsBase.td",
         "include/mlir/IR/OpBase.td",
     ],
 )
@@ -178,6 +167,7 @@ filegroup(
         "include/mlir/Dialect/Affine/IR/AffineMemoryOpInterfaces.td",
         "include/mlir/Dialect/Affine/IR/AffineOps.td",
         "include/mlir/Dialect/Affine/IR/AffineOpsBase.td",
+        "include/mlir/Interfaces/ControlFlowInterfaces.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
         "include/mlir/Interfaces/SideEffectInterfaces.td",
         ":OpBaseTdFiles",
@@ -543,6 +533,7 @@ cc_library(
     deps = [
         ":Affine",
         ":AffinePassIncGen",
+        ":AffineUtils",
         ":Analysis",
         ":IR",
         ":Pass",
@@ -2766,6 +2757,7 @@ cc_library(
         "@llvm-project//mlir/test:TestDialect",
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
+        "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",
         "@llvm-project//mlir/test:TestTransforms",
     ],
@@ -2914,6 +2906,7 @@ cc_binary(
         "@llvm-project//mlir/test:TestDialect",
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
+        "@llvm-project//mlir/test:TestReducer",
         "@llvm-project//mlir/test:TestSPIRV",
         "@llvm-project//mlir/test:TestTransforms",
     ],
@@ -3727,16 +3720,13 @@ exports_files(
         "include/mlir/Interfaces/ViewLikeInterface.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/StandardOps/IR/Ops.td",
+        "include/mlir/Dialect/Shape/IR/ShapeOps.td",
+        "include/mlir/Dialect/Shape/IR/ShapeBase.td",
         "include/mlir/IR/OpAsmInterface.td",
         "include/mlir/IR/OpBase.td",
+        "include/mlir/IR/RegionKindInterface.td",
         "include/mlir/IR/SymbolInterfaces.td",
         "include/mlir/Transforms/InliningUtils.h",
-    ],
-    visibility = [":friends"],
-)
-
-exports_files(
-    [
         "include/mlir/Interfaces/InferTypeOpInterface.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
     ],

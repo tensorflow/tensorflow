@@ -953,6 +953,11 @@ cc_library(
     copts = tf_copts(),
 )
 
+filegroup(
+    name = "tf32_hdr",
+    srcs = ["tf32_utils.h"],
+)
+
 tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
