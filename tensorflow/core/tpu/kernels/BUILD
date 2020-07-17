@@ -178,12 +178,14 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:computation_layout",
+        "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_module_group",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/stream_executor/tpu:proto_helper",
         "@com_google_absl//absl/strings",
@@ -494,7 +496,10 @@ tf_proto_library_cc(
 cc_library(
     name = "tpu_compile_op_hdrs",
     hdrs = ["tpu_compile_op.h"],
-    deps = ["//tensorflow/core:framework"],
+    deps = [
+        ":tpu_compile_op_common",
+        "//tensorflow/core:framework",
+    ],
 )
 
 cc_library(
@@ -550,6 +555,63 @@ cc_library(
         "//tensorflow/stream_executor/tpu:tpu_executor",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "@com_google_absl//absl/types:variant",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_compile_op_registration",
+    srcs = ["tpu_compile_op_registration.cc"],
+    deps = [
+        ":tpu_compile_op_common",
+        ":tpu_compile_op_impl",
+        ":tpu_compile_op_impl_factory",
+        ":tpu_compile_op_support",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "tpu_compile_op_impl_factory",
+    srcs = ["tpu_compile_op_impl_factory.cc"],
+    hdrs = ["tpu_compile_op_impl_factory.h"],
+    deps = [
+        ":tpu_compile_op_common",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/core:framework",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_compile_op_lib",
+    srcs = ["tpu_compile_op.cc"],
+    deps = [
+        ":tpu_compile_op_hdrs",
+        ":tpu_compile_op_impl_factory",
+        ":tpu_compile_op_options",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/protobuf/tpu:compilation_result_proto_cc",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_compile_op",
+    deps = [
+        ":tpu_compile_op_hdrs",
+        ":tpu_compile_op_impl",
+        ":tpu_compile_op_impl_factory",
+        ":tpu_compile_op_lib",
+        ":tpu_compile_op_options",
+        ":tpu_compile_op_registration",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/protobuf/tpu:compilation_result_proto_cc",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
     ],
     alwayslink = 1,
 )
