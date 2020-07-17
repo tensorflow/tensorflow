@@ -307,8 +307,8 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
 
   // Check that the code duplication has at most a factor of 15 (where 15 is an
   // arbitrary constant that seems to work).
-  const int64 index_usage_count_size_times_15 = 15 * index_usage_count.size(); 
-  return total > index_usage_count_size_times_15;
+  const int64 max_duplication_size = 15 * index_usage_count.size();
+  return total > max_duplication_size;
 }
 
 }  // namespace xla
