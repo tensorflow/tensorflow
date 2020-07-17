@@ -671,7 +671,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
         int64 output_dim_start = -1;
         int64 output_dim_end = -1;
         // Find common_factors that the input belongs to.
-        for (int64 i = 0, iter_end = common_factors.size() - 1; i < iter_enditer_end; ++i) {
+        for (int64 i = 0, iter_end = common_factors.size() - 1; i < iter_end; ++i) {
           auto start = common_factors[i];
           auto end = common_factors[i + 1];
           if (input_dynamic_dimension >= start.first &&
