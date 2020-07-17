@@ -83,7 +83,8 @@ std::vector<int64> ColorInterferenceGraph(
 
     // Find the color that is not yet assigned to the neighbors.
     int64 color = kColorUnassigned;
-    for (color = 0, end = available_colors.size(); color < end; ++color) {
+    const int64 end = available_colors.size();
+    for (color = 0; color < end; ++color) {
       if (available_colors[color]) {
         break;
       }
