@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//===- tf_to_cubin.cc -------------------------------------------*- C++ -*-===//
+//===- tf_to_gpu_binary.cc --------------------------------------*- C++ -*-===//
 //
-// This file implements the entry point to compile a tf op to a cubin file.
+// This file implements the entry point to compile a tf op to a gpu binary
 //
 //===----------------------------------------------------------------------===//
 #include <string>
@@ -24,7 +24,7 @@
 #include "absl/strings/string_view.h"
 #include "llvm/Support/CommandLine.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/cubin_creator.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/gpu_binary_creator.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 
