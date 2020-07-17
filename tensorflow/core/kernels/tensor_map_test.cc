@@ -36,10 +36,12 @@ TEST(TensorKeyTest, Equal) {
   TensorKey k1 = Tensor(15);
   TensorKey k2 = Tensor(15);
   EXPECT_EQ(k1, k2);
+  EXPECT_EQ(k1.shape(), k2.shape());
+  EXPECT_EQ(k1.dtype(), k2.dtype());
 
-  TensorKey k3 = Tensor(15);
-  TensorKey k4 = Tensor(37);
-  EXPECT_NE(k3, k4);
+  TensorKey k3 = Tensor(37.0);
+  EXPECT_NE(k1, k3);
+  EXPECT_NE(k1.dtype(), k3.dtype());
 }
 
 TEST(TensorMapTest, Insert) {
