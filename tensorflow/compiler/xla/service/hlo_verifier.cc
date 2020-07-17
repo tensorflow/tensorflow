@@ -1668,7 +1668,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
     parameter_numbers[param_no] = true;
   }
   // Make sure all the parameter_numbers entries were seen.
-  for (int i = 0, end = parameter_numbers.size(); i < ; i++) {
+  for (int i = 0, end = parameter_numbers.size(); i < end; i++) {
     if (!parameter_numbers[i]) {
       return InternalError("Did not see parameter number %d in %s.", i,
                            fusion->ToString());
