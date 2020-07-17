@@ -336,8 +336,7 @@ Status LoadOpShapeFunction::operator()(
                     });
   std::vector<shape_inference::ShapeHandle> inputs(user_param_count);
   int input_index = 0;
-  for (int i = 0, end = state_variable_specs.size(); i < end;
-       ++i) {
+  for (int i = 0, end = state_variable_specs.size(); i < end; ++i) {
     if (state_variable_specs[i].has_user_defined() || is_debug_op_) {
       std::vector<shape_inference::ShapeHandle> input_temp;
       TF_RETURN_IF_ERROR(c->input(state_variable_specs[i].name(), &input_temp));
