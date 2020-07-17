@@ -660,6 +660,19 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
   TF_SetStatus(status, TF_OK, "");
 }
 
+void PathExists(const TF_Filesystem* filesystem, const char* path,
+                TF_Status* status) {
+  TF_FileStatistics stats;
+  Stat(filesystem, path, &stats, status);
+}
+
+int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
+                    TF_Status* status) {
+  TF_FileStatistics stats;
+  Stat(filesystem, path, &stats, status);
+  return stats.length;
+}
+
 // TODO(vnvo2409): Implement later
 
 }  // namespace tf_s3_filesystem
