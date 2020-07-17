@@ -285,7 +285,7 @@ std::vector<T> ReadAsLittleEndian(ArrayRef<uint8_t> bytes) {
   ret.reserve(elem_count);
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
-  for (int i = 0, end = elem_count; i < end; i++) {
+  for (int i = 0; i < elem_count; i++) {
     ret.push_back(
         llvm::support::endian::readNext<T, llvm::support::little,
                                         llvm::support::unaligned>(data_ptr));
