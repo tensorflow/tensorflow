@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
@@ -47,7 +48,7 @@ class TPUExecuteOp : public AsyncOpKernel {
  private:
   Status DoWork(OpKernelContext* context);
 
-  DISALLOW_COPY_AND_ASSIGN(TPUExecuteOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(TPUExecuteOp);
 };
 
 // A variant of TPUExecuteOp that contains fused device variable reads and
@@ -58,7 +59,7 @@ class TPUExecuteAndUpdateVariablesOp : public TPUExecuteOp {
   ~TPUExecuteAndUpdateVariablesOp() override = default;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(TPUExecuteAndUpdateVariablesOp);
+  TF_DISALLOW_COPY_AND_ASSIGN(TPUExecuteAndUpdateVariablesOp);
 };
 
 }  // namespace tensorflow
