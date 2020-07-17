@@ -40,7 +40,7 @@ FUTURES_PATTERN_2 = re.compile(
 FUTURES_PATTERN_3 = re.compile(r'^from __future__ import (\w+) as \w+\s*$')
 REQUIRED_FUTURES = frozenset(['absolute_import', 'division', 'print_function'])
 
-WHITELIST = [
+ALLOWLIST = [
     'python/platform/control_imports.py',
     'tools/docker/jupyter_notebook_config.py',
     'tools/ci_build/update_version.py',
@@ -93,12 +93,12 @@ def main():
                          BASE_DIR)
 
   # Verify that all files have futures
-  whitelist = frozenset(os.path.join(BASE_DIR, w) for w in WHITELIST)
+  allowlist = frozenset(os.path.join(BASE_DIR, w) for w in ALLOWLIST)
   old_division = frozenset(os.path.join(BASE_DIR, w) for w in OLD_DIVISION)
   for root, _, filenames in os.walk(BASE_DIR):
     for f in fnmatch.filter(filenames, '*.py'):
       path = os.path.join(root, f)
-      if path not in whitelist:
+      if path not in allowlist:
         try:
           check_file(path, old_division=path in old_division)
         except AssertionError as e:

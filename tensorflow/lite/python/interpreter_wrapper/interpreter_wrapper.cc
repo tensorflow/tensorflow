@@ -14,13 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 
-// Windows does not have dlfcn.h/dlsym, use GetProcAddress() instead.
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif  // defined(_WIN32)
-
 #include <stdarg.h>
 
 #include <sstream>
@@ -36,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
+#include "tensorflow/lite/shared_library.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/util.h"
 
@@ -154,25 +148,13 @@ bool RegisterCustomOpByName(const char* registerer_name,
 
   // Look for the Registerer function by name.
   RegistererFunctionType registerer = reinterpret_cast<RegistererFunctionType>(
-  // We don't have dlsym on Windows, use GetProcAddress instead.
-#if defined(_WIN32)
-      GetProcAddress(nullptr, registerer_name)
-#else
-      dlsym(RTLD_DEFAULT, registerer_name)
-#endif  // defined(_WIN32)
-  );
+      SharedLibrary::GetSymbol(registerer_name));
 
   // Fail in an informative way if the function was not found.
   if (registerer == nullptr) {
-    // We don't have dlerror on Windows, use GetLastError instead.
     *error_msg =
-#if defined(_WIN32)
-        absl::StrFormat("Looking up symbol '%s' failed with error (0x%x).",
-                        registerer_name, GetLastError());
-#else
         absl::StrFormat("Looking up symbol '%s' failed with error '%s'.",
-                        registerer_name, dlerror());
-#endif  // defined(_WIN32)
+                        registerer_name, SharedLibrary::GetError());
     return false;
   }
 

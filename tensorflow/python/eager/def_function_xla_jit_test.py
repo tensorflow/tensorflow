@@ -142,8 +142,8 @@ class DefFunctionTest(test.TestCase):
     func = def_function.function(fn2, experimental_compile=False)
     inputs = constant_op.constant([1, 2, 2, 3, 3])
     if not test.is_built_with_rocm():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   'not compilable'):
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  'not compilable'):
         func(inputs)
 
   def testUnsupportedOps(self):
@@ -156,7 +156,7 @@ class DefFunctionTest(test.TestCase):
 
     inputs = constant_op.constant([1, 2, 2, 3, 3])
     self.assertAllClose([1, 2, 3], func(inputs))
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, 'not compilable'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, 'not compilable'):
       xla_func(inputs)
 
   def testFunctionGradient(self):
@@ -236,7 +236,7 @@ class DefFunctionTest(test.TestCase):
 
     inputs = constant_op.constant([1, 2, 2, 3, 3])
     c = C()
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, 'not compilable'):
+    with self.assertRaisesRegex(errors.InvalidArgumentError, 'not compilable'):
       c.f1(inputs)
 
   def testMustBeConstantPropagation(self):
@@ -285,9 +285,8 @@ class DefFunctionTest(test.TestCase):
     x = constant_op.constant(3.14)
     with backprop.GradientTape() as tape:
       tape.watch(x)
-      with self.assertRaisesRegexp(
-          errors.UnimplementedError,
-          'TensorList crossing the XLA/TF boundary'):
+      with self.assertRaisesRegex(errors.UnimplementedError,
+                                  'TensorList crossing the XLA/TF boundary'):
         y = f(x)
         tape.gradient(y, x)
 

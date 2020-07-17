@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -34,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/compiled_subgraph.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_metrics.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
 #include "tensorflow/core/tpu/kernels/trace_util.h"
 
 namespace tensorflow {
@@ -148,7 +147,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // DiscardEntryRef on every element of entries.
   void DiscardEntryRefs(gtl::ArraySlice<CompiledSubgraph*> entries);
 
-  string DebugString() const override { return "TpuCompilationCacheBase"; }
+  std::string DebugString() const override { return "TpuCompilationCacheBase"; }
 
  protected:
   std::string ConstructCompilationCacheKey(const TpuCompilationCacheKey& key) {
@@ -298,7 +297,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // entries_by_last_use_ then the entry has been marked for eviction.
   std::map<int64, CompiledSubgraph*> entries_by_last_use_ ABSL_GUARDED_BY(mu_);
 
-  TpuCompilationCacheMetrics tpu_compilation_cache_metrics_;
+  TpuCompilationMetrics tpu_compilation_metrics_;
 
  private:
   TpuCompilationCacheInterface(const TpuCompilationCacheInterface&) = delete;

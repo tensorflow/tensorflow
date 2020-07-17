@@ -20,10 +20,15 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
-
 namespace tpu {
 // Forward declaration.
+#if defined(LIBTFTPU)
 class TpuCompileOpKernelImpl;
+#else
+namespace internal {
+class TpuCompileOpKernelImpl;
+}
+#endif
 }  // namespace tpu
 
 // The TPUCompile operator compiles a Tensorflow function into a
@@ -37,7 +42,11 @@ class TpuCompileOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
+#if defined(LIBTFTPU)
   std::unique_ptr<tpu::TpuCompileOpKernelImpl> impl_;
+#else
+  std::unique_ptr<tpu::internal::TpuCompileOpKernelImpl> impl_;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(TpuCompileOp);
 };
@@ -53,7 +62,11 @@ class TpuCompileMlirOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
+#if defined(LIBTFTPU)
   std::unique_ptr<tpu::TpuCompileOpKernelImpl> impl_;
+#else
+  std::unique_ptr<tpu::internal::TpuCompileOpKernelImpl> impl_;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(TpuCompileMlirOp);
 };

@@ -1021,8 +1021,8 @@ class RNNTest(keras_parameterized.TestCase):
 
   def test_get_initial_state(self):
     cell = keras.layers.SimpleRNNCell(5)
-    with self.assertRaisesRegexp(ValueError,
-                                 'batch_size and dtype cannot be None'):
+    with self.assertRaisesRegex(ValueError,
+                                'batch_size and dtype cannot be None'):
       cell.get_initial_state(None, None, None)
 
     if not context.executing_eagerly():
@@ -1359,7 +1359,7 @@ class RNNTest(keras_parameterized.TestCase):
     cell = keras.layers.SimpleRNNCell(5)
     x = keras.Input((None, 5))
     layer = keras.layers.RNN(cell, return_sequences=True, unroll=True)
-    with self.assertRaisesRegexp(ValueError, 'Cannot unroll a RNN.*'):
+    with self.assertRaisesRegex(ValueError, 'Cannot unroll a RNN.*'):
       layer(x)
 
   def test_full_input_spec(self):
@@ -1385,11 +1385,11 @@ class RNNTest(keras_parameterized.TestCase):
 
   def test_reset_states(self):
     # See https://github.com/tensorflow/tensorflow/issues/25852
-    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+    with self.assertRaisesRegex(ValueError, 'it needs to know its batch size'):
       simple_rnn = keras.layers.SimpleRNN(1, stateful=True)
       simple_rnn.reset_states()
 
-    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+    with self.assertRaisesRegex(ValueError, 'it needs to know its batch size'):
       cell = Minimal2DRNNCell(1, 2)
       custom_rnn = keras.layers.RNN(cell, stateful=True)
       custom_rnn.reset_states()
@@ -1608,8 +1608,8 @@ class RNNTest(keras_parameterized.TestCase):
 
     # Must raise error when unroll is set to True
     unroll_rnn_layer = layer(3, unroll=True)
-    with self.assertRaisesRegexp(ValueError,
-                                 'The input received contains RaggedTensors *'):
+    with self.assertRaisesRegex(ValueError,
+                                'The input received contains RaggedTensors *'):
       unroll_rnn_layer(inputs)
 
     # Check if return sequences outputs are correct

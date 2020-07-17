@@ -52,7 +52,7 @@ class VirtualDevicesTest(test.TestCase, parameterized.TestCase):
   def testSetVirtualCPUsErrors(self):
     with self.assertRaises(ValueError):
       strategy_combinations.set_virtual_cpus_to_at_least(0)
-    with self.assertRaisesRegexp(RuntimeError, "with 3 < 5 virtual CPUs"):
+    with self.assertRaisesRegex(RuntimeError, "with 3 < 5 virtual CPUs"):
       strategy_combinations.set_virtual_cpus_to_at_least(5)
 
   @combinations.generate(combinations.combine(

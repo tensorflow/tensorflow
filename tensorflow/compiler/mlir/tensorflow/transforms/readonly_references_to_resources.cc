@@ -65,8 +65,15 @@ class ConvertReadonlyReferenceVariablesToResourceVariablesPass
 StringRef GetNodeNameFromClassAttr(Operation *op) {
   ArrayAttr classes_attr = op->getAttrOfType<ArrayAttr>(kClassAttr);
   if (!classes_attr) {
-    op->emitOpError() << "has no '_class' attribute";
-    return StringRef();
+    // Attampt to parse "_class" from the IdentityOp that follows VariableV2.
+    // For read-only reference variables, IdentityOp should be the only user of
+    // VariableV2.
+    auto identity_op = op->getUsers().begin();
+    classes_attr = identity_op->getAttrOfType<ArrayAttr>(kClassAttr);
+    if (!classes_attr) {
+      op->emitOpError() << "has no '_class' attribute";
+      return StringRef();
+    }
   }
 
   StringRef result;

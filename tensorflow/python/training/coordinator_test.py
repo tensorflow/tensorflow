@@ -154,7 +154,7 @@ class CoordinatorTest(test.TestCase):
         t.start()
       wait_for_stop_ev.set()
       has_stopped_ev.wait()
-      with self.assertRaisesRegexp(RuntimeError, "threads still running"):
+      with self.assertRaisesRegex(RuntimeError, "threads still running"):
         coord.join(threads, stop_grace_period_secs=stop_grace_period)
 
     TestWithGracePeriod(1e-10)
@@ -194,7 +194,7 @@ class CoordinatorTest(test.TestCase):
 
     ev_1.set()
 
-    with self.assertRaisesRegexp(RuntimeError, "First"):
+    with self.assertRaisesRegex(RuntimeError, "First"):
       coord.join(threads)
 
   def testJoinRaiseReportException(self):
@@ -213,7 +213,7 @@ class CoordinatorTest(test.TestCase):
       t.start()
 
     ev_1.set()
-    with self.assertRaisesRegexp(RuntimeError, "First"):
+    with self.assertRaisesRegex(RuntimeError, "First"):
       coord.join(threads)
 
   def testJoinIgnoresOutOfRange(self):
@@ -261,7 +261,7 @@ class CoordinatorTest(test.TestCase):
       t.start()
 
     ev_1.set()
-    with self.assertRaisesRegexp(RuntimeError, "First"):
+    with self.assertRaisesRegex(RuntimeError, "First"):
       coord.join(threads)
 
   def testClearStopClearsExceptionToo(self):
@@ -275,7 +275,7 @@ class CoordinatorTest(test.TestCase):
     for t in threads:
       t.start()
 
-    with self.assertRaisesRegexp(RuntimeError, "First"):
+    with self.assertRaisesRegex(RuntimeError, "First"):
       ev_1.set()
       coord.join(threads)
     coord.clear_stop()
@@ -286,7 +286,7 @@ class CoordinatorTest(test.TestCase):
     ]
     for t in threads:
       t.start()
-    with self.assertRaisesRegexp(RuntimeError, "Second"):
+    with self.assertRaisesRegex(RuntimeError, "Second"):
       ev_1.set()
       coord.join(threads)
 
@@ -295,7 +295,7 @@ class CoordinatorTest(test.TestCase):
     # Join the coordinator right away.
     coord.join([])
     reported = False
-    with self.assertRaisesRegexp(RuntimeError, "Too late"):
+    with self.assertRaisesRegex(RuntimeError, "Too late"):
       try:
         raise RuntimeError("Too late")
       except RuntimeError as e:
@@ -308,7 +308,7 @@ class CoordinatorTest(test.TestCase):
       raise RuntimeError("After clear")
     except RuntimeError as e:
       coord.request_stop(e)
-    with self.assertRaisesRegexp(RuntimeError, "After clear"):
+    with self.assertRaisesRegex(RuntimeError, "After clear"):
       coord.join([])
 
   def testRequestStopRaisesIfJoined_ExcInfo(self):
@@ -317,7 +317,7 @@ class CoordinatorTest(test.TestCase):
     # Join the coordinator right away.
     coord.join([])
     reported = False
-    with self.assertRaisesRegexp(RuntimeError, "Too late"):
+    with self.assertRaisesRegex(RuntimeError, "Too late"):
       try:
         raise RuntimeError("Too late")
       except RuntimeError:
@@ -330,7 +330,7 @@ class CoordinatorTest(test.TestCase):
       raise RuntimeError("After clear")
     except RuntimeError:
       coord.request_stop(sys.exc_info())
-    with self.assertRaisesRegexp(RuntimeError, "After clear"):
+    with self.assertRaisesRegex(RuntimeError, "After clear"):
       coord.join([])
 
 

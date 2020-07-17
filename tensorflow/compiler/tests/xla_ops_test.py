@@ -343,7 +343,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
             np.array([5, 7]), np.array([2, 3, 4]))
       with self.assertRaises(errors.InvalidArgumentError) as invalid_arg_error:
         session.run(output)
-      self.assertRegexpMatches(
+      self.assertRegex(
           invalid_arg_error.exception.message,
           (r'start_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and start_indices has shape \[2\].*'))
@@ -357,7 +357,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
             np.array([5, 7, 3]), np.array([2, 3]))
       with self.assertRaises(errors.InvalidArgumentError) as invalid_arg_error:
         session.run(output)
-      self.assertRegexpMatches(
+      self.assertRegex(
           invalid_arg_error.exception.message,
           (r'size_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and size_indices has shape \[2\].*'))

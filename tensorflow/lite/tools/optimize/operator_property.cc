@@ -975,6 +975,13 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_REDUCE_MAX:
+    case BuiltinOperator_REDUCE_MIN:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     default:
       // No quantized implementation exists for this operation.
       property.quantizable = false;

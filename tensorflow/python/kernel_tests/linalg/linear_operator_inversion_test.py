@@ -100,11 +100,11 @@ class LinearOperatorInversionTest(
     matrix = [[1., 0.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
         matrix, is_positive_definite=False)
-    with self.assertRaisesRegexp(ValueError, "positive-definite"):
+    with self.assertRaisesRegex(ValueError, "positive-definite"):
       LinearOperatorInversion(operator, is_positive_definite=True)
 
     operator = linalg.LinearOperatorFullMatrix(matrix, is_self_adjoint=False)
-    with self.assertRaisesRegexp(ValueError, "self-adjoint"):
+    with self.assertRaisesRegex(ValueError, "self-adjoint"):
       LinearOperatorInversion(operator, is_self_adjoint=True)
 
   def test_singular_raises(self):
@@ -112,11 +112,11 @@ class LinearOperatorInversionTest(
     matrix = [[1., 1.], [1., 1.]]
 
     operator = linalg.LinearOperatorFullMatrix(matrix, is_non_singular=False)
-    with self.assertRaisesRegexp(ValueError, "is_non_singular"):
+    with self.assertRaisesRegex(ValueError, "is_non_singular"):
       LinearOperatorInversion(operator)
 
     operator = linalg.LinearOperatorFullMatrix(matrix)
-    with self.assertRaisesRegexp(ValueError, "is_non_singular"):
+    with self.assertRaisesRegex(ValueError, "is_non_singular"):
       LinearOperatorInversion(operator, is_non_singular=False)
 
   def test_name(self):

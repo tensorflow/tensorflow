@@ -502,7 +502,7 @@ class ConcatOpTest(test.TestCase):
   def testConcatNoScalars(self):
     scalar = constant_op.constant(7)
     dim = array_ops.placeholder(dtypes.int32)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"Can't concatenate scalars \(use tf\.stack instead\)"):
       array_ops.concat([scalar, scalar, scalar], dim)
 
@@ -660,8 +660,8 @@ class ConcatOffsetTest(test.TestCase):
     s0 = constant_op.constant([[2, 3, 5]], dtypes.int32)
     s1 = constant_op.constant([[2, 7, 5]], dtypes.int32)
     off = gen_array_ops.concat_offset(cdim, [s0, s1])
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                 r"should be a vector"):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"should be a vector"):
       self.evaluate(off)
 
   @test_util.run_deprecated_v1
@@ -670,8 +670,8 @@ class ConcatOffsetTest(test.TestCase):
     s0 = constant_op.constant([2, 3, 5], dtypes.int32)
     s1 = constant_op.constant([2, 7, 5], dtypes.int32)
     off = gen_array_ops.concat_offset(cdim, [s0, s1])
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                 r"Concat dim is out of range: 4 vs. 3"):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"Concat dim is out of range: 4 vs. 3"):
       self.evaluate(off)
 
   @test_util.run_deprecated_v1
@@ -680,8 +680,8 @@ class ConcatOffsetTest(test.TestCase):
     s0 = constant_op.constant([2, 3, 5], dtypes.int32)
     s1 = constant_op.constant([2, 7, 5, 10], dtypes.int32)
     off = gen_array_ops.concat_offset(cdim, [s0, s1])
-    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                 r"should contain 3 elem"):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                r"should contain 3 elem"):
       self.evaluate(off)
 
   @test_util.run_deprecated_v1
@@ -691,7 +691,7 @@ class ConcatOffsetTest(test.TestCase):
     s0 = constant_op.constant([2, 3, 5], dtypes.int32)
     s1 = constant_op.constant([2, 7, 10], dtypes.int32)
     off = gen_array_ops.concat_offset(cdim, [s0, s1])
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         errors_impl.InvalidArgumentError,
         r"All dimensions except 1 must match. Input 1 has shape \[2 7 10\] "
         r"and doesn't match input 0 with shape \[2 3 5\]."):

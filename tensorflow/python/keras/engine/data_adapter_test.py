@@ -647,12 +647,12 @@ class DatasetAdapterTest(DataAdapterTestBase):
     self.assertIsNone(adapter.partial_batch_size())
 
   def test_invalid_targets_argument(self):
-    with self.assertRaisesRegexp(ValueError, r'`y` argument is not supported'):
+    with self.assertRaisesRegex(ValueError, r'`y` argument is not supported'):
       self.adapter_cls(self.dataset_input, y=self.dataset_input)
 
   def test_invalid_sample_weights_argument(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 r'`sample_weight` argument is not supported'):
+    with self.assertRaisesRegex(ValueError,
+                                r'`sample_weight` argument is not supported'):
       self.adapter_cls(self.dataset_input, sample_weights=self.dataset_input)
 
 
@@ -703,12 +703,12 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
     self.assertIsNone(adapter.partial_batch_size())
 
   def test_invalid_targets_argument(self):
-    with self.assertRaisesRegexp(ValueError, r'`y` argument is not supported'):
+    with self.assertRaisesRegex(ValueError, r'`y` argument is not supported'):
       self.adapter_cls(self.generator_input, y=self.generator_input)
 
   def test_invalid_sample_weights_argument(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 r'`sample_weight` argument is not supported'):
+    with self.assertRaisesRegex(ValueError,
+                                r'`sample_weight` argument is not supported'):
       self.adapter_cls(
           self.generator_input, sample_weights=self.generator_input)
 
@@ -770,12 +770,12 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
     self.assertIsNone(adapter.partial_batch_size())
 
   def test_invalid_targets_argument(self):
-    with self.assertRaisesRegexp(ValueError, r'`y` argument is not supported'):
+    with self.assertRaisesRegex(ValueError, r'`y` argument is not supported'):
       self.adapter_cls(self.sequence_input, y=self.sequence_input)
 
   def test_invalid_sample_weights_argument(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 r'`sample_weight` argument is not supported'):
+    with self.assertRaisesRegex(ValueError,
+                                r'`sample_weight` argument is not supported'):
       self.adapter_cls(self.sequence_input, sample_weights=self.sequence_input)
 
 
@@ -958,7 +958,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
                                       ([2],)], [([0],), ([1],), ([2],)]])
 
   def test_class_weight_user_errors(self):
-    with self.assertRaisesRegexp(ValueError, 'to be a dict with keys'):
+    with self.assertRaisesRegex(ValueError, 'to be a dict with keys'):
       data_adapter.DataHandler(
           x=[[0], [1], [2]],
           y=[[2], [1], [0]],
@@ -970,7 +970,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
               3: 1.5  # Skips class `2`.
           })
 
-    with self.assertRaisesRegexp(ValueError, 'with a single output'):
+    with self.assertRaisesRegex(ValueError, 'with a single output'):
       data_adapter.DataHandler(
           x=np.ones((10, 1)),
           y=[np.ones((10, 1)), np.zeros((10, 1))],
@@ -1031,13 +1031,12 @@ class TestValidationSplit(keras_parameterized.TestCase):
     self.assertEqual(val_sw.numpy().tolist(), [16])
 
   def test_validation_split_user_error(self):
-    with self.assertRaisesRegexp(ValueError, 'is only supported for Tensors'):
+    with self.assertRaisesRegex(ValueError, 'is only supported for Tensors'):
       data_adapter.train_validation_split(
           lambda: np.ones((10, 1)), validation_split=0.2)
 
   def test_validation_split_examples_too_few(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'not sufficient to split it'):
+    with self.assertRaisesRegex(ValueError, 'not sufficient to split it'):
       data_adapter.train_validation_split(
           np.ones((1, 10)), validation_split=0.2)
 
