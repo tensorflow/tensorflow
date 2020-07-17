@@ -57,7 +57,7 @@ def measure_performance(model_fn,
                         metrics=None,
                         verbose=0,
                         num_gpus=0,
-                        distribution_strategy='mirrored'):
+                        distribution_strategy='off'):
   """Run models and measure the performance.
 
   Arguments:
@@ -81,7 +81,7 @@ def measure_performance(model_fn,
     num_gpus: Number of GPUs to run the model.
     distribution_strategy: Distribution strategies. It could be
       `multi_worker_mirrored`, `one_device`, `mirrored`. If unspecified,
-      `distribution_strategy` will default to 'mirrored'. Note that, `TPU`
+      `distribution_strategy` will default to 'off'. Note that, `TPU`
       and `parameter_server` are not supported yet.
 
   Returns:
