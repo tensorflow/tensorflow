@@ -57,7 +57,7 @@ def measure_performance(model_fn,
                         metrics=None,
                         verbose=0,
                         num_gpus=0,
-                        distribution_strategy='off'):
+                        distribution_strategy='mirrored'):
   """Run models and measure the performance.
 
   Arguments:
@@ -81,7 +81,7 @@ def measure_performance(model_fn,
     num_gpus: Number of GPUs to run the model.
     distribution_strategy: Distribution strategies. It could be
       `multi_worker_mirrored`, `one_device`, `mirrored`. If unspecified,
-      `distribution_strategy` will default to 'off'. Note that, `TPU`
+      `distribution_strategy` will default to 'mirrored'. Note that, `TPU`
       and `parameter_server` are not supported yet.
 
   Returns:
@@ -116,6 +116,7 @@ def measure_performance(model_fn,
 
   for _ in range(run_iters):
     timer = timeit.default_timer
+    start_time = timer()
     # Init the distribution strategy scope for each iteration.
     strategy_scope = distribution_util.get_strategy_scope(strategy)
     with strategy_scope:
@@ -147,7 +148,7 @@ def measure_performance(model_fn,
     compile_time_list.append(compile_time)
     startup_time_list.append(cbk.startup_time)
     avg_epoch_time_list.append(np.mean(cbk.times))
-    wall_time_list.append(end_time - t0)
+    wall_time_list.append(end_time - start_time)
     exp_per_sec_list.append(total_num_examples / (end_time - t2))
 
   metrics = []
