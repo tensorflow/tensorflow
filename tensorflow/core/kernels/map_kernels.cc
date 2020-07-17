@@ -35,6 +35,4 @@ REGISTER_KERNEL_BUILDER(Name("TensorMapInsert").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("TensorMapErase").Device(DEVICE_CPU),
                         TensorMapErase);
 
-REGISTER_KERNEL_BUILDER(Name("TensorMapReplace").Device(DEVICE_CPU),
-                        TensorMapReplace);
 }

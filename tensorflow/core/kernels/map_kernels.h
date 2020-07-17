@@ -112,9 +112,7 @@ class TensorMapSize : public OpKernel {
 
 class TensorMapInsert : public OpKernel {
  public:
-  explicit TensorMapInsert(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
-  }
+  explicit TensorMapInsert(OpKernelConstruction* c) : OpKernel(c) {}
   ~TensorMapInsert() override {}
 
   void Compute(OpKernelContext* c) override {
@@ -125,19 +123,14 @@ class TensorMapInsert : public OpKernel {
 
     TensorMap* output_map = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
-    output_map->insert(key, value);
+    output_map->replace(key, value);
   }
-
- private:
-  DataType element_dtype_;
 };
 
 
 class TensorMapLookup : public OpKernel {
  public:
-  explicit TensorMapLookup(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
-  }
+  explicit TensorMapLookup(OpKernelConstruction* c) : OpKernel(c) {}
   ~TensorMapLookup() override {}
 
   void Compute(OpKernelContext* c) override {
@@ -150,17 +143,12 @@ class TensorMapLookup : public OpKernel {
     
     c->set_output(0, m->tensors().find(key)->second);
   }
-
- private:
-  DataType element_dtype_;
 };
 
 
 class TensorMapErase : public OpKernel {
  public:
-  explicit TensorMapErase(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
-  }
+  explicit TensorMapErase(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
     const TensorMap* m = nullptr;
@@ -177,35 +165,22 @@ class TensorMapErase : public OpKernel {
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
     output_map->tensors().erase(key);
   }
-
- private:
-  DataType element_dtype_;
 };
 
 
-class TensorMapReplace : public OpKernel {
+class TensorMapHasKey : public OpKernel {
  public:
-  explicit TensorMapReplace(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
-  }
-  ~TensorMapReplace() override {}
+  explicit TensorMapHasKey(OpKernelConstruction* c) : OpKernel(c) {}
+  ~TensorMapHasKey() override {}
 
   void Compute(OpKernelContext* c) override {
     const TensorKey& key = c->input(1);
-    const Tensor& value = c->input(2);
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
-
-    OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
-                errors::InvalidArgument("Trying to replace non-existent key."));
-
-    TensorMap* output_map = nullptr;
-    OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
-    output_map->replace(key, value);
+    Tensor* result;
+    OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result));
+    result->scalar<bool>()() = m->tensors().find(key) != m->tensors().end();
   }
-
- private:
-  DataType element_dtype_;
 };
 
 

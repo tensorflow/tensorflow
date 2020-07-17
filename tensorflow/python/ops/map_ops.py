@@ -35,14 +35,11 @@ def tensor_map_size(input_handle):
 def tensor_map_insert(input_handle, key, value):
   return gen_map_ops.tensor_map_insert(input_handle, key, value)
 
-def tensor_map_lookup(input_handle, key):
-  return gen_map_ops.tensor_map_lookup(input_handle, key)
+def tensor_map_lookup(input_handle, key, value_dtype):
+  return gen_map_ops.tensor_map_lookup(input_handle, key, value_dtype)
 
-def tensor_map_erase(input_handle, key):
-  return gen_map_ops.tensor_map_erase(input_handle, key)
-
-def tensor_map_replace(input_handle, key, value):
-  return gen_map_ops.tensor_map_replace(input_handle, key, value)
+def tensor_map_erase(input_handle, key, value_dtype):
+  return gen_map_ops.tensor_map_erase(input_handle, key, value_dtype)
 
 @ops.RegisterGradient("TensorMapLookup")
 def LookupGrad(op, dval):

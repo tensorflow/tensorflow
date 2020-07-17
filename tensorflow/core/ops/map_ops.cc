@@ -35,10 +35,11 @@ REGISTER_OP("TensorMapSize")
 
 REGISTER_OP("TensorMapInsert")
     .Input("input_handle: variant")
-    .Input("key: element_dtype")
-    .Input("value: element_dtype")
+    .Input("key: key_dtype")
+    .Input("value: value_dtype")
     .Output("output_handle: variant")
-    .Attr("element_dtype: type")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       return Status::OK();
@@ -46,38 +47,28 @@ REGISTER_OP("TensorMapInsert")
 
 REGISTER_OP("TensorMapLookup")
     .Input("input_handle: variant")
-    .Input("key: element_dtype")
-    .Output("value: element_dtype")
-    .Attr("element_dtype: type")
+    .Input("key: key_dtype")
+    .Output("value: value_dtype")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->Scalar());
+      c->set_output(0, c->UnknownShape());
       return Status::OK();
     });
 
 REGISTER_OP("TensorMapErase")
     .Input("input_handle: variant")
-    .Input("key: element_dtype")
+    .Input("key: key_dtype")
     .Output("output_handle: variant")
-    .Output("value: element_dtype")
-    .Attr("element_dtype: type")
+    .Output("value: value_dtype")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      DataType element_dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
-      c->set_output(1, c->Scalar()); // removed element
-      c->set_output(0, c->Scalar()); // map
+      c->set_output(0, c->Scalar()); // output map
+      c->set_output(1, c->UnknownShape()); // removed element
       return Status::OK();
     });
 
-REGISTER_OP("TensorMapReplace")
-    .Input("input_handle: variant")
-    .Input("key: element_dtype")
-    .Input("value: element_dtype")
-    .Output("output_handle: variant")
-    .Attr("element_dtype: type")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->Scalar());
-      return Status::OK();
-    });
 
 }  // namespace
 }  // namespace tensorflow
