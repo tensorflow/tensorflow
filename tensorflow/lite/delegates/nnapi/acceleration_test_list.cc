@@ -331,6 +331,8 @@ ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+AlignCorners.*/0,30
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest.+HalfPixelCenters.*/0,30
 // Only models with constant size tensor are accelerated
 ResizeNearestNeighborOpTest/ResizeNearestNeighborOpTest/.+/0,29
+// 16-bit tests are not supported
+-ResizeNearestNeighborOpTest/.*Int16.*
 
 # select_test
 -SelectOpTest/SelectBool
