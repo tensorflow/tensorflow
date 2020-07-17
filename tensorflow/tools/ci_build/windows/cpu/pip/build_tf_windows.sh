@@ -24,6 +24,7 @@
 #   - Msys2
 #   - Anaconda3
 # * Bazel windows executable copied as "bazel.exe" and included in PATH.
+# change
 
 # All commands shall pass, and all should be visible.
 set -x

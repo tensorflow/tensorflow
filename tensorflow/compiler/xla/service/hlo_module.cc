@@ -62,14 +62,17 @@ void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation, bool is_entry,
-    bool uniquify_identifiers) {
+    bool uniquify_identifiers, bool preserve_entry_layouts) {
   if (is_entry) {
     CHECK_EQ(nullptr, entry_computation_);
     entry_computation_ = computation.get();
 
-    // If the module configuration has no entry layout computation set, create a
-    // default one based on the program shape.
-    if (!config_.has_entry_computation_layout()) {
+    if (preserve_entry_layouts) {
+      config_.SetComputationLayoutIfExists(
+          entry_computation_->ComputeProgramShape());
+    } else if (!config_.has_entry_computation_layout()) {
+      // If the module configuration has no entry layout computation set, create
+      // a default one based on the program shape.
       config_.SetDefaultComputationLayout(
           entry_computation_->ComputeProgramShape());
     }
@@ -115,7 +118,15 @@ HloComputation* HloModule::AddComputationInternal(
 HloComputation* HloModule::AddEntryComputation(
     std::unique_ptr<HloComputation> computation) {
   return AddComputationInternal(std::move(computation), /*is_entry=*/true,
-                                /*uniquify_identifiers=*/true);
+                                /*uniquify_identifiers=*/true,
+                                /*preserve_entry_layouts=*/false);
+}
+
+HloComputation* HloModule::AddEntryComputationWithLayouts(
+    std::unique_ptr<HloComputation> computation) {
+  return AddComputationInternal(std::move(computation), /*is_entry=*/true,
+                                /*uniquify_identifiers=*/true,
+                                /*preserve_entry_layouts=*/true);
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
@@ -136,7 +147,8 @@ Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
 HloComputation* HloModule::AddEmbeddedComputation(
     std::unique_ptr<HloComputation> computation) {
   return AddComputationInternal(std::move(computation), /*is_entry=*/false,
-                                /*uniquify_identifiers=*/true);
+                                /*uniquify_identifiers=*/true,
+                                /*preserve_entry_layouts=*/false);
 }
 
 void HloModule::ReplaceComputations(
@@ -218,7 +230,10 @@ void HloModule::ReplaceComputations(
 
 string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  s << "HloModule " << PrintName(name(), options.print_ids());
+  // When print_ids() is false, exclude module's name because it includes and
+  // leads to non-deterministic fingerprint.
+  s << "HloModule "
+    << (options.print_ids() ? PrintName(name(), options.print_ids()) : "");
   if (has_schedule()) {
     TF_CHECK_OK(schedule().Verify());
     s << ", is_scheduled=true";
@@ -377,7 +392,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     // Don't uniquify names because we want names to be stable across
     // serialization and deserialization.
     module->AddComputationInternal(std::move(computation), is_entry,
-                                   /*uniquify_identifiers=*/false);
+                                   /*uniquify_identifiers=*/false,
+                                   /*preserve_entry_layouts=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
 
@@ -674,6 +690,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
   module->AddEntryComputation(std::move(cloned_computation));
+  module->input_output_alias_config() = input_output_alias_config();
 
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module.get());

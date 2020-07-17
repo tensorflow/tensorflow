@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_utils
@@ -38,6 +39,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
@@ -349,31 +351,35 @@ class DistributedCollectiveAllReduceStrategyTest(
       combinations.combine(
           mode=['graph'], required_gpus=[0, 1, 2], use_dataset=[True, False]))
   def testMakeInputFnIterator(self, required_gpus, use_dataset):
-    if use_dataset:
-      fn = lambda: dataset_ops.Dataset.range(100)
-    else:
-      def fn():
-        dataset = dataset_ops.Dataset.range(100)
-        it = dataset_ops.make_one_shot_iterator(dataset)
-        return it.get_next
-    # We use CPU as the device when required_gpus = 0
-    devices_per_worker = max(1, required_gpus)
-    expected_values = [[i+j for j in range(devices_per_worker)]
-                       for i in range(0, 100, devices_per_worker)]
+    def _worker_fn(task_type, task_id, required_gpus):
+      if use_dataset:
+        fn = lambda: dataset_ops.Dataset.range(20)
+      else:
+        def fn():
+          dataset = dataset_ops.Dataset.range(20)
+          it = dataset_ops.make_one_shot_iterator(dataset)
+          return it.get_next
+      # We use CPU as the device when required_gpus = 0
+      devices_per_worker = max(1, required_gpus)
+      expected_values = [[i+j for j in range(devices_per_worker)]
+                         for i in range(0, 20, devices_per_worker)]
 
-    input_fn = self._input_fn_to_test_input_context(
-        fn,
-        expected_num_replicas_in_sync=3*devices_per_worker,
-        expected_num_input_pipelines=3,
-        expected_input_pipeline_id=1)  # because task_id = 1
-    self._test_input_fn_iterator(
-        'worker',
-        1,
-        required_gpus,
-        input_fn,
-        expected_values,
-        test_reinitialize=use_dataset,
-        ignore_order=not use_dataset)
+      input_fn = self._input_fn_to_test_input_context(
+          fn,
+          expected_num_replicas_in_sync=3*devices_per_worker,
+          expected_num_input_pipelines=3,
+          expected_input_pipeline_id=task_id)
+      self._test_input_fn_iterator(
+          task_type,
+          task_id,
+          required_gpus,
+          input_fn,
+          expected_values,
+          test_reinitialize=use_dataset,
+          ignore_order=not use_dataset)
+
+    self._run_between_graph_clients(_worker_fn, self._cluster_spec,
+                                    required_gpus)
 
   @combinations.generate(combinations.combine(mode=['graph']))
   def testUpdateConfigProto(self):
@@ -553,6 +559,31 @@ class LocalCollectiveAllReduceStrategy(
         None, None, num_gpus=required_gpus)
     self._test_numpy_dataset(
         strategy, session=self.cached_session(config=config, target=target))
+
+
+class LogicalDeviceTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(combinations.combine(mode=['eager'], required_gpus=1))
+  def testKeepLogicalDevice(self):
+    # Cannot change logical device after the context initialization.
+    context._reset_context()  # pylint: disable=protected-access
+    cluster_spec = multi_worker_test_base.create_cluster_spec(
+        has_chief=False, num_workers=1)
+    resolver = cluster_resolver_lib.SimpleClusterResolver(
+        cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
+        task_type='worker',
+        task_id=0)
+    gpus = tf_config.list_physical_devices('GPU')
+    tf_config.set_logical_device_configuration(gpus[-1], [
+        context.LogicalDeviceConfiguration(64),
+        context.LogicalDeviceConfiguration(64),
+    ])
+    collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+        cluster_resolver=resolver)
+    # Since we create two logical GPUs out of the last GPU, there should be one
+    # more logical GPUs than physical GPUs.
+    self.assertLen(tf_config.list_logical_devices('GPU'), len(gpus) + 1)
+    context._reset_context()  # pylint: disable=protected-access
 
 
 if __name__ == '__main__':

@@ -128,6 +128,9 @@ TEST_P(UnifiedCAPI, TestBasicGraph) {
   TF_AbstractFunction* func =
       TF_FinalizeFunction(graph_ctx, add_outputs, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  // Note: TF_OutputList does not own the underlying AbstractTensors, those
+  // need to be deleted explicitly.
+  TF_DeleteAbstractTensor(TF_OutputListGet(add_outputs, 0));
 
   // Build eager context.
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -170,6 +173,7 @@ TEST_P(UnifiedCAPI, TestBasicGraph) {
   TF_DeleteAbstractOp(fn_op);
   TF_DeleteAbstractTensor(input_t);
   TF_DeleteAbstractTensor(final_result);
+  TF_DeleteAbstractTensor(placeholder_t);
   TF_DeleteTensor(f_t);
   TF_DeleteAbstractFunction(func);
 
@@ -235,6 +239,9 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
     TF_DeleteOutputList(add_outputs);
   }
 
+  TF_DeleteAbstractTensor(arg0);
+  TF_DeleteAbstractTensor(arg1);
+
   // Finalize the function by providing the returned values.
   TF_AbstractFunction* func;
   {
@@ -247,6 +254,8 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     func = TF_FinalizeFunction(graph_ctx, func_outputs, s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    TF_DeleteAbstractTensor(add_output1);
+    TF_DeleteAbstractTensor(add_output2);
     TF_DeleteOutputList(func_outputs);
   }
 
@@ -339,6 +348,7 @@ TEST_P(UnifiedCAPI, TF_ExecutionContextToFunctionWithEagerContextRaises) {
   TF_AbstractFunction* f = TF_FinalizeFunction(ctx, nullptr, status.get());
   ASSERT_EQ(nullptr, f);
   ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
+  TF_DeleteExecutionContext(ctx);
 }
 
 TEST_P(UnifiedCAPI, TF_AbstractOpSetOpTypeAfterFinishingOpBuildingRaises) {

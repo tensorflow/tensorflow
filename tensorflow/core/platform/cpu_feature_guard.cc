@@ -140,7 +140,7 @@ void InfoAboutUnusedCPUFeatures() {
 #endif  // else of if defined(_MSC_VER) && !defined(__clang__)
     if (!missing_instructions.empty()) {
       LOG(INFO) << "This TensorFlow binary is optimized with "
-                << "oneAPI Deep Neural Network Library (oneDNN)"
+                << "oneAPI Deep Neural Network Library (oneDNN) "
                 << "to use the following CPU instructions in performance-"
                 << "critical operations: " << missing_instructions << std::endl
                 << "To enable them in other operations, rebuild TensorFlow "

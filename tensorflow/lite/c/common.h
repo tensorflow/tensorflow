@@ -238,6 +238,11 @@ typedef struct TfLiteComplex64 {
   float re, im;  // real and imaginary parts, respectively.
 } TfLiteComplex64;
 
+// Double-precision complex data type compatible with the C99 definition.
+typedef struct TfLiteComplex128 {
+  double re, im;  // real and imaginary parts, respectively.
+} TfLiteComplex128;
+
 // Half precision data type compatible with the C99 definition.
 typedef struct TfLiteFloat16 {
   uint16_t data;
@@ -257,6 +262,7 @@ typedef enum {
   kTfLiteInt8 = 9,
   kTfLiteFloat16 = 10,
   kTfLiteFloat64 = 11,
+  kTfLiteComplex128 = 12,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
@@ -313,12 +319,14 @@ typedef union TfLitePtrUnion {
   int64_t* i64;
   float* f;
   TfLiteFloat16* f16;
+  double* f64;
   char* raw;
   const char* raw_const;
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
   TfLiteComplex64* c64;
+  TfLiteComplex128* c128;
   int8_t* int8;
   /* Only use this member. */
   void* data;
@@ -477,7 +485,7 @@ typedef struct TfLiteNode {
   // WARNING: This is an experimental interface that is subject to change.
   struct TfLiteDelegate* delegate;
 } TfLiteNode;
-#else
+#else  // defined(TF_LITE_STATIC_MEMORY)?
 // NOTE: This flag is opt-in only at compile time.
 //
 // Specific reduced TfLiteTensor struct for TF Micro runtime. This struct
@@ -558,6 +566,24 @@ typedef struct TfLiteNode {
   int custom_initial_data_size;
 } TfLiteNode;
 #endif  // TF_LITE_STATIC_MEMORY
+
+// Light-weight tensor struct for TF Micro runtime. Provides the minimal amount
+// of information required for a kernel to run during TfLiteRegistration::Eval.
+// TODO(b/160955687): Move this field into TF_LITE_STATIC_MEMORY when TFLM
+// builds with this flag by default internally.
+typedef struct TfLiteEvalTensor {
+  // A union of data pointers. The appropriate type should be used for a typed
+  // tensor based on `type`.
+  TfLitePtrUnion data;
+
+  // A pointer to a structure representing the dimensionality interpretation
+  // that the buffer should have.
+  TfLiteIntArray* dims;
+
+  // The data type specification for data stored in `data`. This affects
+  // what member of `data` union should be used.
+  TfLiteType type;
+} TfLiteEvalTensor;
 
 #ifndef TF_LITE_STATIC_MEMORY
 // Free data memory of tensor `t`.
@@ -734,6 +760,17 @@ typedef struct TfLiteContext {
   TfLiteStatus (*PreviewDelegatePartitioning)(
       struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
       TfLiteDelegateParams** partition_params_array, int* num_partitions);
+
+  // Returns a TfLiteTensor struct for a given index in the subgraph.
+  // WARNING: This is an experimental interface that is subject to change.
+  // WARNING: This method may not be available on all platforms.
+  TfLiteTensor* (*GetTensor)(struct TfLiteContext* context, int subgraph_idx);
+
+  // Returns a TfLiteEvalTensor struct for a given index in the subgraph.
+  // WARNING: This is an experimental interface that is subject to change.
+  // WARNING: This method may not be available on all platforms.
+  TfLiteEvalTensor* (*GetEvalTensor)(struct TfLiteContext* context,
+                                     int subgraph_idx);
 } TfLiteContext;
 
 typedef struct TfLiteRegistration {

@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
-#include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_implementation.h"
 #include "tensorflow/lite/delegates/hexagon/utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -50,13 +49,6 @@ TfLiteStatus HexagonDelegateKernel::Init(TfLiteContext* context,
   if (hexagon_nn_ == nullptr) {
     TF_LITE_KERNEL_LOG(context, "Hexagon interface not available.");
     return kTfLiteError;
-  }
-  if (params != nullptr && params->delegate != nullptr) {
-    const ::TfLiteHexagonDelegateOptions* options_ptr =
-        reinterpret_cast<const ::TfLiteHexagonDelegateOptions*>(
-            params->delegate->data_);
-    params_ = (options_ptr == nullptr ? ::TfLiteHexagonDelegateOptions()
-                                      : *options_ptr);
   }
 
   // Ensure Hexagon NNLib is ready to start working.
@@ -94,8 +86,8 @@ TfLiteStatus HexagonDelegateKernel::Init(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
-                                           TfLiteNode* node) {
+TfLiteStatus HexagonDelegateKernel::Eval(TfLiteContext* context,
+                                         TfLiteNode* node) {
   if (hexagon_nn_ == nullptr) {
     TF_LITE_KERNEL_LOG(context, "Hexagon interface not available.");
     return kTfLiteError;

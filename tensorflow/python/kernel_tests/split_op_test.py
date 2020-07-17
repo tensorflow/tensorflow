@@ -342,7 +342,7 @@ class SplitOpTest(test.TestCase):
       array_ops.split(value=[[0, 1], [2, 3]], num_or_size_splits=4, axis=-3)
 
     # num_split does not evenly divide the size in split_dim.
-    with self.assertRaisesRegexp(ValueError, "should evenly divide"):
+    with self.assertRaisesRegex(ValueError, "should evenly divide"):
       array_ops.split(value=[0, 1, 2, 3], num_or_size_splits=3, axis=0)
 
     # Unknown split_dim.
@@ -378,14 +378,14 @@ class SplitOpTest(test.TestCase):
     x = array_ops.placeholder(dtypes.int32)
     values = np.zeros([5, 30])
     splits = array_ops.placeholder(dtypes.int32)
-    with self.assertRaisesRegexp(ValueError, "Cannot infer"):
+    with self.assertRaisesRegex(ValueError, "Cannot infer"):
       y = array_ops.split(values, splits, axis=x)
 
     splits = array_ops.placeholder(dtypes.int32, [3])
     y = array_ops.split(values, splits, axis=x)
     with self.session(use_gpu=True) as sess:
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "must have exactly one element"):
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  "must have exactly one element"):
         sess.run(y, {x: np.array([], dtype=np.int32), splits: [4, 11, 15]})
 
 

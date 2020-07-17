@@ -218,8 +218,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
           state.append(variables.Variable(2.0 * x))
         return state[0] * x
 
-      with self.assertRaisesRegexp(
-          lift_to_graph.UnliftableError, r'transitively.* mul .* x'):
+      with self.assertRaisesRegex(lift_to_graph.UnliftableError,
+                                  r'transitively.* mul .* x'):
         fn(constant_op.constant(3.0))
 
   @test_util.disable_tfrt('Variable argument is not supported')
@@ -393,8 +393,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         outputs.append(inputs[t])
       return outputs
 
-    with self.assertRaisesRegexp(errors.InaccessibleTensorError,
-                                 'defined in another function or code block'):
+    with self.assertRaisesRegex(errors.InaccessibleTensorError,
+                                'defined in another function or code block'):
       f(array_ops.zeros(shape=(8, 42, 3)))
 
   @test_util.disable_tfrt('Control flow is not supported')
@@ -472,7 +472,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       with ops.init_scope():
         _ = a + a
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         re.compile('An op outside of the function.*passed.*Const', re.DOTALL)):
       failing_function()
@@ -627,7 +627,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       return a[0].read_value()
 
     create_variable()
-    self.assertRegexpMatches(a[0].device, 'CPU')
+    self.assertRegex(a[0].device, 'CPU')
 
   @test_util.disable_tfrt('Variable argument is not supported')
   @test_util.run_gpu_only
@@ -647,8 +647,8 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     with ops.device('CPU:0'):
       create_variable()
-    self.assertRegexpMatches(a[0].device, 'CPU')
-    self.assertRegexpMatches(initial_value[0].device, 'CPU')
+    self.assertRegex(a[0].device, 'CPU')
+    self.assertRegex(initial_value[0].device, 'CPU')
 
   def testDecorate(self):
     func = def_function.function(lambda: 1)
@@ -727,7 +727,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     func = def_function.function(lambda: 1)
     self.assertEqual(func().numpy(), 1)
     msg = 'Functions cannot be decorated after they have been traced.'
-    with self.assertRaisesRegexp(ValueError, msg):
+    with self.assertRaisesRegex(ValueError, msg):
       func._decorate(lambda f: f)
 
   def testGetConcreteFunctionGraphLifetime(self):

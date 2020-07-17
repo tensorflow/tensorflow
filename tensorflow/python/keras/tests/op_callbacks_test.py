@@ -25,7 +25,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.ops import script_ops
 from tensorflow.python.util import compat
 
@@ -128,13 +129,13 @@ class _NumpyFunctionCallback(object):
     self.graph_internal_ndarrays = {}
 
 
-class OpCallbacksTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
+class OpCallbacksTest(keras_parameterized.TestCase):
 
   def tearDown(self):
     op_callbacks.clear_op_callbacks()
     super(OpCallbacksTest, self).tearDown()
 
-  @test_util.run_in_graph_and_eager_modes
   def testKerasLSTMPredict(self):
     instrument = _NumpyFunctionCallback(float_only=True)
 
@@ -153,7 +154,6 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
     # recorded by the callback.
     self.assertTrue(instrument.graph_internal_ndarrays)
 
-  @test_util.run_in_graph_and_eager_modes
   def testKeraModelFit(self):
     # TODO(cais): The purely PyFunc (numpy_function) based instrumentation
     # doesn't work for the entire Keras model and its fit() call, due to some

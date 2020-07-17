@@ -52,7 +52,7 @@ class ShapeTest(test_lib.TestCase):
       determinants = linalg_ops.matrix_determinant(batch_identity)
       reduced = math_ops.reduce_sum(determinants)
       sum_grad = gradients_impl.gradients(reduced, batch_identity)[0]
-      self.assertAllClose(batch_identity.eval(), self.evaluate(sum_grad))
+      self.assertAllClose(batch_identity, self.evaluate(sum_grad))
 
 
 class MatrixUnaryFunctorGradientTest(test_lib.TestCase):

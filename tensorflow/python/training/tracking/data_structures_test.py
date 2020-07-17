@@ -57,7 +57,7 @@ class ListTests(test.TestCase):
       data_structures.List([NotTrackable()])
 
   def testCallNotImplemented(self):
-    with self.assertRaisesRegexp(TypeError, "not callable"):
+    with self.assertRaisesRegex(TypeError, "not callable"):
       data_structures.List()(1.)
 
   def testNoPop(self):
@@ -123,7 +123,7 @@ class ListTests(test.TestCase):
 
   def testIMul_zero(self):
     l = data_structures.List([])
-    with self.assertRaisesRegexp(ValueError, "List only supports append"):
+    with self.assertRaisesRegex(ValueError, "List only supports append"):
       l *= 0
 
   def testIMul(self):
@@ -328,7 +328,7 @@ class ListWrapperTest(test.TestCase):
 
   def assertUnableToSave(self, l, msg):
     l._maybe_initialize_trackable()  # pylint: disable=protected-access
-    with self.assertRaisesRegexp(ValueError, msg):
+    with self.assertRaisesRegex(ValueError, msg):
       return l._checkpoint_dependencies  # pylint: disable=protected-access
 
 
@@ -368,7 +368,7 @@ class MappingTests(test.TestCase):
     self.assertEqual({}, a.d)
     self.assertFalse({} != a.d)  # pylint: disable=g-explicit-bool-comparison
     self.assertNotEqual({1: 2}, a.d)
-    with self.assertRaisesRegexp(TypeError, "unhashable"):
+    with self.assertRaisesRegex(TypeError, "unhashable"):
       set([a.d])
 
   def testListShallowCopy(self):

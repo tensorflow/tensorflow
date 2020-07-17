@@ -445,8 +445,8 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     x = ragged_factory_ops.constant([[1, 2], [3]])
     y = ragged_tensor.RaggedTensor.from_row_splits(
         array_ops.placeholder_with_default([1, 2, 3], shape=None), x.row_splits)
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Unable to broadcast: unknown rank'):
+    with self.assertRaisesRegex(ValueError,
+                                r'Unable to broadcast: unknown rank'):
       math_ops.add(x, y)
 
   @parameterized.parameters([

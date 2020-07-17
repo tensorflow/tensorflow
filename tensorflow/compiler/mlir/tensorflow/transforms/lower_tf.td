@@ -155,6 +155,14 @@ def LowerFillOp : Pat<(TF_FillOp $dims, $value),
                       (TF_BroadcastToOp $value, $dims)>;
 
 //===----------------------------------------------------------------------===//
+// NaN op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerIsNanOp : Pat<(TF_IsNanOp $x),
+                     (TF_EqualOp $x, (TF_ConstOp:$nan (GetScalarNanOfType $x)),
+                      /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+
+//===----------------------------------------------------------------------===//
 // L2Loss op patterns.
 //===----------------------------------------------------------------------===//
 

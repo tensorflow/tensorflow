@@ -32,6 +32,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -44,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -107,7 +108,7 @@ Status GetXlaInputShapes(
 
     // Rewrite layout with sharding, if sharding is set.
     auto sharding =
-        main_func.getArgAttrOfType<mlir::StringAttr>(i, "xla_hlo.sharding");
+        main_func.getArgAttrOfType<mlir::StringAttr>(i, "mhlo.sharding");
     if (!sharding) continue;
 
     absl::optional<xla::HloSharding> arg_sharding;
@@ -252,7 +253,7 @@ static void RegisterDialects() {
     mlir::registerDialect<mlir::TF::TensorFlowDialect>();
     mlir::registerDialect<mlir::shape::ShapeDialect>();
     mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
-    mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
+    mlir::registerDialect<mlir::mhlo::MhloDialect>();
     return true;
   }();
   (void)init_once;
@@ -278,9 +279,9 @@ Status ConvertMLIRToXlaComputation(
   // LegalizeTFControlFlow encapsulates arguments for control flow operations
   // with a tuple argument which break the assumption of resource lifting
   // inside PromoteResourcesToArgs.
-  tf2xla.addPass(mlir::xla_hlo::createLegalizeTFControlFlowPass());
+  tf2xla.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
 
-  tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass(true));
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(true));
   for (auto& target_pass : custom_legalization_passes) {
     tf2xla.addNestedPass<mlir::FuncOp>(std::move(target_pass));
   }
@@ -289,7 +290,7 @@ Status ConvertMLIRToXlaComputation(
 
   // Leverage tf2xla kernels for ops that didn't get lowered in the previous
   // legalization pass.
-  tf2xla.addPass(mlir::xla_hlo::createLegalizeTfWithTf2XlaPass(device_type));
+  tf2xla.addPass(mlir::mhlo::createLegalizeTfWithTf2XlaPass(device_type));
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
 
   // Run shape inference pass to propagate shapes through tensor_cast operations
@@ -302,12 +303,11 @@ Status ConvertMLIRToXlaComputation(
   // expose more graph pruning and canonicalization opportunities that are
   // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
   // invocation.
-  tf2xla.addNestedPass<mlir::FuncOp>(
-      mlir::xla_hlo::createLegalizeTFPass(false));
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(false));
   // In order to export to XLA, we must sink constants to control flow regions,
   // since XLA uses functional control flow.
   tf2xla.addNestedPass<mlir::FuncOp>(
-      mlir::xla_hlo::createSinkConstantsToControlFlowPass());
+      mlir::mhlo::createSinkConstantsToControlFlowPass());
 
   if (VLOG_IS_ON(1)) {
     // Print the whole module after each pass which requires disabling

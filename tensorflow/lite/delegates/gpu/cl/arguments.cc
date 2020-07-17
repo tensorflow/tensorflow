@@ -789,8 +789,8 @@ absl::Status Arguments::ResolveSelectorsPass(
         next = (*code)[next_position];
       }
       if (next != '(') {
-        return absl::NotFoundError(
-            absl::StrCat("Expected ( after function ", selector_name, " call"));
+        return absl::NotFoundError(absl::StrCat(
+            "Expected ( after ", object_name, ".", selector_name, " call"));
       }
       std::vector<std::string> args;
       size_t close_bracket_pos;

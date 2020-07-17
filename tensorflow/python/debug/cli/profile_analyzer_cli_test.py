@@ -79,7 +79,7 @@ class ProfileAnalyzerListProfileTest(test_util.TensorFlowTestCase):
 
     prof_analyzer = profile_analyzer_cli.ProfileAnalyzer(graph, run_metadata)
     prof_output = prof_analyzer.list_profile([]).lines
-    self.assertEquals([""], prof_output)
+    self.assertEqual([""], prof_output)
 
   def testSingleDevice(self):
     node1 = step_stats_pb2.NodeExecStats(
@@ -211,22 +211,22 @@ class ProfileAnalyzerListProfileTest(test_util.TensorFlowTestCase):
 
     # Default sort by start time (i.e. all_start_micros).
     prof_output = prof_analyzer.list_profile([]).lines
-    self.assertRegexpMatches("".join(prof_output), r"Mul/456.*Add/123")
+    self.assertRegex("".join(prof_output), r"Mul/456.*Add/123")
     # Default sort in reverse.
     prof_output = prof_analyzer.list_profile(["-r"]).lines
-    self.assertRegexpMatches("".join(prof_output), r"Add/123.*Mul/456")
+    self.assertRegex("".join(prof_output), r"Add/123.*Mul/456")
     # Sort by name.
     prof_output = prof_analyzer.list_profile(["-s", "node"]).lines
-    self.assertRegexpMatches("".join(prof_output), r"Add/123.*Mul/456")
+    self.assertRegex("".join(prof_output), r"Add/123.*Mul/456")
     # Sort by op time (i.e. op_end_rel_micros - op_start_rel_micros).
     prof_output = prof_analyzer.list_profile(["-s", "op_time"]).lines
-    self.assertRegexpMatches("".join(prof_output), r"Mul/456.*Add/123")
+    self.assertRegex("".join(prof_output), r"Mul/456.*Add/123")
     # Sort by exec time (i.e. all_end_rel_micros).
     prof_output = prof_analyzer.list_profile(["-s", "exec_time"]).lines
-    self.assertRegexpMatches("".join(prof_output), r"Add/123.*Mul/456")
+    self.assertRegex("".join(prof_output), r"Add/123.*Mul/456")
     # Sort by line number.
     prof_output = prof_analyzer.list_profile(["-s", "line"]).lines
-    self.assertRegexpMatches("".join(prof_output), r"Mul/456.*Add/123")
+    self.assertRegex("".join(prof_output), r"Mul/456.*Add/123")
 
   def testFiltering(self):
     node1 = step_stats_pb2.NodeExecStats(

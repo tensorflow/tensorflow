@@ -54,6 +54,8 @@ FREQUENT_TRACING_WARNING_THRESHOLD = 5
 class _CallCounter(object):
   """Class keeping track of how many recent calls triggered tracing."""
 
+  __slots__ = ["_max_call_history", "_calls_per_tracings", "call_count"]
+
   def __init__(self, max_call_history):
     self._max_call_history = max_call_history
     self._calls_per_tracings = []
@@ -83,6 +85,8 @@ class _CallCounter(object):
 
 class _FrequentTracingDetector(object):
   """Class for frequent retracing detection and warning."""
+
+  __slots__ = ["_counters", "_lock"]
 
   def __init__(self):
     self._counters = weakref.WeakKeyDictionary()  # GUARDED_BY(self._lock)
@@ -427,6 +431,8 @@ def functions_run_eagerly():
 
 
 class FunctionDeleter(object):
+
+  __slots__ = ["func_graph"]
 
   def __init__(self, func_graph):
     self.func_graph = func_graph
