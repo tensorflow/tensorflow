@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
 
-
 namespace tensorflow {
 namespace gradients {
 namespace internal {
