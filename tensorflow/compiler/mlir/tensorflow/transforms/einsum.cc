@@ -92,7 +92,7 @@ bool tokenizeEquation(const llvm::StringRef& equation,
       }
     } else if (equation.substr(index, 1).contains(",")) {
       tokens->push_back(COMMA);
-    } else if ((index < equation.size() - 1)) &&
+    } else if ((index < (equation.size() - 1)) &&
                (equation.substr(index, 2).contains("->"))) {
       tokens->push_back(ARROW);
       index++;
