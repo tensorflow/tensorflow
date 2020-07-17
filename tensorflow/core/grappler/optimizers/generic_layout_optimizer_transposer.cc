@@ -1567,8 +1567,7 @@ Status StridedSliceTransposer::PermuteMask(TransposeContext* context,
     return errors::InvalidArgument("invalid mask value: ", mask_i);
   }
   int result = 0;
-  for (int i = 0, end = context->src_to_dst.size(); i < end;
-       i++) {
+  for (int i = 0, end = context->src_to_dst.size(); i < end; i++) {
     const int final_pos = context->src_to_dst[i];
     const int position_mask = 1 << final_pos;
     const int bit_i = (mask_i & position_mask) >> final_pos;
