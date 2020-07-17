@@ -211,18 +211,18 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
   # TODO(omalleyt): Resolve circular dependency.
   from tensorflow.python.keras.engine import base_layer  # pylint: disable=g-import-not-at-top
   tensor_list = nest.flatten(tensors)
+  sparse_ops = []
+  ragged_tensors = []
   for tensor in tensor_list:
     if getattr(tensor, '_keras_history', None) is not None:
       continue
-    if sparse_tensor.is_sparse(tensor) or ragged_tensor.is_ragged(tensor):
-      example = """
-      weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
-      output = tf.keras.layers.Lambda(weights_mult)(input)
-      """
-      raise ValueError('Tensorflow ops that generate ragged or sparse tensor '
-                       'outputs are currently not supported by Keras automatic '
-                       'op wrapping. Please wrap these ops in a Lambda layer: '
-                       '\n\n```\n{example}\n```\n'.format(example=example))
+    if sparse_tensor.is_sparse(tensor):
+      sparse_ops.append(tensor.op)
+      continue
+    if ragged_tensor.is_ragged(tensor):
+      # Ragged tensors don't have an op property
+      ragged_tensors.append(tensor)
+      continue
     op = tensor.op  # The Op that created this Tensor.
     if op not in processed_ops:
       # Recursively set `_keras_history`.
@@ -264,6 +264,21 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
           kwargs={},
           outputs=op.outputs)
       processed_ops.update([op])
+  if sparse_ops or ragged_tensors:
+    lambda_example = """
+    weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
+    output = tf.keras.layers.Lambda(weights_mult)(input)
+    """
+    raise ValueError(
+        'Tensorflow ops that generate ragged or sparse tensor '
+        'outputs are currently not supported by Keras automatic '
+        'op wrapping. Please wrap these ops in a Lambda layer: '
+        '\n\n```\n{example}\n```\n'
+        'Sparse ops encountered: {sparse_ops}\n'
+        'Ragged tensors encountered: {ragged_tensors}\n'.format(
+            example=lambda_example,
+            sparse_ops=str(sparse_ops),
+            ragged_tensors=str(ragged_tensors)))
   return processed_ops, created_layers
 
 
