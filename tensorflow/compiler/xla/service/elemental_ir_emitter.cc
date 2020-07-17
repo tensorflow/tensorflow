@@ -1292,46 +1292,77 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
                     llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
                                             EmitExtractImag(lhs_value),
                                             EmitExtractImag(rhs_value), b_));
-        case ComparisonDirection::kLt:
-          return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT,
-                                            EmitExtractReal(lhs_value),
-                                            EmitExtractReal(rhs_value), b_),
-                    And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
-                                                EmitExtractReal(lhs_value),
-                                                EmitExtractReal(rhs_value), b_),
-                        llvm_ir::EmitComparison(
-                            llvm::CmpInst::FCMP_OLT, EmitExtractImag(lhs_value),
-                            EmitExtractImag(rhs_value), b_)));
-        case ComparisonDirection::kGt:
-          return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT,
-                                            EmitExtractReal(lhs_value),
-                                            EmitExtractReal(rhs_value), b_),
-                    And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
-                                                EmitExtractReal(lhs_value),
-                                                EmitExtractReal(rhs_value), b_),
-                        llvm_ir::EmitComparison(
-                            llvm::CmpInst::FCMP_OGT, EmitExtractImag(lhs_value),
-                            EmitExtractImag(rhs_value), b_)));
-        case ComparisonDirection::kLe:
-          return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT,
-                                            EmitExtractReal(lhs_value),
-                                            EmitExtractReal(rhs_value), b_),
-                    And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
-                                                EmitExtractReal(lhs_value),
-                                                EmitExtractReal(rhs_value), b_),
-                        llvm_ir::EmitComparison(
-                            llvm::CmpInst::FCMP_OLE, EmitExtractImag(lhs_value),
-                            EmitExtractImag(rhs_value), b_)));
-        case ComparisonDirection::kGe:
-          return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT,
-                                            EmitExtractReal(lhs_value),
-                                            EmitExtractReal(rhs_value), b_),
-                    And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
-                                                EmitExtractReal(lhs_value),
-                                                EmitExtractReal(rhs_value), b_),
-                        llvm_ir::EmitComparison(
-                            llvm::CmpInst::FCMP_OGE, EmitExtractImag(lhs_value),
-                            EmitExtractImag(rhs_value), b_)));
+        case ComparisonDirection::kLt: {
+          auto lt_i8 = Select(
+              FCmpOEQ(EmitExtractReal(lhs_value), EmitExtractReal(rhs_value)),
+              And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_ORD,
+                                          EmitExtractReal(lhs_value),
+                                          EmitExtractReal(rhs_value), b_),
+                  llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT,
+                                          EmitExtractImag(lhs_value),
+                                          EmitExtractImag(rhs_value), b_)),
+              And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT,
+                                          EmitExtractReal(lhs_value),
+                                          EmitExtractReal(rhs_value), b_),
+                  llvm_ir::EmitComparison(llvm::CmpInst::FCMP_ORD,
+                                          EmitExtractImag(lhs_value),
+                                          EmitExtractImag(rhs_value), b_)));
+          return lt_i8;
+        }
+        case ComparisonDirection::kGt: {
+          // If real part or image part is NAN, return false
+          auto gt_i8 = Select(
+              FCmpOEQ(EmitExtractReal(lhs_value), EmitExtractReal(rhs_value)),
+              And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_ORD,
+                                          EmitExtractReal(lhs_value),
+                                          EmitExtractReal(rhs_value), b_),
+                  llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT,
+                                          EmitExtractImag(lhs_value),
+                                          EmitExtractImag(rhs_value), b_)),
+              And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT,
+                                          EmitExtractReal(lhs_value),
+                                          EmitExtractReal(rhs_value), b_),
+                  llvm_ir::EmitComparison(llvm::CmpInst::FCMP_ORD,
+                                          EmitExtractImag(lhs_value),
+                                          EmitExtractImag(rhs_value), b_)));
+          return gt_i8;
+        }
+        case ComparisonDirection::kLe: {
+          // If real part or image part is NAN, return false
+          auto le_i8 = Select(
+              FCmpOEQ(EmitExtractReal(lhs_value), EmitExtractReal(rhs_value)),
+              And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_ORD,
+                                          EmitExtractReal(lhs_value),
+                                          EmitExtractReal(rhs_value), b_),
+                  llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLE,
+                                          EmitExtractImag(lhs_value),
+                                          EmitExtractImag(rhs_value), b_)),
+              And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLE,
+                                          EmitExtractReal(lhs_value),
+                                          EmitExtractReal(rhs_value), b_),
+                  llvm_ir::EmitComparison(llvm::CmpInst::FCMP_ORD,
+                                          EmitExtractImag(lhs_value),
+                                          EmitExtractImag(rhs_value), b_)));
+          return le_i8;
+        }
+        case ComparisonDirection::kGe: {
+          // If real part or image part is NAN, return false
+          auto ge_i8 = Select(
+              FCmpOEQ(EmitExtractReal(lhs_value), EmitExtractReal(rhs_value)),
+              And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_ORD,
+                                          EmitExtractReal(lhs_value),
+                                          EmitExtractReal(rhs_value), b_),
+                  llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGE,
+                                          EmitExtractImag(lhs_value),
+                                          EmitExtractImag(rhs_value), b_)),
+              And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGE,
+                                          EmitExtractReal(lhs_value),
+                                          EmitExtractReal(rhs_value), b_),
+                  llvm_ir::EmitComparison(llvm::CmpInst::FCMP_ORD,
+                                          EmitExtractImag(lhs_value),
+                                          EmitExtractImag(rhs_value), b_)));
+          return ge_i8;
+        }
         default:
           return Unimplemented(
               "complex comparison '%s'",

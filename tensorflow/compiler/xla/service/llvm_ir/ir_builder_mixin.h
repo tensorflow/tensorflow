@@ -293,6 +293,11 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
+  llvm::Value* FCmpORD(Args&&... args) {
+    return mixin_builder()->CreateFCmpORD(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
   llvm::Value* FCmpUNO(Args&&... args) {
     return mixin_builder()->CreateFCmpUNO(std::forward<Args>(args)...);
   }
