@@ -246,6 +246,9 @@ class _KerasTensorIterator(object):
 
 def keras_tensor_to_placeholder(x):
   """Construct a graph placeholder to represent a KerasTensor when tracing."""
+  if hasattr(x, '_user_registered_symbolic_object'):
+    return x._user_registered_symbolic_object  # pylint: disable=protected-access
+
   if isinstance(x, KerasTensor):
     spec = x.type_spec
 
@@ -292,11 +295,52 @@ def keras_tensor_to_placeholder(x):
     return x
 
 
+class UserRegisteredSpec(type_spec_module.TypeSpec):
+  """TypeSpec to represent user-registered symbolic objects."""
+
+  def __init__(self, shape, dtype):
+    self.shape = shape
+    self._dtype = dtype
+    self.dtype = dtype
+
+  def _component_specs(self):
+    raise NotImplementedError
+
+  def _from_components(self, components):
+    raise NotImplementedError
+
+  def _serialize(self):
+    raise NotImplementedError
+
+  def _to_components(self, value):
+    raise NotImplementedError
+
+  def value_type(self):
+    raise NotImplementedError
+
+
 def keras_tensor_from_tensor(x):
   """Convert a traced (composite)tensor to a representative KerasTensor."""
   name = getattr(x, 'name', None)
   inferred_shape_value = None
-  type_spec = type_spec_module.type_spec_from_value(x)
+
+  # TODO(b/161487382):
+  # Special-case user-registered symbolic objects (registered by the
+  # private `register_symbolic_tensor_type` method) by passing them between
+  # scratch graphs directly.
+  # This is needed to not break Tensorflow probability
+  # while they finish migrating to composite tensors.
+  user_registered_symbolic = False
+  try:
+    from tensorflow.python.keras.utils import tf_utils  # pylint: disable=g-import-not-at-top to prevent circular imports
+    if isinstance(x, tuple(tf_utils._user_convertible_tensor_types)):  # pylint: disable=protected-access
+      user_registered_symbolic = True
+  except ImportError:
+    pass
+  if user_registered_symbolic:
+    type_spec = UserRegisteredSpec(x.shape, x.dtype)
+  else:
+    type_spec = type_spec_module.type_spec_from_value(x)
 
   if (isinstance(type_spec, tensor_spec.TensorSpec)
       and type_spec.dtype == dtypes.int32
@@ -325,6 +369,9 @@ def keras_tensor_from_tensor(x):
 
   out = KerasTensor(type_spec,
                     inferred_shape_value=inferred_shape_value, name=name)
+  if user_registered_symbolic:
+    out._user_registered_symbolic_object = x  # pylint: disable=protected-access
+
   if hasattr(x, '_keras_mask'):
     out._keras_mask = KerasTensor(  # pylint: disable=protected-access
         type_spec_module.type_spec_from_value(x._keras_mask))  # pylint: disable=protected-access
