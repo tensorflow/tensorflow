@@ -190,7 +190,7 @@ LogicalResult Verify(GraphOp graph) {
   for (int i : llvm::seq<int>(0, fetch.getNumOperands())) {
     Value operand = fetch.getOperand(i);
     // Break out of the loop at the first control operand encountered.
-    const int64 num_results = graph.getNumResults();
+    const int64_t num_results = graph.getNumResults();
     if (operand.getType().isa<ControlType>()) {
       if (i != num_results)
         return fetch.emitOpError()
@@ -198,7 +198,7 @@ LogicalResult Verify(GraphOp graph) {
                << " is a control type, can't be bound to a graph result";
       break;
     }
-    if (i >= graph_getNumResults)
+    if (i >= num_results)
       return fetch.emitOpError()
              << "operand #" << i << " does not have a graph results to bind";
     if (graph.getResult(i).getType() != operand.getType())
