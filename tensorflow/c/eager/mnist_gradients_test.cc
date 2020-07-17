@@ -363,6 +363,9 @@ TEST_P(CppGradients, TestMatMulGrad) {
                /*use_function=*/!std::get<2>(GetParam()), registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
+  // s = MatMulGradModel(ctx.get(), {A.get(), B.get()}, absl::MakeSpan(outputs), registry);
+  // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
   TF_Tensor* dA_tensor;
   s = getValue(outputs[0], &dA_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
@@ -371,10 +374,10 @@ TEST_P(CppGradients, TestMatMulGrad) {
   memcpy(&result_data[0], TF_TensorData(dA_tensor), TF_TensorByteSize(dA_tensor));
   
   float expected_dA [4] =  {-.5f, 2.0f, -.5f, 2.0f}; 
-  // float tolerance = 1e-3;
-  // for(int j = 0; j < 4; j++){
-  //   ASSERT_NEAR(result_data[j], expected_dA[j], tolerance);
-  // }  
+  float tolerance = 1e-3;
+  for(int j = 0; j < 4; j++){
+    ASSERT_NEAR(result_data[j], expected_dA[j], tolerance);
+  }  
 
 
   /* ERROR: This test runs 2x when we bazel test
