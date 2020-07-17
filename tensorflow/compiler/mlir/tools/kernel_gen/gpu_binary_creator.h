@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-//===- cubin_creator.h ------------------------------------------*- C++ -*-===//
+//===- gpu_binary_creator.h -------------------------------------*- C++ -*-===//
 //
-// This file declares the function to compile a TF kernel function to a cubin.
+// This file declares the function to compile a TF kernel function
+// to gpu binary (hsaco for AMD, cubin for NVIDIA)
 //
 //===----------------------------------------------------------------------===//
-#ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_CUBIN_CREATOR_H_
-#define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_CUBIN_CREATOR_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_GPU_BINARY_CREATOR_H_
+#define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_GPU_BINARY_CREATOR_H_
 
 #include <utility>
 #include <vector>
@@ -39,4 +40,4 @@ xla::StatusOr<std::vector<uint8_t>> GenerateCubinForTfCode(
 }  // namespace kernel_gen
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_CUBIN_CREATOR_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_GPU_BINARY_CREATOR_H_

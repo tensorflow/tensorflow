@@ -62,7 +62,7 @@ _gen_kernel_cubin_rule = rule(
         ),
         "_tool": attr.label(
             executable = True,
-            default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_cubin"),
+            default = Label("//tensorflow/compiler/mlir/tools/kernel_gen:tf_to_gpu_binary"),
             cfg = "host",
         ),
     },

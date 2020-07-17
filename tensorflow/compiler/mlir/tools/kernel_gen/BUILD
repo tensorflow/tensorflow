@@ -13,9 +13,9 @@ package_group(
 )
 
 cc_library(
-    name = "cubin_creator",
-    srcs = ["cubin_creator.cc"],
-    hdrs = ["cubin_creator.h"],
+    name = "gpu_binary_creator",
+    srcs = ["gpu_binary_creator.cc"],
+    hdrs = ["gpu_binary_creator.h"],
     copts = if_cuda(["-DGOOGLE_CUDA=1"]),
     deps = [
         "@com_google_absl//absl/memory",
@@ -48,11 +48,11 @@ cc_library(
 )
 
 tf_cc_binary(
-    name = "tf_to_cubin",
-    srcs = ["tf_to_cubin.cc"],
+    name = "tf_to_gpu_binary",
+    srcs = ["tf_to_gpu_binary.cc"],
     visibility = ["//tensorflow/core/kernels/mlir_generated:__pkg__"],
     deps = [
-        ":cubin_creator",
+        ":gpu_binary_creator",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
