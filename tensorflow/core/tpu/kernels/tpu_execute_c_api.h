@@ -37,11 +37,21 @@ TFTPU_CAPI_EXPORT void TpuExecutable_LoadProgramAndEnqueueToStream(
 TFTPU_CAPI_EXPORT void HardwareLayout_HostShapeToDeviceShape(
     XLA_Shape* host_shape, XLA_Shape* device_shape);
 TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSize(XLA_Shape* shape);
+TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSizeCompact(XLA_Shape* shape);
+TFTPU_CAPI_EXPORT int64_t HardwareLayout_ShapeSizeCompactRaw(XLA_Shape* shape);
+
+TFTPU_CAPI_EXPORT void TpuExecute_RuntimeInputToPaddedData(
+    uint32_t* runtime_input_ptr, size_t runtime_input_size,
+    int8_t* padded_data_ptr, size_t padded_data_size, XLA_Shape* runtime_shape,
+    XLA_Shape* compile_time_shape, SE_Status* status);
 
 struct TfTpu_ExecuteApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_LoadProgramAndEnqueueToStream);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_HostShapeToDeviceShape);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSize);
+  TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSizeCompact);
+  TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSizeCompactRaw);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecute_RuntimeInputToPaddedData);
 };
 
 }  // extern "C"

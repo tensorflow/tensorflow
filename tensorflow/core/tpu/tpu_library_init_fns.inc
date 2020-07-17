@@ -43,6 +43,9 @@ tensorflow::Status SetExecuteStructFn(void* library_handle) {
   TFTPU_SET_FN(execute_fn, TpuExecutable_LoadProgramAndEnqueueToStream);
   TFTPU_SET_FN(execute_fn, HardwareLayout_HostShapeToDeviceShape);
   TFTPU_SET_FN(execute_fn, HardwareLayout_ShapeSize);
+  TFTPU_SET_FN(execute_fn, HardwareLayout_ShapeSizeCompact);
+  TFTPU_SET_FN(execute_fn, HardwareLayout_ShapeSizeCompactRaw);
+  TFTPU_SET_FN(execute_fn, TpuExecute_RuntimeInputToPaddedData);
 
   return tensorflow::Status::OK();
 }
