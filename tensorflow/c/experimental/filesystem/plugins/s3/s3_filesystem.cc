@@ -15,25 +15,52 @@ limitations under the License.
 #include "tensorflow/c/experimental/filesystem/plugins/s3/s3_filesystem.h"
 
 #include <aws/core/config/AWSProfileConfigLoader.h>
+#include <aws/core/utils/stream/PreallocatedStreamBuf.h>
+#include <aws/s3/model/GetObjectRequest.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/experimental/filesystem/plugins/s3/aws_crypto.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for S3 environments.
 // This filesystem will support `s3://` URI schemes.
+constexpr char kS3FileSystemAllocationTag[] = "S3FileSystemAllocation";
 constexpr char kS3ClientAllocationTag[] = "S3ClientAllocation";
 constexpr int64_t kS3TimeoutMsec = 300000;  // 5 min
 
 constexpr char kExecutorTag[] = "TransferManagerExecutorAllocation";
 constexpr int kExecutorPoolSize = 25;
 
+constexpr uint64_t kS3MultiPartUploadChunkSize = 50 * 1024 * 1024;    // 50 MB
+constexpr uint64_t kS3MultiPartDownloadChunkSize = 50 * 1024 * 1024;  // 50 MB
+constexpr size_t kDownloadRetries = 3;
+
 static void* plugin_memory_allocate(size_t size) { return calloc(1, size); }
 static void plugin_memory_free(void* ptr) { free(ptr); }
+
+static inline void TF_SetStatusFromAWSError(
+    const Aws::Client::AWSError<Aws::S3::S3Errors>& error, TF_Status* status) {
+  switch (error.GetResponseCode()) {
+    case Aws::Http::HttpResponseCode::FORBIDDEN:
+      TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                   "AWS Credentials have not been set properly. "
+                   "Unable to access the specified S3 location");
+      break;
+    case Aws::Http::HttpResponseCode::REQUESTED_RANGE_NOT_SATISFIABLE:
+      TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
+      break;
+    default:
+      TF_SetStatus(
+          status, TF_UNKNOWN,
+          (error.GetExceptionName() + ": " + error.GetMessage()).c_str());
+      break;
+  }
+}
 
 static void ParseS3Path(const Aws::String& fname, bool object_empty_ok,
                         Aws::String* bucket, Aws::String* object,
@@ -178,6 +205,25 @@ static void GetExecutor(tf_s3_filesystem::S3File* s3_file) {
   }
 }
 
+static void GetTransferManager(
+    const Aws::Transfer::TransferDirection& direction,
+    tf_s3_filesystem::S3File* s3_file) {
+  absl::MutexLock l(&s3_file->initialization_lock);
+
+  if (s3_file->transfer_managers[direction].get() == nullptr) {
+    GetS3Client(s3_file);
+    GetExecutor(s3_file);
+    Aws::Transfer::TransferManagerConfiguration config(s3_file->executor.get());
+    config.s3Client = s3_file->s3_client;
+    config.bufferSize = s3_file->multi_part_chunk_sizes[direction];
+    // must be larger than pool size * multi part chunk size
+    config.transferBufferMaxHeapSize =
+        (kExecutorPoolSize + 1) * s3_file->multi_part_chunk_sizes[direction];
+    s3_file->transfer_managers[direction] =
+        Aws::Transfer::TransferManager::Create(config);
+  }
+}
+
 static void ShutdownClient(Aws::S3::S3Client* s3_client) {
   if (s3_client != nullptr) {
     delete s3_client;
@@ -189,8 +235,96 @@ static void ShutdownClient(Aws::S3::S3Client* s3_client) {
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
 namespace tf_random_access_file {
+typedef struct S3File {
+  Aws::String bucket;
+  Aws::String object;
+  std::shared_ptr<Aws::S3::S3Client> s3_client;
+  std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager;
+  bool use_multi_part_download;
+} S3File;
 
-// TODO(vnvo2409): Implement later
+// AWS Streams destroy the buffer (buf) passed, so creating a new
+// IOStream that retains the buffer so the calling function
+// can control it's lifecycle
+class TFS3UnderlyingStream : public Aws::IOStream {
+ public:
+  using Base = Aws::IOStream;
+  TFS3UnderlyingStream(std::streambuf* buf) : Base(buf) {}
+  virtual ~TFS3UnderlyingStream() = default;
+};
+
+void Cleanup(TF_RandomAccessFile* file) {
+  auto s3_file = static_cast<S3File*>(file->plugin_file);
+  delete s3_file;
+}
+
+static int64_t ReadS3Client(S3File* s3_file, uint64_t offset, size_t n,
+                            char* buffer, TF_Status* status) {
+  Aws::S3::Model::GetObjectRequest get_object_request;
+  get_object_request.WithBucket(s3_file->bucket).WithKey(s3_file->bucket);
+  Aws::String bytes =
+      absl::StrCat("bytes=", offset, "-", offset + n - 1).c_str();
+  get_object_request.SetRange(bytes);
+  get_object_request.SetResponseStreamFactory(
+      []() { return Aws::New<Aws::StringStream>(kS3FileSystemAllocationTag); });
+
+  auto get_object_outcome = s3_file->s3_client->GetObject(get_object_request);
+  if (!get_object_outcome.IsSuccess())
+    TF_SetStatusFromAWSError(get_object_outcome.GetError(), status);
+  else
+    TF_SetStatus(status, TF_OK, "");
+  if (TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_OUT_OF_RANGE)
+    return -1;
+
+  int64_t read = get_object_outcome.GetResult().GetContentLength();
+  if (read < n)
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
+  get_object_outcome.GetResult().GetBody().read(buffer, read);
+  return read;
+}
+
+static int64_t ReadS3TransferManager(S3File* s3_file, uint64_t offset, size_t n,
+                                     char* buffer, TF_Status* status) {
+  auto create_download_stream = [&]() {
+    return Aws::New<TFS3UnderlyingStream>(
+        "S3ReadStream",
+        Aws::New<Aws::Utils::Stream::PreallocatedStreamBuf>(
+            "S3ReadStream", reinterpret_cast<unsigned char*>(buffer), n));
+  };
+  auto handle = s3_file->transfer_manager->DownloadFile(
+      s3_file->bucket, s3_file->object, offset, n, create_download_stream);
+  handle->WaitUntilFinished();
+
+  size_t retries = 0;
+  while (handle->GetStatus() == Aws::Transfer::TransferStatus::FAILED &&
+         handle->GetLastError().GetResponseCode() !=
+             Aws::Http::HttpResponseCode::REQUESTED_RANGE_NOT_SATISFIABLE &&
+         retries++ < kDownloadRetries) {
+    // Only failed parts will be downloaded again.
+    s3_file->transfer_manager->RetryDownload(handle);
+    handle->WaitUntilFinished();
+  }
+
+  if (handle->GetStatus() != Aws::Transfer::TransferStatus::COMPLETED)
+    TF_SetStatusFromAWSError(handle->GetLastError(), status);
+  else
+    TF_SetStatus(status, TF_OK, "");
+  if (TF_GetCode(status) != TF_OK && TF_GetCode(status) != TF_OUT_OF_RANGE)
+    return -1;
+  int64_t read = handle->GetBytesTransferred();
+  if (read < n)
+    TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
+  return read;
+}
+
+int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
+             char* buffer, TF_Status* status) {
+  auto s3_file = static_cast<S3File*>(file->plugin_file);
+  if (s3_file->use_multi_part_download)
+    return ReadS3TransferManager(s3_file, offset, n, buffer, status);
+  else
+    return ReadS3Client(s3_file, offset, n, buffer, status);
+}
 
 }  // namespace tf_random_access_file
 
@@ -216,7 +350,27 @@ namespace tf_s3_filesystem {
 S3File::S3File()
     : s3_client(nullptr, ShutdownClient),
       executor(nullptr),
-      initialization_lock() {}
+      transfer_managers(),
+      multi_part_chunk_sizes(),
+      use_multi_part_download(true),
+      initialization_lock() {
+  uint64_t temp_value;
+  multi_part_chunk_sizes[Aws::Transfer::TransferDirection::UPLOAD] =
+      absl::SimpleAtoi(getenv("S3_MULTI_PART_UPLOAD_CHUNK_SIZE"), &temp_value)
+          ? temp_value
+          : kS3MultiPartUploadChunkSize;
+  multi_part_chunk_sizes[Aws::Transfer::TransferDirection::DOWNLOAD] =
+      absl::SimpleAtoi(getenv("S3_MULTI_PART_DOWNLOAD_CHUNK_SIZE"), &temp_value)
+          ? temp_value
+          : kS3MultiPartDownloadChunkSize;
+  use_multi_part_download =
+      absl::SimpleAtoi(getenv("S3_DISABLE_MULTI_PART_DOWNLOAD"), &temp_value)
+          ? (temp_value != 1)
+          : use_multi_part_download;
+  transfer_managers.emplace(Aws::Transfer::TransferDirection::UPLOAD, nullptr);
+  transfer_managers.emplace(Aws::Transfer::TransferDirection::DOWNLOAD,
+                            nullptr);
+}
 void Init(TF_Filesystem* filesystem, TF_Status* status) {
   filesystem->plugin_filesystem = new S3File();
   TF_SetStatus(status, TF_OK, "");
@@ -225,6 +379,22 @@ void Init(TF_Filesystem* filesystem, TF_Status* status) {
 void Cleanup(TF_Filesystem* filesystem) {
   auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
   delete s3_file;
+}
+
+void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
+                         TF_RandomAccessFile* file, TF_Status* status) {
+  Aws::String bucket, object;
+  ParseS3Path(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto s3_file = static_cast<S3File*>(filesystem->plugin_filesystem);
+  GetS3Client(s3_file);
+  GetTransferManager(Aws::Transfer::TransferDirection::DOWNLOAD, s3_file);
+  file->plugin_file = new tf_random_access_file::S3File(
+      {bucket, object, s3_file->s3_client,
+       s3_file->transfer_managers[Aws::Transfer::TransferDirection::DOWNLOAD],
+       s3_file->use_multi_part_download});
+  TF_SetStatus(status, TF_OK, "");
 }
 
 // TODO(vnvo2409): Implement later
