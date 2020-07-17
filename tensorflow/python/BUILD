@@ -6077,7 +6077,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/core/profiler/internal/cpu:python_tracer",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
-        "//tensorflow/core/platform:tf32_utils",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/core/util/tensor_bundle",
@@ -6089,7 +6088,9 @@ pywrap_tensorflow_macro(
         "@ngraph_tf//:ngraph_tf",
     ]) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]) + if_tpu(["//tensorflow/core/tpu:tpu_api_dlsym_initializer"]),
+    ]) + if_tpu([
+        "//tensorflow/core/tpu:tpu_api_dlsym_initializer",
+    ]) + if_static(extra_deps = ["//tensorflow/core/platform:tf32_utils"]),
 )
 
 # ** Targets for Windows build (start) **
