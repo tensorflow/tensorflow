@@ -81,8 +81,8 @@ Unsupported arguments: `x`.
 
 f docstring.
 
-See the NumPy documentation for [`numpy.np_fun`](%s): %s"""
-    expected = expected % (link, link)
+See the NumPy documentation for `numpy.np_fun`: %s"""
+    expected = expected % (link)
     self.assertEqual(expected, f.__doc__)
 
   @parameterized.parameters([None, 1, 'a', '1a', '1.1a', '1.1.1a'])

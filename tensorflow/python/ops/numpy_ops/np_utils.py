@@ -293,8 +293,8 @@ def _add_np_doc(doc, np_fun_name, np_f):
       template = None
     if template is not None:
       link = template % np_fun_name
-      doc += 'See the NumPy documentation for [`numpy.%s`](%s): %s' % (
-          np_fun_name, link, link)
+      doc += 'See the NumPy documentation for `numpy.%s`: %s' % (
+          np_fun_name, link)
   return doc
 
 
