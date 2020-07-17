@@ -174,9 +174,9 @@ void TestFunctionWithPackedInput(const bool remote) {
   const char task2_name[] = "/job:localhost/replica:0/task:2/device:CPU:0";
 
   // Create one variable per task.
-  TFE_TensorHandle* h0 = TestVariable(ctx, 1.0, task0_name);
-  TFE_TensorHandle* h1 = TestVariable(ctx, 2.0, task1_name);
-  TFE_TensorHandle* h2 = TestVariable(ctx, 3.0, task2_name);
+  TFE_TensorHandle* h0 = TestVariable(ctx, 1.0, task1_name);
+  TFE_TensorHandle* h1 = TestVariable(ctx, 2.0, task2_name);
+  TFE_TensorHandle* h2 = TestVariable(ctx, 3.0, task0_name);
 
   // Add a sync point in order to make sure that variables have been initialized
   // before the function execution starts.
@@ -185,6 +185,9 @@ void TestFunctionWithPackedInput(const bool remote) {
   VarIsInitialized(ctx, h2);
 
   // Pack 3 variable handles into one TFE_TensorHandle.
+  // When remote is false, function device is placed on task0. Handle types are
+  // REMOTE, REMOTE, LOCAL on task0. When remote is true, function device is
+  // placed on task1, Handle types are LOCAL, REMOTE, LOCAL on task1.
   int num_replicas = 3;
   std::vector<TFE_TensorHandle*> handles = {h0, h1, h2};
   TFE_TensorHandle* packed_handle =
