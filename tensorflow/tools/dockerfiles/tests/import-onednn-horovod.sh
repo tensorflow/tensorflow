@@ -15,12 +15,16 @@
 # limitations under the License.
 # ============================================================================
 
-{ # try
-  echo `python -c 'from tensorflow.python import _pywrap_util_port; print(_pywrap_util_port.IsMklEnabled()); import horovod.tensorflow as hvd'`
-  echo "PASS: Horovod with MKL is enabled"
-} || { # catch
-  echo `python -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled()); import horovod.tensorflow as hvd'`
-  echo "PASS: Horovod with Old MKL is detected"
-} || { # finally
-  die "FAIL: Horovod with MKL is not enabled"
-}
+python -c 'from tensorflow.python import _pywrap_util_port; print(_pywrap_util_port.IsMklEnabled()); import horovod.tensorflow as hvd'
+new_mkl_horovod_enabled=$?
+
+python -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled()); import horovod.tensorflow as hvd'
+old_mkl_horovod_enabled=$?
+
+if [[ $new_mkl_horovod_enabled -eq 0 ]]; then
+   echo "PASS: Horovod with MKL is enabled"
+elif [[ $old_mkl_horovod_enabled -eq 0]]; then
+   echo "PASS: Horovod with Old MKL is detected"
+else
+   die "FAIL: Horovod with MKL is not enabled"
+fi
