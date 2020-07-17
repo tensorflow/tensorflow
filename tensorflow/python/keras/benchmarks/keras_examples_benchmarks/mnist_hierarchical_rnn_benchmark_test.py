@@ -24,14 +24,6 @@ from tensorflow.python.keras.benchmarks import benchmark_util
 
 class HierarchicalRNNBenchmark(tf.test.Benchmark):
   """Benchmarks for Hierarchical RNN using `tf.test.Benchmark`."""
-  # Required Arguments for measure_performance.
-  #   x: Input data, it could be Numpy or load from tfds.
-  #   y: Target data. If `x` is a dataset, generator instance,
-  #      `y` should not be specified.
-  #   loss: Loss function for model.
-  #   optimizer: Optimizer for model.
-  #   Other details can see in `measure_performance()` method of
-  #   benchmark_util.
 
   def __init__(self):
     super(HierarchicalRNNBenchmark, self).__init__()
@@ -58,6 +50,15 @@ class HierarchicalRNNBenchmark(tf.test.Benchmark):
 
     return model
 
+  # In each benchmark test, the required arguments for the
+  # method `measure_performance` include:
+  #   x: Input data, it could be Numpy or loaded from tfds.
+  #   y: Target data. If `x` is a dataset or generator instance,
+  #      `y` should not be specified.
+  #   loss: Loss function for model.
+  #   optimizer: Optimizer for model.
+  #   Check more details in `measure_performance()` method of
+  #   benchmark_util.
   def benchmark_hrnn_mnist_bs_256(self):
     """Measure performance with batch_size=256 and run_iters=4."""
     batch_size = 256

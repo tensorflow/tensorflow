@@ -24,14 +24,6 @@ from tensorflow.python.keras.benchmarks import benchmark_util
 
 class Cifar10CNNBenchmark(tf.test.Benchmark):
   """Benchmarks for CNN using `tf.test.Benchmark`."""
-  # Required Arguments for measure_performance.
-  #   x: Input data, it could be Numpy or load from tfds.
-  #   y: Target data. If `x` is a dataset, generator instance,
-  #      `y` should not be specified.
-  #   loss: Loss function for model.
-  #   optimizer: Optimizer for model.
-  #   Other details can see in `measure_performance()` method of
-  #   benchmark_util.
 
   def __init__(self):
     super(Cifar10CNNBenchmark, self).__init__()
@@ -70,6 +62,15 @@ class Cifar10CNNBenchmark(tf.test.Benchmark):
     model.add(tf.keras.layers.Activation('softmax'))
     return model
 
+  # In each benchmark test, the required arguments for the
+  # method `measure_performance` include:
+  #   x: Input data, it could be Numpy or loaded from tfds.
+  #   y: Target data. If `x` is a dataset or generator instance,
+  #      `y` should not be specified.
+  #   loss: Loss function for model.
+  #   optimizer: Optimizer for model.
+  #   Check more details in `measure_performance()` method of
+  #   benchmark_util.
   def benchmark_cnn_cifar10_bs_256(self):
     """Measure performance with batch_size=256 and run_iters=3."""
     batch_size = 256

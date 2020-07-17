@@ -26,14 +26,6 @@ from tensorflow.python.keras.benchmarks import benchmark_util
 
 class MLPReutersBenchmark(tf.test.Benchmark):
   """Benchmarks for MLP using `tf.test.Benchmark`."""
-  # Required Arguments for measure_performance.
-  #   x: Input data, it could be Numpy or load from tfds.
-  #   y: Target data. If `x` is a dataset, generator instance,
-  #      `y` should not be specified.
-  #   loss: Loss function for model.
-  #   optimizer: Optimizer for model.
-  #   Other details can see in `measure_performance()` method of
-  #   benchmark_util.
 
   def __init__(self):
     super(MLPReutersBenchmark, self).__init__()
@@ -59,6 +51,15 @@ class MLPReutersBenchmark(tf.test.Benchmark):
     model.add(tf.keras.layers.Activation('softmax'))
     return model
 
+  # In each benchmark test, the required arguments for the
+  # method `measure_performance` include:
+  #   x: Input data, it could be Numpy or loaded from tfds.
+  #   y: Target data. If `x` is a dataset or generator instance,
+  #      `y` should not be specified.
+  #   loss: Loss function for model.
+  #   optimizer: Optimizer for model.
+  #   Check more details in `measure_performance()` method of
+  #   benchmark_util.
   def benchmark_mlp_reuters_bs_128(self):
     """Measure performance with batch_size=128 and run_iters=2."""
     batch_size = 128
