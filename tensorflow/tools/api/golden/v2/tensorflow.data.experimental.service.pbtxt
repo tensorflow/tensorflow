@@ -1,7 +1,7 @@
 path: "tensorflow.data.experimental.service"
 tf_module {
   member {
-    name: "MasterServer"
+    name: "DispatchServer"
     mtype: "<type \'type\'>"
   }
   member {

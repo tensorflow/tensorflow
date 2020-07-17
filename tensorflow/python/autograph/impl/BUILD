@@ -37,7 +37,7 @@ py_library(
     ],
 )
 
-py_test(
+tf_py_test(
     name = "api_test",
     srcs = ["api_test.py"],
     python_version = "PY3",

@@ -38,10 +38,9 @@ namespace cl {
 class DepthwiseConvolution : public GPUOperation {
  public:
   DepthwiseConvolution() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
   absl::Status Compile(const CreationContext& creation_context) override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   DepthwiseConvolution(DepthwiseConvolution&& operation);
@@ -80,9 +79,6 @@ class DepthwiseConvolution : public GPUOperation {
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
-
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
 
   bool weights_are_buffer_;
 

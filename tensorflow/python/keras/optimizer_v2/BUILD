@@ -273,6 +273,7 @@ cuda_py_test(
         "//tensorflow/python:training_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 

@@ -100,9 +100,9 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
@@ -191,10 +191,10 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:tensor_testutil",
     ],
 )
 

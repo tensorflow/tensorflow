@@ -79,7 +79,10 @@ tf_kernel_library(
     srcs = ["tpu_configuration_ops.cc"],
     hdrs = ["tpu_configuration_ops.h"],
     deps = [
+        ":tpu_compilation_cache_factory",
+        ":tpu_compilation_cache_interface",
         ":tpu_mesh_state_interface",
+        ":tpu_op_consts",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/xla:util",
@@ -130,6 +133,20 @@ tf_proto_library_cc(
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:protos_all",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto",
+    ],
+)
+
+cc_library(
+    name = "tpu_compilation_cache_factory",
+    srcs = ["tpu_compilation_cache_factory.cc"],
+    hdrs = ["tpu_compilation_cache_factory.h"],
+    deps = [
+        ":tpu_compilation_cache_external",
+        ":tpu_compilation_cache_interface",
+        ":tpu_op_consts",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:types",
     ],
 )
 
@@ -323,7 +340,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_call",
         "//tensorflow/core/platform:casts",  # buildcleaner: keep
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/base:core_headers",
@@ -507,6 +523,7 @@ cc_library(
     deps = [
         ":tpu_program_c_api_hdrs",
         ":tpu_util_c_api_hdrs",
+        "//tensorflow/core/tpu:libtftpu_header",
         "//tensorflow/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
@@ -535,4 +552,45 @@ cc_library(
         "@com_google_absl//absl/types:variant",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_execute_op",
+    srcs = ["tpu_execute_op.cc"],
+    hdrs = ["tpu_execute_op.h"],
+    deps = [
+        ":tpu_compilation_cache_entry",
+        ":tpu_compilation_cache_external",
+        ":tpu_compilation_cache_local_lookup",
+        ":tpu_compilation_cache_lookup",
+        ":tpu_executable_info_proto_cc",
+        ":tpu_op_consts",
+        "//tensorflow/compiler/jit:xla_device",
+        "//tensorflow/compiler/jit:xla_launch_util",
+        "//tensorflow/compiler/jit:xla_tensor",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:dump",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/tpu:tpu_configuration",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/tpu:tpu_execute",
+        "//tensorflow/stream_executor:device_memory_allocator",
+        "//tensorflow/stream_executor/tpu:tpu_node_context",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
+    ],
+    alwayslink = True,
 )

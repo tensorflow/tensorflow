@@ -238,8 +238,16 @@ $(MICRO_FEATURES_GENERATOR_HDRS)
 include $(wildcard tensorflow/lite/micro/examples/micro_speech/*/Makefile.inc)
 
 # Test the code for feature generation.
+#TEMP_CXXFLAGS := CXXFLAGS
+#CXXFLAGS := $(filter-out $(CC_WARNINGS),$(CXXFLAGS))
+
+TEMP_CCFLAGS := CCFLAGS
+CCFLAGS := $(filter-out $(CC_WARNINGS),$(CCFLAGS))
+
 $(eval $(call microlite_test,micro_features_generator_test,\
 $(MICRO_FEATURES_GENERATOR_TEST_SRCS), $(MICRO_FEATURES_GENERATOR_TEST_HDRS)))
+
+#CXXFLAGS := TEMP_CXXFLAGS
 
 # Tests loading and running a speech model.
 $(eval $(call microlite_test,micro_speech_test,\

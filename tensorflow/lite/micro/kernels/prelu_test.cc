@@ -170,8 +170,6 @@ TF_LITE_MICRO_TEST(QuantizedUint8PreluActivationsOpTest) {
   using tflite::testing::F2Q;
   const float kMin = -4;
   const float kMax = 127.f / 32.f;
-  const float kAlphaMin = -0.5f;
-  const float kAlphaMax = 0.5f;
   const int output_dims_count = 12;
   uint8_t output_data[output_dims_count];
   tflite::testing::TestPreluQuantized(
@@ -197,8 +195,6 @@ TF_LITE_MICRO_TEST(QuantizedInt8PreluActivationsOpTest) {
   using tflite::testing::F2QS;
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
-  const float kAlphaMin = -0.5f;
-  const float kAlphaMax = 0.5f;
   const int output_dims_count = 12;
   int8_t output_data[output_dims_count];
   tflite::testing::TestPreluQuantized(

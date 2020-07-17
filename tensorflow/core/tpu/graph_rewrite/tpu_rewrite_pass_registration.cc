@@ -30,6 +30,8 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 34,
                       EncapsulateTPUComputationsPass);
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 39,
                       ExtractOutsideCompilationPass);
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 0,
+                      VariableMergerPass);
 
 }  // namespace
 }  // namespace tensorflow

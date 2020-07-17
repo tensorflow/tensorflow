@@ -420,8 +420,6 @@ absl::Status ConvTexture::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
   RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x * src_[0]->Batch()));
   RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
   return absl::OkStatus();
 }
 
@@ -434,14 +432,8 @@ int3 ConvTexture::GetGridSize() const {
 }
 
 absl::Status ConvTexture::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                              &work_group_size_);
-}
-
-absl::Status ConvTexture::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+  return GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_);
 }
 
 absl::Status CreateConvTexture(const CreationContext& creation_context,

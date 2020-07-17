@@ -19,11 +19,10 @@ from __future__ import print_function
 
 import os
 
-from absl.testing import parameterized
-
 from tensorflow.python import tf2
 from tensorflow.python.framework import config
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer as loss_scale_optimizer_v2
 from tensorflow.python.keras.mixed_precision.experimental import policy
@@ -40,7 +39,7 @@ else:
       mixed_precision.enable_mixed_precision_graph_rewrite_v1)
 
 
-class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
+class MixedPrecisionTest(keras_parameterized.TestCase):
 
   IGNORE_PERF_VAR = 'TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_IGNORE_PERFORMANCE'
 
@@ -61,7 +60,7 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
     mixed_precision.disable_mixed_precision_graph_rewrite()
     super(MixedPrecisionTest, self).tearDown()
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_wrap_optimizer(self):
     opt = gradient_descent_v2.SGD(1.0)
     opt = enable_mixed_precision_graph_rewrite(opt, 123.)
@@ -69,7 +68,7 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
         opt, loss_scale_optimizer_v2.LossScaleOptimizer)
     self.assertEqual(self.evaluate(opt._loss_scale()), 123.)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_optimizer_errors(self):
     opt = gradient_descent_v2.SGD(1.0)
     opt = loss_scale_optimizer_v2.LossScaleOptimizer(opt, 'dynamic')

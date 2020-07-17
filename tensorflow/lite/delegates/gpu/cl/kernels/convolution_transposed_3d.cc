@@ -399,10 +399,8 @@ absl::Status ConvolutionTransposed3D::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
   RETURN_IF_ERROR(args_.SetInt("kernel_size_y", kernel_size_.y));
   RETURN_IF_ERROR(args_.SetInt("kernel_size_z", kernel_size_.z));
-  RETURN_IF_ERROR(args_.SetInt(
-      "grid_size_s", DivideRoundUp(dst_[0]->Slices(), block_size_.w)));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetInt("grid_size_s",
+                      DivideRoundUp(dst_[0]->Slices(), block_size_.w));
 }
 
 int3 ConvolutionTransposed3D::GetGridSize() const {
@@ -417,14 +415,8 @@ int3 ConvolutionTransposed3D::GetGridSize() const {
 }
 
 absl::Status ConvolutionTransposed3D::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                              &work_group_size_);
-}
-
-absl::Status ConvolutionTransposed3D::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
+  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+  return GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_);
 }
 
 absl::Status CreateConvolutionTransposed3D(

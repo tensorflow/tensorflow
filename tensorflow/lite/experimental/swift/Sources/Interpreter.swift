@@ -338,7 +338,7 @@ extension String {
   ///   - arguments: A C pointer to a `va_list` of arguments to substitute into `cFormat`.
   init?(cFormat: UnsafePointer<CChar>, arguments: CVaListPointer) {
     #if os(Linux)
-      let length = Int(vsnprintf(nil, 0, cFormat, arguments) + 1)  // null terminator
+      let length = Int(vsnprintf(nil, 0, cFormat, arguments) + 1) // null terminator
       guard length > 0 else { return nil }
       let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: length)
       defer {

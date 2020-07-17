@@ -212,7 +212,7 @@ def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None):
   assert np_f or np_fun_name
   if not np_fun_name:
     np_fun_name = np_f.__name__
-  doc = 'TensorFlow variant of `numpy.%s`.\n\n' % np_fun_name
+  doc = 'TensorFlow variant of NumPy\'s `%s`.\n\n' % np_fun_name
   if unsupported_params:
     doc += 'Unsupported arguments: ' + ', '.join(
         '`' + name + '`' for name in unsupported_params) + '.\n\n'
@@ -293,7 +293,8 @@ def _add_np_doc(doc, np_fun_name, np_f):
       template = None
     if template is not None:
       link = template % np_fun_name
-      doc += 'See the documentation for `numpy.%s`: [%s]' % (np_fun_name, link)
+      doc += 'See the NumPy documentation for `numpy.%s`: %s' % (
+          np_fun_name, link)
   return doc
 
 

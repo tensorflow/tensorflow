@@ -59,23 +59,25 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       num_workers: The number of workers in the cluster.
 
     Returns:
-      The address of the master.
+      The address of the dispatcher.
     """
-    self._master = server_lib.MasterServer(port=0, protocol=PROTOCOL)
+    self._dispatcher = server_lib.DispatchServer(port=0, protocol=PROTOCOL)
     self._servers = []
     for _ in range(num_workers):
       self._servers.append(
           server_lib.WorkerServer(
-              port=0, master_address=self._master._address, protocol=PROTOCOL))
+              port=0,
+              dispatcher_address=self._dispatcher._address,
+              protocol=PROTOCOL))
 
-    return self._master._address
+    return self._dispatcher._address
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeBasic(self):
     num_elements = 10
-    master_address = self.create_cluster(1)
+    dispatcher_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = _make_distributed_dataset(ds, master_address)
+    ds = _make_distributed_dataset(ds, dispatcher_address)
     results = [elem.numpy() for elem in ds]
     self.assertEqual(list(range(num_elements)), results)
 
@@ -83,10 +85,10 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testDifferentShuffleOrders(self):
     random_seed.set_random_seed(None)
     num_elements = 100
-    master_address = self.create_cluster(2)
+    dispatcher_address = self.create_cluster(2)
     ds = dataset_ops.Dataset.range(num_elements)
     ds = ds.shuffle(num_elements)
-    ds = _make_distributed_dataset(ds, master_address)
+    ds = _make_distributed_dataset(ds, dispatcher_address)
     output = [elem.numpy() for elem in ds]
 
     # The output will be two sequences of range(num_elements)
@@ -104,9 +106,9 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.eager_only_combinations())
   def testMultipleEpochs(self):
     num_elements = 3
-    master_address = self.create_cluster(1)
+    dispatcher_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = _make_distributed_dataset(ds, master_address)
+    ds = _make_distributed_dataset(ds, dispatcher_address)
     for _ in range(10):
       self.assertEqual(list(range(num_elements)), [elem.numpy() for elem in ds])
 
@@ -114,9 +116,9 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testRepeatedDataset(self):
     num_elements = 10
     num_repetitions = 5
-    master_address = self.create_cluster(1)
+    dispatcher_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = _make_distributed_dataset(ds, master_address)
+    ds = _make_distributed_dataset(ds, dispatcher_address)
     ds = ds.repeat(num_repetitions)
     self.assertDatasetProduces(
         ds, expected_output=num_repetitions * list(range(num_elements)))
@@ -125,12 +127,12 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testConcurrentEpoch(self):
     num_elements = 10
     num_datasets = 3
-    master_address = self.create_cluster(1)
+    dispatcher_address = self.create_cluster(1)
     iterators = []
     results = []
     for _ in range(num_datasets):
       ds = dataset_ops.Dataset.range(num_elements)
-      ds = _make_distributed_dataset(ds, master_address)
+      ds = _make_distributed_dataset(ds, dispatcher_address)
       iterators.append(iter(ds))
       results.append([])
 
@@ -146,9 +148,9 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.skipTest("Not yet implemented")
     num_elements = 10
     num_iterators = 3
-    master_address = self.create_cluster(1)
+    dispatcher_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = _make_distributed_dataset(ds, master_address)
+    ds = _make_distributed_dataset(ds, dispatcher_address)
     result = []
     iterators = []
     for _ in range(num_iterators):
@@ -170,20 +172,20 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testMultiWorker(self):
     num_workers = 3
     num_elements = 10
-    master_address = self.create_cluster(num_workers)
+    dispatcher_address = self.create_cluster(num_workers)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = _make_distributed_dataset(ds, master_address)
+    ds = _make_distributed_dataset(ds, dispatcher_address)
     results = [elem.numpy() for elem in ds]
     self.assertCountEqual(num_workers * list(range(num_elements)), results)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testAddWorkerMidJob(self):
-    self._master = server_lib.MasterServer(port=0, protocol=PROTOCOL)
+    self._dispatcher = server_lib.DispatchServer(port=0, protocol=PROTOCOL)
     self._worker = server_lib.WorkerServer(
-        port=0, master_address=self._master._address, protocol=PROTOCOL)
+        port=0, dispatcher_address=self._dispatcher._address, protocol=PROTOCOL)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = _make_distributed_dataset(ds, self._master._address)
+    ds = _make_distributed_dataset(ds, self._dispatcher._address)
     iterator = iter(ds)
     results = []
     # Read halfway through the dataset.
@@ -191,10 +193,10 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       results.append(next(iterator).numpy())
 
     self._new_worker = server_lib.WorkerServer(
-        port=0, master_address=self._master._address, protocol=PROTOCOL)
+        port=0, dispatcher_address=self._dispatcher._address, protocol=PROTOCOL)
 
-    # Wait for the new worker to register with the master.
-    while self._master._num_workers() < 2:
+    # Wait for the new worker to register with the dispatcher.
+    while self._dispatcher._num_workers() < 2:
       time.sleep(10 / 1000)  # 10ms
 
     for elem in iterator:
@@ -206,12 +208,12 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(test_base.eager_only_combinations(),
                          combinations.combine(use_same_port=[True, False])))
   def testRestartWorker(self, use_same_port):
-    self._master = server_lib.MasterServer(port=0, protocol=PROTOCOL)
+    self._dispatcher = server_lib.DispatchServer(port=0, protocol=PROTOCOL)
     self._worker = server_lib.WorkerServer(
-        port=0, master_address=self._master._address, protocol=PROTOCOL)
+        port=0, dispatcher_address=self._dispatcher._address, protocol=PROTOCOL)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = _make_distributed_dataset(ds, self._master._address)
+    ds = _make_distributed_dataset(ds, self._dispatcher._address)
     iterator = iter(ds)
     # Read halfway through the dataset.
     midpoint = num_elements // 2
@@ -224,7 +226,9 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       port = int(self._worker._address.split(":")[1])
     self._worker._stop()
     self._new_worker = server_lib.WorkerServer(
-        port=port, master_address=self._master._address, protocol=PROTOCOL)
+        port=port,
+        dispatcher_address=self._dispatcher._address,
+        protocol=PROTOCOL)
 
     # There may have been some elements prefetched from the first worker
     # before it was stopped.
@@ -259,12 +263,12 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testInsideFunction(self):
     num_workers = 3
     num_elements = 10
-    master_address = self.create_cluster(num_workers)
+    dispatcher_address = self.create_cluster(num_workers)
 
     @def_function.function
     def f():
       ds = dataset_ops.Dataset.range(num_elements)
-      ds = _make_distributed_dataset(ds, master_address)
+      ds = _make_distributed_dataset(ds, dispatcher_address)
       result = tensor_array_ops.TensorArray(
           dtypes.int64, size=num_workers * num_elements, dynamic_size=True)
       i = 0
@@ -279,10 +283,10 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobName(self):
     num_elements = 100
-    master_address = self.create_cluster(1)
+    dispatcher_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds1 = _make_distributed_dataset(ds, master_address, job_name="job_name")
-    ds2 = _make_distributed_dataset(ds, master_address, job_name="job_name")
+    ds1 = _make_distributed_dataset(ds, dispatcher_address, job_name="job_name")
+    ds2 = _make_distributed_dataset(ds, dispatcher_address, job_name="job_name")
     iter1 = iter(ds1)
     iter2 = iter(ds2)
     results = []
@@ -298,20 +302,22 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.eager_only_combinations())
   def testDifferentJobNames(self):
     num_elements = 10
-    master_address = self.create_cluster(1)
+    dispatcher_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds1 = _make_distributed_dataset(ds, master_address, job_name="job_name1")
-    ds2 = _make_distributed_dataset(ds, master_address, job_name="job_name2")
+    ds1 = _make_distributed_dataset(
+        ds, dispatcher_address, job_name="job_name1")
+    ds2 = _make_distributed_dataset(
+        ds, dispatcher_address, job_name="job_name2")
     self.assertDatasetProduces(ds1, list(range(num_elements)))
     self.assertDatasetProduces(ds2, list(range(num_elements)))
 
   @combinations.generate(test_base.eager_only_combinations())
   def testSharedJobNameMultiIteration(self):
     num_elements = 10
-    master_address = self.create_cluster(1)
+    dispatcher_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds1 = _make_distributed_dataset(ds, master_address, job_name="job_name")
-    ds2 = _make_distributed_dataset(ds, master_address, job_name="job_name")
+    ds1 = _make_distributed_dataset(ds, dispatcher_address, job_name="job_name")
+    ds2 = _make_distributed_dataset(ds, dispatcher_address, job_name="job_name")
     # iteration 1
     self.assertDatasetProduces(ds1, list(range(num_elements)))
     self.assertDatasetProduces(ds2, [])
@@ -323,11 +329,11 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSharedJobNameRepeat(self):
     num_elements = 100
     num_repetitions = 3
-    master_address = self.create_cluster(1)
+    dispatcher_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds1 = _make_distributed_dataset(ds, master_address, job_name="job_name")
+    ds1 = _make_distributed_dataset(ds, dispatcher_address, job_name="job_name")
     ds1 = ds1.repeat(num_repetitions)
-    ds2 = _make_distributed_dataset(ds, master_address, job_name="job_name")
+    ds2 = _make_distributed_dataset(ds, dispatcher_address, job_name="job_name")
     ds2 = ds2.repeat(num_repetitions)
     results = []
     iter1 = iter(ds1)
@@ -345,7 +351,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.eager_only_combinations())
   def testApplyDeterminismOption(self):
     elements = list(range(10))
-    master_address = self.create_cluster(1)
+    dispatcher_address = self.create_cluster(1)
 
     def dataset_fn(delay_ms):
 
@@ -362,7 +368,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       opts = dataset_ops.Options()
       opts.experimental_deterministic = False
       ds = ds.with_options(opts)
-      ds = _make_distributed_dataset(ds, master_address)
+      ds = _make_distributed_dataset(ds, dispatcher_address)
       return ds
 
     self.checkDeterminism(
@@ -379,8 +385,8 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_external_state_policy = external_state_policy
     ds = ds.with_options(options)
 
-    master_address = self.create_cluster(3)
-    ds = _make_distributed_dataset(ds, master_address)
+    dispatcher_address = self.create_cluster(3)
+    ds = _make_distributed_dataset(ds, dispatcher_address)
     next(iter(ds))
 
   @combinations.generate(
@@ -400,12 +406,12 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeFromInterleave(self):
-    master_address = self.create_cluster(1)
+    dispatcher_address = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(2)
 
     def interleave_fn(_):
       ds = dataset_ops.Dataset.range(2)
-      _make_distributed_dataset(ds, master_address)
+      _make_distributed_dataset(ds, dispatcher_address)
       return ds
 
     with self.assertRaisesRegex(

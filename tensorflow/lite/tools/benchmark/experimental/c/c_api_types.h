@@ -761,13 +761,13 @@ typedef struct TfLiteContext {
       struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
       TfLiteDelegateParams** partition_params_array, int* num_partitions);
 
-  // Returns a TfLiteTensor struct for a given index in the subgraph.
+  // Returns a TfLiteTensor struct for a given index.
   // WARNING: This is an experimental interface that is subject to change.
   // WARNING: This method may not be available on all platforms.
   TfLiteTensor* (*GetTensor)(const struct TfLiteContext* context,
                              int tensor_idx);
 
-  // Returns a TfLiteEvalTensor struct for a given index in the subgraph.
+  // Returns a TfLiteEvalTensor struct for a given index.
   // WARNING: This is an experimental interface that is subject to change.
   // WARNING: This method may not be available on all platforms.
   TfLiteEvalTensor* (*GetEvalTensor)(const struct TfLiteContext* context,

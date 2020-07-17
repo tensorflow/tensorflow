@@ -670,10 +670,10 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
       HierarchicalTreeBroadcaster broadcaster;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                &ctx, &op_params, col_params_, exec_key,
-                                kStepId, input_tensor_ptr, output_tensor_ptr);
-      TF_CHECK_OK(broadcaster.InitializeCollectiveContext(&col_ctx));
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
+          col_params_, exec_key, kStepId, input_tensor_ptr, output_tensor_ptr);
+      TF_CHECK_OK(broadcaster.InitializeCollectiveContext(col_ctx));
 
       // Run the broadcast.
       broadcaster.Run([this](Status s) { status_ = s; });

@@ -12,6 +12,8 @@
   `TF_StringEncodedSize` are no longer relevant and have been removed; see
   core/platform/ctstring.h for string access/modification in C.
 * Removed `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
+* `tensorflow.python`, `tensorflow.core` and `tensorflow.compiler` modules are
+    now hidden. These modules are not part of TensorFlow public API.
 
 ## Known Caveats
 
@@ -21,6 +23,7 @@
 
 * <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 * <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* A new module named `tf.experimental.numpy` is added, which is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases. See tensorflow/python/ops/numpy_ops/README.md for details of what are supported and what are the differences with NumPy.
 
 ## Bug Fixes and Other Changes
 
@@ -35,6 +38,11 @@
 * `tf.data`:
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
   the complement of `select_cols`; at most one of these should be specified.
+    * We have implemented an optimization which reorders data-discarding
+      transformations such as `take` and `shard` to happen earlier in the
+      dataset when it is safe to do so. The optimization can be disabled via
+      the `experimental_optimization.reorder_data_discarding_ops` dataset
+      option.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 *   `tf.keras`:

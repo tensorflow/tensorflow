@@ -386,7 +386,7 @@ func @testReshapeNoOp(%arg0: tensor<2x4xf32>, %arg1: tensor<2xi32>) -> tensor<2x
 }
 
 // CHECK-LABEL: func @testReshapeNoOpShapeComputation
-func @testReshapeNoOpShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x2xf32>) -> (tensor<?x1xf32>, tensor<?x1x2xf32>,  tensor<?x1x2xf32>, tensor<?x2x1xf32>, tensor<?x1x2xf32>, tensor<?x1x1xf32>) {
+func @testReshapeNoOpShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x2xf32>, %arg2: tensor<*xf32>) -> (tensor<?x1xf32>, tensor<?x1x2xf32>,  tensor<?x1x2xf32>, tensor<?x2x1xf32>, tensor<?x1x2xf32>, tensor<?x1x1xf32>, tensor<*xf32>) {
   // Test dimensions sizes.
   %d1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %d2 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
@@ -447,8 +447,14 @@ func @testReshapeNoOpShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x
   // CHECK: %[[RESHAPE3:.*]] = "tf.Reshape"
   %22 = "tf.Reshape"(%arg0, %21) : (tensor<?x1xf32>, tensor<3xi32>) -> tensor<?x1x1xf32>
 
+  // Make sure a dynamic ranked shape doesn't crash the "canonicalize" pass
+  %23 = "tf.Shape"(%arg2) : (tensor<*xf32>) -> tensor<*xi32>
+  %24 = "tf.StridedSlice"(%23, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<*xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<*xi32>
+  %25 = "tf.Pack"(%24, %d1) {axis = 0 : i64} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+  %26 = "tf.Reshape"(%arg2, %25) : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+
   // CHECK: return %arg0, %arg1, %[[RESHAPE0]], %[[RESHAPE1]], %[[RESHAPE2]], %[[RESHAPE3]]
-  return %6, %10, %13, %16, %19, %22 : tensor<?x1xf32>, tensor<?x1x2xf32>, tensor<?x1x2xf32>, tensor<?x2x1xf32>, tensor<?x1x2xf32>, tensor<?x1x1xf32>
+  return %6, %10, %13, %16, %19, %22, %26 : tensor<?x1xf32>, tensor<?x1x2xf32>, tensor<?x1x2xf32>, tensor<?x2x1xf32>, tensor<?x1x2xf32>, tensor<?x1x1xf32>, tensor<*xf32>
 }
 
 // CHECK-LABEL: testSelectScalarPred
@@ -584,6 +590,18 @@ func @testRealDivWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32
 // CHECK: %0 = "tf.Rsqrt"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK: %1 = "tf.Mul"(%arg0, %0) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK: return %1
+}
+
+// CHECK-LABEL: testRealDivWithConstDivisor
+func @testRealDivWithConstDivisor(%arg0: tensor<8x2xf32>) -> tensor<8x2xf32> {
+  %0 = "tf.Const"() {value = dense<[2.0, 4.0]> : tensor<2xf32>} : () -> tensor<2xf32>
+  %1 = "tf.RealDiv"(%arg0, %0) : (tensor<8x2xf32>, tensor<2xf32>) -> tensor<8x2xf32>
+  return %1: tensor<8x2xf32>
+
+  // CHECK: %0 = "tf.Const"
+  // CHECK-SAME: value = dense<[5.000000e-01, 2.500000e-01]
+  // CHECK: %1 = "tf.Mul"(%arg0, %0)
+  // CHECK: return %1
 }
 
 // CHECK-LABEL: testTruncateDivWithSqrtDivisor
@@ -735,6 +753,27 @@ func @foldFill() -> (tensor<3x2x1xf32>, tensor<*xf32>, tensor<*xcomplex<f32>>) {
   %4 = "tf.Fill"(%0, %complex_cst) : (tensor<3xi32>, tensor<complex<f32>>) -> tensor<*xcomplex<f32>>
 
   return %2, %3, %4 : tensor<3x2x1xf32>, tensor<*xf32>, tensor<*xcomplex<f32>>
+}
+
+// CHECK-LABEL: foldIf
+func @foldIf(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tensor<f32>) {
+  %0 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %1 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+
+  // CHECK: %0 = "tf.PartitionedCall"(%arg0, %arg1)
+  // CHECK-SAME: device = "noodle"
+  // CHECK-SAME: f = @sub
+  %2 = "tf.If"(%0, %arg0, %arg1) {then_branch = @add, else_branch = @sub, output_shapes = [#tf.shape<>], device = "noodle", is_stateless = true} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: %1 = "tf.StatefulPartitionedCall"(%0, %arg1)
+  // CHECK-SAME: _underscore_attr = "something"
+  // CHECK-SAME: f = @add
+  %3 = "tf.If"(%1, %2, %arg1) {then_branch = @add, else_branch = @sub, output_shapes = [#tf.shape<>], _underscore_attr = "something", is_stateless = false} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  // CHECK: %2 = "tf.If"
+  %4 = "tf.If"(%arg2, %3, %arg1) {then_branch = @add, else_branch = @sub, is_stateless = false} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  // CHECK: return %2
+  return %4 : tensor<f32>
 }
 
 // CHECK-LABEL: foldCase

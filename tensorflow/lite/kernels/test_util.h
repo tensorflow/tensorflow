@@ -515,8 +515,7 @@ class SingleOpModel {
     resolver_ = std::move(resolver);
   }
 
-  // Enables NNAPI delegate application during interpreter creation.
-  static void SetForceUseNnapi(bool use_nnapi);
+  // Indicate whether the test has the NNAPI delegate applied.
   static bool GetForceUseNnapi();
   int CountOpsExecutedByCpuKernel();
 
@@ -769,6 +768,7 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;
+  int num_applied_delegates_ = 0;
 };
 
 // Populate string tensors.
