@@ -70,28 +70,6 @@ class Cifar10CNNBenchmark(tf.test.Benchmark):
     model.add(tf.keras.layers.Activation('softmax'))
     return model
 
-  def benchmark_cnn_cifar10_bs_1024(self):
-    """Measure performance with batch_size=1024 and run_iters=2."""
-    batch_size = 1024
-    run_iters = 2
-    metrics, wall_time, extras = benchmark_util.measure_performance(
-        self._build_model,
-        x=self.x_train,
-        y=self.y_train,
-        batch_size=batch_size,
-        run_iters=run_iters,
-        epochs=self.epochs,
-        optimizer=tf.keras.optimizers.RMSprop(
-            learning_rate=0.0001, decay=1e-6),
-        loss='categorical_crossentropy',
-        metrics=['accuracy'])
-
-    self.report_benchmark(
-        iters=run_iters,
-        wall_time=wall_time,
-        metrics=metrics,
-        extras=extras)
-
   def benchmark_cnn_cifar10_bs_256(self):
     """Measure performance with batch_size=256 and run_iters=3."""
     batch_size = 256
@@ -115,9 +93,31 @@ class Cifar10CNNBenchmark(tf.test.Benchmark):
         extras=extras)
 
   def benchmark_cnn_cifar10_bs_512(self):
-    """Measure performance with batch_size=512 and run_iters=4."""
+    """Measure performance with batch_size=512 and run_iters=3."""
     batch_size = 512
     run_iters = 3
+    metrics, wall_time, extras = benchmark_util.measure_performance(
+        self._build_model,
+        x=self.x_train,
+        y=self.y_train,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        epochs=self.epochs,
+        optimizer=tf.keras.optimizers.RMSprop(
+            learning_rate=0.0001, decay=1e-6),
+        loss='categorical_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(
+        iters=run_iters,
+        wall_time=wall_time,
+        metrics=metrics,
+        extras=extras)
+
+  def benchmark_cnn_cifar10_bs_1024(self):
+    """Measure performance with batch_size=1024 and run_iters=2."""
+    batch_size = 1024
+    run_iters = 2
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.x_train,

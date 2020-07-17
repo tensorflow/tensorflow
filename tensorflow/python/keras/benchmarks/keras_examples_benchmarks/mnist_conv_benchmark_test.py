@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmarks on convnet on MNIST dataset."""
+"""Benchmarks on Convnet on MNIST dataset."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -25,7 +25,7 @@ from tensorflow.python.keras.benchmarks import benchmark_util
 
 
 class ConvMnistBenchmark(tf.test.Benchmark):
-  """Benchmarks for convnet using `tf.test.Benchmark`."""
+  """Benchmarks for Convnet using `tf.test.Benchmark`."""
   # Required Arguments for measure_performance.
   #   x: Input data, it could be Numpy or load from tfds.
   #   y: Target data. If `x` is a dataset, generator instance,
@@ -109,7 +109,7 @@ class ConvMnistBenchmark(tf.test.Benchmark):
         extras=extras)
 
   def benchmark_conv_mnist_bs_512(self):
-    """Measure performance with batch_size=512 and run_iters=4."""
+    """Measure performance with batch_size=512 and run_iters=3."""
     batch_size = 512
     run_iters = 3
     metrics, wall_time, extras = benchmark_util.measure_performance(

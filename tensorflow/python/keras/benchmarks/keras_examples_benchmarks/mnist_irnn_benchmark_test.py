@@ -23,7 +23,7 @@ from tensorflow.python.keras.benchmarks import benchmark_util
 
 
 class IRNNMnistBenchmark(tf.test.Benchmark):
-  """Benchmarks for Hierarchical RNN using `tf.test.Benchmark`."""
+  """Benchmarks for IRNN using `tf.test.Benchmark`."""
   # Required Arguments for measure_performance.
   #   x: Input data, it could be Numpy or load from tfds.
   #   y: Target data. If `x` is a dataset, generator instance,
