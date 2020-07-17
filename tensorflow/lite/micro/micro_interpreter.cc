@@ -91,7 +91,9 @@ MicroInterpreter::MicroInterpreter(const Model* model,
                                          error_reporter)),
       tensors_allocated_(false),
       initialization_status_(kTfLiteError),
-      context_helper_(error_reporter_, &allocator_) {
+      context_helper_(error_reporter_, &allocator_),
+      input_tensor_(nullptr),
+      output_tensor_(nullptr) {
   Init(profiler);
 }
 
@@ -106,7 +108,9 @@ MicroInterpreter::MicroInterpreter(const Model* model,
       allocator_(*allocator),
       tensors_allocated_(false),
       initialization_status_(kTfLiteError),
-      context_helper_(error_reporter_, &allocator_) {
+      context_helper_(error_reporter_, &allocator_),
+      input_tensor_(nullptr),
+      output_tensor_(nullptr) {
   Init(profiler);
 }
 
@@ -316,7 +320,18 @@ TfLiteTensor* MicroInterpreter::input(size_t index) {
                          length);
     return nullptr;
   }
-  return &(context_.tensors[inputs().Get(index)]);
+  if (index != 0) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Input tensors not at index 0 will allocate from the "
+                         "persistent memory arena in the future!");
+    return &(context_.tensors[inputs().Get(index)]);
+  }
+  if (input_tensor_ == nullptr) {
+    // TODO(b/160894903): This API will allocate TfLiteTensor structs from
+    // persistent (tail) memory and cache on this pointer.
+    input_tensor_ = &(context_.tensors[inputs().Get(index)]);
+  }
+  return input_tensor_;
 }
 
 TfLiteTensor* MicroInterpreter::output(size_t index) {
@@ -327,7 +342,18 @@ TfLiteTensor* MicroInterpreter::output(size_t index) {
                          length);
     return nullptr;
   }
-  return &(context_.tensors[outputs().Get(index)]);
+  if (index != 0) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Output tensors not at index 0 will allocate from the "
+                         "persistent memory arena in the future!");
+    return &(context_.tensors[outputs().Get(index)]);
+  }
+  if (output_tensor_ == nullptr) {
+    // TODO(b/160894903): This API will allocate TfLiteTensor structs from
+    // persistent (tail) memory and cache on this pointer.
+    output_tensor_ = &(context_.tensors[outputs().Get(index)]);
+  }
+  return output_tensor_;
 }
 
 TfLiteTensor* MicroInterpreter::tensor(size_t index) {
