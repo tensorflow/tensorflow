@@ -35,7 +35,6 @@ from tensorflow.python import tf2
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
@@ -483,7 +482,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                  regularizer=None,
                  trainable=None,
                  constraint=None,
-                 partitioner=None,
                  use_resource=None,
                  synchronization=tf_variables.VariableSynchronization.AUTO,
                  aggregation=tf_variables.VariableAggregation.NONE,
@@ -502,7 +500,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         Note that `trainable` cannot be `True` if `synchronization`
         is set to `ON_READ`.
       constraint: Constraint instance (callable).
-      partitioner: Partitioner to be passed to the `Trackable` API.
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
@@ -517,24 +514,20 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         `collections`, `experimental_autocast` and `caching_device`.
 
     Returns:
-      The created variable. Usually either a `Variable` or `ResourceVariable`
-      instance. If `partitioner` is not `None`, a `PartitionedVariable`
-      instance is returned.
+      The variable created.
 
     Raises:
-      RuntimeError: If called with partitioned variable regularization and
-        eager execution is enabled.
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.
     """
     if shape is None:
       shape = ()
+    kwargs.pop('partitioner', None)  # Ignored.
     # Validate optional keyword arguments.
     for kwarg in kwargs:
-      if kwarg not in ['getter', 'collections', 'experimental_autocast',
-                       'caching_device']:
+      if kwarg not in ['collections', 'experimental_autocast',
+                       'caching_device', 'getter']:
         raise TypeError('Unknown keyword argument:', kwarg)
-    getter = kwargs.pop('getter', base_layer_utils.make_variable)
     collections_arg = kwargs.pop('collections', None)
     # 'experimental_autocast' can be set to False by the caller to indicate an
     # AutoCastVariable should never be created.
@@ -579,10 +572,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         raise ValueError('An initializer for variable %s of type %s is required'
                          ' for layer %s' % (name, dtype.base_dtype, self.name))
 
+    getter = kwargs.pop('getter', base_layer_utils.make_variable)
     if (autocast and self._dtype_policy.should_cast_variables and
         dtype.is_floating):
-      # Wrap 'getter' with a version that returns an AutoCastVariable.
       old_getter = getter
+      # Wrap variable constructor to return an AutoCastVariable.
       def getter(*args, **kwargs):  # pylint: disable=function-redefined
         variable = old_getter(*args, **kwargs)
         return autocast_variable.create_autocast_variable(variable)
@@ -606,7 +600,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         dtype=dtype,
         constraint=constraint,
         trainable=trainable,
-        partitioner=partitioner,
         use_resource=use_resource,
         collections=collections_arg,
         synchronization=synchronization,
@@ -620,9 +613,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       self._handle_weight_regularization(name_in_scope,
                                          variable,
                                          regularizer)
-    if isinstance(
-        variable,
-        (tf_variables.PartitionedVariable, sharded_variable.ShardedVariable)):
+    if base_layer_utils.is_split_variable(variable):
       for v in variable:
         backend.track_variable(v)
         if trainable:
@@ -2440,7 +2431,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         regularization = regularizer(v)
       return regularization
 
-    if isinstance(variable, tf_variables.PartitionedVariable):
+    if base_layer_utils.is_split_variable(variable):
       for v in variable:
         self.add_loss(functools.partial(_loss_for_variable, v))
     else:

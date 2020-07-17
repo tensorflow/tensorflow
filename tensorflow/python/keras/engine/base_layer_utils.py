@@ -853,6 +853,11 @@ def no_ragged_support(inputs, layer_name):
                      'input to an uniform tensor.' % (layer_name, inputs))
 
 
+def is_split_variable(v):
+  """Returns True if `v` is either a PartionedVariable or a SharedVariable."""
+  return hasattr(v, '_variable_list') or hasattr(v, '_variables')
+
+
 # TODO(kathywu): This is a temporary hack. When a network of layers is revived
 # from SavedModel, only the top-level layer will have losses. This causes issues
 # in eager mode because the child layers may have graph losses
