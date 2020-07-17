@@ -18,10 +18,18 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/tpu/kernels/tpu_compile_op_common.h"
 
 namespace tensorflow {
 namespace tpu {
+// Forward declaration.
+#if defined(LIBTFTPU)
+class TpuCompileOpKernelImpl;
+#else
+namespace internal {
+class TpuCompileOpKernelImpl;
+}
+#endif
+}  // namespace tpu
 
 // The TPUCompile operator compiles a Tensorflow function into a
 // TPU executable to be run by TPUExecute.
@@ -34,9 +42,13 @@ class TpuCompileOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  std::unique_ptr<TpuCompileOpKernelCommon> impl_;
+#if defined(LIBTFTPU)
+  std::unique_ptr<tpu::TpuCompileOpKernelImpl> impl_;
+#else
+  std::unique_ptr<tpu::internal::TpuCompileOpKernelImpl> impl_;
+#endif
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileOp);
+  DISALLOW_COPY_AND_ASSIGN(TpuCompileOp);
 };
 
 // The TPUCompile operator compiles a MLIR module into a
@@ -50,9 +62,13 @@ class TpuCompileMlirOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  std::unique_ptr<TpuCompileOpKernelCommon> impl_;
+#if defined(LIBTFTPU)
+  std::unique_ptr<tpu::TpuCompileOpKernelImpl> impl_;
+#else
+  std::unique_ptr<tpu::internal::TpuCompileOpKernelImpl> impl_;
+#endif
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileMlirOp);
+  DISALLOW_COPY_AND_ASSIGN(TpuCompileMlirOp);
 };
 
 class TpuCompileSucceededAssertOp : public OpKernel {
@@ -64,10 +80,9 @@ class TpuCompileSucceededAssertOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileSucceededAssertOp);
+  DISALLOW_COPY_AND_ASSIGN(TpuCompileSucceededAssertOp);
 };
 
-}  // namespace tpu
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_H_
