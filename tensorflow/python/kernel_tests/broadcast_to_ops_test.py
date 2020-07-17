@@ -192,5 +192,15 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
                                                     out, out.get_shape())
     self.assertLess(err, 1e-4)
 
+  def testBroadcastToInvalidShape(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "110,53,104,147,157,123,5,24,188,40,5,2"):
+      output_shape = [110, 53, 104, 147, 157, 123, 5, 24, 188, 40, 5, 2]
+      x = np.array([1, 2, 3], dtype=np.int32)
+      v = array_ops.broadcast_to(constant_op.constant(x), output_shape)
+      self.evaluate(v)
+
+
 if __name__ == "__main__":
   test_lib.main()
