@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
+#include "tensorflow/lite/micro/testing/test_conv_model.h"
 
 namespace tflite {
 namespace testing {
@@ -86,14 +87,44 @@ TF_LITE_MICRO_TEST(TestInitializeRuntimeTensor) {
   TfLiteTensor allocated_tensor;
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, tflite::internal::InitializeTfLiteTensorFromFlatbuffer(
-                     simple_allocator, *tensor, buffers, micro_test::reporter,
-                     &allocated_tensor));
+                     simple_allocator, /*allocate_temp=*/false, *tensor,
+                     buffers, micro_test::reporter, &allocated_tensor));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, allocated_tensor.type);
   TF_LITE_MICRO_EXPECT_EQ(1, allocated_tensor.dims->size);
   TF_LITE_MICRO_EXPECT_EQ(100, allocated_tensor.dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(400), allocated_tensor.bytes);
   TF_LITE_MICRO_EXPECT(nullptr == allocated_tensor.data.i32);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteArenaRw, allocated_tensor.allocation_type);
+
+  simple_allocator->~SimpleMemoryAllocator();
+}
+
+// TODO(b/160894903): Drop this test when InitializeTfLiteTensorFromFlatbuffer()
+// always allocates from temp (kernels are using the new TfLiteEvalTensor API):
+TF_LITE_MICRO_TEST(TestInitializeTempRuntimeTensor) {
+  constexpr size_t arena_size = 1024;
+  uint8_t arena[arena_size];
+  tflite::SimpleMemoryAllocator* simple_allocator =
+      tflite::SimpleMemoryAllocator::Create(micro_test::reporter, arena,
+                                            arena_size);
+
+  const tflite::Tensor* tensor = tflite::testing::Create1dFlatbufferTensor(100);
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>* buffers =
+      tflite::testing::CreateFlatbufferBuffers();
+
+  TfLiteTensor allocated_temp_tensor;
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, tflite::internal::InitializeTfLiteTensorFromFlatbuffer(
+                     simple_allocator, /*allocate_temp=*/true, *tensor, buffers,
+                     micro_test::reporter, &allocated_temp_tensor));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, allocated_temp_tensor.type);
+  TF_LITE_MICRO_EXPECT_EQ(1, allocated_temp_tensor.dims->size);
+  TF_LITE_MICRO_EXPECT_EQ(100, allocated_temp_tensor.dims->data[0]);
+  TF_LITE_MICRO_EXPECT_EQ(static_cast<size_t>(400),
+                          allocated_temp_tensor.bytes);
+  TF_LITE_MICRO_EXPECT(nullptr == allocated_temp_tensor.data.i32);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteArenaRw,
+                          allocated_temp_tensor.allocation_type);
 
   simple_allocator->~SimpleMemoryAllocator();
 }
@@ -113,8 +144,8 @@ TF_LITE_MICRO_TEST(TestInitializeQuantizedTensor) {
   TfLiteTensor allocated_tensor;
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, tflite::internal::InitializeTfLiteTensorFromFlatbuffer(
-                     simple_allocator, *tensor, buffers, micro_test::reporter,
-                     &allocated_tensor));
+                     simple_allocator, /*allocate_temp=*/false, *tensor,
+                     buffers, micro_test::reporter, &allocated_tensor));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, allocated_tensor.type);
   TF_LITE_MICRO_EXPECT_EQ(1, allocated_tensor.dims->size);
   TF_LITE_MICRO_EXPECT_EQ(100, allocated_tensor.dims->data[0]);
@@ -140,8 +171,8 @@ TF_LITE_MICRO_TEST(TestMissingQuantization) {
   TfLiteTensor allocated_tensor;
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, tflite::internal::InitializeTfLiteTensorFromFlatbuffer(
-                     simple_allocator, *tensor, buffers, micro_test::reporter,
-                     &allocated_tensor));
+                     simple_allocator, /*allocate_temp=*/false, *tensor,
+                     buffers, micro_test::reporter, &allocated_tensor));
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteInt32, allocated_tensor.type);
   TF_LITE_MICRO_EXPECT_EQ(1, allocated_tensor.dims->size);
   TF_LITE_MICRO_EXPECT_EQ(100, allocated_tensor.dims->data[0]);
@@ -515,6 +546,31 @@ TF_LITE_MICRO_TEST(OfflinePlannerOfflineOnline) {
   TF_LITE_MICRO_EXPECT_EQ(0, context.tensors[3].data.uint8 - start);
 }
 
+TF_LITE_MICRO_TEST(TestAllocatePersistentTfLiteTensor) {
+  const tflite::Model* model = tflite::GetModel(kTestConvModelData);
+  constexpr size_t arena_size = 1024 * 12;
+  uint8_t arena[arena_size];
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_NE(allocator, nullptr);
+
+  TfLiteTensor* tensor1 =
+      allocator->AllocatePersistentTfLiteTensor(model, /*tensor_index=*/1);
+  TF_LITE_MICRO_EXPECT_NE(tensor1, nullptr);
+  TF_LITE_MICRO_EXPECT_NE(tensor1->quantization.params, nullptr);
+  TF_LITE_MICRO_EXPECT_FALSE(tensor1->is_variable);
+
+  TfLiteTensor* tensor2 =
+      allocator->AllocatePersistentTfLiteTensor(model, /*tensor_index=*/2);
+  TF_LITE_MICRO_EXPECT_NE(tensor2, nullptr);
+  TF_LITE_MICRO_EXPECT_NE(tensor2->quantization.params, nullptr);
+  TF_LITE_MICRO_EXPECT_FALSE(tensor2->is_variable);
+
+  // The address of tensor1 should be higher than the address of tensor2 since
+  // persistent allocations take place in the tail which grows downward.
+  TF_LITE_MICRO_EXPECT_GT(tensor1, tensor2);
+}
+
 TF_LITE_MICRO_TEST(TestAllocateSingleTfLiteTensor) {
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   constexpr size_t arena_size = 1024;
@@ -524,7 +580,7 @@ TF_LITE_MICRO_TEST(TestAllocateSingleTfLiteTensor) {
   TF_LITE_MICRO_EXPECT_NE(allocator, nullptr);
 
   TfLiteTensor* tensor1 =
-      allocator->AllocateTfLiteTensor(model, /*subgraph_idx=*/1);
+      allocator->AllocateTempTfLiteTensor(model, /*tensor_index=*/1);
   TF_LITE_MICRO_EXPECT_NE(tensor1, nullptr);
 }
 
@@ -537,11 +593,11 @@ TF_LITE_MICRO_TEST(TestAllocateChainOfTfLiteTensor) {
   TF_LITE_MICRO_EXPECT_NE(allocator, nullptr);
 
   TfLiteTensor* tensor1 =
-      allocator->AllocateTfLiteTensor(model, /*subgraph_idx=*/1);
+      allocator->AllocateTempTfLiteTensor(model, /*tensor_index=*/1);
   TF_LITE_MICRO_EXPECT_NE(tensor1, nullptr);
 
   TfLiteTensor* tensor2 =
-      allocator->AllocateTfLiteTensor(model, /*subgraph_idx=*/2);
+      allocator->AllocateTempTfLiteTensor(model, /*tensor_index=*/3);
   TF_LITE_MICRO_EXPECT_NE(tensor1, nullptr);
 
   // The address of tensor2 should be higher than the address of tensor1
@@ -558,13 +614,13 @@ TF_LITE_MICRO_TEST(TestAllocateTfLiteTensorWithReset) {
   TF_LITE_MICRO_EXPECT(allocator != nullptr);
 
   TfLiteTensor* tensor1 =
-      allocator->AllocateTfLiteTensor(model, /*subgraph_idx=*/1);
+      allocator->AllocateTempTfLiteTensor(model, /*tensor_index=*/1);
   TF_LITE_MICRO_EXPECT(tensor1 != nullptr);
 
   allocator->ResetTempAllocations();
 
   TfLiteTensor* tensor2 =
-      allocator->AllocateTfLiteTensor(model, /*subgraph_idx=*/2);
+      allocator->AllocateTempTfLiteTensor(model, /*tensor_index=*/2);
   TF_LITE_MICRO_EXPECT(tensor1 != nullptr);
 
   // The address of tensor2 should be equal than the address of tensor1 since
