@@ -94,7 +94,19 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 "Trying to erase non-existent item."):
       m, e = map_ops.tensor_map_erase(m, k, dtypes.float32)
       self.evaluate(e)
-  '''
+
+  def testTensorMapHasKey(self):
+      m = map_ops.empty_tensor_map()
+      k = constant_op.constant(1.0)
+      k2 = constant_op.constant(2.0)
+      v = constant_op.constant(2.0)
+      m = map_ops.tensor_map_insert(m, k, v)
+
+      b = map_ops.tensor_map_has_key(m, k)
+      b2 = map_ops.tensor_map_has_key(m, k2)
+      self.assertAllEqual(b, True)
+      self.assertAllEqual(b2, False)
+  
   def testInsertLookupGrad(self):
     with backprop.GradientTape() as tape:
       m = map_ops.empty_tensor_map()
@@ -102,11 +114,10 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       v = constant_op.constant(2.0)
       tape.watch(v)
       m = map_ops.tensor_map_insert(m, k, v)
-      l = map_ops.tensor_map_lookup(m, k)
+      l = map_ops.tensor_map_lookup(m, k, dtypes.float32)
       l *= 5
       g = tape.gradient(l, v)
-      self.assertAllClose(g, 5.0)'''
-
+      self.assertAllClose(g, 5.0)
 
 if __name__ == '__main__':
   test.main()

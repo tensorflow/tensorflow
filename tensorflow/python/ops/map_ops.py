@@ -41,6 +41,9 @@ def tensor_map_lookup(input_handle, key, value_dtype):
 def tensor_map_erase(input_handle, key, value_dtype):
   return gen_map_ops.tensor_map_erase(input_handle, key, value_dtype)
 
+def tensor_map_has_key(input_handle, key):
+  return gen_map_ops.tensor_map_has_key(input_handle, key)
+
 @ops.RegisterGradient("TensorMapLookup")
 def LookupGrad(op, dval):
   m, k = op.inputs
@@ -54,5 +57,5 @@ def InsertGrad(op, dmap):
   _, key, val = op.inputs
   map_grad = None
   key_grad = None
-  value_grad = tensor_map_lookup(dmap, key)
+  value_grad = tensor_map_lookup(dmap, key, val.dtype)
   return map_grad, key_grad, value_grad

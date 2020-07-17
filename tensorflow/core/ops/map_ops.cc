@@ -69,6 +69,12 @@ REGISTER_OP("TensorMapErase")
       return Status::OK();
     });
 
+REGISTER_OP("TensorMapHasKey")
+    .Input("input_handle: variant")
+    .Input("key: element_dtype")
+    .Output("has_key: bool")
+    .Attr("element_dtype: type")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 }  // namespace
 }  // namespace tensorflow
