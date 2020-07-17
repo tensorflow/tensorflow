@@ -310,7 +310,7 @@ TfLiteStatus MicroInterpreter::Invoke() {
 
 TfLiteTensor* MicroInterpreter::input(size_t index) {
   const size_t length = inputs_size();
-  if ((index < 0) || (index >= length)) {
+  if (index >= length) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Input index %d out of range (length is %d)", index,
                          length);
@@ -321,7 +321,7 @@ TfLiteTensor* MicroInterpreter::input(size_t index) {
 
 TfLiteTensor* MicroInterpreter::output(size_t index) {
   const size_t length = outputs_size();
-  if ((index < 0) || (index >= length)) {
+  if (index >= length) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Output index %d out of range (length is %d)", index,
                          length);
@@ -332,7 +332,7 @@ TfLiteTensor* MicroInterpreter::output(size_t index) {
 
 TfLiteTensor* MicroInterpreter::tensor(size_t index) {
   const size_t length = tensors_size();
-  if ((index < 0) || (index >= length)) {
+  if (index >= length) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Tensor index %d out of range (length is %d)", index,
                          length);

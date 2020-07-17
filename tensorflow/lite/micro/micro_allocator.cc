@@ -49,17 +49,8 @@ struct AllocationInfo {
 // We align tensor buffers to 16-byte boundaries, since this is a common
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
-
 constexpr char kOfflineMemAllocMetadata[] = "OfflineMemoryAllocation";
-
-// Instance of a zero-length int to pass as tensor dims for a flatbuffer
-// Tensor with no shape. Note that the second member of a TfLiteArray is a
-// flexible array member, which is not strictly valid C++. However it is
-// supported by both GCC and clang, as long as the flexible array element is not
-// initialized, which is ok in this case as it should never be accessed.
-// Declaring this as constexpr causes build errors with clang, as it requires
-// the flexible array element to be initialized.
-const TfLiteIntArray kZeroLengthIntArray = {0};
+const TfLiteIntArray kZeroLengthIntArray = {0, {}};
 
 class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
  public:
