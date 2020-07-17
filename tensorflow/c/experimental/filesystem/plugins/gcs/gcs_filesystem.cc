@@ -28,6 +28,27 @@ limitations under the License.
 // This filesystem will support `gs://` URI schemes.
 namespace gcs = google::cloud::storage;
 
+// The environment variable that overrides the block size for aligned reads from
+// GCS. Specified in MB (e.g. "16" = 16 x 1024 x 1024 = 16777216 bytes).
+constexpr char kBlockSize[] = "GCS_READ_CACHE_BLOCK_SIZE_MB";
+constexpr size_t kDefaultBlockSize = 64 * 1024 * 1024;
+// The environment variable that overrides the max size of the LRU cache of
+// blocks read from GCS. Specified in MB.
+constexpr char kMaxCacheSize[] = "GCS_READ_CACHE_MAX_SIZE_MB";
+constexpr size_t kDefaultMaxCacheSize = 0;
+// The environment variable that overrides the maximum staleness of cached file
+// contents. Once any block of a file reaches this staleness, all cached blocks
+// will be evicted on the next read.
+constexpr char kMaxStaleness[] = "GCS_READ_CACHE_MAX_STALENESS";
+constexpr uint64_t kDefaultMaxStaleness = 0;
+
+constexpr char kStatCacheMaxAge[] = "GCS_STAT_CACHE_MAX_AGE";
+constexpr uint64_t kStatCacheDefaultMaxAge = 5;
+// The environment variable that overrides the maximum number of entries in the
+// Stat cache.
+constexpr char kStatCacheMaxEntries[] = "GCS_STAT_CACHE_MAX_ENTRIES";
+constexpr size_t kStatCacheDefaultMaxEntries = 1024;
+
 // How to upload new data when Flush() is called multiple times.
 // By default the entire file is reuploaded.
 constexpr char kAppendMode[] = "GCS_APPEND_MODE";
@@ -80,6 +101,30 @@ static void MaybeAppendSlash(std::string* name) {
     *name = "/";
   else if (name->back() != '/')
     name->push_back('/');
+}
+
+// A helper function to actually read the data from GCS.
+static int64_t LoadBufferFromGCS(const std::string& path, size_t offset,
+                                 size_t buffer_size, char* buffer,
+                                 gcs::Client* gcs_client, TF_Status* status) {
+  std::string bucket, object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return -1;
+  auto stream = gcs_client->ReadObject(
+      bucket, object, gcs::ReadRange(offset, offset + buffer_size));
+  TF_SetStatusFromGCSStatus(stream.status(), status);
+  if ((TF_GetCode(status) != TF_OK) &&
+      (TF_GetCode(status) != TF_OUT_OF_RANGE)) {
+    return -1;
+  }
+  int64_t read;
+  if (!absl::SimpleAtoi(stream.headers().find("content-length")->second,
+                        &read)) {
+    TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
+    return -1;
+  }
+  stream.read(buffer, read);
+  return stream.gcount();
 }
 
 // SECTION 1. Implementation for `TF_RandomAccessFile`
@@ -290,11 +335,53 @@ uint64_t Length(const TF_ReadOnlyMemoryRegion* region) {
 // SECTION 4. Implementation for `TF_Filesystem`, the actual filesystem
 // ----------------------------------------------------------------------------
 namespace tf_gcs_filesystem {
-// TODO(vnvo2409): Add lazy-loading and customizing parameters.
 // TODO(vnvo2409): Use partial reponse for better performance.
 // TODO(vnvo2409): We could do some cleanups like `return TF_SetStatus`.
 // TODO(vnvo2409): Refactor the filesystem implementation when
 // https://github.com/googleapis/google-cloud-cpp/issues/4482 is done.
+GCSFile::GCSFile(google::cloud::storage::Client&& gcs_client)
+    : gcs_client(gcs_client), block_cache_lock() {
+  const char* append_mode = std::getenv(kAppendMode);
+  compose = (append_mode != nullptr) && (!strcmp(kAppendMode, append_mode));
+
+  uint64_t value;
+  block_size = kDefaultBlockSize;
+  size_t max_bytes = kDefaultMaxCacheSize;
+  uint64_t max_staleness = kDefaultMaxStaleness;
+
+  // Apply the overrides for the block size (MB), max bytes (MB), and max
+  // staleness (seconds) if provided.
+  if (absl::SimpleAtoi(std::getenv(kBlockSize), &value)) {
+    block_size = value * 1024 * 1024;
+  }
+  if (absl::SimpleAtoi(std::getenv(kMaxCacheSize), &value)) {
+    max_bytes = static_cast<size_t>(value * 1024 * 1024);
+  }
+  if (absl::SimpleAtoi(std::getenv(kMaxStaleness), &value)) {
+    max_staleness = value;
+  }
+
+  auto gcs_client_ptr = &this->gcs_client;
+  file_block_cache = std::make_unique<RamFileBlockCache>(
+      block_size, max_bytes, max_staleness,
+      [gcs_client_ptr](const std::string& filename, size_t offset,
+                       size_t buffer_size, char* buffer, TF_Status* status) {
+        return LoadBufferFromGCS(filename, offset, buffer_size, buffer,
+                                 gcs_client_ptr, status);
+      });
+
+  uint64_t stat_cache_max_age = kStatCacheDefaultMaxAge;
+  size_t stat_cache_max_entries = kStatCacheDefaultMaxEntries;
+  if (absl::SimpleAtoi(std::getenv(kStatCacheMaxAge), &value)) {
+    stat_cache_max_age = value;
+  }
+  if (absl::SimpleAtoi(std::getenv(kStatCacheMaxEntries), &value)) {
+    stat_cache_max_entries = static_cast<size_t>(value);
+  }
+  stat_cache = std::make_unique<ExpiringLRUCache<GcsFileStat>>(
+      stat_cache_max_age, stat_cache_max_entries);
+}
+
 void Init(TF_Filesystem* filesystem, TF_Status* status) {
   google::cloud::StatusOr<gcs::Client> client =
       gcs::Client::CreateDefaultClient();
@@ -303,12 +390,7 @@ void Init(TF_Filesystem* filesystem, TF_Status* status) {
     return;
   }
 
-  const char* append_mode = std::getenv(kAppendMode);
-  bool compose =
-      (append_mode != nullptr) && (!strcmp(kAppendMode, append_mode));
-
-  filesystem->plugin_filesystem =
-      new GCSFile({std::move(client.value()), compose});
+  filesystem->plugin_filesystem = new GCSFile(std::move(client.value()));
   TF_SetStatus(status, TF_OK, "");
 }
 
