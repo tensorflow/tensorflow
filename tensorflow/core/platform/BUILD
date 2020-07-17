@@ -951,6 +951,7 @@ cc_library(
     srcs = ["tf32_utils.cc"],
     hdrs = ["tf32_utils.h"],
     copts = tf_copts(),
+    alwayslink = 1,
 )
 
 filegroup(
