@@ -485,6 +485,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mnist_gradients",
+    srcs = [
+        "mnist_gradients.cc",
+        "mnist_gradients.h",
+    ],
+    hdrs = [
+        "gradients.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":abstract_context",
+        ":abstract_operation",
+        ":abstract_tensor_handle",
+        ":c_api_unified_internal",
+        ":gradients_internal",
+        ":tape",
+        ":mnist_gradients_util",
+        "//tensorflow/core/common_runtime/eager:attr_builder",
+        "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cuda_cc_test(
     name = "mnist_gradients_test",
     size = "small",
@@ -502,6 +529,7 @@ tf_cuda_cc_test(
         ":c_api_unified_internal",
         ":gradients_internal",
         ":mnist_gradients_util",
+        ":mnist_gradients",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",
