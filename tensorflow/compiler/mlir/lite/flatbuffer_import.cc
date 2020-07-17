@@ -281,7 +281,7 @@ std::vector<T> ReadAsLittleEndian(ArrayRef<uint8_t> bytes) {
   int bytes_len = bytes.size();
   assert(bytes_len % read_size == 0);
 
-  size_t elem_count = bytes_len / read_size;
+  int elem_count = bytes_len / read_size;
   ret.reserve(elem_count);
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
