@@ -738,7 +738,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                   '`compute_output_shape` method on your layer (%s).' %
                   self.__class__.__name__), e)
       return nest.map_structure(lambda t: t.shape, outputs)
-    raise NotImplementedError
+    raise NotImplementedError(
+        'Please run in eager mode or implement the `compute_output_shape` '
+        'method on your layer (%s).' % self.__class__.__name__)
 
   @doc_controls.for_subclass_implementers
   def compute_output_signature(self, input_signature):
