@@ -51,16 +51,15 @@ def keras_tensors_enabled():
 class KerasTensor(object):
   """A representation of a Keras in/output during Functional API construction.
 
-  `KerasTensor`s are an alternative representation for Keras `Inputs`
-  and for intermediate outputs of layers during Functional API construction of
-  models. They are a lightweight data structure comprised of only the
-  `tf.TypeSpec` of the Tensor that will be consumed/produced in the
-  corresponding position of the model.
+  `KerasTensor`s are tensor-like objects that represent the symbolic inputs
+  and outputs of Keras layers during Functional model construction. They are
+  compromised of the `tf.TypeSpec` of the Tensor that will be
+  consumed/produced in the corresponding position of the model.
 
-  They implement just small subset of `tf.Tensor`'s attributes and
-  methods, and also overload
-  the same operators as `tf.Tensor` and automatically turn them into
-  Keras layers in the model.
+  They implement `tf.Tensor`'s attributes and methods, and also overload
+  the same operators as `tf.Tensor`. Passing a KerasTensor to a TF API that
+  supports dispatching will automatically turn that API call into a lambda
+  layer in the Functional model.
 
   `KerasTensor`s are still internal-only and are a work in progress, but they
   have several advantages over using a graph `tf.Tensor` to represent
@@ -149,6 +148,27 @@ class KerasTensor(object):
           (self.shape, shape))
     else:
       self._type_spec._shape = shape  # pylint: disable=protected-access
+
+  def __repr__(self):
+    symbolic_description = ''
+    inferred_value_string = ''
+    if isinstance(self.type_spec, tensor_spec.TensorSpec):
+      type_spec_string = 'shape=%s dtype=%s' % (self.shape, self.dtype.name)
+    else:
+      type_spec_string = 'type_spec=%s' % self.type_spec
+
+    if hasattr(self, '_keras_history'):
+      layer = self._keras_history.layer
+      node_index = self._keras_history.node_index
+      tensor_index = self._keras_history.tensor_index
+      symbolic_description = (
+          ' (Symbolic value %s from symbolic call %s of layer \'%s\')' % (
+              tensor_index, node_index, layer.name))
+    if self._inferred_shape_value is not None:
+      inferred_value_string = (
+          ' inferred_value=\'%s\'' % self._inferred_shape_value)
+    return '<KerasTensor: %s%s%s>' % (
+        type_spec_string, inferred_value_string, symbolic_description)
 
   @property
   def dtype(self):
